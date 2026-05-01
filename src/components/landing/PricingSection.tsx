@@ -30,7 +30,7 @@ export function PricingSection() {
                 style={{ transitionDelay: isInView ? `${150 + i * 150}ms` : "0ms" }}
               >
                 {isPopular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-violet-400 to-blue-400 px-5 py-1.5 text-xs font-semibold text-white shadow-md shadow-violet-300/30 animate-gradient-shift">
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-primary to-primary/80 px-5 py-1.5 text-xs font-semibold text-white shadow-md shadow-primary/20 animate-gradient-shift">
                     {t.pricing.popular}
                   </div>
                 )}
