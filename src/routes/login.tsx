@@ -248,8 +248,8 @@ function Field({
     <div>
       <label className="mb-1.5 block text-xs font-medium text-foreground/80">{label}</label>
       <div className="group relative">
-        <div className="pointer-events-none absolute start-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg bg-gradient-to-br from-primary/15 to-primary/5 ring-1 ring-primary/20 transition-all duration-300 group-focus-within:from-primary/25 group-focus-within:to-primary/10 group-focus-within:ring-primary/40 group-focus-within:shadow-md group-focus-within:shadow-primary/20">
-          <Icon className="h-4 w-4 text-primary transition-transform duration-300 group-focus-within:scale-110" strokeWidth={2.25} />
+        <div className="pointer-events-none absolute start-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-violet-600 shadow-md shadow-primary/30 ring-1 ring-primary/40 transition-all duration-300 group-focus-within:shadow-lg group-focus-within:shadow-primary/50 group-focus-within:scale-105">
+          <Icon className="h-4 w-4 text-white transition-transform duration-300 group-focus-within:scale-110" strokeWidth={2.5} />
         </div>
         {children}
       </div>
