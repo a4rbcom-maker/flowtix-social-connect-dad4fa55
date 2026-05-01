@@ -3,9 +3,8 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
 import { useI18n } from "@/lib/i18n";
-import { useTheme } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
-import flowtixLogo from "@/assets/flowtix-logo.png";
+import { Navbar } from "@/components/landing/Navbar";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
