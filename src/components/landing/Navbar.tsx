@@ -6,12 +6,9 @@ import flowtixLogo from "@/assets/flowtix-logo.png";
 
 export function Navbar() {
   const { t, lang, setLang, dir } = useI18n();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, mounted } = useTheme();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
