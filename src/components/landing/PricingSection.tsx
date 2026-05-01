@@ -24,13 +24,13 @@ export function PricingSection() {
                 key={i}
                 className={`card-tilt relative rounded-2xl border p-8 transition-all duration-500 ${
                   isPopular
-                    ? "animated-border border-primary/40 bg-gradient-to-b from-violet-50 to-blue-50 shadow-lg shadow-primary/8 md:scale-105"
+                    ? "animated-border border-transparent bg-gradient-to-br from-slate-100 via-gray-50 to-slate-100 shadow-lg shadow-gray-200/50 md:scale-105"
                     : "border-border/50 bg-card/60 hover:border-primary/30 hover:shadow-primary/5"
                 } ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"}`}
                 style={{ transitionDelay: isInView ? `${150 + i * 150}ms` : "0ms" }}
               >
                 {isPopular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-violet-400 to-blue-400 px-5 py-1.5 text-xs font-semibold text-white shadow-md shadow-violet-300/30 animate-gradient-shift">
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-primary to-primary/80 px-5 py-1.5 text-xs font-semibold text-white shadow-md shadow-primary/20 animate-gradient-shift">
                     {t.pricing.popular}
                   </div>
                 )}
@@ -60,7 +60,7 @@ export function PricingSection() {
                 <button
                   className={`group w-full overflow-hidden relative rounded-xl py-3.5 text-sm font-semibold transition-all duration-300 hover:scale-[1.02] ${
                     isPopular
-                      ? "bg-gradient-to-r from-violet-400 to-blue-400 text-white shadow-md shadow-violet-300/20 hover:shadow-lg hover:shadow-violet-300/30"
+                      ? "bg-primary text-white shadow-md shadow-primary/20 hover:shadow-lg hover:bg-primary/90"
                       : "border border-border bg-background text-foreground hover:bg-accent hover:border-primary/30"
                   }`}
                 >
