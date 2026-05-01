@@ -177,8 +177,7 @@ export function HeroSection() {
                   {dir === "rtl" ? "مستخدم نشط" : "Active Users"}
                 </div>
               </div>
-              <div className="group cursor-default relative">
-                <div className="absolute -top-1 left-1/2 -translate-x-1/2 h-full w-px bg-border/50" style={{ display: "none" }} />
+              <div className="group cursor-default">
                 <AnimatedCounter target="+50000" />
                 <div className="mt-1 text-xs text-muted-foreground md:text-sm transition-all duration-300 group-hover:text-foreground group-hover:translate-y-[-2px]">
                   {dir === "rtl" ? "رسالة يومياً" : "Messages/Day"}
@@ -188,6 +187,79 @@ export function HeroSection() {
                 <AnimatedCounter target="99" suffix="%" />
                 <div className="mt-1 text-xs text-muted-foreground md:text-sm transition-all duration-300 group-hover:text-foreground group-hover:translate-y-[-2px]">
                   {dir === "rtl" ? "وقت التشغيل" : "Uptime"}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Floating animated chat/dashboard mockup */}
+        <div
+          className={`mx-auto mt-12 max-w-2xl transition-all duration-1000 delay-700 ${
+            mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
+          }`}
+        >
+          <div className="relative">
+            {/* Floating notification badges */}
+            <div className="animate-float absolute -top-4 -right-2 md:-right-8 z-10 rounded-xl glass-card px-4 py-2.5 shadow-lg">
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse-soft" />
+                <span className="text-xs font-medium text-foreground">{dir === "rtl" ? "مباشر" : "Live"}</span>
+                <span className="text-xs text-muted-foreground">• 234 {dir === "rtl" ? "متصل" : "online"}</span>
+              </div>
+            </div>
+            <div className="animate-float-reverse absolute -bottom-3 -left-2 md:-left-8 z-10 rounded-xl glass-card px-4 py-2.5 shadow-lg delay-300">
+              <div className="flex items-center gap-2">
+                <svg className="h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
+                <span className="text-xs font-medium text-foreground">1,247 {dir === "rtl" ? "رسالة اليوم" : "sent today"}</span>
+              </div>
+            </div>
+
+            {/* Main mockup card */}
+            <div className="rounded-2xl glass-card overflow-hidden shadow-2xl shadow-primary/10">
+              {/* Title bar */}
+              <div className="flex items-center gap-2 border-b border-border/50 px-4 py-3 bg-accent/30">
+                <div className="flex gap-1.5">
+                  <div className="h-3 w-3 rounded-full bg-red-400" />
+                  <div className="h-3 w-3 rounded-full bg-yellow-400" />
+                  <div className="h-3 w-3 rounded-full bg-green-400" />
+                </div>
+                <div className="mx-auto text-xs text-muted-foreground font-medium">flowtixtools.com</div>
+              </div>
+              {/* Chat content */}
+              <div className="p-4 md:p-6 space-y-3">
+                <div className="flex gap-3 items-start">
+                  <div className="h-8 w-8 shrink-0 rounded-full bg-primary/20 flex items-center justify-center">
+                    <svg className="h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  </div>
+                  <div className="rounded-xl bg-accent/50 px-4 py-2.5 max-w-[75%]">
+                    <p className="text-sm text-foreground">{dir === "rtl" ? "مرحباً، عايز أعرف سعر المنتج ده" : "Hi, I want to know the price of this product"}</p>
+                  </div>
+                </div>
+                <div className="flex gap-3 items-start justify-end">
+                  <div className="rounded-xl bg-primary/10 px-4 py-2.5 max-w-[75%]">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <svg className="h-3 w-3 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8V4H8"/><rect x="8" y="8" width="8" height="8" rx="1"/><path d="M12 16v4h4"/></svg>
+                      <span className="text-[10px] text-primary font-semibold">AI Bot</span>
+                    </div>
+                    <p className="text-sm text-foreground">{dir === "rtl" ? "أهلاً! 🎉 عندنا 3 باقات تناسبك..." : "Hello! 🎉 We have 3 plans for you..."}</p>
+                  </div>
+                  <div className="h-8 w-8 shrink-0 rounded-full bg-gradient-to-br from-primary to-violet-600 flex items-center justify-center">
+                    <svg className="h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8V4H8"/><rect x="8" y="8" width="8" height="8" rx="1"/><path d="M12 16v4h4"/></svg>
+                  </div>
+                </div>
+                {/* Typing indicator */}
+                <div className="flex gap-3 items-start justify-end">
+                  <div className="rounded-xl bg-primary/10 px-4 py-3">
+                    <div className="flex gap-1">
+                      <div className="h-2 w-2 rounded-full bg-primary/50 animate-bounce-subtle" />
+                      <div className="h-2 w-2 rounded-full bg-primary/50 animate-bounce-subtle delay-100" />
+                      <div className="h-2 w-2 rounded-full bg-primary/50 animate-bounce-subtle delay-200" />
+                    </div>
+                  </div>
+                  <div className="h-8 w-8 shrink-0 rounded-full bg-gradient-to-br from-primary to-violet-600 flex items-center justify-center">
+                    <svg className="h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8V4H8"/><rect x="8" y="8" width="8" height="8" rx="1"/><path d="M12 16v4h4"/></svg>
+                  </div>
                 </div>
               </div>
             </div>
