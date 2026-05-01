@@ -103,7 +103,7 @@ function LoginPage() {
   };
 
   const inputClass =
-    "w-full rounded-xl border border-input bg-background/60 backdrop-blur ps-11 pe-4 py-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground/60";
+    "peer w-full rounded-xl border border-input bg-background/60 backdrop-blur ps-12 pe-4 py-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground/60";
 
   return (
     <div dir={dir} className="min-h-screen bg-background">
@@ -247,8 +247,10 @@ function Field({
   return (
     <div>
       <label className="mb-1.5 block text-xs font-medium text-foreground/80">{label}</label>
-      <div className="relative">
-        <Icon className="pointer-events-none absolute start-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="group relative">
+        <div className="pointer-events-none absolute start-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg bg-gradient-to-br from-primary/15 to-primary/5 ring-1 ring-primary/20 transition-all duration-300 group-focus-within:from-primary/25 group-focus-within:to-primary/10 group-focus-within:ring-primary/40 group-focus-within:shadow-md group-focus-within:shadow-primary/20">
+          <Icon className="h-4 w-4 text-primary transition-transform duration-300 group-focus-within:scale-110" strokeWidth={2.25} />
+        </div>
         {children}
       </div>
     </div>
