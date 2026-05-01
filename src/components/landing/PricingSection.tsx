@@ -80,15 +80,7 @@ export function PricingSection() {
                         color: isPopular ? "var(--pricing-popular-muted)" : "var(--muted-foreground)",
                       }}
                     >
-                      <div
-                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
-                        style={{
-                          background: isPopular
-                            ? "oklch(0.55 0.18 270 / 0.15)"
-                            : "var(--primary, oklch(0.55 0.18 270)) / 0.1",
-                          backgroundColor: isPopular ? undefined : "oklch(from var(--primary) l c h / 0.1)",
-                        }}
-                      >
+                      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10">
                         <svg className="h-3 w-3 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                       </div>
                       {f}
