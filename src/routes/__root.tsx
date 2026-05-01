@@ -1,4 +1,6 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { I18nProvider } from "@/lib/i18n";
+import { ThemeProvider } from "@/lib/theme";
 
 import appCss from "../styles.css?url";
 
@@ -29,20 +31,19 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "Flowtix Tools — أقوى منصة للتجارة الاجتماعية" },
+      { name: "description", content: "أدر أعمالك على فيسبوك وواتساب بذكاء — إرسال جماعي، بوت واتساب، ذكاء اصطناعي من مكان واحد" },
+      { name: "author", content: "Flowtix Tools" },
+      { property: "og:title", content: "Flowtix Tools — Social Commerce Platform" },
+      { property: "og:description", content: "Manage Facebook Groups & WhatsApp Bot from one powerful platform" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
+      { rel: "stylesheet", href: appCss },
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800;900&display=swap" },
     ],
   }),
   shellComponent: RootShell,
@@ -52,11 +53,11 @@ export const Route = createRootRoute({
 
 function RootShell({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="ar">
       <head>
         <HeadContent />
       </head>
-      <body>
+      <body style={{ fontFamily: "'Cairo', 'Inter', sans-serif" }}>
         {children}
         <Scripts />
       </body>
@@ -65,5 +66,11 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
-  return <Outlet />;
+  return (
+    <ThemeProvider>
+      <I18nProvider>
+        <Outlet />
+      </I18nProvider>
+    </ThemeProvider>
+  );
 }
