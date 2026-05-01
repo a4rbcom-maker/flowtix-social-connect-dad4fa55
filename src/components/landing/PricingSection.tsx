@@ -1,12 +1,14 @@
 import { useI18n } from "@/lib/i18n";
+import { useInView } from "@/hooks/use-in-view";
 
 export function PricingSection() {
   const { t, dir } = useI18n();
+  const { ref, isInView } = useInView();
 
   return (
     <section id="pricing" dir={dir} className="py-20 md:py-28">
-      <div className="mx-auto max-w-7xl px-4">
-        <div className="mb-16 text-center">
+      <div ref={ref} className="mx-auto max-w-7xl px-4">
+        <div className={`mb-16 text-center transition-all duration-700 ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
           <h2 className="text-3xl font-bold text-foreground md:text-5xl">{t.pricing.title}</h2>
           <p className="mt-4 text-lg text-muted-foreground">{t.pricing.subtitle}</p>
         </div>
@@ -17,14 +19,15 @@ export function PricingSection() {
             return (
               <div
                 key={i}
-                className={`relative rounded-2xl border p-8 transition-all ${
+                className={`relative rounded-2xl border p-8 transition-all duration-500 hover:-translate-y-2 hover:shadow-2xl ${
                   isPopular
-                    ? "border-primary bg-gradient-to-b from-primary/5 to-transparent shadow-xl shadow-primary/10 scale-105"
-                    : "border-border/50 bg-card/50 hover:border-primary/30"
-                }`}
+                    ? "border-primary bg-gradient-to-b from-primary/5 to-transparent shadow-xl shadow-primary/10 scale-105 hover:shadow-primary/20"
+                    : "border-border/50 bg-card/50 hover:border-primary/30 hover:shadow-primary/5"
+                } ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}
+                style={{ transitionDelay: isInView ? `${150 + i * 150}ms` : "0ms" }}
               >
                 {isPopular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-primary to-blue-600 px-4 py-1 text-xs font-semibold text-white">
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-primary to-blue-600 px-4 py-1 text-xs font-semibold text-white animate-gradient-shift">
                     {t.pricing.popular}
                   </div>
                 )}
@@ -44,10 +47,10 @@ export function PricingSection() {
                   ))}
                 </ul>
                 <button
-                  className={`w-full rounded-xl py-3 text-sm font-semibold transition-all ${
+                  className={`w-full rounded-xl py-3 text-sm font-semibold transition-all duration-300 hover:scale-105 ${
                     isPopular
-                      ? "bg-gradient-to-r from-primary to-blue-600 text-white shadow-lg shadow-primary/25 hover:shadow-xl"
-                      : "border border-border bg-background text-foreground hover:bg-accent"
+                      ? "bg-gradient-to-r from-primary to-blue-600 text-white shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/40"
+                      : "border border-border bg-background text-foreground hover:bg-accent hover:border-primary/30"
                   }`}
                 >
                   {t.pricing.cta}

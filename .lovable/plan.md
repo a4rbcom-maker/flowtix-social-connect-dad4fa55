@@ -1,42 +1,58 @@
 
-# المرحلة الأولى — Landing Page لمنصة Flowtix Tools
+# Premium Landing Page Enhancements + Light Mode Default
 
-## ما سيتم بناؤه
+## Changes Overview
 
-صفحة هبوط احترافية لمنصة SaaS للتجارة الاجتماعية (Facebook Groups + WhatsApp Bot)، بتصميم عصري مستوحى من botxtra.com.
+### 1. Default to Light Mode
+- Change default theme from `"dark"` to `"light"` in `src/lib/theme.tsx`
 
----
+### 2. Add CSS Animations to `src/styles.css`
+- Custom keyframes: `float`, `pulse-glow`, `slide-up`, `fade-in-up`, `shimmer`, `count-up`
+- Animated gradient background for hero
+- Smooth scroll behavior on `html`
 
-## التصميم والألوان
+### 3. Hero Section — Premium Upgrade
+- Animated floating gradient orbs (CSS `float` animation with staggered delays)
+- Badge with shimmer/glow pulse effect
+- Title lines staggered fade-in-up animation on mount (using `useEffect` + state)
+- Animated counter for stats (counting up from 0 to final value)
+- CTA buttons with hover scale + glow shadow animation
+- Decorative floating particles/dots in background
 
-- ألوان أساسية: تدرجات البنفسجي/الأزرق كألوان رئيسية (مستوحاة من botxtra.com)
-- خلفية داكنة في الوضع الليلي، فاتحة في العادي
-- تأثيرات gradient وglow على العناصر البارزة
-- شعار بريميوم لـ "Flowtix Tools" (أيقونة + نص بتصميم أنيق)
+### 4. Features Section — Card Animations
+- Scroll-triggered fade-in-up using IntersectionObserver hook
+- Staggered card entry (each card appears with a slight delay)
+- Icon container: animated gradient border on hover + rotation
+- Card hover: lift up with enhanced shadow + subtle border glow
 
-## الأقسام
+### 5. How It Works Section — Step Animations
+- Animated connecting line between steps (dashed, animated stroke)
+- Step numbers: pulse-glow animation on mount
+- Each step fades in from bottom with stagger
 
-1. **Header/Navbar** — شعار Flowtix Tools + روابط التنقل + زر تغيير اللغة (عربي/إنجليزي) + زر الوضع الليلي + زر "ابدأ مجاناً"
-2. **Hero Section** — عنوان رئيسي جذاب + وصف مختصر للمنصة + زر CTA + رسم توضيحي/mockup
-3. **Features Section** — عرض المميزات الرئيسية:
-   - إرسال لجروبات الفيسبوك
-   - واتساب بوت (Meta API + باركود)
-   - واتساب AI
-   - إرسال جماعي بفاصل زمني
-   - الإرسال في الخلفية
-4. **How It Works** — خطوات استخدام المنصة بشكل مبسط
-5. **Pricing Section** — 3 باقات اشتراك (أساسي، احترافي، أعمال) مع أسعار تجريبية
-6. **FAQ Section** — أسئلة شائعة
-7. **Footer** — روابط + حقوق الملكية
+### 6. Pricing Section — Premium Cards
+- Popular card: animated gradient border (rotating gradient via `@keyframes`)
+- Price number: count-up animation on scroll into view
+- Hover: cards lift with shadow depth increase
+- CTA buttons: gradient shift animation on hover
 
-## الخصائص التقنية
+### 7. FAQ Section
+- Smooth accordion open/close with height transition (using `grid-rows` trick)
+- Subtle fade for answer text
 
-- **دعم اللغتين**: عربي (RTL) وإنجليزي (LTR) مع زر تبديل اللغة
-- **الوضع الليلي/النهاري**: زر تبديل في الـ navbar مع حفظ التفضيل في localStorage
-- **تصميم متجاوب**: يعمل على الموبايل والتابلت والديسكتوب
-- **الشعار**: تصميم SVG بريميوم بأيقونة flow/connection مع اسم Flowtix Tools
+### 8. Navbar Enhancement
+- Shrink on scroll (reduce padding, add stronger backdrop blur)
+- Nav links: underline slide animation on hover
 
-## الملاحظات
+### 9. Footer
+- Subtle top border gradient (animated shimmer)
 
-- هذه المرحلة تصميم فقط (لا backend أو authentication)
-- المراحل التالية ستشمل: تسجيل الدخول، لوحة تحكم الأدمن، لوحة تحكم العملاء، ربط Facebook API، ربط WhatsApp
+### 10. Reusable `useInView` Hook
+- Create `src/hooks/use-in-view.tsx` with IntersectionObserver for scroll-triggered animations
+- Used by Features, How It Works, Pricing, FAQ sections
+
+## Technical Approach
+- Pure CSS animations where possible (no extra dependencies)
+- `useInView` hook for scroll-triggered reveals
+- `useState` + `useEffect` for mount animations in Hero
+- All animations respect `prefers-reduced-motion`
