@@ -11,8 +11,7 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
-  const { t, lang, setLang, dir } = useI18n();
-  const { theme, toggleTheme } = useTheme();
+  const { t, lang, dir } = useI18n();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
