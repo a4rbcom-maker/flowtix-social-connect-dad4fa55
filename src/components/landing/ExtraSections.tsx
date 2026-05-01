@@ -62,10 +62,10 @@ export function CTASection() {
   return (
     <section dir={dir} className="relative py-20 md:py-28 overflow-hidden">
       {/* Animated background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-blue-500/5 to-violet-500/5" />
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-violet-500/5 to-violet-500/5" />
       <div className="pointer-events-none absolute inset-0">
         <div className="animate-float absolute top-1/4 left-1/3 h-72 w-72 rounded-full bg-primary/10 blur-[100px]" />
-        <div className="animate-float-reverse absolute bottom-1/4 right-1/3 h-56 w-56 rounded-full bg-blue-500/10 blur-[80px]" />
+        <div className="animate-float-reverse absolute bottom-1/4 right-1/3 h-56 w-56 rounded-full bg-violet-500/10 blur-[80px]" />
       </div>
 
       <div className="relative mx-auto max-w-3xl px-4 text-center">
@@ -80,13 +80,13 @@ export function CTASection() {
         <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
           <a
             href="/login"
-            className="group relative inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-blue-600 px-10 py-4 text-lg font-semibold text-white shadow-xl shadow-primary/25 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/40 hover:scale-105 hover:-translate-y-1"
+            className="group relative inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-violet-600 px-10 py-4 text-lg font-semibold text-white shadow-xl shadow-primary/25 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/40 hover:scale-105 hover:-translate-y-1"
           >
             <span className="relative z-10">{dir === "rtl" ? "ابدأ مجاناً الآن" : "Start Free Now"}</span>
             <svg className="relative z-10 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
             </svg>
-            <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-600 to-primary opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+            <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-violet-600 to-primary opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
           </a>
           <span className="text-sm text-muted-foreground">
             {dir === "rtl" ? "✨ بدون بطاقة ائتمان" : "✨ No credit card required"}

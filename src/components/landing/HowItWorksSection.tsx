@@ -48,7 +48,7 @@ export function HowItWorksSection() {
               <div className="relative mx-auto mb-6">
                 {/* Outer glow ring */}
                 <div className={`absolute inset-0 mx-auto h-20 w-20 rounded-full ${isInView ? "animate-glow-ring" : ""}`} style={{ animationDelay: `${i * 0.5}s` }} />
-                <div className="relative mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-primary to-blue-600 text-white shadow-xl shadow-primary/25 transition-all duration-300 hover:scale-110 hover:shadow-2xl hover:shadow-primary/40">
+                <div className="relative mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-primary to-violet-600 text-white shadow-xl shadow-primary/25 transition-all duration-300 hover:scale-110 hover:shadow-2xl hover:shadow-primary/40">
                   {stepIcons[i]}
                   {/* Step number badge */}
                   <div className="absolute -top-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-background border-2 border-primary text-xs font-bold text-primary">
