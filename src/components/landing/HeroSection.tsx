@@ -1,7 +1,7 @@
 import { useI18n } from "@/lib/i18n";
 import { Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState, useCallback } from "react";
-import { useMouseParallax, useInView } from "@/hooks/use-in-view";
+import { useEffect, useRef, useState } from "react";
+import { useMouseParallax, useInView, useScrollY } from "@/hooks/use-in-view";
 
 function AnimatedCounter({ target, suffix = "" }: { target: string; suffix?: string }) {
   const [count, setCount] = useState(0);
@@ -89,53 +89,107 @@ export function HeroSection() {
   const { t, dir } = useI18n();
   const [mounted, setMounted] = useState(false);
   const mouse = useMouseParallax(0.008);
+  const scrollY = useScrollY();
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 100);
     return () => clearTimeout(timer);
   }, []);
 
+  // Scroll-driven values (clamped)
+  const scrollFade = Math.max(0, 1 - scrollY / 600);
+  const scrollParallax = scrollY * 0.15;
+  const mockupParallax = scrollY * 0.08;
+  const badgeFloat = Math.sin(scrollY * 0.008) * 4;
+
   return (
     <section dir={dir} className="relative overflow-hidden pt-28 pb-20 md:pt-36 md:pb-28">
-      {/* Soft background orbs */}
+      {/* Background orbs — mouse + scroll reactive */}
       <div className="pointer-events-none absolute inset-0">
         <div
-          className="animate-float-slow absolute top-1/4 left-1/2 h-[500px] w-[500px] -translate-x-1/2 rounded-full bg-primary/6 blur-[160px]"
-          style={{ transform: `translate(${mouse.x * 1.5}px, ${mouse.y * 1.5}px)` }}
+          className="absolute top-1/4 left-1/2 h-[500px] w-[500px] -translate-x-1/2 rounded-full bg-primary/6 blur-[160px] will-change-transform"
+          style={{
+            transform: `translate(${mouse.x * 1.5}px, ${mouse.y * 1.5 - scrollParallax * 0.3}px)`,
+            opacity: scrollFade,
+            transition: "opacity 0.3s ease-out",
+          }}
         />
         <div
-          className="animate-float-slow absolute top-1/3 right-1/4 h-72 w-72 rounded-full bg-violet-300/5 blur-[140px]"
-          style={{ transform: `translate(${mouse.x * -1}px, ${mouse.y * -1}px)` }}
+          className="absolute top-1/3 right-1/4 h-72 w-72 rounded-full bg-violet-300/5 blur-[140px] will-change-transform"
+          style={{
+            transform: `translate(${mouse.x * -1}px, ${mouse.y * -1 + scrollParallax * 0.2}px)`,
+            opacity: scrollFade,
+            transition: "opacity 0.3s ease-out",
+          }}
         />
-        {/* Subtle grid */}
+        <div
+          className="absolute bottom-1/4 left-1/3 h-48 w-48 rounded-full bg-primary/4 blur-[120px] will-change-transform"
+          style={{
+            transform: `translate(${mouse.x * 0.8}px, ${mouse.y * -0.8}px)`,
+            opacity: scrollFade * 0.7,
+            transition: "opacity 0.3s ease-out",
+          }}
+        />
+        {/* Dot grid */}
         <div className="absolute inset-0 opacity-[0.02]" style={{
           backgroundImage: "radial-gradient(circle, oklch(0.55 0.15 270) 1px, transparent 1px)",
           backgroundSize: "48px 48px",
         }} />
       </div>
 
-      {/* Gentle floating dots */}
+      {/* Floating particles — mouse reactive */}
       <div className="pointer-events-none absolute inset-0">
-        <div className="animate-float-slow absolute top-[15%] left-[8%] h-1.5 w-1.5 rounded-full bg-primary/15" />
-        <div className="animate-float-slow absolute top-[25%] right-[12%] h-1 w-1 rounded-full bg-violet-400/15 delay-500" />
-        <div className="animate-float-slow absolute top-[55%] left-[85%] h-2 w-2 rounded-full bg-primary/10 delay-300" />
-        <div className="animate-float-slow absolute top-[65%] left-[15%] h-1 w-1 rounded-full bg-violet-400/12 delay-700" />
+        {[
+          { top: "12%", left: "6%",  size: "1.5", delay: 0,   mx: 2,  my: 1.5 },
+          { top: "22%", left: "88%", size: "1",   delay: 400, mx: -1.5, my: 2 },
+          { top: "50%", left: "92%", size: "2",   delay: 200, mx: 1,  my: -1 },
+          { top: "60%", left: "10%", size: "1",   delay: 600, mx: -2, my: -1.5 },
+          { top: "75%", left: "70%", size: "1.5", delay: 300, mx: 1.5, my: 1 },
+          { top: "35%", left: "4%",  size: "1",   delay: 800, mx: -1, my: 2 },
+        ].map((p, i) => (
+          <div
+            key={i}
+            className="absolute rounded-full bg-primary/12 will-change-transform"
+            style={{
+              top: p.top,
+              left: p.left,
+              width: `${parseFloat(p.size) * 4}px`,
+              height: `${parseFloat(p.size) * 4}px`,
+              transform: `translate(${mouse.x * p.mx}px, ${mouse.y * p.my}px)`,
+              animationDelay: `${p.delay}ms`,
+              opacity: scrollFade,
+              transition: "opacity 0.5s ease-out",
+            }}
+          />
+        ))}
       </div>
 
       <div className="relative mx-auto max-w-7xl px-4 text-center">
-        {/* Badge */}
+        {/* Badge — scroll fade + slight lift */}
         <div
           className={`mb-8 inline-flex items-center rounded-full border border-primary/20 bg-primary/5 px-5 py-2 text-sm text-primary transition-all duration-700 ${
             mounted ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-4 scale-95"
           }`}
+          style={{
+            transform: mounted
+              ? `translateY(${-scrollParallax * 0.1}px)`
+              : undefined,
+          }}
         >
           <span className="font-semibold text-primary">
             {t.hero.badge}
           </span>
         </div>
 
-        {/* Title */}
-        <h1 className="mx-auto max-w-4xl text-4xl font-extrabold leading-tight tracking-tight text-foreground md:text-6xl lg:text-7xl">
+        {/* Title — scroll parallax up */}
+        <h1
+          className="mx-auto max-w-4xl text-4xl font-extrabold leading-tight tracking-tight text-foreground md:text-6xl lg:text-7xl will-change-transform"
+          style={{
+            transform: `translateY(${-scrollParallax * 0.12}px)`,
+            opacity: scrollFade,
+            transition: "opacity 0.2s ease-out",
+          }}
+        >
           <span
             className={`inline-block transition-all duration-700 delay-100 ${
               mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
@@ -165,6 +219,11 @@ export function HeroSection() {
           className={`mx-auto mt-6 max-w-2xl text-lg text-muted-foreground md:text-xl transition-all duration-700 delay-400 ${
             mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
           }`}
+          style={{
+            transform: `translateY(${-scrollParallax * 0.08}px)`,
+            opacity: mounted ? scrollFade : 0,
+            transition: "opacity 0.2s ease-out",
+          }}
         >
           {t.hero.desc}
         </p>
@@ -172,11 +231,16 @@ export function HeroSection() {
         {/* CTAs */}
         <CtaButtons mounted={mounted} t={t} />
 
-        {/* Stats */}
+        {/* Stats — scroll parallax (slower, stays longer) */}
         <div
-          className={`mx-auto mt-16 max-w-3xl rounded-2xl glass-card p-1 shadow-lg shadow-black/5 transition-all duration-1000 delay-600 ${
+          className={`mx-auto mt-16 max-w-3xl rounded-2xl glass-card p-1 shadow-lg shadow-black/5 transition-all duration-1000 delay-600 will-change-transform ${
             mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
           }`}
+          style={{
+            transform: mounted
+              ? `translateY(${-mockupParallax * 0.3}px) scale(${1 - scrollY * 0.00008})`
+              : undefined,
+          }}
         >
           <div className="rounded-xl bg-gradient-to-br from-primary/3 via-transparent to-violet-400/3 p-8 md:p-12">
             <div className="grid grid-cols-3 gap-8 text-center">
@@ -202,22 +266,37 @@ export function HeroSection() {
           </div>
         </div>
 
-        {/* Chat mockup */}
+        {/* Chat mockup — scroll parallax + mouse tilt */}
         <div
-          className={`mx-auto mt-12 max-w-2xl transition-all duration-1000 delay-700 ${
+          className={`mx-auto mt-12 max-w-2xl transition-all duration-1000 delay-700 will-change-transform ${
             mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
           }`}
+          style={{
+            transform: mounted
+              ? `translateY(${-mockupParallax * 0.5}px) perspective(800px) rotateX(${mouse.y * -0.02}deg) rotateY(${mouse.x * 0.02}deg)`
+              : undefined,
+          }}
         >
           <div className="relative">
-            {/* Floating badges - gentle float */}
-            <div className="animate-float-slow absolute -top-4 -right-2 md:-right-8 z-10 rounded-xl glass-card px-4 py-2.5 shadow-md">
+            {/* Floating badges — scroll-driven gentle bob */}
+            <div
+              className="absolute -top-4 -right-2 md:-right-8 z-10 rounded-xl glass-card px-4 py-2.5 shadow-md will-change-transform"
+              style={{
+                transform: `translate(${mouse.x * 0.5}px, ${badgeFloat}px)`,
+              }}
+            >
               <div className="flex items-center gap-2">
                 <div className="h-2 w-2 rounded-full bg-green-400" />
                 <span className="text-xs font-medium text-foreground">{dir === "rtl" ? "مباشر" : "Live"}</span>
                 <span className="text-xs text-muted-foreground">• 234 {dir === "rtl" ? "متصل" : "online"}</span>
               </div>
             </div>
-            <div className="animate-float-slow absolute -bottom-3 -left-2 md:-left-8 z-10 rounded-xl glass-card px-4 py-2.5 shadow-md delay-500">
+            <div
+              className="absolute -bottom-3 -left-2 md:-left-8 z-10 rounded-xl glass-card px-4 py-2.5 shadow-md will-change-transform"
+              style={{
+                transform: `translate(${mouse.x * -0.5}px, ${-badgeFloat}px)`,
+              }}
+            >
               <div className="flex items-center gap-2">
                 <svg className="h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
                 <span className="text-xs font-medium text-foreground">1,247 {dir === "rtl" ? "رسالة اليوم" : "sent today"}</span>
@@ -273,8 +352,11 @@ export function HeroSection() {
           </div>
         </div>
 
-        {/* Scroll indicator */}
-        <div className={`mt-12 transition-all duration-1000 delay-800 ${mounted ? "opacity-100" : "opacity-0"}`}>
+        {/* Scroll indicator — fades out on scroll */}
+        <div
+          className={`mt-12 transition-all duration-1000 delay-800 ${mounted ? "opacity-100" : "opacity-0"}`}
+          style={{ opacity: mounted ? Math.max(0, 1 - scrollY / 200) : 0 }}
+        >
           <div className="inline-flex flex-col items-center gap-1 text-muted-foreground/40">
             <span className="text-xs">{dir === "rtl" ? "اسحب للأسفل" : "Scroll down"}</span>
             <svg className="h-4 w-4 animate-bounce-subtle" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
