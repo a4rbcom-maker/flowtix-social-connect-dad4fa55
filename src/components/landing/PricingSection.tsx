@@ -88,20 +88,11 @@ export function PricingSection() {
                   ))}
                 </ul>
                 <button
-                  className={`group w-full overflow-hidden relative rounded-xl py-3.5 text-sm font-semibold transition-all duration-500 ease-out active:scale-[0.98] ${
-                    isPopular
-                      ? "bg-primary text-primary-foreground hover:opacity-90"
-                      : "border text-foreground hover:bg-accent"
+                  className={`btn-luxury-base w-full text-sm ${
+                    isPopular ? "btn-luxury" : "btn-luxury-outline"
                   }`}
-                  style={{
-                    borderColor: isPopular ? undefined : "var(--pricing-card-border)",
-                    background: isPopular ? undefined : "var(--pricing-card-bg)",
-                  }}
                 >
-                  <span className="relative z-10">{t.pricing.cta}</span>
-                  {isPopular && (
-                    <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-1000 ease-out group-hover:translate-x-full" />
-                  )}
+                  <span>{t.pricing.cta}</span>
                 </button>
               </div>
             );

@@ -47,13 +47,13 @@ export function Navbar() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setLang(lang === "ar" ? "en" : "ar")}
-            className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-all hover:bg-accent hover:text-foreground hover:scale-105"
+            className="btn-luxury-base btn-luxury-icon !px-3 !py-1.5 text-xs"
           >
             {lang === "ar" ? "EN" : "عربي"}
           </button>
           <button
             onClick={toggleTheme}
-            className="rounded-lg border border-border p-2 text-muted-foreground transition-all hover:bg-accent hover:text-foreground hover:scale-105 hover:rotate-12"
+            className="btn-luxury-base btn-luxury-icon"
             aria-label="Toggle theme"
           >
             {mounted ? (
@@ -66,7 +66,7 @@ export function Navbar() {
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
             )}
           </button>
-          <Link to="/login" className="hidden rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90 hover:scale-105 hover:shadow-lg hover:shadow-primary/25 md:block">
+          <Link to="/login" className="btn-luxury-base btn-luxury hidden !px-4 !py-2 text-sm md:inline-flex">
             {t.nav.startFree}
           </Link>
           <button onClick={() => setOpen(!open)} className="p-2 text-foreground md:hidden" aria-label="Menu">
@@ -82,7 +82,7 @@ export function Navbar() {
             <a href="#how-it-works" onClick={() => setOpen(false)} className="text-sm text-muted-foreground">{t.nav.howItWorks}</a>
             <a href="#pricing" onClick={() => setOpen(false)} className="text-sm text-muted-foreground">{t.nav.pricing}</a>
             <a href="#faq" onClick={() => setOpen(false)} className="text-sm text-muted-foreground">{t.nav.faq}</a>
-            <Link to="/login" onClick={() => setOpen(false)} className="rounded-lg bg-primary px-4 py-2 text-center text-sm font-medium text-primary-foreground">{t.nav.startFree}</Link>
+            <Link to="/login" onClick={() => setOpen(false)} className="btn-luxury-base btn-luxury !px-4 !py-2 text-sm">{t.nav.startFree}</Link>
           </div>
         </div>
       )}
