@@ -31,9 +31,9 @@ export function HeroSection() {
         </p>
 
         <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-          <button className="rounded-xl bg-gradient-to-r from-primary to-blue-600 px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-primary/25 transition-all hover:shadow-xl hover:shadow-primary/30">
+          <Link to="/login" className="rounded-xl bg-gradient-to-r from-primary to-blue-600 px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-primary/25 transition-all hover:shadow-xl hover:shadow-primary/30">
             {t.hero.cta}
-          </button>
+          </Link>
           <a
             href="#features"
             className="rounded-xl border border-border px-8 py-3.5 text-base font-semibold text-foreground transition-colors hover:bg-accent"
