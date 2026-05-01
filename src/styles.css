@@ -399,3 +399,13 @@ html {
     transform: translateY(-4px);
   }
 }
+
+/* Touch devices: disable hover transforms, rely on active states */
+@media (hover: none) {
+  .card-tilt:hover {
+    transform: none;
+  }
+  .nav-link:hover::after {
+    transform: scaleX(0);
+  }
+}
