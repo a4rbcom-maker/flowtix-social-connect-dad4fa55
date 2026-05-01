@@ -585,7 +585,6 @@ html {
 
 /* Primary — gradient violet with deep shadow */
 .btn-luxury {
-  composes: btn-luxury-base;
   padding: 0.875rem 2rem;
   color: oklch(1 0 0);
   background: linear-gradient(
@@ -631,7 +630,6 @@ html {
 
 /* Outline — refined border + glassy hover */
 .btn-luxury-outline {
-  composes: btn-luxury-base;
   padding: 0.875rem 2rem;
   color: var(--foreground);
   background: oklch(1 0 0 / 0.6);
@@ -666,7 +664,6 @@ html {
 
 /* Ghost — minimal but still gets shine + glow */
 .btn-luxury-ghost {
-  composes: btn-luxury-base;
   padding: 0.625rem 1rem;
   color: var(--muted-foreground);
   background: transparent;
@@ -679,7 +676,6 @@ html {
 
 /* Icon-only square variant */
 .btn-luxury-icon {
-  composes: btn-luxury-base;
   padding: 0.5rem;
   color: var(--muted-foreground);
   background: oklch(1 0 0 / 0.5);
