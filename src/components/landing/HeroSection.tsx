@@ -51,35 +51,24 @@ function CtaButtons({ mounted, t }: { mounted: boolean; t: any }) {
         mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
       }`}
     >
-      <Link
-        to="/login"
-        className="group relative overflow-hidden rounded-xl bg-primary px-8 py-3.5 text-base font-semibold text-white shadow-sm shadow-primary/10 transition-all duration-500 ease-out hover:shadow-md hover:shadow-primary/20 hover:scale-[1.02] hover:-translate-y-0.5 active:scale-[0.98] active:shadow-sm"
-      >
-        <span className="relative z-10 flex items-center gap-2">
-          {t.hero.cta}
-          <svg
-            className="h-4 w-4 transition-transform duration-500 ease-out group-hover:translate-x-1 group-active:translate-x-0.5"
-            xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-          >
-            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
-          </svg>
-        </span>
-        <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-1000 ease-out group-hover:translate-x-full" />
+      <Link to="/login" className="btn-luxury-base btn-luxury group text-base">
+        <span>{t.hero.cta}</span>
+        <svg
+          className="h-4 w-4 transition-transform duration-500 ease-out group-hover:translate-x-1"
+          xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        >
+          <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+        </svg>
       </Link>
 
-      <a
-        href="#features"
-        className="group rounded-xl border border-border px-8 py-3.5 text-base font-semibold text-foreground transition-all duration-500 ease-out hover:bg-accent/60 hover:border-primary/15 hover:-translate-y-0.5 active:scale-[0.98] active:bg-accent/80"
-      >
-        <span className="flex items-center gap-2">
-          {t.hero.ctaSecondary}
-          <svg
-            className="h-4 w-4 transition-transform duration-500 ease-out group-hover:translate-y-0.5 group-active:translate-y-0"
-            xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-          >
-            <path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>
-          </svg>
-        </span>
+      <a href="#features" className="btn-luxury-base btn-luxury-outline group text-base">
+        <span>{t.hero.ctaSecondary}</span>
+        <svg
+          className="h-4 w-4 transition-transform duration-500 ease-out group-hover:translate-y-0.5"
+          xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        >
+          <path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>
+        </svg>
       </a>
     </div>
   );
