@@ -1,4 +1,5 @@
 import { useI18n } from "@/lib/i18n";
+import { Link } from "@tanstack/react-router";
 
 export function HeroSection() {
   const { t, dir } = useI18n();
