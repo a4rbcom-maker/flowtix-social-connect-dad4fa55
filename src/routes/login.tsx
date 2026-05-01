@@ -97,38 +97,19 @@ function LoginPage() {
   };
 
   return (
-    <div dir={dir} className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="pointer-events-none absolute inset-0">
+    <div dir={dir} className="min-h-screen bg-background">
+      <Navbar />
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute top-1/4 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-primary/10 blur-[120px]" />
       </div>
 
-      <div className="absolute top-4 flex gap-2" style={{ [dir === "rtl" ? "left" : "right"]: "1rem" }}>
-        <button
-          onClick={() => setLang(lang === "ar" ? "en" : "ar")}
-          className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent"
-        >
-          {lang === "ar" ? "EN" : "عربي"}
-        </button>
-        <button
-          onClick={toggleTheme}
-          className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-accent"
-        >
-          {theme === "dark" ? "☀️" : "🌙"}
-        </button>
-      </div>
-
-      <div className="relative w-full max-w-md">
-        <div className="mb-8 text-center">
-          <a href="/" className="mb-4 inline-flex items-center gap-2">
-            <img src={flowtixLogo} alt="Flowtix Tools" width={48} height={48} className="h-12 w-12" />
-            <span className="bg-gradient-to-r from-primary to-blue-500 bg-clip-text text-2xl font-bold text-transparent">
-              Flowtix Tools
-            </span>
-          </a>
-          <h1 className="mt-4 text-2xl font-bold text-foreground">
-            {isLogin ? labels.login : labels.register}
-          </h1>
-        </div>
+      <div className="relative flex min-h-screen items-center justify-center px-4 pt-28 pb-12">
+        <div className="w-full max-w-md">
+          <div className="mb-8 text-center">
+            <h1 className="text-2xl font-bold text-foreground">
+              {isLogin ? labels.login : labels.register}
+            </h1>
+          </div>
 
         <div className="rounded-2xl border border-border/50 bg-card p-8 shadow-xl">
           <button
