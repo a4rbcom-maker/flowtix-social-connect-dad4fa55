@@ -69,7 +69,7 @@ export function HeroSection() {
         />
         {/* Grid pattern overlay */}
         <div className="absolute inset-0 opacity-[0.03]" style={{
-          backgroundImage: "radial-gradient(circle, oklch(0.55 0.25 280) 1px, transparent 1px)",
+          backgroundImage: "radial-gradient(circle, oklch(0.53 0.27 270) 1px, transparent 1px)",
           backgroundSize: "40px 40px",
         }} />
       </div>
