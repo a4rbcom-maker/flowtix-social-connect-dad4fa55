@@ -1,7 +1,7 @@
 import { useI18n } from "@/lib/i18n";
 import { Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
-import { useMouseParallax } from "@/hooks/use-in-view";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useMouseParallax, useInView } from "@/hooks/use-in-view";
 
 function AnimatedCounter({ target, suffix = "" }: { target: string; suffix?: string }) {
   const [count, setCount] = useState(0);
@@ -127,34 +127,9 @@ export function HeroSection() {
 
         {/* CTAs */}
         <div
-          className={`mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row transition-all duration-700 delay-500 ${
-            mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-          }`}
-        >
-          <Link
-            to="/login"
-            className="group relative overflow-hidden rounded-xl bg-primary px-8 py-3.5 text-base font-semibold text-white shadow-md shadow-primary/15 transition-all duration-300 hover:shadow-lg hover:shadow-primary/25 hover:scale-[1.03] hover:-translate-y-0.5"
-          >
-            <span className="relative z-10 flex items-center gap-2">
-              {t.hero.cta}
-              <svg className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
-              </svg>
-            </span>
-            <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-          </Link>
-          <a
-            href="#features"
-            className="group rounded-xl border border-border px-8 py-3.5 text-base font-semibold text-foreground transition-all duration-300 hover:bg-accent hover:scale-[1.03] hover:border-primary/20"
-          >
-            <span className="flex items-center gap-2">
-              {t.hero.ctaSecondary}
-              <svg className="h-4 w-4 transition-transform duration-300 group-hover:translate-y-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>
-              </svg>
-            </span>
-          </a>
-        </div>
+        <CtaButtons mounted={mounted} t={t} />
+
+
 
         {/* Stats */}
         <div
