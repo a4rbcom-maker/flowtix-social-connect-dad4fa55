@@ -167,7 +167,7 @@ const translations = {
   },
 } as const;
 
-type Translations = typeof translations.ar;
+type Translations = (typeof translations)[Lang];
 
 interface I18nContextType {
   lang: Lang;
