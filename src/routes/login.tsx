@@ -240,7 +240,7 @@ function Field({
   label,
   children,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   label: string;
   children: React.ReactNode;
 }) {
