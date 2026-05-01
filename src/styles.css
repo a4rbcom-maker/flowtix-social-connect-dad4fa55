@@ -502,3 +502,221 @@ html {
     opacity: 1 !important;
   }
 }
+
+/* ============================================= */
+/*       LUXURY BUTTON SYSTEM (unified)          */
+/* ============================================= */
+
+/* Base luxury button — used as a foundation for all variants */
+.btn-luxury-base {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  isolation: isolate;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    background-position 0.6s ease,
+    border-color 0.4s ease,
+    color 0.3s ease;
+  will-change: transform, box-shadow;
+}
+.btn-luxury-base:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px oklch(0.55 0.18 270 / 0.35);
+}
+.btn-luxury-base:active {
+  transform: translateY(0) scale(0.97);
+  transition-duration: 0.12s;
+}
+
+/* Animated shine overlay (used on hover) */
+.btn-luxury-base::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    oklch(1 0 0 / 0.18) 50%,
+    transparent 70%
+  );
+  transform: translateX(-120%);
+  transition: transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+  z-index: 1;
+}
+.btn-luxury-base:hover::before {
+  transform: translateX(120%);
+}
+
+/* Soft radial glow that fades in on hover */
+.btn-luxury-base::after {
+  content: '';
+  position: absolute;
+  inset: -40%;
+  background: radial-gradient(
+    circle at center,
+    oklch(0.65 0.22 270 / 0.35),
+    transparent 60%
+  );
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+  z-index: -1;
+  filter: blur(20px);
+}
+.btn-luxury-base:hover::after {
+  opacity: 1;
+}
+
+.btn-luxury-base > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Primary — gradient violet with deep shadow */
+.btn-luxury {
+  composes: btn-luxury-base;
+  padding: 0.875rem 2rem;
+  color: oklch(1 0 0);
+  background: linear-gradient(
+    135deg,
+    oklch(0.58 0.2 270) 0%,
+    oklch(0.6 0.22 285) 50%,
+    oklch(0.55 0.2 260) 100%
+  );
+  background-size: 200% 200%;
+  background-position: 0% 50%;
+  box-shadow:
+    0 4px 14px -4px oklch(0.55 0.2 270 / 0.45),
+    0 1px 3px oklch(0.3 0.15 270 / 0.15),
+    inset 0 1px 0 oklch(1 0 0 / 0.2);
+}
+.btn-luxury:hover {
+  background-position: 100% 50%;
+  transform: translateY(-2px);
+  box-shadow:
+    0 12px 28px -8px oklch(0.55 0.2 270 / 0.55),
+    0 4px 10px -2px oklch(0.4 0.18 270 / 0.25),
+    inset 0 1px 0 oklch(1 0 0 / 0.25);
+}
+.dark .btn-luxury {
+  background: linear-gradient(
+    135deg,
+    oklch(0.62 0.26 270) 0%,
+    oklch(0.65 0.28 285) 50%,
+    oklch(0.58 0.24 260) 100%
+  );
+  background-size: 200% 200%;
+  box-shadow:
+    0 4px 16px -4px oklch(0.45 0.22 270 / 0.55),
+    0 0 0 1px oklch(0.7 0.25 270 / 0.15),
+    inset 0 1px 0 oklch(1 0 0 / 0.15);
+}
+.dark .btn-luxury:hover {
+  box-shadow:
+    0 14px 34px -8px oklch(0.55 0.28 270 / 0.7),
+    0 0 0 1px oklch(0.75 0.27 270 / 0.25),
+    inset 0 1px 0 oklch(1 0 0 / 0.2);
+}
+
+/* Outline — refined border + glassy hover */
+.btn-luxury-outline {
+  composes: btn-luxury-base;
+  padding: 0.875rem 2rem;
+  color: var(--foreground);
+  background: oklch(1 0 0 / 0.6);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 1px 3px oklch(0.3 0.05 270 / 0.06),
+    inset 0 1px 0 oklch(1 0 0 / 0.5);
+}
+.btn-luxury-outline:hover {
+  transform: translateY(-2px);
+  border-color: oklch(0.55 0.18 270 / 0.4);
+  background: oklch(0.97 0.02 270 / 0.9);
+  box-shadow:
+    0 10px 24px -10px oklch(0.55 0.18 270 / 0.25),
+    0 2px 6px -2px oklch(0.4 0.05 270 / 0.08),
+    inset 0 1px 0 oklch(1 0 0 / 0.6);
+}
+.dark .btn-luxury-outline {
+  background: oklch(0.22 0.03 270 / 0.55);
+  box-shadow:
+    0 1px 3px oklch(0 0 0 / 0.2),
+    inset 0 1px 0 oklch(1 0 0 / 0.05);
+}
+.dark .btn-luxury-outline:hover {
+  background: oklch(0.26 0.04 270 / 0.7);
+  border-color: oklch(0.65 0.25 270 / 0.5);
+  box-shadow:
+    0 12px 28px -10px oklch(0.55 0.25 270 / 0.4),
+    inset 0 1px 0 oklch(1 0 0 / 0.08);
+}
+
+/* Ghost — minimal but still gets shine + glow */
+.btn-luxury-ghost {
+  composes: btn-luxury-base;
+  padding: 0.625rem 1rem;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+.btn-luxury-ghost:hover {
+  color: var(--foreground);
+  background: oklch(0.55 0.18 270 / 0.08);
+  transform: translateY(-1px);
+}
+
+/* Icon-only square variant */
+.btn-luxury-icon {
+  composes: btn-luxury-base;
+  padding: 0.5rem;
+  color: var(--muted-foreground);
+  background: oklch(1 0 0 / 0.5);
+  border: 1px solid var(--border);
+}
+.btn-luxury-icon:hover {
+  color: var(--foreground);
+  border-color: oklch(0.55 0.18 270 / 0.4);
+  transform: translateY(-1px) scale(1.04);
+  box-shadow: 0 6px 16px -6px oklch(0.55 0.18 270 / 0.3);
+}
+.dark .btn-luxury-icon {
+  background: oklch(0.22 0.03 270 / 0.5);
+}
+
+/* Touch / reduced motion safety */
+@media (hover: none) {
+  .btn-luxury:hover,
+  .btn-luxury-outline:hover,
+  .btn-luxury-ghost:hover,
+  .btn-luxury-icon:hover {
+    transform: none;
+  }
+  .btn-luxury-base::before { display: none; }
+  .btn-luxury-base::after { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-luxury-base,
+  .btn-luxury-base::before,
+  .btn-luxury-base::after {
+    transition: none !important;
+    animation: none !important;
+  }
+  .btn-luxury:hover,
+  .btn-luxury-outline:hover,
+  .btn-luxury-ghost:hover,
+  .btn-luxury-icon:hover {
+    transform: none;
+  }
+}
