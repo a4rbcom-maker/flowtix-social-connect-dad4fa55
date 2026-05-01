@@ -1,7 +1,7 @@
 import { useI18n } from "@/lib/i18n";
 import { Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
-import { useMouseParallax } from "@/hooks/use-in-view";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useMouseParallax, useInView } from "@/hooks/use-in-view";
 
 function AnimatedCounter({ target, suffix = "" }: { target: string; suffix?: string }) {
   const [count, setCount] = useState(0);
@@ -37,6 +37,64 @@ function AnimatedCounter({ target, suffix = "" }: { target: string; suffix?: str
   return (
     <div ref={ref} className="text-3xl font-bold text-primary md:text-4xl tabular-nums">
       {prefix}{count.toLocaleString()}{suffix}
+    </div>
+  );
+}
+
+function CtaButtons({ mounted, t }: { mounted: boolean; t: any }) {
+  const { ref, isInView } = useInView({ threshold: 0.3 });
+  const [hovered, setHovered] = useState<"primary" | "secondary" | null>(null);
+
+  return (
+    <div
+      ref={ref}
+      className={`mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row transition-all duration-700 delay-500 ${
+        mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+      }`}
+    >
+      <Link
+        to="/login"
+        onMouseEnter={() => setHovered("primary")}
+        onMouseLeave={() => setHovered(null)}
+        className={`group relative overflow-hidden rounded-xl bg-primary px-8 py-3.5 text-base font-semibold text-white transition-all duration-500 ${
+          isInView ? "shadow-md shadow-primary/15" : "shadow-none"
+        } ${hovered === "primary" ? "shadow-lg shadow-primary/25 scale-[1.05] -translate-y-1" : ""}`}
+      >
+        <span className="relative z-10 flex items-center gap-2">
+          {t.hero.cta}
+          <svg
+            className={`h-4 w-4 transition-transform duration-500 ${hovered === "primary" ? "translate-x-1.5" : ""}`}
+            xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          >
+            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+          </svg>
+        </span>
+        <div className={`absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent transition-transform duration-700 ${
+          hovered === "primary" ? "translate-x-full" : "-translate-x-full"
+        }`} />
+        <div className={`absolute inset-0 rounded-xl transition-opacity duration-1000 ${
+          isInView ? "opacity-100" : "opacity-0"
+        }`} style={{ boxShadow: "0 0 20px oklch(0.55 0.15 270 / 0.15)" }} />
+      </Link>
+
+      <a
+        href="#features"
+        onMouseEnter={() => setHovered("secondary")}
+        onMouseLeave={() => setHovered(null)}
+        className={`group rounded-xl border border-border px-8 py-3.5 text-base font-semibold text-foreground transition-all duration-500 ${
+          hovered === "secondary" ? "bg-accent scale-[1.05] border-primary/20 -translate-y-1" : ""
+        }`}
+      >
+        <span className="flex items-center gap-2">
+          {t.hero.ctaSecondary}
+          <svg
+            className={`h-4 w-4 transition-transform duration-500 ${hovered === "secondary" ? "translate-y-1" : ""}`}
+            xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          >
+            <path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>
+          </svg>
+        </span>
+      </a>
     </div>
   );
 }
@@ -126,35 +184,7 @@ export function HeroSection() {
         </p>
 
         {/* CTAs */}
-        <div
-          className={`mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row transition-all duration-700 delay-500 ${
-            mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-          }`}
-        >
-          <Link
-            to="/login"
-            className="group relative overflow-hidden rounded-xl bg-primary px-8 py-3.5 text-base font-semibold text-white shadow-md shadow-primary/15 transition-all duration-300 hover:shadow-lg hover:shadow-primary/25 hover:scale-[1.03] hover:-translate-y-0.5"
-          >
-            <span className="relative z-10 flex items-center gap-2">
-              {t.hero.cta}
-              <svg className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
-              </svg>
-            </span>
-            <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-          </Link>
-          <a
-            href="#features"
-            className="group rounded-xl border border-border px-8 py-3.5 text-base font-semibold text-foreground transition-all duration-300 hover:bg-accent hover:scale-[1.03] hover:border-primary/20"
-          >
-            <span className="flex items-center gap-2">
-              {t.hero.ctaSecondary}
-              <svg className="h-4 w-4 transition-transform duration-300 group-hover:translate-y-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>
-              </svg>
-            </span>
-          </a>
-        </div>
+        <CtaButtons mounted={mounted} t={t} />
 
         {/* Stats */}
         <div
