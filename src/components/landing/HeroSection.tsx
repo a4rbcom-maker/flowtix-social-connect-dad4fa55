@@ -60,7 +60,7 @@ export function HeroSection() {
           style={{ transform: `translate(${mouse.x * 2}px, ${mouse.y * 2}px)` }}
         />
         <div
-          className="animate-float-reverse absolute top-1/3 right-1/4 h-72 w-72 rounded-full bg-blue-500/8 blur-[120px]"
+          className="animate-float-reverse absolute top-1/3 right-1/4 h-72 w-72 rounded-full bg-violet-500/8 blur-[120px]"
           style={{ transform: `translate(${mouse.x * -1.5}px, ${mouse.y * -1.5}px)` }}
         />
         <div
@@ -77,11 +77,11 @@ export function HeroSection() {
       {/* Floating particles */}
       <div className="pointer-events-none absolute inset-0">
         <div className="animate-float-diagonal absolute top-[15%] left-[8%] h-2 w-2 rounded-full bg-primary/25" />
-        <div className="animate-float-reverse absolute top-[25%] right-[12%] h-1.5 w-1.5 rounded-full bg-blue-500/30 delay-300" />
+        <div className="animate-float-reverse absolute top-[25%] right-[12%] h-1.5 w-1.5 rounded-full bg-violet-500/30 delay-300" />
         <div className="animate-float absolute top-[55%] left-[85%] h-3 w-3 rounded-full bg-primary/15 delay-500" />
         <div className="animate-float-diagonal absolute top-[65%] left-[15%] h-1 w-1 rounded-full bg-violet-500/35 delay-200" />
         <div className="animate-bounce-subtle absolute top-[40%] right-[8%] h-2 w-2 rounded-full bg-primary/20 delay-400" />
-        <div className="animate-float absolute top-[80%] left-[50%] h-1.5 w-1.5 rounded-full bg-blue-400/20 delay-600" />
+        <div className="animate-float absolute top-[80%] left-[50%] h-1.5 w-1.5 rounded-full bg-violet-400/20 delay-600" />
       </div>
 
       <div className="relative mx-auto max-w-7xl px-4 text-center">
@@ -91,7 +91,7 @@ export function HeroSection() {
             mounted ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-4 scale-95"
           }`}
         >
-          <span className="animate-shimmer bg-gradient-to-r from-primary via-blue-500 to-primary bg-clip-text text-transparent font-semibold">
+          <span className="animate-shimmer bg-gradient-to-r from-primary via-violet-500 to-primary bg-clip-text text-transparent font-semibold">
             {t.hero.badge}
           </span>
         </div>
@@ -139,7 +139,7 @@ export function HeroSection() {
         >
           <Link
             to="/login"
-            className="group relative overflow-hidden rounded-xl bg-gradient-to-r from-primary to-blue-600 px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-primary/25 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/40 hover:scale-105 hover:-translate-y-1"
+            className="group relative overflow-hidden rounded-xl bg-gradient-to-r from-primary to-violet-600 px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-primary/25 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/40 hover:scale-105 hover:-translate-y-1"
           >
             <span className="relative z-10 flex items-center gap-2">
               {t.hero.cta}
@@ -169,7 +169,7 @@ export function HeroSection() {
             mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
           }`}
         >
-          <div className="rounded-xl bg-gradient-to-br from-primary/5 via-transparent to-blue-500/5 p-8 md:p-12">
+          <div className="rounded-xl bg-gradient-to-br from-primary/5 via-transparent to-violet-500/5 p-8 md:p-12">
             <div className="grid grid-cols-3 gap-8 text-center">
               <div className="group cursor-default">
                 <AnimatedCounter target="+2000" />

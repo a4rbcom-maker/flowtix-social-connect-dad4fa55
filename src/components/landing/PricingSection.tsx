@@ -30,7 +30,7 @@ export function PricingSection() {
                 style={{ transitionDelay: isInView ? `${150 + i * 150}ms` : "0ms" }}
               >
                 {isPopular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-primary to-blue-600 px-5 py-1.5 text-xs font-semibold text-white shadow-lg shadow-primary/25 animate-gradient-shift">
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-primary to-violet-600 px-5 py-1.5 text-xs font-semibold text-white shadow-lg shadow-primary/25 animate-gradient-shift">
                     {t.pricing.popular}
                   </div>
                 )}
@@ -60,7 +60,7 @@ export function PricingSection() {
                 <button
                   className={`group w-full overflow-hidden relative rounded-xl py-3.5 text-sm font-semibold transition-all duration-300 hover:scale-[1.02] ${
                     isPopular
-                      ? "bg-gradient-to-r from-primary to-blue-600 text-white shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/40"
+                      ? "bg-gradient-to-r from-primary to-violet-600 text-white shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/40"
                       : "border border-border bg-background text-foreground hover:bg-accent hover:border-primary/30"
                   }`}
                 >

@@ -48,7 +48,7 @@ function FeatureCard({ item, icon, index, isInView }: {
       <h3 className="mb-2 text-lg font-semibold text-foreground transition-colors duration-300 group-hover:text-primary">{item.title}</h3>
       <p className="text-sm leading-relaxed text-muted-foreground">{item.desc}</p>
       {/* Bottom accent line */}
-      <div className="mt-4 h-0.5 w-0 bg-gradient-to-r from-primary to-blue-500 transition-all duration-500 group-hover:w-full rounded-full" />
+      <div className="mt-4 h-0.5 w-0 bg-gradient-to-r from-primary to-violet-500 transition-all duration-500 group-hover:w-full rounded-full" />
     </div>
   );
 }
