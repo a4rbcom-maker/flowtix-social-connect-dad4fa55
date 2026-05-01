@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 
 type Lang = "ar" | "en";
 
@@ -193,11 +193,20 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const dir = lang === "ar" ? "rtl" : "ltr";
+
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.lang = lang;
+      document.documentElement.dir = dir;
+    }
+  }, [lang, dir]);
+
   const value: I18nContextType = {
     lang,
     t: translations[lang],
     setLang,
-    dir: lang === "ar" ? "rtl" : "ltr",
+    dir,
   };
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
