@@ -60,7 +60,7 @@ export function PricingSection() {
                 <button
                   className={`group w-full overflow-hidden relative rounded-xl py-3.5 text-sm font-semibold transition-all duration-300 hover:scale-[1.02] ${
                     isPopular
-                      ? "bg-gradient-to-r from-violet-400 to-blue-400 text-white shadow-md shadow-violet-300/20 hover:shadow-lg hover:shadow-violet-300/30"
+                      ? "bg-primary text-white shadow-md shadow-primary/20 hover:shadow-lg hover:bg-primary/90"
                       : "border border-border bg-background text-foreground hover:bg-accent hover:border-primary/30"
                   }`}
                 >
