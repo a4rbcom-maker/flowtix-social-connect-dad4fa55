@@ -5,6 +5,7 @@ type Lang = "ar" | "en";
 const translations = {
   ar: {
     nav: {
+      home: "الرئيسية",
       features: "المميزات",
       howItWorks: "كيف يعمل",
       pricing: "الأسعار",
@@ -86,6 +87,7 @@ const translations = {
   },
   en: {
     nav: {
+      home: "Home",
       features: "Features",
       howItWorks: "How It Works",
       pricing: "Pricing",
