@@ -41,6 +41,64 @@ function AnimatedCounter({ target, suffix = "" }: { target: string; suffix?: str
   );
 }
 
+function CtaButtons({ mounted, t }: { mounted: boolean; t: any }) {
+  const { ref, isInView } = useInView({ threshold: 0.3 });
+  const [hovered, setHovered] = useState<"primary" | "secondary" | null>(null);
+
+  return (
+    <div
+      ref={ref}
+      className={`mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row transition-all duration-700 delay-500 ${
+        mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+      }`}
+    >
+      <Link
+        to="/login"
+        onMouseEnter={() => setHovered("primary")}
+        onMouseLeave={() => setHovered(null)}
+        className={`group relative overflow-hidden rounded-xl bg-primary px-8 py-3.5 text-base font-semibold text-white transition-all duration-500 ${
+          isInView ? "shadow-md shadow-primary/15" : "shadow-none"
+        } ${hovered === "primary" ? "shadow-lg shadow-primary/25 scale-[1.05] -translate-y-1" : ""}`}
+      >
+        <span className="relative z-10 flex items-center gap-2">
+          {t.hero.cta}
+          <svg
+            className={`h-4 w-4 transition-transform duration-500 ${hovered === "primary" ? "translate-x-1.5" : ""}`}
+            xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          >
+            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+          </svg>
+        </span>
+        <div className={`absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent transition-transform duration-700 ${
+          hovered === "primary" ? "translate-x-full" : "-translate-x-full"
+        }`} />
+        <div className={`absolute inset-0 rounded-xl transition-opacity duration-1000 ${
+          isInView ? "opacity-100" : "opacity-0"
+        }`} style={{ boxShadow: "0 0 20px oklch(0.55 0.15 270 / 0.15)" }} />
+      </Link>
+
+      <a
+        href="#features"
+        onMouseEnter={() => setHovered("secondary")}
+        onMouseLeave={() => setHovered(null)}
+        className={`group rounded-xl border border-border px-8 py-3.5 text-base font-semibold text-foreground transition-all duration-500 ${
+          hovered === "secondary" ? "bg-accent scale-[1.05] border-primary/20 -translate-y-1" : ""
+        }`}
+      >
+        <span className="flex items-center gap-2">
+          {t.hero.ctaSecondary}
+          <svg
+            className={`h-4 w-4 transition-transform duration-500 ${hovered === "secondary" ? "translate-y-1" : ""}`}
+            xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          >
+            <path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>
+          </svg>
+        </span>
+      </a>
+    </div>
+  );
+}
+
 export function HeroSection() {
   const { t, dir } = useI18n();
   const [mounted, setMounted] = useState(false);
