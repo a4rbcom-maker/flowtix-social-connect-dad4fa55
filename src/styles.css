@@ -154,16 +154,16 @@ html {
 
 /* Glow & Pulse */
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 20px oklch(0.55 0.25 280 / 0.2); }
-  50% { box-shadow: 0 0 40px oklch(0.55 0.25 280 / 0.4), 0 0 80px oklch(0.55 0.25 280 / 0.1); }
+  0%, 100% { box-shadow: 0 0 20px oklch(0.53 0.27 270 / 0.2); }
+  50% { box-shadow: 0 0 40px oklch(0.53 0.27 270 / 0.4), 0 0 80px oklch(0.53 0.27 270 / 0.1); }
 }
 @keyframes pulse-soft {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
 }
 @keyframes glow-ring {
-  0% { box-shadow: 0 0 0 0 oklch(0.55 0.25 280 / 0.4); }
-  100% { box-shadow: 0 0 0 20px oklch(0.55 0.25 280 / 0); }
+  0% { box-shadow: 0 0 0 0 oklch(0.53 0.27 270 / 0.4); }
+  100% { box-shadow: 0 0 0 20px oklch(0.53 0.27 270 / 0); }
 }
 
 /* Shimmer & Gradient */
@@ -267,7 +267,7 @@ html {
   left: 0;
   width: 100%;
   height: 2px;
-  background: linear-gradient(90deg, oklch(0.55 0.25 280), oklch(0.6 0.2 240));
+  background: linear-gradient(90deg, oklch(0.53 0.27 270), oklch(0.58 0.25 290));
   transform: scaleX(0);
   transform-origin: right;
   transition: transform 0.3s ease;
@@ -283,7 +283,7 @@ html {
   top: 0;
   left: 0;
   height: 3px;
-  background: linear-gradient(90deg, oklch(0.55 0.25 280), oklch(0.6 0.2 240), oklch(0.55 0.25 280));
+  background: linear-gradient(90deg, oklch(0.53 0.27 270), oklch(0.58 0.25 290), oklch(0.53 0.27 270));
   background-size: 200% 100%;
   animation: gradient-shift 3s ease infinite;
   z-index: 9999;
@@ -304,10 +304,10 @@ html {
 .gradient-text-animated {
   background: linear-gradient(
     135deg,
-    oklch(0.55 0.25 280),
-    oklch(0.6 0.2 240),
-    oklch(0.55 0.18 300),
-    oklch(0.55 0.25 280)
+    oklch(0.53 0.27 270),
+    oklch(0.58 0.25 290),
+    oklch(0.6 0.22 300),
+    oklch(0.53 0.27 270)
   );
   background-size: 300% 300%;
   -webkit-background-clip: text;
@@ -336,7 +336,7 @@ html {
   position: absolute;
   inset: -4px;
   border-radius: inherit;
-  background: linear-gradient(135deg, oklch(0.55 0.25 280 / 0.3), oklch(0.6 0.2 240 / 0.3));
+  background: linear-gradient(135deg, oklch(0.53 0.27 270 / 0.3), oklch(0.58 0.25 290 / 0.3));
   opacity: 0;
   transition: opacity 0.3s ease;
   z-index: -1;
@@ -357,10 +357,10 @@ html {
   border-radius: 1rem;
   background: linear-gradient(
     var(--border-angle, 0deg),
-    oklch(0.55 0.25 280),
-    oklch(0.6 0.2 240),
-    oklch(0.55 0.18 300),
-    oklch(0.55 0.25 280)
+    oklch(0.53 0.27 270),
+    oklch(0.58 0.25 290),
+    oklch(0.6 0.22 300),
+    oklch(0.53 0.27 270)
   );
   z-index: -1;
   animation: rotate-border 4s linear infinite;
