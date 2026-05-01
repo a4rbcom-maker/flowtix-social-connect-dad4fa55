@@ -24,7 +24,7 @@ export function PricingSection() {
                 key={i}
                 className={`card-tilt relative rounded-2xl border p-8 transition-all duration-500 ${
                   isPopular
-                    ? "animated-border border-primary/40 bg-gradient-to-b from-violet-50 to-blue-50 shadow-lg shadow-primary/8 md:scale-105"
+                    ? "animated-border border-transparent bg-gradient-to-br from-slate-100 via-gray-50 to-slate-100 shadow-lg shadow-gray-200/50 md:scale-105"
                     : "border-border/50 bg-card/60 hover:border-primary/30 hover:shadow-primary/5"
                 } ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"}`}
                 style={{ transitionDelay: isInView ? `${150 + i * 150}ms` : "0ms" }}
