@@ -38,6 +38,7 @@ export function Navbar() {
         </div>
 
         <div className="hidden items-center gap-6 md:flex">
+          <Link to="/" className="nav-link text-sm text-muted-foreground transition-colors hover:text-foreground">{t.nav.home}</Link>
           <a href="#features" className="nav-link text-sm text-muted-foreground transition-colors hover:text-foreground">{t.nav.features}</a>
           <a href="#how-it-works" className="nav-link text-sm text-muted-foreground transition-colors hover:text-foreground">{t.nav.howItWorks}</a>
           <a href="#pricing" className="nav-link text-sm text-muted-foreground transition-colors hover:text-foreground">{t.nav.pricing}</a>
@@ -78,6 +79,7 @@ export function Navbar() {
       {open && (
         <div className="animate-slide-up border-t border-border bg-background px-4 py-4 md:hidden" dir={dir}>
           <div className="flex flex-col gap-3">
+            <Link to="/" onClick={() => setOpen(false)} className="text-sm text-muted-foreground">{t.nav.home}</Link>
             <a href="#features" onClick={() => setOpen(false)} className="text-sm text-muted-foreground">{t.nav.features}</a>
             <a href="#how-it-works" onClick={() => setOpen(false)} className="text-sm text-muted-foreground">{t.nav.howItWorks}</a>
             <a href="#pricing" onClick={() => setOpen(false)} className="text-sm text-muted-foreground">{t.nav.pricing}</a>
