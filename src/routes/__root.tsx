@@ -70,7 +70,9 @@ function RootComponent() {
   return (
     <ThemeProvider>
       <I18nProvider>
-        <Outlet />
+        <AuthProvider>
+          <Outlet />
+        </AuthProvider>
       </I18nProvider>
     </ThemeProvider>
   );
