@@ -126,10 +126,7 @@ export function HeroSection() {
         </p>
 
         {/* CTAs */}
-        <div
         <CtaButtons mounted={mounted} t={t} />
-
-
 
         {/* Stats */}
         <div
