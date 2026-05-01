@@ -184,8 +184,9 @@ function LoginPage() {
           </p>
         </div>
 
-        <div className="mt-4 text-center">
-          <a href="/" className="text-sm text-muted-foreground hover:text-foreground">{labels.back}</a>
+          <div className="mt-4 text-center">
+            <a href="/" className="text-sm text-muted-foreground hover:text-foreground">{labels.back}</a>
+          </div>
         </div>
       </div>
     </div>
