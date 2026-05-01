@@ -423,3 +423,82 @@ html {
     transform: scaleX(0);
   }
 }
+
+/* ============================================= */
+/*   HERO SCROLL PARALLAX (CSS-variable driven)  */
+/* ============================================= */
+
+.hero-parallax-root {
+  --scroll-y: 0;
+  --scroll-fade: 1;
+  --scroll-bob: 0px;
+}
+
+/* Fade with scroll */
+.hero-scroll-fade {
+  opacity: var(--scroll-fade);
+}
+
+/* Title: lift gently */
+.hero-scroll-lift {
+  transform: translateY(calc(var(--scroll-y) * -0.018px));
+  opacity: var(--scroll-fade);
+}
+
+/* Badge / description: lighter lift */
+.hero-scroll-lift-sm {
+  transform: translateY(calc(var(--scroll-y) * -0.01px));
+}
+
+/* Stats card: subtle scale-down + lift */
+.hero-scroll-lift-card {
+  transform: translateY(calc(var(--scroll-y) * -0.024px)) scale(calc(1 - var(--scroll-y) * 0.00005));
+}
+
+/* Chat mockup: stronger lift */
+.hero-scroll-lift-mockup {
+  transform: translateY(calc(var(--scroll-y) * -0.04px));
+}
+
+/* Badge bob */
+.hero-scroll-bob {
+  transform: translateY(var(--scroll-bob));
+}
+.hero-scroll-bob-reverse {
+  transform: translateY(calc(var(--scroll-bob) * -1));
+}
+
+/* Scroll indicator fade-out */
+.hero-scroll-indicator {
+  opacity: clamp(0, calc(1 - var(--scroll-y) / 200), 1);
+}
+
+/* Mobile: disable parallax transforms, keep fades */
+@media (max-width: 768px) {
+  .hero-scroll-lift,
+  .hero-scroll-lift-sm,
+  .hero-scroll-lift-card,
+  .hero-scroll-lift-mockup,
+  .hero-scroll-bob,
+  .hero-scroll-bob-reverse {
+    transform: none !important;
+  }
+}
+
+/* Reduced motion: disable all scroll-driven effects */
+@media (prefers-reduced-motion: reduce) {
+  .hero-scroll-lift,
+  .hero-scroll-lift-sm,
+  .hero-scroll-lift-card,
+  .hero-scroll-lift-mockup,
+  .hero-scroll-bob,
+  .hero-scroll-bob-reverse {
+    transform: none !important;
+  }
+  .hero-scroll-fade {
+    opacity: 1 !important;
+  }
+  .hero-scroll-indicator {
+    opacity: 1 !important;
+  }
+}
