@@ -63,7 +63,7 @@ export function Navbar() {
             <a href="#how-it-works" onClick={() => setOpen(false)} className="text-sm text-muted-foreground">{t.nav.howItWorks}</a>
             <a href="#pricing" onClick={() => setOpen(false)} className="text-sm text-muted-foreground">{t.nav.pricing}</a>
             <a href="#faq" onClick={() => setOpen(false)} className="text-sm text-muted-foreground">{t.nav.faq}</a>
-            <button className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t.nav.startFree}</button>
+            <Link to="/login" onClick={() => setOpen(false)} className="rounded-lg bg-primary px-4 py-2 text-center text-sm font-medium text-primary-foreground">{t.nav.startFree}</Link>
           </div>
         </div>
       )}
