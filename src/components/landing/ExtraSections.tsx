@@ -80,13 +80,12 @@ export function CTASection() {
         <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
           <a
             href="/login"
-            className="group relative inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-violet-600 px-10 py-4 text-lg font-semibold text-white shadow-xl shadow-primary/25 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/40 hover:scale-105 hover:-translate-y-1"
+            className="btn-luxury-base btn-luxury group !px-10 !py-4 text-lg"
           >
-            <span className="relative z-10">{dir === "rtl" ? "ابدأ مجاناً الآن" : "Start Free Now"}</span>
-            <svg className="relative z-10 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <span>{dir === "rtl" ? "ابدأ مجاناً الآن" : "Start Free Now"}</span>
+            <svg className="h-5 w-5 transition-transform duration-500 ease-out group-hover:translate-x-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
             </svg>
-            <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-violet-600 to-primary opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
           </a>
           <span className="text-sm text-muted-foreground">
             {dir === "rtl" ? "✨ بدون بطاقة ائتمان" : "✨ No credit card required"}
