@@ -270,6 +270,16 @@ function FacebookPage() {
     } as never);
   };
 
+  const friendlyError = (raw: string): string => {
+    const m = raw.toLowerCase();
+    if (m.includes("expired")) return t.errExpired;
+    if (m.includes("invalid") && m.includes("token")) return t.errInvalidToken;
+    if (m.includes("oauth") || m.includes("190")) return t.errInvalidToken;
+    if (m.includes("permission") || m.includes("scope")) return t.errPermission;
+    if (m.includes("fetch") || m.includes("network") || m.includes("failed to fetch")) return t.errNetwork;
+    return raw;
+  };
+
   const handleTest = async () => {
     if (!token.trim() || token.trim().length < 20) {
       toast.error(lang === "ar" ? "التوكن قصير جداً" : "Token is too short");
@@ -277,13 +287,21 @@ function FacebookPage() {
     }
     setTesting(true);
     setTestResult(null);
+    setTestError(null);
     try {
       const res = await callServerFn(testFacebookToken, { access_token: token.trim() });
       setTestResult({ profile: res.profile, granted: res.granted, declined: res.declined });
-      toast.success(`${t.testSuccess}: ${res.profile.name}`);
+      const missing = requiredScopes.filter((s) => !res.granted.includes(s));
+      if (missing.length === 0) {
+        toast.success(`${t.testSuccess}: ${res.profile.name}`);
+      } else {
+        toast.warning(`${t.testSuccess} — ${t.missingScopes}: ${missing.length}`);
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t.testFailed;
+      const raw = err instanceof Error ? err.message : t.testFailed;
+      const msg = friendlyError(raw);
       setTestResult(null);
+      setTestError(msg);
       toast.error(`${t.testFailed} — ${msg}`);
     } finally {
       setTesting(false);
