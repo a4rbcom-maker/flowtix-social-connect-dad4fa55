@@ -118,11 +118,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
               <Link
                 key={i}
                 to={item.to}
-                onClick={() => {
-                  if (typeof window !== "undefined" && !window.matchMedia("(min-width: 768px)").matches) {
-                    setSidebarOpen(false);
-                  }
-                }}
+                onClick={closeOnMobile}
                 className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${
                   active
                     ? "bg-primary/10 font-medium text-primary"
