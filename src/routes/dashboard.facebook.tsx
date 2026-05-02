@@ -57,6 +57,8 @@ function FacebookPage() {
   const [pages, setPages] = useState<Page[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [loadingPages, setLoadingPages] = useState(false);
+  const [groupsError, setGroupsError] = useState<{ type: string; message: string; missingPermission: string | null } | null>(null);
+  const [pagesError, setPagesError] = useState<{ type: string; message: string; missingPermission: string | null } | null>(null);
   const [tab, setTab] = useState<"groups" | "pages">("groups");
   const [guideOpen, setGuideOpen] = useState(true);
   const [testing, setTesting] = useState(false);
