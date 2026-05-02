@@ -725,6 +725,83 @@ function FacebookPage() {
   return (
     <DashboardLayout title={t.title}>
       <div className="mx-auto max-w-5xl space-y-6">
+        {/* Token expiry banner — only when expired or within EXPIRY_WARN_DAYS.
+            Reads silently from inspectFacebookConnection on mount. The user
+            can dismiss for the current view; persists per-token in sessionStorage. */}
+        {(() => {
+          if (!connection || !tokenExpiry || expiryDismissed) return null;
+          const expired = tokenExpiry.isExpired || tokenExpiry.valid === false;
+          const daysLeft = tokenExpiry.expiresAt
+            ? Math.floor((new Date(tokenExpiry.expiresAt).getTime() - Date.now()) / 86_400_000)
+            : null;
+          const expiringSoon = !expired && daysLeft !== null && daysLeft >= 0 && daysLeft <= EXPIRY_WARN_DAYS;
+          if (!expired && !expiringSoon) return null;
+
+          const tone = expired
+            ? "border-destructive/40 bg-destructive/10"
+            : "border-amber-400/50 bg-amber-50 dark:bg-amber-950/20";
+          const iconTone = expired ? "text-destructive" : "text-amber-600 dark:text-amber-400";
+
+          const title = expired
+            ? lang === "ar" ? "انتهت صلاحية توكن فيسبوك" : "Facebook token has expired"
+            : lang === "ar"
+              ? `توكن فيسبوك ينتهي خلال ${daysLeft} يوم`
+              : `Facebook token expires in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`;
+
+          const body = expired
+            ? lang === "ar"
+              ? "لن نتمكّن من تحميل الجروبات أو الصفحات حتى تجدّد التوكن. أعد توليده من Graph API Explorer ثم اربط الحساب من جديد."
+              : "We can't load groups or pages until you renew the token. Generate a new one from Graph API Explorer and reconnect."
+            : lang === "ar"
+              ? "ننصح بتجديد التوكن قبل الانتهاء لتجنّب توقف العمل."
+              : "Renew the token before it expires to avoid disruption.";
+
+          const expiresOn = tokenExpiry.expiresAt
+            ? new Date(tokenExpiry.expiresAt).toLocaleString(lang === "ar" ? "ar" : "en", {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })
+            : null;
+
+          return (
+            <div className={`relative rounded-2xl border p-5 shadow-sm ${tone}`}>
+              <div className="flex items-start gap-3">
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-card ${iconTone}`}>
+                  <AlertCircle className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-base font-bold text-foreground">{title}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{body}</p>
+                  {expiresOn && (
+                    <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-card/60 px-2 py-1 text-xs text-foreground/80 ring-1 ring-border">
+                      <Clock className="h-3.5 w-3.5" />
+                      {lang === "ar" ? "ينتهي في:" : "Expires:"} <span className="font-mono">{expiresOn}</span>
+                    </p>
+                  )}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleReconnect(requiredScopes)}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-90"
+                    >
+                      <KeyRound className="h-3.5 w-3.5" />
+                      {lang === "ar" ? "تجديد التوكن الآن" : "Renew token now"}
+                      <ExternalLink className="h-3 w-3 opacity-80" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExpiryDismissed(true)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent"
+                    >
+                      {lang === "ar" ? "إخفاء مؤقتاً" : "Dismiss"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Quick-start strip — concise 3 steps */}
         {!connection && (
           <div className="rounded-2xl border border-border/50 bg-gradient-to-br from-primary/5 via-card to-[oklch(0.66_0.26_320)]/5 p-5 shadow-sm">
