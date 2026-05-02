@@ -49,6 +49,7 @@ function LoginPage() {
         checkEmail: "تحقق من بريدك الإلكتروني لتأكيد الحساب",
         back: "العودة للرئيسية",
         submit: "متابعة",
+        forgot: "نسيت كلمة المرور؟",
       }
     : {
         login: "Sign In",
