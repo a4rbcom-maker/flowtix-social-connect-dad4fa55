@@ -389,6 +389,34 @@ function FacebookPage() {
   return (
     <DashboardLayout title={t.title}>
       <div className="mx-auto max-w-5xl space-y-6">
+        {/* Quick-start strip — concise 3 steps */}
+        {!connection && (
+          <div className="rounded-2xl border border-border/50 bg-gradient-to-br from-primary/5 via-card to-[oklch(0.66_0.26_320)]/5 p-5 shadow-sm">
+            <div className="mb-4 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">{t.quickStart}</h3>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[
+                { icon: KeyRound, title: t.quick1Title, desc: t.quick1Desc, n: 1 },
+                { icon: FlaskConical, title: t.quick2Title, desc: t.quick2Desc, n: 2 },
+                { icon: Send, title: t.quick3Title, desc: t.quick3Desc, n: 3 },
+              ].map((s) => (
+                <div key={s.n} className="relative rounded-xl border border-border/50 bg-card/60 p-4 backdrop-blur-sm">
+                  <div className="mb-2 flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-[oklch(0.66_0.26_320)] text-xs font-bold text-white shadow">
+                      {s.n}
+                    </div>
+                    <s.icon className="h-4 w-4 text-primary" />
+                  </div>
+                  <h4 className="text-sm font-semibold text-foreground">{s.title}</h4>
+                  <p className="mt-1 text-xs text-muted-foreground">{s.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Step-by-step guide — shown only when not connected */}
         {!connection && (
           <div className="overflow-hidden rounded-2xl border border-border/50 bg-card shadow-sm">
