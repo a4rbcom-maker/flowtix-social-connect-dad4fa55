@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Tables, TablesInsert } from "@/integrations/supabase/types";
+import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 
 export type SendChannel = "whatsapp" | "facebook" | "bulk" | "system";
 export type SendStatus = "pending" | "processing" | "success" | "failed";
@@ -49,15 +49,12 @@ export async function updateSendStatus(
   status: SendStatus,
   patch?: { description?: string; errorMessage?: string; metadata?: Record<string, unknown> }
 ) {
-  const update: {
-    status: SendStatus;
-    description?: string;
-    error_message?: string;
-    metadata?: Record<string, unknown>;
-  } = { status };
+  const update: TablesUpdate<"send_log"> = { status };
   if (patch?.description !== undefined) update.description = patch.description;
   if (patch?.errorMessage !== undefined) update.error_message = patch.errorMessage;
-  if (patch?.metadata !== undefined) update.metadata = patch.metadata;
+  if (patch?.metadata !== undefined) {
+    update.metadata = patch.metadata as TablesUpdate<"send_log">["metadata"];
+  }
   const { error } = await supabase.from("send_log").update(update).eq("id", id);
   if (error) console.error("updateSendStatus failed", error);
 }
