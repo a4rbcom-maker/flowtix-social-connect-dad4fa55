@@ -138,6 +138,13 @@ function FacebookPage() {
         securityNote: "نخزّن التوكن مشفّراً في قاعدة بياناتك فقط — لن يصل إليه أي طرف خارجي.",
         showGuide: "عرض الدليل",
         hideGuide: "إخفاء الدليل",
+        test: "اختبار التوكن",
+        testing: "جاري الاختبار...",
+        testSuccess: "التوكن صالح",
+        testFailed: "التوكن غير صالح",
+        grantedScopes: "الصلاحيات الممنوحة",
+        missingScopes: "صلاحيات ناقصة",
+        noMissing: "كل الصلاحيات المطلوبة موجودة ✓",
       }
     : {
         title: "Facebook Connection",
