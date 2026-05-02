@@ -453,6 +453,7 @@ function FacebookPage() {
                             href={step.link}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={(e) => openExternal(e, step.link!)}
                             className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/20"
                           >
                             {step.action} <ExternalLink className="h-3.5 w-3.5" />
