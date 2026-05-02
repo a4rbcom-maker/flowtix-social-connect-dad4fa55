@@ -26,20 +26,31 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  // Sidebar visibility: on desktop start open; on mobile start closed.
-  const [sidebarOpen, setSidebarOpen] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return window.matchMedia("(min-width: 768px)").matches;
-  });
+  // SSR-safe: assume desktop-open. After mount we reconcile based on screen size.
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isDesktop, setIsDesktop] = useState(true);
 
-  // Auto-close sidebar on mobile when route changes (prevents the menu
-  // from staying on top of the page after a navigation tap).
+  // Track viewport size and reconcile sidebar visibility.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!window.matchMedia("(min-width: 768px)").matches) {
-      setSidebarOpen(false);
-    }
-  }, [location.pathname]);
+    const mql = window.matchMedia("(min-width: 768px)");
+    const apply = () => {
+      setIsDesktop(mql.matches);
+      setSidebarOpen(mql.matches); // open on desktop, closed on mobile
+    };
+    apply();
+    mql.addEventListener("change", apply);
+    return () => mql.removeEventListener("change", apply);
+  }, []);
+
+  // Also auto-close on mobile when the route actually changes.
+  useEffect(() => {
+    if (!isDesktop) setSidebarOpen(false);
+  }, [location.pathname, isDesktop]);
+
+  const closeOnMobile = () => {
+    if (!isDesktop) setSidebarOpen(false);
+  };
 
   const labels = lang === "ar"
     ? { overview: "نظرة عامة", facebook: "فيسبوك", settings: "الإعدادات", logout: "تسجيل الخروج" }
