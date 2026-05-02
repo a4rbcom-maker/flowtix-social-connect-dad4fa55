@@ -212,6 +212,9 @@ function FacebookPage() {
         grantedScopes: "Granted permissions",
         missingScopes: "Missing permissions",
         noMissing: "All required permissions granted ✓",
+        confirmConnect: "Confirm & save token securely",
+        testFirst: "Test the token before connecting",
+        savingSecure: "Token will be stored securely in your RLS-protected database — no other user can access it.",
       };
 
   useEffect(() => {
