@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState, type MouseEvent } from "react";
-import { Facebook, RefreshCw, Trash2, Users, Loader2, ExternalLink, ChevronDown, CheckCircle2, Copy, ShieldCheck, FlaskConical, XCircle, KeyRound, Send, Sparkles, AlertCircle } from "lucide-react";
+import { Facebook, RefreshCw, Trash2, Users, Loader2, ExternalLink, ChevronDown, CheckCircle2, Copy, ShieldCheck, FlaskConical, XCircle, KeyRound, Send, Sparkles, AlertCircle, History, Clock } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
@@ -184,6 +184,79 @@ function FacebookPage() {
     });
   };
 
+  // ── Sync history ──────────────────────────────────────────────────────
+  // Persisted per user in localStorage. Records every Load Groups / Load
+  // Pages attempt with the outcome (success + count, or failure + reason),
+  // so the user can see exactly what was last fetched and when.
+  type SyncEvent = {
+    id: string;
+    at: string; // ISO timestamp
+    kind: "groups" | "pages";
+    status: "success" | "error";
+    count?: number;
+    errorType?: string;
+    errorMessage?: string;
+  };
+  const SYNC_LOG_KEY = user ? `flowtix:fb:sync-log:${user.id}` : "flowtix:fb:sync-log:anon";
+  const [syncLog, setSyncLog] = useState<SyncEvent[]>([]);
+  const [syncLogOpen, setSyncLogOpen] = useState(false);
+
+  // Hydrate from localStorage on mount / user change
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(SYNC_LOG_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as SyncEvent[];
+        if (Array.isArray(parsed)) setSyncLog(parsed);
+      }
+    } catch {
+      /* corrupt entry — ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [SYNC_LOG_KEY]);
+
+  const recordSync = (ev: Omit<SyncEvent, "id" | "at">) => {
+    const entry: SyncEvent = {
+      ...ev,
+      id: crypto.randomUUID(),
+      at: new Date().toISOString(),
+    };
+    setSyncLog((prev) => {
+      const next = [entry, ...prev].slice(0, 20); // keep last 20
+      try {
+        window.localStorage.setItem(SYNC_LOG_KEY, JSON.stringify(next));
+      } catch {
+        /* quota — ignore */
+      }
+      return next;
+    });
+  };
+
+  const clearSyncLog = () => {
+    setSyncLog([]);
+    try {
+      window.localStorage.removeItem(SYNC_LOG_KEY);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const formatRelative = (iso: string) => {
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const sec = Math.round(diffMs / 1000);
+    if (sec < 60) return lang === "ar" ? `قبل ${sec} ث` : `${sec}s ago`;
+    const min = Math.round(sec / 60);
+    if (min < 60) return lang === "ar" ? `قبل ${min} د` : `${min}m ago`;
+    const hr = Math.round(min / 60);
+    if (hr < 24) return lang === "ar" ? `قبل ${hr} س` : `${hr}h ago`;
+    const day = Math.round(hr / 24);
+    return lang === "ar" ? `قبل ${day} يوم` : `${day}d ago`;
+  };
+
+  const lastGroupsSync = syncLog.find((e) => e.kind === "groups");
+  const lastPagesSync = syncLog.find((e) => e.kind === "pages");
+
 
   const t = lang === "ar"
     ? {
@@ -267,6 +340,18 @@ function FacebookPage() {
         reconnectAll: "إعادة الربط بصلاحيات كاملة",
         reconnectToastTitle: "تم نسخ الصلاحيات الناقصة",
         reconnectToastDesc: "افتح Graph API Explorer، اضغط \"Add a Permission\" والصق الصلاحيات، ثم اضغط Generate Access Token.",
+        syncHistoryTitle: "سجل آخر مزامنة",
+        syncHistorySubtitle: "آخر عمليات تحميل الجروبات والصفحات مع وقت ونتيجة كل عملية",
+        showHistory: "عرض السجل",
+        hideHistory: "إخفاء السجل",
+        clearHistory: "مسح السجل",
+        noHistory: "لا توجد عمليات مزامنة بعد. اضغط \"تحميل الجروبات\" أو \"تحميل الصفحات\" للبدء.",
+        lastGroupsSync: "آخر تحميل للجروبات",
+        lastPagesSync: "آخر تحميل للصفحات",
+        neverSynced: "لم يتم التحميل بعد",
+        syncSuccess: "نجاح",
+        syncFailed: "فشل",
+        syncCount: (n: number) => `تم تحميل ${n}`,
       }
     : {
         title: "Facebook Connection",
@@ -349,6 +434,18 @@ function FacebookPage() {
         reconnectAll: "Reconnect with full permissions",
         reconnectToastTitle: "Missing scopes copied",
         reconnectToastDesc: "Open Graph API Explorer, click \"Add a Permission\", paste the scopes, then click Generate Access Token.",
+        syncHistoryTitle: "Last sync history",
+        syncHistorySubtitle: "Most recent Load Groups / Load Pages attempts with timestamp and outcome",
+        showHistory: "Show history",
+        hideHistory: "Hide history",
+        clearHistory: "Clear history",
+        noHistory: "No sync runs yet. Click \"Load Groups\" or \"Load Pages\" to start.",
+        lastGroupsSync: "Last groups load",
+        lastPagesSync: "Last pages load",
+        neverSynced: "Never loaded yet",
+        syncSuccess: "Success",
+        syncFailed: "Failed",
+        syncCount: (n: number) => `${n} loaded`,
       };
 
   useEffect(() => {
@@ -484,14 +581,22 @@ function FacebookPage() {
       if (res.error) {
         setGroups([]);
         setGroupsError(res.error);
+        recordSync({
+          kind: "groups",
+          status: "error",
+          errorType: res.error.type,
+          errorMessage: friendlyFbError(res.error),
+        });
         toast.error(friendlyFbError(res.error));
       } else {
         setGroups(res.groups);
+        recordSync({ kind: "groups", status: "success", count: res.groups.length });
         toast.success(lang === "ar" ? `تم تحميل ${res.groups.length} جروب` : `Loaded ${res.groups.length} groups`);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to load groups";
       setGroupsError({ type: "unknown", message: msg, missingPermission: null });
+      recordSync({ kind: "groups", status: "error", errorType: "unknown", errorMessage: msg });
       toast.error(msg);
     } finally {
       setLoadingGroups(false);
@@ -506,14 +611,22 @@ function FacebookPage() {
       if (res.error) {
         setPages([]);
         setPagesError(res.error);
+        recordSync({
+          kind: "pages",
+          status: "error",
+          errorType: res.error.type,
+          errorMessage: friendlyFbError(res.error),
+        });
         toast.error(friendlyFbError(res.error));
       } else {
         setPages(res.pages);
+        recordSync({ kind: "pages", status: "success", count: res.pages.length });
         toast.success(lang === "ar" ? `تم تحميل ${res.pages.length} صفحة` : `Loaded ${res.pages.length} pages`);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to load pages";
       setPagesError({ type: "unknown", message: msg, missingPermission: null });
+      recordSync({ kind: "pages", status: "error", errorType: "unknown", errorMessage: msg });
       toast.error(msg);
     } finally {
       setLoadingPages(false);
@@ -1002,6 +1115,123 @@ function FacebookPage() {
                 )}
                 {tab === "groups" ? t.loadGroups : t.loadPages}
               </button>
+            </div>
+
+            {/* Sync history — last attempts per kind, expandable to full log */}
+            <div className="mb-4 rounded-xl border border-border/60 bg-muted/30 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <History className="h-4 w-4 text-primary" />
+                    <h4 className="text-sm font-semibold text-foreground">{t.syncHistoryTitle}</h4>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{t.syncHistorySubtitle}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSyncLogOpen((v) => !v)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground hover:bg-accent"
+                  >
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${syncLogOpen ? "rotate-180" : ""}`} />
+                    {syncLogOpen ? t.hideHistory : t.showHistory}
+                  </button>
+                  {syncLog.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={clearSyncLog}
+                      className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-destructive"
+                      title={t.clearHistory}
+                      aria-label={t.clearHistory}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Compact per-kind summary always visible */}
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {[
+                  { ev: lastGroupsSync, label: t.lastGroupsSync, Icon: Users },
+                  { ev: lastPagesSync, label: t.lastPagesSync, Icon: Facebook },
+                ].map(({ ev, label, Icon }) => (
+                  <div key={label} className="flex items-start gap-2.5 rounded-lg border border-border/50 bg-card px-3 py-2">
+                    <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+                      {ev ? (
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          {ev.status === "success" ? (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-green-50 px-1.5 py-0.5 text-[11px] font-medium text-green-700 ring-1 ring-green-200 dark:bg-green-950/30 dark:text-green-300 dark:ring-green-900">
+                              <CheckCircle2 className="h-3 w-3" /> {t.syncSuccess}
+                              {typeof ev.count === "number" && <> · {t.syncCount(ev.count)}</>}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-1.5 py-0.5 text-[11px] font-medium text-destructive ring-1 ring-destructive/30">
+                              <XCircle className="h-3 w-3" /> {t.syncFailed}
+                            </span>
+                          )}
+                          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                            <Clock className="h-3 w-3" />
+                            <time dateTime={ev.at} title={new Date(ev.at).toLocaleString()}>
+                              {formatRelative(ev.at)}
+                            </time>
+                          </span>
+                        </div>
+                      ) : (
+                        <p className="mt-1 text-[11px] italic text-muted-foreground">{t.neverSynced}</p>
+                      )}
+                      {ev && ev.status === "error" && ev.errorMessage && (
+                        <p className="mt-1 line-clamp-2 text-[11px] text-destructive/80">{ev.errorMessage}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Full chronological log (collapsible) */}
+              {syncLogOpen && (
+                syncLog.length === 0 ? (
+                  <p className="mt-3 rounded-lg border border-dashed border-border/60 bg-card/40 px-3 py-4 text-center text-xs text-muted-foreground">
+                    {t.noHistory}
+                  </p>
+                ) : (
+                  <ul className="mt-3 max-h-64 space-y-1.5 overflow-y-auto rounded-lg border border-border/50 bg-card p-2">
+                    {syncLog.map((ev) => (
+                      <li key={ev.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 text-xs odd:bg-muted/30">
+                        {ev.status === "success" ? (
+                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-600" />
+                        ) : (
+                          <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-medium text-foreground">
+                              {ev.kind === "groups" ? t.loadGroups : t.loadPages}
+                            </span>
+                            <span className="text-muted-foreground">·</span>
+                            <span className={ev.status === "success" ? "text-green-700 dark:text-green-400" : "text-destructive"}>
+                              {ev.status === "success"
+                                ? typeof ev.count === "number"
+                                  ? t.syncCount(ev.count)
+                                  : t.syncSuccess
+                                : t.syncFailed}
+                            </span>
+                            <span className="text-muted-foreground">·</span>
+                            <time dateTime={ev.at} title={new Date(ev.at).toLocaleString()} className="text-muted-foreground">
+                              {formatRelative(ev.at)}
+                            </time>
+                          </div>
+                          {ev.status === "error" && ev.errorMessage && (
+                            <p className="mt-0.5 text-[11px] text-destructive/80">{ev.errorMessage}</p>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              )}
             </div>
 
             {tab === "groups" && groupsError && (
