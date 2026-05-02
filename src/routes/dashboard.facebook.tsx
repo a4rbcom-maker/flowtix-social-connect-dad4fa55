@@ -524,7 +524,7 @@ function FacebookPage() {
                     <input
                       type={showToken ? "text" : "password"}
                       value={token}
-                      onChange={(e) => { setToken(e.target.value); setTestResult(null); }}
+                      onChange={(e) => { setToken(e.target.value); setTestResult(null); setTestError(null); }}
                       placeholder={t.tokenPlaceholder}
                       className="w-full rounded-xl border border-border bg-background px-4 py-2.5 pr-20 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                     />
