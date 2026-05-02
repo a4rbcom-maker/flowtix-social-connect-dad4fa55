@@ -57,6 +57,8 @@ function FacebookPage() {
   const [pages, setPages] = useState<Page[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [loadingPages, setLoadingPages] = useState(false);
+  const [groupsError, setGroupsError] = useState<{ type: string; message: string; missingPermission: string | null } | null>(null);
+  const [pagesError, setPagesError] = useState<{ type: string; message: string; missingPermission: string | null } | null>(null);
   const [tab, setTab] = useState<"groups" | "pages">("groups");
   const [guideOpen, setGuideOpen] = useState(true);
   const [testing, setTesting] = useState(false);
@@ -420,14 +422,37 @@ function FacebookPage() {
     }
   };
 
+  const friendlyFbError = (e: { type: string; message: string; missingPermission: string | null }) => {
+    if (lang !== "ar") return e.message;
+    switch (e.type) {
+      case "auth_expired": return "انتهت صلاحية رمز الوصول. أعد ربط الحساب.";
+      case "invalid_token": return "رمز الوصول غير صالح أو تم إبطاله. أعد الربط.";
+      case "permission_denied":
+        return e.missingPermission
+          ? `الصلاحية الناقصة: ${e.missingPermission}. أعد الربط وامنح هذه الصلاحية.`
+          : "الصلاحيات غير كافية. أعد الربط وامنح كل الصلاحيات المطلوبة.";
+      case "rate_limited": return "تم تجاوز حد الاستدعاءات. حاول بعد قليل.";
+      case "network": return "تعذّر الاتصال بفيسبوك. تحقق من الإنترنت وحاول مرة أخرى.";
+      default: return e.message;
+    }
+  };
+
   const handleLoadGroups = async () => {
     setLoadingGroups(true);
+    setGroupsError(null);
     try {
       const res = await callServerFn(fetchFacebookGroups);
-      setGroups(res.groups);
-      toast.success(lang === "ar" ? `تم تحميل ${res.groups.length} جروب` : `Loaded ${res.groups.length} groups`);
+      if (res.error) {
+        setGroups([]);
+        setGroupsError(res.error);
+        toast.error(friendlyFbError(res.error));
+      } else {
+        setGroups(res.groups);
+        toast.success(lang === "ar" ? `تم تحميل ${res.groups.length} جروب` : `Loaded ${res.groups.length} groups`);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to load groups";
+      setGroupsError({ type: "unknown", message: msg, missingPermission: null });
       toast.error(msg);
     } finally {
       setLoadingGroups(false);
@@ -436,12 +461,20 @@ function FacebookPage() {
 
   const handleLoadPages = async () => {
     setLoadingPages(true);
+    setPagesError(null);
     try {
       const res = await callServerFn(fetchFacebookPages);
-      setPages(res.pages);
-      toast.success(lang === "ar" ? `تم تحميل ${res.pages.length} صفحة` : `Loaded ${res.pages.length} pages`);
+      if (res.error) {
+        setPages([]);
+        setPagesError(res.error);
+        toast.error(friendlyFbError(res.error));
+      } else {
+        setPages(res.pages);
+        toast.success(lang === "ar" ? `تم تحميل ${res.pages.length} صفحة` : `Loaded ${res.pages.length} pages`);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to load pages";
+      setPagesError({ type: "unknown", message: msg, missingPermission: null });
       toast.error(msg);
     } finally {
       setLoadingPages(false);
@@ -803,7 +836,14 @@ function FacebookPage() {
               </button>
             </div>
 
-            {tab === "groups" && (
+            {tab === "groups" && groupsError && (
+              <FbErrorBanner err={groupsError} onRetry={handleLoadGroups} lang={lang} friendly={friendlyFbError} />
+            )}
+            {tab === "pages" && pagesError && (
+              <FbErrorBanner err={pagesError} onRetry={handleLoadPages} lang={lang} friendly={friendlyFbError} />
+            )}
+
+            {tab === "groups" && !groupsError && (
               groups.length === 0 ? (
                 <p className="py-12 text-center text-sm text-muted-foreground">{t.noGroups}</p>
               ) : (
@@ -833,7 +873,7 @@ function FacebookPage() {
               )
             )}
 
-            {tab === "pages" && (
+            {tab === "pages" && !pagesError && (
               pages.length === 0 ? (
                 <p className="py-12 text-center text-sm text-muted-foreground">{t.noPages}</p>
               ) : (
@@ -865,5 +905,68 @@ function FacebookPage() {
         )}
       </div>
     </DashboardLayout>
+  );
+}
+
+interface FbErr { type: string; message: string; missingPermission: string | null }
+function FbErrorBanner({
+  err,
+  onRetry,
+  lang,
+  friendly,
+}: {
+  err: FbErr;
+  onRetry: () => void;
+  lang: string;
+  friendly: (e: FbErr) => string;
+}) {
+  const isAuth = err.type === "auth_expired" || err.type === "invalid_token";
+  const isPerm = err.type === "permission_denied";
+  return (
+    <div className="my-4 rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/15 text-destructive">
+          <AlertCircle className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h4 className="font-semibold text-foreground">
+            {lang === "ar"
+              ? isPerm
+                ? "صلاحيات ناقصة"
+                : isAuth
+                  ? "مشكلة في رمز الوصول"
+                  : "تعذّر جلب البيانات من فيسبوك"
+              : isPerm
+                ? "Missing permissions"
+                : isAuth
+                  ? "Access token problem"
+                  : "Failed to load from Facebook"}
+          </h4>
+          <p className="mt-1 text-sm text-muted-foreground">{friendly(err)}</p>
+          {isPerm && err.missingPermission && (
+            <code className="mt-2 inline-block rounded-md bg-muted px-2 py-1 text-xs font-mono text-foreground">
+              {err.missingPermission}
+            </code>
+          )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              onClick={onRetry}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-accent"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              {lang === "ar" ? "إعادة المحاولة" : "Retry"}
+            </button>
+            {(isAuth || isPerm) && (
+              <a
+                href="#fb-token-form"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+              >
+                {lang === "ar" ? "إعادة الربط بصلاحيات كاملة" : "Reconnect with full permissions"}
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

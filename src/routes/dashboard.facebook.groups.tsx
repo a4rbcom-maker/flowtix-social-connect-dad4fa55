@@ -159,18 +159,43 @@ function FacebookGroupsPage() {
     } as never);
   };
 
+  const [importError, setImportError] = useState<{ type: string; message: string; missingPermission: string | null } | null>(null);
+
+  const friendlyFbError = (e: { type: string; message: string; missingPermission: string | null }) => {
+    if (lang !== "ar") return e.message;
+    switch (e.type) {
+      case "auth_expired": return "انتهت صلاحية رمز الوصول. أعد ربط الحساب.";
+      case "invalid_token": return "رمز الوصول غير صالح أو تم إبطاله. أعد الربط.";
+      case "permission_denied":
+        return e.missingPermission
+          ? `الصلاحية الناقصة: ${e.missingPermission}. أعد الربط وامنح هذه الصلاحية.`
+          : "الصلاحيات غير كافية لجلب الجروبات.";
+      case "rate_limited": return "تم تجاوز حد الاستدعاءات. حاول بعد قليل.";
+      case "network": return "تعذّر الاتصال بفيسبوك. تحقق من الإنترنت.";
+      default: return e.message;
+    }
+  };
+
   const handleImport = async () => {
     setLoading(true);
+    setImportError(null);
     try {
       const res = await callServerFn(fetchFacebookGroups);
-      setGroups(res.groups);
-      toast.success(
-        lang === "ar"
-          ? `تم استيراد ${res.groups.length} جروب`
-          : `Imported ${res.groups.length} groups`,
-      );
+      if (res.error) {
+        setGroups([]);
+        setImportError(res.error);
+        toast.error(friendlyFbError(res.error));
+      } else {
+        setGroups(res.groups);
+        toast.success(
+          lang === "ar"
+            ? `تم استيراد ${res.groups.length} جروب`
+            : `Imported ${res.groups.length} groups`,
+        );
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Import failed";
+      setImportError({ type: "unknown", message: msg, missingPermission: null });
       toast.error(msg);
     } finally {
       setLoading(false);
@@ -376,8 +401,53 @@ function FacebookGroupsPage() {
               </div>
             )}
 
+            {/* Error banner — shown above the list when import failed */}
+            {importError && (
+              <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/15 text-destructive">
+                    <AlertCircle className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-semibold text-foreground">
+                      {importError.type === "permission_denied"
+                        ? (lang === "ar" ? "صلاحيات ناقصة" : "Missing permissions")
+                        : importError.type === "auth_expired" || importError.type === "invalid_token"
+                          ? (lang === "ar" ? "مشكلة في رمز الوصول" : "Access token problem")
+                          : (lang === "ar" ? "تعذّر استيراد الجروبات" : "Failed to import groups")}
+                    </h4>
+                    <p className="mt-1 text-sm text-muted-foreground">{friendlyFbError(importError)}</p>
+                    {importError.missingPermission && (
+                      <code className="mt-2 inline-block rounded-md bg-muted px-2 py-1 text-xs font-mono">
+                        {importError.missingPermission}
+                      </code>
+                    )}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        onClick={handleImport}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-accent"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        {lang === "ar" ? "إعادة المحاولة" : "Retry"}
+                      </button>
+                      {(importError.type === "permission_denied" ||
+                        importError.type === "auth_expired" ||
+                        importError.type === "invalid_token") && (
+                        <Link
+                          to="/dashboard/facebook"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+                        >
+                          {lang === "ar" ? "إعادة الربط" : "Reconnect"}
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Groups list */}
-            {groups.length === 0 && !loading && (
+            {groups.length === 0 && !loading && !importError && (
               <div className="rounded-2xl border border-dashed border-border bg-card/30 p-10 text-center">
                 <Users className="mx-auto h-10 w-10 text-muted-foreground" />
                 <p className="mt-3 text-sm text-muted-foreground">{t.empty}</p>
