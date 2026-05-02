@@ -223,7 +223,11 @@ export const getFacebookConnection = createServerFn({ method: "GET" })
     return { connection: data };
   });
 
-/** Fetch the user's Facebook groups via /me/groups */
+/**
+ * Fetch the user's Facebook groups via /me/groups.
+ * Returns a structured result that always succeeds at the RPC level — failures
+ * surface as `error` so the client can render a clear, typed UI.
+ */
 export const fetchFacebookGroups = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -234,22 +238,39 @@ export const fetchFacebookGroups = createServerFn({ method: "POST" })
       .eq("user_id", userId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    if (!row?.access_token) throw new Error("لا يوجد ربط فيسبوك. الرجاء الربط أولاً.");
+    if (!row?.access_token) {
+      return {
+        groups: [],
+        error: {
+          message: "لا يوجد ربط فيسبوك. الرجاء الربط أولاً.",
+          code: null, subcode: null, type: "invalid_token" as const,
+          missingPermission: null, httpStatus: 401,
+        },
+      };
+    }
 
-    const result = await fbGet(
-      "/me/groups?fields=id,name,member_count,privacy,cover,description&limit=100",
-      row.access_token,
-    );
+    try {
+      // Verify required scopes BEFORE the call so we get a precise UI message
+      // instead of an opaque "(#10) requires permission..." Graph error.
+      await ensurePermissions(row.access_token, ["user_groups", "groups_access_member_info"]);
 
-    await supabase
-      .from("facebook_connections")
-      .update({ last_synced_at: new Date().toISOString() })
-      .eq("user_id", userId);
+      const result = await fbGet(
+        "/me/groups?fields=id,name,member_count,privacy,cover,description&limit=100",
+        row.access_token,
+      );
 
-    return { groups: result.data ?? [] };
+      await supabase
+        .from("facebook_connections")
+        .update({ last_synced_at: new Date().toISOString() })
+        .eq("user_id", userId);
+
+      return { groups: result.data ?? [], error: null };
+    } catch (err) {
+      return { groups: [], error: serializeError(err) };
+    }
   });
 
-/** Fetch the user's Facebook pages via /me/accounts */
+/** Fetch the user's Facebook pages via /me/accounts (same structured shape). */
 export const fetchFacebookPages = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -260,15 +281,29 @@ export const fetchFacebookPages = createServerFn({ method: "POST" })
       .eq("user_id", userId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    if (!row?.access_token) throw new Error("لا يوجد ربط فيسبوك. الرجاء الربط أولاً.");
+    if (!row?.access_token) {
+      return {
+        pages: [],
+        error: {
+          message: "لا يوجد ربط فيسبوك. الرجاء الربط أولاً.",
+          code: null, subcode: null, type: "invalid_token" as const,
+          missingPermission: null, httpStatus: 401,
+        },
+      };
+    }
 
-    const result = await fbGet(
-      "/me/accounts?fields=id,name,category,fan_count,picture,link&limit=100",
-      row.access_token,
-    );
-
-    return { pages: result.data ?? [] };
+    try {
+      await ensurePermissions(row.access_token, ["pages_show_list"]);
+      const result = await fbGet(
+        "/me/accounts?fields=id,name,category,fan_count,picture,link&limit=100",
+        row.access_token,
+      );
+      return { pages: result.data ?? [], error: null };
+    } catch (err) {
+      return { pages: [], error: serializeError(err) };
+    }
   });
+
 
 /**
  * Inspect the currently stored Facebook token: validity, expiry, scopes, profile.
