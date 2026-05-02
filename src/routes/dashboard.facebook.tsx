@@ -87,10 +87,19 @@ function FacebookPage() {
   // copies the URL to clipboard as a final fallback.
   const openExternal = (e: MouseEvent, url: string) => {
     e.preventDefault();
+    e.stopPropagation();
+    let opened: Window | null = null;
     try {
-      const w = window.open(url, "_blank", "noopener,noreferrer");
-      if (w) return;
+      opened = window.open(url, "_blank", "noopener,noreferrer");
     } catch { /* blocked */ }
+    if (opened) {
+      toast.success(
+        lang === "ar"
+          ? "تم فتح الرابط في تبويب جديد. إن لم يفتح عندك فعّل النوافذ المنبثقة لهذا الموقع."
+          : "Opened in a new tab. If nothing opened, allow popups for this site.",
+      );
+      return;
+    }
     try {
       if (window.top && window.top !== window.self) {
         window.top.location.href = url;
@@ -101,8 +110,9 @@ function FacebookPage() {
       navigator.clipboard.writeText(url);
       toast.info(
         lang === "ar"
-          ? "تعذّر فتح الرابط داخل المعاينة — تم نسخه، الصقه في تبويب جديد"
-          : "Couldn't open inside preview — link copied, paste it in a new tab",
+          ? "تعذّر فتح الرابط (المتصفح حظر النوافذ المنبثقة) — تم نسخ الرابط، الصقه في تبويب جديد. ملاحظة: قد يطلب فيسبوك تسجيل الدخول أولاً."
+          : "Popup blocked — link copied. Paste it in a new tab. Note: Facebook may require login first.",
+        { duration: 7000 },
       );
     } catch {
       toast.error(lang === "ar" ? "تعذّر فتح الرابط" : "Couldn't open the link");
