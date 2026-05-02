@@ -836,7 +836,14 @@ function FacebookPage() {
               </button>
             </div>
 
-            {tab === "groups" && (
+            {tab === "groups" && groupsError && (
+              <FbErrorBanner err={groupsError} onRetry={handleLoadGroups} lang={lang} friendly={friendlyFbError} />
+            )}
+            {tab === "pages" && pagesError && (
+              <FbErrorBanner err={pagesError} onRetry={handleLoadPages} lang={lang} friendly={friendlyFbError} />
+            )}
+
+            {tab === "groups" && !groupsError && (
               groups.length === 0 ? (
                 <p className="py-12 text-center text-sm text-muted-foreground">{t.noGroups}</p>
               ) : (
@@ -866,7 +873,7 @@ function FacebookPage() {
               )
             )}
 
-            {tab === "pages" && (
+            {tab === "pages" && !pagesError && (
               pages.length === 0 ? (
                 <p className="py-12 text-center text-sm text-muted-foreground">{t.noPages}</p>
               ) : (
