@@ -226,6 +226,17 @@ function FacebookPage() {
         confirmConnect: "Confirm & save token securely",
         testFirst: "Test the token before connecting",
         savingSecure: "Token will be stored securely in your RLS-protected database — no other user can access it.",
+        quickStart: "Quick start in 3 steps",
+        quick1Title: "Get a token",
+        quick1Desc: "From Graph API Explorer with the required scopes",
+        quick2Title: "Test the token",
+        quick2Desc: "We verify it's valid and has the right permissions",
+        quick3Title: "Confirm linking",
+        quick3Desc: "Token is stored encrypted and loading begins",
+        errInvalidToken: "Token is invalid or malformed. Generate a new one from Graph Explorer.",
+        errExpired: "Token has expired. Re-generate it from Graph Explorer.",
+        errPermission: "Missing permissions. Make sure all required scopes are granted.",
+        errNetwork: "Could not reach Facebook. Check your internet connection.",
       };
 
   useEffect(() => {
