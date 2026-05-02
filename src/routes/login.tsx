@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useI18n } from "@/lib/i18n";
@@ -49,6 +49,7 @@ function LoginPage() {
         checkEmail: "تحقق من بريدك الإلكتروني لتأكيد الحساب",
         back: "العودة للرئيسية",
         submit: "متابعة",
+        forgot: "نسيت كلمة المرور؟",
       }
     : {
         login: "Sign In",
@@ -70,6 +71,7 @@ function LoginPage() {
         checkEmail: "Check your email to confirm your account",
         back: "Back to Home",
         submit: "Continue",
+        forgot: "Forgot password?",
       };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -184,6 +186,17 @@ function LoginPage() {
                   className={inputClass}
                 />
               </Field>
+
+              {isLogin && (
+                <div className="flex justify-end">
+                  <Link
+                    to="/forgot-password"
+                    className="text-xs font-medium text-primary transition-colors hover:text-primary/80 hover:underline underline-offset-4"
+                  >
+                    {labels.forgot}
+                  </Link>
+                </div>
+              )}
 
               {error && (
                 <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
