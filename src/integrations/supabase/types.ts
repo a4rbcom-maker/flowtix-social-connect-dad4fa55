@@ -14,6 +14,152 @@ export type Database = {
   }
   public: {
     Tables: {
+      bulk_job_recipients: {
+        Row: {
+          contact_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          job_id: string
+          name: string
+          phone: string
+          sent_at: string | null
+          status: Database["public"]["Enums"]["send_status"]
+          user_id: string
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_id: string
+          name: string
+          phone: string
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["send_status"]
+          user_id: string
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_id?: string
+          name?: string
+          phone?: string
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["send_status"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bulk_job_recipients_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "bulk_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bulk_jobs: {
+        Row: {
+          channel: Database["public"]["Enums"]["send_channel"]
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          failed_count: number
+          id: string
+          image_url: string | null
+          interval_seconds: number
+          message: string
+          metadata: Json | null
+          next_send_at: string | null
+          scheduled_at: string
+          sent_count: number
+          started_at: string | null
+          status: Database["public"]["Enums"]["bulk_job_status"]
+          title: string
+          total_recipients: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          channel?: Database["public"]["Enums"]["send_channel"]
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          failed_count?: number
+          id?: string
+          image_url?: string | null
+          interval_seconds?: number
+          message: string
+          metadata?: Json | null
+          next_send_at?: string | null
+          scheduled_at?: string
+          sent_count?: number
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["bulk_job_status"]
+          title: string
+          total_recipients?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          channel?: Database["public"]["Enums"]["send_channel"]
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          failed_count?: number
+          id?: string
+          image_url?: string | null
+          interval_seconds?: number
+          message?: string
+          metadata?: Json | null
+          next_send_at?: string | null
+          scheduled_at?: string
+          sent_count?: number
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["bulk_job_status"]
+          title?: string
+          total_recipients?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      contacts: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          phone: string
+          tags: string[] | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          phone: string
+          tags?: string[] | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string
+          tags?: string[] | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       facebook_connections: {
         Row: {
           access_token: string
@@ -263,6 +409,13 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"
+      bulk_job_status:
+        | "scheduled"
+        | "running"
+        | "completed"
+        | "failed"
+        | "cancelled"
+        | "paused"
       schedule_status: "scheduled" | "sending" | "sent" | "failed" | "cancelled"
       send_channel: "whatsapp" | "facebook" | "bulk" | "system"
       send_status: "pending" | "processing" | "success" | "failed"
@@ -394,6 +547,14 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "moderator", "user"],
+      bulk_job_status: [
+        "scheduled",
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+        "paused",
+      ],
       schedule_status: ["scheduled", "sending", "sent", "failed", "cancelled"],
       send_channel: ["whatsapp", "facebook", "bulk", "system"],
       send_status: ["pending", "processing", "success", "failed"],
