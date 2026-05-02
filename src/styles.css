@@ -49,50 +49,53 @@
 
 :root {
   --radius: 0.75rem;
-  /* Botxtra palette — vivid violet on near-white with subtle violet tint */
-  --background: oklch(0.99 0.004 295);
+  /* Botxtra exact palette (sampled from botxtra.com) */
+  /* bg #f6f6f9 */
+  --background: oklch(0.97 0.005 290);
   --foreground: oklch(0.20 0.025 290);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.20 0.025 290);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.20 0.025 290);
-  /* Primary = Botxtra violet (~#9b5cf6) */
-  --primary: oklch(0.62 0.27 295);
+  /* Primary = #8c3ff4 (vivid violet, high chroma) */
+  --primary: oklch(0.56 0.30 295);
   --primary-foreground: oklch(1 0 0);
-  /* Deeper violet for gradients (~#7c3aed) */
-  --primary-deep: oklch(0.52 0.28 290);
-  --secondary: oklch(0.965 0.014 295);
+  /* Secondary brand = #be65ef (magenta-violet) */
+  --primary-glow: oklch(0.66 0.26 320);
+  --primary-deep: oklch(0.48 0.30 290);
+  --secondary: oklch(0.96 0.012 295);
   --secondary-foreground: oklch(0.30 0.04 290);
-  --muted: oklch(0.965 0.008 295);
-  --muted-foreground: oklch(0.52 0.02 290);
-  --accent: oklch(0.95 0.025 295);
+  --muted: oklch(0.965 0.008 290);
+  --muted-foreground: oklch(0.50 0.025 290);
+  /* Soft violet bg #eee7f8 */
+  --accent: oklch(0.94 0.025 295);
   --accent-foreground: oklch(0.30 0.04 290);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.93 0.012 295);
-  --input: oklch(0.93 0.012 295);
-  --ring: oklch(0.62 0.27 295);
-  --chart-1: oklch(0.62 0.27 295);
-  --chart-2: oklch(0.52 0.28 290);
-  --chart-3: oklch(0.70 0.22 320);
+  --border: oklch(0.92 0.014 295);
+  --input: oklch(0.92 0.014 295);
+  --ring: oklch(0.56 0.30 295);
+  --chart-1: oklch(0.56 0.30 295);
+  --chart-2: oklch(0.66 0.26 320);
+  --chart-3: oklch(0.70 0.22 340);
   --chart-4: oklch(0.72 0.18 45);
   --chart-5: oklch(0.70 0.20 145);
   --sidebar: oklch(0.975 0.008 295);
   --sidebar-foreground: oklch(0.20 0.025 290);
-  --sidebar-primary: oklch(0.62 0.27 295);
+  --sidebar-primary: oklch(0.56 0.30 295);
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.94 0.03 295);
   --sidebar-accent-foreground: oklch(0.25 0.04 290);
   --sidebar-border: oklch(0.92 0.014 295);
-  --sidebar-ring: oklch(0.62 0.27 295);
-  /* Botxtra signature gradient */
-  --gradient-primary: linear-gradient(135deg, oklch(0.62 0.27 295), oklch(0.52 0.28 290));
-  --gradient-hero: linear-gradient(135deg, oklch(0.62 0.27 295) 0%, oklch(0.55 0.28 285) 50%, oklch(0.52 0.28 290) 100%);
-  --shadow-violet: 0 10px 40px -10px oklch(0.62 0.27 295 / 0.45);
-  --shadow-violet-lg: 0 20px 60px -15px oklch(0.62 0.27 295 / 0.55);
+  --sidebar-ring: oklch(0.56 0.30 295);
+  /* Botxtra signature gradient: violet → magenta */
+  --gradient-primary: linear-gradient(135deg, oklch(0.56 0.30 295), oklch(0.66 0.26 320));
+  --gradient-hero: linear-gradient(135deg, oklch(0.56 0.30 295) 0%, oklch(0.62 0.28 308) 50%, oklch(0.66 0.26 320) 100%);
+  --shadow-violet: 0 10px 40px -10px oklch(0.56 0.30 295 / 0.45);
+  --shadow-violet-lg: 0 20px 60px -15px oklch(0.56 0.30 295 / 0.55);
   /* Pricing popular card */
   --pricing-popular-bg: oklch(0.97 0.018 295);
-  --pricing-popular-border: oklch(0.62 0.27 295);
+  --pricing-popular-border: oklch(0.56 0.30 295);
   --pricing-popular-text: oklch(0.20 0.025 290);
   --pricing-popular-muted: oklch(0.48 0.025 290);
   --pricing-card-bg: oklch(1 0 0);
