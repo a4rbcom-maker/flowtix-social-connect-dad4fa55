@@ -19,6 +19,7 @@ import { Route as DashboardWhatsappRouteImport } from './routes/dashboard.whatsa
 import { Route as DashboardFacebookRouteImport } from './routes/dashboard.facebook'
 import { Route as DashboardActivityRouteImport } from './routes/dashboard.activity'
 import { Route as DashboardFacebookStatusRouteImport } from './routes/dashboard.facebook.status'
+import { Route as DashboardFacebookGroupsRouteImport } from './routes/dashboard.facebook.groups'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -70,6 +71,11 @@ const DashboardFacebookStatusRoute = DashboardFacebookStatusRouteImport.update({
   path: '/status',
   getParentRoute: () => DashboardFacebookRoute,
 } as any)
+const DashboardFacebookGroupsRoute = DashboardFacebookGroupsRouteImport.update({
+  id: '/groups',
+  path: '/groups',
+  getParentRoute: () => DashboardFacebookRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -81,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
+  '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
 }
 export interface FileRoutesByTo {
@@ -93,6 +100,7 @@ export interface FileRoutesByTo {
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
+  '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
 }
 export interface FileRoutesById {
@@ -106,6 +114,7 @@ export interface FileRoutesById {
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
+  '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
 }
 export interface FileRouteTypes {
@@ -120,6 +129,7 @@ export interface FileRouteTypes {
     | '/dashboard/activity'
     | '/dashboard/facebook'
     | '/dashboard/whatsapp'
+    | '/dashboard/facebook/groups'
     | '/dashboard/facebook/status'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -132,6 +142,7 @@ export interface FileRouteTypes {
     | '/dashboard/activity'
     | '/dashboard/facebook'
     | '/dashboard/whatsapp'
+    | '/dashboard/facebook/groups'
     | '/dashboard/facebook/status'
   id:
     | '__root__'
@@ -144,6 +155,7 @@ export interface FileRouteTypes {
     | '/dashboard/activity'
     | '/dashboard/facebook'
     | '/dashboard/whatsapp'
+    | '/dashboard/facebook/groups'
     | '/dashboard/facebook/status'
   fileRoutesById: FileRoutesById
 }
@@ -228,14 +240,23 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardFacebookStatusRouteImport
       parentRoute: typeof DashboardFacebookRoute
     }
+    '/dashboard/facebook/groups': {
+      id: '/dashboard/facebook/groups'
+      path: '/groups'
+      fullPath: '/dashboard/facebook/groups'
+      preLoaderRoute: typeof DashboardFacebookGroupsRouteImport
+      parentRoute: typeof DashboardFacebookRoute
+    }
   }
 }
 
 interface DashboardFacebookRouteChildren {
+  DashboardFacebookGroupsRoute: typeof DashboardFacebookGroupsRoute
   DashboardFacebookStatusRoute: typeof DashboardFacebookStatusRoute
 }
 
 const DashboardFacebookRouteChildren: DashboardFacebookRouteChildren = {
+  DashboardFacebookGroupsRoute: DashboardFacebookGroupsRoute,
   DashboardFacebookStatusRoute: DashboardFacebookStatusRoute,
 }
 
