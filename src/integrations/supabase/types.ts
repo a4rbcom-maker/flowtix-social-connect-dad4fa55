@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      facebook_connections: {
+        Row: {
+          access_token: string
+          created_at: string
+          fb_user_id: string | null
+          fb_user_name: string | null
+          id: string
+          last_synced_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string
+          fb_user_id?: string | null
+          fb_user_name?: string | null
+          id?: string
+          last_synced_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string
+          fb_user_id?: string | null
+          fb_user_name?: string | null
+          id?: string
+          last_synced_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
