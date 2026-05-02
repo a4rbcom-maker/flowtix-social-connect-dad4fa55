@@ -14,6 +14,7 @@ import {
   getFacebookConnection,
   testFacebookToken,
 } from "@/server/facebook.functions";
+import { openExternalUrl, ExternalLinkButton } from "@/components/shared/ExternalLinkButton";
 
 export const Route = createFileRoute("/dashboard/facebook")({
   component: FacebookPage,
