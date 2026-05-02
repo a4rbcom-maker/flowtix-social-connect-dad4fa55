@@ -145,6 +145,9 @@ function FacebookPage() {
         grantedScopes: "الصلاحيات الممنوحة",
         missingScopes: "صلاحيات ناقصة",
         noMissing: "كل الصلاحيات المطلوبة موجودة ✓",
+        confirmConnect: "تأكيد الربط وحفظ التوكن",
+        testFirst: "اختبر التوكن أولاً قبل الربط",
+        savingSecure: "سيتم حفظ التوكن بشكل آمن في قاعدة بياناتك المحمية بـ RLS — لا يمكن لأي مستخدم آخر الوصول إليه.",
       }
     : {
         title: "Facebook Connection",
