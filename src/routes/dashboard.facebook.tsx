@@ -422,14 +422,37 @@ function FacebookPage() {
     }
   };
 
+  const friendlyFbError = (e: { type: string; message: string; missingPermission: string | null }) => {
+    if (lang !== "ar") return e.message;
+    switch (e.type) {
+      case "auth_expired": return "انتهت صلاحية رمز الوصول. أعد ربط الحساب.";
+      case "invalid_token": return "رمز الوصول غير صالح أو تم إبطاله. أعد الربط.";
+      case "permission_denied":
+        return e.missingPermission
+          ? `الصلاحية الناقصة: ${e.missingPermission}. أعد الربط وامنح هذه الصلاحية.`
+          : "الصلاحيات غير كافية. أعد الربط وامنح كل الصلاحيات المطلوبة.";
+      case "rate_limited": return "تم تجاوز حد الاستدعاءات. حاول بعد قليل.";
+      case "network": return "تعذّر الاتصال بفيسبوك. تحقق من الإنترنت وحاول مرة أخرى.";
+      default: return e.message;
+    }
+  };
+
   const handleLoadGroups = async () => {
     setLoadingGroups(true);
+    setGroupsError(null);
     try {
       const res = await callServerFn(fetchFacebookGroups);
-      setGroups(res.groups);
-      toast.success(lang === "ar" ? `تم تحميل ${res.groups.length} جروب` : `Loaded ${res.groups.length} groups`);
+      if (res.error) {
+        setGroups([]);
+        setGroupsError(res.error);
+        toast.error(friendlyFbError(res.error));
+      } else {
+        setGroups(res.groups);
+        toast.success(lang === "ar" ? `تم تحميل ${res.groups.length} جروب` : `Loaded ${res.groups.length} groups`);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to load groups";
+      setGroupsError({ type: "unknown", message: msg, missingPermission: null });
       toast.error(msg);
     } finally {
       setLoadingGroups(false);
@@ -438,12 +461,20 @@ function FacebookPage() {
 
   const handleLoadPages = async () => {
     setLoadingPages(true);
+    setPagesError(null);
     try {
       const res = await callServerFn(fetchFacebookPages);
-      setPages(res.pages);
-      toast.success(lang === "ar" ? `تم تحميل ${res.pages.length} صفحة` : `Loaded ${res.pages.length} pages`);
+      if (res.error) {
+        setPages([]);
+        setPagesError(res.error);
+        toast.error(friendlyFbError(res.error));
+      } else {
+        setPages(res.pages);
+        toast.success(lang === "ar" ? `تم تحميل ${res.pages.length} صفحة` : `Loaded ${res.pages.length} pages`);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to load pages";
+      setPagesError({ type: "unknown", message: msg, missingPermission: null });
       toast.error(msg);
     } finally {
       setLoadingPages(false);
