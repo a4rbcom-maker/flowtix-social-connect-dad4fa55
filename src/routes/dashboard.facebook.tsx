@@ -572,6 +572,7 @@ function FacebookPage() {
                     href="https://developers.facebook.com/tools/explorer/"
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={(e) => openExternal(e, "https://developers.facebook.com/tools/explorer/")}
                     className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
                   >
                     {t.getToken} <ExternalLink className="h-3 w-3" />
