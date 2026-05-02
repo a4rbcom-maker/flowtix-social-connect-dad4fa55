@@ -1,7 +1,9 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { Toaster } from "sonner";
 import { I18nProvider } from "@/lib/i18n";
 import { ThemeProvider } from "@/lib/theme";
 import { AuthProvider } from "@/lib/auth";
+import { NotificationsProvider } from "@/hooks/useSendNotifications";
 
 import appCss from "../styles.css?url";
 
@@ -76,7 +78,17 @@ function RootComponent() {
     <ThemeProvider>
       <I18nProvider>
         <AuthProvider>
-          <Outlet />
+          <NotificationsProvider>
+            <Outlet />
+            <Toaster
+              position="top-center"
+              richColors
+              closeButton
+              toastOptions={{
+                style: { fontFamily: "'Cairo', 'Inter', sans-serif" },
+              }}
+            />
+          </NotificationsProvider>
         </AuthProvider>
       </I18nProvider>
     </ThemeProvider>
