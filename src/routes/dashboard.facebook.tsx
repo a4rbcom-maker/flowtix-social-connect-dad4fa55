@@ -87,10 +87,19 @@ function FacebookPage() {
   // copies the URL to clipboard as a final fallback.
   const openExternal = (e: MouseEvent, url: string) => {
     e.preventDefault();
+    e.stopPropagation();
+    let opened: Window | null = null;
     try {
-      const w = window.open(url, "_blank", "noopener,noreferrer");
-      if (w) return;
+      opened = window.open(url, "_blank", "noopener,noreferrer");
     } catch { /* blocked */ }
+    if (opened) {
+      toast.success(
+        lang === "ar"
+          ? "تم فتح الرابط في تبويب جديد. إن لم يفتح عندك فعّل النوافذ المنبثقة لهذا الموقع."
+          : "Opened in a new tab. If nothing opened, allow popups for this site.",
+      );
+      return;
+    }
     try {
       if (window.top && window.top !== window.self) {
         window.top.location.href = url;
@@ -101,8 +110,9 @@ function FacebookPage() {
       navigator.clipboard.writeText(url);
       toast.info(
         lang === "ar"
-          ? "تعذّر فتح الرابط داخل المعاينة — تم نسخه، الصقه في تبويب جديد"
-          : "Couldn't open inside preview — link copied, paste it in a new tab",
+          ? "تعذّر فتح الرابط (المتصفح حظر النوافذ المنبثقة) — تم نسخ الرابط، الصقه في تبويب جديد. ملاحظة: قد يطلب فيسبوك تسجيل الدخول أولاً."
+          : "Popup blocked — link copied. Paste it in a new tab. Note: Facebook may require login first.",
+        { duration: 7000 },
       );
     } catch {
       toast.error(lang === "ar" ? "تعذّر فتح الرابط" : "Couldn't open the link");
@@ -476,15 +486,33 @@ function FacebookPage() {
                         <p className="mt-1 text-sm text-muted-foreground">{step.desc}</p>
 
                         {step.link && (
-                          <a
-                            href={step.link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => openExternal(e, step.link!)}
-                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/20"
-                          >
-                            {step.action} <ExternalLink className="h-3.5 w-3.5" />
-                          </a>
+                          <div className="mt-2 space-y-2">
+                            <div className="flex flex-wrap gap-2">
+                              <a
+                                href={step.link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => openExternal(e, step.link!)}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/20"
+                              >
+                                {step.action} <ExternalLink className="h-3.5 w-3.5" />
+                              </a>
+                              <a
+                                href="https://www.facebook.com/login"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => openExternal(e, "https://www.facebook.com/login")}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent"
+                              >
+                                {lang === "ar" ? "تسجيل الدخول إلى فيسبوك أولاً" : "Log in to Facebook first"} <ExternalLink className="h-3.5 w-3.5" />
+                              </a>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {lang === "ar"
+                                ? "ملاحظة: إذا لم تُفتح صفحة Graph Explorer، فالسبب غالباً أنك غير مسجّل الدخول إلى فيسبوك أو أن المتصفح حظر النوافذ المنبثقة."
+                                : "Note: if Graph Explorer doesn't open, you're likely not logged into Facebook, or your browser blocked the popup."}
+                            </p>
+                          </div>
                         )}
 
                         {idx === 2 && (
