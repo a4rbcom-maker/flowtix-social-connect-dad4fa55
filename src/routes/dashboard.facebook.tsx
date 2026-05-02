@@ -272,6 +272,10 @@ function FacebookPage() {
       toast.error(lang === "ar" ? "التوكن قصير جداً" : "Token is too short");
       return;
     }
+    if (!testResult) {
+      toast.error(t.testFirst);
+      return;
+    }
     setConnecting(true);
     try {
       const res = await callServerFn(connectFacebook, { access_token: token.trim() });
