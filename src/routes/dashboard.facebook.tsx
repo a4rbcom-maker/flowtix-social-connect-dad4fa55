@@ -340,6 +340,18 @@ function FacebookPage() {
         reconnectAll: "إعادة الربط بصلاحيات كاملة",
         reconnectToastTitle: "تم نسخ الصلاحيات الناقصة",
         reconnectToastDesc: "افتح Graph API Explorer، اضغط \"Add a Permission\" والصق الصلاحيات، ثم اضغط Generate Access Token.",
+        syncHistoryTitle: "سجل آخر مزامنة",
+        syncHistorySubtitle: "آخر عمليات تحميل الجروبات والصفحات مع وقت ونتيجة كل عملية",
+        showHistory: "عرض السجل",
+        hideHistory: "إخفاء السجل",
+        clearHistory: "مسح السجل",
+        noHistory: "لا توجد عمليات مزامنة بعد. اضغط \"تحميل الجروبات\" أو \"تحميل الصفحات\" للبدء.",
+        lastGroupsSync: "آخر تحميل للجروبات",
+        lastPagesSync: "آخر تحميل للصفحات",
+        neverSynced: "لم يتم التحميل بعد",
+        syncSuccess: "نجاح",
+        syncFailed: "فشل",
+        syncCount: (n: number) => `تم تحميل ${n}`,
       }
     : {
         title: "Facebook Connection",
@@ -422,6 +434,18 @@ function FacebookPage() {
         reconnectAll: "Reconnect with full permissions",
         reconnectToastTitle: "Missing scopes copied",
         reconnectToastDesc: "Open Graph API Explorer, click \"Add a Permission\", paste the scopes, then click Generate Access Token.",
+        syncHistoryTitle: "Last sync history",
+        syncHistorySubtitle: "Most recent Load Groups / Load Pages attempts with timestamp and outcome",
+        showHistory: "Show history",
+        hideHistory: "Hide history",
+        clearHistory: "Clear history",
+        noHistory: "No sync runs yet. Click \"Load Groups\" or \"Load Pages\" to start.",
+        lastGroupsSync: "Last groups load",
+        lastPagesSync: "Last pages load",
+        neverSynced: "Never loaded yet",
+        syncSuccess: "Success",
+        syncFailed: "Failed",
+        syncCount: (n: number) => `${n} loaded`,
       };
 
   useEffect(() => {
