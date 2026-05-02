@@ -560,16 +560,28 @@ function FacebookPage() {
                 </button>
                 <button
                   onClick={handleConnect}
-                  disabled={connecting || testing || !token.trim()}
+                  disabled={connecting || testing || !token.trim() || !testResult}
+                  title={!testResult ? t.testFirst : undefined}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/30 transition-all hover:shadow-xl hover:shadow-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {connecting ? (
                     <><Loader2 className="h-4 w-4 animate-spin" /> {t.connecting}</>
+                  ) : testResult ? (
+                    <><ShieldCheck className="h-4 w-4" /> {t.confirmConnect}</>
                   ) : (
                     <><Facebook className="h-4 w-4" /> {t.connect}</>
                   )}
                 </button>
               </div>
+              {!testResult && token.trim().length >= 20 && (
+                <p className="text-xs text-muted-foreground">{t.testFirst}</p>
+              )}
+              {testResult && (
+                <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                  {t.savingSecure}
+                </p>
+              )}
             </div>
           )}
         </div>
