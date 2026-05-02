@@ -790,8 +790,82 @@ function FacebookPage() {
                       : "Note: When you open the Graph API Explorer, Facebook may ask you to log in first, then approve the requested app permissions (User Token + Permissions). If permissions are not fully granted, the explorer won't work and we can't fetch your groups or pages."}
                   </p>
                 </div>
+                {/* Debug toggle + log panel */}
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setDebugMode((v) => !v)}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                      debugMode
+                        ? "border-primary/50 bg-primary/10 text-primary"
+                        : "border-border bg-card text-muted-foreground hover:bg-accent"
+                    }`}
+                  >
+                    <FlaskConical className="h-3.5 w-3.5" />
+                    {lang === "ar"
+                      ? `وضع الاختبار (Debug) ${debugMode ? "مفعّل" : "متوقف"}`
+                      : `Debug mode ${debugMode ? "ON" : "OFF"}`}
+                  </button>
+                  {debugMode && (
+                    <div className="mt-2 rounded-xl border border-border bg-muted/30 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold text-foreground">
+                          {lang === "ar" ? "سجل الأحداث" : "Event log"}{" "}
+                          <span className="font-mono text-muted-foreground">({debugLogs.length})</span>
+                        </p>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={copyDebug}
+                            disabled={debugLogs.length === 0}
+                            className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-[11px] hover:bg-accent disabled:opacity-50"
+                          >
+                            <Copy className="h-3 w-3" />
+                            {lang === "ar" ? "نسخ" : "Copy"}
+                          </button>
+                          <button
+                            onClick={clearDebug}
+                            disabled={debugLogs.length === 0}
+                            className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-[11px] hover:bg-accent disabled:opacity-50"
+                          >
+                            {lang === "ar" ? "مسح" : "Clear"}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="max-h-48 overflow-y-auto rounded-lg bg-background p-2 font-mono text-[11px] leading-relaxed">
+                        {debugLogs.length === 0 ? (
+                          <p className="py-3 text-center text-muted-foreground">
+                            {lang === "ar"
+                              ? "اضغط على «الحصول على توكن» أو زر النسخ لتسجيل الأحداث."
+                              : "Click 'Get Token' or any copy button to record events."}
+                          </p>
+                        ) : (
+                          debugLogs.map((l) => (
+                            <div
+                              key={l.id}
+                              className={`flex gap-2 border-b border-border/50 py-1 last:border-0 ${
+                                l.level === "error"
+                                  ? "text-destructive"
+                                  : l.level === "warn"
+                                    ? "text-amber-600"
+                                    : l.level === "success"
+                                      ? "text-emerald-600"
+                                      : "text-foreground/80"
+                              }`}
+                            >
+                              <span className="shrink-0 text-muted-foreground">{l.ts}</span>
+                              <span className="shrink-0 uppercase">{l.level}</span>
+                              <span className="break-all">
+                                <b>{l.step}</b>
+                                {l.detail && <span className="text-muted-foreground"> — {l.detail}</span>}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-              {testError && !testResult && (
                 <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
                   <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
                   <div className="flex-1">
