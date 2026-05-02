@@ -100,6 +100,37 @@ function FacebookPage() {
         warning: "⚠️ ملاحظة: /me/groups يُرجع فقط الجروبات التي يكون التطبيق مثبّتاً فيها (سياسة Meta).",
         lastSync: "آخر مزامنة",
         notSynced: "لم تتم المزامنة بعد",
+        guideTitle: "دليل الحصول على User Access Token",
+        guideSubtitle: "اتبع الخطوات التالية للحصول على توكن صالح من Graph API Explorer",
+        steps: [
+          {
+            title: "افتح Graph API Explorer",
+            desc: "انتقل إلى أداة Meta الرسمية لاختبار الـ API",
+            action: "فتح Graph Explorer",
+            link: "https://developers.facebook.com/tools/explorer/",
+          },
+          {
+            title: "اختر تطبيقك من القائمة العلوية",
+            desc: "في الزاوية العلوية اليمنى اختر Meta App الخاص بك (أو أنشئ تطبيقاً جديداً من developers.facebook.com)",
+          },
+          {
+            title: "اختر User Token وأضف الصلاحيات (Permissions)",
+            desc: "اضغط على \"Add a Permission\" وأضف الصلاحيات التالية:",
+          },
+          {
+            title: "اضغط Generate Access Token",
+            desc: "ستظهر نافذة فيسبوك لتأكيد الصلاحيات. وافق عليها كلها.",
+          },
+          {
+            title: "انسخ التوكن والصقه هنا",
+            desc: "انسخ التوكن من حقل Access Token في Graph Explorer والصقه في الحقل أدناه ثم اضغط \"ربط الحساب\".",
+          },
+        ],
+        scopesLabel: "الصلاحيات المطلوبة",
+        copyScopes: "نسخ الصلاحيات",
+        securityNote: "نخزّن التوكن مشفّراً في قاعدة بياناتك فقط — لن يصل إليه أي طرف خارجي.",
+        showGuide: "عرض الدليل",
+        hideGuide: "إخفاء الدليل",
       }
     : {
         title: "Facebook Connection",
