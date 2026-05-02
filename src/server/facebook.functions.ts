@@ -5,15 +5,124 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const GRAPH_API = "https://graph.facebook.com/v21.0";
 
+/**
+ * Map a Facebook Graph API error to a stable, user-friendly shape.
+ * Codes ref: https://developers.facebook.com/docs/graph-api/guides/error-handling/
+ */
+export class FacebookApiError extends Error {
+  code: number | null;
+  subcode: number | null;
+  type: "auth_expired" | "permission_denied" | "rate_limited" | "not_found" | "invalid_token" | "network" | "unknown";
+  missingPermission: string | null;
+  httpStatus: number;
+  raw: unknown;
+  constructor(opts: {
+    message: string;
+    code: number | null;
+    subcode: number | null;
+    type: FacebookApiError["type"];
+    missingPermission: string | null;
+    httpStatus: number;
+    raw?: unknown;
+  }) {
+    super(opts.message);
+    this.name = "FacebookApiError";
+    this.code = opts.code;
+    this.subcode = opts.subcode;
+    this.type = opts.type;
+    this.missingPermission = opts.missingPermission;
+    this.httpStatus = opts.httpStatus;
+    this.raw = opts.raw;
+  }
+  toJSON() {
+    return {
+      message: this.message,
+      code: this.code,
+      subcode: this.subcode,
+      type: this.type,
+      missingPermission: this.missingPermission,
+      httpStatus: this.httpStatus,
+    };
+  }
+}
+
+function classifyFbError(status: number, errBody: { code?: number; error_subcode?: number; message?: string; type?: string } | undefined): FacebookApiError {
+  const code = errBody?.code ?? null;
+  const subcode = errBody?.error_subcode ?? null;
+  const rawMsg = errBody?.message || `Facebook API error (${status})`;
+
+  // Permission missing — code 10 or 200..299
+  const permMatch = /requires.*permission[s]?\s*[:\-]?\s*([a-z_,\s]+)/i.exec(rawMsg);
+  const missingPermission = permMatch ? permMatch[1].split(/[,\s]+/).filter(Boolean)[0] ?? null : null;
+
+  let type: FacebookApiError["type"] = "unknown";
+  if (code === 190) type = subcode === 463 || /expired/i.test(rawMsg) ? "auth_expired" : "invalid_token";
+  else if (code === 10 || (code !== null && code >= 200 && code <= 299)) type = "permission_denied";
+  else if (code === 4 || code === 17 || code === 32 || code === 613) type = "rate_limited";
+  else if (code === 803 || status === 404) type = "not_found";
+
+  return new FacebookApiError({
+    message: rawMsg,
+    code,
+    subcode,
+    type,
+    missingPermission,
+    httpStatus: status,
+    raw: errBody,
+  });
+}
+
 async function fbGet(path: string, token: string) {
   const url = `${GRAPH_API}${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(token)}`;
-  const res = await fetch(url);
-  const data = await res.json();
+  let res: Response;
+  try {
+    res = await fetch(url);
+  } catch (e) {
+    throw new FacebookApiError({
+      message: e instanceof Error ? e.message : "Network error contacting Facebook",
+      code: null, subcode: null, type: "network", missingPermission: null, httpStatus: 0,
+    });
+  }
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const msg = data?.error?.message || `Facebook API error (${res.status})`;
-    throw new Error(msg);
+    throw classifyFbError(res.status, data?.error);
   }
   return data;
+}
+
+/**
+ * Check that the stored token has all required permissions for an operation.
+ * Throws a FacebookApiError of type permission_denied listing what's missing.
+ */
+async function ensurePermissions(token: string, required: string[]): Promise<void> {
+  const perms = await fbGet("/me/permissions", token);
+  const granted = new Set(
+    (perms.data ?? [])
+      .filter((p: { status: string }) => p.status === "granted")
+      .map((p: { permission: string }) => p.permission),
+  );
+  const missing = required.filter((r) => !granted.has(r));
+  if (missing.length > 0) {
+    throw new FacebookApiError({
+      message: `الصلاحيات الناقصة: ${missing.join(", ")} — أعد ربط الحساب وامنح هذه الصلاحيات.`,
+      code: 10,
+      subcode: null,
+      type: "permission_denied",
+      missingPermission: missing[0],
+      httpStatus: 403,
+      raw: { missing, granted: Array.from(granted) },
+    });
+  }
+}
+
+/** Wrap any thrown error from a handler into a JSON-friendly response */
+function serializeError(err: unknown) {
+  if (err instanceof FacebookApiError) return err.toJSON();
+  return {
+    message: err instanceof Error ? err.message : String(err),
+    code: null, subcode: null, type: "unknown" as const,
+    missingPermission: null, httpStatus: 500,
+  };
 }
 
 /**
