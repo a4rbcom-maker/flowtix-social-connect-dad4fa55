@@ -581,14 +581,22 @@ function FacebookPage() {
       if (res.error) {
         setGroups([]);
         setGroupsError(res.error);
+        recordSync({
+          kind: "groups",
+          status: "error",
+          errorType: res.error.type,
+          errorMessage: friendlyFbError(res.error),
+        });
         toast.error(friendlyFbError(res.error));
       } else {
         setGroups(res.groups);
+        recordSync({ kind: "groups", status: "success", count: res.groups.length });
         toast.success(lang === "ar" ? `تم تحميل ${res.groups.length} جروب` : `Loaded ${res.groups.length} groups`);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to load groups";
       setGroupsError({ type: "unknown", message: msg, missingPermission: null });
+      recordSync({ kind: "groups", status: "error", errorType: "unknown", errorMessage: msg });
       toast.error(msg);
     } finally {
       setLoadingGroups(false);
@@ -603,14 +611,22 @@ function FacebookPage() {
       if (res.error) {
         setPages([]);
         setPagesError(res.error);
+        recordSync({
+          kind: "pages",
+          status: "error",
+          errorType: res.error.type,
+          errorMessage: friendlyFbError(res.error),
+        });
         toast.error(friendlyFbError(res.error));
       } else {
         setPages(res.pages);
+        recordSync({ kind: "pages", status: "success", count: res.pages.length });
         toast.success(lang === "ar" ? `تم تحميل ${res.pages.length} صفحة` : `Loaded ${res.pages.length} pages`);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to load pages";
       setPagesError({ type: "unknown", message: msg, missingPermission: null });
+      recordSync({ kind: "pages", status: "error", errorType: "unknown", errorMessage: msg });
       toast.error(msg);
     } finally {
       setLoadingPages(false);
