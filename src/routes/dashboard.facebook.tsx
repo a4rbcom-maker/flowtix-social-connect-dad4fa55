@@ -241,6 +241,26 @@ function FacebookPage() {
     } as never);
   };
 
+  const handleTest = async () => {
+    if (!token.trim() || token.trim().length < 20) {
+      toast.error(lang === "ar" ? "التوكن قصير جداً" : "Token is too short");
+      return;
+    }
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await callServerFn(testFacebookToken, { access_token: token.trim() });
+      setTestResult({ profile: res.profile, granted: res.granted, declined: res.declined });
+      toast.success(`${t.testSuccess}: ${res.profile.name}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t.testFailed;
+      setTestResult(null);
+      toast.error(`${t.testFailed} — ${msg}`);
+    } finally {
+      setTesting(false);
+    }
+  };
+
   const handleConnect = async () => {
     if (!token.trim() || token.trim().length < 20) {
       toast.error(lang === "ar" ? "التوكن قصير جداً" : "Token is too short");
