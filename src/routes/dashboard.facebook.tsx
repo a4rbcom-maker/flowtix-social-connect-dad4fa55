@@ -134,98 +134,16 @@ function FacebookPage() {
   // Open external links robustly inside the Lovable preview iframe.
   // Strategy: copy URL to clipboard FIRST (so the user always has it),
   // then try multiple opening techniques in order of reliability.
-  const openExternal = async (e: MouseEvent, url: string) => {
+  // Thin wrapper around the shared openExternalUrl helper. All FB/WhatsApp
+  // links in this page funnel through it so they ALWAYS copy first, then try
+  // every safe opening strategy (anchor → window.open → top.location).
+  const openExternal = (e: MouseEvent, url: string) => {
     e.preventDefault();
     e.stopPropagation();
-    debugLog("info", "openExternal:start", `url=${url}`);
-
-    // Environment snapshot — useful when diagnosing iframe sandbox issues.
-    if (debugMode) {
-      try {
-        const inIframe = window.self !== window.top;
-        const sandbox = (window.frameElement as HTMLIFrameElement | null)?.getAttribute?.("sandbox") ?? null;
-        debugLog("info", "openExternal:env", `inIframe=${inIframe} sandbox=${sandbox ?? "n/a"} clipboardApi=${!!navigator.clipboard}`);
-      } catch (err) {
-        debugLog("warn", "openExternal:env", err instanceof Error ? err.message : String(err));
-      }
-    }
-
-    // 1) Always copy first — guarantees the user has the link no matter what.
-    let copied = false;
-    try {
-      await navigator.clipboard.writeText(url);
-      copied = true;
-      debugLog("success", "openExternal:clipboard.writeText", "copied to clipboard");
-    } catch (err) {
-      debugLog("error", "openExternal:clipboard.writeText", err instanceof Error ? err.message : String(err));
-    }
-
-    // 2) Try a synthetic anchor with target="_blank" — works inside sandboxed
-    //    iframes when allow-popups is set, and is more reliable than window.open.
-    try {
-      const a = document.createElement("a");
-      a.href = url;
-      a.target = "_blank";
-      a.rel = "noopener,noreferrer";
-      a.style.display = "none";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      debugLog("success", "openExternal:anchor.click", "anchor dispatched (cannot confirm tab actually opened)");
-      toast.success(
-        lang === "ar"
-          ? `تم فتح الرابط في تبويب جديد${copied ? " (ونسخه احتياطياً)" : ""}. إذا لم يظهر، الصقه يدوياً.`
-          : `Opened in a new tab${copied ? " (and copied as backup)" : ""}. If it didn't appear, paste it manually.`,
-        { duration: 5000 },
-      );
-      return;
-    } catch (err) {
-      debugLog("warn", "openExternal:anchor.click", err instanceof Error ? err.message : String(err));
-    }
-
-    // 3) Try window.open as secondary fallback.
-    try {
-      const w = window.open(url, "_blank", "noopener,noreferrer");
-      if (w) {
-        debugLog("success", "openExternal:window.open", "returned window object");
-        toast.success(lang === "ar" ? "تم فتح الرابط" : "Opened");
-        return;
-      }
-      debugLog("warn", "openExternal:window.open", "returned null (popup blocker / sandbox)");
-    } catch (err) {
-      debugLog("error", "openExternal:window.open", err instanceof Error ? err.message : String(err));
-    }
-
-    // 4) Try top-frame navigation (often blocked by cross-origin, but try).
-    try {
-      if (window.top && window.top !== window.self) {
-        window.top.location.href = url;
-        debugLog("success", "openExternal:top.location", "navigated top frame");
-        return;
-      }
-      debugLog("info", "openExternal:top.location", "skipped (not in iframe)");
-    } catch (err) {
-      debugLog("error", "openExternal:top.location", err instanceof Error ? err.message : String(err));
-    }
-
-    // 5) Last resort — clipboard message only.
-    if (copied) {
-      debugLog("warn", "openExternal:end", "all open methods failed; URL is on clipboard");
-      toast.info(
-        lang === "ar"
-          ? "تعذّر فتح الرابط داخل المعاينة، لكن تم نسخه إلى الحافظة. الصقه في تبويب جديد."
-          : "Couldn't open inside preview, but the link was copied. Paste it in a new tab.",
-        { duration: 7000 },
-      );
-    } else {
-      debugLog("error", "openExternal:end", "all open methods failed AND clipboard failed");
-      toast.error(
-        lang === "ar"
-          ? `تعذّر فتح الرابط ونسخه. افتحه يدوياً: ${url}`
-          : `Couldn't open or copy. Open manually: ${url}`,
-        { duration: 10000 },
-      );
-    }
+    void openExternalUrl(url, {
+      lang: lang === "ar" ? "ar" : "en",
+      onDebug: debugMode ? debugLog : undefined,
+    });
   };
 
   const t = lang === "ar"
