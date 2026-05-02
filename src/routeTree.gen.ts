@@ -17,6 +17,7 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashboardWhatsappRouteImport } from './routes/dashboard.whatsapp'
 import { Route as DashboardFacebookRouteImport } from './routes/dashboard.facebook'
+import { Route as DashboardActivityRouteImport } from './routes/dashboard.activity'
 import { Route as DashboardFacebookStatusRouteImport } from './routes/dashboard.facebook.status'
 
 const SignupRoute = SignupRouteImport.update({
@@ -59,6 +60,11 @@ const DashboardFacebookRoute = DashboardFacebookRouteImport.update({
   path: '/facebook',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardActivityRoute = DashboardActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardFacebookStatusRoute = DashboardFacebookStatusRouteImport.update({
   id: '/status',
   path: '/status',
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
@@ -108,6 +117,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/signup'
+    | '/dashboard/activity'
     | '/dashboard/facebook'
     | '/dashboard/whatsapp'
     | '/dashboard/facebook/status'
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/signup'
+    | '/dashboard/activity'
     | '/dashboard/facebook'
     | '/dashboard/whatsapp'
     | '/dashboard/facebook/status'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/signup'
+    | '/dashboard/activity'
     | '/dashboard/facebook'
     | '/dashboard/whatsapp'
     | '/dashboard/facebook/status'
@@ -202,6 +214,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardFacebookRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/activity': {
+      id: '/dashboard/activity'
+      path: '/activity'
+      fullPath: '/dashboard/activity'
+      preLoaderRoute: typeof DashboardActivityRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/facebook/status': {
       id: '/dashboard/facebook/status'
       path: '/status'
@@ -224,11 +243,13 @@ const DashboardFacebookRouteWithChildren =
   DashboardFacebookRoute._addFileChildren(DashboardFacebookRouteChildren)
 
 interface DashboardRouteChildren {
+  DashboardActivityRoute: typeof DashboardActivityRoute
   DashboardFacebookRoute: typeof DashboardFacebookRouteWithChildren
   DashboardWhatsappRoute: typeof DashboardWhatsappRoute
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
+  DashboardActivityRoute: DashboardActivityRoute,
   DashboardFacebookRoute: DashboardFacebookRouteWithChildren,
   DashboardWhatsappRoute: DashboardWhatsappRoute,
 }
