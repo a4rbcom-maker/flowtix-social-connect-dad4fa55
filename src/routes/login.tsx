@@ -71,6 +71,7 @@ function LoginPage() {
         checkEmail: "Check your email to confirm your account",
         back: "Back to Home",
         submit: "Continue",
+        forgot: "Forgot password?",
       };
 
   const handleSubmit = async (e: React.FormEvent) => {
