@@ -78,7 +78,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
       <aside
         className={`fixed top-0 z-40 flex h-full flex-col border-border/50 bg-card transition-transform duration-200 md:transition-all ${
           dir === "rtl" ? "right-0 border-l" : "left-0 border-r"
-        } w-64 md:${sidebarOpen ? "w-64" : "w-16"} ${
+        } ${sidebarOpen ? "w-64" : "w-64 md:w-16"} ${
           sidebarOpen
             ? "translate-x-0"
             : dir === "rtl"
