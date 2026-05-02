@@ -701,6 +701,43 @@ function FacebookPage() {
                     {t.getToken} <ExternalLink className="h-3 w-3" />
                   </a>
                 </div>
+                {/* Always-visible fallback: show the URL as a selectable text
+                    field so the user can copy it manually if both clipboard
+                    and popup-based opening fail. */}
+                <div className="mt-2">
+                  <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
+                    {lang === "ar" ? "أو انسخ الرابط يدوياً" : "Or copy the link manually"}
+                  </label>
+                  <div className="flex items-stretch gap-1.5">
+                    <input
+                      type="text"
+                      readOnly
+                      value="https://developers.facebook.com/tools/explorer/"
+                      onFocus={(e) => e.currentTarget.select()}
+                      onClick={(e) => e.currentTarget.select()}
+                      className="flex-1 rounded-lg border border-border bg-muted/40 px-3 py-1.5 font-mono text-xs text-foreground focus:border-primary focus:outline-none"
+                      dir="ltr"
+                      aria-label={lang === "ar" ? "رابط Graph API Explorer" : "Graph API Explorer URL"}
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const url = "https://developers.facebook.com/tools/explorer/";
+                        try {
+                          await navigator.clipboard.writeText(url);
+                          toast.success(lang === "ar" ? "تم نسخ الرابط" : "Link copied");
+                        } catch {
+                          toast.error(lang === "ar" ? "فشل النسخ — حدد النص يدوياً" : "Copy failed — select the text manually");
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium hover:bg-accent"
+                      aria-label={lang === "ar" ? "نسخ الرابط" : "Copy link"}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      {lang === "ar" ? "نسخ" : "Copy"}
+                    </button>
+                  </div>
+                </div>
                 <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-foreground/80">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                   <p>
