@@ -184,6 +184,79 @@ function FacebookPage() {
     });
   };
 
+  // ── Sync history ──────────────────────────────────────────────────────
+  // Persisted per user in localStorage. Records every Load Groups / Load
+  // Pages attempt with the outcome (success + count, or failure + reason),
+  // so the user can see exactly what was last fetched and when.
+  type SyncEvent = {
+    id: string;
+    at: string; // ISO timestamp
+    kind: "groups" | "pages";
+    status: "success" | "error";
+    count?: number;
+    errorType?: string;
+    errorMessage?: string;
+  };
+  const SYNC_LOG_KEY = user ? `flowtix:fb:sync-log:${user.id}` : "flowtix:fb:sync-log:anon";
+  const [syncLog, setSyncLog] = useState<SyncEvent[]>([]);
+  const [syncLogOpen, setSyncLogOpen] = useState(false);
+
+  // Hydrate from localStorage on mount / user change
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(SYNC_LOG_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as SyncEvent[];
+        if (Array.isArray(parsed)) setSyncLog(parsed);
+      }
+    } catch {
+      /* corrupt entry — ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [SYNC_LOG_KEY]);
+
+  const recordSync = (ev: Omit<SyncEvent, "id" | "at">) => {
+    const entry: SyncEvent = {
+      ...ev,
+      id: crypto.randomUUID(),
+      at: new Date().toISOString(),
+    };
+    setSyncLog((prev) => {
+      const next = [entry, ...prev].slice(0, 20); // keep last 20
+      try {
+        window.localStorage.setItem(SYNC_LOG_KEY, JSON.stringify(next));
+      } catch {
+        /* quota — ignore */
+      }
+      return next;
+    });
+  };
+
+  const clearSyncLog = () => {
+    setSyncLog([]);
+    try {
+      window.localStorage.removeItem(SYNC_LOG_KEY);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const formatRelative = (iso: string) => {
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const sec = Math.round(diffMs / 1000);
+    if (sec < 60) return lang === "ar" ? `قبل ${sec} ث` : `${sec}s ago`;
+    const min = Math.round(sec / 60);
+    if (min < 60) return lang === "ar" ? `قبل ${min} د` : `${min}m ago`;
+    const hr = Math.round(min / 60);
+    if (hr < 24) return lang === "ar" ? `قبل ${hr} س` : `${hr}h ago`;
+    const day = Math.round(hr / 24);
+    return lang === "ar" ? `قبل ${day} يوم` : `${day}d ago`;
+  };
+
+  const lastGroupsSync = syncLog.find((e) => e.kind === "groups");
+  const lastPagesSync = syncLog.find((e) => e.kind === "pages");
+
 
   const t = lang === "ar"
     ? {
