@@ -1117,6 +1117,123 @@ function FacebookPage() {
               </button>
             </div>
 
+            {/* Sync history — last attempts per kind, expandable to full log */}
+            <div className="mb-4 rounded-xl border border-border/60 bg-muted/30 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <History className="h-4 w-4 text-primary" />
+                    <h4 className="text-sm font-semibold text-foreground">{t.syncHistoryTitle}</h4>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{t.syncHistorySubtitle}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSyncLogOpen((v) => !v)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground hover:bg-accent"
+                  >
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${syncLogOpen ? "rotate-180" : ""}`} />
+                    {syncLogOpen ? t.hideHistory : t.showHistory}
+                  </button>
+                  {syncLog.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={clearSyncLog}
+                      className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-destructive"
+                      title={t.clearHistory}
+                      aria-label={t.clearHistory}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Compact per-kind summary always visible */}
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {[
+                  { ev: lastGroupsSync, label: t.lastGroupsSync, Icon: Users },
+                  { ev: lastPagesSync, label: t.lastPagesSync, Icon: Facebook },
+                ].map(({ ev, label, Icon }) => (
+                  <div key={label} className="flex items-start gap-2.5 rounded-lg border border-border/50 bg-card px-3 py-2">
+                    <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+                      {ev ? (
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          {ev.status === "success" ? (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-green-50 px-1.5 py-0.5 text-[11px] font-medium text-green-700 ring-1 ring-green-200 dark:bg-green-950/30 dark:text-green-300 dark:ring-green-900">
+                              <CheckCircle2 className="h-3 w-3" /> {t.syncSuccess}
+                              {typeof ev.count === "number" && <> · {t.syncCount(ev.count)}</>}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-1.5 py-0.5 text-[11px] font-medium text-destructive ring-1 ring-destructive/30">
+                              <XCircle className="h-3 w-3" /> {t.syncFailed}
+                            </span>
+                          )}
+                          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                            <Clock className="h-3 w-3" />
+                            <time dateTime={ev.at} title={new Date(ev.at).toLocaleString()}>
+                              {formatRelative(ev.at)}
+                            </time>
+                          </span>
+                        </div>
+                      ) : (
+                        <p className="mt-1 text-[11px] italic text-muted-foreground">{t.neverSynced}</p>
+                      )}
+                      {ev && ev.status === "error" && ev.errorMessage && (
+                        <p className="mt-1 line-clamp-2 text-[11px] text-destructive/80">{ev.errorMessage}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Full chronological log (collapsible) */}
+              {syncLogOpen && (
+                syncLog.length === 0 ? (
+                  <p className="mt-3 rounded-lg border border-dashed border-border/60 bg-card/40 px-3 py-4 text-center text-xs text-muted-foreground">
+                    {t.noHistory}
+                  </p>
+                ) : (
+                  <ul className="mt-3 max-h-64 space-y-1.5 overflow-y-auto rounded-lg border border-border/50 bg-card p-2">
+                    {syncLog.map((ev) => (
+                      <li key={ev.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 text-xs odd:bg-muted/30">
+                        {ev.status === "success" ? (
+                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-600" />
+                        ) : (
+                          <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-medium text-foreground">
+                              {ev.kind === "groups" ? t.loadGroups : t.loadPages}
+                            </span>
+                            <span className="text-muted-foreground">·</span>
+                            <span className={ev.status === "success" ? "text-green-700 dark:text-green-400" : "text-destructive"}>
+                              {ev.status === "success"
+                                ? typeof ev.count === "number"
+                                  ? t.syncCount(ev.count)
+                                  : t.syncSuccess
+                                : t.syncFailed}
+                            </span>
+                            <span className="text-muted-foreground">·</span>
+                            <time dateTime={ev.at} title={new Date(ev.at).toLocaleString()} className="text-muted-foreground">
+                              {formatRelative(ev.at)}
+                            </time>
+                          </div>
+                          {ev.status === "error" && ev.errorMessage && (
+                            <p className="mt-0.5 text-[11px] text-destructive/80">{ev.errorMessage}</p>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              )}
+            </div>
+
             {tab === "groups" && groupsError && (
               <FbErrorBanner
                 err={groupsError}
