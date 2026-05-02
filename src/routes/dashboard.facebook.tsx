@@ -147,6 +147,44 @@ function FacebookPage() {
     });
   };
 
+  // Reconnect flow: copy the (missing) scopes to the clipboard and open
+  // Graph API Explorer so the user can paste them into "Add a Permission"
+  // and re-generate a token. Meta does not accept scopes via URL on Explorer,
+  // so the clipboard + toast guidance is the most reliable handoff.
+  const handleReconnect = async (scopes: string[]) => {
+    const list = (scopes && scopes.length ? scopes : requiredScopes).join(",");
+    debugLog("info", "reconnect:start", `scopes=${list}`);
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(list);
+      copied = true;
+      debugLog("success", "reconnect:clipboard", "ok");
+    } catch (err) {
+      debugLog("error", "reconnect:clipboard", err instanceof Error ? err.message : String(err));
+    }
+    if (copied) {
+      toast.success(
+        lang === "ar" ? "تم نسخ الصلاحيات الناقصة" : "Missing scopes copied",
+        {
+          description:
+            lang === "ar"
+              ? "افتح Graph API Explorer، اضغط \"Add a Permission\" والصق الصلاحيات، ثم اضغط Generate Access Token."
+              : "Open Graph API Explorer, click \"Add a Permission\", paste the scopes, then click Generate Access Token.",
+        },
+      );
+    } else {
+      toast.warning(
+        lang === "ar" ? "تعذّر نسخ الصلاحيات تلقائياً" : "Could not copy scopes automatically",
+        { description: lang === "ar" ? `انسخها يدوياً: ${list}` : `Copy them manually: ${list}` },
+      );
+    }
+    void openExternalUrl("https://developers.facebook.com/tools/explorer/", {
+      lang: lang === "ar" ? "ar" : "en",
+      onDebug: debugMode ? debugLog : undefined,
+    });
+  };
+
+
   const t = lang === "ar"
     ? {
         title: "ربط فيسبوك",
@@ -225,6 +263,10 @@ function FacebookPage() {
         errExpired: "انتهت صلاحية التوكن. أعد توليده من Graph Explorer.",
         errPermission: "صلاحيات ناقصة. تأكد من إضافة كل الصلاحيات المطلوبة.",
         errNetwork: "تعذّر الاتصال بفيسبوك. تحقق من اتصالك بالإنترنت.",
+        reconnect: "إعادة ربط بالصلاحيات الناقصة",
+        reconnectAll: "إعادة الربط بصلاحيات كاملة",
+        reconnectToastTitle: "تم نسخ الصلاحيات الناقصة",
+        reconnectToastDesc: "افتح Graph API Explorer، اضغط \"Add a Permission\" والصق الصلاحيات، ثم اضغط Generate Access Token.",
       }
     : {
         title: "Facebook Connection",
@@ -303,6 +345,10 @@ function FacebookPage() {
         errExpired: "Token has expired. Re-generate it from Graph Explorer.",
         errPermission: "Missing permissions. Make sure all required scopes are granted.",
         errNetwork: "Could not reach Facebook. Check your internet connection.",
+        reconnect: "Reconnect with missing scopes",
+        reconnectAll: "Reconnect with full permissions",
+        reconnectToastTitle: "Missing scopes copied",
+        reconnectToastDesc: "Open Graph API Explorer, click \"Add a Permission\", paste the scopes, then click Generate Access Token.",
       };
 
   useEffect(() => {
@@ -868,6 +914,15 @@ function FacebookPage() {
                             </span>
                           ))}
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => handleReconnect(missing)}
+                          className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                        >
+                          <KeyRound className="h-3.5 w-3.5" />
+                          {t.reconnect}
+                          <ExternalLink className="h-3 w-3 opacity-80" />
+                        </button>
                       </div>
                     );
                   })()}
@@ -950,10 +1005,24 @@ function FacebookPage() {
             </div>
 
             {tab === "groups" && groupsError && (
-              <FbErrorBanner err={groupsError} onRetry={handleLoadGroups} lang={lang} friendly={friendlyFbError} />
+              <FbErrorBanner
+                err={groupsError}
+                onRetry={handleLoadGroups}
+                onReconnect={() => handleReconnect(groupsError.missingPermission ? [groupsError.missingPermission] : requiredScopes)}
+                lang={lang}
+                friendly={friendlyFbError}
+                reconnectLabel={t.reconnectAll}
+              />
             )}
             {tab === "pages" && pagesError && (
-              <FbErrorBanner err={pagesError} onRetry={handleLoadPages} lang={lang} friendly={friendlyFbError} />
+              <FbErrorBanner
+                err={pagesError}
+                onRetry={handleLoadPages}
+                onReconnect={() => handleReconnect(pagesError.missingPermission ? [pagesError.missingPermission] : requiredScopes)}
+                lang={lang}
+                friendly={friendlyFbError}
+                reconnectLabel={t.reconnectAll}
+              />
             )}
 
             {tab === "groups" && !groupsError && (
@@ -1025,13 +1094,17 @@ interface FbErr { type: string; message: string; missingPermission: string | nul
 function FbErrorBanner({
   err,
   onRetry,
+  onReconnect,
   lang,
   friendly,
+  reconnectLabel,
 }: {
   err: FbErr;
   onRetry: () => void;
+  onReconnect?: () => void;
   lang: string;
   friendly: (e: FbErr) => string;
+  reconnectLabel?: string;
 }) {
   const isAuth = err.type === "auth_expired" || err.type === "invalid_token";
   const isPerm = err.type === "permission_denied";
@@ -1070,12 +1143,15 @@ function FbErrorBanner({
               {lang === "ar" ? "إعادة المحاولة" : "Retry"}
             </button>
             {(isAuth || isPerm) && (
-              <a
-                href="#fb-token-form"
+              <button
+                type="button"
+                onClick={() => (onReconnect ? onReconnect() : (window.location.hash = "fb-token-form"))}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
               >
-                {lang === "ar" ? "إعادة الربط بصلاحيات كاملة" : "Reconnect with full permissions"}
-              </a>
+                <KeyRound className="h-3.5 w-3.5" />
+                {reconnectLabel ?? (lang === "ar" ? "إعادة الربط بصلاحيات كاملة" : "Reconnect with full permissions")}
+                <ExternalLink className="h-3 w-3 opacity-80" />
+              </button>
             )}
           </div>
         </div>
