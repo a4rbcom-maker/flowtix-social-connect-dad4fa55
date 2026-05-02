@@ -684,6 +684,87 @@ function FacebookPage() {
           </div>
         )}
 
+        {/* Required Scopes — standalone, prominent block. Gives the user
+            ready-to-paste lists for Graph API Explorer's "Add a Permission"
+            field, plus a one-per-line variant for manual entry. */}
+        {!connection && (
+          <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                  <KeyRound className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">{t.scopesSectionTitle}</h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{t.scopesSectionSubtitle}</p>
+                </div>
+              </div>
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary ring-1 ring-primary/20">
+                {t.scopesCount(requiredScopes.length)}
+              </span>
+            </div>
+
+            {/* Read-only ready-to-paste textarea */}
+            <div className="relative">
+              <textarea
+                readOnly
+                value={requiredScopes.join(",")}
+                onFocus={(e) => e.currentTarget.select()}
+                onClick={(e) => e.currentTarget.select()}
+                rows={2}
+                className="w-full resize-none rounded-xl border border-border bg-muted/40 p-3 pe-3 font-mono text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                aria-label={t.scopesSectionTitle}
+              />
+            </div>
+
+            {/* Action buttons + chip list */}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(requiredScopes.join(","));
+                    toast.success(t.scopesCopied);
+                  } catch {
+                    toast.error(lang === "ar" ? "فشل النسخ" : "Copy failed");
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:opacity-90"
+              >
+                <Copy className="h-3.5 w-3.5" />
+                {t.scopesCopyComma}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(requiredScopes.join("\n"));
+                    toast.success(t.scopesCopied);
+                  } catch {
+                    toast.error(lang === "ar" ? "فشل النسخ" : "Copy failed");
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent"
+              >
+                <Copy className="h-3.5 w-3.5" />
+                {t.scopesCopyLines}
+              </button>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {requiredScopes.map((scope) => (
+                <span
+                  key={scope}
+                  className="inline-flex items-center gap-1 rounded-md bg-card px-2 py-1 font-mono text-xs text-foreground ring-1 ring-border"
+                >
+                  <CheckCircle2 className="h-3 w-3 text-green-500" />
+                  {scope}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Step-by-step guide — shown only when not connected */}
         {!connection && (
           <div className="overflow-hidden rounded-2xl border border-border/50 bg-card shadow-sm">
