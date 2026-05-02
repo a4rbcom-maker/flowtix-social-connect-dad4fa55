@@ -82,40 +82,73 @@ function FacebookPage() {
     toast.success(lang === "ar" ? "تم نسخ الصلاحيات" : "Scopes copied");
   };
 
-  // Open external links — handles Lovable's iframe sandbox where target="_blank"
-  // can be silently blocked. Tries window.open, then top-frame navigation, then
-  // copies the URL to clipboard as a final fallback.
-  const openExternal = (e: MouseEvent, url: string) => {
+  // Open external links robustly inside the Lovable preview iframe.
+  // Strategy: copy URL to clipboard FIRST (so the user always has it),
+  // then try multiple opening techniques in order of reliability.
+  const openExternal = async (e: MouseEvent, url: string) => {
     e.preventDefault();
     e.stopPropagation();
-    let opened: Window | null = null;
+
+    // 1) Always copy first — guarantees the user has the link no matter what.
+    let copied = false;
     try {
-      opened = window.open(url, "_blank", "noopener,noreferrer");
-    } catch { /* blocked */ }
-    if (opened) {
+      await navigator.clipboard.writeText(url);
+      copied = true;
+    } catch { /* clipboard blocked */ }
+
+    // 2) Try a synthetic anchor with target="_blank" — works inside sandboxed
+    //    iframes when allow-popups is set, and is more reliable than window.open
+    //    because it's treated as a direct user gesture.
+    try {
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener,noreferrer";
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
       toast.success(
         lang === "ar"
-          ? "تم فتح الرابط في تبويب جديد. إن لم يفتح عندك فعّل النوافذ المنبثقة لهذا الموقع."
-          : "Opened in a new tab. If nothing opened, allow popups for this site.",
+          ? `تم فتح الرابط في تبويب جديد${copied ? " (ونسخه احتياطياً)" : ""}. إذا لم يظهر، الصقه يدوياً.`
+          : `Opened in a new tab${copied ? " (and copied as backup)" : ""}. If it didn't appear, paste it manually.`,
+        { duration: 5000 },
       );
       return;
-    }
+    } catch { /* fallthrough */ }
+
+    // 3) Try window.open as secondary fallback.
+    try {
+      const w = window.open(url, "_blank", "noopener,noreferrer");
+      if (w) {
+        toast.success(lang === "ar" ? "تم فتح الرابط" : "Opened");
+        return;
+      }
+    } catch { /* blocked */ }
+
+    // 4) Try top-frame navigation (often blocked by cross-origin, but try).
     try {
       if (window.top && window.top !== window.self) {
         window.top.location.href = url;
         return;
       }
     } catch { /* cross-origin */ }
-    try {
-      navigator.clipboard.writeText(url);
+
+    // 5) Last resort — clipboard message only.
+    if (copied) {
       toast.info(
         lang === "ar"
-          ? "تعذّر فتح الرابط (المتصفح حظر النوافذ المنبثقة) — تم نسخ الرابط، الصقه في تبويب جديد. ملاحظة: قد يطلب فيسبوك تسجيل الدخول أولاً."
-          : "Popup blocked — link copied. Paste it in a new tab. Note: Facebook may require login first.",
+          ? "تعذّر فتح الرابط داخل المعاينة، لكن تم نسخه إلى الحافظة. الصقه في تبويب جديد."
+          : "Couldn't open inside preview, but the link was copied. Paste it in a new tab.",
         { duration: 7000 },
       );
-    } catch {
-      toast.error(lang === "ar" ? "تعذّر فتح الرابط" : "Couldn't open the link");
+    } else {
+      toast.error(
+        lang === "ar"
+          ? `تعذّر فتح الرابط ونسخه. افتحه يدوياً: ${url}`
+          : `Couldn't open or copy. Open manually: ${url}`,
+        { duration: 10000 },
+      );
     }
   };
 
