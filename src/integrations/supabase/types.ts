@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           access_token: string
           created_at: string
+          fb_user_email: string | null
           fb_user_id: string | null
           fb_user_name: string | null
           id: string
@@ -28,6 +29,7 @@ export type Database = {
         Insert: {
           access_token: string
           created_at?: string
+          fb_user_email?: string | null
           fb_user_id?: string | null
           fb_user_name?: string | null
           id?: string
@@ -38,6 +40,7 @@ export type Database = {
         Update: {
           access_token?: string
           created_at?: string
+          fb_user_email?: string | null
           fb_user_id?: string | null
           fb_user_name?: string | null
           id?: string
