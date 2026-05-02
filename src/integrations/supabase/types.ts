@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           access_token: string
           created_at: string
+          fb_user_email: string | null
           fb_user_id: string | null
           fb_user_name: string | null
           id: string
@@ -28,6 +29,7 @@ export type Database = {
         Insert: {
           access_token: string
           created_at?: string
+          fb_user_email?: string | null
           fb_user_id?: string | null
           fb_user_name?: string | null
           id?: string
@@ -38,6 +40,7 @@ export type Database = {
         Update: {
           access_token?: string
           created_at?: string
+          fb_user_email?: string | null
           fb_user_id?: string | null
           fb_user_name?: string | null
           id?: string
@@ -88,6 +91,63 @@ export type Database = {
         Update: {
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      whatsapp_settings: {
+        Row: {
+          ai_business_hours_only: boolean | null
+          ai_enabled: boolean
+          ai_model: string | null
+          ai_system_prompt: string | null
+          ai_welcome_message: string | null
+          connection_type: string
+          created_at: string
+          id: string
+          is_connected: boolean
+          last_connected_at: string | null
+          meta_access_token: string | null
+          meta_business_account_id: string | null
+          meta_phone_number_id: string | null
+          meta_verify_token: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_business_hours_only?: boolean | null
+          ai_enabled?: boolean
+          ai_model?: string | null
+          ai_system_prompt?: string | null
+          ai_welcome_message?: string | null
+          connection_type?: string
+          created_at?: string
+          id?: string
+          is_connected?: boolean
+          last_connected_at?: string | null
+          meta_access_token?: string | null
+          meta_business_account_id?: string | null
+          meta_phone_number_id?: string | null
+          meta_verify_token?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ai_business_hours_only?: boolean | null
+          ai_enabled?: boolean
+          ai_model?: string | null
+          ai_system_prompt?: string | null
+          ai_welcome_message?: string | null
+          connection_type?: string
+          created_at?: string
+          id?: string
+          is_connected?: boolean
+          last_connected_at?: string | null
+          meta_access_token?: string | null
+          meta_business_account_id?: string | null
+          meta_phone_number_id?: string | null
+          meta_verify_token?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
