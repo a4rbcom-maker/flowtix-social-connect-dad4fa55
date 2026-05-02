@@ -142,11 +142,13 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
         </div>
       </aside>
 
-      {/* Main content — sidebar margin only applies on md+ */}
+      {/* Main content — sidebar margin only applies on md+ (mobile uses overlay) */}
       <main
-        className={`flex-1 transition-all md:${
-          sidebarOpen ? (dir === "rtl" ? "mr-64" : "ml-64") : dir === "rtl" ? "mr-16" : "ml-16"
-        } ${sidebarOpen ? (dir === "rtl" ? "md:mr-64" : "md:ml-64") : dir === "rtl" ? "md:mr-16" : "md:ml-16"}`}
+        className={`flex-1 transition-all ${
+          sidebarOpen
+            ? dir === "rtl" ? "md:mr-64" : "md:ml-64"
+            : dir === "rtl" ? "md:mr-16" : "md:ml-16"
+        }`}
       >
         <header className="flex items-center justify-between border-b border-border/50 bg-card/50 px-4 py-3 backdrop-blur-sm md:px-6">
           <div className="flex items-center gap-3">
