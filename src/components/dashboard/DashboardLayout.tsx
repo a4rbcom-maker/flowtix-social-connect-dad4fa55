@@ -12,6 +12,7 @@ import {
   Sun,
   Moon,
   Users,
+  Send,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
