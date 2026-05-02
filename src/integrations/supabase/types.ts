@@ -77,6 +77,54 @@ export type Database = {
         }
         Relationships: []
       }
+      send_log: {
+        Row: {
+          action: string
+          channel: Database["public"]["Enums"]["send_channel"]
+          created_at: string
+          description: string | null
+          error_message: string | null
+          id: string
+          metadata: Json | null
+          read: boolean
+          recipient: string | null
+          status: Database["public"]["Enums"]["send_status"]
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          channel: Database["public"]["Enums"]["send_channel"]
+          created_at?: string
+          description?: string | null
+          error_message?: string | null
+          id?: string
+          metadata?: Json | null
+          read?: boolean
+          recipient?: string | null
+          status?: Database["public"]["Enums"]["send_status"]
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          channel?: Database["public"]["Enums"]["send_channel"]
+          created_at?: string
+          description?: string | null
+          error_message?: string | null
+          id?: string
+          metadata?: Json | null
+          read?: boolean
+          recipient?: string | null
+          status?: Database["public"]["Enums"]["send_status"]
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           id: string
@@ -167,6 +215,8 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"
+      send_channel: "whatsapp" | "facebook" | "bulk" | "system"
+      send_status: "pending" | "processing" | "success" | "failed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -295,6 +345,8 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "moderator", "user"],
+      send_channel: ["whatsapp", "facebook", "bulk", "system"],
+      send_status: ["pending", "processing", "success", "failed"],
     },
   },
 } as const
