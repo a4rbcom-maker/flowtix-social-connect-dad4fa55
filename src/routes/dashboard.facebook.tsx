@@ -498,17 +498,72 @@ function FacebookPage() {
                   </a>
                 </div>
               </div>
-              <button
-                onClick={handleConnect}
-                disabled={connecting || !token.trim()}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/30 transition-all hover:shadow-xl hover:shadow-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {connecting ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" /> {t.connecting}</>
-                ) : (
-                  <><Facebook className="h-4 w-4" /> {t.connect}</>
-                )}
-              </button>
+              {testResult && (
+                <div className="rounded-xl border border-green-500/30 bg-green-500/5 p-4">
+                  <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-green-700 dark:text-green-400">
+                    <CheckCircle2 className="h-4 w-4" />
+                    {t.testSuccess}: {testResult.profile.name}
+                    {testResult.profile.email && (
+                      <span className="font-normal text-muted-foreground">({testResult.profile.email})</span>
+                    )}
+                  </div>
+                  <div className="mb-2">
+                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {t.grantedScopes} ({testResult.granted.length})
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {testResult.granted.map((s) => (
+                        <span key={s} className="inline-flex items-center gap-1 rounded-md bg-card px-2 py-1 font-mono text-xs ring-1 ring-border">
+                          <CheckCircle2 className="h-3 w-3 text-green-500" /> {s}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  {(() => {
+                    const missing = requiredScopes.filter((s) => !testResult.granted.includes(s));
+                    return missing.length === 0 ? (
+                      <p className="mt-2 text-xs text-green-700 dark:text-green-400">{t.noMissing}</p>
+                    ) : (
+                      <div className="mt-2">
+                        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-amber-600">
+                          {t.missingScopes} ({missing.length})
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {missing.map((s) => (
+                            <span key={s} className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 font-mono text-xs text-amber-900 ring-1 ring-amber-300 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-800">
+                              <XCircle className="h-3 w-3" /> {s}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleTest}
+                  disabled={testing || connecting || !token.trim()}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-5 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {testing ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> {t.testing}</>
+                  ) : (
+                    <><FlaskConical className="h-4 w-4" /> {t.test}</>
+                  )}
+                </button>
+                <button
+                  onClick={handleConnect}
+                  disabled={connecting || testing || !token.trim()}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/30 transition-all hover:shadow-xl hover:shadow-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {connecting ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> {t.connecting}</>
+                  ) : (
+                    <><Facebook className="h-4 w-4" /> {t.connect}</>
+                  )}
+                </button>
+              </div>
             </div>
           )}
         </div>
