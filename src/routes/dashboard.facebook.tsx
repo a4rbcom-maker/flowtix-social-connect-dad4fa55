@@ -202,6 +202,13 @@ function FacebookPage() {
         securityNote: "We store the token encrypted in your own database — no third party can access it.",
         showGuide: "Show guide",
         hideGuide: "Hide guide",
+        test: "Test token",
+        testing: "Testing...",
+        testSuccess: "Token is valid",
+        testFailed: "Token is invalid",
+        grantedScopes: "Granted permissions",
+        missingScopes: "Missing permissions",
+        noMissing: "All required permissions granted ✓",
       };
 
   useEffect(() => {
