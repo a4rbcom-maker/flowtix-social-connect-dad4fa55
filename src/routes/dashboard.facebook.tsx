@@ -85,7 +85,7 @@ function FacebookPage() {
   // Open external links — handles Lovable's iframe sandbox where target="_blank"
   // can be silently blocked. Tries window.open, then top-frame navigation, then
   // copies the URL to clipboard as a final fallback.
-  const openExternal = (e: React.MouseEvent, url: string) => {
+  const openExternal = (e: MouseEvent, url: string) => {
     e.preventDefault();
     try {
       const w = window.open(url, "_blank", "noopener,noreferrer");
