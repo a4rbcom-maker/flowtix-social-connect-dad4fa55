@@ -82,6 +82,33 @@ function FacebookPage() {
     toast.success(lang === "ar" ? "تم نسخ الصلاحيات" : "Scopes copied");
   };
 
+  // Open external links — handles Lovable's iframe sandbox where target="_blank"
+  // can be silently blocked. Tries window.open, then top-frame navigation, then
+  // copies the URL to clipboard as a final fallback.
+  const openExternal = (e: React.MouseEvent, url: string) => {
+    e.preventDefault();
+    try {
+      const w = window.open(url, "_blank", "noopener,noreferrer");
+      if (w) return;
+    } catch { /* blocked */ }
+    try {
+      if (window.top && window.top !== window.self) {
+        window.top.location.href = url;
+        return;
+      }
+    } catch { /* cross-origin */ }
+    try {
+      navigator.clipboard.writeText(url);
+      toast.info(
+        lang === "ar"
+          ? "تعذّر فتح الرابط داخل المعاينة — تم نسخه، الصقه في تبويب جديد"
+          : "Couldn't open inside preview — link copied, paste it in a new tab",
+      );
+    } catch {
+      toast.error(lang === "ar" ? "تعذّر فتح الرابط" : "Couldn't open the link");
+    }
+  };
+
   const t = lang === "ar"
     ? {
         title: "ربط فيسبوك",
