@@ -49,7 +49,12 @@ export async function updateSendStatus(
   status: SendStatus,
   patch?: { description?: string; errorMessage?: string; metadata?: Record<string, unknown> }
 ) {
-  const update: Record<string, unknown> = { status };
+  const update: {
+    status: SendStatus;
+    description?: string;
+    error_message?: string;
+    metadata?: Record<string, unknown>;
+  } = { status };
   if (patch?.description !== undefined) update.description = patch.description;
   if (patch?.errorMessage !== undefined) update.error_message = patch.errorMessage;
   if (patch?.metadata !== undefined) update.metadata = patch.metadata;
