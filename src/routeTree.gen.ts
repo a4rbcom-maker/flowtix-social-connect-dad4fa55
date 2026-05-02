@@ -14,7 +14,6 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as DashboardWhatsappRouteImport } from './routes/dashboard.whatsapp'
 import { Route as DashboardFacebookRouteImport } from './routes/dashboard.facebook'
 
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -42,11 +41,6 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DashboardWhatsappRoute = DashboardWhatsappRouteImport.update({
-  id: '/whatsapp',
-  path: '/whatsapp',
-  getParentRoute: () => DashboardRoute,
-} as any)
 const DashboardFacebookRoute = DashboardFacebookRouteImport.update({
   id: '/facebook',
   path: '/facebook',
@@ -60,7 +54,6 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/dashboard/facebook': typeof DashboardFacebookRoute
-  '/dashboard/whatsapp': typeof DashboardWhatsappRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -69,7 +62,6 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/dashboard/facebook': typeof DashboardFacebookRoute
-  '/dashboard/whatsapp': typeof DashboardWhatsappRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -79,7 +71,6 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/dashboard/facebook': typeof DashboardFacebookRoute
-  '/dashboard/whatsapp': typeof DashboardWhatsappRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -90,7 +81,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/dashboard/facebook'
-    | '/dashboard/whatsapp'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -99,7 +89,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/dashboard/facebook'
-    | '/dashboard/whatsapp'
   id:
     | '__root__'
     | '/'
@@ -108,7 +97,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/dashboard/facebook'
-    | '/dashboard/whatsapp'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -156,13 +144,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/dashboard/whatsapp': {
-      id: '/dashboard/whatsapp'
-      path: '/whatsapp'
-      fullPath: '/dashboard/whatsapp'
-      preLoaderRoute: typeof DashboardWhatsappRouteImport
-      parentRoute: typeof DashboardRoute
-    }
     '/dashboard/facebook': {
       id: '/dashboard/facebook'
       path: '/facebook'
@@ -175,12 +156,10 @@ declare module '@tanstack/react-router' {
 
 interface DashboardRouteChildren {
   DashboardFacebookRoute: typeof DashboardFacebookRoute
-  DashboardWhatsappRoute: typeof DashboardWhatsappRoute
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardFacebookRoute: DashboardFacebookRoute,
-  DashboardWhatsappRoute: DashboardWhatsappRoute,
 }
 
 const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
