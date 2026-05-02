@@ -187,6 +187,17 @@ function LoginPage() {
                 />
               </Field>
 
+              {isLogin && (
+                <div className="flex justify-end">
+                  <Link
+                    to="/forgot-password"
+                    className="text-xs font-medium text-primary transition-colors hover:text-primary/80 hover:underline underline-offset-4"
+                  >
+                    {labels.forgot}
+                  </Link>
+                </div>
+              )}
+
               {error && (
                 <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
                   {error}
