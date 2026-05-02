@@ -3,9 +3,6 @@ import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   Facebook,
-  MessageCircle,
-  Bot,
-  Send,
   Settings,
   LogOut,
   Menu,
@@ -45,15 +42,12 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   }, [location.pathname]);
 
   const labels = lang === "ar"
-    ? { overview: "نظرة عامة", facebook: "فيسبوك", whatsapp: "واتساب بوت", whatsappAI: "واتساب AI", bulkSend: "إرسال جماعي", settings: "الإعدادات", logout: "تسجيل الخروج" }
-    : { overview: "Overview", facebook: "Facebook", whatsapp: "WhatsApp Bot", whatsappAI: "WhatsApp AI", bulkSend: "Bulk Send", settings: "Settings", logout: "Sign Out" };
+    ? { overview: "نظرة عامة", facebook: "فيسبوك", settings: "الإعدادات", logout: "تسجيل الخروج" }
+    : { overview: "Overview", facebook: "Facebook", settings: "Settings", logout: "Sign Out" };
 
   const menu = [
     { icon: LayoutDashboard, label: labels.overview, to: "/dashboard" as const },
     { icon: Facebook, label: labels.facebook, to: "/dashboard/facebook" as const },
-    { icon: MessageCircle, label: labels.whatsapp, to: "/dashboard/whatsapp" as const },
-    { icon: Bot, label: labels.whatsappAI, to: "/dashboard/whatsapp" as const },
-    { icon: Send, label: labels.bulkSend, to: "/dashboard" as const },
     { icon: Settings, label: labels.settings, to: "/dashboard" as const },
   ];
 
