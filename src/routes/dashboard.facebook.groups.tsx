@@ -159,18 +159,43 @@ function FacebookGroupsPage() {
     } as never);
   };
 
+  const [importError, setImportError] = useState<{ type: string; message: string; missingPermission: string | null } | null>(null);
+
+  const friendlyFbError = (e: { type: string; message: string; missingPermission: string | null }) => {
+    if (lang !== "ar") return e.message;
+    switch (e.type) {
+      case "auth_expired": return "انتهت صلاحية رمز الوصول. أعد ربط الحساب.";
+      case "invalid_token": return "رمز الوصول غير صالح أو تم إبطاله. أعد الربط.";
+      case "permission_denied":
+        return e.missingPermission
+          ? `الصلاحية الناقصة: ${e.missingPermission}. أعد الربط وامنح هذه الصلاحية.`
+          : "الصلاحيات غير كافية لجلب الجروبات.";
+      case "rate_limited": return "تم تجاوز حد الاستدعاءات. حاول بعد قليل.";
+      case "network": return "تعذّر الاتصال بفيسبوك. تحقق من الإنترنت.";
+      default: return e.message;
+    }
+  };
+
   const handleImport = async () => {
     setLoading(true);
+    setImportError(null);
     try {
       const res = await callServerFn(fetchFacebookGroups);
-      setGroups(res.groups);
-      toast.success(
-        lang === "ar"
-          ? `تم استيراد ${res.groups.length} جروب`
-          : `Imported ${res.groups.length} groups`,
-      );
+      if (res.error) {
+        setGroups([]);
+        setImportError(res.error);
+        toast.error(friendlyFbError(res.error));
+      } else {
+        setGroups(res.groups);
+        toast.success(
+          lang === "ar"
+            ? `تم استيراد ${res.groups.length} جروب`
+            : `Imported ${res.groups.length} groups`,
+        );
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Import failed";
+      setImportError({ type: "unknown", message: msg, missingPermission: null });
       toast.error(msg);
     } finally {
       setLoading(false);
