@@ -59,6 +59,12 @@ function FacebookPage() {
   const [loadingPages, setLoadingPages] = useState(false);
   const [tab, setTab] = useState<"groups" | "pages">("groups");
   const [guideOpen, setGuideOpen] = useState(true);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    profile: { id: string; name: string; email: string | null };
+    granted: string[];
+    declined: string[];
+  } | null>(null);
 
   const requiredScopes = [
     "public_profile",
