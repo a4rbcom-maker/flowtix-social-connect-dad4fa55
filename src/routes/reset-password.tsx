@@ -25,21 +25,42 @@ function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [validSession, setValidSession] = useState<boolean | null>(null);
 
-  // Supabase puts the recovery token in the URL hash and auto-creates a session.
-  // We listen for the PASSWORD_RECOVERY event and also check existing session.
+  // Supabase places the recovery token in the URL hash (#access_token=...&type=recovery)
+  // and detectSessionInUrl will create a session + fire PASSWORD_RECOVERY.
+  // We listen for that event AND check existing session, with a longer grace period.
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") setValidSession(true);
-    });
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) setValidSession(true);
-      else if (validSession === null) {
-        // give onAuthStateChange a brief moment to fire
-        setTimeout(() => setValidSession((v) => (v === null ? false : v)), 800);
+    let resolved = false;
+
+    const finish = (ok: boolean) => {
+      if (resolved) return;
+      resolved = true;
+      setValidSession(ok);
+    };
+
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && session)) {
+        finish(true);
       }
     });
-    return () => sub.subscription.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    // Also check immediately in case the event fired before we mounted
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) finish(true);
+    });
+
+    // If URL has a recovery hash, give Supabase up to 3s to process it
+    const hasRecoveryHash =
+      typeof window !== "undefined" &&
+      (window.location.hash.includes("type=recovery") ||
+        window.location.hash.includes("access_token") ||
+        window.location.search.includes("code="));
+
+    const timeout = setTimeout(() => finish(false), hasRecoveryHash ? 3500 : 1200);
+
+    return () => {
+      sub.subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   const t = lang === "ar"
