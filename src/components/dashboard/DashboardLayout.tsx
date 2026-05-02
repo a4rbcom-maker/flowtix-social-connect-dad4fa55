@@ -56,12 +56,13 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   };
 
   const labels = lang === "ar"
-    ? { overview: "نظرة عامة", facebook: "فيسبوك", whatsapp: "واتساب", activity: "سجل النشاط", settings: "الإعدادات", logout: "تسجيل الخروج" }
-    : { overview: "Overview", facebook: "Facebook", whatsapp: "WhatsApp", activity: "Activity", settings: "Settings", logout: "Sign Out" };
+    ? { overview: "نظرة عامة", facebook: "فيسبوك", fbGroups: "جروبات فيسبوك", whatsapp: "واتساب", activity: "سجل النشاط", settings: "الإعدادات", logout: "تسجيل الخروج" }
+    : { overview: "Overview", facebook: "Facebook", fbGroups: "FB Groups", whatsapp: "WhatsApp", activity: "Activity", settings: "Settings", logout: "Sign Out" };
 
   const menu = [
     { icon: LayoutDashboard, label: labels.overview, to: "/dashboard" as const },
     { icon: Facebook, label: labels.facebook, to: "/dashboard/facebook" as const },
+    { icon: Users, label: labels.fbGroups, to: "/dashboard/facebook/groups" as const },
     { icon: MessageCircle, label: labels.whatsapp, to: "/dashboard/whatsapp" as const },
     { icon: Activity, label: labels.activity, to: "/dashboard/activity" as const },
     { icon: Settings, label: labels.settings, to: "/dashboard" as const },
