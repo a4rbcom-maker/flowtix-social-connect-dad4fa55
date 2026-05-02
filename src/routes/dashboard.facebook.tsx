@@ -486,15 +486,33 @@ function FacebookPage() {
                         <p className="mt-1 text-sm text-muted-foreground">{step.desc}</p>
 
                         {step.link && (
-                          <a
-                            href={step.link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => openExternal(e, step.link!)}
-                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/20"
-                          >
-                            {step.action} <ExternalLink className="h-3.5 w-3.5" />
-                          </a>
+                          <div className="mt-2 space-y-2">
+                            <div className="flex flex-wrap gap-2">
+                              <a
+                                href={step.link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => openExternal(e, step.link!)}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/20"
+                              >
+                                {step.action} <ExternalLink className="h-3.5 w-3.5" />
+                              </a>
+                              <a
+                                href="https://www.facebook.com/login"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => openExternal(e, "https://www.facebook.com/login")}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent"
+                              >
+                                {lang === "ar" ? "تسجيل الدخول إلى فيسبوك أولاً" : "Log in to Facebook first"} <ExternalLink className="h-3.5 w-3.5" />
+                              </a>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {lang === "ar"
+                                ? "ملاحظة: إذا لم تُفتح صفحة Graph Explorer، فالسبب غالباً أنك غير مسجّل الدخول إلى فيسبوك أو أن المتصفح حظر النوافذ المنبثقة."
+                                : "Note: if Graph Explorer doesn't open, you're likely not logged into Facebook, or your browser blocked the popup."}
+                            </p>
+                          </div>
                         )}
 
                         {idx === 2 && (
