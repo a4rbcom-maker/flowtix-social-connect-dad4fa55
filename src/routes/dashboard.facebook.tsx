@@ -157,6 +157,37 @@ function FacebookPage() {
         warning: "⚠️ Note: /me/groups only returns groups where your app is installed (Meta policy).",
         lastSync: "Last synced",
         notSynced: "Not synced yet",
+        guideTitle: "How to Get a User Access Token",
+        guideSubtitle: "Follow these steps to generate a valid token from Graph API Explorer",
+        steps: [
+          {
+            title: "Open Graph API Explorer",
+            desc: "Go to Meta's official tool for testing the Graph API",
+            action: "Open Graph Explorer",
+            link: "https://developers.facebook.com/tools/explorer/",
+          },
+          {
+            title: "Select your App from the top dropdown",
+            desc: "In the top-right corner, pick your Meta App (or create one at developers.facebook.com)",
+          },
+          {
+            title: "Choose User Token and add Permissions",
+            desc: "Click \"Add a Permission\" and add the following scopes:",
+          },
+          {
+            title: "Click Generate Access Token",
+            desc: "A Facebook dialog will ask you to confirm the permissions. Approve all of them.",
+          },
+          {
+            title: "Copy the token and paste it below",
+            desc: "Copy the value from the Access Token field in Graph Explorer, paste it below, and click \"Connect Account\".",
+          },
+        ],
+        scopesLabel: "Required Scopes",
+        copyScopes: "Copy scopes",
+        securityNote: "We store the token encrypted in your own database — no third party can access it.",
+        showGuide: "Show guide",
+        hideGuide: "Hide guide",
       };
 
   useEffect(() => {
