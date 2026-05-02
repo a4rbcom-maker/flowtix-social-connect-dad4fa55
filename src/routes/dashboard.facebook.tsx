@@ -145,6 +145,9 @@ function FacebookPage() {
         grantedScopes: "الصلاحيات الممنوحة",
         missingScopes: "صلاحيات ناقصة",
         noMissing: "كل الصلاحيات المطلوبة موجودة ✓",
+        confirmConnect: "تأكيد الربط وحفظ التوكن",
+        testFirst: "اختبر التوكن أولاً قبل الربط",
+        savingSecure: "سيتم حفظ التوكن بشكل آمن في قاعدة بياناتك المحمية بـ RLS — لا يمكن لأي مستخدم آخر الوصول إليه.",
       }
     : {
         title: "Facebook Connection",
@@ -209,6 +212,9 @@ function FacebookPage() {
         grantedScopes: "Granted permissions",
         missingScopes: "Missing permissions",
         noMissing: "All required permissions granted ✓",
+        confirmConnect: "Confirm & save token securely",
+        testFirst: "Test the token before connecting",
+        savingSecure: "Token will be stored securely in your RLS-protected database — no other user can access it.",
       };
 
   useEffect(() => {
@@ -264,6 +270,10 @@ function FacebookPage() {
   const handleConnect = async () => {
     if (!token.trim() || token.trim().length < 20) {
       toast.error(lang === "ar" ? "التوكن قصير جداً" : "Token is too short");
+      return;
+    }
+    if (!testResult) {
+      toast.error(t.testFirst);
       return;
     }
     setConnecting(true);
@@ -473,7 +483,7 @@ function FacebookPage() {
                     <input
                       type={showToken ? "text" : "password"}
                       value={token}
-                      onChange={(e) => setToken(e.target.value)}
+                      onChange={(e) => { setToken(e.target.value); setTestResult(null); }}
                       placeholder={t.tokenPlaceholder}
                       className="w-full rounded-xl border border-border bg-background px-4 py-2.5 pr-20 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                     />
@@ -554,16 +564,28 @@ function FacebookPage() {
                 </button>
                 <button
                   onClick={handleConnect}
-                  disabled={connecting || testing || !token.trim()}
+                  disabled={connecting || testing || !token.trim() || !testResult}
+                  title={!testResult ? t.testFirst : undefined}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/30 transition-all hover:shadow-xl hover:shadow-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {connecting ? (
                     <><Loader2 className="h-4 w-4 animate-spin" /> {t.connecting}</>
+                  ) : testResult ? (
+                    <><ShieldCheck className="h-4 w-4" /> {t.confirmConnect}</>
                   ) : (
                     <><Facebook className="h-4 w-4" /> {t.connect}</>
                   )}
                 </button>
               </div>
+              {!testResult && token.trim().length >= 20 && (
+                <p className="text-xs text-muted-foreground">{t.testFirst}</p>
+              )}
+              {testResult && (
+                <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                  {t.savingSecure}
+                </p>
+              )}
             </div>
           )}
         </div>
