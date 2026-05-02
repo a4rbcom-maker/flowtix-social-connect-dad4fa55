@@ -52,6 +52,17 @@ function FacebookPage() {
   const { lang } = useI18n();
   const navigate = useNavigate();
   const [connection, setConnection] = useState<Connection | null>(null);
+  // Token expiry awareness — populated silently on dashboard open via
+  // inspectFacebookConnection (no token leaves the server). Used to render
+  // a top banner when the token is expired or about to expire.
+  const [tokenExpiry, setTokenExpiry] = useState<{
+    expiresAt: string | null;
+    dataAccessExpiresAt: string | null;
+    isExpired: boolean;
+    valid: boolean;
+  } | null>(null);
+  const [expiryDismissed, setExpiryDismissed] = useState(false);
+  const EXPIRY_WARN_DAYS = 7;
   const [token, setToken] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [connecting, setConnecting] = useState(false);
