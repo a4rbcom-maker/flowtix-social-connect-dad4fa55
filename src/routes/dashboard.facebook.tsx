@@ -352,6 +352,12 @@ function FacebookPage() {
         syncSuccess: "نجاح",
         syncFailed: "فشل",
         syncCount: (n: number) => `تم تحميل ${n}`,
+        scopesSectionTitle: "Scopes المطلوبة",
+        scopesSectionSubtitle: "انسخ القائمة كاملة والصقها داخل حقل \"Add a Permission\" في Graph API Explorer.",
+        scopesCopyComma: "نسخ بفواصل (Graph Explorer)",
+        scopesCopyLines: "نسخ سطر لكل صلاحية",
+        scopesCopied: "تم النسخ — الصق في Graph Explorer",
+        scopesCount: (n: number) => `${n} صلاحية`,
       }
     : {
         title: "Facebook Connection",
@@ -446,6 +452,12 @@ function FacebookPage() {
         syncSuccess: "Success",
         syncFailed: "Failed",
         syncCount: (n: number) => `${n} loaded`,
+        scopesSectionTitle: "Required Scopes",
+        scopesSectionSubtitle: "Copy the full list and paste it into the \"Add a Permission\" field in Graph API Explorer.",
+        scopesCopyComma: "Copy comma-separated (Graph Explorer)",
+        scopesCopyLines: "Copy one per line",
+        scopesCopied: "Copied — paste in Graph Explorer",
+        scopesCount: (n: number) => `${n} scopes`,
       };
 
   useEffect(() => {
