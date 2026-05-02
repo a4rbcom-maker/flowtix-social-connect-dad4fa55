@@ -57,6 +57,36 @@ export const connectFacebook = createServerFn({ method: "POST" })
     };
   });
 
+/**
+ * Test a Facebook access token WITHOUT saving it.
+ * Returns the profile info + granted permissions so the user can verify
+ * the token works and has the right scopes before connecting.
+ */
+export const testFacebookToken = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({
+      access_token: z.string().trim().min(20).max(2000),
+    }).parse(input),
+  )
+  .handler(async ({ data }) => {
+    const token = data.access_token;
+    const me = await fbGet("/me?fields=id,name,email", token);
+    const perms = await fbGet("/me/permissions", token);
+    const granted = (perms.data ?? [])
+      .filter((p: { status: string }) => p.status === "granted")
+      .map((p: { permission: string }) => p.permission);
+    const declined = (perms.data ?? [])
+      .filter((p: { status: string }) => p.status !== "granted")
+      .map((p: { permission: string }) => p.permission);
+    return {
+      success: true,
+      profile: { id: me.id, name: me.name, email: me.email ?? null },
+      granted,
+      declined,
+    };
+  });
+
 /** Disconnect: remove the stored connection. */
 export const disconnectFacebook = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
