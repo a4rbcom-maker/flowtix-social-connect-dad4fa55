@@ -1094,13 +1094,17 @@ interface FbErr { type: string; message: string; missingPermission: string | nul
 function FbErrorBanner({
   err,
   onRetry,
+  onReconnect,
   lang,
   friendly,
+  reconnectLabel,
 }: {
   err: FbErr;
   onRetry: () => void;
+  onReconnect?: () => void;
   lang: string;
   friendly: (e: FbErr) => string;
+  reconnectLabel?: string;
 }) {
   const isAuth = err.type === "auth_expired" || err.type === "invalid_token";
   const isPerm = err.type === "permission_denied";
@@ -1139,12 +1143,15 @@ function FbErrorBanner({
               {lang === "ar" ? "إعادة المحاولة" : "Retry"}
             </button>
             {(isAuth || isPerm) && (
-              <a
-                href="#fb-token-form"
+              <button
+                type="button"
+                onClick={() => (onReconnect ? onReconnect() : (window.location.hash = "fb-token-form"))}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
               >
-                {lang === "ar" ? "إعادة الربط بصلاحيات كاملة" : "Reconnect with full permissions"}
-              </a>
+                <KeyRound className="h-3.5 w-3.5" />
+                {reconnectLabel ?? (lang === "ar" ? "إعادة الربط بصلاحيات كاملة" : "Reconnect with full permissions")}
+                <ExternalLink className="h-3 w-3 opacity-80" />
+              </button>
             )}
           </div>
         </div>
