@@ -65,6 +65,7 @@ function FacebookPage() {
     granted: string[];
     declined: string[];
   } | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
 
   const requiredScopes = [
     "public_profile",
