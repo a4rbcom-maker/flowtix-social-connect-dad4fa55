@@ -297,6 +297,88 @@ function FacebookPage() {
   return (
     <DashboardLayout title={t.title}>
       <div className="mx-auto max-w-5xl space-y-6">
+        {/* Step-by-step guide — shown only when not connected */}
+        {!connection && (
+          <div className="overflow-hidden rounded-2xl border border-border/50 bg-card shadow-sm">
+            <button
+              onClick={() => setGuideOpen(!guideOpen)}
+              className="flex w-full items-center justify-between gap-3 p-6 text-start transition-colors hover:bg-accent/30"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-[oklch(0.66_0.26_320)]/20 text-primary">
+                  <ShieldCheck className="h-6 w-6" strokeWidth={2.5} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-foreground">{t.guideTitle}</h2>
+                  <p className="text-sm text-muted-foreground">{t.guideSubtitle}</p>
+                </div>
+              </div>
+              <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${guideOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {guideOpen && (
+              <div className="border-t border-border/50 p-6 pt-4">
+                <ol className="space-y-5">
+                  {t.steps.map((step, idx) => (
+                    <li key={idx} className="flex gap-4">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[oklch(0.66_0.26_320)] text-sm font-bold text-white shadow-md">
+                        {idx + 1}
+                      </div>
+                      <div className="flex-1 pt-0.5">
+                        <h3 className="font-semibold text-foreground">{step.title}</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">{step.desc}</p>
+
+                        {step.link && (
+                          <a
+                            href={step.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/20"
+                          >
+                            {step.action} <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        )}
+
+                        {idx === 2 && (
+                          <div className="mt-3 rounded-xl border border-border/50 bg-muted/30 p-3">
+                            <div className="mb-2 flex items-center justify-between">
+                              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                {t.scopesLabel}
+                              </span>
+                              <button
+                                onClick={copyScopes}
+                                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10"
+                              >
+                                <Copy className="h-3 w-3" /> {t.copyScopes}
+                              </button>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {requiredScopes.map((scope) => (
+                                <span
+                                  key={scope}
+                                  className="inline-flex items-center gap-1 rounded-md bg-card px-2 py-1 font-mono text-xs text-foreground ring-1 ring-border"
+                                >
+                                  <CheckCircle2 className="h-3 w-3 text-green-500" />
+                                  {scope}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+
+                <div className="mt-5 flex items-start gap-2 rounded-xl bg-primary/5 p-3 text-xs text-foreground/80">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <span>{t.securityNote}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Connection card */}
         <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
           <div className="mb-4 flex items-center gap-3">
