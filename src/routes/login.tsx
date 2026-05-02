@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useI18n } from "@/lib/i18n";
@@ -24,8 +24,7 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   if (user) {
-    navigate({ to: "/dashboard" });
-    return null;
+    return <Navigate to="/dashboard" />;
   }
 
   const labels = lang === "ar"
