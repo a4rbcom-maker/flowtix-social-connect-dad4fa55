@@ -57,6 +57,22 @@ function FacebookPage() {
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [loadingPages, setLoadingPages] = useState(false);
   const [tab, setTab] = useState<"groups" | "pages">("groups");
+  const [guideOpen, setGuideOpen] = useState(true);
+
+  const requiredScopes = [
+    "public_profile",
+    "email",
+    "user_groups",
+    "groups_access_member_info",
+    "pages_show_list",
+    "pages_read_engagement",
+    "pages_manage_metadata",
+  ];
+
+  const copyScopes = () => {
+    navigator.clipboard.writeText(requiredScopes.join(","));
+    toast.success(lang === "ar" ? "تم نسخ الصلاحيات" : "Scopes copied");
+  };
 
   const t = lang === "ar"
     ? {
