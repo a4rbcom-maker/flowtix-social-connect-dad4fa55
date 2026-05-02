@@ -21,6 +21,7 @@ import { Route as DashboardControlRouteImport } from './routes/dashboard.control
 import { Route as DashboardActivityRouteImport } from './routes/dashboard.activity'
 import { Route as DashboardFacebookStatusRouteImport } from './routes/dashboard.facebook.status'
 import { Route as DashboardFacebookGroupsRouteImport } from './routes/dashboard.facebook.groups'
+import { Route as ApiPublicHooksProcessBulkJobsRouteImport } from './routes/api/public/hooks/process-bulk-jobs'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -82,6 +83,12 @@ const DashboardFacebookGroupsRoute = DashboardFacebookGroupsRouteImport.update({
   path: '/groups',
   getParentRoute: () => DashboardFacebookRoute,
 } as any)
+const ApiPublicHooksProcessBulkJobsRoute =
+  ApiPublicHooksProcessBulkJobsRouteImport.update({
+    id: '/api/public/hooks/process-bulk-jobs',
+    path: '/api/public/hooks/process-bulk-jobs',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -96,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
+  '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -110,6 +118,7 @@ export interface FileRoutesByTo {
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
+  '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -125,6 +134,7 @@ export interface FileRoutesById {
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
+  '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -141,6 +151,7 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/status'
+    | '/api/public/hooks/process-bulk-jobs'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -155,6 +166,7 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/status'
+    | '/api/public/hooks/process-bulk-jobs'
   id:
     | '__root__'
     | '/'
@@ -169,6 +181,7 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/status'
+    | '/api/public/hooks/process-bulk-jobs'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -178,6 +191,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  ApiPublicHooksProcessBulkJobsRoute: typeof ApiPublicHooksProcessBulkJobsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -266,6 +280,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardFacebookGroupsRouteImport
       parentRoute: typeof DashboardFacebookRoute
     }
+    '/api/public/hooks/process-bulk-jobs': {
+      id: '/api/public/hooks/process-bulk-jobs'
+      path: '/api/public/hooks/process-bulk-jobs'
+      fullPath: '/api/public/hooks/process-bulk-jobs'
+      preLoaderRoute: typeof ApiPublicHooksProcessBulkJobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -307,6 +328,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  ApiPublicHooksProcessBulkJobsRoute: ApiPublicHooksProcessBulkJobsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
