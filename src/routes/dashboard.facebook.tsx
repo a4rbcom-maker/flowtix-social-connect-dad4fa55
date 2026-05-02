@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Facebook, RefreshCw, Trash2, Users, Loader2, ExternalLink } from "lucide-react";
+import { Facebook, RefreshCw, Trash2, Users, Loader2, ExternalLink, ChevronDown, CheckCircle2, Copy, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
@@ -57,6 +57,22 @@ function FacebookPage() {
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [loadingPages, setLoadingPages] = useState(false);
   const [tab, setTab] = useState<"groups" | "pages">("groups");
+  const [guideOpen, setGuideOpen] = useState(true);
+
+  const requiredScopes = [
+    "public_profile",
+    "email",
+    "user_groups",
+    "groups_access_member_info",
+    "pages_show_list",
+    "pages_read_engagement",
+    "pages_manage_metadata",
+  ];
+
+  const copyScopes = () => {
+    navigator.clipboard.writeText(requiredScopes.join(","));
+    toast.success(lang === "ar" ? "تم نسخ الصلاحيات" : "Scopes copied");
+  };
 
   const t = lang === "ar"
     ? {
@@ -84,6 +100,37 @@ function FacebookPage() {
         warning: "⚠️ ملاحظة: /me/groups يُرجع فقط الجروبات التي يكون التطبيق مثبّتاً فيها (سياسة Meta).",
         lastSync: "آخر مزامنة",
         notSynced: "لم تتم المزامنة بعد",
+        guideTitle: "دليل الحصول على User Access Token",
+        guideSubtitle: "اتبع الخطوات التالية للحصول على توكن صالح من Graph API Explorer",
+        steps: [
+          {
+            title: "افتح Graph API Explorer",
+            desc: "انتقل إلى أداة Meta الرسمية لاختبار الـ API",
+            action: "فتح Graph Explorer",
+            link: "https://developers.facebook.com/tools/explorer/",
+          },
+          {
+            title: "اختر تطبيقك من القائمة العلوية",
+            desc: "في الزاوية العلوية اليمنى اختر Meta App الخاص بك (أو أنشئ تطبيقاً جديداً من developers.facebook.com)",
+          },
+          {
+            title: "اختر User Token وأضف الصلاحيات (Permissions)",
+            desc: "اضغط على \"Add a Permission\" وأضف الصلاحيات التالية:",
+          },
+          {
+            title: "اضغط Generate Access Token",
+            desc: "ستظهر نافذة فيسبوك لتأكيد الصلاحيات. وافق عليها كلها.",
+          },
+          {
+            title: "انسخ التوكن والصقه هنا",
+            desc: "انسخ التوكن من حقل Access Token في Graph Explorer والصقه في الحقل أدناه ثم اضغط \"ربط الحساب\".",
+          },
+        ],
+        scopesLabel: "الصلاحيات المطلوبة",
+        copyScopes: "نسخ الصلاحيات",
+        securityNote: "نخزّن التوكن مشفّراً في قاعدة بياناتك فقط — لن يصل إليه أي طرف خارجي.",
+        showGuide: "عرض الدليل",
+        hideGuide: "إخفاء الدليل",
       }
     : {
         title: "Facebook Connection",
@@ -110,6 +157,37 @@ function FacebookPage() {
         warning: "⚠️ Note: /me/groups only returns groups where your app is installed (Meta policy).",
         lastSync: "Last synced",
         notSynced: "Not synced yet",
+        guideTitle: "How to Get a User Access Token",
+        guideSubtitle: "Follow these steps to generate a valid token from Graph API Explorer",
+        steps: [
+          {
+            title: "Open Graph API Explorer",
+            desc: "Go to Meta's official tool for testing the Graph API",
+            action: "Open Graph Explorer",
+            link: "https://developers.facebook.com/tools/explorer/",
+          },
+          {
+            title: "Select your App from the top dropdown",
+            desc: "In the top-right corner, pick your Meta App (or create one at developers.facebook.com)",
+          },
+          {
+            title: "Choose User Token and add Permissions",
+            desc: "Click \"Add a Permission\" and add the following scopes:",
+          },
+          {
+            title: "Click Generate Access Token",
+            desc: "A Facebook dialog will ask you to confirm the permissions. Approve all of them.",
+          },
+          {
+            title: "Copy the token and paste it below",
+            desc: "Copy the value from the Access Token field in Graph Explorer, paste it below, and click \"Connect Account\".",
+          },
+        ],
+        scopesLabel: "Required Scopes",
+        copyScopes: "Copy scopes",
+        securityNote: "We store the token encrypted in your own database — no third party can access it.",
+        showGuide: "Show guide",
+        hideGuide: "Hide guide",
       };
 
   useEffect(() => {
@@ -219,6 +297,88 @@ function FacebookPage() {
   return (
     <DashboardLayout title={t.title}>
       <div className="mx-auto max-w-5xl space-y-6">
+        {/* Step-by-step guide — shown only when not connected */}
+        {!connection && (
+          <div className="overflow-hidden rounded-2xl border border-border/50 bg-card shadow-sm">
+            <button
+              onClick={() => setGuideOpen(!guideOpen)}
+              className="flex w-full items-center justify-between gap-3 p-6 text-start transition-colors hover:bg-accent/30"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-[oklch(0.66_0.26_320)]/20 text-primary">
+                  <ShieldCheck className="h-6 w-6" strokeWidth={2.5} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-foreground">{t.guideTitle}</h2>
+                  <p className="text-sm text-muted-foreground">{t.guideSubtitle}</p>
+                </div>
+              </div>
+              <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${guideOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {guideOpen && (
+              <div className="border-t border-border/50 p-6 pt-4">
+                <ol className="space-y-5">
+                  {t.steps.map((step, idx) => (
+                    <li key={idx} className="flex gap-4">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[oklch(0.66_0.26_320)] text-sm font-bold text-white shadow-md">
+                        {idx + 1}
+                      </div>
+                      <div className="flex-1 pt-0.5">
+                        <h3 className="font-semibold text-foreground">{step.title}</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">{step.desc}</p>
+
+                        {step.link && (
+                          <a
+                            href={step.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/20"
+                          >
+                            {step.action} <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        )}
+
+                        {idx === 2 && (
+                          <div className="mt-3 rounded-xl border border-border/50 bg-muted/30 p-3">
+                            <div className="mb-2 flex items-center justify-between">
+                              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                {t.scopesLabel}
+                              </span>
+                              <button
+                                onClick={copyScopes}
+                                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10"
+                              >
+                                <Copy className="h-3 w-3" /> {t.copyScopes}
+                              </button>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {requiredScopes.map((scope) => (
+                                <span
+                                  key={scope}
+                                  className="inline-flex items-center gap-1 rounded-md bg-card px-2 py-1 font-mono text-xs text-foreground ring-1 ring-border"
+                                >
+                                  <CheckCircle2 className="h-3 w-3 text-green-500" />
+                                  {scope}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+
+                <div className="mt-5 flex items-start gap-2 rounded-xl bg-primary/5 p-3 text-xs text-foreground/80">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <span>{t.securityNote}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Connection card */}
         <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
           <div className="mb-4 flex items-center gap-3">
