@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   Facebook,
@@ -35,6 +35,8 @@ function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
   const { lang } = useI18n();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isOverviewRoute = location.pathname === "/dashboard";
   const [profile, setProfile] = useState<Tables<"profiles"> | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>({
     facebook: { connected: false },
@@ -74,6 +76,10 @@ function DashboardPage() {
       setLoading(false);
     })();
   }, [user]);
+
+  if (!isOverviewRoute) {
+    return <Outlet />;
+  }
 
   const t = lang === "ar"
     ? {
