@@ -79,9 +79,56 @@ function FacebookPage() {
     "pages_manage_metadata",
   ];
 
-  const copyScopes = () => {
-    navigator.clipboard.writeText(requiredScopes.join(","));
-    toast.success(lang === "ar" ? "تم نسخ الصلاحيات" : "Scopes copied");
+  // ── Debug logging ─────────────────────────────────────────────────────
+  // When enabled, every link-open and clipboard attempt is captured with a
+  // timestamp + outcome, so the user can see EXACTLY why opening failed and
+  // whether the URL ended up on the clipboard.
+  type DebugLog = {
+    id: string;
+    ts: string;
+    level: "info" | "success" | "warn" | "error";
+    step: string;
+    detail?: string;
+  };
+  const [debugMode, setDebugMode] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<DebugLog[]>([]);
+  const debugLog = (level: DebugLog["level"], step: string, detail?: string) => {
+    if (!debugMode) return;
+    const entry: DebugLog = {
+      id: crypto.randomUUID(),
+      ts: new Date().toISOString().slice(11, 23),
+      level,
+      step,
+      detail,
+    };
+    setDebugLogs((prev) => [...prev.slice(-49), entry]);
+    // Mirror to browser console for power users / Lovable console-logs tool.
+    const tag = `[FB-DBG ${entry.ts}] ${step}`;
+    if (level === "error") console.error(tag, detail);
+    else if (level === "warn") console.warn(tag, detail);
+    else console.log(tag, detail);
+  };
+  const clearDebug = () => setDebugLogs([]);
+  const copyDebug = async () => {
+    const text = debugLogs.map((l) => `[${l.ts}] ${l.level.toUpperCase()} ${l.step}${l.detail ? " — " + l.detail : ""}`).join("\n");
+    try {
+      await navigator.clipboard.writeText(text || "(empty)");
+      toast.success(lang === "ar" ? "تم نسخ السجل" : "Log copied");
+    } catch {
+      toast.error(lang === "ar" ? "فشل النسخ" : "Copy failed");
+    }
+  };
+
+  const copyScopes = async () => {
+    debugLog("info", "copyScopes:start", `scopes=${requiredScopes.join(",")}`);
+    try {
+      await navigator.clipboard.writeText(requiredScopes.join(","));
+      debugLog("success", "copyScopes:clipboard.writeText", "ok");
+      toast.success(lang === "ar" ? "تم نسخ الصلاحيات" : "Scopes copied");
+    } catch (err) {
+      debugLog("error", "copyScopes:clipboard.writeText", err instanceof Error ? err.message : String(err));
+      toast.error(lang === "ar" ? "فشل نسخ الصلاحيات" : "Copy failed");
+    }
   };
 
   // Open external links robustly inside the Lovable preview iframe.
@@ -90,17 +137,31 @@ function FacebookPage() {
   const openExternal = async (e: MouseEvent, url: string) => {
     e.preventDefault();
     e.stopPropagation();
+    debugLog("info", "openExternal:start", `url=${url}`);
+
+    // Environment snapshot — useful when diagnosing iframe sandbox issues.
+    if (debugMode) {
+      try {
+        const inIframe = window.self !== window.top;
+        const sandbox = (window.frameElement as HTMLIFrameElement | null)?.getAttribute?.("sandbox") ?? null;
+        debugLog("info", "openExternal:env", `inIframe=${inIframe} sandbox=${sandbox ?? "n/a"} clipboardApi=${!!navigator.clipboard}`);
+      } catch (err) {
+        debugLog("warn", "openExternal:env", err instanceof Error ? err.message : String(err));
+      }
+    }
 
     // 1) Always copy first — guarantees the user has the link no matter what.
     let copied = false;
     try {
       await navigator.clipboard.writeText(url);
       copied = true;
-    } catch { /* clipboard blocked */ }
+      debugLog("success", "openExternal:clipboard.writeText", "copied to clipboard");
+    } catch (err) {
+      debugLog("error", "openExternal:clipboard.writeText", err instanceof Error ? err.message : String(err));
+    }
 
     // 2) Try a synthetic anchor with target="_blank" — works inside sandboxed
-    //    iframes when allow-popups is set, and is more reliable than window.open
-    //    because it's treated as a direct user gesture.
+    //    iframes when allow-popups is set, and is more reliable than window.open.
     try {
       const a = document.createElement("a");
       a.href = url;
@@ -110,6 +171,7 @@ function FacebookPage() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+      debugLog("success", "openExternal:anchor.click", "anchor dispatched (cannot confirm tab actually opened)");
       toast.success(
         lang === "ar"
           ? `تم فتح الرابط في تبويب جديد${copied ? " (ونسخه احتياطياً)" : ""}. إذا لم يظهر، الصقه يدوياً.`
@@ -117,27 +179,38 @@ function FacebookPage() {
         { duration: 5000 },
       );
       return;
-    } catch { /* fallthrough */ }
+    } catch (err) {
+      debugLog("warn", "openExternal:anchor.click", err instanceof Error ? err.message : String(err));
+    }
 
     // 3) Try window.open as secondary fallback.
     try {
       const w = window.open(url, "_blank", "noopener,noreferrer");
       if (w) {
+        debugLog("success", "openExternal:window.open", "returned window object");
         toast.success(lang === "ar" ? "تم فتح الرابط" : "Opened");
         return;
       }
-    } catch { /* blocked */ }
+      debugLog("warn", "openExternal:window.open", "returned null (popup blocker / sandbox)");
+    } catch (err) {
+      debugLog("error", "openExternal:window.open", err instanceof Error ? err.message : String(err));
+    }
 
     // 4) Try top-frame navigation (often blocked by cross-origin, but try).
     try {
       if (window.top && window.top !== window.self) {
         window.top.location.href = url;
+        debugLog("success", "openExternal:top.location", "navigated top frame");
         return;
       }
-    } catch { /* cross-origin */ }
+      debugLog("info", "openExternal:top.location", "skipped (not in iframe)");
+    } catch (err) {
+      debugLog("error", "openExternal:top.location", err instanceof Error ? err.message : String(err));
+    }
 
     // 5) Last resort — clipboard message only.
     if (copied) {
+      debugLog("warn", "openExternal:end", "all open methods failed; URL is on clipboard");
       toast.info(
         lang === "ar"
           ? "تعذّر فتح الرابط داخل المعاينة، لكن تم نسخه إلى الحافظة. الصقه في تبويب جديد."
@@ -145,6 +218,7 @@ function FacebookPage() {
         { duration: 7000 },
       );
     } else {
+      debugLog("error", "openExternal:end", "all open methods failed AND clipboard failed");
       toast.error(
         lang === "ar"
           ? `تعذّر فتح الرابط ونسخه. افتحه يدوياً: ${url}`
@@ -715,6 +789,81 @@ function FacebookPage() {
                       ? "ملاحظة: عند فتح Graph API Explorer قد يطلب منك فيسبوك تسجيل الدخول إلى حسابك أولاً، ثم الموافقة على صلاحيات التطبيق المطلوبة (User Token + Permissions). إذا لم تمنح الصلاحيات بالكامل، لن يعمل الاستكشاف ولن نتمكن من جلب الجروبات والصفحات."
                       : "Note: When you open the Graph API Explorer, Facebook may ask you to log in first, then approve the requested app permissions (User Token + Permissions). If permissions are not fully granted, the explorer won't work and we can't fetch your groups or pages."}
                   </p>
+                </div>
+                {/* Debug toggle + log panel */}
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setDebugMode((v) => !v)}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                      debugMode
+                        ? "border-primary/50 bg-primary/10 text-primary"
+                        : "border-border bg-card text-muted-foreground hover:bg-accent"
+                    }`}
+                  >
+                    <FlaskConical className="h-3.5 w-3.5" />
+                    {lang === "ar"
+                      ? `وضع الاختبار (Debug) ${debugMode ? "مفعّل" : "متوقف"}`
+                      : `Debug mode ${debugMode ? "ON" : "OFF"}`}
+                  </button>
+                  {debugMode && (
+                    <div className="mt-2 rounded-xl border border-border bg-muted/30 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold text-foreground">
+                          {lang === "ar" ? "سجل الأحداث" : "Event log"}{" "}
+                          <span className="font-mono text-muted-foreground">({debugLogs.length})</span>
+                        </p>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={copyDebug}
+                            disabled={debugLogs.length === 0}
+                            className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-[11px] hover:bg-accent disabled:opacity-50"
+                          >
+                            <Copy className="h-3 w-3" />
+                            {lang === "ar" ? "نسخ" : "Copy"}
+                          </button>
+                          <button
+                            onClick={clearDebug}
+                            disabled={debugLogs.length === 0}
+                            className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-[11px] hover:bg-accent disabled:opacity-50"
+                          >
+                            {lang === "ar" ? "مسح" : "Clear"}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="max-h-48 overflow-y-auto rounded-lg bg-background p-2 font-mono text-[11px] leading-relaxed">
+                        {debugLogs.length === 0 ? (
+                          <p className="py-3 text-center text-muted-foreground">
+                            {lang === "ar"
+                              ? "اضغط على «الحصول على توكن» أو زر النسخ لتسجيل الأحداث."
+                              : "Click 'Get Token' or any copy button to record events."}
+                          </p>
+                        ) : (
+                          debugLogs.map((l) => (
+                            <div
+                              key={l.id}
+                              className={`flex gap-2 border-b border-border/50 py-1 last:border-0 ${
+                                l.level === "error"
+                                  ? "text-destructive"
+                                  : l.level === "warn"
+                                    ? "text-amber-600"
+                                    : l.level === "success"
+                                      ? "text-emerald-600"
+                                      : "text-foreground/80"
+                              }`}
+                            >
+                              <span className="shrink-0 text-muted-foreground">{l.ts}</span>
+                              <span className="shrink-0 uppercase">{l.level}</span>
+                              <span className="break-all">
+                                <b>{l.step}</b>
+                                {l.detail && <span className="text-muted-foreground"> — {l.detail}</span>}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               {testError && !testResult && (
