@@ -148,6 +148,17 @@ function FacebookPage() {
         confirmConnect: "تأكيد الربط وحفظ التوكن",
         testFirst: "اختبر التوكن أولاً قبل الربط",
         savingSecure: "سيتم حفظ التوكن بشكل آمن في قاعدة بياناتك المحمية بـ RLS — لا يمكن لأي مستخدم آخر الوصول إليه.",
+        quickStart: "بدء سريع في 3 خطوات",
+        quick1Title: "احصل على التوكن",
+        quick1Desc: "من Graph API Explorer مع الصلاحيات المطلوبة",
+        quick2Title: "اختبر التوكن",
+        quick2Desc: "نتأكد من صلاحيته وصلاحياته قبل الحفظ",
+        quick3Title: "ثبّت الربط",
+        quick3Desc: "نخزّن التوكن مشفّراً ونبدأ التحميل",
+        errInvalidToken: "التوكن غير صالح أو منتهي الصلاحية. أنشئ توكن جديد من Graph Explorer.",
+        errExpired: "انتهت صلاحية التوكن. أعد توليده من Graph Explorer.",
+        errPermission: "صلاحيات ناقصة. تأكد من إضافة كل الصلاحيات المطلوبة.",
+        errNetwork: "تعذّر الاتصال بفيسبوك. تحقق من اتصالك بالإنترنت.",
       }
     : {
         title: "Facebook Connection",
