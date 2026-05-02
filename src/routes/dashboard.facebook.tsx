@@ -708,6 +708,14 @@ function FacebookPage() {
                     {t.getToken} <ExternalLink className="h-3 w-3" />
                   </a>
                 </div>
+                <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-foreground/80">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  <p>
+                    {lang === "ar"
+                      ? "ملاحظة: عند فتح Graph API Explorer قد يطلب منك فيسبوك تسجيل الدخول إلى حسابك أولاً، ثم الموافقة على صلاحيات التطبيق المطلوبة (User Token + Permissions). إذا لم تمنح الصلاحيات بالكامل، لن يعمل الاستكشاف ولن نتمكن من جلب الجروبات والصفحات."
+                      : "Note: When you open the Graph API Explorer, Facebook may ask you to log in first, then approve the requested app permissions (User Token + Permissions). If permissions are not fully granted, the explorer won't work and we can't fetch your groups or pages."}
+                  </p>
+                </div>
               </div>
               {testError && !testResult && (
                 <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
