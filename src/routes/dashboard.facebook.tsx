@@ -225,6 +225,10 @@ function FacebookPage() {
         errExpired: "انتهت صلاحية التوكن. أعد توليده من Graph Explorer.",
         errPermission: "صلاحيات ناقصة. تأكد من إضافة كل الصلاحيات المطلوبة.",
         errNetwork: "تعذّر الاتصال بفيسبوك. تحقق من اتصالك بالإنترنت.",
+        reconnect: "إعادة ربط بالصلاحيات الناقصة",
+        reconnectAll: "إعادة الربط بصلاحيات كاملة",
+        reconnectToastTitle: "تم نسخ الصلاحيات الناقصة",
+        reconnectToastDesc: "افتح Graph API Explorer، اضغط \"Add a Permission\" والصق الصلاحيات، ثم اضغط Generate Access Token.",
       }
     : {
         title: "Facebook Connection",
@@ -303,6 +307,10 @@ function FacebookPage() {
         errExpired: "Token has expired. Re-generate it from Graph Explorer.",
         errPermission: "Missing permissions. Make sure all required scopes are granted.",
         errNetwork: "Could not reach Facebook. Check your internet connection.",
+        reconnect: "Reconnect with missing scopes",
+        reconnectAll: "Reconnect with full permissions",
+        reconnectToastTitle: "Missing scopes copied",
+        reconnectToastDesc: "Open Graph API Explorer, click \"Add a Permission\", paste the scopes, then click Generate Access Token.",
       };
 
   useEffect(() => {
