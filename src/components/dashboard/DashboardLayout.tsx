@@ -3,6 +3,8 @@ import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   Facebook,
+  MessageCircle,
+  Activity,
   Settings,
   LogOut,
   Menu,
@@ -13,6 +15,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
+import { NotificationsBell } from "@/components/dashboard/NotificationsBell";
 import flowtixLogo from "@/assets/flowtix-logo.png";
 
 interface DashboardLayoutProps {
@@ -53,12 +56,14 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   };
 
   const labels = lang === "ar"
-    ? { overview: "نظرة عامة", facebook: "فيسبوك", settings: "الإعدادات", logout: "تسجيل الخروج" }
-    : { overview: "Overview", facebook: "Facebook", settings: "Settings", logout: "Sign Out" };
+    ? { overview: "نظرة عامة", facebook: "فيسبوك", whatsapp: "واتساب", activity: "سجل النشاط", settings: "الإعدادات", logout: "تسجيل الخروج" }
+    : { overview: "Overview", facebook: "Facebook", whatsapp: "WhatsApp", activity: "Activity", settings: "Settings", logout: "Sign Out" };
 
   const menu = [
     { icon: LayoutDashboard, label: labels.overview, to: "/dashboard" as const },
     { icon: Facebook, label: labels.facebook, to: "/dashboard/facebook" as const },
+    { icon: MessageCircle, label: labels.whatsapp, to: "/dashboard/whatsapp" as const },
+    { icon: Activity, label: labels.activity, to: "/dashboard/activity" as const },
     { icon: Settings, label: labels.settings, to: "/dashboard" as const },
   ];
 
@@ -163,6 +168,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
             <h1 className="text-base font-semibold text-foreground md:text-lg">{title}</h1>
           </div>
           <div className="flex items-center gap-2">
+            <NotificationsBell />
             <button onClick={() => setLang(lang === "ar" ? "en" : "ar")} className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent">
               {lang === "ar" ? "EN" : "عربي"}
             </button>
