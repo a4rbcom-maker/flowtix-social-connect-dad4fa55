@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Facebook, RefreshCw, Trash2, Users, Loader2, ExternalLink, ChevronDown, CheckCircle2, Copy, ShieldCheck, FlaskConical, XCircle } from "lucide-react";
+import { Facebook, RefreshCw, Trash2, Users, Loader2, ExternalLink, ChevronDown, CheckCircle2, Copy, ShieldCheck, FlaskConical, XCircle, KeyRound, Send, Sparkles, AlertCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
@@ -65,6 +65,7 @@ function FacebookPage() {
     granted: string[];
     declined: string[];
   } | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
 
   const requiredScopes = [
     "public_profile",
@@ -148,6 +149,17 @@ function FacebookPage() {
         confirmConnect: "تأكيد الربط وحفظ التوكن",
         testFirst: "اختبر التوكن أولاً قبل الربط",
         savingSecure: "سيتم حفظ التوكن بشكل آمن في قاعدة بياناتك المحمية بـ RLS — لا يمكن لأي مستخدم آخر الوصول إليه.",
+        quickStart: "بدء سريع في 3 خطوات",
+        quick1Title: "احصل على التوكن",
+        quick1Desc: "من Graph API Explorer مع الصلاحيات المطلوبة",
+        quick2Title: "اختبر التوكن",
+        quick2Desc: "نتأكد من صلاحيته وصلاحياته قبل الحفظ",
+        quick3Title: "ثبّت الربط",
+        quick3Desc: "نخزّن التوكن مشفّراً ونبدأ التحميل",
+        errInvalidToken: "التوكن غير صالح أو منتهي الصلاحية. أنشئ توكن جديد من Graph Explorer.",
+        errExpired: "انتهت صلاحية التوكن. أعد توليده من Graph Explorer.",
+        errPermission: "صلاحيات ناقصة. تأكد من إضافة كل الصلاحيات المطلوبة.",
+        errNetwork: "تعذّر الاتصال بفيسبوك. تحقق من اتصالك بالإنترنت.",
       }
     : {
         title: "Facebook Connection",
@@ -215,6 +227,17 @@ function FacebookPage() {
         confirmConnect: "Confirm & save token securely",
         testFirst: "Test the token before connecting",
         savingSecure: "Token will be stored securely in your RLS-protected database — no other user can access it.",
+        quickStart: "Quick start in 3 steps",
+        quick1Title: "Get a token",
+        quick1Desc: "From Graph API Explorer with the required scopes",
+        quick2Title: "Test the token",
+        quick2Desc: "We verify it's valid and has the right permissions",
+        quick3Title: "Confirm linking",
+        quick3Desc: "Token is stored encrypted and loading begins",
+        errInvalidToken: "Token is invalid or malformed. Generate a new one from Graph Explorer.",
+        errExpired: "Token has expired. Re-generate it from Graph Explorer.",
+        errPermission: "Missing permissions. Make sure all required scopes are granted.",
+        errNetwork: "Could not reach Facebook. Check your internet connection.",
       };
 
   useEffect(() => {
@@ -247,6 +270,16 @@ function FacebookPage() {
     } as never);
   };
 
+  const friendlyError = (raw: string): string => {
+    const m = raw.toLowerCase();
+    if (m.includes("expired")) return t.errExpired;
+    if (m.includes("invalid") && m.includes("token")) return t.errInvalidToken;
+    if (m.includes("oauth") || m.includes("190")) return t.errInvalidToken;
+    if (m.includes("permission") || m.includes("scope")) return t.errPermission;
+    if (m.includes("fetch") || m.includes("network") || m.includes("failed to fetch")) return t.errNetwork;
+    return raw;
+  };
+
   const handleTest = async () => {
     if (!token.trim() || token.trim().length < 20) {
       toast.error(lang === "ar" ? "التوكن قصير جداً" : "Token is too short");
@@ -254,13 +287,21 @@ function FacebookPage() {
     }
     setTesting(true);
     setTestResult(null);
+    setTestError(null);
     try {
       const res = await callServerFn(testFacebookToken, { access_token: token.trim() });
       setTestResult({ profile: res.profile, granted: res.granted, declined: res.declined });
-      toast.success(`${t.testSuccess}: ${res.profile.name}`);
+      const missing = requiredScopes.filter((s) => !res.granted.includes(s));
+      if (missing.length === 0) {
+        toast.success(`${t.testSuccess}: ${res.profile.name}`);
+      } else {
+        toast.warning(`${t.testSuccess} — ${t.missingScopes}: ${missing.length}`);
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t.testFailed;
+      const raw = err instanceof Error ? err.message : t.testFailed;
+      const msg = friendlyError(raw);
       setTestResult(null);
+      setTestError(msg);
       toast.error(`${t.testFailed} — ${msg}`);
     } finally {
       setTesting(false);
@@ -348,6 +389,34 @@ function FacebookPage() {
   return (
     <DashboardLayout title={t.title}>
       <div className="mx-auto max-w-5xl space-y-6">
+        {/* Quick-start strip — concise 3 steps */}
+        {!connection && (
+          <div className="rounded-2xl border border-border/50 bg-gradient-to-br from-primary/5 via-card to-[oklch(0.66_0.26_320)]/5 p-5 shadow-sm">
+            <div className="mb-4 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">{t.quickStart}</h3>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[
+                { icon: KeyRound, title: t.quick1Title, desc: t.quick1Desc, n: 1 },
+                { icon: FlaskConical, title: t.quick2Title, desc: t.quick2Desc, n: 2 },
+                { icon: Send, title: t.quick3Title, desc: t.quick3Desc, n: 3 },
+              ].map((s) => (
+                <div key={s.n} className="relative rounded-xl border border-border/50 bg-card/60 p-4 backdrop-blur-sm">
+                  <div className="mb-2 flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-[oklch(0.66_0.26_320)] text-xs font-bold text-white shadow">
+                      {s.n}
+                    </div>
+                    <s.icon className="h-4 w-4 text-primary" />
+                  </div>
+                  <h4 className="text-sm font-semibold text-foreground">{s.title}</h4>
+                  <p className="mt-1 text-xs text-muted-foreground">{s.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Step-by-step guide — shown only when not connected */}
         {!connection && (
           <div className="overflow-hidden rounded-2xl border border-border/50 bg-card shadow-sm">
@@ -483,7 +552,7 @@ function FacebookPage() {
                     <input
                       type={showToken ? "text" : "password"}
                       value={token}
-                      onChange={(e) => { setToken(e.target.value); setTestResult(null); }}
+                      onChange={(e) => { setToken(e.target.value); setTestResult(null); setTestError(null); }}
                       placeholder={t.tokenPlaceholder}
                       className="w-full rounded-xl border border-border bg-background px-4 py-2.5 pr-20 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                     />
@@ -508,6 +577,15 @@ function FacebookPage() {
                   </a>
                 </div>
               </div>
+              {testError && !testResult && (
+                <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+                  <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-destructive">{t.testFailed}</p>
+                    <p className="mt-1 text-sm text-foreground/80">{testError}</p>
+                  </div>
+                </div>
+              )}
               {testResult && (
                 <div className="rounded-xl border border-green-500/30 bg-green-500/5 p-4">
                   <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-green-700 dark:text-green-400">
