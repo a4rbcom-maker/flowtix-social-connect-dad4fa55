@@ -3,9 +3,6 @@ import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   Facebook,
-  MessageCircle,
-  Bot,
-  Send,
   Settings,
   LogOut,
   Menu,
