@@ -18,9 +18,11 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashboardWhatsappRouteImport } from './routes/dashboard.whatsapp'
 import { Route as DashboardFacebookRouteImport } from './routes/dashboard.facebook'
 import { Route as DashboardControlRouteImport } from './routes/dashboard.control'
+import { Route as DashboardBulkRouteImport } from './routes/dashboard.bulk'
 import { Route as DashboardActivityRouteImport } from './routes/dashboard.activity'
 import { Route as DashboardFacebookStatusRouteImport } from './routes/dashboard.facebook.status'
 import { Route as DashboardFacebookGroupsRouteImport } from './routes/dashboard.facebook.groups'
+import { Route as ApiPublicHooksProcessBulkJobsRouteImport } from './routes/api/public/hooks/process-bulk-jobs'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -67,6 +69,11 @@ const DashboardControlRoute = DashboardControlRouteImport.update({
   path: '/control',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardBulkRoute = DashboardBulkRouteImport.update({
+  id: '/bulk',
+  path: '/bulk',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardActivityRoute = DashboardActivityRouteImport.update({
   id: '/activity',
   path: '/activity',
@@ -82,6 +89,12 @@ const DashboardFacebookGroupsRoute = DashboardFacebookGroupsRouteImport.update({
   path: '/groups',
   getParentRoute: () => DashboardFacebookRoute,
 } as any)
+const ApiPublicHooksProcessBulkJobsRoute =
+  ApiPublicHooksProcessBulkJobsRouteImport.update({
+    id: '/api/public/hooks/process-bulk-jobs',
+    path: '/api/public/hooks/process-bulk-jobs',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -91,11 +104,13 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/dashboard/activity': typeof DashboardActivityRoute
+  '/dashboard/bulk': typeof DashboardBulkRoute
   '/dashboard/control': typeof DashboardControlRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
+  '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -105,11 +120,13 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/dashboard/activity': typeof DashboardActivityRoute
+  '/dashboard/bulk': typeof DashboardBulkRoute
   '/dashboard/control': typeof DashboardControlRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
+  '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -120,11 +137,13 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/dashboard/activity': typeof DashboardActivityRoute
+  '/dashboard/bulk': typeof DashboardBulkRoute
   '/dashboard/control': typeof DashboardControlRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
+  '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -136,11 +155,13 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/dashboard/activity'
+    | '/dashboard/bulk'
     | '/dashboard/control'
     | '/dashboard/facebook'
     | '/dashboard/whatsapp'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/status'
+    | '/api/public/hooks/process-bulk-jobs'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -150,11 +171,13 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/dashboard/activity'
+    | '/dashboard/bulk'
     | '/dashboard/control'
     | '/dashboard/facebook'
     | '/dashboard/whatsapp'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/status'
+    | '/api/public/hooks/process-bulk-jobs'
   id:
     | '__root__'
     | '/'
@@ -164,11 +187,13 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/dashboard/activity'
+    | '/dashboard/bulk'
     | '/dashboard/control'
     | '/dashboard/facebook'
     | '/dashboard/whatsapp'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/status'
+    | '/api/public/hooks/process-bulk-jobs'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -178,6 +203,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  ApiPublicHooksProcessBulkJobsRoute: typeof ApiPublicHooksProcessBulkJobsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -245,6 +271,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardControlRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/bulk': {
+      id: '/dashboard/bulk'
+      path: '/bulk'
+      fullPath: '/dashboard/bulk'
+      preLoaderRoute: typeof DashboardBulkRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/activity': {
       id: '/dashboard/activity'
       path: '/activity'
@@ -266,6 +299,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardFacebookGroupsRouteImport
       parentRoute: typeof DashboardFacebookRoute
     }
+    '/api/public/hooks/process-bulk-jobs': {
+      id: '/api/public/hooks/process-bulk-jobs'
+      path: '/api/public/hooks/process-bulk-jobs'
+      fullPath: '/api/public/hooks/process-bulk-jobs'
+      preLoaderRoute: typeof ApiPublicHooksProcessBulkJobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -284,6 +324,7 @@ const DashboardFacebookRouteWithChildren =
 
 interface DashboardRouteChildren {
   DashboardActivityRoute: typeof DashboardActivityRoute
+  DashboardBulkRoute: typeof DashboardBulkRoute
   DashboardControlRoute: typeof DashboardControlRoute
   DashboardFacebookRoute: typeof DashboardFacebookRouteWithChildren
   DashboardWhatsappRoute: typeof DashboardWhatsappRoute
@@ -291,6 +332,7 @@ interface DashboardRouteChildren {
 
 const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardActivityRoute: DashboardActivityRoute,
+  DashboardBulkRoute: DashboardBulkRoute,
   DashboardControlRoute: DashboardControlRoute,
   DashboardFacebookRoute: DashboardFacebookRouteWithChildren,
   DashboardWhatsappRoute: DashboardWhatsappRoute,
@@ -307,6 +349,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  ApiPublicHooksProcessBulkJobsRoute: ApiPublicHooksProcessBulkJobsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
