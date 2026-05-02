@@ -34,6 +34,27 @@ export async function openExternalUrl(
   const { lang = "ar", onDebug, silent = false } = opts;
   const log: ExternalLinkDebug = (l, s, d) => onDebug?.(l, s, d);
 
+  // Unified, parallel AR/EN messages — one source of truth.
+  const M = {
+    openedAndCopied: {
+      ar: "تم فتح الرابط ونسخه احتياطياً إلى الحافظة.",
+      en: "Link opened and copied to clipboard as a backup.",
+    },
+    openedOnly: {
+      ar: "تم فتح الرابط في تبويب جديد.",
+      en: "Link opened in a new tab.",
+    },
+    copiedOnly: {
+      ar: "تعذّر فتح الرابط هنا، لكنه نُسخ إلى الحافظة — الصقه في تبويب جديد.",
+      en: "Couldn't open here, but the link was copied — paste it in a new tab.",
+    },
+    failed: {
+      ar: "تعذّر فتح الرابط ولم يتم نسخه. افتحه يدوياً.",
+      en: "Couldn't open the link and copy failed. Open it manually.",
+    },
+  } as const;
+  const msg = (k: keyof typeof M) => M[k][lang];
+
   log("info", "openExternalUrl:start", `url=${url}`);
 
   try {
@@ -59,7 +80,24 @@ export async function openExternalUrl(
     log("error", "clipboard.writeText", e instanceof Error ? e.message : String(e));
   }
 
-  // 2) Synthetic anchor click.
+  // Helper that emits the right success toast based on whether copy worked.
+  const notifyOpened = (method: string) => {
+    if (silent) return;
+    const text = copied ? msg("openedAndCopied") : msg("openedOnly");
+    toast.success(text, {
+      description: copied
+        ? undefined
+        : lang === "ar"
+          ? "إذا لم يظهر التبويب، تحقق من حاجب النوافذ."
+          : "If the tab didn't appear, check your popup blocker.",
+      duration: 4500,
+    });
+    log("info", "toast", `opened via ${method} (copied=${copied})`);
+  };
+
+  // 2) Synthetic anchor click — most reliable inside sandboxed iframes.
+  //    NOTE: we cannot programmatically confirm a tab actually opened, so the
+  //    description hint above keeps the wording honest if popups are blocked.
   try {
     const a = document.createElement("a");
     a.href = url;
@@ -70,25 +108,18 @@ export async function openExternalUrl(
     a.click();
     document.body.removeChild(a);
     log("success", "anchor.click", "dispatched");
-    if (!silent) {
-      toast.success(
-        lang === "ar"
-          ? `تم فتح الرابط في تبويب جديد${copied ? " ونسخه احتياطياً" : ""}. إذا لم يظهر الصقه يدوياً.`
-          : `Opened in a new tab${copied ? " and copied as backup" : ""}. If it didn't appear, paste it manually.`,
-        { duration: 5000 },
-      );
-    }
+    notifyOpened("anchor");
     return { copied, opened: true, method: "anchor" };
   } catch (e) {
     log("warn", "anchor.click", e instanceof Error ? e.message : String(e));
   }
 
-  // 3) window.open
+  // 3) window.open — we CAN confirm this one (returns null if blocked).
   try {
     const w = window.open(url, "_blank", "noopener,noreferrer");
     if (w) {
       log("success", "window.open", "got window");
-      if (!silent) toast.success(lang === "ar" ? "تم فتح الرابط" : "Opened");
+      notifyOpened("window.open");
       return { copied, opened: true, method: "window.open" };
     }
     log("warn", "window.open", "returned null (popup blocked)");
@@ -96,11 +127,12 @@ export async function openExternalUrl(
     log("error", "window.open", e instanceof Error ? e.message : String(e));
   }
 
-  // 4) top-frame navigation
+  // 4) Top-frame navigation.
   try {
     if (window.top && window.top !== window.self) {
       window.top.location.href = url;
       log("success", "top.location", "navigated");
+      notifyOpened("top.location");
       return { copied, opened: true, method: "top" };
     }
     log("info", "top.location", "skipped (not in iframe)");
@@ -108,22 +140,15 @@ export async function openExternalUrl(
     log("error", "top.location", e instanceof Error ? e.message : String(e));
   }
 
-  // 5) clipboard-only fallback
+  // 5) Nothing worked — clipboard-only or full failure.
   if (!silent) {
     if (copied) {
-      toast.info(
-        lang === "ar"
-          ? "تعذّر فتح الرابط داخل المعاينة، لكن تم نسخه إلى الحافظة. الصقه في تبويب جديد."
-          : "Couldn't open inside the preview, but the link was copied. Paste it in a new tab.",
-        { duration: 7000 },
-      );
+      toast.warning(msg("copiedOnly"), { duration: 6500 });
     } else {
-      toast.error(
-        lang === "ar"
-          ? `تعذّر فتح الرابط ونسخه. افتحه يدوياً: ${url}`
-          : `Couldn't open or copy. Open manually: ${url}`,
-        { duration: 10000 },
-      );
+      toast.error(msg("failed"), {
+        description: url,
+        duration: 9000,
+      });
     }
   }
   log(copied ? "warn" : "error", "openExternalUrl:end", `copied=${copied} opened=false`);
