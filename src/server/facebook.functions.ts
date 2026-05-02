@@ -160,3 +160,108 @@ export const fetchFacebookPages = createServerFn({ method: "POST" })
 
     return { pages: result.data ?? [] };
   });
+
+/**
+ * Inspect the currently stored Facebook token: validity, expiry, scopes, profile.
+ * Does NOT expose the raw token to the client.
+ */
+export const inspectFacebookConnection = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data: row, error } = await supabase
+      .from("facebook_connections")
+      .select("access_token, fb_user_id, fb_user_name, fb_user_email, last_synced_at, created_at")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!row?.access_token) {
+      return { connected: false as const };
+    }
+
+    const token = row.access_token;
+    const tokenPreview = `${token.slice(0, 6)}…${token.slice(-4)}`;
+
+    let valid = true;
+    let validationError: string | null = null;
+    let profile: { id: string; name: string; email: string | null } | null = null;
+    let granted: string[] = [];
+    let declined: string[] = [];
+    let expiresAt: string | null = null;
+    let dataAccessExpiresAt: string | null = null;
+    let appName: string | null = null;
+    let isExpired = false;
+
+    try {
+      const [me, perms] = await Promise.all([
+        fbGet("/me?fields=id,name,email", token),
+        fbGet("/me/permissions", token),
+      ]);
+      profile = { id: String(me.id), name: me.name, email: me.email ?? null };
+      granted = (perms.data ?? [])
+        .filter((p: { status: string }) => p.status === "granted")
+        .map((p: { permission: string }) => p.permission);
+      declined = (perms.data ?? [])
+        .filter((p: { status: string }) => p.status !== "granted")
+        .map((p: { permission: string }) => p.permission);
+    } catch (err) {
+      valid = false;
+      validationError = err instanceof Error ? err.message : "Token validation failed";
+      if (validationError.toLowerCase().includes("expired")) isExpired = true;
+    }
+
+    if (valid) {
+      try {
+        const dbg = await fbGet(`/debug_token?input_token=${encodeURIComponent(token)}`, token);
+        const info = dbg?.data;
+        if (info) {
+          if (info.expires_at && info.expires_at > 0) {
+            expiresAt = new Date(info.expires_at * 1000).toISOString();
+            if (info.expires_at * 1000 < Date.now()) isExpired = true;
+          }
+          if (info.data_access_expires_at && info.data_access_expires_at > 0) {
+            dataAccessExpiresAt = new Date(info.data_access_expires_at * 1000).toISOString();
+          }
+          appName = info.application ?? null;
+          if (info.is_valid === false) valid = false;
+        }
+      } catch {
+        // debug_token may fail for some token types; ignore.
+      }
+    }
+
+    const requiredScopes = [
+      "public_profile",
+      "email",
+      "user_groups",
+      "groups_access_member_info",
+      "pages_show_list",
+      "pages_read_engagement",
+      "pages_manage_metadata",
+    ];
+    const missingScopes = requiredScopes.filter((s) => !granted.includes(s));
+
+    return {
+      connected: true as const,
+      valid,
+      isExpired,
+      validationError,
+      tokenPreview,
+      tokenLength: token.length,
+      profile,
+      granted,
+      declined,
+      missingScopes,
+      requiredScopes,
+      expiresAt,
+      dataAccessExpiresAt,
+      appName,
+      lastSyncedAt: row.last_synced_at,
+      createdAt: row.created_at,
+      storedProfile: {
+        id: row.fb_user_id,
+        name: row.fb_user_name,
+        email: row.fb_user_email,
+      },
+    };
+  });
