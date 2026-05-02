@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { Facebook, RefreshCw, Trash2, Users, Loader2, ExternalLink, ChevronDown, CheckCircle2, Copy, ShieldCheck, FlaskConical, XCircle, KeyRound, Send, Sparkles, AlertCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -80,6 +80,33 @@ function FacebookPage() {
   const copyScopes = () => {
     navigator.clipboard.writeText(requiredScopes.join(","));
     toast.success(lang === "ar" ? "تم نسخ الصلاحيات" : "Scopes copied");
+  };
+
+  // Open external links — handles Lovable's iframe sandbox where target="_blank"
+  // can be silently blocked. Tries window.open, then top-frame navigation, then
+  // copies the URL to clipboard as a final fallback.
+  const openExternal = (e: MouseEvent, url: string) => {
+    e.preventDefault();
+    try {
+      const w = window.open(url, "_blank", "noopener,noreferrer");
+      if (w) return;
+    } catch { /* blocked */ }
+    try {
+      if (window.top && window.top !== window.self) {
+        window.top.location.href = url;
+        return;
+      }
+    } catch { /* cross-origin */ }
+    try {
+      navigator.clipboard.writeText(url);
+      toast.info(
+        lang === "ar"
+          ? "تعذّر فتح الرابط داخل المعاينة — تم نسخه، الصقه في تبويب جديد"
+          : "Couldn't open inside preview — link copied, paste it in a new tab",
+      );
+    } catch {
+      toast.error(lang === "ar" ? "تعذّر فتح الرابط" : "Couldn't open the link");
+    }
   };
 
   const t = lang === "ar"
@@ -453,6 +480,7 @@ function FacebookPage() {
                             href={step.link}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={(e) => openExternal(e, step.link!)}
                             className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/20"
                           >
                             {step.action} <ExternalLink className="h-3.5 w-3.5" />
@@ -571,6 +599,7 @@ function FacebookPage() {
                     href="https://developers.facebook.com/tools/explorer/"
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={(e) => openExternal(e, "https://developers.facebook.com/tools/explorer/")}
                     className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
                   >
                     {t.getToken} <ExternalLink className="h-3 w-3" />
