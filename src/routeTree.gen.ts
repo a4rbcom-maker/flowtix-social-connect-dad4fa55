@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
@@ -18,6 +19,11 @@ import { Route as DashboardWhatsappRouteImport } from './routes/dashboard.whatsa
 import { Route as DashboardFacebookRouteImport } from './routes/dashboard.facebook'
 import { Route as DashboardFacebookStatusRouteImport } from './routes/dashboard.facebook.status'
 
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
@@ -65,6 +71,7 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/signup': typeof SignupRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
@@ -75,6 +82,7 @@ export interface FileRoutesByTo {
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/signup': typeof SignupRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
@@ -86,6 +94,7 @@ export interface FileRoutesById {
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/signup': typeof SignupRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
@@ -98,6 +107,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/login'
     | '/reset-password'
+    | '/signup'
     | '/dashboard/facebook'
     | '/dashboard/whatsapp'
     | '/dashboard/facebook/status'
@@ -108,6 +118,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/login'
     | '/reset-password'
+    | '/signup'
     | '/dashboard/facebook'
     | '/dashboard/whatsapp'
     | '/dashboard/facebook/status'
@@ -118,6 +129,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/login'
     | '/reset-password'
+    | '/signup'
     | '/dashboard/facebook'
     | '/dashboard/whatsapp'
     | '/dashboard/facebook/status'
@@ -129,10 +141,18 @@ export interface RootRouteChildren {
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  SignupRoute: typeof SignupRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reset-password': {
       id: '/reset-password'
       path: '/reset-password'
@@ -223,6 +243,7 @@ const rootRouteChildren: RootRouteChildren = {
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  SignupRoute: SignupRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
