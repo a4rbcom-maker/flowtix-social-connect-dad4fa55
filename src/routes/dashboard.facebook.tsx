@@ -147,6 +147,44 @@ function FacebookPage() {
     });
   };
 
+  // Reconnect flow: copy the (missing) scopes to the clipboard and open
+  // Graph API Explorer so the user can paste them into "Add a Permission"
+  // and re-generate a token. Meta does not accept scopes via URL on Explorer,
+  // so the clipboard + toast guidance is the most reliable handoff.
+  const handleReconnect = async (scopes: string[]) => {
+    const list = (scopes && scopes.length ? scopes : requiredScopes).join(",");
+    debugLog("info", "reconnect:start", `scopes=${list}`);
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(list);
+      copied = true;
+      debugLog("success", "reconnect:clipboard", "ok");
+    } catch (err) {
+      debugLog("error", "reconnect:clipboard", err instanceof Error ? err.message : String(err));
+    }
+    if (copied) {
+      toast.success(
+        lang === "ar" ? "تم نسخ الصلاحيات الناقصة" : "Missing scopes copied",
+        {
+          description:
+            lang === "ar"
+              ? "افتح Graph API Explorer، اضغط \"Add a Permission\" والصق الصلاحيات، ثم اضغط Generate Access Token."
+              : "Open Graph API Explorer, click \"Add a Permission\", paste the scopes, then click Generate Access Token.",
+        },
+      );
+    } else {
+      toast.warning(
+        lang === "ar" ? "تعذّر نسخ الصلاحيات تلقائياً" : "Could not copy scopes automatically",
+        { description: lang === "ar" ? `انسخها يدوياً: ${list}` : `Copy them manually: ${list}` },
+      );
+    }
+    void openExternalUrl("https://developers.facebook.com/tools/explorer/", {
+      lang: lang === "ar" ? "ar" : "en",
+      onDebug: debugMode ? debugLog : undefined,
+    });
+  };
+
+
   const t = lang === "ar"
     ? {
         title: "ربط فيسبوك",
