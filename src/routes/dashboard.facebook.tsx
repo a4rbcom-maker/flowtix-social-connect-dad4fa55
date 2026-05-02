@@ -1005,10 +1005,24 @@ function FacebookPage() {
             </div>
 
             {tab === "groups" && groupsError && (
-              <FbErrorBanner err={groupsError} onRetry={handleLoadGroups} lang={lang} friendly={friendlyFbError} />
+              <FbErrorBanner
+                err={groupsError}
+                onRetry={handleLoadGroups}
+                onReconnect={() => handleReconnect(groupsError.missingPermission ? [groupsError.missingPermission] : requiredScopes)}
+                lang={lang}
+                friendly={friendlyFbError}
+                reconnectLabel={t.reconnectAll}
+              />
             )}
             {tab === "pages" && pagesError && (
-              <FbErrorBanner err={pagesError} onRetry={handleLoadPages} lang={lang} friendly={friendlyFbError} />
+              <FbErrorBanner
+                err={pagesError}
+                onRetry={handleLoadPages}
+                onReconnect={() => handleReconnect(pagesError.missingPermission ? [pagesError.missingPermission] : requiredScopes)}
+                lang={lang}
+                friendly={friendlyFbError}
+                reconnectLabel={t.reconnectAll}
+              />
             )}
 
             {tab === "groups" && !groupsError && (
