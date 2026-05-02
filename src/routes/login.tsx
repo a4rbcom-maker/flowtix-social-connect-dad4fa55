@@ -228,12 +228,21 @@ function LoginPage() {
 
             <p className="relative mt-6 text-center text-sm text-muted-foreground">
               {isLogin ? labels.noAccount : labels.hasAccount}{" "}
-              <button
-                onClick={() => { setIsLogin(!isLogin); setError(""); setSuccess(""); }}
-                className="font-semibold text-primary transition-colors hover:text-primary/80 hover:underline underline-offset-4"
-              >
-                {isLogin ? labels.createAccount : labels.loginNow}
-              </button>
+              {isLogin ? (
+                <Link
+                  to="/signup"
+                  className="font-semibold text-primary transition-colors hover:text-primary/80 hover:underline underline-offset-4"
+                >
+                  {labels.createAccount}
+                </Link>
+              ) : (
+                <button
+                  onClick={() => { setIsLogin(true); setError(""); setSuccess(""); }}
+                  className="font-semibold text-primary transition-colors hover:text-primary/80 hover:underline underline-offset-4"
+                >
+                  {labels.loginNow}
+                </button>
+              )}
             </p>
           </div>
 
