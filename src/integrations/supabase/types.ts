@@ -77,6 +77,54 @@ export type Database = {
         }
         Relationships: []
       }
+      scheduled_messages: {
+        Row: {
+          channel: Database["public"]["Enums"]["send_channel"]
+          created_at: string
+          error_message: string | null
+          id: string
+          image_url: string | null
+          message: string
+          metadata: Json | null
+          recipients: Json
+          scheduled_at: string
+          status: Database["public"]["Enums"]["schedule_status"]
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          channel: Database["public"]["Enums"]["send_channel"]
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          image_url?: string | null
+          message: string
+          metadata?: Json | null
+          recipients?: Json
+          scheduled_at: string
+          status?: Database["public"]["Enums"]["schedule_status"]
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          channel?: Database["public"]["Enums"]["send_channel"]
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          image_url?: string | null
+          message?: string
+          metadata?: Json | null
+          recipients?: Json
+          scheduled_at?: string
+          status?: Database["public"]["Enums"]["schedule_status"]
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       send_log: {
         Row: {
           action: string
@@ -215,6 +263,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"
+      schedule_status: "scheduled" | "sending" | "sent" | "failed" | "cancelled"
       send_channel: "whatsapp" | "facebook" | "bulk" | "system"
       send_status: "pending" | "processing" | "success" | "failed"
     }
@@ -345,6 +394,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "moderator", "user"],
+      schedule_status: ["scheduled", "sending", "sent", "failed", "cancelled"],
       send_channel: ["whatsapp", "facebook", "bulk", "system"],
       send_status: ["pending", "processing", "success", "failed"],
     },
