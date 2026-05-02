@@ -12,6 +12,7 @@ import {
   fetchFacebookGroups,
   fetchFacebookPages,
   getFacebookConnection,
+  inspectFacebookConnection,
   testFacebookToken,
 } from "@/server/facebook.functions";
 import { openExternalUrl, ExternalLinkButton } from "@/components/shared/ExternalLinkButton";
