@@ -110,7 +110,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
       title: labels.sectionInsights,
       items: [
         { kind: "leaf", icon: Activity, label: labels.activity, to: "/dashboard/activity" },
-        { kind: "leaf", icon: Settings, label: labels.settings, to: "/dashboard" },
+        { kind: "leaf", icon: Settings, label: labels.settings, to: "/dashboard/profile" },
       ],
     },
   ];
