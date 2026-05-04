@@ -344,10 +344,10 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                       >
                         <div className="overflow-hidden">
                           <div
-                            className={`mt-1 space-y-0.5 ${
+                            className={`mt-1.5 space-y-0.5 ${
                               dir === "rtl"
-                                ? "mr-5 border-r border-border/50 pr-3"
-                                : "ml-5 border-l border-border/50 pl-3"
+                                ? "mr-[18px] border-r border-dashed border-border/60 pr-3"
+                                : "ml-[18px] border-l border-dashed border-border/60 pl-3"
                             }`}
                           >
                             {item.children.map((child, j) => {
@@ -358,20 +358,20 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                                   key={j}
                                   to={child.to}
                                   onClick={closeOnMobile}
-                                  className={`group/sub relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-all duration-200 ${
+                                  className={`group/sub relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12.5px] transition-all duration-300 ${
                                     childActive
-                                      ? "bg-primary/10 font-semibold text-primary"
-                                      : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                                      ? "bg-primary/10 font-semibold text-primary shadow-[0_2px_8px_-3px_rgba(124,58,237,0.4)]"
+                                      : "text-muted-foreground hover:translate-x-0.5 hover:bg-accent/50 hover:text-foreground rtl:hover:-translate-x-0.5"
                                   }`}
                                 >
                                   <span
-                                    className={`h-1.5 w-1.5 shrink-0 rounded-full transition-all ${
+                                    className={`h-1.5 w-1.5 shrink-0 rounded-full transition-all duration-300 ${
                                       childActive
-                                        ? "bg-primary shadow-[0_0_8px_oklch(0.62_0.27_295)]"
-                                        : "bg-border group-hover/sub:bg-muted-foreground"
+                                        ? "bg-primary shadow-[0_0_10px_oklch(0.62_0.27_295)] scale-125"
+                                        : "bg-border group-hover/sub:bg-primary/60 group-hover/sub:scale-110"
                                     }`}
                                   />
-                                  <ChildIcon className="h-[14px] w-[14px] shrink-0 opacity-80" />
+                                  <ChildIcon className={`h-[14px] w-[14px] shrink-0 transition-opacity ${childActive ? "opacity-100" : "opacity-70 group-hover/sub:opacity-100"}`} />
                                   <span className="truncate">{child.label}</span>
                                 </Link>
                               );
