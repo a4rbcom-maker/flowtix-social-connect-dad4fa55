@@ -228,49 +228,109 @@ export function HeroSection() {
               </div>
             </div>
 
-            {/* Main mockup */}
-            <div className="rounded-2xl glass-card overflow-hidden shadow-lg shadow-black/5">
-              <div className="flex items-center gap-2 border-b border-border/50 px-4 py-3 bg-accent/20">
+            {/* Main mockup — premium chat UI */}
+            <div className="rounded-2xl glass-card overflow-hidden shadow-xl shadow-primary/10 border border-border/60">
+              {/* Browser chrome */}
+              <div className="flex items-center gap-2 border-b border-border/50 px-4 py-2.5 bg-accent/30">
                 <div className="flex gap-1.5">
-                  <div className="h-3 w-3 rounded-full bg-red-300" />
-                  <div className="h-3 w-3 rounded-full bg-yellow-300" />
-                  <div className="h-3 w-3 rounded-full bg-green-300" />
+                  <div className="h-2.5 w-2.5 rounded-full bg-red-300" />
+                  <div className="h-2.5 w-2.5 rounded-full bg-yellow-300" />
+                  <div className="h-2.5 w-2.5 rounded-full bg-green-300" />
                 </div>
-                <div className="mx-auto text-xs text-muted-foreground font-medium">flowtixtools.com</div>
+                <div className="mx-auto flex items-center gap-1.5 rounded-md bg-background/60 px-3 py-0.5 text-[11px] text-muted-foreground font-medium">
+                  <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  flowtixtools.com
+                </div>
               </div>
-              <div className="p-4 md:p-6 space-y-3">
-                <div className="flex gap-3 items-start">
-                  <div className="h-8 w-8 shrink-0 rounded-full bg-primary/10 flex items-center justify-center">
-                    <svg className="h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                  </div>
-                  <div className="rounded-xl bg-accent/40 px-4 py-2.5 max-w-[75%]">
-                    <p className="text-sm text-foreground">{dir === "rtl" ? "مرحباً، عايز أعرف سعر المنتج ده" : "Hi, I want to know the price of this product"}</p>
-                  </div>
-                </div>
-                <div className="flex gap-3 items-start justify-end">
-                  <div className="rounded-xl bg-primary/5 px-4 py-2.5 max-w-[75%]">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <svg className="h-3 w-3 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8V4H8"/><rect x="8" y="8" width="8" height="8" rx="1"/><path d="M12 16v4h4"/></svg>
-                      <span className="text-[10px] text-primary font-semibold">AI Bot</span>
+
+              {/* Conversation header */}
+              <div className="flex items-center justify-between gap-3 border-b border-border/40 px-4 py-3 bg-background/40">
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <div className="h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: "linear-gradient(135deg, rgb(138,61,245), rgb(190,94,237))" }}>
+                      {dir === "rtl" ? "ف" : "F"}
                     </div>
-                    <p className="text-sm text-foreground">{dir === "rtl" ? "أهلاً! 🎉 عندنا 3 باقات تناسبك..." : "Hello! 🎉 We have 3 plans for you..."}</p>
+                    <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-card" />
                   </div>
-                  <div className="h-8 w-8 shrink-0 rounded-full bg-primary flex items-center justify-center">
-                    <svg className="h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8V4H8"/><rect x="8" y="8" width="8" height="8" rx="1"/><path d="M12 16v4h4"/></svg>
+                  <div className="text-start">
+                    <div className="text-xs font-semibold text-foreground">{dir === "rtl" ? "Flowtix AI" : "Flowtix AI"}</div>
+                    <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                      <span className="h-1 w-1 rounded-full bg-green-500" />
+                      {dir === "rtl" ? "متصل الآن • يرد فوراً" : "Online • replies instantly"}
+                    </div>
                   </div>
                 </div>
-                <div className="flex gap-3 items-start justify-end">
-                  <div className="rounded-xl bg-primary/5 px-4 py-3">
+                <div className="flex items-center gap-1 text-muted-foreground">
+                  <button className="h-7 w-7 rounded-full hover:bg-accent flex items-center justify-center" aria-label="call">
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.72 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.35 1.85.59 2.81.72A2 2 0 0 1 22 16.92z"/></svg>
+                  </button>
+                  <button className="h-7 w-7 rounded-full hover:bg-accent flex items-center justify-center" aria-label="more">
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Messages */}
+              <div className="p-4 md:p-5 space-y-3 bg-gradient-to-b from-transparent to-accent/10">
+                {/* Customer */}
+                <div className="flex gap-2.5 items-end">
+                  <div className="h-7 w-7 shrink-0 rounded-full bg-accent flex items-center justify-center text-[10px] font-bold text-foreground/70">
+                    {dir === "rtl" ? "أ" : "A"}
+                  </div>
+                  <div className="flex flex-col gap-0.5 max-w-[75%] items-start">
+                    <div className="rounded-2xl rounded-bl-sm bg-card border border-border/60 px-3.5 py-2 shadow-sm">
+                      <p className="text-sm text-foreground leading-relaxed">{dir === "rtl" ? "مرحباً، عايز أعرف سعر المنتج ده 👀" : "Hi, I want to know the price of this product 👀"}</p>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground px-1">10:24</span>
+                  </div>
+                </div>
+
+                {/* AI reply */}
+                <div className="flex gap-2.5 items-end justify-end">
+                  <div className="flex flex-col gap-0.5 max-w-[78%] items-end">
+                    <div className="rounded-2xl rounded-br-sm px-3.5 py-2 shadow-md text-white" style={{ background: "linear-gradient(135deg, rgb(138,61,245), rgb(190,94,237))" }}>
+                      <div className="flex items-center gap-1.5 mb-1 opacity-90">
+                        <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>
+                        <span className="text-[10px] font-semibold tracking-wide">{dir === "rtl" ? "Flowtix AI" : "Flowtix AI"}</span>
+                      </div>
+                      <p className="text-sm leading-relaxed">{dir === "rtl" ? "أهلاً بك! 🎉 عندنا 3 باقات تناسب احتياجك تماماً، تحب أعرض عليك التفاصيل؟" : "Hello! 🎉 We have 3 plans tailored for you. Want me to show the details?"}</p>
+                    </div>
+                    <div className="flex items-center gap-1 px-1">
+                      <span className="text-[10px] text-muted-foreground">10:24</span>
+                      <svg className="h-3 w-3 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/><polyline points="22 10 14 18"/></svg>
+                    </div>
+                  </div>
+                  <div className="h-7 w-7 shrink-0 rounded-full flex items-center justify-center shadow-sm" style={{ background: "linear-gradient(135deg, rgb(138,61,245), rgb(190,94,237))" }}>
+                    <svg className="h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 8V4H8"/><rect x="8" y="8" width="8" height="8" rx="1"/><path d="M12 16v4h4"/></svg>
+                  </div>
+                </div>
+
+                {/* Typing */}
+                <div className="flex gap-2.5 items-end justify-end">
+                  <div className="rounded-2xl rounded-br-sm bg-accent/60 px-4 py-3 shadow-sm">
                     <div className="flex gap-1">
-                      <div className="h-1.5 w-1.5 rounded-full bg-primary/30 animate-bounce-subtle" />
-                      <div className="h-1.5 w-1.5 rounded-full bg-primary/30 animate-bounce-subtle delay-100" />
-                      <div className="h-1.5 w-1.5 rounded-full bg-primary/30 animate-bounce-subtle delay-200" />
+                      <div className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-bounce-subtle" />
+                      <div className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-bounce-subtle delay-100" />
+                      <div className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-bounce-subtle delay-200" />
                     </div>
                   </div>
-                  <div className="h-8 w-8 shrink-0 rounded-full bg-primary flex items-center justify-center">
-                    <svg className="h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8V4H8"/><rect x="8" y="8" width="8" height="8" rx="1"/><path d="M12 16v4h4"/></svg>
+                  <div className="h-7 w-7 shrink-0 rounded-full flex items-center justify-center shadow-sm" style={{ background: "linear-gradient(135deg, rgb(138,61,245), rgb(190,94,237))" }}>
+                    <svg className="h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 8V4H8"/><rect x="8" y="8" width="8" height="8" rx="1"/><path d="M12 16v4h4"/></svg>
                   </div>
                 </div>
+              </div>
+
+              {/* Composer */}
+              <div className="flex items-center gap-2 border-t border-border/50 px-3 py-2.5 bg-background/40">
+                <button className="h-8 w-8 rounded-full hover:bg-accent flex items-center justify-center text-muted-foreground" aria-label="attach">
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                </button>
+                <div className="flex-1 rounded-full bg-accent/40 px-4 py-1.5 text-xs text-muted-foreground/70">
+                  {dir === "rtl" ? "اكتب رسالتك..." : "Type a message..."}
+                </div>
+                <button className="h-8 w-8 rounded-full flex items-center justify-center text-white shadow-sm" style={{ background: "linear-gradient(135deg, rgb(138,61,245), rgb(190,94,237))" }} aria-label="send">
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                </button>
               </div>
             </div>
           </div>
