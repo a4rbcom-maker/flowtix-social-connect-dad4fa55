@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { User as UserIcon, Mail, Lock, Save, Loader2, Shield, Camera, Trash2 } from "lucide-react";
+import { User as UserIcon, Mail, Lock, Save, Loader2, Shield, Trash2 } from "lucide-react";
 import { z } from "zod";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -17,7 +17,6 @@ export const Route = createFileRoute("/dashboard/profile")({
 
 const profileSchema = z.object({
   full_name: z.string().trim().min(2, "الاسم قصير جداً").max(100),
-  avatar_url: z.string().trim().url("رابط غير صالح").max(500).or(z.literal("")),
 });
 
 const passwordSchema = z
