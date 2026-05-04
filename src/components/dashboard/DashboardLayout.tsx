@@ -396,18 +396,75 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
           ))}
         </nav>
 
-        <div className="border-t border-border/40 p-3">
-          <button
-            onClick={handleLogout}
-            title={!sidebarOpen ? labels.logout : undefined}
-            className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-destructive transition-all duration-200 hover:bg-destructive/10 ${
-              !sidebarOpen ? "justify-center" : ""
-            }`}
-          >
-            <LogOut className="h-[18px] w-[18px] shrink-0 transition-transform group-hover:-translate-x-0.5 rtl:group-hover:translate-x-0.5" />
-            {sidebarOpen && <span>{labels.logout}</span>}
-          </button>
+        {/* Premium footer: plan card + user + logout */}
+        <div className="relative mt-auto p-3">
+          {/* Top hairline */}
+          <div className="absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-border/80 to-transparent" />
+
+          {sidebarOpen ? (
+            <div className="space-y-2.5 pt-3">
+              {/* Plan / upgrade card — only when on free plan */}
+              {userPlan.toLowerCase() === "free" && (
+                <Link
+                  to="/dashboard/profile"
+                  onClick={closeOnMobile}
+                  className="group relative block overflow-hidden rounded-xl border border-primary/25 bg-gradient-to-br from-primary/12 via-card to-[oklch(0.66_0.26_320)]/8 p-3 shadow-[0_4px_18px_-6px_rgba(124,58,237,0.35)] transition-all duration-300 hover:border-primary/40 hover:shadow-[0_8px_24px_-6px_rgba(124,58,237,0.45)]"
+                >
+                  <div className="pointer-events-none absolute -top-6 -right-6 h-20 w-20 rounded-full bg-primary/20 blur-2xl transition-opacity duration-300 group-hover:opacity-100" />
+                  <div className="relative flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-[oklch(0.66_0.26_320)] text-primary-foreground shadow-md">
+                      <Sparkles className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[12px] font-bold text-foreground">{planLabel}</div>
+                      <div className="truncate text-[10.5px] font-medium text-primary">{upgradeLabel} →</div>
+                    </div>
+                  </div>
+                </Link>
+              )}
+
+              {/* User row */}
+              <div className="flex items-center gap-2.5 rounded-xl border border-border/50 bg-background/50 px-2.5 py-2 backdrop-blur">
+                <div className="relative shrink-0">
+                  <div className="absolute -inset-0.5 rounded-full bg-gradient-to-br from-primary/40 to-[oklch(0.66_0.26_320)]/40 blur-sm" />
+                  <div className="relative flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-[12px] font-bold text-primary-foreground ring-2 ring-card">
+                    {(displayName || "?").charAt(0).toUpperCase()}
+                  </div>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[12.5px] font-semibold text-foreground">{displayName || "—"}</div>
+                  <div className="truncate text-[10.5px] text-muted-foreground">{user?.email}</div>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="group/lo flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-all duration-200 hover:bg-destructive/10 hover:text-destructive"
+                  title={labels.logout}
+                  aria-label={labels.logout}
+                >
+                  <LogOut className="h-4 w-4 transition-transform group-hover/lo:-translate-x-0.5 rtl:group-hover/lo:translate-x-0.5" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2 pt-3">
+              <div className="relative">
+                <div className="absolute -inset-0.5 rounded-full bg-gradient-to-br from-primary/40 to-[oklch(0.66_0.26_320)]/40 blur-sm" />
+                <div className="relative flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-[12px] font-bold text-primary-foreground ring-2 ring-card">
+                  {(displayName || "?").charAt(0).toUpperCase()}
+                </div>
+              </div>
+              <button
+                onClick={handleLogout}
+                title={labels.logout}
+                aria-label={labels.logout}
+                className="group flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-all duration-200 hover:bg-destructive/10 hover:text-destructive"
+              >
+                <LogOut className="h-[18px] w-[18px] transition-transform group-hover:-translate-x-0.5 rtl:group-hover:translate-x-0.5" />
+              </button>
+            </div>
+          )}
         </div>
+
       </aside>
 
       {/* Main content — sidebar margin only applies on md+ (mobile uses overlay) */}
