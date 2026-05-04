@@ -41,8 +41,10 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   // SSR-safe: assume desktop-open. After mount we reconcile based on screen size.
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [isDesktop, setIsDesktop] = useState(true);
+  // Start closed/mobile to match SSR (which has no window). The effect below
+  // promotes to desktop+open after hydration on md+ viewports.
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
   const channelStatus = useChannelStatus(lang);
 
   // Track viewport size and reconcile sidebar visibility.
