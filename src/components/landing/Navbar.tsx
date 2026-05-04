@@ -32,7 +32,7 @@ export function Navbar() {
             height={40}
             className={`transition-all duration-300 ${scrolled ? "h-8 w-8" : "h-10 w-10"}`}
           />
-          <span className="bg-primary bg-clip-text text-xl font-bold text-transparent">
+          <span className="bg-clip-text text-xl font-bold text-transparent" style={{ backgroundImage: "linear-gradient(135deg, rgb(138,61,245), rgb(190,94,237))" }}>
             Flowtix Tools
           </span>
         </div>
