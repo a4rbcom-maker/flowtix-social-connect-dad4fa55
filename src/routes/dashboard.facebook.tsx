@@ -578,7 +578,7 @@ function FacebookPage() {
     setTestResult(null);
     setTestError(null);
     try {
-      const res = await callServerFn(testFacebookToken, { access_token: token.trim() });
+      const res = await fbCall(testFacebookToken, { access_token: token.trim() });
       setTestResult({ profile: res.profile, granted: res.granted, declined: res.declined });
       const missing = requiredScopes.filter((s) => !res.granted.includes(s));
       if (missing.length === 0) {
@@ -608,7 +608,7 @@ function FacebookPage() {
     }
     setConnecting(true);
     try {
-      const res = await callServerFn(connectFacebook, { access_token: token.trim() });
+      const res = await fbCall(connectFacebook, { access_token: token.trim() });
       toast.success(
         lang === "ar"
           ? `تم الربط بنجاح: ${res.profile.name}`
@@ -616,7 +616,7 @@ function FacebookPage() {
       );
       setToken("");
       // refresh connection
-      const c = await callServerFn(getFacebookConnection);
+      const c = await fbCall(getFacebookConnection);
       setConnection(c.connection);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Connection failed";
@@ -628,7 +628,7 @@ function FacebookPage() {
 
   const handleDisconnect = async () => {
     try {
-      await callServerFn(disconnectFacebook);
+      await fbCall(disconnectFacebook);
       setConnection(null);
       setGroups([]);
       setPages([]);
@@ -658,7 +658,7 @@ function FacebookPage() {
     setLoadingGroups(true);
     setGroupsError(null);
     try {
-      const res = await callServerFn(fetchFacebookGroups);
+      const res = await fbCall(fetchFacebookGroups);
       if (res.error) {
         setGroups([]);
         setGroupsError(res.error);
@@ -688,7 +688,7 @@ function FacebookPage() {
     setLoadingPages(true);
     setPagesError(null);
     try {
-      const res = await callServerFn(fetchFacebookPages);
+      const res = await fbCall(fetchFacebookPages);
       if (res.error) {
         setPages([]);
         setPagesError(res.error);
