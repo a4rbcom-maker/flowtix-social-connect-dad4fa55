@@ -15,7 +15,7 @@ function ScrollToTop() {
   return (
     <button
       onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-      className={`fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-lg shadow-primary/30 transition-all duration-300 hover:scale-110 hover:shadow-xl hover:shadow-primary/40 ${
+      className={`fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 transition-all duration-300 hover:scale-110 hover:shadow-xl hover:shadow-primary/40 ${
         visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
       }`}
       aria-label="Scroll to top"
@@ -96,7 +96,7 @@ export function Footer() {
                 />
                 <button
                   type="submit"
-                  className="group relative overflow-hidden rounded-xl bg-gradient-to-r from-primary to-primary-glow px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-300 hover:shadow-xl hover:shadow-primary/40 active:scale-95"
+                  className="group relative overflow-hidden rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-300 hover:shadow-xl hover:shadow-primary/40 active:scale-95"
                 >
                   <span className="relative z-10">
                     {subscribed ? (isAr ? "✓ تم الاشتراك" : "✓ Subscribed") : (isAr ? "اشترك" : "Subscribe")}
@@ -113,10 +113,10 @@ export function Footer() {
             <div className="lg:col-span-5">
               <div className="mb-5 flex items-center gap-3 group">
                 <div className="relative">
-                  <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary to-primary-glow opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-60" />
+                  <div className="absolute inset-0 rounded-xl bg-primary opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-60" />
                   <img src={flowtixLogo} alt="Flowtix Tools" width={40} height={40} className="relative h-10 w-10 transition-transform duration-300 group-hover:rotate-6" loading="lazy" />
                 </div>
-                <span className="bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-xl font-bold text-transparent">
+                <span className="bg-primary bg-clip-text text-xl font-bold text-transparent">
                   Flowtix Tools
                 </span>
               </div>
