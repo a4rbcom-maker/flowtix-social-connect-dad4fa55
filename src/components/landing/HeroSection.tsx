@@ -171,7 +171,7 @@ export function HeroSection() {
             mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
           }`}
         >
-          <div className="rounded-xl bg-gradient-to-br from-primary/3 via-transparent to-violet-400/3 p-8 md:p-12">
+          <div className="rounded-xl bg-gradient-to-br from-primary/3 via-transparent to-primary-glow/3 p-8 md:p-12">
             <div className="grid grid-cols-3 gap-8 text-center">
               <div className="group cursor-default">
                 <AnimatedCounter target="+2000" />
