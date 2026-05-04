@@ -28,7 +28,50 @@ const StatsStrip = lazy(() => import("@/components/landing/PremiumSections").the
 const TestimonialsSection = lazy(() => import("@/components/landing/PremiumSections").then(m => ({ default: m.TestimonialsSection })));
 const ComparisonSection = lazy(() => import("@/components/landing/PremiumSections").then(m => ({ default: m.ComparisonSection })));
 
+const SITE_URL = "https://flowtix-social-connect.lovable.app";
+const TITLE = "Flowtix Tools — أقوى منصة للتجارة الاجتماعية | فيسبوك وواتساب";
+const DESC = "أدر أعمالك على فيسبوك وواتساب بذكاء اصطناعي. إرسال جماعي للجروبات، بوت واتساب احترافي، ومتابعة العملاء من مكان واحد.";
+
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: TITLE },
+      { name: "description", content: DESC },
+      { name: "keywords", content: "تجارة اجتماعية, فيسبوك جروبات, واتساب بوت, إرسال جماعي, Flowtix, social commerce, WhatsApp bot" },
+      { name: "robots", content: "index, follow, max-image-preview:large" },
+      { name: "theme-color", content: "#9b5cf6" },
+      { property: "og:type", content: "website" },
+      { property: "og:locale", content: "ar_AR" },
+      { property: "og:site_name", content: "Flowtix Tools" },
+      { property: "og:title", content: TITLE },
+      { property: "og:description", content: DESC },
+      { property: "og:url", content: SITE_URL },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: TITLE },
+      { name: "twitter:description", content: DESC },
+    ],
+    links: [
+      { rel: "canonical", href: SITE_URL },
+      { rel: "alternate", hrefLang: "ar", href: SITE_URL },
+      { rel: "alternate", hrefLang: "x-default", href: SITE_URL },
+    ],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: "Flowtix Tools",
+          applicationCategory: "BusinessApplication",
+          operatingSystem: "Web",
+          description: DESC,
+          url: SITE_URL,
+          offers: { "@type": "Offer", priceCurrency: "USD", price: "0" },
+          aggregateRating: { "@type": "AggregateRating", ratingValue: "4.9", ratingCount: "120" },
+        }),
+      },
+    ],
+  }),
   component: Index,
 });
 
