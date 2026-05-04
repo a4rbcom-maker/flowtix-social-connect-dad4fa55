@@ -70,7 +70,7 @@ export function FeaturesSection() {
   const { ref, isInView } = useInView();
 
   return (
-    <section id="features" dir={dir} className="relative py-24 md:py-32">
+    <section id="features" dir={dir} className="relative py-12 md:py-16">
       {/* Subtle dotted background */}
       <div
         className="absolute inset-0 -z-10 opacity-[0.04]"
@@ -81,7 +81,7 @@ export function FeaturesSection() {
       />
 
       <div ref={ref} className="relative mx-auto max-w-7xl px-4">
-        <div className={`mb-16 max-w-2xl mx-auto text-center transition-all duration-700 ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
+        <div className={`mb-10 max-w-2xl mx-auto text-center transition-all duration-700 ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
           <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5 text-xs font-semibold text-primary">
             <span className="h-1.5 w-1.5 rounded-full bg-primary" />
             {dir === "rtl" ? "مميزات المنصة" : "Platform Features"}
