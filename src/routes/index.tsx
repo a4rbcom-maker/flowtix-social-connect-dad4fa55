@@ -1,14 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { lazy, Suspense } from "react";
 import { Navbar } from "@/components/landing/Navbar";
 import { HeroSection } from "@/components/landing/HeroSection";
-import { FeaturesSection } from "@/components/landing/FeaturesSection";
-import { HowItWorksSection } from "@/components/landing/HowItWorksSection";
-import { PricingSection } from "@/components/landing/PricingSection";
-import { FAQSection } from "@/components/landing/FAQSection";
-import { Footer } from "@/components/landing/Footer";
-import { TrustedBySection, CTASection, WaveDivider } from "@/components/landing/ExtraSections";
-import { StatsStrip, TestimonialsSection, ComparisonSection } from "@/components/landing/PremiumSections";
 import { useScrollProgress } from "@/hooks/use-in-view";
+
+const FeaturesSection = lazy(() => import("@/components/landing/FeaturesSection").then(m => ({ default: m.FeaturesSection })));
+const HowItWorksSection = lazy(() => import("@/components/landing/HowItWorksSection").then(m => ({ default: m.HowItWorksSection })));
+const PricingSection = lazy(() => import("@/components/landing/PricingSection").then(m => ({ default: m.PricingSection })));
+const FAQSection = lazy(() => import("@/components/landing/FAQSection").then(m => ({ default: m.FAQSection })));
+const Footer = lazy(() => import("@/components/landing/Footer").then(m => ({ default: m.Footer })));
+const TrustedBySection = lazy(() => import("@/components/landing/ExtraSections").then(m => ({ default: m.TrustedBySection })));
+const CTASection = lazy(() => import("@/components/landing/ExtraSections").then(m => ({ default: m.CTASection })));
+const WaveDivider = lazy(() => import("@/components/landing/ExtraSections").then(m => ({ default: m.WaveDivider })));
+const StatsStrip = lazy(() => import("@/components/landing/PremiumSections").then(m => ({ default: m.StatsStrip })));
+const TestimonialsSection = lazy(() => import("@/components/landing/PremiumSections").then(m => ({ default: m.TestimonialsSection })));
+const ComparisonSection = lazy(() => import("@/components/landing/PremiumSections").then(m => ({ default: m.ComparisonSection })));
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -19,24 +25,25 @@ function Index() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Scroll progress bar */}
       <div className="scroll-progress" style={{ width: `${progress * 100}%` }} />
       <Navbar />
       <HeroSection />
-      <TrustedBySection />
-      <StatsStrip />
-      <FeaturesSection />
-      <WaveDivider />
-      <HowItWorksSection />
-      <WaveDivider flip />
-      <ComparisonSection />
-      <PricingSection />
-      <TestimonialsSection />
-      <WaveDivider />
-      <FAQSection />
-      <WaveDivider flip />
-      <CTASection />
-      <Footer />
+      <Suspense fallback={<div className="h-32" />}>
+        <TrustedBySection />
+        <StatsStrip />
+        <FeaturesSection />
+        <WaveDivider />
+        <HowItWorksSection />
+        <WaveDivider flip />
+        <ComparisonSection />
+        <PricingSection />
+        <TestimonialsSection />
+        <WaveDivider />
+        <FAQSection />
+        <WaveDivider flip />
+        <CTASection />
+        <Footer />
+      </Suspense>
     </div>
   );
 }
