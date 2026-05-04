@@ -88,11 +88,11 @@
   --sidebar-accent-foreground: oklch(0.25 0.04 290);
   --sidebar-border: oklch(0.92 0.014 295);
   --sidebar-ring: oklch(0.56 0.30 295);
-  /* Botxtra signature gradient: violet → magenta */
-  --gradient-primary: linear-gradient(135deg, oklch(0.56 0.30 295), oklch(0.66 0.26 320));
-  --gradient-hero: linear-gradient(135deg, oklch(0.56 0.30 295) 0%, oklch(0.62 0.28 308) 50%, oklch(0.66 0.26 320) 100%);
-  --shadow-violet: 0 10px 40px -10px oklch(0.56 0.30 295 / 0.45);
-  --shadow-violet-lg: 0 20px 60px -15px oklch(0.56 0.30 295 / 0.55);
+  /* Botxtra signature gradient: deep violet → light violet */
+  --gradient-primary: linear-gradient(135deg, oklch(0.53 0.27 290), oklch(0.68 0.20 295));
+  --gradient-hero: linear-gradient(135deg, oklch(0.50 0.28 288) 0%, oklch(0.60 0.24 292) 50%, oklch(0.72 0.18 295) 100%);
+  --shadow-violet: 0 10px 40px -10px oklch(0.53 0.27 290 / 0.45);
+  --shadow-violet-lg: 0 20px 60px -15px oklch(0.53 0.27 290 / 0.55);
   /* Pricing popular card */
   --pricing-popular-bg: oklch(0.97 0.018 295);
   --pricing-popular-border: oklch(0.56 0.30 295);
