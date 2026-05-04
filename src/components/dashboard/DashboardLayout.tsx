@@ -22,6 +22,7 @@ import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
 import { NotificationsBell } from "@/components/dashboard/NotificationsBell";
 import { ChannelStatusDot } from "@/components/dashboard/ChannelStatusDot";
+import { ChannelQuickActions } from "@/components/dashboard/ChannelQuickActions";
 import { useChannelStatus } from "@/hooks/useChannelStatus";
 import flowtixLogo from "@/assets/flowtix-logo.png";
 
@@ -334,6 +335,15 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                                 </Link>
                               );
                             })}
+                            {channelState && (
+                              <ChannelQuickActions
+                                channel={item.key as "facebook" | "whatsapp"}
+                                state={channelState}
+                                lang={lang}
+                                onChanged={channelStatus.refresh}
+                                onNavigate={closeOnMobile}
+                              />
+                            )}
                           </div>
                         </div>
                       </div>

@@ -1,60 +1,53 @@
-## الهدف
-عرض حالة ربط فيسبوك وواتساب مباشرة بجانب اسم القناة في الشريط الجانبي، مع مؤشر بصري واضح يميز: **متصل** (أخضر)، **غير متصل** (رمادي)، **تنتهي قريبًا** (كهرماني)، **منتهي/خطأ** (أحمر).
+## Goal
+Add inline quick-action buttons inside the Facebook and WhatsApp sidebar groups so the user can connect or disconnect each channel without opening any subpage.
 
-## السلوك
+## Behavior
 
-**فيسبوك** — يحدَّد من `inspectFacebookToken` (يوجد بالفعل):
-- لا يوجد صف ⇒ **غير متصل** (نقطة رمادية)
-- `valid && !expired && days > 7` ⇒ **متصل** (نقطة خضراء نابضة)
-- `valid` لكن `daysUntilExpiry ≤ 7` ⇒ **تنتهي قريبًا** (نقطة كهرمانية + شارة "Xد")
-- `expired` أو `!valid` ⇒ **منتهي** (نقطة حمراء)
+When a sidebar channel group (Facebook / WhatsApp) is expanded, render a small action row right under the group's child links:
 
-**واتساب** — يحدَّد من `whatsapp_settings`:
-- لا يوجد صف أو `is_connected=false` ⇒ **غير متصل** (رمادي)
-- `is_connected=true` ⇒ **متصل** (أخضر نابض)
-- (لاحقًا: لو احتجنا انتهاء صلاحية لتوكن Meta نضيفه؛ حاليًا الجدول لا يحوي حقل expiry)
+- **Disconnected** → single primary button: **"ربط الحساب" / "Connect"**
+  - Facebook: navigates to `/dashboard/facebook` (token paste flow lives there — we can't generate a token from the sidebar).
+  - WhatsApp: navigates to `/dashboard/whatsapp` (bot setup page).
+- **Connected / Expiring** → two buttons side-by-side:
+  - **"تحديث" / "Refresh"** — re-runs the status probe (calls `useChannelStatus.refresh()`); shows a spinner for ~1s.
+  - **"فصل" / "Disconnect"** — opens a small confirm popover, then calls the disconnect flow.
+- **Expired** → single amber button: **"إعادة الربط" / "Reconnect"** → routes to the channel page.
+- **Loading** → disabled skeleton button.
 
-## التصميم البصري
-- نقطة دائرية صغيرة (8×8) بجانب اسم القناة في زر المجموعة (Facebook/WhatsApp).
-- الحالة "متصل" تستخدم `animate-pulse` + glow خفيف بلون الحالة.
-- الحالة "تنتهي قريبًا" تعرض شارة صغيرة بعدد الأيام بجانب النقطة (مثلاً `5d` / `٥ي`) — تختفي عند طي الشريط.
-- في وضع الشريط المطوي (icon-only): النقطة تظهر فوق-يمين الأيقونة (absolute) كـ status dot صغير (10px).
-- Tooltip عند hover يصف الحالة بلغة المستخدم: "متصل · ينتهي خلال 5 أيام" / "غير متصل" / "انتهت الصلاحية — أعد الربط".
+When the sidebar is **collapsed** (icon-only), no buttons render — clicking the channel icon still expands the group to reveal them, matching current group-expand behavior.
 
-## البنية التقنية
+## Disconnect flow
 
-**1. Hook جديد** `src/hooks/useChannelStatus.ts`:
-- يجلب الحالتين بالتوازي عند تحميل اللوحة.
-- فيسبوك: استدعاء `inspectFacebookToken` (موجود في `src/server/facebook.functions.ts`) → يحسب `daysUntilExpiry` من `expiresAt`.
-- واتساب: `supabase.from("whatsapp_settings").select("is_connected, last_connected_at").maybeSingle()`.
-- يحفظ النتيجة في React state، يعيد المزامنة كل 5 دقائق + عند العودة إلى التبويب (`visibilitychange`).
-- يعيد: `{ facebook: ChannelState, whatsapp: ChannelState, refresh }` حيث `ChannelState = { status: "connected"|"disconnected"|"expiring"|"expired"|"loading", daysLeft?: number, label: string }`.
+- **Facebook**: call `disconnectFacebook` server fn through `useFacebookApi().call(...)`. On success: toast "تم فصل فيسبوك" / "Facebook disconnected", then `refresh()` the channel status. On failure: toast `describeFbError(err, lang)`.
+- **WhatsApp**: `supabase.from("whatsapp_settings").update({ is_connected: false, last_connected_at: null }).eq("user_id", user.id)`. On success/failure: same toast + refresh pattern.
 
-**2. مكوّن صغير** `src/components/dashboard/ChannelStatusDot.tsx`:
-- props: `status`, `daysLeft?`, `compact?` (للوضع المطوي), `lang`.
-- يرندّر النقطة الملوّنة + (اختياريًا) شارة الأيام + tooltip.
-- خرائط الألوان: connected=`bg-emerald-500`, expiring=`bg-amber-500`, expired=`bg-red-500`, disconnected=`bg-muted-foreground/40`, loading=`bg-muted-foreground/30 animate-pulse`.
+Confirm step is a tiny inline popover (custom, no new shadcn install) with two buttons "تأكيد / إلغاء" — avoids the destructive-by-mistake risk.
 
-**3. تعديل** `src/components/dashboard/DashboardLayout.tsx`:
-- استدعاء `useChannelStatus()` داخل المكوّن.
-- في زر المجموعة (`item.kind === "group"`): إذا `item.key === "facebook"` أو `"whatsapp"` نمرّر الحالة المناسبة ونرندّر `<ChannelStatusDot />`:
-  - في الوضع الموسّع: بين أيقونة القناة والنص (أو يسار chevron).
-  - في الوضع المطوّع: مطلق فوق الأيقونة.
+## Files to add / edit
 
-**4. i18n**: نصوص الحالات داخل الـ hook نفسه (ar/en) لتفادي تضخّم ملف اللوحة.
+1. **NEW** `src/components/dashboard/ChannelQuickActions.tsx`
+   - Props: `{ channel: "facebook" | "whatsapp", state: ChannelState, lang: "ar"|"en", onChanged: () => void }`
+   - Owns: pending state, confirm-popover state, disconnect calls, navigation links.
+   - Uses `useFacebookApi` for FB, `supabase` client for WA.
+   - Bilingual strings inline (matches the layout's existing pattern).
 
-## الملفات المتأثرة
-```text
-src/hooks/useChannelStatus.ts                  (جديد)
-src/components/dashboard/ChannelStatusDot.tsx  (جديد)
-src/components/dashboard/DashboardLayout.tsx   (تعديل: استدعاء hook + رندر النقطة)
-```
+2. **EDIT** `src/components/dashboard/DashboardLayout.tsx`
+   - Inside the group's expanded `<div>` (right after the children list, lines ~270-290), render `<ChannelQuickActions channel={item.key} state={channelState} lang={lang} onChanged={channelStatus.refresh} />` for Facebook and WhatsApp groups.
+   - Pass `channelStatus.refresh` (already returned by the hook — verified) so the dot updates immediately after a connect/disconnect.
 
-## اختبار
-1. بدون توكن فيسبوك ⇒ نقطة رمادية بجانب "فيسبوك".
-2. بعد ربط توكن صالح ⇒ نقطة خضراء نابضة.
-3. توكن قريب الانتهاء (≤7 أيام) ⇒ نقطة كهرمانية + شارة الأيام.
-4. توكن منتهي ⇒ نقطة حمراء + tooltip "أعد الربط".
-5. تفعيل/تعطيل واتساب يحدّث النقطة فورًا (refresh عند الرجوع للتبويب).
-6. التحقق من الوضعين: شريط موسّع + شريط مطوّع (icon-only).
-7. RTL + LTR: موقع النقطة والشارة صحيح في الاتجاهين.
+3. **No changes** to `useChannelStatus`, server functions, or routes — all existing APIs are sufficient.
+
+## Visual spec
+
+- Action row sits inside the indented child container (same `mr-5/ml-5` border guide as the children) with a top divider for separation.
+- Buttons: `h-7`, rounded-lg, `text-[12px]`, full-width split when two are shown.
+  - Connect/Reconnect: primary gradient (matches existing primary-to-violet gradient in the layout).
+  - Disconnect: ghost destructive (`text-destructive hover:bg-destructive/10`).
+  - Refresh: ghost neutral with `RefreshCw` icon that spins while pending.
+- Confirm popover: small card absolutely positioned above the row, `shadow-lg`, two buttons.
+
+## Out of scope
+
+- No Graph API token-generation UI in the sidebar (security + UX — token paste stays on the FB page).
+- No WhatsApp QR/pairing UI in the sidebar (stays on WA page).
+- No new translations file — follow the existing inline `lang === "ar" ? ... : ...` pattern used throughout the layout.
