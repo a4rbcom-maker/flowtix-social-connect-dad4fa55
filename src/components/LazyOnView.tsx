@@ -45,8 +45,8 @@ export function LazyOnView({
   }, [rootMargin, show]);
 
   return (
-    <div ref={ref} style={!show ? { minHeight } : undefined}>
-      {show ? <Suspense fallback={fallback}>{children}</Suspense> : null}
+    <div ref={ref} className="cv-auto" style={!show ? { minHeight } : { contentVisibility: "auto" }}>
+      {show ? <Suspense fallback={fallback}>{children}</Suspense> : fallback}
     </div>
   );
 }
