@@ -494,16 +494,13 @@ function FacebookPage() {
     if (!user) return;
     (async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
-        const headers = { Authorization: `Bearer ${session.access_token}` };
-        const res = await getFacebookConnection({ headers } as never);
+        const res = await fbCall(getFacebookConnection);
         setConnection(res.connection);
 
         // Only inspect if there's actually a stored connection.
         if (res.connection) {
           try {
-            const insp = await inspectFacebookConnection({ headers } as never);
+            const insp = await fbCall(inspectFacebookConnection);
             if (insp.connected) {
               setTokenExpiry({
                 expiresAt: insp.expiresAt,
@@ -555,20 +552,12 @@ function FacebookPage() {
         }
       } catch (err) {
         console.error("Load connection failed", err);
+        toast.error(describeFbError(err, lang === "ar" ? "ar" : "en"));
       }
     })();
     // lang is intentionally read at effect time; we don't want to re-toast on language switch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
-
-  const callServerFn = async <T,>(fn: (opts: never) => Promise<T>, body?: unknown): Promise<T> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error("Not authenticated");
-    return fn({
-      data: body,
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    } as never);
-  };
+  }, [user, fbCall]);
 
   const friendlyError = (raw: string): string => {
     const m = raw.toLowerCase();
