@@ -13,6 +13,9 @@ import {
   Moon,
   Users,
   Send,
+  ChevronDown,
+  LinkIcon,
+  Bot,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -58,19 +61,50 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   };
 
   const labels = lang === "ar"
-    ? { overview: "نظرة عامة", control: "لوحة التحكم", facebook: "فيسبوك", fbGroups: "جروبات فيسبوك", whatsapp: "واتساب", bulk: "إرسال جماعي", activity: "سجل النشاط", settings: "الإعدادات", logout: "تسجيل الخروج" }
-    : { overview: "Overview", control: "Control Panel", facebook: "Facebook", fbGroups: "FB Groups", whatsapp: "WhatsApp", bulk: "Bulk Send", activity: "Activity", settings: "Settings", logout: "Sign Out" };
+    ? { overview: "نظرة عامة", control: "لوحة التحكم", facebook: "فيسبوك", fbConnect: "الربط والحالة", fbGroups: "الجروبات", whatsapp: "واتساب", waBot: "البوت", bulk: "إرسال جماعي", activity: "سجل النشاط", settings: "الإعدادات", logout: "تسجيل الخروج" }
+    : { overview: "Overview", control: "Control Panel", facebook: "Facebook", fbConnect: "Connect & Status", fbGroups: "Groups", whatsapp: "WhatsApp", waBot: "Bot", bulk: "Bulk Send", activity: "Activity", settings: "Settings", logout: "Sign Out" };
 
-  const menu = [
-    { icon: LayoutDashboard, label: labels.overview, to: "/dashboard" as const },
-    { icon: Activity, label: labels.control, to: "/dashboard/control" as const },
-    { icon: Facebook, label: labels.facebook, to: "/dashboard/facebook" as const },
-    { icon: Users, label: labels.fbGroups, to: "/dashboard/facebook/groups" as const },
-    { icon: MessageCircle, label: labels.whatsapp, to: "/dashboard/whatsapp" as const },
-    { icon: Send, label: labels.bulk, to: "/dashboard/bulk" as const },
-    { icon: Activity, label: labels.activity, to: "/dashboard/activity" as const },
-    { icon: Settings, label: labels.settings, to: "/dashboard" as const },
+  type LeafItem = { kind: "leaf"; icon: typeof LayoutDashboard; label: string; to: "/dashboard" | "/dashboard/control" | "/dashboard/facebook" | "/dashboard/facebook/groups" | "/dashboard/whatsapp" | "/dashboard/bulk" | "/dashboard/activity" };
+  type GroupItem = { kind: "group"; key: string; icon: typeof LayoutDashboard; label: string; children: LeafItem[] };
+  type MenuItem = LeafItem | GroupItem;
+
+  const menu: MenuItem[] = [
+    { kind: "leaf", icon: LayoutDashboard, label: labels.overview, to: "/dashboard" },
+    { kind: "leaf", icon: Activity, label: labels.control, to: "/dashboard/control" },
+    {
+      kind: "group",
+      key: "facebook",
+      icon: Facebook,
+      label: labels.facebook,
+      children: [
+        { kind: "leaf", icon: LinkIcon, label: labels.fbConnect, to: "/dashboard/facebook" },
+        { kind: "leaf", icon: Users, label: labels.fbGroups, to: "/dashboard/facebook/groups" },
+      ],
+    },
+    {
+      kind: "group",
+      key: "whatsapp",
+      icon: MessageCircle,
+      label: labels.whatsapp,
+      children: [
+        { kind: "leaf", icon: Bot, label: labels.waBot, to: "/dashboard/whatsapp" },
+        { kind: "leaf", icon: Send, label: labels.bulk, to: "/dashboard/bulk" },
+      ],
+    },
+    { kind: "leaf", icon: Activity, label: labels.activity, to: "/dashboard/activity" },
+    { kind: "leaf", icon: Settings, label: labels.settings, to: "/dashboard" },
   ];
+
+  // Auto-open the group containing the active route; persist user toggles.
+  const initialOpen: Record<string, boolean> = {};
+  menu.forEach((m) => {
+    if (m.kind === "group") {
+      initialOpen[m.key] = m.children.some((c) => c.to === location.pathname);
+    }
+  });
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(initialOpen);
+  const toggleGroup = (key: string) =>
+    setOpenGroups((p) => ({ ...p, [key]: !p[key] }));
 
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "";
 
@@ -122,22 +156,82 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
 
         <nav className="flex-1 space-y-1 p-3">
           {menu.map((item, i) => {
-            const active = location.pathname === item.to;
             const Icon = item.icon;
+            if (item.kind === "leaf") {
+              const active = location.pathname === item.to;
+              return (
+                <Link
+                  key={i}
+                  to={item.to}
+                  onClick={closeOnMobile}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${
+                    active
+                      ? "bg-primary/10 font-medium text-primary"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {sidebarOpen && <span>{item.label}</span>}
+                </Link>
+              );
+            }
+
+            // Group with collapsible children
+            const groupActive = item.children.some((c) => c.to === location.pathname);
+            const isOpen = sidebarOpen ? (openGroups[item.key] ?? groupActive) : false;
             return (
-              <Link
-                key={i}
-                to={item.to}
-                onClick={closeOnMobile}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${
-                  active
-                    ? "bg-primary/10 font-medium text-primary"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                }`}
-              >
-                <Icon className="h-5 w-5 shrink-0" />
-                {sidebarOpen && <span>{item.label}</span>}
-              </Link>
+              <div key={i} className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!sidebarOpen) {
+                      setSidebarOpen(true);
+                      setOpenGroups((p) => ({ ...p, [item.key]: true }));
+                    } else {
+                      toggleGroup(item.key);
+                    }
+                  }}
+                  aria-expanded={isOpen}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${
+                    groupActive
+                      ? "bg-primary/10 font-medium text-primary"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {sidebarOpen && (
+                    <>
+                      <span className="flex-1 text-start">{item.label}</span>
+                      <ChevronDown
+                        className={`h-4 w-4 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                      />
+                    </>
+                  )}
+                </button>
+                {sidebarOpen && isOpen && (
+                  <div className={`space-y-1 ${dir === "rtl" ? "pr-4 border-r" : "pl-4 border-l"} ms-4 border-border/50`}>
+                    {item.children.map((child, j) => {
+                      const ChildIcon = child.icon;
+                      const childActive = location.pathname === child.to;
+                      return (
+                        <Link
+                          key={j}
+                          to={child.to}
+                          onClick={closeOnMobile}
+                          className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors ${
+                            childActive
+                              ? "bg-primary/10 font-medium text-primary"
+                              : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                          }`}
+                        >
+                          <ChildIcon className="h-4 w-4 shrink-0" />
+                          <span>{child.label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </nav>
