@@ -89,7 +89,7 @@ export function HeroSection() {
     <section
       ref={scrollRef as React.RefObject<HTMLElement>}
       dir={dir}
-      className="hero-parallax-root relative overflow-hidden pt-28 pb-20 md:pt-36 md:pb-28"
+      className="hero-parallax-root relative overflow-hidden pt-20 pb-12 md:pt-24 md:pb-16"
     >
       {/* Background orbs — mouse reactive only (scroll via CSS) */}
       <div className="pointer-events-none absolute inset-0">
