@@ -241,6 +241,10 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                 // Group with collapsible children
                 const groupActive = item.children.some((c) => c.to === location.pathname);
                 const isOpen = sidebarOpen ? (openGroups[item.key] ?? groupActive) : false;
+                const channelState =
+                  item.key === "facebook" ? channelStatus.facebook
+                  : item.key === "whatsapp" ? channelStatus.whatsapp
+                  : null;
                 return (
                   <div key={i} className="space-y-1">
                     <button
@@ -254,7 +258,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                         }
                       }}
                       aria-expanded={isOpen}
-                      title={!sidebarOpen ? item.label : undefined}
+                      title={!sidebarOpen ? `${item.label}${channelState ? ` · ${channelState.label}` : ""}` : undefined}
                       className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
                         groupActive
                           ? "bg-gradient-to-r from-primary/15 via-primary/10 to-transparent text-primary shadow-sm"
@@ -268,14 +272,22 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                           }`}
                         />
                       )}
-                      <Icon
-                        className={`h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110 ${
-                          groupActive ? "text-primary" : ""
-                        }`}
-                      />
+                      <span className="relative inline-flex shrink-0">
+                        <Icon
+                          className={`h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110 ${
+                            groupActive ? "text-primary" : ""
+                          }`}
+                        />
+                        {channelState && !sidebarOpen && (
+                          <ChannelStatusDot state={channelState} compact lang={lang} />
+                        )}
+                      </span>
                       {sidebarOpen && (
                         <>
                           <span className="flex-1 truncate text-start">{item.label}</span>
+                          {channelState && (
+                            <ChannelStatusDot state={channelState} lang={lang} />
+                          )}
                           <ChevronDown
                             className={`h-4 w-4 shrink-0 text-muted-foreground/70 transition-transform duration-300 ${isOpen ? "rotate-180 text-primary" : ""}`}
                           />
