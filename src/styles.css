@@ -61,7 +61,7 @@
   --primary: oklch(0.53 0.27 290);
   --primary-foreground: oklch(1 0 0);
   /* Lighter violet ~#a78bfa */
-  --primary-glow: oklch(0.72 0.18 295);
+  --primary-glow: oklch(0.65 0.22 295);
   --primary-deep: oklch(0.45 0.27 287);
   --secondary: oklch(0.96 0.012 295);
   --secondary-foreground: oklch(0.30 0.04 290);
