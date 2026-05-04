@@ -214,16 +214,20 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
         {/* Hairline divider with gradient fade */}
         <div className="relative mx-4 h-px bg-gradient-to-r from-transparent via-border/80 to-transparent" />
 
-        <nav className="relative flex-1 space-y-5 overflow-y-auto px-3 py-4">
+        <nav className="relative flex-1 space-y-6 overflow-y-auto overflow-x-hidden px-3 py-5 [scrollbar-width:thin] [scrollbar-color:oklch(0.62_0.27_295/0.2)_transparent]">
           {sections.map((section, sIdx) => (
             <div key={sIdx} className="space-y-1">
-              {sidebarOpen && (
-                <div className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/60">
-                  {section.title}
+              {sidebarOpen ? (
+                <div className="mb-2.5 flex items-center gap-2 px-3">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground/55">
+                    {section.title}
+                  </span>
+                  <span className="h-px flex-1 bg-gradient-to-r from-border/60 to-transparent rtl:bg-gradient-to-l" />
                 </div>
-              )}
-              {!sidebarOpen && sIdx > 0 && (
-                <div className="mx-3 mb-2 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
+              ) : (
+                sIdx > 0 && (
+                  <div className="mx-4 mb-2 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
+                )
               )}
               {section.items.map((item, i) => {
                 const Icon = item.icon;
@@ -235,25 +239,34 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                       to={item.to}
                       onClick={closeOnMobile}
                       title={!sidebarOpen ? item.label : undefined}
-                      className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+                      className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-3 py-2.5 text-[13.5px] font-medium transition-all duration-300 ${
                         active
-                          ? "bg-gradient-to-r from-primary/15 via-primary/10 to-transparent text-primary shadow-sm"
-                          : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                          ? "text-primary shadow-[0_4px_16px_-6px_rgba(124,58,237,0.4)]"
+                          : "text-muted-foreground hover:translate-x-0.5 hover:text-foreground rtl:hover:-translate-x-0.5"
                       } ${!sidebarOpen ? "justify-center" : ""}`}
                     >
+                      {/* Active background — gradient with subtle inner ring */}
                       {active && (
-                        <span
-                          className={`absolute inset-y-1.5 w-[3px] rounded-full bg-gradient-to-b from-primary to-[oklch(0.66_0.26_320)] ${
-                            dir === "rtl" ? "right-0" : "left-0"
-                          }`}
-                        />
+                        <>
+                          <span className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary/18 via-primary/10 to-transparent rtl:bg-gradient-to-l" />
+                          <span className="absolute inset-0 rounded-xl ring-1 ring-inset ring-primary/20" />
+                          <span
+                            className={`absolute inset-y-2 w-[3px] rounded-full bg-gradient-to-b from-primary via-[oklch(0.66_0.26_320)] to-primary shadow-[0_0_10px_oklch(0.62_0.27_295/0.7)] ${
+                              dir === "rtl" ? "right-0" : "left-0"
+                            }`}
+                          />
+                        </>
+                      )}
+                      {/* Hover background */}
+                      {!active && (
+                        <span className="absolute inset-0 rounded-xl bg-accent/0 transition-colors duration-300 group-hover:bg-accent/50" />
                       )}
                       <Icon
-                        className={`h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110 ${
-                          active ? "text-primary" : ""
+                        className={`relative h-[18px] w-[18px] shrink-0 transition-all duration-300 group-hover:scale-110 ${
+                          active ? "text-primary drop-shadow-[0_0_6px_oklch(0.62_0.27_295/0.5)]" : ""
                         }`}
                       />
-                      {sidebarOpen && <span className="truncate">{item.label}</span>}
+                      {sidebarOpen && <span className="relative truncate">{item.label}</span>}
                     </Link>
                   );
                 }
