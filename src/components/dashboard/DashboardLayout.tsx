@@ -132,6 +132,11 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     setOpenGroups((p) => ({ ...p, [key]: !p[key] }));
 
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "";
+  const userPlan = (user?.user_metadata?.plan as string | undefined) || "Free";
+  const planLabel = lang === "ar"
+    ? (userPlan.toLowerCase() === "free" ? "الباقة المجانية" : `باقة ${userPlan}`)
+    : `${userPlan.charAt(0).toUpperCase() + userPlan.slice(1)} plan`;
+  const upgradeLabel = lang === "ar" ? "ترقية" : "Upgrade";
 
   const handleLogout = async () => {
     await signOut();
