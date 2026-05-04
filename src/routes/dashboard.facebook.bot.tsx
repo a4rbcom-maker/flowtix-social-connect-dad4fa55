@@ -1,0 +1,305 @@
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { Plus, Trash2, ShieldCheck, Cookie, KeyRound, AlertTriangle, Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { useI18n } from "@/lib/i18n";
+import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+import { useFacebookApi } from "@/features/facebook/api";
+import { addBotAccount, listBotAccounts, deleteBotAccount } from "@/server/fb-bot.functions";
+
+export const Route = createFileRoute("/dashboard/facebook/bot")({
+  beforeLoad: async () => {
+    const { supabase } = await import("@/integrations/supabase/client");
+    await supabase.auth.getSession();
+  },
+  component: BotAccountsPage,
+});
+
+type Account = {
+  id: string;
+  display_name: string;
+  auth_method: "cookies" | "credentials";
+  status: "untested" | "active" | "invalid" | "checkpoint" | "disabled";
+  last_check_at: string | null;
+  last_error: string | null;
+  created_at: string;
+};
+
+function BotAccountsPage() {
+  const { user } = useAuth();
+  const { lang } = useI18n();
+  const { call } = useFacebookApi();
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<"cookies" | "credentials">("cookies");
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState({
+    displayName: "",
+    cookies: "",
+    email: "",
+    password: "",
+    twoFactorSecret: "",
+  });
+
+  const t = lang === "ar" ? {
+    title: "حسابات بوت فيسبوك",
+    subtitle: "اربط حسابات فيسبوك للنشر التلقائي والاستخراج عبر VPS Worker",
+    add: "ربط حساب جديد",
+    none: "لا توجد حسابات بعد",
+    name: "الاسم",
+    method: "الطريقة",
+    status: "الحالة",
+    lastCheck: "آخر فحص",
+    actions: "إجراءات",
+    deleteConfirm: "هل تريد حذف هذا الحساب؟",
+    deleted: "تم الحذف",
+    addTitle: "ربط حساب فيسبوك جديد",
+    displayName: "اسم تعريفي",
+    displayNamePh: "مثال: حساب التسويق الرئيسي",
+    methodCookies: "Cookies (موصى به)",
+    methodCreds: "Email/Password",
+    cookiesHelp: "ثبّت إضافة 'Cookie Editor' من متجر Chrome، افتح facebook.com وأنت مسجّل دخول، اضغط 'Export → JSON' والصق الناتج هنا.",
+    cookiesPh: '[{"name":"c_user","value":"...",...}]',
+    credsWarn: "⚠️ تخزين كلمة المرور خطير ويعرّض حسابك للحظر. استخدم Cookies كلما أمكن.",
+    email: "البريد الإلكتروني",
+    password: "كلمة المرور",
+    twoFa: "مفتاح 2FA (اختياري)",
+    save: "حفظ",
+    cancel: "إلغاء",
+    saved: "تم الحفظ",
+    statuses: { untested: "لم يُختبر", active: "نشط", invalid: "غير صالح", checkpoint: "تحقق مطلوب", disabled: "معطّل" },
+    backToFb: "→ الذهاب لمهام البوت",
+  } : {
+    title: "Facebook Bot Accounts",
+    subtitle: "Link Facebook accounts for VPS Worker automation",
+    add: "Add new account",
+    none: "No accounts yet",
+    name: "Name",
+    method: "Method",
+    status: "Status",
+    lastCheck: "Last check",
+    actions: "Actions",
+    deleteConfirm: "Delete this account?",
+    deleted: "Deleted",
+    addTitle: "Link a new Facebook account",
+    displayName: "Display name",
+    displayNamePh: "e.g. Main marketing account",
+    methodCookies: "Cookies (recommended)",
+    methodCreds: "Email/Password",
+    cookiesHelp: "Install 'Cookie Editor' Chrome extension, open facebook.com while logged in, click Export → JSON, and paste here.",
+    cookiesPh: '[{"name":"c_user","value":"...",...}]',
+    credsWarn: "⚠️ Storing passwords is risky and may get your account banned. Prefer Cookies.",
+    email: "Email",
+    password: "Password",
+    twoFa: "2FA secret (optional)",
+    save: "Save",
+    cancel: "Cancel",
+    saved: "Saved",
+    statuses: { untested: "Untested", active: "Active", invalid: "Invalid", checkpoint: "Verify needed", disabled: "Disabled" },
+    backToFb: "→ Go to bot jobs",
+  };
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const data = await call(listBotAccounts);
+      setAccounts(data as Account[]);
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { if (user) load(); }, [user]);
+
+  const handleAdd = async () => {
+    if (!form.displayName.trim()) { toast.error(t.displayName); return; }
+    setSubmitting(true);
+    try {
+      if (tab === "cookies") {
+        await call(addBotAccount, { method: "cookies", displayName: form.displayName, cookies: form.cookies });
+      } else {
+        await call(addBotAccount, {
+          method: "credentials",
+          displayName: form.displayName,
+          email: form.email,
+          password: form.password,
+          twoFactorSecret: form.twoFactorSecret || null,
+        });
+      }
+      toast.success(t.saved);
+      setOpen(false);
+      setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
+      await load();
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm(t.deleteConfirm)) return;
+    try {
+      await call(deleteBotAccount, { id });
+      toast.success(t.deleted);
+      await load();
+    } catch (e) { toast.error(String(e)); }
+  };
+
+  const statusBadge = (s: Account["status"]) => {
+    const map: Record<Account["status"], { color: string; icon: typeof CheckCircle2 }> = {
+      untested: { color: "bg-muted text-muted-foreground", icon: Clock },
+      active: { color: "bg-green-500/15 text-green-700 dark:text-green-400", icon: CheckCircle2 },
+      invalid: { color: "bg-red-500/15 text-red-700 dark:text-red-400", icon: XCircle },
+      checkpoint: { color: "bg-amber-500/15 text-amber-700 dark:text-amber-400", icon: AlertTriangle },
+      disabled: { color: "bg-muted text-muted-foreground", icon: XCircle },
+    };
+    const { color, icon: Icon } = map[s];
+    return (
+      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${color}`}>
+        <Icon className="h-3 w-3" />
+        {t.statuses[s]}
+      </span>
+    );
+  };
+
+  return (
+    <DashboardLayout title={t.title}>
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold">{t.title}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t.subtitle}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link to="/dashboard/facebook/jobs">
+              <Button variant="outline">{t.backToFb}</Button>
+            </Link>
+            <Button onClick={() => setOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" /> {t.add}
+            </Button>
+          </div>
+        </div>
+
+        <Card className="overflow-hidden">
+          {loading ? (
+            <div className="flex items-center justify-center p-12">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : accounts.length === 0 ? (
+            <div className="p-12 text-center text-muted-foreground">
+              <ShieldCheck className="mx-auto mb-3 h-10 w-10 opacity-40" />
+              {t.none}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3 text-start">{t.name}</th>
+                    <th className="px-4 py-3 text-start">{t.method}</th>
+                    <th className="px-4 py-3 text-start">{t.status}</th>
+                    <th className="px-4 py-3 text-start">{t.lastCheck}</th>
+                    <th className="px-4 py-3 text-end">{t.actions}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {accounts.map((a) => (
+                    <tr key={a.id} className="hover:bg-muted/30">
+                      <td className="px-4 py-3 font-medium">{a.display_name}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant="outline" className="gap-1">
+                          {a.auth_method === "cookies" ? <Cookie className="h-3 w-3" /> : <KeyRound className="h-3 w-3" />}
+                          {a.auth_method}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3">{statusBadge(a.status)}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {a.last_check_at ? new Date(a.last_check_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US") : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-end">
+                        <Button size="sm" variant="ghost" onClick={() => handleDelete(a.id)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t.addTitle}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>{t.displayName}</Label>
+              <Input
+                placeholder={t.displayNamePh}
+                value={form.displayName}
+                onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+              />
+            </div>
+            <Tabs value={tab} onValueChange={(v) => setTab(v as "cookies" | "credentials")}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="cookies"><Cookie className="me-2 h-4 w-4" />{t.methodCookies}</TabsTrigger>
+                <TabsTrigger value="credentials"><KeyRound className="me-2 h-4 w-4" />{t.methodCreds}</TabsTrigger>
+              </TabsList>
+              <TabsContent value="cookies" className="space-y-3 pt-3">
+                <p className="text-xs text-muted-foreground">{t.cookiesHelp}</p>
+                <Textarea
+                  rows={6}
+                  placeholder={t.cookiesPh}
+                  className="font-mono text-xs"
+                  value={form.cookies}
+                  onChange={(e) => setForm({ ...form, cookies: e.target.value })}
+                />
+              </TabsContent>
+              <TabsContent value="credentials" className="space-y-3 pt-3">
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
+                  {t.credsWarn}
+                </div>
+                <div className="space-y-2">
+                  <Label>{t.email}</Label>
+                  <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t.password}</Label>
+                  <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t.twoFa}</Label>
+                  <Input value={form.twoFactorSecret} onChange={(e) => setForm({ ...form, twoFactorSecret: e.target.value })} />
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>{t.cancel}</Button>
+            <Button onClick={handleAdd} disabled={submitting}>
+              {submitting && <Loader2 className="me-2 h-4 w-4 animate-spin" />}
+              {t.save}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </DashboardLayout>
+  );
+}
