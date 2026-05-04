@@ -73,7 +73,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     ? { overview: "نظرة عامة", control: "لوحة التحكم", facebook: "فيسبوك", fbConnect: "الربط والحالة", fbGroups: "الجروبات", whatsapp: "واتساب", waBot: "البوت", bulk: "إرسال جماعي", activity: "سجل النشاط", settings: "الملف الشخصي", logout: "تسجيل الخروج", sectionMain: "الرئيسية", sectionChannels: "القنوات", sectionInsights: "التحليلات" }
     : { overview: "Overview", control: "Control Panel", facebook: "Facebook", fbConnect: "Connect & Status", fbGroups: "Groups", whatsapp: "WhatsApp", waBot: "Bot", bulk: "Bulk Send", activity: "Activity", settings: "Profile", logout: "Sign Out", sectionMain: "Main", sectionChannels: "Channels", sectionInsights: "Insights" };
 
-  type LeafItem = { kind: "leaf"; icon: typeof LayoutDashboard; label: string; to: "/dashboard" | "/dashboard/control" | "/dashboard/facebook" | "/dashboard/facebook/groups" | "/dashboard/whatsapp" | "/dashboard/bulk" | "/dashboard/activity" | "/dashboard/profile" };
+  type LeafItem = { kind: "leaf"; icon: typeof LayoutDashboard; label: string; to: "/dashboard" | "/dashboard/control" | "/dashboard/facebook" | "/dashboard/facebook/groups" | "/dashboard/facebook/bot" | "/dashboard/facebook/jobs" | "/dashboard/facebook/history" | "/dashboard/whatsapp" | "/dashboard/bulk" | "/dashboard/activity" | "/dashboard/profile" };
   type GroupItem = { kind: "group"; key: string; icon: typeof LayoutDashboard; label: string; children: LeafItem[] };
   type MenuItem = LeafItem | GroupItem;
   type Section = { title: string; items: MenuItem[] };
@@ -97,6 +97,9 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
           children: [
             { kind: "leaf", icon: LinkIcon, label: labels.fbConnect, to: "/dashboard/facebook" },
             { kind: "leaf", icon: Users, label: labels.fbGroups, to: "/dashboard/facebook/groups" },
+            { kind: "leaf", icon: Bot, label: lang === "ar" ? "حسابات البوت" : "Bot accounts", to: "/dashboard/facebook/bot" },
+            { kind: "leaf", icon: Send, label: lang === "ar" ? "إنشاء مهمة" : "Create job", to: "/dashboard/facebook/jobs" },
+            { kind: "leaf", icon: Activity, label: lang === "ar" ? "سجل المهام" : "Jobs history", to: "/dashboard/facebook/history" },
           ],
         },
         {
