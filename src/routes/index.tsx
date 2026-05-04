@@ -4,8 +4,18 @@ import { Navbar } from "@/components/landing/Navbar";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { LazyOnView } from "@/components/LazyOnView";
 import { useScrollProgress } from "@/hooks/use-in-view";
+import {
+  TrustedBySkeleton,
+  StatsStripSkeleton,
+  CardsGridSkeleton,
+  PricingSkeleton,
+  TestimonialsSkeleton,
+  FAQSkeleton,
+  CTASkeleton,
+  FooterSkeleton,
+  DividerSkeleton,
+} from "@/components/landing/SectionSkeletons";
 
-// Each section is its own chunk, fetched only when scrolled near.
 const FeaturesSection = lazy(() => import("@/components/landing/FeaturesSection").then(m => ({ default: m.FeaturesSection })));
 const HowItWorksSection = lazy(() => import("@/components/landing/HowItWorksSection").then(m => ({ default: m.HowItWorksSection })));
 const PricingSection = lazy(() => import("@/components/landing/PricingSection").then(m => ({ default: m.PricingSection })));
@@ -31,60 +41,59 @@ function Index() {
       <Navbar />
       <HeroSection />
 
-      {/* Section right under hero — preload sooner */}
-      <LazyOnView rootMargin="600px" minHeight={120}>
+      <LazyOnView rootMargin="600px" minHeight={120} fallback={<TrustedBySkeleton />}>
         <TrustedBySection />
       </LazyOnView>
 
-      <LazyOnView rootMargin="500px" minHeight={180}>
+      <LazyOnView rootMargin="500px" minHeight={180} fallback={<StatsStripSkeleton />}>
         <StatsStrip />
       </LazyOnView>
 
-      <LazyOnView rootMargin="400px" minHeight={600}>
+      <LazyOnView rootMargin="400px" minHeight={600} fallback={<CardsGridSkeleton count={6} />}>
         <FeaturesSection />
       </LazyOnView>
 
-      <LazyOnView rootMargin="300px" minHeight={80}>
+      <LazyOnView rootMargin="300px" minHeight={80} fallback={<DividerSkeleton />}>
         <WaveDivider />
       </LazyOnView>
 
-      <LazyOnView rootMargin="400px" minHeight={500}>
+      <LazyOnView rootMargin="400px" minHeight={500} fallback={<CardsGridSkeleton count={4} />}>
         <HowItWorksSection />
       </LazyOnView>
 
-      <LazyOnView rootMargin="300px" minHeight={80}>
+      <LazyOnView rootMargin="300px" minHeight={80} fallback={<DividerSkeleton />}>
         <WaveDivider flip />
       </LazyOnView>
 
-      <LazyOnView rootMargin="400px" minHeight={500}>
+      <LazyOnView rootMargin="400px" minHeight={500} fallback={<CardsGridSkeleton count={3} />}>
         <ComparisonSection />
       </LazyOnView>
 
-      <LazyOnView rootMargin="400px" minHeight={600}>
+      <LazyOnView rootMargin="400px" minHeight={600} fallback={<PricingSkeleton />}>
         <PricingSection />
       </LazyOnView>
 
-      <LazyOnView rootMargin="400px" minHeight={500}>
+      <LazyOnView rootMargin="400px" minHeight={500} fallback={<TestimonialsSkeleton />}>
         <TestimonialsSection />
       </LazyOnView>
 
-      <LazyOnView rootMargin="300px" minHeight={80}>
+      <LazyOnView rootMargin="300px" minHeight={80} fallback={<DividerSkeleton />}>
         <WaveDivider />
       </LazyOnView>
 
-      <LazyOnView rootMargin="400px" minHeight={400}>
+      <LazyOnView rootMargin="400px" minHeight={400} fallback={<FAQSkeleton />}>
         <FAQSection />
       </LazyOnView>
 
-      <LazyOnView rootMargin="300px" minHeight={80}>
+      <LazyOnView rootMargin="300px" minHeight={80} fallback={<DividerSkeleton />}>
         <WaveDivider flip />
       </LazyOnView>
 
-      <LazyOnView rootMargin="400px" minHeight={300}>
+      <LazyOnView rootMargin="400px" minHeight={300} fallback={<CTASkeleton />}>
         <CTASection />
       </LazyOnView>
 
-      <LazyOnView rootMargin="300px" minHeight={400}>
+      <LazyOnView rootMargin="300px" minHeight={400} fallback={<FooterSkeleton />}>
         <Footer />
       </LazyOnView>
     </div>
