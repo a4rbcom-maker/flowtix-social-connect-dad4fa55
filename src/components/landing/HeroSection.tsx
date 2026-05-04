@@ -144,7 +144,7 @@ export function HeroSection() {
         </div>
 
         {/* Title */}
-        <h1 className="hero-scroll-lift mx-auto max-w-4xl text-4xl font-extrabold leading-tight tracking-tight text-foreground md:text-6xl lg:text-7xl">
+        <h1 className="hero-scroll-lift mx-auto max-w-4xl text-3xl font-extrabold leading-tight tracking-tight text-foreground md:text-5xl lg:text-6xl">
           <span className={`inline-block transition-all duration-700 delay-100 ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
             {t.hero.title1}
           </span>
