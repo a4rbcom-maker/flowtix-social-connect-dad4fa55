@@ -22,6 +22,7 @@ import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
 import { NotificationsBell } from "@/components/dashboard/NotificationsBell";
 import { ChannelStatusDot } from "@/components/dashboard/ChannelStatusDot";
+import { ChannelQuickActions } from "@/components/dashboard/ChannelQuickActions";
 import { useChannelStatus } from "@/hooks/useChannelStatus";
 import flowtixLogo from "@/assets/flowtix-logo.png";
 
