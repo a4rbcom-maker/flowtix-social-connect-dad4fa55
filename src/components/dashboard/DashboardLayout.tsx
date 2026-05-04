@@ -335,6 +335,15 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                                 </Link>
                               );
                             })}
+                            {channelState && (
+                              <ChannelQuickActions
+                                channel={item.key as "facebook" | "whatsapp"}
+                                state={channelState}
+                                lang={lang}
+                                onChanged={channelStatus.refresh}
+                                onNavigate={closeOnMobile}
+                              />
+                            )}
                           </div>
                         </div>
                       </div>
