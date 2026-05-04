@@ -65,6 +65,7 @@ function FacebookPage() {
   // Token expiry awareness — populated silently on dashboard open via
   // inspectFacebookConnection (no token leaves the server). Used to render
   // a top banner when the token is expired or about to expire.
+  const { call: fbCall } = useFacebookApi();
   const [tokenExpiry, setTokenExpiry] = useState<{
     expiresAt: string | null;
     dataAccessExpiresAt: string | null;
