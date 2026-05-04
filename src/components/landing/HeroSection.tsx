@@ -91,27 +91,72 @@ export function HeroSection() {
       dir={dir}
       className="hero-parallax-root relative overflow-hidden pt-20 pb-12 md:pt-24 md:pb-16"
     >
-      {/* Background orbs — mouse reactive only (scroll via CSS) */}
-      <div className="pointer-events-none absolute inset-0">
+      {/* ===== Premium animated background ===== */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        {/* Soft base wash */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.04] via-transparent to-primary-glow/[0.05]" />
+
+        {/* Morphing gradient blobs */}
         <div
-          className="absolute top-1/4 left-1/2 h-[500px] w-[500px] -translate-x-1/2 rounded-full bg-primary/6 blur-[160px] hero-scroll-fade"
-          style={{ transform: `translate(${mouse.x * 1.5}px, ${mouse.y * 1.5}px)` }}
+          className="hero-blob-1 absolute -top-32 -left-24 h-[520px] w-[520px] blur-[110px] opacity-60"
+          style={{
+            background: "radial-gradient(circle at 30% 30%, rgba(155, 92, 246, 0.55), rgba(190, 94, 237, 0.25) 60%, transparent 80%)",
+            transform: `translate(${mouse.x * 1.5}px, ${mouse.y * 1.5}px)`,
+          }}
         />
         <div
-          className="absolute top-1/3 right-1/4 h-72 w-72 rounded-full bg-primary/5 blur-[140px] hero-scroll-fade"
-          style={{ transform: `translate(${mouse.x * -1}px, ${mouse.y * -1}px)` }}
+          className="hero-blob-2 absolute top-10 -right-32 h-[460px] w-[460px] blur-[120px] opacity-55"
+          style={{
+            background: "radial-gradient(circle at 70% 40%, rgba(124, 58, 237, 0.5), rgba(155, 92, 246, 0.2) 55%, transparent 80%)",
+            transform: `translate(${mouse.x * -1.2}px, ${mouse.y * -1.2}px)`,
+          }}
         />
         <div
-          className="absolute bottom-1/4 left-1/3 h-48 w-48 rounded-full bg-primary/4 blur-[120px] hero-scroll-fade"
-          style={{ transform: `translate(${mouse.x * 0.8}px, ${mouse.y * -0.8}px)` }}
+          className="hero-blob-3 absolute bottom-[-120px] left-1/3 h-[420px] w-[420px] blur-[130px] opacity-45"
+          style={{
+            background: "radial-gradient(circle at 50% 50%, rgba(190, 94, 237, 0.45), transparent 70%)",
+            transform: `translate(${mouse.x * 0.9}px, ${mouse.y * -0.9}px)`,
+          }}
         />
-        <div className="absolute inset-0 opacity-[0.02]" style={{
-          backgroundImage: "radial-gradient(circle, oklch(0.53 0.27 290) 1px, transparent 1px)",
-          backgroundSize: "48px 48px",
-        }} />
+
+        {/* Animated dotted grid */}
+        <div
+          className="hero-grid-pan absolute inset-0 opacity-[0.05]"
+          style={{
+            backgroundImage: "radial-gradient(circle, oklch(0.53 0.27 290) 1px, transparent 1px)",
+            backgroundSize: "48px 48px",
+          }}
+        />
+
+        {/* Subtle conic shimmer beam */}
+        <div className="absolute top-0 left-0 right-0 h-[600px] overflow-hidden">
+          <div className="hero-beam-sweep absolute top-0 -left-1/2 h-full w-1/2 bg-gradient-to-r from-transparent via-primary/[0.07] to-transparent" />
+        </div>
+
+        {/* SVG decorative shapes */}
+        <svg
+          className="absolute top-20 right-[10%] h-24 w-24 text-primary/20 hero-drift hidden md:block"
+          viewBox="0 0 100 100" fill="none"
+          style={{ transform: `translate(${mouse.x * 2}px, ${mouse.y * 2}px)` }}
+        >
+          <polygon points="50,5 95,80 5,80" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+        <svg
+          className="absolute bottom-32 left-[8%] h-20 w-20 text-primary-glow/25 hero-drift hidden md:block"
+          viewBox="0 0 100 100" fill="none"
+          style={{ animationDelay: "3s", transform: `translate(${mouse.x * -1.5}px, ${mouse.y * 1.5}px)` }}
+        >
+          <circle cx="50" cy="50" r="40" stroke="currentColor" strokeWidth="1.5" strokeDasharray="6 6" />
+        </svg>
+        <svg
+          className="absolute top-1/3 left-[5%] h-14 w-14 text-primary/25 animate-spin-slow hidden lg:block"
+          viewBox="0 0 100 100" fill="none"
+        >
+          <rect x="20" y="20" width="60" height="60" rx="12" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
       </div>
 
-      {/* Floating particles — mouse only */}
+      {/* Floating particles + twinkling stars */}
       <div className="pointer-events-none absolute inset-0 hero-scroll-fade">
         {[
           { top: "12%", left: "6%",  size: 6,  mx: 2,    my: 1.5 },
@@ -120,13 +165,16 @@ export function HeroSection() {
           { top: "60%", left: "10%", size: 4,  mx: -2,   my: -1.5 },
           { top: "75%", left: "70%", size: 6,  mx: 1.5,  my: 1 },
           { top: "35%", left: "4%",  size: 4,  mx: -1,   my: 2 },
+          { top: "18%", left: "45%", size: 3,  mx: 1,    my: -2 },
+          { top: "82%", left: "30%", size: 5,  mx: -1.2, my: 1 },
         ].map((p, i) => (
           <div
             key={i}
-            className="absolute rounded-full bg-primary/12"
+            className="hero-star-twinkle absolute rounded-full bg-primary"
             style={{
               top: p.top, left: p.left,
               width: p.size, height: p.size,
+              animationDelay: `${i * 0.4}s`,
               transform: `translate(${mouse.x * p.mx}px, ${mouse.y * p.my}px)`,
             }}
           />
