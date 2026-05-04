@@ -61,19 +61,50 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   };
 
   const labels = lang === "ar"
-    ? { overview: "نظرة عامة", control: "لوحة التحكم", facebook: "فيسبوك", fbGroups: "جروبات فيسبوك", whatsapp: "واتساب", bulk: "إرسال جماعي", activity: "سجل النشاط", settings: "الإعدادات", logout: "تسجيل الخروج" }
-    : { overview: "Overview", control: "Control Panel", facebook: "Facebook", fbGroups: "FB Groups", whatsapp: "WhatsApp", bulk: "Bulk Send", activity: "Activity", settings: "Settings", logout: "Sign Out" };
+    ? { overview: "نظرة عامة", control: "لوحة التحكم", facebook: "فيسبوك", fbConnect: "الربط والحالة", fbGroups: "الجروبات", whatsapp: "واتساب", waBot: "البوت", bulk: "إرسال جماعي", activity: "سجل النشاط", settings: "الإعدادات", logout: "تسجيل الخروج" }
+    : { overview: "Overview", control: "Control Panel", facebook: "Facebook", fbConnect: "Connect & Status", fbGroups: "Groups", whatsapp: "WhatsApp", waBot: "Bot", bulk: "Bulk Send", activity: "Activity", settings: "Settings", logout: "Sign Out" };
 
-  const menu = [
-    { icon: LayoutDashboard, label: labels.overview, to: "/dashboard" as const },
-    { icon: Activity, label: labels.control, to: "/dashboard/control" as const },
-    { icon: Facebook, label: labels.facebook, to: "/dashboard/facebook" as const },
-    { icon: Users, label: labels.fbGroups, to: "/dashboard/facebook/groups" as const },
-    { icon: MessageCircle, label: labels.whatsapp, to: "/dashboard/whatsapp" as const },
-    { icon: Send, label: labels.bulk, to: "/dashboard/bulk" as const },
-    { icon: Activity, label: labels.activity, to: "/dashboard/activity" as const },
-    { icon: Settings, label: labels.settings, to: "/dashboard" as const },
+  type LeafItem = { kind: "leaf"; icon: typeof LayoutDashboard; label: string; to: "/dashboard" | "/dashboard/control" | "/dashboard/facebook" | "/dashboard/facebook/groups" | "/dashboard/whatsapp" | "/dashboard/bulk" | "/dashboard/activity" };
+  type GroupItem = { kind: "group"; key: string; icon: typeof LayoutDashboard; label: string; children: LeafItem[] };
+  type MenuItem = LeafItem | GroupItem;
+
+  const menu: MenuItem[] = [
+    { kind: "leaf", icon: LayoutDashboard, label: labels.overview, to: "/dashboard" },
+    { kind: "leaf", icon: Activity, label: labels.control, to: "/dashboard/control" },
+    {
+      kind: "group",
+      key: "facebook",
+      icon: Facebook,
+      label: labels.facebook,
+      children: [
+        { kind: "leaf", icon: LinkIcon, label: labels.fbConnect, to: "/dashboard/facebook" },
+        { kind: "leaf", icon: Users, label: labels.fbGroups, to: "/dashboard/facebook/groups" },
+      ],
+    },
+    {
+      kind: "group",
+      key: "whatsapp",
+      icon: MessageCircle,
+      label: labels.whatsapp,
+      children: [
+        { kind: "leaf", icon: Bot, label: labels.waBot, to: "/dashboard/whatsapp" },
+        { kind: "leaf", icon: Send, label: labels.bulk, to: "/dashboard/bulk" },
+      ],
+    },
+    { kind: "leaf", icon: Activity, label: labels.activity, to: "/dashboard/activity" },
+    { kind: "leaf", icon: Settings, label: labels.settings, to: "/dashboard" },
   ];
+
+  // Auto-open the group containing the active route; persist user toggles.
+  const initialOpen: Record<string, boolean> = {};
+  menu.forEach((m) => {
+    if (m.kind === "group") {
+      initialOpen[m.key] = m.children.some((c) => c.to === location.pathname);
+    }
+  });
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(initialOpen);
+  const toggleGroup = (key: string) =>
+    setOpenGroups((p) => ({ ...p, [key]: !p[key] }));
 
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "";
 
