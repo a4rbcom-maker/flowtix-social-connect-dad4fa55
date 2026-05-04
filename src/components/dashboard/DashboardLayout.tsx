@@ -67,33 +67,51 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   type LeafItem = { kind: "leaf"; icon: typeof LayoutDashboard; label: string; to: "/dashboard" | "/dashboard/control" | "/dashboard/facebook" | "/dashboard/facebook/groups" | "/dashboard/whatsapp" | "/dashboard/bulk" | "/dashboard/activity" };
   type GroupItem = { kind: "group"; key: string; icon: typeof LayoutDashboard; label: string; children: LeafItem[] };
   type MenuItem = LeafItem | GroupItem;
+  type Section = { title: string; items: MenuItem[] };
 
-  const menu: MenuItem[] = [
-    { kind: "leaf", icon: LayoutDashboard, label: labels.overview, to: "/dashboard" },
-    { kind: "leaf", icon: Activity, label: labels.control, to: "/dashboard/control" },
+  const sections: Section[] = [
     {
-      kind: "group",
-      key: "facebook",
-      icon: Facebook,
-      label: labels.facebook,
-      children: [
-        { kind: "leaf", icon: LinkIcon, label: labels.fbConnect, to: "/dashboard/facebook" },
-        { kind: "leaf", icon: Users, label: labels.fbGroups, to: "/dashboard/facebook/groups" },
+      title: labels.sectionMain,
+      items: [
+        { kind: "leaf", icon: LayoutDashboard, label: labels.overview, to: "/dashboard" },
+        { kind: "leaf", icon: Activity, label: labels.control, to: "/dashboard/control" },
       ],
     },
     {
-      kind: "group",
-      key: "whatsapp",
-      icon: MessageCircle,
-      label: labels.whatsapp,
-      children: [
-        { kind: "leaf", icon: Bot, label: labels.waBot, to: "/dashboard/whatsapp" },
-        { kind: "leaf", icon: Send, label: labels.bulk, to: "/dashboard/bulk" },
+      title: labels.sectionChannels,
+      items: [
+        {
+          kind: "group",
+          key: "facebook",
+          icon: Facebook,
+          label: labels.facebook,
+          children: [
+            { kind: "leaf", icon: LinkIcon, label: labels.fbConnect, to: "/dashboard/facebook" },
+            { kind: "leaf", icon: Users, label: labels.fbGroups, to: "/dashboard/facebook/groups" },
+          ],
+        },
+        {
+          kind: "group",
+          key: "whatsapp",
+          icon: MessageCircle,
+          label: labels.whatsapp,
+          children: [
+            { kind: "leaf", icon: Bot, label: labels.waBot, to: "/dashboard/whatsapp" },
+            { kind: "leaf", icon: Send, label: labels.bulk, to: "/dashboard/bulk" },
+          ],
+        },
       ],
     },
-    { kind: "leaf", icon: Activity, label: labels.activity, to: "/dashboard/activity" },
-    { kind: "leaf", icon: Settings, label: labels.settings, to: "/dashboard" },
+    {
+      title: labels.sectionInsights,
+      items: [
+        { kind: "leaf", icon: Activity, label: labels.activity, to: "/dashboard/activity" },
+        { kind: "leaf", icon: Settings, label: labels.settings, to: "/dashboard" },
+      ],
+    },
   ];
+
+  const menu: MenuItem[] = sections.flatMap((s) => s.items);
 
   // Auto-open the group containing the active route; persist user toggles.
   const initialOpen: Record<string, boolean> = {};
