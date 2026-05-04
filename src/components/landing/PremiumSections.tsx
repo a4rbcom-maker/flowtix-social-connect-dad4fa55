@@ -54,7 +54,7 @@ export function StatsStrip() {
               className={`relative text-center transition-all duration-700 ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}
               style={{ transitionDelay: `${i * 100}ms` }}
             >
-              <div className="bg-gradient-to-br from-primary to-primary-glow bg-clip-text text-4xl font-extrabold text-transparent md:text-5xl">
+              <div className="bg-primary bg-clip-text text-4xl font-extrabold text-transparent md:text-5xl">
                 <CountUp end={s.value} suffix={s.suffix} />
               </div>
               <div className="mt-2 text-sm font-medium text-muted-foreground md:text-base">{s.label}</div>
@@ -129,7 +129,7 @@ export function TestimonialsSection() {
               <p className="mb-6 text-sm leading-relaxed text-foreground/90">"{t.body}"</p>
 
               <div className="flex items-center gap-3 border-t border-border/40 pt-4">
-                <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-sm font-bold text-primary-foreground shadow-md shadow-primary/20">
+                <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground shadow-md shadow-primary/20">
                   {t.name.charAt(0)}
                   <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-card bg-green-500">
                     <svg className="h-2 w-2 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>
@@ -206,7 +206,7 @@ export function ComparisonSection() {
             <div className="absolute -top-12 -right-12 h-40 w-40 rounded-full bg-primary/15 blur-3xl" />
             <div className="relative">
               <div className="mb-5 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-lg shadow-primary/30">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/30">
                   <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                 </div>
                 <h3 className="text-xl font-bold text-foreground">{isAr ? "مع فلوتكس" : "With Flowtix"}</h3>
@@ -217,7 +217,7 @@ export function ComparisonSection() {
               <ul className="space-y-3">
                 {withUs.map((item, i) => (
                   <li key={i} className="flex items-start gap-3 text-sm font-medium text-foreground">
-                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-sm shadow-primary/30">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm shadow-primary/30">
                       <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                     </span>
                     {item}
