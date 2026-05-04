@@ -57,42 +57,41 @@
   --card-foreground: oklch(0.20 0.025 290);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.20 0.025 290);
-  /* Primary = #7c3aed (pure violet) */
-  --primary: oklch(0.53 0.27 290);
+  /* Brand identity: rgb(138,61,245) #8a3df5 */
+  --primary: rgb(138 61 245);
   --primary-foreground: oklch(1 0 0);
-  /* Lighter violet ~#a78bfa */
-  --primary-glow: oklch(0.65 0.22 295);
-  --primary-deep: oklch(0.45 0.27 287);
+  /* Brand secondary: rgb(190,94,237) #be5eed */
+  --primary-glow: rgb(190 94 237);
+  --primary-deep: rgb(112 40 220);
   --secondary: oklch(0.96 0.012 295);
   --secondary-foreground: oklch(0.30 0.04 290);
   --muted: oklch(0.965 0.008 290);
   --muted-foreground: oklch(0.50 0.025 290);
-  /* Soft violet bg #eee7f8 */
   --accent: oklch(0.94 0.025 295);
   --accent-foreground: oklch(0.30 0.04 290);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(1 0 0);
   --border: oklch(0.92 0.014 295);
   --input: oklch(0.92 0.014 295);
-  --ring: oklch(0.56 0.30 295);
-  --chart-1: oklch(0.56 0.30 295);
-  --chart-2: oklch(0.65 0.22 295);
+  --ring: rgb(138 61 245);
+  --chart-1: rgb(138 61 245);
+  --chart-2: rgb(190 94 237);
   --chart-3: oklch(0.70 0.22 340);
   --chart-4: oklch(0.72 0.18 45);
   --chart-5: oklch(0.70 0.20 145);
   --sidebar: oklch(0.975 0.008 295);
   --sidebar-foreground: oklch(0.20 0.025 290);
-  --sidebar-primary: oklch(0.56 0.30 295);
+  --sidebar-primary: rgb(138 61 245);
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.94 0.03 295);
   --sidebar-accent-foreground: oklch(0.25 0.04 290);
   --sidebar-border: oklch(0.92 0.014 295);
-  --sidebar-ring: oklch(0.56 0.30 295);
-  /* Botxtra signature gradient: deep violet → light violet */
-  --gradient-primary: linear-gradient(135deg, oklch(0.48 0.27 288), oklch(0.65 0.22 295));
-  --gradient-hero: linear-gradient(135deg, oklch(0.48 0.27 288) 0%, oklch(0.65 0.22 295) 100%);
-  --shadow-violet: 0 10px 40px -10px oklch(0.53 0.27 290 / 0.45);
-  --shadow-violet-lg: 0 20px 60px -15px oklch(0.53 0.27 290 / 0.55);
+  --sidebar-ring: rgb(138 61 245);
+  /* Brand signature gradient: rgb(138,61,245) → rgb(190,94,237) */
+  --gradient-primary: linear-gradient(135deg, rgb(138, 61, 245), rgb(190, 94, 237));
+  --gradient-hero: linear-gradient(135deg, rgb(138, 61, 245) 0%, rgb(190, 94, 237) 100%);
+  --shadow-violet: 0 10px 40px -10px rgb(138 61 245 / 0.45);
+  --shadow-violet-lg: 0 20px 60px -15px rgb(138 61 245 / 0.55);
   /* Pricing popular card */
   --pricing-popular-bg: oklch(0.97 0.018 295);
   --pricing-popular-border: oklch(0.56 0.30 295);
