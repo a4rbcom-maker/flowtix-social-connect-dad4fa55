@@ -292,23 +292,30 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                       }}
                       aria-expanded={isOpen}
                       title={!sidebarOpen ? `${item.label}${channelState ? ` · ${channelState.label}` : ""}` : undefined}
-                      className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+                      className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-3 py-2.5 text-[13.5px] font-medium transition-all duration-300 ${
                         groupActive
-                          ? "bg-gradient-to-r from-primary/15 via-primary/10 to-transparent text-primary shadow-sm"
-                          : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                          ? "text-primary shadow-[0_4px_16px_-6px_rgba(124,58,237,0.4)]"
+                          : "text-muted-foreground hover:translate-x-0.5 hover:text-foreground rtl:hover:-translate-x-0.5"
                       } ${!sidebarOpen ? "justify-center" : ""}`}
                     >
                       {groupActive && (
-                        <span
-                          className={`absolute inset-y-1.5 w-[3px] rounded-full bg-gradient-to-b from-primary to-[oklch(0.66_0.26_320)] ${
-                            dir === "rtl" ? "right-0" : "left-0"
-                          }`}
-                        />
+                        <>
+                          <span className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary/18 via-primary/10 to-transparent rtl:bg-gradient-to-l" />
+                          <span className="absolute inset-0 rounded-xl ring-1 ring-inset ring-primary/20" />
+                          <span
+                            className={`absolute inset-y-2 w-[3px] rounded-full bg-gradient-to-b from-primary via-[oklch(0.66_0.26_320)] to-primary shadow-[0_0_10px_oklch(0.62_0.27_295/0.7)] ${
+                              dir === "rtl" ? "right-0" : "left-0"
+                            }`}
+                          />
+                        </>
+                      )}
+                      {!groupActive && (
+                        <span className="absolute inset-0 rounded-xl bg-accent/0 transition-colors duration-300 group-hover:bg-accent/50" />
                       )}
                       <span className="relative inline-flex shrink-0">
                         <Icon
-                          className={`h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110 ${
-                            groupActive ? "text-primary" : ""
+                          className={`h-[18px] w-[18px] shrink-0 transition-all duration-300 group-hover:scale-110 ${
+                            groupActive ? "text-primary drop-shadow-[0_0_6px_oklch(0.62_0.27_295/0.5)]" : ""
                           }`}
                         />
                         {channelState && !sidebarOpen && (
@@ -317,12 +324,14 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                       </span>
                       {sidebarOpen && (
                         <>
-                          <span className="flex-1 truncate text-start">{item.label}</span>
+                          <span className="relative flex-1 truncate text-start">{item.label}</span>
                           {channelState && (
-                            <ChannelStatusDot state={channelState} lang={lang} />
+                            <span className="relative">
+                              <ChannelStatusDot state={channelState} lang={lang} />
+                            </span>
                           )}
                           <ChevronDown
-                            className={`h-4 w-4 shrink-0 text-muted-foreground/70 transition-transform duration-300 ${isOpen ? "rotate-180 text-primary" : ""}`}
+                            className={`relative h-4 w-4 shrink-0 text-muted-foreground/60 transition-transform duration-300 ${isOpen ? "rotate-180 text-primary" : ""}`}
                           />
                         </>
                       )}
