@@ -62,10 +62,10 @@ export function CTASection() {
   return (
     <section dir={dir} className="relative py-12 md:py-16 overflow-hidden">
       {/* Animated background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-violet-500/5 to-violet-500/5" />
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-primary-glow/5 to-primary-glow/5" />
       <div className="pointer-events-none absolute inset-0">
         <div className="animate-float absolute top-1/4 left-1/3 h-72 w-72 rounded-full bg-primary/10 blur-[100px]" />
-        <div className="animate-float-reverse absolute bottom-1/4 right-1/3 h-56 w-56 rounded-full bg-violet-500/10 blur-[80px]" />
+        <div className="animate-float-reverse absolute bottom-1/4 right-1/3 h-56 w-56 rounded-full bg-primary-glow/10 blur-[80px]" />
       </div>
 
       <div className="relative mx-auto max-w-3xl px-4 text-center">
