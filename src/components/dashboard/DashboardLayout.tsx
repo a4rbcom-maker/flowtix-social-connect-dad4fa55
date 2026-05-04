@@ -155,11 +155,11 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
       )}
 
       <aside
-        className={`fixed top-0 z-40 flex h-full flex-col bg-gradient-to-b from-card via-card to-card/95 shadow-[0_8px_30px_-12px_rgba(124,58,237,0.18)] backdrop-blur-xl transition-[transform,width] duration-300 ease-out ${
+        className={`fixed top-0 z-40 flex h-full flex-col overflow-hidden bg-card/85 shadow-[0_20px_60px_-20px_rgba(124,58,237,0.28)] backdrop-blur-2xl transition-[transform,width] duration-300 ease-out ${
           dir === "rtl"
             ? "right-0 border-l border-border/40"
             : "left-0 border-r border-border/40"
-        } ${sidebarOpen ? "w-64" : "w-64 md:w-[72px]"} ${
+        } ${sidebarOpen ? "w-[260px]" : "w-[260px] md:w-[76px]"} ${
           sidebarOpen
             ? "translate-x-0"
             : dir === "rtl"
@@ -167,41 +167,52 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
               : "-translate-x-full md:translate-x-0"
         }`}
       >
-        {/* Decorative gradient halo */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-primary/8 to-transparent" />
+        {/* Premium ambient halos */}
+        <div className="pointer-events-none absolute -top-20 -right-16 h-56 w-56 rounded-full bg-primary/15 blur-3xl" />
+        <div className="pointer-events-none absolute top-1/3 -left-20 h-48 w-48 rounded-full bg-[oklch(0.66_0.26_320)]/12 blur-3xl" />
+        <div className="pointer-events-none absolute bottom-0 inset-x-0 h-40 bg-gradient-to-t from-primary/[0.04] to-transparent" />
+        {/* Subtle inner highlight on the leading edge */}
+        <div className={`pointer-events-none absolute inset-y-0 w-px bg-gradient-to-b from-transparent via-primary/20 to-transparent ${dir === "rtl" ? "left-0" : "right-0"}`} />
 
-        <div className="relative flex items-center justify-between gap-2 border-b border-border/40 px-4 py-4">
-          <div className="flex items-center gap-2.5">
+        {/* Brand header */}
+        <div className="relative flex items-center justify-between gap-2 px-4 pt-5 pb-4">
+          <Link
+            to="/dashboard"
+            onClick={closeOnMobile}
+            className="group flex items-center gap-2.5 outline-none"
+            aria-label="Flowtix Tools"
+          >
             <div className="relative">
-              <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary/30 to-[oklch(0.66_0.26_320)]/30 blur-md" />
-              <img
-                src={flowtixLogo}
-                alt="Logo"
-                width={36}
-                height={36}
-                className="relative h-9 w-9 shrink-0 rounded-xl"
-              />
+              <div className="absolute -inset-1 rounded-2xl bg-gradient-to-br from-primary/40 via-[oklch(0.66_0.26_320)]/30 to-transparent opacity-70 blur-md transition-opacity duration-300 group-hover:opacity-100" />
+              <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] p-[1.5px] shadow-[0_4px_16px_-4px_rgba(124,58,237,0.5)]">
+                <div className="flex h-full w-full items-center justify-center rounded-[14px] bg-card">
+                  <img src={flowtixLogo} alt="Logo" width={28} height={28} className="h-7 w-7 rounded-lg" />
+                </div>
+              </div>
             </div>
             {sidebarOpen && (
               <div className="flex flex-col leading-none">
-                <span className="bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] bg-clip-text text-lg font-extrabold tracking-tight text-transparent">
+                <span className="bg-gradient-to-r from-primary via-[oklch(0.62_0.27_295)] to-[oklch(0.66_0.26_320)] bg-clip-text text-[18px] font-black tracking-tight text-transparent">
                   Flowtix
                 </span>
-                <span className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
+                <span className="mt-1 text-[9px] font-bold uppercase tracking-[0.32em] text-muted-foreground/60">
                   Tools
                 </span>
               </div>
             )}
-          </div>
+          </Link>
           {/* Close button visible on mobile */}
           <button
             onClick={() => setSidebarOpen(false)}
-            className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground md:hidden"
+            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:hidden"
             aria-label="Close menu"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
+
+        {/* Hairline divider with gradient fade */}
+        <div className="relative mx-4 h-px bg-gradient-to-r from-transparent via-border/80 to-transparent" />
 
         <nav className="relative flex-1 space-y-5 overflow-y-auto px-3 py-4">
           {sections.map((section, sIdx) => (
