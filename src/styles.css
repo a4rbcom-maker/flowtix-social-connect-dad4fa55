@@ -601,14 +601,14 @@ html {
   color: oklch(1 0 0);
   background: linear-gradient(
     135deg,
-    oklch(0.58 0.27 295) 0%,
-    oklch(0.6 0.27 295) 50%,
-    oklch(0.55 0.28 290) 100%
+    oklch(0.52 0.30 290) 0%,
+    oklch(0.58 0.29 300) 50%,
+    oklch(0.66 0.26 320) 100%
   );
   background-size: 200% 200%;
   background-position: 0% 50%;
   box-shadow:
-    0 4px 14px -4px oklch(0.55 0.27 295 / 0.45),
+    0 4px 14px -4px oklch(0.55 0.28 300 / 0.45),
     0 1px 3px oklch(0.3 0.15 295 / 0.15),
     inset 0 1px 0 oklch(1 0 0 / 0.2);
 }
@@ -616,27 +616,27 @@ html {
   background-position: 100% 50%;
   transform: translateY(-2px);
   box-shadow:
-    0 12px 28px -8px oklch(0.55 0.27 295 / 0.55),
-    0 4px 10px -2px oklch(0.4 0.27 295 / 0.25),
+    0 12px 28px -8px oklch(0.55 0.28 300 / 0.55),
+    0 4px 10px -2px oklch(0.4 0.27 320 / 0.25),
     inset 0 1px 0 oklch(1 0 0 / 0.25);
 }
 .dark .btn-luxury {
   background: linear-gradient(
     135deg,
-    oklch(0.62 0.27 295) 0%,
-    oklch(0.65 0.27 295) 50%,
-    oklch(0.58 0.28 290) 100%
+    oklch(0.55 0.30 290) 0%,
+    oklch(0.62 0.29 300) 50%,
+    oklch(0.68 0.26 320) 100%
   );
   background-size: 200% 200%;
   box-shadow:
-    0 4px 16px -4px oklch(0.45 0.27 295 / 0.55),
+    0 4px 16px -4px oklch(0.45 0.28 300 / 0.55),
     0 0 0 1px oklch(0.7 0.27 295 / 0.15),
     inset 0 1px 0 oklch(1 0 0 / 0.15);
 }
 .dark .btn-luxury:hover {
   box-shadow:
-    0 14px 34px -8px oklch(0.55 0.27 295 / 0.7),
-    0 0 0 1px oklch(0.75 0.27 295 / 0.25),
+    0 14px 34px -8px oklch(0.55 0.28 300 / 0.7),
+    0 0 0 1px oklch(0.75 0.27 320 / 0.25),
     inset 0 1px 0 oklch(1 0 0 / 0.2);
 }
 
