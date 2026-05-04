@@ -116,7 +116,7 @@ export function Footer() {
                   <div className="absolute inset-0 rounded-xl bg-primary opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-60" />
                   <img src={flowtixLogo} alt="Flowtix Tools" width={40} height={40} className="relative h-10 w-10 transition-transform duration-300 group-hover:rotate-6" loading="lazy" />
                 </div>
-                <span className="bg-primary bg-clip-text text-xl font-bold text-transparent">
+                <span className="bg-clip-text text-xl font-bold text-transparent" style={{ backgroundImage: "linear-gradient(135deg, rgb(138,61,245), rgb(190,94,237))" }}">
                   Flowtix Tools
                 </span>
               </div>
