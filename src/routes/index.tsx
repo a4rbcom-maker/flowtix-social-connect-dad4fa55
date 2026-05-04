@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { lazy, Suspense } from "react";
+import { lazy } from "react";
 import { Navbar } from "@/components/landing/Navbar";
 import { HeroSection } from "@/components/landing/HeroSection";
+import { LazyOnView } from "@/components/LazyOnView";
 import { useScrollProgress } from "@/hooks/use-in-view";
 
+// Each section is its own chunk, fetched only when scrolled near.
 const FeaturesSection = lazy(() => import("@/components/landing/FeaturesSection").then(m => ({ default: m.FeaturesSection })));
 const HowItWorksSection = lazy(() => import("@/components/landing/HowItWorksSection").then(m => ({ default: m.HowItWorksSection })));
 const PricingSection = lazy(() => import("@/components/landing/PricingSection").then(m => ({ default: m.PricingSection })));
@@ -28,22 +30,63 @@ function Index() {
       <div className="scroll-progress" style={{ width: `${progress * 100}%` }} />
       <Navbar />
       <HeroSection />
-      <Suspense fallback={<div className="h-32" />}>
+
+      {/* Section right under hero — preload sooner */}
+      <LazyOnView rootMargin="600px" minHeight={120}>
         <TrustedBySection />
+      </LazyOnView>
+
+      <LazyOnView rootMargin="500px" minHeight={180}>
         <StatsStrip />
+      </LazyOnView>
+
+      <LazyOnView rootMargin="400px" minHeight={600}>
         <FeaturesSection />
+      </LazyOnView>
+
+      <LazyOnView rootMargin="300px" minHeight={80}>
         <WaveDivider />
+      </LazyOnView>
+
+      <LazyOnView rootMargin="400px" minHeight={500}>
         <HowItWorksSection />
+      </LazyOnView>
+
+      <LazyOnView rootMargin="300px" minHeight={80}>
         <WaveDivider flip />
+      </LazyOnView>
+
+      <LazyOnView rootMargin="400px" minHeight={500}>
         <ComparisonSection />
+      </LazyOnView>
+
+      <LazyOnView rootMargin="400px" minHeight={600}>
         <PricingSection />
+      </LazyOnView>
+
+      <LazyOnView rootMargin="400px" minHeight={500}>
         <TestimonialsSection />
+      </LazyOnView>
+
+      <LazyOnView rootMargin="300px" minHeight={80}>
         <WaveDivider />
+      </LazyOnView>
+
+      <LazyOnView rootMargin="400px" minHeight={400}>
         <FAQSection />
+      </LazyOnView>
+
+      <LazyOnView rootMargin="300px" minHeight={80}>
         <WaveDivider flip />
+      </LazyOnView>
+
+      <LazyOnView rootMargin="400px" minHeight={300}>
         <CTASection />
+      </LazyOnView>
+
+      <LazyOnView rootMargin="300px" minHeight={400}>
         <Footer />
-      </Suspense>
+      </LazyOnView>
     </div>
   );
 }
