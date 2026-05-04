@@ -34,8 +34,8 @@ export function PricingSection() {
                     ? "var(--pricing-popular-border)"
                     : "var(--pricing-card-border)",
                   boxShadow: isPopular
-                    ? "0 8px 30px -8px oklch(0.55 0.15 270 / 0.12)"
-                    : "0 2px 12px -4px oklch(0.5 0.05 270 / 0.06)",
+                    ? "0 8px 30px -8px oklch(0.53 0.27 290 / 0.18)"
+                    : "0 2px 12px -4px oklch(0.5 0.05 290 / 0.06)",
                 }}
               >
                 {isPopular && (
