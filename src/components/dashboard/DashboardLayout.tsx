@@ -39,6 +39,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   // SSR-safe: assume desktop-open. After mount we reconcile based on screen size.
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isDesktop, setIsDesktop] = useState(true);
+  const channelStatus = useChannelStatus(lang);
 
   // Track viewport size and reconcile sidebar visibility.
   useEffect(() => {
