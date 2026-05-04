@@ -1,7 +1,7 @@
 import { useI18n } from "@/lib/i18n";
 import { useInView } from "@/hooks/use-in-view";
 import { useState, useEffect } from "react";
-import flowtixLogo from "@/assets/flowtix-logo.png";
+import flowtixLogo from "@/assets/flowtix-logo.webp";
 
 function ScrollToTop() {
   const [visible, setVisible] = useState(false);

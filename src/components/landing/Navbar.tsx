@@ -2,7 +2,7 @@ import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
 import { useState, useEffect } from "react";
 import { Link } from "@tanstack/react-router";
-import flowtixLogo from "@/assets/flowtix-logo.png";
+import flowtixLogo from "@/assets/flowtix-logo.webp";
 
 export function Navbar() {
   const { t, lang, setLang, dir } = useI18n();

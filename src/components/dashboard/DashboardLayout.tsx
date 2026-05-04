@@ -27,7 +27,7 @@ import { NotificationsBell } from "@/components/dashboard/NotificationsBell";
 import { ChannelStatusDot } from "@/components/dashboard/ChannelStatusDot";
 import { ChannelQuickActions } from "@/components/dashboard/ChannelQuickActions";
 import { useChannelStatus } from "@/hooks/useChannelStatus";
-import flowtixLogo from "@/assets/flowtix-logo.png";
+import flowtixLogo from "@/assets/flowtix-logo.webp";
 
 interface DashboardLayoutProps {
   children: ReactNode;
