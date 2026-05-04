@@ -31,13 +31,13 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
 
         // Optional: insert a result row
         if (body.result) {
-          await supabaseAdmin.from("fb_job_results").insert({
+          await supabaseAdmin.from("fb_job_results").insert([{
             job_id: body.jobId,
             target: body.result.target ?? null,
             status: body.result.status,
-            data: body.result.data ?? null,
+            data: (body.result.data ?? null) as never,
             error: body.result.error ?? null,
-          });
+          }]);
         }
 
         // Optional: update account status
@@ -65,7 +65,7 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
           if (body.errorMessage) update.error_message = body.errorMessage;
         }
         if (Object.keys(update).length > 0) {
-          await supabaseAdmin.from("fb_jobs").update(update).eq("id", body.jobId);
+          await supabaseAdmin.from("fb_jobs").update(update as never).eq("id", body.jobId);
         }
 
         return Response.json({ ok: true });
