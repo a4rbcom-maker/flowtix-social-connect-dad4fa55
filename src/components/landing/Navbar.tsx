@@ -2,7 +2,7 @@ import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
 import { useState, useEffect } from "react";
 import { Link } from "@tanstack/react-router";
-import flowtixLogo from "@/assets/flowtix-logo.png";
+import flowtixLogo from "@/assets/flowtix-logo.webp";
 
 export function Navbar() {
   const { t, lang, setLang, dir } = useI18n();
@@ -30,6 +30,8 @@ export function Navbar() {
             alt="Flowtix Tools"
             width={40}
             height={40}
+            decoding="async"
+            fetchPriority="high"
             className={`transition-all duration-300 ${scrolled ? "h-8 w-8" : "h-10 w-10"}`}
           />
           <span className="bg-clip-text text-xl font-bold text-transparent" style={{ backgroundImage: "linear-gradient(135deg, rgb(138,61,245), rgb(190,94,237))" }}>
