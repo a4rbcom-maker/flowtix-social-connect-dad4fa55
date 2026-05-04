@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { User as UserIcon, Mail, Lock, Save, Loader2, Shield, Camera, Trash2 } from "lucide-react";
+import { User as UserIcon, Mail, Lock, Save, Loader2, Shield, Trash2 } from "lucide-react";
 import { z } from "zod";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -17,7 +17,6 @@ export const Route = createFileRoute("/dashboard/profile")({
 
 const profileSchema = z.object({
   full_name: z.string().trim().min(2, "الاسم قصير جداً").max(100),
-  avatar_url: z.string().trim().url("رابط غير صالح").max(500).or(z.literal("")),
 });
 
 const passwordSchema = z
@@ -41,10 +40,8 @@ function ProfilePage() {
         title: "الملف الشخصي",
         subtitle: "إدارة بياناتك الشخصية والأمان",
         info: "المعلومات الشخصية",
-        infoDesc: "حدّث اسمك وصورتك الرمزية",
+        infoDesc: "حدّث اسمك المعروض",
         fullName: "الاسم الكامل",
-        avatar: "رابط الصورة الرمزية",
-        avatarPh: "https://...",
         save: "حفظ التغييرات",
         saving: "جاري الحفظ...",
         emailSec: "البريد الإلكتروني",
@@ -73,10 +70,8 @@ function ProfilePage() {
         title: "Profile",
         subtitle: "Manage your personal info and security",
         info: "Personal Information",
-        infoDesc: "Update your name and avatar",
+        infoDesc: "Update your display name",
         fullName: "Full name",
-        avatar: "Avatar URL",
-        avatarPh: "https://...",
         save: "Save changes",
         saving: "Saving...",
         emailSec: "Email Address",
@@ -103,7 +98,6 @@ function ProfilePage() {
       };
 
   const [fullName, setFullName] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState("");
   const [plan, setPlan] = useState<string>("free");
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -124,7 +118,7 @@ function ProfilePage() {
       setLoadingProfile(true);
       const { data, error } = await supabase
         .from("profiles")
-        .select("full_name, avatar_url, plan")
+        .select("full_name, plan")
         .eq("id", user.id)
         .maybeSingle();
       if (cancelled) return;
@@ -132,7 +126,6 @@ function ProfilePage() {
         toast.error(error.message);
       } else if (data) {
         setFullName(data.full_name ?? "");
-        setAvatarUrl(data.avatar_url ?? "");
         setPlan(data.plan ?? "free");
       }
       setLoadingProfile(false);
@@ -143,7 +136,7 @@ function ProfilePage() {
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    const parsed = profileSchema.safeParse({ full_name: fullName, avatar_url: avatarUrl });
+    const parsed = profileSchema.safeParse({ full_name: fullName });
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Invalid input");
       return;
@@ -151,16 +144,13 @@ function ProfilePage() {
     setSavingProfile(true);
     const { error } = await supabase
       .from("profiles")
-      .update({
-        full_name: parsed.data.full_name,
-        avatar_url: parsed.data.avatar_url || null,
-      })
+      .update({ full_name: parsed.data.full_name })
       .eq("id", user.id);
     if (error) toast.error(error.message);
     else {
       // also update auth user metadata so display name updates everywhere
       await supabase.auth.updateUser({
-        data: { full_name: parsed.data.full_name, avatar_url: parsed.data.avatar_url || null },
+        data: { full_name: parsed.data.full_name },
       });
       toast.success(T.success);
     }
@@ -236,13 +226,9 @@ function ProfilePage() {
           <div className="relative flex items-center gap-4">
             <div className="relative">
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/40 to-[oklch(0.66_0.26_320)]/40 blur-md" />
-              {avatarUrl ? (
-                <img src={avatarUrl} alt={fullName} className="relative h-16 w-16 rounded-2xl object-cover ring-2 ring-background" />
-              ) : (
-                <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.66_0.26_320)] text-2xl font-bold text-primary-foreground ring-2 ring-background">
-                  {initial}
-                </div>
-              )}
+              <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.66_0.26_320)] text-2xl font-bold text-primary-foreground ring-2 ring-background">
+                {initial}
+              </div>
             </div>
             <div className="min-w-0 flex-1">
               <h2 className="truncate text-xl font-bold text-foreground">{fullName || user?.email}</h2>
@@ -274,20 +260,6 @@ function ProfilePage() {
             <div className="space-y-1.5">
               <Label htmlFor="full_name">{T.fullName}</Label>
               <Input id="full_name" value={fullName} onChange={(e) => setFullName(e.target.value)} maxLength={100} required />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="avatar_url">{T.avatar}</Label>
-              <div className="relative">
-                <Camera className="pointer-events-none absolute top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground ltr:left-3 rtl:right-3" />
-                <Input
-                  id="avatar_url"
-                  value={avatarUrl}
-                  onChange={(e) => setAvatarUrl(e.target.value)}
-                  placeholder={T.avatarPh}
-                  maxLength={500}
-                  className="ltr:pl-9 rtl:pr-9"
-                />
-              </div>
             </div>
             <Button type="submit" disabled={savingProfile} className="w-full sm:w-auto">
               {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
