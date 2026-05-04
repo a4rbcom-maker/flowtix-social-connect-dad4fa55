@@ -140,16 +140,30 @@ export async function openExternalUrl(
     log("error", "top.location", e instanceof Error ? e.message : String(e));
   }
 
-  // 5) Nothing worked — clipboard-only or full failure.
+  // 5) Nothing worked — show a persistent, actionable toast with an inline
+  //    "Open" anchor. Toast actions trigger DIRECTLY from a user gesture,
+  //    which often bypasses popup blockers that killed the earlier attempts.
   if (!silent) {
-    if (copied) {
-      toast.warning(msg("copiedOnly"), { duration: 6500 });
-    } else {
-      toast.error(msg("failed"), {
-        description: url,
-        duration: 9000,
-      });
-    }
+    const openLabel = lang === "ar" ? "فتح الرابط" : "Open link";
+    const text = copied ? msg("copiedOnly") : msg("failed");
+    const fn = copied ? toast.warning : toast.error;
+    fn(text, {
+      description: url,
+      duration: 12000,
+      action: {
+        label: openLabel,
+        onClick: () => {
+          // Direct user-gesture open — most reliable last resort.
+          try {
+            window.open(url, "_blank", "noopener,noreferrer");
+          } catch {
+            if (window.top && window.top !== window.self) {
+              window.top.location.href = url;
+            }
+          }
+        },
+      },
+    });
   }
   log(copied ? "warn" : "error", "openExternalUrl:end", `copied=${copied} opened=false`);
   return { copied, opened: false, method: null };

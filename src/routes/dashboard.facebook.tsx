@@ -17,7 +17,17 @@ import {
 } from "@/server/facebook.functions";
 import { openExternalUrl, ExternalLinkButton } from "@/components/shared/ExternalLinkButton";
 
+import { useFacebookApi, describeFbError } from "@/features/facebook/api";
+
 export const Route = createFileRoute("/dashboard/facebook")({
+  // Gate the route on a hydrated Supabase session so the very first server-fn
+  // call in the page already carries a valid bearer token. Without this, the
+  // initial render fires getFacebookConnection before auth is restored, which
+  // shows up as a silent 401 and an apparently "frozen" UI.
+  beforeLoad: async () => {
+    const { supabase } = await import("@/integrations/supabase/client");
+    await supabase.auth.getSession();
+  },
   component: FacebookPage,
 });
 
@@ -55,6 +65,7 @@ function FacebookPage() {
   // Token expiry awareness — populated silently on dashboard open via
   // inspectFacebookConnection (no token leaves the server). Used to render
   // a top banner when the token is expired or about to expire.
+  const { call: fbCall } = useFacebookApi();
   const [tokenExpiry, setTokenExpiry] = useState<{
     expiresAt: string | null;
     dataAccessExpiresAt: string | null;
@@ -483,16 +494,13 @@ function FacebookPage() {
     if (!user) return;
     (async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
-        const headers = { Authorization: `Bearer ${session.access_token}` };
-        const res = await getFacebookConnection({ headers } as never);
+        const res = await fbCall(getFacebookConnection);
         setConnection(res.connection);
 
         // Only inspect if there's actually a stored connection.
         if (res.connection) {
           try {
-            const insp = await inspectFacebookConnection({ headers } as never);
+            const insp = await fbCall(inspectFacebookConnection);
             if (insp.connected) {
               setTokenExpiry({
                 expiresAt: insp.expiresAt,
@@ -544,20 +552,12 @@ function FacebookPage() {
         }
       } catch (err) {
         console.error("Load connection failed", err);
+        toast.error(describeFbError(err, lang === "ar" ? "ar" : "en"));
       }
     })();
     // lang is intentionally read at effect time; we don't want to re-toast on language switch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
-
-  const callServerFn = async <T,>(fn: (opts: never) => Promise<T>, body?: unknown): Promise<T> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error("Not authenticated");
-    return fn({
-      data: body,
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    } as never);
-  };
+  }, [user, fbCall]);
 
   const friendlyError = (raw: string): string => {
     const m = raw.toLowerCase();
@@ -578,7 +578,7 @@ function FacebookPage() {
     setTestResult(null);
     setTestError(null);
     try {
-      const res = await callServerFn(testFacebookToken, { access_token: token.trim() });
+      const res = await fbCall(testFacebookToken, { access_token: token.trim() });
       setTestResult({ profile: res.profile, granted: res.granted, declined: res.declined });
       const missing = requiredScopes.filter((s) => !res.granted.includes(s));
       if (missing.length === 0) {
@@ -608,7 +608,7 @@ function FacebookPage() {
     }
     setConnecting(true);
     try {
-      const res = await callServerFn(connectFacebook, { access_token: token.trim() });
+      const res = await fbCall(connectFacebook, { access_token: token.trim() });
       toast.success(
         lang === "ar"
           ? `تم الربط بنجاح: ${res.profile.name}`
@@ -616,7 +616,7 @@ function FacebookPage() {
       );
       setToken("");
       // refresh connection
-      const c = await callServerFn(getFacebookConnection);
+      const c = await fbCall(getFacebookConnection);
       setConnection(c.connection);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Connection failed";
@@ -628,7 +628,7 @@ function FacebookPage() {
 
   const handleDisconnect = async () => {
     try {
-      await callServerFn(disconnectFacebook);
+      await fbCall(disconnectFacebook);
       setConnection(null);
       setGroups([]);
       setPages([]);
@@ -658,7 +658,7 @@ function FacebookPage() {
     setLoadingGroups(true);
     setGroupsError(null);
     try {
-      const res = await callServerFn(fetchFacebookGroups);
+      const res = await fbCall(fetchFacebookGroups);
       if (res.error) {
         setGroups([]);
         setGroupsError(res.error);
@@ -688,7 +688,7 @@ function FacebookPage() {
     setLoadingPages(true);
     setPagesError(null);
     try {
-      const res = await callServerFn(fetchFacebookPages);
+      const res = await fbCall(fetchFacebookPages);
       if (res.error) {
         setPages([]);
         setPagesError(res.error);
