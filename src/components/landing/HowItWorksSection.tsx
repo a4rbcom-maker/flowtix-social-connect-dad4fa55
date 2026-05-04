@@ -30,7 +30,7 @@ export function HowItWorksSection() {
                 isInView ? "scale-x-100 opacity-100" : "scale-x-0 opacity-0"
               }`}
               style={{
-                background: "linear-gradient(90deg, oklch(0.48 0.27 288 / 0.5), oklch(0.65 0.22 295 / 0.3), oklch(0.48 0.27 288 / 0.5))",
+                background: "linear-gradient(90deg, rgb(138 61 245 / 0.5), rgb(190 94 237 / 0.3), rgb(138 61 245 / 0.5))",
                 transitionDelay: isInView ? "400ms" : "0ms",
                 transformOrigin: dir === "rtl" ? "right" : "left",
               }}

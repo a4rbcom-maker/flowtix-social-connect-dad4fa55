@@ -57,42 +57,41 @@
   --card-foreground: oklch(0.20 0.025 290);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.20 0.025 290);
-  /* Primary = #7c3aed (pure violet) */
-  --primary: oklch(0.53 0.27 290);
+  /* Brand identity: rgb(138,61,245) #8a3df5 */
+  --primary: rgb(138 61 245);
   --primary-foreground: oklch(1 0 0);
-  /* Lighter violet ~#a78bfa */
-  --primary-glow: oklch(0.65 0.22 295);
-  --primary-deep: oklch(0.45 0.27 287);
+  /* Brand secondary: rgb(190,94,237) #be5eed */
+  --primary-glow: rgb(190 94 237);
+  --primary-deep: rgb(112 40 220);
   --secondary: oklch(0.96 0.012 295);
   --secondary-foreground: oklch(0.30 0.04 290);
   --muted: oklch(0.965 0.008 290);
   --muted-foreground: oklch(0.50 0.025 290);
-  /* Soft violet bg #eee7f8 */
   --accent: oklch(0.94 0.025 295);
   --accent-foreground: oklch(0.30 0.04 290);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(1 0 0);
   --border: oklch(0.92 0.014 295);
   --input: oklch(0.92 0.014 295);
-  --ring: oklch(0.56 0.30 295);
-  --chart-1: oklch(0.56 0.30 295);
-  --chart-2: oklch(0.65 0.22 295);
+  --ring: rgb(138 61 245);
+  --chart-1: rgb(138 61 245);
+  --chart-2: rgb(190 94 237);
   --chart-3: oklch(0.70 0.22 340);
   --chart-4: oklch(0.72 0.18 45);
   --chart-5: oklch(0.70 0.20 145);
   --sidebar: oklch(0.975 0.008 295);
   --sidebar-foreground: oklch(0.20 0.025 290);
-  --sidebar-primary: oklch(0.56 0.30 295);
+  --sidebar-primary: rgb(138 61 245);
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.94 0.03 295);
   --sidebar-accent-foreground: oklch(0.25 0.04 290);
   --sidebar-border: oklch(0.92 0.014 295);
-  --sidebar-ring: oklch(0.56 0.30 295);
-  /* Botxtra signature gradient: deep violet → light violet */
-  --gradient-primary: linear-gradient(135deg, oklch(0.48 0.27 288), oklch(0.65 0.22 295));
-  --gradient-hero: linear-gradient(135deg, oklch(0.48 0.27 288) 0%, oklch(0.65 0.22 295) 100%);
-  --shadow-violet: 0 10px 40px -10px oklch(0.53 0.27 290 / 0.45);
-  --shadow-violet-lg: 0 20px 60px -15px oklch(0.53 0.27 290 / 0.55);
+  --sidebar-ring: rgb(138 61 245);
+  /* Brand signature gradient: rgb(138,61,245) → rgb(190,94,237) */
+  --gradient-primary: linear-gradient(135deg, rgb(138, 61, 245), rgb(190, 94, 237));
+  --gradient-hero: linear-gradient(135deg, rgb(138, 61, 245) 0%, rgb(190, 94, 237) 100%);
+  --shadow-violet: 0 10px 40px -10px rgb(138 61 245 / 0.45);
+  --shadow-violet-lg: 0 20px 60px -15px rgb(138 61 245 / 0.55);
   /* Pricing popular card */
   --pricing-popular-bg: oklch(0.97 0.018 295);
   --pricing-popular-border: oklch(0.56 0.30 295);
@@ -293,7 +292,7 @@ html {
   left: 0;
   width: 100%;
   height: 2px;
-  background: linear-gradient(90deg, oklch(0.48 0.27 288), oklch(0.65 0.22 295));
+  background: linear-gradient(90deg, rgb(138 61 245), rgb(190 94 237));
   transform: scaleX(0);
   transform-origin: right;
   transition: transform 0.3s ease;
@@ -309,7 +308,7 @@ html {
   top: 0;
   left: 0;
   height: 3px;
-  background: linear-gradient(90deg, oklch(0.48 0.27 288), oklch(0.65 0.22 295), oklch(0.48 0.27 288));
+  background: linear-gradient(90deg, rgb(138 61 245), rgb(190 94 237), rgb(138 61 245));
   background-size: 200% 100%;
   animation: gradient-shift 3s ease infinite;
   z-index: 9999;
@@ -330,9 +329,9 @@ html {
 .gradient-text-animated {
   background: linear-gradient(
     135deg,
-    oklch(0.48 0.27 288),
-    oklch(0.65 0.22 295),
-    oklch(0.48 0.27 288)
+    rgb(138 61 245),
+    rgb(190 94 237),
+    rgb(138 61 245)
   );
   background-size: 300% 300%;
   -webkit-background-clip: text;
@@ -361,7 +360,7 @@ html {
   position: absolute;
   inset: -4px;
   border-radius: inherit;
-  background: linear-gradient(135deg, oklch(0.48 0.27 288 / 0.25), oklch(0.65 0.22 295 / 0.25));
+  background: linear-gradient(135deg, rgb(138 61 245 / 0.25), rgb(190 94 237 / 0.25));
   opacity: 0;
   transition: opacity 0.3s ease;
   z-index: -1;
@@ -382,10 +381,10 @@ html {
   border-radius: 1rem;
   background: linear-gradient(
     var(--border-angle, 0deg),
-    oklch(0.48 0.27 288),
-    oklch(0.65 0.22 295),
-    oklch(0.48 0.27 288),
-    oklch(0.65 0.22 295)
+    rgb(138 61 245),
+    rgb(190 94 237),
+    rgb(138 61 245),
+    rgb(190 94 237)
   );
   z-index: -1;
   animation: rotate-border 4s linear infinite;
@@ -594,46 +593,46 @@ html {
   z-index: 2;
 }
 
-/* Primary — gradient violet with deep shadow */
+/* Primary — brand gradient (rgb(138,61,245) → rgb(190,94,237)) */
 .btn-luxury {
   padding: 0.875rem 2rem;
   color: oklch(1 0 0);
   background: linear-gradient(
     135deg,
-    oklch(0.48 0.27 288) 0%,
-    oklch(0.65 0.22 295) 100%
+    rgb(138, 61, 245) 0%,
+    rgb(190, 94, 237) 100%
   );
   background-size: 200% 200%;
   background-position: 0% 50%;
   box-shadow:
-    0 4px 14px -4px oklch(0.53 0.27 290 / 0.45),
-    0 1px 3px oklch(0.3 0.20 290 / 0.15),
+    0 4px 14px -4px rgb(138 61 245 / 0.45),
+    0 1px 3px rgb(80 30 160 / 0.15),
     inset 0 1px 0 oklch(1 0 0 / 0.2);
 }
 .btn-luxury:hover {
   background-position: 100% 50%;
   transform: translateY(-2px);
   box-shadow:
-    0 12px 28px -8px oklch(0.53 0.27 290 / 0.55),
-    0 4px 10px -2px oklch(0.4 0.25 290 / 0.25),
+    0 12px 28px -8px rgb(138 61 245 / 0.55),
+    0 4px 10px -2px rgb(190 94 237 / 0.3),
     inset 0 1px 0 oklch(1 0 0 / 0.25);
 }
 .dark .btn-luxury {
   background: linear-gradient(
     135deg,
-    oklch(0.50 0.27 288) 0%,
-    oklch(0.68 0.22 295) 100%
+    rgb(138, 61, 245) 0%,
+    rgb(190, 94, 237) 100%
   );
   background-size: 200% 200%;
   box-shadow:
-    0 4px 16px -4px oklch(0.45 0.27 290 / 0.55),
-    0 0 0 1px oklch(0.7 0.20 295 / 0.15),
+    0 4px 16px -4px rgb(138 61 245 / 0.55),
+    0 0 0 1px rgb(190 94 237 / 0.15),
     inset 0 1px 0 oklch(1 0 0 / 0.15);
 }
 .dark .btn-luxury:hover {
   box-shadow:
-    0 14px 34px -8px oklch(0.53 0.27 290 / 0.7),
-    0 0 0 1px oklch(0.72 0.20 295 / 0.25),
+    0 14px 34px -8px rgb(138 61 245 / 0.7),
+    0 0 0 1px rgb(190 94 237 / 0.25),
     inset 0 1px 0 oklch(1 0 0 / 0.2);
 }
 
