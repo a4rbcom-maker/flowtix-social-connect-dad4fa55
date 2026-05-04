@@ -91,7 +91,7 @@ export function TestimonialsSection() {
       ];
 
   return (
-    <section dir={dir} className="relative py-20 md:py-28">
+    <section dir={dir} className="relative py-12 md:py-16">
       <div ref={ref} className="mx-auto max-w-7xl px-4">
         <div className={`mb-16 text-center transition-all duration-700 ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
           <span className="mb-4 inline-block rounded-full bg-primary/10 px-4 py-1.5 text-xs font-semibold text-primary">
@@ -166,7 +166,7 @@ export function ComparisonSection() {
     : ["One-click bulk posting", "AI bot replies 24/7 instantly", "Dashboard with full analytics", "Instant replies convert visitors", "Everything in one platform"];
 
   return (
-    <section dir={dir} className="relative py-20 md:py-28 bg-accent/20">
+    <section dir={dir} className="relative py-12 md:py-16 bg-accent/20">
       <div ref={ref} className="mx-auto max-w-6xl px-4">
         <div className={`mb-14 text-center transition-all duration-700 ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
           <span className="mb-4 inline-block rounded-full bg-primary/10 px-4 py-1.5 text-xs font-semibold text-primary">

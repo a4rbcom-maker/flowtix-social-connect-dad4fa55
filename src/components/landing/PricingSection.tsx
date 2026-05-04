@@ -6,7 +6,7 @@ export function PricingSection() {
   const { ref, isInView } = useInView();
 
   return (
-    <section id="pricing" dir={dir} className="py-20 md:py-28">
+    <section id="pricing" dir={dir} className="py-12 md:py-16">
       <div ref={ref} className="mx-auto max-w-7xl px-4">
         <div className={`mb-16 text-center transition-all duration-700 ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
           <span className="mb-4 inline-block rounded-full bg-primary/10 px-4 py-1.5 text-xs font-semibold text-primary">

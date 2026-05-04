@@ -60,7 +60,7 @@ export function CTASection() {
   const { t, dir } = useI18n();
 
   return (
-    <section dir={dir} className="relative py-20 md:py-28 overflow-hidden">
+    <section dir={dir} className="relative py-12 md:py-16 overflow-hidden">
       {/* Animated background */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-violet-500/5 to-violet-500/5" />
       <div className="pointer-events-none absolute inset-0">
