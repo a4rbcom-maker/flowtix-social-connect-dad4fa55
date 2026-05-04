@@ -309,7 +309,7 @@ html {
   top: 0;
   left: 0;
   height: 3px;
-  background: linear-gradient(90deg, oklch(0.55 0.15 295), oklch(0.6 0.14 285), oklch(0.55 0.15 295));
+  background: linear-gradient(90deg, oklch(0.48 0.27 288), oklch(0.65 0.22 295), oklch(0.48 0.27 288));
   background-size: 200% 100%;
   animation: gradient-shift 3s ease infinite;
   z-index: 9999;
