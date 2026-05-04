@@ -361,7 +361,7 @@ html {
   position: absolute;
   inset: -4px;
   border-radius: inherit;
-  background: linear-gradient(135deg, oklch(0.55 0.15 295 / 0.2), oklch(0.6 0.14 285 / 0.2));
+  background: linear-gradient(135deg, oklch(0.48 0.27 288 / 0.25), oklch(0.65 0.22 295 / 0.25));
   opacity: 0;
   transition: opacity 0.3s ease;
   z-index: -1;
