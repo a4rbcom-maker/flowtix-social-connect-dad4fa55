@@ -16,6 +16,7 @@ import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashboardWhatsappRouteImport } from './routes/dashboard.whatsapp'
+import { Route as DashboardProfileRouteImport } from './routes/dashboard.profile'
 import { Route as DashboardFacebookRouteImport } from './routes/dashboard.facebook'
 import { Route as DashboardControlRouteImport } from './routes/dashboard.control'
 import { Route as DashboardBulkRouteImport } from './routes/dashboard.bulk'
@@ -57,6 +58,11 @@ const IndexRoute = IndexRouteImport.update({
 const DashboardWhatsappRoute = DashboardWhatsappRouteImport.update({
   id: '/whatsapp',
   path: '/whatsapp',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardProfileRoute = DashboardProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardFacebookRoute = DashboardFacebookRouteImport.update({
@@ -107,6 +113,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/bulk': typeof DashboardBulkRoute
   '/dashboard/control': typeof DashboardControlRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
+  '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
@@ -123,6 +130,7 @@ export interface FileRoutesByTo {
   '/dashboard/bulk': typeof DashboardBulkRoute
   '/dashboard/control': typeof DashboardControlRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
+  '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
@@ -140,6 +148,7 @@ export interface FileRoutesById {
   '/dashboard/bulk': typeof DashboardBulkRoute
   '/dashboard/control': typeof DashboardControlRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
+  '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
@@ -158,6 +167,7 @@ export interface FileRouteTypes {
     | '/dashboard/bulk'
     | '/dashboard/control'
     | '/dashboard/facebook'
+    | '/dashboard/profile'
     | '/dashboard/whatsapp'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/status'
@@ -174,6 +184,7 @@ export interface FileRouteTypes {
     | '/dashboard/bulk'
     | '/dashboard/control'
     | '/dashboard/facebook'
+    | '/dashboard/profile'
     | '/dashboard/whatsapp'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/status'
@@ -190,6 +201,7 @@ export interface FileRouteTypes {
     | '/dashboard/bulk'
     | '/dashboard/control'
     | '/dashboard/facebook'
+    | '/dashboard/profile'
     | '/dashboard/whatsapp'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/status'
@@ -255,6 +267,13 @@ declare module '@tanstack/react-router' {
       path: '/whatsapp'
       fullPath: '/dashboard/whatsapp'
       preLoaderRoute: typeof DashboardWhatsappRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/profile': {
+      id: '/dashboard/profile'
+      path: '/profile'
+      fullPath: '/dashboard/profile'
+      preLoaderRoute: typeof DashboardProfileRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/facebook': {
@@ -327,6 +346,7 @@ interface DashboardRouteChildren {
   DashboardBulkRoute: typeof DashboardBulkRoute
   DashboardControlRoute: typeof DashboardControlRoute
   DashboardFacebookRoute: typeof DashboardFacebookRouteWithChildren
+  DashboardProfileRoute: typeof DashboardProfileRoute
   DashboardWhatsappRoute: typeof DashboardWhatsappRoute
 }
 
@@ -335,6 +355,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardBulkRoute: DashboardBulkRoute,
   DashboardControlRoute: DashboardControlRoute,
   DashboardFacebookRoute: DashboardFacebookRouteWithChildren,
+  DashboardProfileRoute: DashboardProfileRoute,
   DashboardWhatsappRoute: DashboardWhatsappRoute,
 }
 
