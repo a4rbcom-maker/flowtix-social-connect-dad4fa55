@@ -7,6 +7,7 @@ import { PricingSection } from "@/components/landing/PricingSection";
 import { FAQSection } from "@/components/landing/FAQSection";
 import { Footer } from "@/components/landing/Footer";
 import { TrustedBySection, CTASection, WaveDivider } from "@/components/landing/ExtraSections";
+import { StatsStrip, TestimonialsSection, ComparisonSection } from "@/components/landing/PremiumSections";
 import { useScrollProgress } from "@/hooks/use-in-view";
 
 export const Route = createFileRoute("/")({
@@ -23,11 +24,14 @@ function Index() {
       <Navbar />
       <HeroSection />
       <TrustedBySection />
+      <StatsStrip />
       <FeaturesSection />
       <WaveDivider />
       <HowItWorksSection />
       <WaveDivider flip />
+      <ComparisonSection />
       <PricingSection />
+      <TestimonialsSection />
       <WaveDivider />
       <FAQSection />
       <WaveDivider flip />
