@@ -398,8 +398,8 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
       <main
         className={`flex-1 transition-all duration-300 ${
           sidebarOpen
-            ? dir === "rtl" ? "md:mr-[260px]" : "md:ml-[260px]"
-            : dir === "rtl" ? "md:mr-[76px]" : "md:ml-[76px]"
+            ? dir === "rtl" ? "md:mr-[252px]" : "md:ml-[252px]"
+            : dir === "rtl" ? "md:mr-[68px]" : "md:ml-[68px]"
         }`}
       >
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border/40 bg-card/70 px-4 py-3 backdrop-blur-xl md:px-6">
