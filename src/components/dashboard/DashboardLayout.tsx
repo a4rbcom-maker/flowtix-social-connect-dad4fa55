@@ -156,22 +156,82 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
 
         <nav className="flex-1 space-y-1 p-3">
           {menu.map((item, i) => {
-            const active = location.pathname === item.to;
             const Icon = item.icon;
+            if (item.kind === "leaf") {
+              const active = location.pathname === item.to;
+              return (
+                <Link
+                  key={i}
+                  to={item.to}
+                  onClick={closeOnMobile}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${
+                    active
+                      ? "bg-primary/10 font-medium text-primary"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {sidebarOpen && <span>{item.label}</span>}
+                </Link>
+              );
+            }
+
+            // Group with collapsible children
+            const groupActive = item.children.some((c) => c.to === location.pathname);
+            const isOpen = sidebarOpen ? (openGroups[item.key] ?? groupActive) : false;
             return (
-              <Link
-                key={i}
-                to={item.to}
-                onClick={closeOnMobile}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${
-                  active
-                    ? "bg-primary/10 font-medium text-primary"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                }`}
-              >
-                <Icon className="h-5 w-5 shrink-0" />
-                {sidebarOpen && <span>{item.label}</span>}
-              </Link>
+              <div key={i} className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!sidebarOpen) {
+                      setSidebarOpen(true);
+                      setOpenGroups((p) => ({ ...p, [item.key]: true }));
+                    } else {
+                      toggleGroup(item.key);
+                    }
+                  }}
+                  aria-expanded={isOpen}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${
+                    groupActive
+                      ? "bg-primary/10 font-medium text-primary"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {sidebarOpen && (
+                    <>
+                      <span className="flex-1 text-start">{item.label}</span>
+                      <ChevronDown
+                        className={`h-4 w-4 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                      />
+                    </>
+                  )}
+                </button>
+                {sidebarOpen && isOpen && (
+                  <div className={`space-y-1 ${dir === "rtl" ? "pr-4 border-r" : "pl-4 border-l"} ms-4 border-border/50`}>
+                    {item.children.map((child, j) => {
+                      const ChildIcon = child.icon;
+                      const childActive = location.pathname === child.to;
+                      return (
+                        <Link
+                          key={j}
+                          to={child.to}
+                          onClick={closeOnMobile}
+                          className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors ${
+                            childActive
+                              ? "bg-primary/10 font-medium text-primary"
+                              : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                          }`}
+                        >
+                          <ChildIcon className="h-4 w-4 shrink-0" />
+                          <span>{child.label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </nav>
