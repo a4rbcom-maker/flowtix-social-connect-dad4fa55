@@ -17,7 +17,17 @@ import {
 } from "@/server/facebook.functions";
 import { openExternalUrl, ExternalLinkButton } from "@/components/shared/ExternalLinkButton";
 
+import { useFacebookApi, describeFbError } from "@/features/facebook/api";
+
 export const Route = createFileRoute("/dashboard/facebook")({
+  // Gate the route on a hydrated Supabase session so the very first server-fn
+  // call in the page already carries a valid bearer token. Without this, the
+  // initial render fires getFacebookConnection before auth is restored, which
+  // shows up as a silent 401 and an apparently "frozen" UI.
+  beforeLoad: async () => {
+    const { supabase } = await import("@/integrations/supabase/client");
+    await supabase.auth.getSession();
+  },
   component: FacebookPage,
 });
 
