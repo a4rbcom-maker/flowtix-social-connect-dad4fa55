@@ -21,6 +21,8 @@ import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
 import { NotificationsBell } from "@/components/dashboard/NotificationsBell";
+import { ChannelStatusDot } from "@/components/dashboard/ChannelStatusDot";
+import { useChannelStatus } from "@/hooks/useChannelStatus";
 import flowtixLogo from "@/assets/flowtix-logo.png";
 
 interface DashboardLayoutProps {
