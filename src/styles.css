@@ -292,7 +292,7 @@ html {
   left: 0;
   width: 100%;
   height: 2px;
-  background: linear-gradient(90deg, oklch(0.48 0.27 288), oklch(0.65 0.22 295));
+  background: linear-gradient(90deg, rgb(138 61 245), rgb(190 94 237));
   transform: scaleX(0);
   transform-origin: right;
   transition: transform 0.3s ease;
@@ -308,7 +308,7 @@ html {
   top: 0;
   left: 0;
   height: 3px;
-  background: linear-gradient(90deg, oklch(0.48 0.27 288), oklch(0.65 0.22 295), oklch(0.48 0.27 288));
+  background: linear-gradient(90deg, rgb(138 61 245), rgb(190 94 237), rgb(138 61 245));
   background-size: 200% 100%;
   animation: gradient-shift 3s ease infinite;
   z-index: 9999;
@@ -329,9 +329,9 @@ html {
 .gradient-text-animated {
   background: linear-gradient(
     135deg,
-    oklch(0.48 0.27 288),
-    oklch(0.65 0.22 295),
-    oklch(0.48 0.27 288)
+    rgb(138 61 245),
+    rgb(190 94 237),
+    rgb(138 61 245)
   );
   background-size: 300% 300%;
   -webkit-background-clip: text;
@@ -360,7 +360,7 @@ html {
   position: absolute;
   inset: -4px;
   border-radius: inherit;
-  background: linear-gradient(135deg, oklch(0.48 0.27 288 / 0.25), oklch(0.65 0.22 295 / 0.25));
+  background: linear-gradient(135deg, rgb(138 61 245 / 0.25), rgb(190 94 237 / 0.25));
   opacity: 0;
   transition: opacity 0.3s ease;
   z-index: -1;
@@ -381,10 +381,10 @@ html {
   border-radius: 1rem;
   background: linear-gradient(
     var(--border-angle, 0deg),
-    oklch(0.48 0.27 288),
-    oklch(0.65 0.22 295),
-    oklch(0.48 0.27 288),
-    oklch(0.65 0.22 295)
+    rgb(138 61 245),
+    rgb(190 94 237),
+    rgb(138 61 245),
+    rgb(190 94 237)
   );
   z-index: -1;
   animation: rotate-border 4s linear infinite;
