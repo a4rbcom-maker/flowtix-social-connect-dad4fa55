@@ -98,7 +98,7 @@ export function HeroSection() {
           style={{ transform: `translate(${mouse.x * 1.5}px, ${mouse.y * 1.5}px)` }}
         />
         <div
-          className="absolute top-1/3 right-1/4 h-72 w-72 rounded-full bg-violet-300/5 blur-[140px] hero-scroll-fade"
+          className="absolute top-1/3 right-1/4 h-72 w-72 rounded-full bg-primary/5 blur-[140px] hero-scroll-fade"
           style={{ transform: `translate(${mouse.x * -1}px, ${mouse.y * -1}px)` }}
         />
         <div
@@ -106,7 +106,7 @@ export function HeroSection() {
           style={{ transform: `translate(${mouse.x * 0.8}px, ${mouse.y * -0.8}px)` }}
         />
         <div className="absolute inset-0 opacity-[0.02]" style={{
-          backgroundImage: "radial-gradient(circle, oklch(0.55 0.15 270) 1px, transparent 1px)",
+          backgroundImage: "radial-gradient(circle, oklch(0.53 0.27 290) 1px, transparent 1px)",
           backgroundSize: "48px 48px",
         }} />
       </div>
