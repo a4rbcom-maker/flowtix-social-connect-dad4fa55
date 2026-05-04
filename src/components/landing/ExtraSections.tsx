@@ -6,7 +6,7 @@ export function WaveDivider({ flip = false, className = "" }: { flip?: boolean; 
       <svg
         viewBox="0 0 1440 80"
         preserveAspectRatio="none"
-        className="w-full h-12 md:h-16"
+        className="w-full h-6 md:h-8"
         fill="none"
       >
         <path
