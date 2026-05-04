@@ -779,3 +779,17 @@ html {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
 }
+
+/* ===== Performance: defer rendering of off-screen sections ===== */
+/* content-visibility: auto allows the browser to skip rendering work
+   for sections outside the viewport, dramatically improving initial paint. */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 600px;
+}
+
+/* Hero is critical above-the-fold — opt out of any laziness */
+.hero-priority {
+  content-visibility: visible;
+  contain: layout style;
+}

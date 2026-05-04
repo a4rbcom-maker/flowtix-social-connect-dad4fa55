@@ -44,12 +44,22 @@ export const Route = createRootRoute({
     ],
     links: [
       { rel: "stylesheet", href: appCss },
+
+      // DNS + TLS warmup for third-party origins
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      // Trimmed weights (was 6 weights × 2 families) to reduce font payload.
-      // display=swap renders text immediately with system fallback while web fonts load.
+      { rel: "dns-prefetch", href: "https://fonts.googleapis.com" },
+      { rel: "dns-prefetch", href: "https://fonts.gstatic.com" },
+
+      // Critical fonts — preload as style for instant text rendering
       { rel: "preload", as: "style", href: "https://fonts.googleapis.com/css2?family=Cairo:wght@500;700;800&family=Inter:wght@500;700;800&display=swap" },
       { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Cairo:wght@500;700;800&family=Inter:wght@500;700;800&display=swap" },
+
+      // LCP image — preload above-the-fold logo with high priority
+      { rel: "preload", as: "image", href: "/flowtix-logo.webp", type: "image/webp", fetchPriority: "high" } as any,
+
+      // Favicon
+      { rel: "icon", type: "image/webp", href: "/flowtix-logo.webp" },
     ],
   }),
   shellComponent: RootShell,
