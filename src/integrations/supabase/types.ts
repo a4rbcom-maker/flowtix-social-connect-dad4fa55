@@ -196,6 +196,145 @@ export type Database = {
         }
         Relationships: []
       }
+      fb_bot_accounts: {
+        Row: {
+          auth_method: Database["public"]["Enums"]["fb_auth_method"]
+          created_at: string
+          display_name: string
+          encrypted_payload: string
+          id: string
+          last_check_at: string | null
+          last_error: string | null
+          status: Database["public"]["Enums"]["fb_account_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          auth_method: Database["public"]["Enums"]["fb_auth_method"]
+          created_at?: string
+          display_name: string
+          encrypted_payload: string
+          id?: string
+          last_check_at?: string | null
+          last_error?: string | null
+          status?: Database["public"]["Enums"]["fb_account_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          auth_method?: Database["public"]["Enums"]["fb_auth_method"]
+          created_at?: string
+          display_name?: string
+          encrypted_payload?: string
+          id?: string
+          last_check_at?: string | null
+          last_error?: string | null
+          status?: Database["public"]["Enums"]["fb_account_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      fb_job_results: {
+        Row: {
+          created_at: string
+          data: Json | null
+          error: string | null
+          id: string
+          job_id: string
+          status: Database["public"]["Enums"]["fb_result_status"]
+          target: string | null
+        }
+        Insert: {
+          created_at?: string
+          data?: Json | null
+          error?: string | null
+          id?: string
+          job_id: string
+          status: Database["public"]["Enums"]["fb_result_status"]
+          target?: string | null
+        }
+        Update: {
+          created_at?: string
+          data?: Json | null
+          error?: string | null
+          id?: string
+          job_id?: string
+          status?: Database["public"]["Enums"]["fb_result_status"]
+          target?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fb_job_results_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "fb_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fb_jobs: {
+        Row: {
+          account_id: string | null
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          job_type: Database["public"]["Enums"]["fb_job_type"]
+          payload: Json
+          processed_items: number
+          progress: number
+          scheduled_at: string
+          started_at: string | null
+          status: Database["public"]["Enums"]["fb_job_status"]
+          total_items: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_type: Database["public"]["Enums"]["fb_job_type"]
+          payload?: Json
+          processed_items?: number
+          progress?: number
+          scheduled_at?: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["fb_job_status"]
+          total_items?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_type?: Database["public"]["Enums"]["fb_job_type"]
+          payload?: Json
+          processed_items?: number
+          progress?: number
+          scheduled_at?: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["fb_job_status"]
+          total_items?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fb_jobs_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "fb_bot_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -416,6 +555,25 @@ export type Database = {
         | "failed"
         | "cancelled"
         | "paused"
+      fb_account_status:
+        | "active"
+        | "invalid"
+        | "checkpoint"
+        | "disabled"
+        | "untested"
+      fb_auth_method: "cookies" | "credentials"
+      fb_job_status:
+        | "pending"
+        | "running"
+        | "completed"
+        | "failed"
+        | "cancelled"
+      fb_job_type:
+        | "post_to_groups"
+        | "extract_pages"
+        | "extract_commenters"
+        | "test_account"
+      fb_result_status: "success" | "failed" | "skipped"
       schedule_status: "scheduled" | "sending" | "sent" | "failed" | "cancelled"
       send_channel: "whatsapp" | "facebook" | "bulk" | "system"
       send_status: "pending" | "processing" | "success" | "failed"
@@ -555,6 +713,22 @@ export const Constants = {
         "cancelled",
         "paused",
       ],
+      fb_account_status: [
+        "active",
+        "invalid",
+        "checkpoint",
+        "disabled",
+        "untested",
+      ],
+      fb_auth_method: ["cookies", "credentials"],
+      fb_job_status: ["pending", "running", "completed", "failed", "cancelled"],
+      fb_job_type: [
+        "post_to_groups",
+        "extract_pages",
+        "extract_commenters",
+        "test_account",
+      ],
+      fb_result_status: ["success", "failed", "skipped"],
       schedule_status: ["scheduled", "sending", "sent", "failed", "cancelled"],
       send_channel: ["whatsapp", "facebook", "bulk", "system"],
       send_status: ["pending", "processing", "success", "failed"],
