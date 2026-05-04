@@ -24,11 +24,14 @@ function Index() {
       <Navbar />
       <HeroSection />
       <TrustedBySection />
+      <StatsStrip />
       <FeaturesSection />
       <WaveDivider />
       <HowItWorksSection />
       <WaveDivider flip />
+      <ComparisonSection />
       <PricingSection />
+      <TestimonialsSection />
       <WaveDivider />
       <FAQSection />
       <WaveDivider flip />
