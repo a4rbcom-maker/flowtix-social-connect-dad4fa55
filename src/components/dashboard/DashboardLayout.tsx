@@ -143,9 +143,11 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
       )}
 
       <aside
-        className={`fixed top-0 z-40 flex h-full flex-col border-border/50 bg-card transition-transform duration-200 md:transition-all ${
-          dir === "rtl" ? "right-0 border-l" : "left-0 border-r"
-        } ${sidebarOpen ? "w-64" : "w-64 md:w-16"} ${
+        className={`fixed top-0 z-40 flex h-full flex-col bg-gradient-to-b from-card via-card to-card/95 shadow-[0_8px_30px_-12px_rgba(124,58,237,0.18)] backdrop-blur-xl transition-[transform,width] duration-300 ease-out ${
+          dir === "rtl"
+            ? "right-0 border-l border-border/40"
+            : "left-0 border-r border-border/40"
+        } ${sidebarOpen ? "w-64" : "w-64 md:w-[72px]"} ${
           sidebarOpen
             ? "translate-x-0"
             : dir === "rtl"
@@ -153,113 +155,190 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
               : "-translate-x-full md:translate-x-0"
         }`}
       >
-        <div className="flex items-center justify-between gap-2 border-b border-border/50 p-4">
-          <div className="flex items-center gap-2">
-            <img src={flowtixLogo} alt="Logo" width={32} height={32} className="h-8 w-8 shrink-0" />
+        {/* Decorative gradient halo */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-primary/8 to-transparent" />
+
+        <div className="relative flex items-center justify-between gap-2 border-b border-border/40 px-4 py-4">
+          <div className="flex items-center gap-2.5">
+            <div className="relative">
+              <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary/30 to-[oklch(0.66_0.26_320)]/30 blur-md" />
+              <img
+                src={flowtixLogo}
+                alt="Logo"
+                width={36}
+                height={36}
+                className="relative h-9 w-9 shrink-0 rounded-xl"
+              />
+            </div>
             {sidebarOpen && (
-              <span className="bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] bg-clip-text text-lg font-bold text-transparent">
-                Flowtix
-              </span>
+              <div className="flex flex-col leading-none">
+                <span className="bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] bg-clip-text text-lg font-extrabold tracking-tight text-transparent">
+                  Flowtix
+                </span>
+                <span className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
+                  Tools
+                </span>
+              </div>
             )}
           </div>
           {/* Close button visible on mobile */}
           <button
             onClick={() => setSidebarOpen(false)}
-            className="rounded-lg p-1 text-muted-foreground hover:bg-accent hover:text-foreground md:hidden"
+            className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground md:hidden"
             aria-label="Close menu"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <nav className="flex-1 space-y-1 p-3">
-          {menu.map((item, i) => {
-            const Icon = item.icon;
-            if (item.kind === "leaf") {
-              const active = location.pathname === item.to;
-              return (
-                <Link
-                  key={i}
-                  to={item.to}
-                  onClick={closeOnMobile}
-                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${
-                    active
-                      ? "bg-primary/10 font-medium text-primary"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                  }`}
-                >
-                  <Icon className="h-5 w-5 shrink-0" />
-                  {sidebarOpen && <span>{item.label}</span>}
-                </Link>
-              );
-            }
-
-            // Group with collapsible children
-            const groupActive = item.children.some((c) => c.to === location.pathname);
-            const isOpen = sidebarOpen ? (openGroups[item.key] ?? groupActive) : false;
-            return (
-              <div key={i} className="space-y-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!sidebarOpen) {
-                      setSidebarOpen(true);
-                      setOpenGroups((p) => ({ ...p, [item.key]: true }));
-                    } else {
-                      toggleGroup(item.key);
-                    }
-                  }}
-                  aria-expanded={isOpen}
-                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${
-                    groupActive
-                      ? "bg-primary/10 font-medium text-primary"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                  }`}
-                >
-                  <Icon className="h-5 w-5 shrink-0" />
-                  {sidebarOpen && (
-                    <>
-                      <span className="flex-1 text-start">{item.label}</span>
-                      <ChevronDown
-                        className={`h-4 w-4 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
-                      />
-                    </>
-                  )}
-                </button>
-                {sidebarOpen && isOpen && (
-                  <div className={`space-y-1 ${dir === "rtl" ? "pr-4 border-r" : "pl-4 border-l"} ms-4 border-border/50`}>
-                    {item.children.map((child, j) => {
-                      const ChildIcon = child.icon;
-                      const childActive = location.pathname === child.to;
-                      return (
-                        <Link
-                          key={j}
-                          to={child.to}
-                          onClick={closeOnMobile}
-                          className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors ${
-                            childActive
-                              ? "bg-primary/10 font-medium text-primary"
-                              : "text-muted-foreground hover:bg-accent hover:text-foreground"
+        <nav className="relative flex-1 space-y-5 overflow-y-auto px-3 py-4">
+          {sections.map((section, sIdx) => (
+            <div key={sIdx} className="space-y-1">
+              {sidebarOpen && (
+                <div className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/60">
+                  {section.title}
+                </div>
+              )}
+              {!sidebarOpen && sIdx > 0 && (
+                <div className="mx-3 mb-2 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
+              )}
+              {section.items.map((item, i) => {
+                const Icon = item.icon;
+                if (item.kind === "leaf") {
+                  const active = location.pathname === item.to;
+                  return (
+                    <Link
+                      key={i}
+                      to={item.to}
+                      onClick={closeOnMobile}
+                      title={!sidebarOpen ? item.label : undefined}
+                      className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+                        active
+                          ? "bg-gradient-to-r from-primary/15 via-primary/10 to-transparent text-primary shadow-sm"
+                          : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                      } ${!sidebarOpen ? "justify-center" : ""}`}
+                    >
+                      {active && (
+                        <span
+                          className={`absolute inset-y-1.5 w-[3px] rounded-full bg-gradient-to-b from-primary to-[oklch(0.66_0.26_320)] ${
+                            dir === "rtl" ? "right-0" : "left-0"
                           }`}
-                        >
-                          <ChildIcon className="h-4 w-4 shrink-0" />
-                          <span>{child.label}</span>
-                        </Link>
-                      );
-                    })}
+                        />
+                      )}
+                      <Icon
+                        className={`h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110 ${
+                          active ? "text-primary" : ""
+                        }`}
+                      />
+                      {sidebarOpen && <span className="truncate">{item.label}</span>}
+                    </Link>
+                  );
+                }
+
+                // Group with collapsible children
+                const groupActive = item.children.some((c) => c.to === location.pathname);
+                const isOpen = sidebarOpen ? (openGroups[item.key] ?? groupActive) : false;
+                return (
+                  <div key={i} className="space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!sidebarOpen) {
+                          setSidebarOpen(true);
+                          setOpenGroups((p) => ({ ...p, [item.key]: true }));
+                        } else {
+                          toggleGroup(item.key);
+                        }
+                      }}
+                      aria-expanded={isOpen}
+                      title={!sidebarOpen ? item.label : undefined}
+                      className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+                        groupActive
+                          ? "bg-gradient-to-r from-primary/15 via-primary/10 to-transparent text-primary shadow-sm"
+                          : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                      } ${!sidebarOpen ? "justify-center" : ""}`}
+                    >
+                      {groupActive && (
+                        <span
+                          className={`absolute inset-y-1.5 w-[3px] rounded-full bg-gradient-to-b from-primary to-[oklch(0.66_0.26_320)] ${
+                            dir === "rtl" ? "right-0" : "left-0"
+                          }`}
+                        />
+                      )}
+                      <Icon
+                        className={`h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110 ${
+                          groupActive ? "text-primary" : ""
+                        }`}
+                      />
+                      {sidebarOpen && (
+                        <>
+                          <span className="flex-1 truncate text-start">{item.label}</span>
+                          <ChevronDown
+                            className={`h-4 w-4 shrink-0 text-muted-foreground/70 transition-transform duration-300 ${isOpen ? "rotate-180 text-primary" : ""}`}
+                          />
+                        </>
+                      )}
+                    </button>
+                    {sidebarOpen && (
+                      <div
+                        className={`grid transition-all duration-300 ease-out ${
+                          isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                        }`}
+                      >
+                        <div className="overflow-hidden">
+                          <div
+                            className={`mt-1 space-y-0.5 ${
+                              dir === "rtl"
+                                ? "mr-5 border-r border-border/50 pr-3"
+                                : "ml-5 border-l border-border/50 pl-3"
+                            }`}
+                          >
+                            {item.children.map((child, j) => {
+                              const ChildIcon = child.icon;
+                              const childActive = location.pathname === child.to;
+                              return (
+                                <Link
+                                  key={j}
+                                  to={child.to}
+                                  onClick={closeOnMobile}
+                                  className={`group/sub relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-all duration-200 ${
+                                    childActive
+                                      ? "bg-primary/10 font-semibold text-primary"
+                                      : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                                  }`}
+                                >
+                                  <span
+                                    className={`h-1.5 w-1.5 shrink-0 rounded-full transition-all ${
+                                      childActive
+                                        ? "bg-primary shadow-[0_0_8px_oklch(0.62_0.27_295)]"
+                                        : "bg-border group-hover/sub:bg-muted-foreground"
+                                    }`}
+                                  />
+                                  <ChildIcon className="h-[14px] w-[14px] shrink-0 opacity-80" />
+                                  <span className="truncate">{child.label}</span>
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
-        <div className="border-t border-border/50 p-3">
+        <div className="border-t border-border/40 p-3">
           <button
             onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-destructive hover:bg-destructive/10"
+            title={!sidebarOpen ? labels.logout : undefined}
+            className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-destructive transition-all duration-200 hover:bg-destructive/10 ${
+              !sidebarOpen ? "justify-center" : ""
+            }`}
           >
-            <LogOut className="h-5 w-5 shrink-0" />
+            <LogOut className="h-[18px] w-[18px] shrink-0 transition-transform group-hover:-translate-x-0.5 rtl:group-hover:translate-x-0.5" />
             {sidebarOpen && <span>{labels.logout}</span>}
           </button>
         </div>
@@ -267,17 +346,17 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
 
       {/* Main content — sidebar margin only applies on md+ (mobile uses overlay) */}
       <main
-        className={`flex-1 transition-all ${
+        className={`flex-1 transition-all duration-300 ${
           sidebarOpen
             ? dir === "rtl" ? "md:mr-64" : "md:ml-64"
-            : dir === "rtl" ? "md:mr-16" : "md:ml-16"
+            : dir === "rtl" ? "md:mr-[72px]" : "md:ml-[72px]"
         }`}
       >
-        <header className="flex items-center justify-between border-b border-border/50 bg-card/50 px-4 py-3 backdrop-blur-sm md:px-6">
+        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border/40 bg-card/70 px-4 py-3 backdrop-blur-xl md:px-6">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="text-muted-foreground hover:text-foreground"
+              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               aria-label="Toggle menu"
             >
               <Menu className="h-5 w-5" />
