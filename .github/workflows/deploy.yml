@@ -24,21 +24,49 @@ jobs:
         run: bun run build
 
       - name: Setup SSH key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
+          set -euo pipefail
+          : "${SSH_PRIVATE_KEY:?Missing GitHub Secret: SSH_PRIVATE_KEY}"
+          : "${SSH_HOST:?Missing GitHub Secret: SSH_HOST}"
+          SSH_PORT="${SSH_PORT:-22}"
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts
 
       - name: Deploy files via rsync
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
+          set -euo pipefail
+          : "${SSH_USER:?Missing GitHub Secret: SSH_USER}"
+          : "${SSH_HOST:?Missing GitHub Secret: SSH_HOST}"
+          : "${DEPLOY_PATH:?Missing GitHub Secret: DEPLOY_PATH}"
+          SSH_PORT="${SSH_PORT:-22}"
           rsync -avz --delete \
-            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
             ./.output/ \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.DEPLOY_PATH }}/
+            "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/"
 
       - name: Restart app on server
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "cd ${{ secrets.DEPLOY_PATH }} && pm2 restart flowtix || pm2 start server/index.mjs --name flowtix"
+          set -euo pipefail
+          : "${SSH_USER:?Missing GitHub Secret: SSH_USER}"
+          : "${SSH_HOST:?Missing GitHub Secret: SSH_HOST}"
+          : "${DEPLOY_PATH:?Missing GitHub Secret: DEPLOY_PATH}"
+          SSH_PORT="${SSH_PORT:-22}"
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
+            "${SSH_USER}@${SSH_HOST}" \
+            "cd ${DEPLOY_PATH} && pm2 restart flowtix || pm2 start server/index.mjs --name flowtix"
