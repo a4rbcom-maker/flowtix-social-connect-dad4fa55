@@ -7,6 +7,8 @@ on:
 
 env:
   DEPLOY_PATH: /www/wwwroot/flowtixtools.com
+  APP_NAME: flowtix
+  APP_PORT: 3000
 
 jobs:
   deploy:
@@ -23,8 +25,20 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build project
+      - name: Build project (Node target)
         run: bun run build
+
+      - name: Verify build output
+        run: |
+          set -e
+          if [ ! -d ".output" ]; then
+            echo "::error::Build did not produce .output directory"
+            ls -la
+            exit 1
+          fi
+          echo "--- .output tree ---"
+          ls -la .output
+          [ -d ".output/server" ] && ls -la .output/server || true
 
       - name: Setup SSH key
         env:
@@ -43,7 +57,7 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "$SSH_PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Deploy files via rsync
+      - name: Deploy build artifacts via rsync
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -54,15 +68,15 @@ jobs:
           set -euo pipefail
           DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
           SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
-          : "${DEPLOY_USER:?Missing GitHub Secret: SERVER_USER or SSH_USER}"
-          : "${SERVER_HOST:?Missing GitHub Secret: SERVER_IP or SSH_HOST}"
           SSH_PORT="${SSH_PORT:-22}"
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
+            "${DEPLOY_USER}@${SERVER_HOST}" "mkdir -p ${DEPLOY_PATH}"
           rsync -avz --delete \
             -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
             ./.output/ \
-            "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/"
+            "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/.output/"
 
-      - name: Restart app on server
+      - name: Restart app on server (PM2)
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -73,9 +87,27 @@ jobs:
           set -euo pipefail
           DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
           SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
-          : "${DEPLOY_USER:?Missing GitHub Secret: SERVER_USER or SSH_USER}"
-          : "${SERVER_HOST:?Missing GitHub Secret: SERVER_IP or SSH_HOST}"
           SSH_PORT="${SSH_PORT:-22}"
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" \
-            "cd ${DEPLOY_PATH} && (pm2 restart flowtix || pm2 start server/index.mjs --name flowtix)"
+            "${DEPLOY_USER}@${SERVER_HOST}" bash -s <<'EOSSH'
+            set -e
+            cd ${DEPLOY_PATH:-/www/wwwroot/flowtixtools.com}
+            export PORT=3000
+            export NODE_ENV=production
+            ENTRY=""
+            for c in .output/server/index.mjs .output/server/index.js .output/index.mjs; do
+              if [ -f "$c" ]; then ENTRY="$c"; break; fi
+            done
+            if [ -z "$ENTRY" ]; then
+              echo "ERROR: no server entry found under .output"
+              find .output -maxdepth 3 -type f | head
+              exit 1
+            fi
+            echo "Using entry: $ENTRY"
+            if pm2 describe flowtix > /dev/null 2>&1; then
+              pm2 restart flowtix --update-env
+            else
+              pm2 start "$ENTRY" --name flowtix --update-env
+            fi
+            pm2 save
+EOSSH
