@@ -204,6 +204,7 @@ jobs:
 
           command -v pm2 >/dev/null 2>&1 || { echo "ERROR: pm2 is not installed on the server"; exit 1; }
           command -v node >/dev/null 2>&1 || { echo "ERROR: node is not installed on the server"; exit 1; }
+          [ -x node_modules/.bin/srvx ] || { echo "ERROR: srvx is not installed in production dependencies"; exit 1; }
 
           if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
             pm2 delete "$APP_NAME" || true
@@ -226,13 +227,12 @@ jobs:
           export SUPABASE_URL="${SUPABASE_URL:-${VITE_SUPABASE_URL:-}}"
           export SUPABASE_PUBLISHABLE_KEY="${SUPABASE_PUBLISHABLE_KEY:-${VITE_SUPABASE_PUBLISHABLE_KEY:-}}"
 
-          PORT="$APP_PORT" \
           NODE_ENV=production \
           DEPLOY_SHA="$DEPLOY_SHA" \
           DEPLOY_RUN_ID="$DEPLOY_RUN_ID" \
           DEPLOY_REPOSITORY="$DEPLOY_REPOSITORY" \
           DEPLOYED_AT="$DEPLOYED_AT" \
-            pm2 start "$SERVER_ENTRY" --name "$APP_NAME" --interpreter node --cwd "$DEPLOY_PATH" --update-env
+            pm2 start node_modules/.bin/srvx --name "$APP_NAME" --interpreter node --cwd "$DEPLOY_PATH" --update-env -- serve --entry "$SERVER_ENTRY" --static dist/client --prod --host 127.0.0.1 --port "$APP_PORT"
           pm2 save
           EOSSH
 
