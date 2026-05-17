@@ -481,7 +481,6 @@ jobs:
           fi
 
           rsync -a --delete \
-            --exclude='node_modules/' \
             --exclude='.env' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
@@ -493,6 +492,7 @@ jobs:
           [ -f "$ENTRY" ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
           [ -f scripts/tanstack-node-server.mjs ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
           [ -f ecosystem.config.cjs ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
+          [ -d node_modules ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
 
           RESTORED_SHA="unknown"
           RESTORED_SHORT="unknown"
@@ -508,18 +508,6 @@ jobs:
           fi
           [ -z "$RESTORED_SHA" ] && RESTORED_SHA="$RESTORED_SHORT"
 
-          export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
-          export PATH="$BUN_INSTALL/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-          if ! command -v bun >/dev/null 2>&1; then
-            echo "Bun not found on server during rollback — installing automatically…"
-            curl -fsSL https://bun.sh/install | bash || true
-            export PATH="$BUN_INSTALL/bin:$PATH"
-          fi
-          if ! command -v bun >/dev/null 2>&1; then
-            echo "ROLLBACK_RESULT=bun_install_failed"
-            exit 0
-          fi
-          bun install --production --frozen-lockfile
 
           if [ -f .env ]; then
             while IFS= read -r line || [ -n "$line" ]; do
