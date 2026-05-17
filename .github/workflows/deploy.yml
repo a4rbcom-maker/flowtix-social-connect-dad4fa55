@@ -471,8 +471,8 @@ jobs:
             local picked kind src
             picked=$(choose_integrity_snapshot || true)
             if [ -z "$picked" ]; then
-              echo "::error::No valid SSR snapshot available in $BACKUPS_DIR — cannot auto-restore."
-              echo "  (looked at: LAST_GOOD, PREV_SNAPSHOT, good-*, timestamped snapshots)"
+              echo "::error::No trusted SSR snapshot available in $BACKUPS_DIR — cannot auto-restore."
+              echo "  (trusted sources: LAST_GOOD, PREV_SNAPSHOT, good-* — untrusted [0-9]* snapshots are ignored)"
               echo "INTEGRITY_ROLLBACK_RESULT=no_valid_snapshot"
               return 1
             fi
@@ -480,14 +480,12 @@ jobs:
             src="${picked#*|}"
             case "$kind" in
               last_good)
-                echo "→ Restoring from LAST_GOOD: $src" ;;
+                echo "→ Restoring from LAST_GOOD (smoke-test verified): $src" ;;
               prev_snapshot)
-                echo "→ LAST_GOOD missing/invalid — restoring from PREV_SNAPSHOT (expected on first deploy after safety-net rollout)"
+                echo "→ LAST_GOOD missing/invalid — restoring from PREV_SNAPSHOT (the build that was running before this deploy)"
                 echo "  source: $src" ;;
               latest_good)
-                echo "→ LAST_GOOD/PREV_SNAPSHOT unusable — restoring from most recent good-* snapshot: $src" ;;
-              latest_snapshot)
-                echo "→ LAST_GOOD/PREV_SNAPSHOT unusable — restoring from most recent timestamped snapshot: $src" ;;
+                echo "→ LAST_GOOD/PREV_SNAPSHOT unusable — restoring from most recent smoke-verified good-* snapshot: $src" ;;
             esac
             rsync -a --delete \
               --exclude='.env' \
