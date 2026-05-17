@@ -12,7 +12,7 @@ module.exports = {
       min_uptime: "10s",
       env: {
         NODE_ENV: "production",
-        PORT: process.env.APP_PORT || "3000",
+        PORT: process.env.APP_PORT || "3100",
         DEPLOY_SHA: process.env.DEPLOY_SHA || "",
         DEPLOY_RUN_ID: process.env.DEPLOY_RUN_ID || "",
         DEPLOY_REPOSITORY: process.env.DEPLOY_REPOSITORY || "",
