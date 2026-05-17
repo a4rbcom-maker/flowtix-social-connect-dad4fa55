@@ -147,6 +147,8 @@ jobs:
 
             echo "=== Deployed files (top level) ==="
             ls -la | head -n 40
+            echo "=== Deploy marker ==="
+            cat .deploy-version || { echo "ERROR: .deploy-version missing in $DEPLOY_PATH"; exit 1; }
 
             echo "=== assets directory ==="
             if [ -d "assets" ]; then
@@ -158,12 +160,13 @@ jobs:
             fi
 
             ENTRY=""
-            for c in .output/server/index.mjs .output/server/index.js .output/index.mjs; do
+            for c in .output/server/index.mjs .output/server/index.js .output/index.mjs dist/server/index.mjs dist/server/index.js; do
               if [ -f "$c" ]; then ENTRY="$c"; break; fi
             done
             if [ -z "$ENTRY" ]; then
-              echo "ERROR: no server entry found under .output"
-              find .output -maxdepth 3 -type f | head
+              echo "ERROR: no server entry found under .output or dist/server"
+              [ -d .output ] && find .output -maxdepth 3 -type f | head || true
+              [ -d dist ] && find dist -maxdepth 3 -type f | head || true
               exit 1
             fi
             echo "Using entry: $ENTRY"
