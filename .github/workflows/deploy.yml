@@ -913,18 +913,36 @@ jobs:
             [ -d "$d" ] && SEARCH_DIRS+=("$d")
           done
           if [ ${#SEARCH_DIRS[@]} -eq 0 ]; then
-            echo "::warning::No Nginx config directory found — skipping upstream port check"
-            exit 0
+            echo "::error::No Nginx config directory found on server — cannot verify upstream port"
+            exit 1
           fi
           echo "Scanning: ${SEARCH_DIRS[*]}"
 
+          # Use sudo if available, fall back to plain grep (may miss root-owned files)
+          GREP_CMD="grep"
+          if sudo -n true 2>/dev/null; then
+            GREP_CMD="sudo -n grep"
+          fi
+
+          # Hard block: any reference to the legacy 3001 port is a deploy-stopper
+          LEGACY=$($GREP_CMD -rEhn '(127\.0\.0\.1|localhost):3001\b' "${SEARCH_DIRS[@]}" 2>/dev/null || true)
+          if [ -n "$LEGACY" ]; then
+            echo ""
+            echo "::error::Found legacy port 3001 in Nginx config — deploy blocked"
+            echo "$LEGACY" | sed 's/^/  /'
+            echo "::error::Fix on the server:"
+            echo "::error::  sudo sed -i.bak 's/127.0.0.1:3001/127.0.0.1:${APP_PORT}/g; s/localhost:3001/localhost:${APP_PORT}/g' /www/server/panel/vhost/nginx/*.conf"
+            echo "::error::  sudo nginx -t && sudo nginx -s reload"
+            exit 1
+          fi
+
           # Find all proxy_pass / upstream entries to 127.0.0.1:<port> or localhost:<port>
-          MATCHES=$(sudo -n grep -rEhn '(proxy_pass|server)[[:space:]]+https?://(127\.0\.0\.1|localhost):[0-9]+' \
+          MATCHES=$($GREP_CMD -rEhn '(proxy_pass|server)[[:space:]]+https?://(127\.0\.0\.1|localhost):[0-9]+' \
             "${SEARCH_DIRS[@]}" 2>/dev/null || true)
 
           if [ -z "$MATCHES" ]; then
-            echo "::warning::No local upstream entries found in Nginx — cannot verify"
-            exit 0
+            echo "::error::No local upstream (proxy_pass) found in Nginx — domain may not be wired to PM2"
+            exit 1
           fi
           echo "Found upstream entries:"
           echo "$MATCHES" | sed 's/^/  /'
@@ -940,7 +958,7 @@ jobs:
             echo ""
             echo "::error::Nginx upstream points to port(s) [$(echo $BAD | tr '\n' ' ')] but APP_PORT is ${APP_PORT}"
             echo "::error::Fix on the server with:"
-            echo "::error::  sudo sed -i.bak 's/127.0.0.1:<old>/127.0.0.1:${APP_PORT}/g' /www/server/panel/vhost/nginx/*.conf"
+            echo "::error::  sudo sed -i.bak \"s/127.0.0.1:\$OLD/127.0.0.1:${APP_PORT}/g\" /www/server/panel/vhost/nginx/*.conf"
             echo "::error::  sudo nginx -t && sudo nginx -s reload"
             exit 1
           fi
