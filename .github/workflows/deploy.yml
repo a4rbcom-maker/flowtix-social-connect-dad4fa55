@@ -280,7 +280,7 @@ jobs:
           conf = Path('/www/server/panel/vhost/nginx/flowtixtools.com.conf')
           text = conf.read_text()
           port = '3000'
-          root = '/www/wwwroot/flowtixtools.com'
+          root = __import__('os').environ.get('DEPLOY_PATH', '/www/wwwroot/flowtixtools.com')
           has_server_entry = any((Path(root) / p).is_file() for p in (
               '.output/server/index.mjs', '.output/server/index.js', '.output/index.mjs',
               'dist/server/index.mjs', 'dist/server/index.js',
