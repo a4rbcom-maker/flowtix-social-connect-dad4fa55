@@ -403,7 +403,6 @@ jobs:
           GOOD="$BACKUPS_DIR/good-$(date -u +%Y%m%d%H%M%S)-${SHORT_SHA}"
           mkdir -p "$GOOD"
           rsync -a --delete \
-            --exclude='node_modules/' \
             --exclude='.env' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
