@@ -637,8 +637,10 @@ jobs:
             exit 1
           fi
           EOSSH
-          SSH_EXIT=${PIPESTATUS[0]}
+          SSH_EXIT=$?
           set -e
+          # Print the captured server log so it appears in the GitHub Actions UI.
+          cat /tmp/install-restart.log || true
 
           if [ "$SSH_EXIT" -ne 0 ]; then
             if grep -q '^INTEGRITY_ROLLBACK_RESULT=restored' /tmp/install-restart.log; then
