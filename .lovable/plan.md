@@ -1,53 +1,49 @@
-## الحل الحذِر — تشخيص أولاً، تعديل بعدين
+## الإصلاح الدقيق — bug في استخراج المسارات من SHA256SUMS
 
-من الصورة عندنا الأعراض النهائية فقط:
-```
-SKIP good-*  (no smoke-verified snapshots exist yet)
-=== End snapshot inventory ===
-Error: No trusted SSR snapshot available
-INTEGRITY_ROLLBACK_RESULT=no_valid_snapshot
-Error: Bundle integrity check failed AND no valid snapshot was available
+### السبب الجذري المثبت
+في `.github/workflows/deploy.yml` السطر 650:
+```bash
+awk '{ $1=""; sub(/^  /,""); print }' SHA256SUMS | LC_ALL=C sort > "$EXPECTED_LIST"
 ```
 
-لكن **ناقص المعلومة الأهم**: ليش `integrity_rollback` انطلق أصلاً؟  
-الكود في `deploy.yml` ينادي `integrity_rollback` من **ثلاث** نقاط مختلفة، وكل واحدة لها سبب جذري مختلف وحل مختلف:
+`sha256sum` يفصل HASH عن PATH بـ **مسافتين بالضبط**. لمّا `awk` يقسّم على whitespace ويعيد بناء السطر بـ `$1=""` يصير الفاصل **مسافة واحدة**. ثم `sub(/^  /,"")` يحاول حذف مسافتين — لا يطابق. النتيجة: كل مسار يبدأ بمسافة شاذة `" ./foo"` بينما `find -printf './%P\n'` ينتج `"./foo"`.
 
-| السطر | السبب | المعنى |
-|---|---|---|
-| 632 | `manifest-inconsistent` | `manifest.json` نفسه فيه أرقام متناقضة (CI bundling مكسور) |
-| 639 | `checksum-failed` | `sha256sum -c` فشل (ملف اتعدّل/اتقطع أثناء rsync) |
-| 714 | `file-list-drift` | عدد ملفات VPS ≠ manifest (rsync `--delete` ما قدر يمسح، أو نقل ناقص) |
+→ 100% disjoint → `file-list-drift` يفشل في كل deploy → `integrity_rollback` ينطلق → ما يلقى snapshot سليم → exit 1.
 
-بدون معرفة أيهم انطلق، أي تعديل على منطق rollback راح يكون تخمين وممكن يخفي bug حقيقي في rsync أو في الـ build.
+الأرقام في الصورة تأكيد قاطع: Missing=28548 (كل الـ manifest)، Extra=28552 (كل ما على VPS).
 
-### المشكلة الثانية المنفصلة
-حتى لو عرفنا السبب الجذري وأصلحناه، حالة **"أول deploy على شكل البندل الجديد"** صحيحة فعلاً:
-- `LAST_GOOD` ما اتسجّل بعد (يحتاج deploy ناجح كامل أولاً)
-- `PREV_SNAPSHOT` — السطر 358 يكتبه قبل rsync، فالمفروض موجود. الصورة تقول `SKIP good-*` بس ما توضح حالة `PREV_SNAPSHOT` (هل قال REJECT ولا ما طُبع أصلاً؟)
+### التغيير الوحيد المطلوب
 
-### الخطوات المقترحة (بترتيب صارم)
+**ملف:** `.github/workflows/deploy.yml`  
+**السطر:** 650 فقط.
 
-**1. لا نعدّل أي ملف الآن.** نطلب من المستخدم يفتح الـ job في GitHub، يوسّع نفس الـ step (`Install dependencies and restart SSR app`)، ويسحب لفوق حتى يلقى أول `ERROR:` قبل سطر 630. هذا السطر يقول بالضبط:
-   - `manifest-inconsistent`؟ → نشوف `MANIFEST_TOTAL` vs `SUMS_FILES`
-   - `checksum-failed`؟ → نشوف أي ملف فشل في sha256
-   - `file-list-drift`؟ → نشوف قوائم Missing/Extra المطبوعة
+**قبل:**
+```bash
+awk '{ $1=""; sub(/^  /,""); print }' SHA256SUMS | LC_ALL=C sort > "$EXPECTED_LIST"
+```
 
-   ونحتاج كذلك يصوّر/ينسخ كتلة `=== Snapshot inventory ===` كاملة (الأسطر اللي تذكر `LAST_GOOD` و `PREV_SNAPSHOT` بـ ACCEPT/REJECT/SKIP).
+**بعد:**
+```bash
+sed 's/^[0-9a-f]\{64\}  //' SHA256SUMS | LC_ALL=C sort > "$EXPECTED_LIST"
+```
 
-**2. بعد ما نشوف السبب:** نختار واحد من ثلاث مسارات بدقة:
+`sed` يحذف بدقة 64 hex char + مسافتين، يبقى المسار `./foo` بدون أي تشويه. مطابق 100% لمخرج `find -printf './%P\n'`.
 
-   - لو `file-list-drift` بسبب ملفات قديمة على VPS: نضيف خطوة تنظيف موجّهة (مش تخفيف الفحص).
-   - لو `checksum-failed`: نفحص rsync flags (compress، partial) ونرفع `--checksum`.
-   - لو `manifest-inconsistent`: المشكلة في `generate-manifest` على CI نفسه، نصلحها هناك.
-   - لو الكل سليم وفقط الـ rollback ما لقى snapshot لأن أول deploy: نضيف **bootstrap mode** يطبع notice واضح بدل error، **بدون** ما يخفف شروط `is_valid_ssr_snapshot`.
+### ما لا نلمسه
+- منطق `integrity_rollback` و `is_valid_ssr_snapshot` و `is_runnable_prev_snapshot` → سليم، كان يحمينا فعلاً من النشر بـ bundle مزعوم تالف.
+- خطوة Auto-fix Nginx و Verify upstream → مستقلة، لا علاقة.
+- `Snapshot current site` و حذف الـ snapshots القديمة → فيها سؤال ثانوي عن "directory missing" لـ PREV_SNAPSHOT، لكن ما راح يطفو طالما الفحص الأساسي ما يفشل خطأً. نأجّله.
 
-**3. ما نعمله الآن (بناءً على ملف `.lovable/plan.md` الموجود):** الخطة المكتوبة هناك تقترح تخفيف قبول `PREV_SNAPSHOT` — لكن هذا يحلّ عَرَض واحد فقط (الـ rollback) ويترك سبب الفشل الأصلي مخفيًا. أنصح **بتأجيلها** حتى نعرف السبب الجذري.
+### التحقق بعد التعديل
+1. `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/deploy.yml'))"` للتأكد من صحة الـ YAML.
+2. لا نشغّل build هنا — هذا تعديل في workflow فقط.
+3. عند الـ deploy التالي، نتوقع في اللوج:
+   ```
+   Missing on VPS: 0
+   Extra on VPS: 0
+   ✓ VPS file count matches manifest exactly
+   → Proceeding to PM2 restart
+   ```
 
-### اللي محتاجه منك الآن
-ثلاث معلومات من نفس الـ job:
-
-1. لقطة شاشة للأسطر **قبل** 627 — تحديداً أول سطر يبدأ بـ `ERROR:` في step `Install dependencies and restart SSR app`.
-2. لقطة لكتلة `=== Snapshot inventory ===` بالكامل (تشمل تقييمات `LAST_GOOD` و `PREV_SNAPSHOT`).
-3. هل هذا أول deploy بعد إضافة `scripts/tanstack-node-server.mjs` للريبو؟ ولا في deploys ناجحة سابقة بالشكل الجديد؟
-
-بعد ما توصلني هذي الثلاث، أرجع بخطة `plan--create` ثانية فيها التعديل الدقيق على الملف الصحيح (deploy.yml أو CI bundling أو rsync flags) بدون تخمين.
+### Side-effect متوقع وإيجابي
+بعد أول deploy ناجح، يُسجَّل `LAST_GOOD`، فأي failure مستقبلي يقدر يعمل auto-restore حقيقي — وهذا اللي خطة `.lovable/plan.md` القديمة كانت تحاول تتحايل عليه بتخفيف الشروط (وهو حل خاطئ لأن المشكلة لم تكن أصلاً في شروط الـ snapshot).

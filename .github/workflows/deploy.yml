@@ -647,7 +647,11 @@ jobs:
           # a byte-exact tree, so a single missing or extra file is a real problem.
           EXPECTED_LIST=$(mktemp)
           ACTUAL_LIST=$(mktemp)
-          awk '{ $1=""; sub(/^  /,""); print }' SHA256SUMS | LC_ALL=C sort > "$EXPECTED_LIST"
+          # Strip exactly 64 hex chars + 2 spaces (sha256sum's format) to preserve
+          # the "./path" prefix verbatim. The old `awk '{$1=""; sub(/^  /,"")}'`
+          # produced " ./path" (one leading space) because awk rebuilds with
+          # single-space OFS, causing 100% disjoint diff vs find's `./%P` output.
+          sed 's/^[0-9a-f]\{64\}  //' SHA256SUMS | LC_ALL=C sort > "$EXPECTED_LIST"
           find . -type f ! -name 'manifest.json' ! -name 'SHA256SUMS' -printf './%P\n' \
             | LC_ALL=C sort > "$ACTUAL_LIST"
 
