@@ -372,10 +372,15 @@ jobs:
           : "${DEPLOY_USER:?Missing GitHub Secret: SERVER_USER or SSH_USER}"
           : "${SERVER_HOST:?Missing GitHub Secret: SERVER_IP or SSH_HOST}"
 
+          # Avoid `ssh ... | tee` here: a pipeline under `set -euo pipefail`
+          # can surface SIGPIPE (exit 141) from tee instead of the real ssh
+          # exit code, masking the actual integrity/rollback reason.
+          # Instead: redirect ssh output to a log file, capture ssh's own
+          # exit code directly, then print the log afterwards.
           set +e
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
             "${DEPLOY_USER}@${SERVER_HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' DEPLOY_SHA='${GITHUB_SHA}' DEPLOY_RUN_ID='${GITHUB_RUN_ID}' DEPLOY_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOYED_AT='${DEPLOYED_AT}' bash -s" 2>&1 <<'EOSSH' | tee /tmp/install-restart.log
+            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' DEPLOY_SHA='${GITHUB_SHA}' DEPLOY_RUN_ID='${GITHUB_RUN_ID}' DEPLOY_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOYED_AT='${DEPLOYED_AT}' bash -s" >/tmp/install-restart.log 2>&1 <<'EOSSH'
           set -euo pipefail
           cd "$DEPLOY_PATH"
           [ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
