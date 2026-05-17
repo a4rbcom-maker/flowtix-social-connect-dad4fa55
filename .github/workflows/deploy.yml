@@ -430,17 +430,39 @@ jobs:
             "${DEPLOY_USER}@${SERVER_HOST}" \
             "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' bash -s" <<'EOSSH'
           set -euo pipefail
-          SRC=""
-          if [ -f "$BACKUPS_DIR/LAST_GOOD" ]; then
-            SRC=$(cat "$BACKUPS_DIR/LAST_GOOD")
-          fi
-          if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
-            if [ -f "$BACKUPS_DIR/PREV_SNAPSHOT" ]; then
-              SRC=$(cat "$BACKUPS_DIR/PREV_SNAPSHOT")
-            fi
-          fi
-          if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
-            echo "ROLLBACK_RESULT=none"
+          is_valid_ssr_snapshot() {
+            local candidate="$1"
+            [ -d "$candidate" ] \
+              && [ -f "$candidate/dist/server/server.js" ] \
+              && [ -f "$candidate/scripts/tanstack-node-server.mjs" ] \
+              && [ -f "$candidate/ecosystem.config.cjs" ]
+          }
+
+          choose_rollback_snapshot() {
+            local candidate
+            for marker in LAST_GOOD PREV_SNAPSHOT; do
+              if [ -f "$BACKUPS_DIR/$marker" ]; then
+                candidate=$(cat "$BACKUPS_DIR/$marker")
+                if is_valid_ssr_snapshot "$candidate"; then
+                  echo "$candidate"
+                  return 0
+                fi
+                echo "Skipping incompatible rollback snapshot from $marker: ${candidate:-empty}" >&2
+              fi
+            done
+            while IFS= read -r candidate; do
+              if is_valid_ssr_snapshot "$candidate"; then
+                echo "$candidate"
+                return 0
+              fi
+              echo "Skipping incompatible rollback snapshot: $candidate" >&2
+            done < <(ls -1dt "$BACKUPS_DIR"/good-* "$BACKUPS_DIR"/[0-9]* 2>/dev/null || true)
+            return 1
+          }
+
+          SRC=$(choose_rollback_snapshot || true)
+          if [ -z "$SRC" ]; then
+            echo "ROLLBACK_RESULT=no_valid_ssr_snapshot"
             exit 0
           fi
 
@@ -454,9 +476,9 @@ jobs:
 
           cd "$DEPLOY_PATH"
           ENTRY="dist/server/server.js"
-          [ -f "$ENTRY" ] || { echo "ROLLBACK_RESULT=bad_snapshot"; exit 0; }
-          [ -f scripts/tanstack-node-server.mjs ] || { echo "ROLLBACK_RESULT=bad_snapshot"; exit 0; }
-          [ -f ecosystem.config.cjs ] || { echo "ROLLBACK_RESULT=bad_snapshot"; exit 0; }
+          [ -f "$ENTRY" ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
+          [ -f scripts/tanstack-node-server.mjs ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
+          [ -f ecosystem.config.cjs ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
 
           RESTORED_SHA="unknown"
           RESTORED_SHORT="unknown"
@@ -518,9 +540,13 @@ jobs:
             echo "::warning::No previous snapshot found — site left as-is."
             exit 0
           fi
-          if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=bad_snapshot"; then
-            echo "::error::Rollback snapshot does not contain SSR entry."
-            exit 1
+          if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=no_valid_ssr_snapshot"; then
+            echo "::warning::No compatible SSR rollback snapshot found — this is expected immediately after migrating from the old deployment architecture."
+            exit 0
+          fi
+          if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=restore_incomplete"; then
+            echo "::warning::Rollback snapshot restore was incomplete — site left as-is for manual inspection."
+            exit 0
           fi
 
           RESTORED_SHORT=$(echo "$ROLLBACK_INFO" | grep '^ROLLBACK_SHORT=' | head -n1 | cut -d= -f2)
