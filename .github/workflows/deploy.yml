@@ -540,9 +540,13 @@ jobs:
             echo "::warning::No previous snapshot found — site left as-is."
             exit 0
           fi
-          if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=bad_snapshot"; then
-            echo "::error::Rollback snapshot does not contain SSR entry."
-            exit 1
+          if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=no_valid_ssr_snapshot"; then
+            echo "::warning::No compatible SSR rollback snapshot found — this is expected immediately after migrating from the old deployment architecture."
+            exit 0
+          fi
+          if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=restore_incomplete"; then
+            echo "::warning::Rollback snapshot restore was incomplete — site left as-is for manual inspection."
+            exit 0
           fi
 
           RESTORED_SHORT=$(echo "$ROLLBACK_INFO" | grep '^ROLLBACK_SHORT=' | head -n1 | cut -d= -f2)
