@@ -21,8 +21,14 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install dependencies
-        run: bun install
+      - name: Print toolchain versions
+        run: |
+          bun --version
+          node --version
+          bun pm ls | grep -E "@tanstack/(react-start|react-router|router-core|router-plugin)" || true
+
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
 
       - name: Build project
         run: bun run build
@@ -503,7 +509,7 @@ jobs:
             echo "ERROR: bun is required on the server for rollback install."
             exit 1
           fi
-          bun install --production --frozen-lockfile || bun install --production
+          bun install --production --frozen-lockfile
 
           if [ -f .env ]; then
             while IFS= read -r line || [ -n "$line" ]; do
