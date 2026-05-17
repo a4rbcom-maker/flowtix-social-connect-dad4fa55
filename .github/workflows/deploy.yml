@@ -209,6 +209,14 @@ jobs:
             pm2 delete "$APP_NAME" || true
           fi
 
+          if [ -f .env ]; then
+            set -a
+            . ./.env
+            set +a
+          fi
+          export SUPABASE_URL="${SUPABASE_URL:-${VITE_SUPABASE_URL:-}}"
+          export SUPABASE_PUBLISHABLE_KEY="${SUPABASE_PUBLISHABLE_KEY:-${VITE_SUPABASE_PUBLISHABLE_KEY:-}}"
+
           PORT="$APP_PORT" \
           NODE_ENV=production \
           DEPLOY_SHA="$DEPLOY_SHA" \
@@ -394,6 +402,13 @@ jobs:
           if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
             pm2 delete "$APP_NAME" || true
           fi
+          if [ -f .env ]; then
+            set -a
+            . ./.env
+            set +a
+          fi
+          export SUPABASE_URL="${SUPABASE_URL:-${VITE_SUPABASE_URL:-}}"
+          export SUPABASE_PUBLISHABLE_KEY="${SUPABASE_PUBLISHABLE_KEY:-${VITE_SUPABASE_PUBLISHABLE_KEY:-}}"
           PORT="$APP_PORT" \
           NODE_ENV=production \
           DEPLOY_SHA="$RESTORED_SHA" \
