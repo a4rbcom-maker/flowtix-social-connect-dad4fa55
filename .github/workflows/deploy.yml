@@ -31,8 +31,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          SERVER_ENTRY="dist/server/server.js"
-          [ -f "$SERVER_ENTRY" ] || { echo "::error::SSR entry missing: $SERVER_ENTRY"; find dist -maxdepth 3 -type f 2>/dev/null | head -n 120 || true; exit 1; }
+          SERVER_HANDLER="dist/server/server.js"
+          SERVER_ENTRY="scripts/tanstack-node-server.mjs"
+          [ -f "$SERVER_HANDLER" ] || { echo "::error::SSR handler missing: $SERVER_HANDLER"; find dist -maxdepth 3 -type f 2>/dev/null | head -n 120 || true; exit 1; }
+          [ -f "$SERVER_ENTRY" ] || { echo "::error::Node SSR wrapper missing: $SERVER_ENTRY"; exit 1; }
 
           DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
@@ -40,6 +42,8 @@ jobs:
           rm -rf deploy
           mkdir -p deploy
           cp -r dist deploy/dist
+          mkdir -p deploy/scripts
+          cp scripts/tanstack-node-server.mjs deploy/scripts/tanstack-node-server.mjs
           cp package.json deploy/package.json
           [ -f "bun.lockb" ] && cp bun.lockb deploy/bun.lockb
           [ -f "bun.lock" ] && cp bun.lock deploy/bun.lock
@@ -215,7 +219,7 @@ jobs:
               key="${line%%=*}"
               value="${line#*=}"
               case "$key" in
-                SUPABASE_URL|SUPABASE_PUBLISHABLE_KEY|VITE_SUPABASE_URL|VITE_SUPABASE_PUBLISHABLE_KEY)
+                SUPABASE_URL|SUPABASE_PUBLISHABLE_KEY|SUPABASE_SERVICE_ROLE_KEY|VITE_SUPABASE_URL|VITE_SUPABASE_PUBLISHABLE_KEY|BOT_ENCRYPTION_KEY|BOT_WORKER_SECRET)
                   value="${value%\"}"; value="${value#\"}"
                   value="${value%\'}"; value="${value#\'}"
                   export "$key=$value"
@@ -383,8 +387,14 @@ jobs:
             "$SRC/" "$DEPLOY_PATH/"
 
           cd "$DEPLOY_PATH"
-          ENTRY="dist/server/server.js"
-          [ -f "$ENTRY" ] || { echo "ROLLBACK_RESULT=bad_snapshot"; exit 0; }
+          ENTRY="scripts/tanstack-node-server.mjs"
+          if [ ! -f "$ENTRY" ]; then
+            ENTRY=""
+            for c in .output/server/index.mjs .output/server/index.js dist/server/server.js; do
+              if [ -f "$c" ]; then ENTRY="$c"; break; fi
+            done
+          fi
+          [ -n "$ENTRY" ] && [ -f "$ENTRY" ] || { echo "ROLLBACK_RESULT=bad_snapshot"; exit 0; }
 
           RESTORED_SHA="unknown"
           RESTORED_SHORT="unknown"
@@ -417,7 +427,7 @@ jobs:
               key="${line%%=*}"
               value="${line#*=}"
               case "$key" in
-                SUPABASE_URL|SUPABASE_PUBLISHABLE_KEY|VITE_SUPABASE_URL|VITE_SUPABASE_PUBLISHABLE_KEY)
+                SUPABASE_URL|SUPABASE_PUBLISHABLE_KEY|SUPABASE_SERVICE_ROLE_KEY|VITE_SUPABASE_URL|VITE_SUPABASE_PUBLISHABLE_KEY|BOT_ENCRYPTION_KEY|BOT_WORKER_SECRET)
                   value="${value%\"}"; value="${value#\"}"
                   value="${value%\'}"; value="${value#\'}"
                   export "$key=$value"
