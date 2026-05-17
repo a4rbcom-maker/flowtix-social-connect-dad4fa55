@@ -210,6 +210,24 @@ jobs:
             pm2 delete "$APP_NAME" || true
           fi
 
+          # Force-free the port in case a zombie process (or a previous srvx
+          # not managed by this PM2 name) is still bound to it.
+          for attempt in 1 2 3 4 5; do
+            if command -v fuser >/dev/null 2>&1; then
+              fuser -k "${APP_PORT}/tcp" 2>/dev/null || true
+            elif command -v lsof >/dev/null 2>&1; then
+              PIDS=$(lsof -ti tcp:"${APP_PORT}" 2>/dev/null || true)
+              [ -n "$PIDS" ] && kill -9 $PIDS 2>/dev/null || true
+            fi
+            sleep 1
+            if ! (command -v ss >/dev/null 2>&1 && ss -ltn "sport = :${APP_PORT}" | grep -q ":${APP_PORT}") \
+               && ! (command -v netstat >/dev/null 2>&1 && netstat -ltn 2>/dev/null | grep -q ":${APP_PORT} "); then
+              echo "Port ${APP_PORT} is free."
+              break
+            fi
+            echo "Port ${APP_PORT} still busy (attempt $attempt)…"
+          done
+
           if [ -f .env ]; then
             while IFS= read -r line || [ -n "$line" ]; do
               case "$line" in ""|\#*) continue ;; esac
