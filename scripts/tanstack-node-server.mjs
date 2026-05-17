@@ -15,8 +15,9 @@ process.on("unhandledRejection", (error) => {
 });
 
 process.on("uncaughtException", (error) => {
-  void alerts.notify({ kind: "process-uncaught-exception", error });
-  throw error;
+  alerts.notify({ kind: "process-uncaught-exception", error })
+    .finally(() => process.exit(1));
+  setTimeout(() => process.exit(1), 3000).unref();
 });
 
 const mimeTypes = {
