@@ -116,6 +116,56 @@ jobs:
           echo "DEPLOY_PATH=$DEPLOY_PATH" >> "$GITHUB_ENV"
 
       # ──────────────────────────────────────────────────────────────────
+      # Snapshot the current live site before overwriting (for rollback)
+      # ──────────────────────────────────────────────────────────────────
+      - name: Snapshot current site
+        env:
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
+          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          SSH_PORT="${SSH_PORT:-22}"
+
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
+            "${DEPLOY_USER}@${SERVER_HOST}" \
+            "DEPLOY_PATH='${DEPLOY_PATH}' bash -s" <<'EOSSH'
+          set -e
+          BACKUPS_DIR="/www/backups/flowtixtools"
+          mkdir -p "$BACKUPS_DIR"
+
+          if [ ! -d "$DEPLOY_PATH" ] || [ -z "$(ls -A "$DEPLOY_PATH" 2>/dev/null || true)" ]; then
+            echo "No existing site to snapshot — skipping."
+            exit 0
+          fi
+
+          PREV_SHA="none"
+          if [ -f "$DEPLOY_PATH/deploy-version.json" ]; then
+            PREV_SHA=$(grep -o '"short_sha"[[:space:]]*:[[:space:]]*"[^"]*"' "$DEPLOY_PATH/deploy-version.json" | head -n1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "none")
+            [ -z "$PREV_SHA" ] && PREV_SHA="none"
+          fi
+          TS=$(date -u +%Y%m%d%H%M%S)
+          SNAP="$BACKUPS_DIR/${TS}-${PREV_SHA}"
+          echo "Creating snapshot: $SNAP"
+          mkdir -p "$SNAP"
+          rsync -a --delete \
+            --exclude='.user.ini' \
+            --exclude='.htaccess' \
+            --exclude='.well-known/' \
+            "$DEPLOY_PATH/" "$SNAP/"
+          echo "$SNAP" > "$BACKUPS_DIR/PREV_SNAPSHOT"
+
+          # Keep only the 5 most recent snapshots
+          ls -1dt "$BACKUPS_DIR"/[0-9]* 2>/dev/null | tail -n +6 | xargs -r rm -rf
+          echo "Snapshots retained:"
+          ls -1dt "$BACKUPS_DIR"/[0-9]* 2>/dev/null || true
+          EOSSH
+
+      # ──────────────────────────────────────────────────────────────────
       # Rsync static bundle to web root (no Nginx/PM2 edits)
       # ──────────────────────────────────────────────────────────────────
       - name: Deploy bundle via rsync
