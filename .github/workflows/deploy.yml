@@ -631,6 +631,8 @@ jobs:
             exit 1
           fi
           echo "✅ Smoke test passed — homepage, health, and version all green"
+
+      - name: Record LAST_GOOD snapshot
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
