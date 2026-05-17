@@ -362,9 +362,12 @@ jobs:
           : "${DEPLOY_USER:?Missing GitHub Secret: SERVER_USER or SSH_USER}"
           : "${SERVER_HOST:?Missing GitHub Secret: SERVER_IP or SSH_HOST}"
 
-          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
+          set +e
+          SSH_OUTPUT=$(ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
             "${DEPLOY_USER}@${SERVER_HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' DEPLOY_SHA='${GITHUB_SHA}' DEPLOY_RUN_ID='${GITHUB_RUN_ID}' DEPLOY_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOYED_AT='${DEPLOYED_AT}' bash -s" <<'EOSSH'
+            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' DEPLOY_SHA='${GITHUB_SHA}' DEPLOY_RUN_ID='${GITHUB_RUN_ID}' DEPLOY_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOYED_AT='${DEPLOYED_AT}' bash -s" <<'EOSSH' 2>&1 | tee /tmp/install-restart.log
+          SSH_EXIT=${PIPESTATUS[0]}
+          set -e
           set -euo pipefail
           cd "$DEPLOY_PATH"
           [ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
