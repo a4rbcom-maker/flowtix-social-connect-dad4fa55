@@ -22,6 +22,7 @@ function LoginPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   if (user) {
     return <Navigate to="/dashboard" />;
