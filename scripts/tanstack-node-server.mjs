@@ -2,13 +2,13 @@ import { createServer } from "node:http";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { extname, normalize, resolve } from "node:path";
 import { Readable } from "node:stream";
-import handler from "../dist/server/server.js";
 import { createAlertManager } from "./server-alerts.mjs";
 
 const port = Number(process.env.PORT || process.env.APP_PORT || 3100);
 const root = process.cwd();
 const clientRoot = resolve(root, "dist/client");
 const alerts = createAlertManager({ root });
+let ssrHandlerPromise;
 
 process.on("unhandledRejection", (error) => {
   void alerts.notify({ kind: "process-unhandled-rejection", error });
@@ -19,6 +19,13 @@ process.on("uncaughtException", (error) => {
     .finally(() => process.exit(1));
   setTimeout(() => process.exit(1), 3000).unref();
 });
+
+async function getSsrHandler() {
+  if (!ssrHandlerPromise) {
+    ssrHandlerPromise = import("../dist/server/server.js").then((module) => module.default ?? module);
+  }
+  return ssrHandlerPromise;
+}
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -155,6 +162,7 @@ const server = createServer(async (req, res) => {
     }
 
     const request = toFetchRequest(req);
+    const handler = await getSsrHandler();
     const response = await handler.fetch(request, process.env, {});
     await alertOnServerError(response, request);
     await writeFetchResponse(response, res);
