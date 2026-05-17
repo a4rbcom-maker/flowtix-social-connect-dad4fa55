@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+# Self-cleanup: delete this script when the process exits (success or failure).
+# Also sweep stale install-restart-*.sh leftovers from previous deploys that
+# may have skipped cleanup (older than 1 day). Keeps /tmp from accumulating.
+__SELF_PATH="${BASH_SOURCE[0]:-$0}"
+cleanup_self() {
+  rm -f "$__SELF_PATH" 2>/dev/null || true
+  find /tmp -maxdepth 1 -type f -name 'install-restart-*.sh' -mtime +1 \
+    -delete 2>/dev/null || true
+}
+trap cleanup_self EXIT
 cd "$DEPLOY_PATH"
 [ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
 [ -f deploy-version.json ] || { echo "ERROR: deploy-version.json missing"; exit 1; }
