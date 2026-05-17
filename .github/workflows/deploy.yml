@@ -373,13 +373,29 @@ jobs:
           [ -f SHA256SUMS ] || { echo "ERROR: SHA256SUMS missing — bundle integrity unknown"; exit 1; }
 
           echo "=== Verifying bundle against manifest ==="
-          MANIFEST_FILES=$(grep -c '"path"' manifest.json || echo 0)
+          # Three independent counts must agree before we touch PM2:
+          #   1. manifest.json .total_files   (what CI declared it shipped)
+          #   2. SHA256SUMS line count        (what CI actually checksummed)
+          #   3. find on the VPS              (what arrived after rsync)
+          MANIFEST_TOTAL=$(sed -n 's/.*"total_files":[[:space:]]*\([0-9][0-9]*\).*/\1/p' manifest.json | head -n 1)
+          MANIFEST_TOTAL=${MANIFEST_TOTAL:-0}
+          MANIFEST_PATHS=$(grep -c '"path"' manifest.json || echo 0)
           SUMS_FILES=$(wc -l < SHA256SUMS)
-          echo "manifest declares: ${MANIFEST_FILES} files; SHA256SUMS lists: ${SUMS_FILES}"
-          if ! sha256sum --quiet -c SHA256SUMS; then
-            echo "ERROR: checksum verification failed — bundle is corrupted or incomplete"
+          echo "  manifest.total_files = ${MANIFEST_TOTAL}"
+          echo "  manifest path entries = ${MANIFEST_PATHS}"
+          echo "  SHA256SUMS lines     = ${SUMS_FILES}"
+
+          if [ "$MANIFEST_TOTAL" != "$SUMS_FILES" ] || [ "$MANIFEST_PATHS" != "$SUMS_FILES" ]; then
+            echo "ERROR: manifest is internally inconsistent — refusing to restart PM2"
             exit 1
           fi
+
+          if ! sha256sum --quiet -c SHA256SUMS; then
+            echo "ERROR: checksum verification failed — bundle is corrupted or incomplete"
+            echo "PM2 restart BLOCKED — current process kept alive on the previous build"
+            exit 1
+          fi
+
           # === CI vs VPS file-list diff ===
           # CI's authoritative list is the sorted left column of SHA256SUMS.
           # We build the VPS list the same way and diff them.
@@ -399,8 +415,9 @@ jobs:
           EXTRA_COUNT=$([ -z "$EXTRA" ] && echo 0 || echo "$EXTRA" | wc -l)
 
           echo "=== CI ↔ VPS file-list diff ==="
-          echo "  CI shipped : ${EXPECTED_COUNT} files"
-          echo "  VPS now has: ${ACTUAL_COUNT} files"
+          echo "  manifest expects: ${MANIFEST_TOTAL} files"
+          echo "  CI shipped      : ${EXPECTED_COUNT} files"
+          echo "  VPS now has     : ${ACTUAL_COUNT} files"
           echo "  Missing on VPS (in CI but not on VPS): ${MISSING_COUNT}"
           echo "  Extra on VPS (on VPS but not in CI):   ${EXTRA_COUNT}"
 
@@ -413,18 +430,23 @@ jobs:
             echo "$EXTRA" | head -n 30
           fi
 
-          # Fail on any drift. rsync --delete should leave zero diff; anything
-          # else means transfer truncation, permissions blocking deletes, or
-          # stale leftovers from a previous broken deploy.
+          # Hard gate: VPS file count MUST equal manifest count exactly.
+          # rsync --delete is supposed to produce a byte-exact tree, so any
+          # mismatch means transfer truncation, permissions blocking deletes,
+          # or stale leftovers from a previous broken deploy. We will NOT
+          # restart PM2 in that state — the old (working) process keeps running.
           DRIFT=$((MISSING_COUNT + EXTRA_COUNT))
-          if [ "$DRIFT" -gt 0 ]; then
-            echo "ERROR: file-list drift between CI bundle and VPS — ${DRIFT} differing path(s)"
+          if [ "$ACTUAL_COUNT" != "$MANIFEST_TOTAL" ] || [ "$DRIFT" -gt 0 ]; then
+            echo "ERROR: VPS file count (${ACTUAL_COUNT}) != manifest (${MANIFEST_TOTAL})"
+            echo "ERROR: ${DRIFT} differing path(s) between CI bundle and VPS"
+            echo "PM2 restart BLOCKED — current process kept alive on the previous build"
             rm -f "$EXPECTED_LIST" "$ACTUAL_LIST"
             exit 1
           fi
           rm -f "$EXPECTED_LIST" "$ACTUAL_LIST"
-          echo "✓ File list on VPS matches CI bundle exactly (${ACTUAL_COUNT} files)"
-          echo "✓ Bundle verified: ${SUMS_FILES} files match manifest checksums"
+          echo "✓ VPS file count matches manifest exactly: ${ACTUAL_COUNT} files"
+          echo "✓ Every shipped file passed SHA-256 verification"
+          echo "→ Proceeding to PM2 restart"
 
           # node_modules is shipped from CI — server runs zero installs.
           [ -d node_modules ] || { echo "ERROR: node_modules missing on server (CI ship failed)"; exit 1; }
