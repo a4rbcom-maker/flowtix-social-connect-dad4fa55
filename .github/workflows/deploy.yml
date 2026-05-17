@@ -425,9 +425,10 @@ jobs:
           SSH_EXIT=$?
           set -e
 
-          # Best-effort cleanup of the remote script (don't fail the step on this).
-          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" "rm -f '${REMOTE_SCRIPT}'" || true
+          # Note: the remote script self-deletes via a `trap` inside
+          # install-restart.sh and also sweeps any stale leftovers older than
+          # 1 day from previous deploys — no manual rm needed here.
+
 
           # Print the captured server log so it appears in the GitHub Actions UI.
           cat /tmp/install-restart.log || true
