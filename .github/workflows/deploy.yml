@@ -418,32 +418,85 @@ jobs:
           # at $DEPLOY_PATH are already broken (PM2 still has the old in-memory
           # code, but any restart now would crash). Restore LAST_GOOD onto disk
           # BEFORE we even touch PM2, so the next restart serves a known-good build.
+          is_valid_ssr_snapshot() {
+            local candidate="$1"
+            [ -n "$candidate" ] \
+              && [ -d "$candidate" ] \
+              && [ -f "$candidate/dist/server/server.js" ] \
+              && [ -f "$candidate/scripts/tanstack-node-server.mjs" ] \
+              && [ -f "$candidate/ecosystem.config.cjs" ] \
+              && [ -d "$candidate/node_modules" ]
+          }
+
+          choose_integrity_snapshot() {
+            # Echoes "<kind>|<path>" on success; non-zero on failure.
+            local marker candidate
+            for marker in LAST_GOOD PREV_SNAPSHOT; do
+              if [ -f "$BACKUPS_DIR/$marker" ]; then
+                candidate=$(cat "$BACKUPS_DIR/$marker" 2>/dev/null || true)
+                if is_valid_ssr_snapshot "$candidate"; then
+                  case "$marker" in
+                    LAST_GOOD)     echo "last_good|$candidate" ;;
+                    PREV_SNAPSHOT) echo "prev_snapshot|$candidate" ;;
+                  esac
+                  return 0
+                fi
+                echo "  ↳ $marker points to incompatible snapshot: ${candidate:-<empty>}" >&2
+              fi
+            done
+            # Fallback: scan recorded good-* and timestamped snapshots.
+            while IFS= read -r candidate; do
+              if is_valid_ssr_snapshot "$candidate"; then
+                case "$candidate" in
+                  *"/good-"*) echo "latest_good|$candidate" ;;
+                  *)          echo "latest_snapshot|$candidate" ;;
+                esac
+                return 0
+              fi
+            done < <(ls -1dt "$BACKUPS_DIR"/good-* "$BACKUPS_DIR"/[0-9]* 2>/dev/null || true)
+            return 1
+          }
+
           integrity_rollback() {
             local reason="$1"
             echo ""
             echo "=== Triggering integrity rollback (reason: ${reason}) ==="
-            if [ -z "${BACKUPS_DIR:-}" ] || [ ! -f "$BACKUPS_DIR/LAST_GOOD" ]; then
-              echo "::error::No LAST_GOOD marker at ${BACKUPS_DIR:-<unset>}/LAST_GOOD — cannot auto-restore."
-              echo "INTEGRITY_ROLLBACK_RESULT=no_last_good"
+            if [ -z "${BACKUPS_DIR:-}" ] || [ ! -d "${BACKUPS_DIR:-}" ]; then
+              echo "::error::BACKUPS_DIR unavailable (${BACKUPS_DIR:-<unset>}) — cannot auto-restore."
+              echo "INTEGRITY_ROLLBACK_RESULT=no_backups_dir"
               return 1
             fi
-            local good
-            good=$(cat "$BACKUPS_DIR/LAST_GOOD" 2>/dev/null || true)
-            if [ -z "$good" ] || [ ! -d "$good" ] || [ ! -f "$good/dist/server/server.js" ]; then
-              echo "::error::LAST_GOOD points to invalid snapshot: ${good:-<empty>}"
-              echo "INTEGRITY_ROLLBACK_RESULT=invalid_last_good"
+            local picked kind src
+            picked=$(choose_integrity_snapshot || true)
+            if [ -z "$picked" ]; then
+              echo "::error::No valid SSR snapshot available in $BACKUPS_DIR — cannot auto-restore."
+              echo "  (looked at: LAST_GOOD, PREV_SNAPSHOT, good-*, timestamped snapshots)"
+              echo "INTEGRITY_ROLLBACK_RESULT=no_valid_snapshot"
               return 1
             fi
-            echo "Restoring files from: $good → $DEPLOY_PATH"
+            kind="${picked%%|*}"
+            src="${picked#*|}"
+            case "$kind" in
+              last_good)
+                echo "→ Restoring from LAST_GOOD: $src" ;;
+              prev_snapshot)
+                echo "→ LAST_GOOD missing/invalid — restoring from PREV_SNAPSHOT (expected on first deploy after safety-net rollout)"
+                echo "  source: $src" ;;
+              latest_good)
+                echo "→ LAST_GOOD/PREV_SNAPSHOT unusable — restoring from most recent good-* snapshot: $src" ;;
+              latest_snapshot)
+                echo "→ LAST_GOOD/PREV_SNAPSHOT unusable — restoring from most recent timestamped snapshot: $src" ;;
+            esac
             rsync -a --delete \
               --exclude='.env' \
               --exclude='.user.ini' \
               --exclude='.htaccess' \
               --exclude='.well-known/' \
-              "$good/" "$DEPLOY_PATH/"
-            echo "✓ LAST_GOOD restored — PM2 keeps current in-memory process (no restart)."
+              "$src/" "$DEPLOY_PATH/"
+            echo "✓ Snapshot restored — PM2 keeps current in-memory process (no restart)."
             echo "INTEGRITY_ROLLBACK_RESULT=restored"
-            echo "INTEGRITY_ROLLBACK_SRC=$good"
+            echo "INTEGRITY_ROLLBACK_KIND=$kind"
+            echo "INTEGRITY_ROLLBACK_SRC=$src"
             return 0
           }
 
@@ -670,13 +723,14 @@ jobs:
           if [ "$SSH_EXIT" -ne 0 ]; then
             if grep -q '^INTEGRITY_ROLLBACK_RESULT=restored' /tmp/install-restart.log; then
               ROLLBACK_SRC=$(grep '^INTEGRITY_ROLLBACK_SRC=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
+              ROLLBACK_KIND=$(grep '^INTEGRITY_ROLLBACK_KIND=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
               echo ""
-              echo "::warning::Bundle integrity check failed — LAST_GOOD was auto-restored on disk."
-              echo "::warning::Restored snapshot: ${ROLLBACK_SRC}"
+              echo "::warning::Bundle integrity check failed — snapshot was auto-restored on disk."
+              echo "::warning::Source kind: ${ROLLBACK_KIND:-unknown} — path: ${ROLLBACK_SRC}"
               echo "::warning::PM2 was NOT restarted; the previously-running process is still serving traffic."
               echo "FAILURE_REASON=integrity-restored-last-good" >> "$GITHUB_ENV"
-            elif grep -qE '^INTEGRITY_ROLLBACK_RESULT=(no_last_good|invalid_last_good)' /tmp/install-restart.log; then
-              echo "::error::Bundle integrity check failed AND no valid LAST_GOOD snapshot was available to auto-restore."
+            elif grep -qE '^INTEGRITY_ROLLBACK_RESULT=(no_valid_snapshot|no_backups_dir|no_last_good|invalid_last_good)' /tmp/install-restart.log; then
+              echo "::error::Bundle integrity check failed AND no valid snapshot was available to auto-restore."
               echo "FAILURE_REASON=integrity-no-snapshot" >> "$GITHUB_ENV"
             fi
             exit "$SSH_EXIT"
