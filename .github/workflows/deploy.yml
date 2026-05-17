@@ -129,7 +129,7 @@ jobs:
             ./.deploy-version \
             "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/.deploy-version"
 
-      - name: Verify files on server and restart PM2 app (scoped)
+      - name: Verify files on server and restart PM2 app only when server build exists
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -166,40 +166,48 @@ jobs:
               if [ -f "$c" ]; then ENTRY="$c"; break; fi
             done
             if [ -z "$ENTRY" ]; then
-              echo "ERROR: no server entry found under .output or dist/server"
+              echo "No server entry found under .output or dist/server; deploying as static client build."
               [ -d .output ] && find .output -maxdepth 3 -type f | head || true
               [ -d dist ] && find dist -maxdepth 3 -type f | head || true
-              exit 1
-            fi
-            echo "Using entry: $ENTRY"
-
-            export PORT="$APP_PORT"
-            export NODE_ENV=production
-
-            # PM2 is scoped strictly to this app name — won't touch other projects.
-            if pm2 describe "$APP_NAME" > /dev/null 2>&1; then
-              pm2 restart "$APP_NAME" --update-env
-            else
-              pm2 start "$ENTRY" --name "$APP_NAME" --update-env
-            fi
-            pm2 save
-
-            echo "=== Local Node app health check ==="
-            for i in $(seq 1 20); do
-              if curl -fsS "http://127.0.0.1:${APP_PORT}/" >/dev/null; then
-                echo "Node app is responding on 127.0.0.1:${APP_PORT}"
-                break
-              fi
-              if [ "$i" -eq 20 ]; then
-                echo "ERROR: Node app is not responding on 127.0.0.1:${APP_PORT}"
-                pm2 logs "$APP_NAME" --lines 80 --nostream || true
+              if [ ! -f "index.html" ]; then
+                echo "ERROR: index.html missing in $DEPLOY_PATH — static site cannot be served"
                 exit 1
               fi
-              sleep 2
-            done
+              if command -v pm2 >/dev/null 2>&1 && pm2 describe "$APP_NAME" > /dev/null 2>&1; then
+                pm2 delete "$APP_NAME" || true
+                pm2 save || true
+              fi
+            else
+              echo "Using entry: $ENTRY"
 
-            echo "=== PM2 status for $APP_NAME ==="
-            pm2 describe "$APP_NAME" | head -n 30 || true
+              export PORT="$APP_PORT"
+              export NODE_ENV=production
+
+              # PM2 is scoped strictly to this app name — won't touch other projects.
+              if pm2 describe "$APP_NAME" > /dev/null 2>&1; then
+                pm2 restart "$APP_NAME" --update-env
+              else
+                pm2 start "$ENTRY" --name "$APP_NAME" --update-env
+              fi
+              pm2 save
+
+              echo "=== Local Node app health check ==="
+              for i in $(seq 1 20); do
+                if curl -fsS "http://127.0.0.1:${APP_PORT}/" >/dev/null; then
+                  echo "Node app is responding on 127.0.0.1:${APP_PORT}"
+                  break
+                fi
+                if [ "$i" -eq 20 ]; then
+                  echo "ERROR: Node app is not responding on 127.0.0.1:${APP_PORT}"
+                  pm2 logs "$APP_NAME" --lines 80 --nostream || true
+                  exit 1
+                fi
+                sleep 2
+              done
+
+              echo "=== PM2 status for $APP_NAME ==="
+              pm2 describe "$APP_NAME" | head -n 30 || true
+            fi
           EOSSH
 
       - name: Configure Nginx for this domain only and verify public site
