@@ -1,49 +1,46 @@
-## الإصلاح الدقيق — bug في استخراج المسارات من SHA256SUMS
+## التشخيص
 
-### السبب الجذري المثبت
-في `.github/workflows/deploy.yml` السطر 650:
-```bash
-awk '{ $1=""; sub(/^  /,""); print }' SHA256SUMS | LC_ALL=C sort > "$EXPECTED_LIST"
+الخطأ الحالي ليس من `file-list-drift`، بل من GitHub Actions قبل تشغيل أي job:
+
+```text
+Invalid workflow file: .github/workflows/deploy.yml#L1
+(Line: 397, Col: 14): Exceeded max expression length 21000
 ```
 
-`sha256sum` يفصل HASH عن PATH بـ **مسافتين بالضبط**. لمّا `awk` يقسّم على whitespace ويعيد بناء السطر بـ `$1=""` يصير الفاصل **مسافة واحدة**. ثم `sub(/^  /,"")` يحاول حذف مسافتين — لا يطابق. النتيجة: كل مسار يبدأ بمسافة شاذة `" ./foo"` بينما `find -printf './%P\n'` ينتج `"./foo"`.
+السطر 397 هو آخر متغير `env` قبل `run: |`. السبب أن كتلة `run` التالية ضخمة جدًا حوالي 25KB، ووجود أي `${{ ... }}` داخل نفس الكتلة أو قربها يخلي validator في GitHub يتعامل معها كتعبير كبير ويتخطى حد 21000.
 
-→ 100% disjoint → `file-list-drift` يفشل في كل deploy → `integrity_rollback` ينطلق → ما يلقى snapshot سليم → exit 1.
+يوجد أيضًا احتمال أن الصورة تعرض run قديم على commit `3a6112e`، بينما الملف الحالي في Lovable تم تعديله جزئيًا؛ لكن ما زال الحل الأفضل هو تقليل كتلة `run` نفسها لتحت الحد بدل الاعتماد على workaround.
 
-الأرقام في الصورة تأكيد قاطع: Missing=28548 (كل الـ manifest)، Extra=28552 (كل ما على VPS).
+## الخطة
 
-### التغيير الوحيد المطلوب
+1. **تقسيم خطوة `Install dependencies and restart SSR app`**
+   - نقل سكربت الـ SSH الطويل من كتلة `run: |` إلى ملف shell مؤقت داخل الـ runner.
+   - رفعه للسيرفر عبر `scp` أو تمريره كملف منفصل.
+   - تشغيله على السيرفر بمتغيرات البيئة المطلوبة.
 
-**ملف:** `.github/workflows/deploy.yml`  
-**السطر:** 650 فقط.
+2. **إزالة أي `${{ ... }}` من كتل `run` الطويلة نهائيًا**
+   - إبقاء تعبيرات GitHub Actions فقط داخل `env:` القصير.
+   - داخل `run` يتم استخدام متغيرات shell العادية مثل `$INTEGRITY_ROLLBACK_DRY_RUN`.
 
-**قبل:**
-```bash
-awk '{ $1=""; sub(/^  /,""); print }' SHA256SUMS | LC_ALL=C sort > "$EXPECTED_LIST"
+3. **خفض طول كل كتلة `run` لما دون 21000 بوضوح**
+   - الهدف العملي: أكبر `run` لا يتجاوز تقريبًا 10-12KB.
+   - هذا يمنع نفس الخطأ حتى لو GitHub validator تغير أو تعامل مع الكتلة بشكل صارم.
+
+4. **الحفاظ على منطق integrity كما هو**
+   - لا نغير `SHA256SUMS` ولا `file-list-drift` ولا rollback logic في هذه الخطة.
+   - التغيير فقط في شكل تنفيذ السكربت داخل workflow حتى GitHub يقبل الملف.
+
+5. **التحقق بعد التنفيذ**
+   - فحص YAML parser.
+   - فحص كل كتل `run` وطولها وهل تحتوي `${{`.
+   - التأكد أن الخطوة القديمة الطويلة أصبحت مقسمة ولا تتجاوز الحد.
+
+## النتيجة المتوقعة
+
+بعد التطبيق، GitHub لن يرفض workflow عند مرحلة validation، وسيظهر graph طبيعي بدل الرسالة:
+
+```text
+Exceeded max expression length 21000
 ```
 
-**بعد:**
-```bash
-sed 's/^[0-9a-f]\{64\}  //' SHA256SUMS | LC_ALL=C sort > "$EXPECTED_LIST"
-```
-
-`sed` يحذف بدقة 64 hex char + مسافتين، يبقى المسار `./foo` بدون أي تشويه. مطابق 100% لمخرج `find -printf './%P\n'`.
-
-### ما لا نلمسه
-- منطق `integrity_rollback` و `is_valid_ssr_snapshot` و `is_runnable_prev_snapshot` → سليم، كان يحمينا فعلاً من النشر بـ bundle مزعوم تالف.
-- خطوة Auto-fix Nginx و Verify upstream → مستقلة، لا علاقة.
-- `Snapshot current site` و حذف الـ snapshots القديمة → فيها سؤال ثانوي عن "directory missing" لـ PREV_SNAPSHOT، لكن ما راح يطفو طالما الفحص الأساسي ما يفشل خطأً. نأجّله.
-
-### التحقق بعد التعديل
-1. `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/deploy.yml'))"` للتأكد من صحة الـ YAML.
-2. لا نشغّل build هنا — هذا تعديل في workflow فقط.
-3. عند الـ deploy التالي، نتوقع في اللوج:
-   ```
-   Missing on VPS: 0
-   Extra on VPS: 0
-   ✓ VPS file count matches manifest exactly
-   → Proceeding to PM2 restart
-   ```
-
-### Side-effect متوقع وإيجابي
-بعد أول deploy ناجح، يُسجَّل `LAST_GOOD`، فأي failure مستقبلي يقدر يعمل auto-restore حقيقي — وهذا اللي خطة `.lovable/plan.md` القديمة كانت تحاول تتحايل عليه بتخفيف الشروط (وهو حل خاطئ لأن المشكلة لم تكن أصلاً في شروط الـ snapshot).
+ثم لو ظهر خطأ جديد بعد تشغيل الـ job فعليًا، سنكون وقتها رجعنا لمسار التشخيص الحقيقي داخل deploy logs وليس رفض ملف workflow نفسه.
