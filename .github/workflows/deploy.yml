@@ -373,6 +373,40 @@ jobs:
           [ -f manifest.json ] || { echo "ERROR: manifest.json missing — bundle integrity unknown"; exit 1; }
           [ -f SHA256SUMS ] || { echo "ERROR: SHA256SUMS missing — bundle integrity unknown"; exit 1; }
 
+          # ===== Integrity-failure rollback =====
+          # If the freshly rsynced bundle is corrupt/incomplete, the FILES on disk
+          # at $DEPLOY_PATH are already broken (PM2 still has the old in-memory
+          # code, but any restart now would crash). Restore LAST_GOOD onto disk
+          # BEFORE we even touch PM2, so the next restart serves a known-good build.
+          integrity_rollback() {
+            local reason="$1"
+            echo ""
+            echo "=== Triggering integrity rollback (reason: ${reason}) ==="
+            if [ -z "${BACKUPS_DIR:-}" ] || [ ! -f "$BACKUPS_DIR/LAST_GOOD" ]; then
+              echo "::error::No LAST_GOOD marker at ${BACKUPS_DIR:-<unset>}/LAST_GOOD — cannot auto-restore."
+              echo "INTEGRITY_ROLLBACK_RESULT=no_last_good"
+              return 1
+            fi
+            local good
+            good=$(cat "$BACKUPS_DIR/LAST_GOOD" 2>/dev/null || true)
+            if [ -z "$good" ] || [ ! -d "$good" ] || [ ! -f "$good/dist/server/server.js" ]; then
+              echo "::error::LAST_GOOD points to invalid snapshot: ${good:-<empty>}"
+              echo "INTEGRITY_ROLLBACK_RESULT=invalid_last_good"
+              return 1
+            fi
+            echo "Restoring files from: $good → $DEPLOY_PATH"
+            rsync -a --delete \
+              --exclude='.env' \
+              --exclude='.user.ini' \
+              --exclude='.htaccess' \
+              --exclude='.well-known/' \
+              "$good/" "$DEPLOY_PATH/"
+            echo "✓ LAST_GOOD restored — PM2 keeps current in-memory process (no restart)."
+            echo "INTEGRITY_ROLLBACK_RESULT=restored"
+            echo "INTEGRITY_ROLLBACK_SRC=$good"
+            return 0
+          }
+
           echo "=== Verifying bundle against manifest ==="
           # Three independent counts must agree before we touch PM2:
           #   1. manifest.json .total_files   (what CI declared it shipped)
@@ -388,12 +422,14 @@ jobs:
 
           if [ "$MANIFEST_TOTAL" != "$SUMS_FILES" ] || [ "$MANIFEST_PATHS" != "$SUMS_FILES" ]; then
             echo "ERROR: manifest is internally inconsistent — refusing to restart PM2"
+            integrity_rollback "manifest-inconsistent" || true
             exit 1
           fi
 
           if ! sha256sum --quiet -c SHA256SUMS; then
             echo "ERROR: checksum verification failed — bundle is corrupted or incomplete"
             echo "PM2 restart BLOCKED — current process kept alive on the previous build"
+            integrity_rollback "checksum-failed" || true
             exit 1
           fi
 
