@@ -6,7 +6,6 @@ on:
   workflow_dispatch:
 
 env:
-  DEPLOY_PATH: /www/wwwroot/flowtixtools.com
   APP_NAME: flowtixtools-web
   APP_PORT: 3000
 
@@ -25,26 +24,94 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build project (Node target)
+      - name: Build project
         run: bun run build
 
-      - name: Verify build output
+      # ──────────────────────────────────────────────────────────────────
+      # Step 1: Decide deployment MODE from actual build output
+      #   - ssr     -> .output/server/index.mjs OR dist/server/index.mjs
+      #   - static  -> dist/client/index.html  (or _shell/index.html fallback)
+      #   - fail    -> nothing usable produced
+      # ──────────────────────────────────────────────────────────────────
+      - name: Prepare deploy bundle
+        id: prep
         run: |
-          set -e
-          if [ ! -d ".output" ] && [ ! -d "dist" ]; then
-            echo "::error::Build did not produce .output or dist directory"
-            ls -la
-            exit 1
-          fi
-          echo "--- build output tree (top) ---"
+          set -euo pipefail
+
+          echo "--- build output tree ---"
           [ -d ".output" ] && ls -la .output || true
           [ -d ".output/server" ] && ls -la .output/server || true
           [ -d ".output/public" ] && ls -la .output/public || true
-          [ -d ".output/public/assets" ] && echo ".output assets count: $(ls .output/public/assets | wc -l)" || true
           [ -d "dist" ] && ls -la dist || true
-          [ -d "dist/server" ] && ls -la dist/server || true
           [ -d "dist/client" ] && ls -la dist/client || true
-          [ -d "dist/client/assets" ] && echo "dist assets count: $(ls dist/client/assets | wc -l)" || true
+          [ -d "dist/server" ] && ls -la dist/server || true
+
+          MODE=""
+          if [ -f ".output/server/index.mjs" ] || [ -f ".output/server/index.js" ] || [ -f "dist/server/index.mjs" ] || [ -f "dist/server/index.js" ]; then
+            MODE="ssr"
+          fi
+
+          # Build a clean ./deploy/ folder that mirrors what the live web root should look like.
+          rm -rf deploy
+          mkdir -p deploy
+
+          if [ "$MODE" = "ssr" ]; then
+            echo "Deploy MODE = ssr"
+            [ -d ".output" ] && cp -r .output deploy/.output
+            [ -d "dist" ] && cp -r dist deploy/dist
+            # Mirror static public so Nginx can also serve /assets/* directly when needed
+            if [ -d ".output/public" ]; then
+              cp -r .output/public/. deploy/
+            elif [ -d "dist/client" ]; then
+              cp -r dist/client/. deploy/
+            fi
+          else
+            # Static fallback
+            STATIC_SRC=""
+            if [ -d "dist/client" ]; then
+              STATIC_SRC="dist/client"
+            elif [ -d ".output/public" ]; then
+              STATIC_SRC=".output/public"
+            fi
+
+            if [ -z "$STATIC_SRC" ]; then
+              echo "::error::Build produced neither a server entry nor a static client folder. Cannot deploy."
+              exit 1
+            fi
+
+            echo "Deploy MODE = static (source: $STATIC_SRC)"
+            cp -r "$STATIC_SRC"/. deploy/
+
+            # If no index.html in root, try TanStack Start SPA shell fallback
+            if [ ! -f "deploy/index.html" ]; then
+              if [ -f "deploy/_shell/index.html" ]; then
+                echo "index.html missing — copying _shell/index.html as SPA entry"
+                cp deploy/_shell/index.html deploy/index.html
+              else
+                echo "::error::No index.html and no _shell/index.html in static build. Cannot deploy a working site."
+                find deploy -maxdepth 2 -type f | head -n 40 || true
+                exit 1
+              fi
+            fi
+
+            MODE="static"
+          fi
+
+          # Deploy version marker (JSON) for public verification
+          cat > deploy/deploy-version.json <<JSON
+          {
+            "sha": "${GITHUB_SHA}",
+            "short_sha": "$(echo "${GITHUB_SHA}" | cut -c1-7)",
+            "run_id": "${GITHUB_RUN_ID}",
+            "repo": "${GITHUB_REPOSITORY}",
+            "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "mode": "${MODE}"
+          }
+          JSON
+
+          echo "MODE=$MODE" >> "$GITHUB_OUTPUT"
+          echo "Prepared ./deploy with MODE=$MODE"
+          ls -la deploy | head -n 30
 
       - name: Setup SSH key
         env:
@@ -63,7 +130,11 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "$SSH_PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Resolve live Nginx web root for flowtixtools.com
+      # ──────────────────────────────────────────────────────────────────
+      # Step 2: Resolve the LIVE Nginx root for flowtixtools.com
+      # No more hardcoded path assumptions.
+      # ──────────────────────────────────────────────────────────────────
+      - name: Resolve live Nginx web root
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -75,29 +146,37 @@ jobs:
           DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
           SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
           SSH_PORT="${SSH_PORT:-22}"
-          LIVE_ROOT=$(ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" "python3 - <<'PY'
-          from pathlib import Path
-          import re
 
-          conf = Path('/www/server/panel/vhost/nginx/flowtixtools.com.conf')
-          if not conf.exists():
-              raise SystemExit('ERROR: Nginx vhost file not found: ' + str(conf))
+          LIVE_ROOT=$(ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
+            "${DEPLOY_USER}@${SERVER_HOST}" 'python3 - <<PYEOF
+          import re, sys
+          from pathlib import Path
+          candidates = [
+              "/www/server/panel/vhost/nginx/flowtixtools.com.conf",
+              "/www/server/panel/vhost/nginx/www.flowtixtools.com.conf",
+          ]
+          conf = next((Path(c) for c in candidates if Path(c).exists()), None)
+          if conf is None:
+              print("ERROR: no nginx vhost file for flowtixtools.com", file=sys.stderr)
+              sys.exit(1)
           text = conf.read_text()
-          if 'flowtixtools.com' not in text:
-              raise SystemExit('ERROR: vhost file does not contain flowtixtools.com')
-          roots = re.findall(r'^\s*root\s+([^;]+);', text, flags=re.M)
-          roots = [r.strip() for r in roots if 'flowtix' in r.lower()]
-          print(roots[-1] if roots else '/www/wwwroot/flowtixtools.com')
-          PY")
+          roots = re.findall(r"^\s*root\s+([^;]+);", text, flags=re.M)
+          roots = [r.strip() for r in roots if "flowtix" in r.lower()]
+          print(roots[-1] if roots else "/www/wwwroot/flowtixtools.com")
+          PYEOF')
+
           case "$LIVE_ROOT" in
             /www/wwwroot/*flowtix*) : ;;
-            *) echo "::error::Unsafe or unexpected Nginx root: $LIVE_ROOT"; exit 1 ;;
+            *) echo "::error::Unsafe or unexpected Nginx root: '$LIVE_ROOT'"; exit 1 ;;
           esac
           echo "Resolved DEPLOY_PATH=$LIVE_ROOT"
           echo "DEPLOY_PATH=$LIVE_ROOT" >> "$GITHUB_ENV"
 
-      - name: Deploy build artifacts via rsync (scoped to this project only)
+      # ──────────────────────────────────────────────────────────────────
+      # Step 3: Rsync the prepared bundle to the resolved web root.
+      # Scoped strictly to flowtix path. Uses --delete so old files vanish.
+      # ──────────────────────────────────────────────────────────────────
+      - name: Deploy bundle via rsync
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -110,205 +189,198 @@ jobs:
           SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
           SSH_PORT="${SSH_PORT:-22}"
 
-          # Safety: never operate outside the detected Flowtix web root
           case "$DEPLOY_PATH" in
             /www/wwwroot/*flowtix*) : ;;
-            *) echo "::error::Refusing to deploy outside detected Flowtix path: $DEPLOY_PATH"; exit 1 ;;
+            *) echo "::error::Refusing to deploy outside Flowtix path: $DEPLOY_PATH"; exit 1 ;;
           esac
 
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" "mkdir -p ${DEPLOY_PATH}/.output ${DEPLOY_PATH}/dist"
+            "${DEPLOY_USER}@${SERVER_HOST}" "mkdir -p ${DEPLOY_PATH}"
 
-          cat > .deploy-version <<EOF
-          repo=${GITHUB_REPOSITORY}
-          sha=${GITHUB_SHA}
-          run_id=${GITHUB_RUN_ID}
-          deployed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          path=${DEPLOY_PATH}
-          EOF
-
-          # 1) Sync the full .output (server runtime) when produced — scoped to this project's .output only
-          if [ -d ".output" ]; then
-            rsync -avz --delete \
-              -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
-              ./.output/ \
-              "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/.output/"
-          fi
-
-          # Also sync dist because the existing aaPanel site currently contains dist/client + dist/server.
-          if [ -d "dist" ]; then
-            rsync -avz --delete \
-              -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
-              ./dist/ \
-              "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/dist/"
-          fi
-
-          # 2) Mirror static public assets to the web root so Nginx can serve /assets/*
-          if [ -d ".output/public" ]; then
-            rsync -avz \
-              -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
-              ./.output/public/ \
-              "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/"
-          elif [ -d "dist/client" ]; then
-            rsync -avz \
-              -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
-              ./dist/client/ \
-              "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/"
-          else
-            echo "::warning::No static public output found — skipping static mirror"
-          fi
-
-          rsync -avz \
+          # Preserve common Bitnami/aaPanel files we did not produce
+          rsync -avz --delete \
+            --exclude='.user.ini' \
+            --exclude='.htaccess' \
+            --exclude='.well-known/' \
+            --exclude='*.log' \
             -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
-            ./.deploy-version \
-            "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/.deploy-version"
+            ./deploy/ \
+            "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/"
 
-      - name: Verify files on server and restart PM2 app only when server build exists
+      # ──────────────────────────────────────────────────────────────────
+      # Step 4: Server-side post-deploy
+      #   - static: ensure index.html present, drop PM2 app if any
+      #   - ssr:    (re)start PM2 + local health check
+      # Then ensure Nginx vhost matches deploy MODE (with backup).
+      # ──────────────────────────────────────────────────────────────────
+      - name: Post-deploy verify + configure Nginx
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SERVER_IP: ${{ secrets.SERVER_IP }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
+          MODE: ${{ steps.prep.outputs.MODE }}
         run: |
           set -euo pipefail
           DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
           SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
           SSH_PORT="${SSH_PORT:-22}"
+
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
             "${DEPLOY_USER}@${SERVER_HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' bash -s" <<'EOSSH'
-            set -e
-            cd "$DEPLOY_PATH"
+            "DEPLOY_PATH='${DEPLOY_PATH}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' MODE='${MODE}' bash -s" <<'EOSSH'
+          set -e
+          cd "$DEPLOY_PATH"
 
-            echo "=== Deployed files (top level) ==="
-            ls -la | head -n 40
-            echo "=== Deploy marker ==="
-            cat .deploy-version || { echo "ERROR: .deploy-version missing in $DEPLOY_PATH"; exit 1; }
+          echo "=== Deployed files (top level) ==="
+          ls -la | head -n 40
 
-            echo "=== assets directory ==="
-            if [ -d "assets" ]; then
-              echo "assets file count: $(ls assets | wc -l)"
-              ls assets | head -n 10
-            else
-              echo "ERROR: assets directory missing in $DEPLOY_PATH — static files will 404"
-              exit 1
+          if [ ! -f "deploy-version.json" ]; then
+            echo "ERROR: deploy-version.json missing in $DEPLOY_PATH"; exit 1
+          fi
+          echo "=== deploy-version.json ==="; cat deploy-version.json
+
+          if [ "$MODE" = "static" ]; then
+            if [ ! -f "index.html" ]; then
+              echo "ERROR: index.html missing in $DEPLOY_PATH"; exit 1
             fi
-
+            if command -v pm2 >/dev/null 2>&1 && pm2 describe "$APP_NAME" >/dev/null 2>&1; then
+              echo "Removing previous PM2 app ($APP_NAME) — static mode"
+              pm2 delete "$APP_NAME" || true
+              pm2 save || true
+            fi
+          else
             ENTRY=""
-            for c in .output/server/index.mjs .output/server/index.js .output/index.mjs dist/server/index.mjs dist/server/index.js; do
+            for c in .output/server/index.mjs .output/server/index.js dist/server/index.mjs dist/server/index.js; do
               if [ -f "$c" ]; then ENTRY="$c"; break; fi
             done
-            if [ -z "$ENTRY" ]; then
-              echo "No server entry found under .output or dist/server; deploying as static client build."
-              [ -d .output ] && find .output -maxdepth 3 -type f | head || true
-              [ -d dist ] && find dist -maxdepth 3 -type f | head || true
-              if [ ! -f "index.html" ]; then
-                echo "ERROR: index.html missing in $DEPLOY_PATH — static site cannot be served"
-                exit 1
-              fi
-              if command -v pm2 >/dev/null 2>&1 && pm2 describe "$APP_NAME" > /dev/null 2>&1; then
-                pm2 delete "$APP_NAME" || true
-                pm2 save || true
-              fi
+            if [ -z "$ENTRY" ]; then echo "ERROR: SSR mode but no server entry"; exit 1; fi
+            echo "Using entry: $ENTRY"
+            export PORT="$APP_PORT"
+            export NODE_ENV=production
+            if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
+              pm2 restart "$APP_NAME" --update-env
             else
-              echo "Using entry: $ENTRY"
-
-              export PORT="$APP_PORT"
-              export NODE_ENV=production
-
-              # PM2 is scoped strictly to this app name — won't touch other projects.
-              if pm2 describe "$APP_NAME" > /dev/null 2>&1; then
-                pm2 restart "$APP_NAME" --update-env
-              else
-                pm2 start "$ENTRY" --name "$APP_NAME" --update-env
-              fi
-              pm2 save
-
-              echo "=== Local Node app health check ==="
-              for i in $(seq 1 20); do
-                if curl -fsS "http://127.0.0.1:${APP_PORT}/" >/dev/null; then
-                  echo "Node app is responding on 127.0.0.1:${APP_PORT}"
-                  break
-                fi
-                if [ "$i" -eq 20 ]; then
-                  echo "ERROR: Node app is not responding on 127.0.0.1:${APP_PORT}"
-                  pm2 logs "$APP_NAME" --lines 80 --nostream || true
-                  exit 1
-                fi
-                sleep 2
-              done
-
-              echo "=== PM2 status for $APP_NAME ==="
-              pm2 describe "$APP_NAME" | head -n 30 || true
+              pm2 start "$ENTRY" --name "$APP_NAME" --update-env
             fi
-          EOSSH
+            pm2 save
+            for i in $(seq 1 20); do
+              if curl -fsS "http://127.0.0.1:${APP_PORT}/" >/dev/null; then echo "Node app OK"; break; fi
+              if [ "$i" -eq 20 ]; then echo "ERROR: Node app not responding"; pm2 logs "$APP_NAME" --lines 80 --nostream || true; exit 1; fi
+              sleep 2
+            done
+          fi
 
-      - name: Configure Nginx for this domain only and verify public site
-        env:
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-        run: |
-          set -euo pipefail
-          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
-          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
-          SSH_PORT="${SSH_PORT:-22}"
-          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' bash -s" <<'EOSSH'
-            set -e
-            CONF="/www/server/panel/vhost/nginx/flowtixtools.com.conf"
-            BACKUP="${CONF}.bak.$(date +%Y%m%d%H%M%S)"
+          # ─── Nginx vhost ────────────────────────────────────────────
+          CONF=""
+          for c in /www/server/panel/vhost/nginx/flowtixtools.com.conf /www/server/panel/vhost/nginx/www.flowtixtools.com.conf; do
+            [ -f "$c" ] && CONF="$c" && break
+          done
+          if [ -z "$CONF" ]; then echo "ERROR: nginx vhost not found"; exit 1; fi
+          if ! grep -q "flowtixtools.com" "$CONF"; then
+            echo "ERROR: $CONF does not look like the flowtixtools.com vhost. Refusing to edit."; exit 1
+          fi
 
-            if [ ! -f "$CONF" ]; then
-              echo "ERROR: Nginx vhost file not found: $CONF"
-              exit 1
-            fi
+          BACKUP="${CONF}.bak.$(date +%Y%m%d%H%M%S)"
+          cp "$CONF" "$BACKUP"
+          echo "Nginx backup: $BACKUP"
 
-            if ! grep -q "server_name .*flowtixtools.com" "$CONF"; then
-              echo "ERROR: $CONF does not look like the flowtixtools.com vhost. Refusing to edit."
-              exit 1
-            fi
-
-            cp "$CONF" "$BACKUP"
-            python3 - <<'PY'
+          DEPLOY_PATH="$DEPLOY_PATH" APP_PORT="$APP_PORT" MODE="$MODE" CONF="$CONF" python3 - <<'PY'
+          import os, re
           from pathlib import Path
-          
-          conf = Path('/www/server/panel/vhost/nginx/flowtixtools.com.conf')
+          conf = Path(os.environ['CONF'])
           text = conf.read_text()
-          port = '3000'
-          root = __import__('os').environ.get('DEPLOY_PATH', '/www/wwwroot/flowtixtools.com')
-          has_server_entry = any((Path(root) / p).is_file() for p in (
-              '.output/server/index.mjs', '.output/server/index.js', '.output/index.mjs',
-              'dist/server/index.mjs', 'dist/server/index.js',
-          ))
-          managed_start = '    # FLOWTIXTOOLS_NODE_APP_START'
-          managed_end = '    # FLOWTIXTOOLS_NODE_APP_END'
-          if has_server_entry:
-              block = f'''{managed_start}\n    location /assets/ {{\n        alias {root}/assets/;\n        access_log off;\n        expires 1y;\n        add_header Cache-Control "public, immutable";\n        try_files $uri =404;\n    }}\n\n    location / {{\n        proxy_pass http://127.0.0.1:{port};\n        proxy_http_version 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection "upgrade";\n    }}\n{managed_end}'''
+          root = os.environ['DEPLOY_PATH']
+          port = os.environ['APP_PORT']
+          mode = os.environ['MODE']
+          mstart = '    # FLOWTIXTOOLS_MANAGED_START'
+          mend = '    # FLOWTIXTOOLS_MANAGED_END'
+          if mode == 'ssr':
+              block = (
+                  f"{mstart}\n"
+                  f"    location /assets/ {{\n"
+                  f"        alias {root}/assets/;\n"
+                  f"        access_log off; expires 1y;\n"
+                  f"        add_header Cache-Control \"public, immutable\";\n"
+                  f"        try_files $uri =404;\n"
+                  f"    }}\n\n"
+                  f"    location / {{\n"
+                  f"        proxy_pass http://127.0.0.1:{port};\n"
+                  f"        proxy_http_version 1.1;\n"
+                  f"        proxy_set_header Host $host;\n"
+                  f"        proxy_set_header X-Real-IP $remote_addr;\n"
+                  f"        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n"
+                  f"        proxy_set_header X-Forwarded-Proto $scheme;\n"
+                  f"        proxy_set_header Upgrade $http_upgrade;\n"
+                  f"        proxy_set_header Connection \"upgrade\";\n"
+                  f"    }}\n"
+                  f"{mend}"
+              )
           else:
-              block = f'''{managed_start}\n    index index.html;\n\n    location /assets/ {{\n        alias {root}/assets/;\n        access_log off;\n        expires 1y;\n        add_header Cache-Control "public, immutable";\n        try_files $uri =404;\n    }}\n\n    location / {{\n        try_files $uri $uri/ /index.html;\n    }}\n{managed_end}'''
-          
-          if managed_start in text and managed_end in text:
-              before = text.split(managed_start)[0]
-              after = text.split(managed_end, 1)[1]
+              block = (
+                  f"{mstart}\n"
+                  f"    index index.html;\n\n"
+                  f"    location = /deploy-version.json {{\n"
+                  f"        root {root};\n"
+                  f"        add_header Cache-Control \"no-store\";\n"
+                  f"        default_type application/json;\n"
+                  f"    }}\n\n"
+                  f"    location /assets/ {{\n"
+                  f"        alias {root}/assets/;\n"
+                  f"        access_log off; expires 1y;\n"
+                  f"        add_header Cache-Control \"public, immutable\";\n"
+                  f"        try_files $uri =404;\n"
+                  f"    }}\n\n"
+                  f"    location / {{\n"
+                  f"        root {root};\n"
+                  f"        try_files $uri $uri/ /index.html;\n"
+                  f"    }}\n"
+                  f"{mend}"
+              )
+
+          if mstart in text and mend in text:
+              before, _, rest = text.partition(mstart)
+              _, _, after = rest.partition(mend)
               text = before + block + after
           else:
+              # Strip any older managed block name from previous iterations
+              text = re.sub(r"    # FLOWTIXTOOLS_NODE_APP_START.*?# FLOWTIXTOOLS_NODE_APP_END\n", "", text, flags=re.S)
               insert_at = text.rfind('\n}')
               if insert_at == -1:
                   raise SystemExit('Could not find closing brace in nginx config')
               text = text[:insert_at] + '\n' + block + '\n' + text[insert_at:]
-          
           conf.write_text(text)
+          print('nginx vhost updated for MODE=' + mode)
           PY
 
-            nginx -t
-            nginx -s reload
-
-            echo "Nginx config updated safely. Backup: $BACKUP"
-            echo "=== Public HTTP check ==="
-            curl -I --max-time 20 https://www.flowtixtools.com/ || true
+          nginx -t
+          nginx -s reload
+          echo "Nginx reloaded."
           EOSSH
+
+      # ──────────────────────────────────────────────────────────────────
+      # Step 5: PUBLIC verification — the canonical proof the deploy worked
+      # ──────────────────────────────────────────────────────────────────
+      - name: Verify public site shows this commit
+        run: |
+          set -e
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          URL="https://www.flowtixtools.com/deploy-version.json"
+          echo "Checking $URL for sha=${GITHUB_SHA}"
+          for i in $(seq 1 12); do
+            BODY=$(curl -fsS --max-time 20 "$URL" || true)
+            echo "$BODY"
+            if echo "$BODY" | grep -q "$SHORT_SHA"; then
+              echo "✅ Public site is serving commit ${SHORT_SHA}"
+              break
+            fi
+            if [ "$i" -eq 12 ]; then
+              echo "::error::Public site did not update to commit ${SHORT_SHA} within timeout"
+              exit 1
+            fi
+            sleep 5
+          done
+
+          echo "--- Public homepage check ---"
+          curl -fsSI --max-time 20 https://www.flowtixtools.com/ | head -n 20
