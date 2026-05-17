@@ -924,41 +924,47 @@ jobs:
             GREP_CMD="sudo -n grep"
           fi
 
-          # Hard block: any reference to the legacy 3001 port is a deploy-stopper
-          LEGACY=$($GREP_CMD -rEhn '(127\.0\.0\.1|localhost):3001\b' "${SEARCH_DIRS[@]}" 2>/dev/null || true)
+          # Regex covers both:
+          #   proxy_pass http(s)://127.0.0.1:<port>...;   (location blocks)
+          #   server     127.0.0.1:<port> ...;            (upstream blocks)
+          UPSTREAM_RE='(proxy_pass[[:space:]]+https?://(127\.0\.0\.1|localhost):[0-9]+|^[[:space:]]*server[[:space:]]+(127\.0\.0\.1|localhost):[0-9]+)'
+
+          # Hard block: any reference to the legacy 3001 port is a deploy-stopper.
+          # -H prints the filename so you can jump straight to the offending vhost.
+          LEGACY=$($GREP_CMD -rHnE "(127\.0\.0\.1|localhost):3001\b" "${SEARCH_DIRS[@]}" 2>/dev/null || true)
           if [ -n "$LEGACY" ]; then
             echo ""
             echo "::error::Found legacy port 3001 in Nginx config — deploy blocked"
-            echo "$LEGACY" | sed 's/^/  /'
+            echo "  Matching lines (file:line:content):"
+            echo "$LEGACY" | sed 's/^/    /'
             echo "::error::Fix on the server:"
             echo "::error::  sudo sed -i.bak 's/127.0.0.1:3001/127.0.0.1:${APP_PORT}/g; s/localhost:3001/localhost:${APP_PORT}/g' /www/server/panel/vhost/nginx/*.conf"
             echo "::error::  sudo nginx -t && sudo nginx -s reload"
             exit 1
           fi
 
-          # Find all proxy_pass / upstream entries to 127.0.0.1:<port> or localhost:<port>
-          MATCHES=$($GREP_CMD -rEhn '(proxy_pass|server)[[:space:]]+https?://(127\.0\.0\.1|localhost):[0-9]+' \
-            "${SEARCH_DIRS[@]}" 2>/dev/null || true)
+          # Find all proxy_pass / upstream server entries pointing at a local port
+          MATCHES=$($GREP_CMD -rHnE "$UPSTREAM_RE" "${SEARCH_DIRS[@]}" 2>/dev/null || true)
 
           if [ -z "$MATCHES" ]; then
-            echo "::error::No local upstream (proxy_pass) found in Nginx — domain may not be wired to PM2"
+            echo "::error::No local upstream (proxy_pass / upstream server) found in Nginx — domain may not be wired to PM2"
             exit 1
           fi
-          echo "Found upstream entries:"
+          echo "Found upstream entries (file:line:content):"
           echo "$MATCHES" | sed 's/^/  /'
 
-          # Extract ports and check for mismatches
-          BAD=$(echo "$MATCHES" \
-            | grep -oE '(127\.0\.0\.1|localhost):[0-9]+' \
-            | awk -F: '{print $2}' \
-            | sort -u \
-            | grep -v "^${APP_PORT}$" || true)
+          # Extract ports and check for any that don't match APP_PORT
+          BAD_LINES=$(echo "$MATCHES" | grep -E "(127\.0\.0\.1|localhost):[0-9]+" \
+            | grep -vE "(127\.0\.0\.1|localhost):${APP_PORT}\b" || true)
 
-          if [ -n "$BAD" ]; then
+          if [ -n "$BAD_LINES" ]; then
+            BAD_PORTS=$(echo "$BAD_LINES" | grep -oE '(127\.0\.0\.1|localhost):[0-9]+' | awk -F: '{print $2}' | sort -u | tr '\n' ' ')
             echo ""
-            echo "::error::Nginx upstream points to port(s) [$(echo $BAD | tr '\n' ' ')] but APP_PORT is ${APP_PORT}"
+            echo "::error::Nginx upstream points to port(s) [${BAD_PORTS}] but APP_PORT is ${APP_PORT}"
+            echo "  Mismatched lines:"
+            echo "$BAD_LINES" | sed 's/^/    /'
             echo "::error::Fix on the server with:"
-            echo "::error::  sudo sed -i.bak \"s/127.0.0.1:\$OLD/127.0.0.1:${APP_PORT}/g\" /www/server/panel/vhost/nginx/*.conf"
+            echo "::error::  sudo sed -i.bak \"s/127.0.0.1:<OLD>/127.0.0.1:${APP_PORT}/g\" /www/server/panel/vhost/nginx/*.conf"
             echo "::error::  sudo nginx -t && sudo nginx -s reload"
             exit 1
           fi
