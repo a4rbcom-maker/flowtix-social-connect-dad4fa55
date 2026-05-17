@@ -22,7 +22,7 @@ import { toast } from "sonner";
 import {
   fetchFacebookGroups,
   getFacebookConnection,
-} from "@/server/facebook.functions";
+} from "@/lib/facebook.functions";
 import { logSendActivity, updateSendStatus } from "@/lib/notifications";
 
 export const Route = createFileRoute("/dashboard/facebook/groups")({

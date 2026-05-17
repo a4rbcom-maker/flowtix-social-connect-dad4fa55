@@ -14,7 +14,7 @@ import {
   getFacebookConnection,
   inspectFacebookConnection,
   testFacebookToken,
-} from "@/server/facebook.functions";
+} from "@/lib/facebook.functions";
 import { openExternalUrl, ExternalLinkButton } from "@/components/shared/ExternalLinkButton";
 
 import { useFacebookApi, describeFbError } from "@/features/facebook/api";

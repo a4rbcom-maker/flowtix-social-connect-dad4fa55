@@ -7,7 +7,7 @@ import { Link } from "@tanstack/react-router";
 import { LinkIcon, LogOut, RefreshCw, AlertTriangle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { disconnectFacebook } from "@/server/facebook.functions";
+import { disconnectFacebook } from "@/lib/facebook.functions";
 import { useFacebookApi, describeFbError } from "@/features/facebook/api";
 import { useAuth } from "@/lib/auth";
 import type { ChannelState } from "@/hooks/useChannelStatus";

@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useFacebookApi } from "@/features/facebook/api";
-import { inspectFacebookConnection } from "@/server/facebook.functions";
+import { inspectFacebookConnection } from "@/lib/facebook.functions";
 
 export type ChannelStatus =
   | "loading"

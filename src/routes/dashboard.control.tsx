@@ -21,7 +21,7 @@ import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { toast } from "sonner";
-import { fetchFacebookGroups, getFacebookConnection } from "@/server/facebook.functions";
+import { fetchFacebookGroups, getFacebookConnection } from "@/lib/facebook.functions";
 import type { Tables } from "@/integrations/supabase/types";
 
 export const Route = createFileRoute("/dashboard/control")({
