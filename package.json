@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
+    "dev:local": "vite dev --port 3100 --strictPort",
     "build": "vite build",
     "build:dev": "vite build --mode development",
-    "preview": "vite preview",
+    "preview": "vite preview --port 3100 --strictPort",
+    "start": "PORT=3100 node scripts/tanstack-node-server.mjs",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
