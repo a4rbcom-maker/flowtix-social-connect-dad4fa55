@@ -323,6 +323,7 @@ jobs:
           SERVER_IP: ${{ secrets.SERVER_IP }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
+          INTEGRITY_ROLLBACK_DRY_RUN: ${{ inputs.integrity_rollback_dry_run && '1' || '0' }}
         run: |
           set -euo pipefail
           DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
@@ -408,7 +409,7 @@ jobs:
           # Instead: redirect ssh output to a log file, capture ssh's own
           # exit code directly, then print the log afterwards.
           set +e
-          DRY_RUN_FLAG="${{ inputs.integrity_rollback_dry_run && '1' || '0' }}"
+          DRY_RUN_FLAG="${INTEGRITY_ROLLBACK_DRY_RUN:-0}"
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
             "${DEPLOY_USER}@${SERVER_HOST}" \
             "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' DEPLOY_SHA='${GITHUB_SHA}' DEPLOY_RUN_ID='${GITHUB_RUN_ID}' DEPLOY_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOYED_AT='${DEPLOYED_AT}' INTEGRITY_ROLLBACK_DRY_RUN='${DRY_RUN_FLAG}' bash -s" >/tmp/install-restart.log 2>&1 <<'EOSSH'
