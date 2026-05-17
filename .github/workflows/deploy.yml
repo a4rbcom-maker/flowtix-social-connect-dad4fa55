@@ -725,10 +725,25 @@ jobs:
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
           set -euo pipefail
+          # mask_url(): show scheme + first 3 + last 4 chars of the rest.
+          # e.g. https://www.flowtixtools.com → https://www…s.com (len=27)
+          mask_url() {
+            local u="$1" scheme rest n
+            case "$u" in
+              https://*) scheme="https://"; rest="${u#https://}" ;;
+              http://*)  scheme="http://";  rest="${u#http://}" ;;
+              *)         scheme="";         rest="$u" ;;
+            esac
+            n=${#rest}
+            if [ "$n" -le 8 ]; then printf '%slen=%s\n' "$scheme" "$n"; return; fi
+            printf '%s%s…%s (len=%s)\n' "$scheme" "${rest:0:3}" "${rest: -4}" "$n"
+          }
           if [ -n "${PUBLIC_URL_SECRET:-}" ]; then
             PUBLIC_URLS="${PUBLIC_URL_SECRET%/}"
+            echo "→ PUBLIC_URL (from secret, no fallback): $(mask_url "$PUBLIC_URLS")"
           else
             PUBLIC_URLS="https://www.flowtixtools.com https://flowtixtools.com"
+            echo "→ PUBLIC_URL secret unset — using fallbacks: $(for u in $PUBLIC_URLS; do mask_url "$u"; done | tr '\n' ' ')"
           fi
 
           for i in $(seq 1 24); do
