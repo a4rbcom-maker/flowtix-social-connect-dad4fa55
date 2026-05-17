@@ -231,26 +231,153 @@ jobs:
       # Public verification — the domain must serve this commit
       # ──────────────────────────────────────────────────────────────────
       - name: Verify public site shows this commit
+        id: verify_public
         run: |
           set -e
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          for URL in \
-            "https://www.flowtixtools.com/deploy-version.json" \
-            "https://flowtixtools.com/deploy-version.json"; do
-            echo "Checking $URL for sha=${SHORT_SHA}"
-            for i in $(seq 1 12); do
-              BODY=$(curl -fsS --max-time 20 "$URL" || true)
-              echo "$BODY"
-              if echo "$BODY" | grep -q "$SHORT_SHA"; then
-                echo "✅ $URL serves commit ${SHORT_SHA}"
-                break
-              fi
-              if [ "$i" -eq 12 ]; then
-                echo "::warning::$URL did not show commit ${SHORT_SHA} after retries"
-              fi
-              sleep 5
-            done
+          URL_PRIMARY="https://www.flowtixtools.com/deploy-version.json"
+          OK=0
+          for i in $(seq 1 12); do
+            BODY=$(curl -fsS --max-time 20 "$URL_PRIMARY" || true)
+            echo "$BODY"
+            if echo "$BODY" | grep -q "$SHORT_SHA"; then
+              echo "✅ Public site serves commit ${SHORT_SHA}"
+              OK=1
+              break
+            fi
+            sleep 5
           done
+          if [ "$OK" -ne 1 ]; then
+            echo "::error::Public site did not update to commit ${SHORT_SHA} within timeout"
+            exit 1
+          fi
 
           echo "--- Homepage headers ---"
           curl -fsSI --max-time 20 https://www.flowtixtools.com/ | head -n 20 || true
+
+      # ──────────────────────────────────────────────────────────────────
+      # Record this deploy as LAST_GOOD (snapshot of what is now live)
+      # ──────────────────────────────────────────────────────────────────
+      - name: Record LAST_GOOD snapshot
+        env:
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
+          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          SSH_PORT="${SSH_PORT:-22}"
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
+            "${DEPLOY_USER}@${SERVER_HOST}" \
+            "DEPLOY_PATH='${DEPLOY_PATH}' SHORT_SHA='${SHORT_SHA}' bash -s" <<'EOSSH'
+          set -e
+          BACKUPS_DIR="/www/backups/flowtixtools"
+          mkdir -p "$BACKUPS_DIR"
+          TS=$(date -u +%Y%m%d%H%M%S)
+          GOOD="$BACKUPS_DIR/good-${TS}-${SHORT_SHA}"
+          rsync -a --delete \
+            --exclude='.user.ini' \
+            --exclude='.htaccess' \
+            --exclude='.well-known/' \
+            "$DEPLOY_PATH/" "$GOOD/"
+          echo "$GOOD" > "$BACKUPS_DIR/LAST_GOOD"
+          echo "Recorded LAST_GOOD -> $GOOD"
+          ls -1dt "$BACKUPS_DIR"/good-* 2>/dev/null | tail -n +6 | xargs -r rm -rf
+          EOSSH
+
+      # ──────────────────────────────────────────────────────────────────
+      # AUTO ROLLBACK on any failure above (snapshot/deploy/verify)
+      # ──────────────────────────────────────────────────────────────────
+      - name: Auto rollback on failure
+        if: failure()
+        env:
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
+          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          SSH_PORT="${SSH_PORT:-22}"
+
+          if [ -z "${DEPLOY_PATH:-}" ]; then
+            echo "::warning::DEPLOY_PATH not set — cannot rollback"
+            exit 0
+          fi
+          case "$DEPLOY_PATH" in
+            /www/wwwroot/*flowtix*) : ;;
+            *) echo "::error::Refusing to rollback outside Flowtix path: $DEPLOY_PATH"; exit 1 ;;
+          esac
+
+          echo "⚠️ Deploy failed — attempting automatic rollback to LAST_GOOD"
+
+          ROLLBACK_INFO=$(ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
+            "${DEPLOY_USER}@${SERVER_HOST}" \
+            "DEPLOY_PATH='${DEPLOY_PATH}' bash -s" <<'EOSSH'
+          set -e
+          BACKUPS_DIR="/www/backups/flowtixtools"
+          SRC=""
+          if [ -f "$BACKUPS_DIR/LAST_GOOD" ]; then
+            SRC=$(cat "$BACKUPS_DIR/LAST_GOOD")
+          fi
+          if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
+            # fallback to the snapshot we just took before this failed deploy
+            if [ -f "$BACKUPS_DIR/PREV_SNAPSHOT" ]; then
+              SRC=$(cat "$BACKUPS_DIR/PREV_SNAPSHOT")
+            fi
+          fi
+          if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
+            echo "ROLLBACK_RESULT=none"
+            exit 0
+          fi
+          case "$DEPLOY_PATH" in
+            /www/wwwroot/*flowtix*) : ;;
+            *) echo "ROLLBACK_RESULT=refused"; exit 0 ;;
+          esac
+          rsync -a --delete \
+            --exclude='.user.ini' \
+            --exclude='.htaccess' \
+            --exclude='.well-known/' \
+            "$SRC/" "$DEPLOY_PATH/"
+          RESTORED_SHA="unknown"
+          if [ -f "$DEPLOY_PATH/deploy-version.json" ]; then
+            RESTORED_SHA=$(grep -o '"short_sha"[[:space:]]*:[[:space:]]*"[^"]*"' "$DEPLOY_PATH/deploy-version.json" | head -n1 | sed 's/.*"\([^"]*\)"$/\1/')
+          fi
+          echo "ROLLBACK_RESULT=ok"
+          echo "ROLLBACK_SRC=$SRC"
+          echo "ROLLBACK_SHA=$RESTORED_SHA"
+          EOSSH
+          )
+
+          echo "$ROLLBACK_INFO"
+
+          if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=none"; then
+            echo "::warning::No previous snapshot found — site left as-is. (First deploy?)"
+            exit 0
+          fi
+          if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=refused"; then
+            echo "::error::Rollback refused (path safety check)"
+            exit 1
+          fi
+
+          RESTORED_SHA=$(echo "$ROLLBACK_INFO" | grep '^ROLLBACK_SHA=' | head -n1 | cut -d= -f2)
+          echo "🔄 Rolled back to commit ${RESTORED_SHA:-unknown}"
+
+          # Verify rollback served publicly
+          if [ -n "${RESTORED_SHA:-}" ] && [ "$RESTORED_SHA" != "unknown" ]; then
+            for i in $(seq 1 10); do
+              BODY=$(curl -fsS --max-time 20 "https://www.flowtixtools.com/deploy-version.json" || true)
+              if echo "$BODY" | grep -q "$RESTORED_SHA"; then
+                echo "✅ Public site now serves rolled-back commit ${RESTORED_SHA}"
+                break
+              fi
+              sleep 5
+            done
+          fi
