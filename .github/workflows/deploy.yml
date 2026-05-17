@@ -31,16 +31,20 @@ jobs:
       - name: Verify build output
         run: |
           set -e
-          if [ ! -d ".output" ]; then
-            echo "::error::Build did not produce .output directory"
+          if [ ! -d ".output" ] && [ ! -d "dist" ]; then
+            echo "::error::Build did not produce .output or dist directory"
             ls -la
             exit 1
           fi
-          echo "--- .output tree (top) ---"
-          ls -la .output
+          echo "--- build output tree (top) ---"
+          [ -d ".output" ] && ls -la .output || true
           [ -d ".output/server" ] && ls -la .output/server || true
           [ -d ".output/public" ] && ls -la .output/public || true
-          [ -d ".output/public/assets" ] && echo "assets count: $(ls .output/public/assets | wc -l)" || echo "::warning::No .output/public/assets directory"
+          [ -d ".output/public/assets" ] && echo ".output assets count: $(ls .output/public/assets | wc -l)" || true
+          [ -d "dist" ] && ls -la dist || true
+          [ -d "dist/server" ] && ls -la dist/server || true
+          [ -d "dist/client" ] && ls -la dist/client || true
+          [ -d "dist/client/assets" ] && echo "dist assets count: $(ls dist/client/assets | wc -l)" || true
 
       - name: Setup SSH key
         env:
