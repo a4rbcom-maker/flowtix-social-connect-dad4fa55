@@ -387,8 +387,14 @@ jobs:
             "$SRC/" "$DEPLOY_PATH/"
 
           cd "$DEPLOY_PATH"
-          ENTRY="dist/server/server.js"
-          [ -f "$ENTRY" ] || { echo "ROLLBACK_RESULT=bad_snapshot"; exit 0; }
+          ENTRY="scripts/tanstack-node-server.mjs"
+          if [ ! -f "$ENTRY" ]; then
+            ENTRY=""
+            for c in .output/server/index.mjs .output/server/index.js dist/server/server.js; do
+              if [ -f "$c" ]; then ENTRY="$c"; break; fi
+            done
+          fi
+          [ -n "$ENTRY" ] && [ -f "$ENTRY" ] || { echo "ROLLBACK_RESULT=bad_snapshot"; exit 0; }
 
           RESTORED_SHA="unknown"
           RESTORED_SHORT="unknown"
