@@ -1,0 +1,19 @@
+name: Lint workflows
+
+on:
+  push:
+    paths:
+      - '.github/workflows/**'
+      - 'scripts/ci/check-expression-length.py'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'scripts/ci/check-expression-length.py'
+
+jobs:
+  expression-length:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check ${{ '${{ ... }}' }} expression length
+        run: python3 scripts/ci/check-expression-length.py
