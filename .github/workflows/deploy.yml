@@ -241,6 +241,23 @@ jobs:
           cd "$DEPLOY_PATH"
           [ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
           [ -f deploy-version.json ] || { echo "ERROR: deploy-version.json missing"; exit 1; }
+          [ -f manifest.json ] || { echo "ERROR: manifest.json missing — bundle integrity unknown"; exit 1; }
+          [ -f SHA256SUMS ] || { echo "ERROR: SHA256SUMS missing — bundle integrity unknown"; exit 1; }
+
+          echo "=== Verifying bundle against manifest ==="
+          MANIFEST_FILES=$(grep -c '"path"' manifest.json || echo 0)
+          SUMS_FILES=$(wc -l < SHA256SUMS)
+          echo "manifest declares: ${MANIFEST_FILES} files; SHA256SUMS lists: ${SUMS_FILES}"
+          if ! sha256sum --quiet -c SHA256SUMS; then
+            echo "ERROR: checksum verification failed — bundle is corrupted or incomplete"
+            exit 1
+          fi
+          # Check for stray files not in manifest (delete handled by rsync --delete, but verify)
+          ACTUAL_FILES=$(find . -type f ! -name 'manifest.json' ! -name 'SHA256SUMS' | wc -l)
+          if [ "$ACTUAL_FILES" != "$SUMS_FILES" ]; then
+            echo "WARN: file count drift — manifest=${SUMS_FILES} actual=${ACTUAL_FILES}"
+          fi
+          echo "Bundle verified: ${SUMS_FILES} files match manifest checksums"
 
           # node_modules is shipped from CI — server runs zero installs.
           [ -d node_modules ] || { echo "ERROR: node_modules missing on server (CI ship failed)"; exit 1; }
