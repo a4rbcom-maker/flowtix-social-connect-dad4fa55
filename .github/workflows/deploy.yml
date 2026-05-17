@@ -149,6 +149,82 @@ jobs:
             fi
             pm2 save
 
+            echo "=== Local Node app health check ==="
+            for i in $(seq 1 20); do
+              if curl -fsS "http://127.0.0.1:${APP_PORT}/" >/dev/null; then
+                echo "Node app is responding on 127.0.0.1:${APP_PORT}"
+                break
+              fi
+              if [ "$i" -eq 20 ]; then
+                echo "ERROR: Node app is not responding on 127.0.0.1:${APP_PORT}"
+                pm2 logs "$APP_NAME" --lines 80 --nostream || true
+                exit 1
+              fi
+              sleep 2
+            done
+
             echo "=== PM2 status for $APP_NAME ==="
             pm2 describe "$APP_NAME" | head -n 30 || true
+EOSSH
+
+      - name: Configure Nginx for this domain only and verify public site
+        env:
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
+          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          SSH_PORT="${SSH_PORT:-22}"
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
+            "${DEPLOY_USER}@${SERVER_HOST}" \
+            "DEPLOY_PATH='${DEPLOY_PATH}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' bash -s" <<'EOSSH'
+            set -e
+            CONF="/www/server/panel/vhost/nginx/flowtixtools.com.conf"
+            BACKUP="${CONF}.bak.$(date +%Y%m%d%H%M%S)"
+
+            if [ ! -f "$CONF" ]; then
+              echo "ERROR: Nginx vhost file not found: $CONF"
+              exit 1
+            fi
+
+            if ! grep -q "server_name .*flowtixtools.com" "$CONF"; then
+              echo "ERROR: $CONF does not look like the flowtixtools.com vhost. Refusing to edit."
+              exit 1
+            fi
+
+            cp "$CONF" "$BACKUP"
+            python3 - <<'PY'
+from pathlib import Path
+
+conf = Path('/www/server/panel/vhost/nginx/flowtixtools.com.conf')
+text = conf.read_text()
+port = '3000'
+root = '/www/wwwroot/flowtixtools.com'
+managed_start = '    # FLOWTIXTOOLS_NODE_APP_START'
+managed_end = '    # FLOWTIXTOOLS_NODE_APP_END'
+block = f'''{managed_start}\n    location /assets/ {{\n        alias {root}/assets/;\n        access_log off;\n        expires 1y;\n        add_header Cache-Control "public, immutable";\n        try_files $uri =404;\n    }}\n\n    location / {{\n        proxy_pass http://127.0.0.1:{port};\n        proxy_http_version 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection "upgrade";\n    }}\n{managed_end}'''
+
+if managed_start in text and managed_end in text:
+    before = text.split(managed_start)[0]
+    after = text.split(managed_end, 1)[1]
+    text = before + block + after
+else:
+    insert_at = text.rfind('\n}')
+    if insert_at == -1:
+        raise SystemExit('Could not find closing brace in nginx config')
+    text = text[:insert_at] + '\n' + block + '\n' + text[insert_at:]
+
+conf.write_text(text)
+PY
+
+            nginx -t
+            nginx -s reload
+
+            echo "Nginx config updated safely. Backup: $BACKUP"
+            echo "=== Public HTTP check ==="
+            curl -I --max-time 20 https://www.flowtixtools.com/ || true
 EOSSH
