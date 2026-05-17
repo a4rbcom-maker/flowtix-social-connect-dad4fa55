@@ -35,6 +35,7 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
           DEPLOY_PATH_SECRET: ${{ secrets.DEPLOY_PATH }}
+          PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
         run: |
           set -euo pipefail
 
@@ -99,6 +100,7 @@ jobs:
           echo "=== Optional GitHub Secrets ==="
           check_optional SSH_PORT "${SSH_PORT:-}"
           check_optional DEPLOY_PATH "${DEPLOY_PATH_SECRET:-}"
+          check_optional PUBLIC_URL "${PUBLIC_URL_SECRET:-}"
 
           echo ""
           echo "=== Format validation ==="
@@ -145,6 +147,29 @@ jobs:
             esac
           else
             echo "  • DEPLOY_PATH unset — fallback /www/wwwroot/flowtixtools.com will be used"
+          fi
+
+          # PUBLIC_URL (if set) must start with https:// and must NOT end with '/'.
+          # The downstream checks build URLs as "${PUBLIC_URL%/}/path", but we
+          # still reject trailing slashes here to surface config mistakes early
+          # and keep logs/diagnostics consistent.
+          if [ -n "${PUBLIC_URL_SECRET:-}" ]; then
+            PU_OK=1
+            case "$PUBLIC_URL_SECRET" in
+              https://*) : ;;
+              *) echo "::error::PUBLIC_URL must start with 'https://' — got: $PUBLIC_URL_SECRET"; ERRORS=$((ERRORS+1)); PU_OK=0 ;;
+            esac
+            case "$PUBLIC_URL_SECRET" in
+              */) echo "::error::PUBLIC_URL must NOT end with '/' — got: $PUBLIC_URL_SECRET"; ERRORS=$((ERRORS+1)); PU_OK=0 ;;
+            esac
+            case "$PUBLIC_URL_SECRET" in
+              *' '*|*$'\t'*|*$'\n'*) echo "::error::PUBLIC_URL must not contain whitespace"; ERRORS=$((ERRORS+1)); PU_OK=0 ;;
+            esac
+            if [ "$PU_OK" -eq 1 ]; then
+              echo "  ✓ PUBLIC_URL format OK ($PUBLIC_URL_SECRET)"
+            fi
+          else
+            echo "  • PUBLIC_URL unset — fallback https://www.flowtixtools.com will be used"
           fi
 
           echo ""
