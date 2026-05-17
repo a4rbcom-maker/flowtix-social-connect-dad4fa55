@@ -612,6 +612,11 @@ jobs:
       - name: Verify public domain shows this commit
         env:
           PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
           set -euo pipefail
           if [ -n "${PUBLIC_URL_SECRET:-}" ]; then
@@ -634,7 +639,34 @@ jobs:
             sleep 5
           done
 
-          echo "::error::Public domain did not serve commit ${SHORT_SHA}. The app passed local PM2 health checks, so update the domain proxy/upstream to http://127.0.0.1:${APP_PORT}."
+          # ===== Public domain mismatch — diagnose proxy vs app =====
+          echo ""
+          echo "=== Public domain did not show commit ${SHORT_SHA}. Diagnosing… ==="
+
+          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
+          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          SSH_PORT="${SSH_PORT:-22}"
+
+          LOCAL_BODY=$(ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
+            "${DEPLOY_USER}@${SERVER_HOST}" \
+            "curl -fsS --max-time 10 http://127.0.0.1:${APP_PORT}/deploy-version.json || echo ''")
+          echo "→ Local (127.0.0.1:${APP_PORT}) /deploy-version.json:"
+          echo "  ${LOCAL_BODY:-<empty>}"
+
+          if echo "$LOCAL_BODY" | grep -q "$SHORT_SHA"; then
+            echo ""
+            echo "::error::Local PM2 serves commit ${SHORT_SHA} correctly on 127.0.0.1:${APP_PORT},"
+            echo "::error::but the public domain does NOT. This is a domain proxy/upstream problem,"
+            echo "::error::not an app problem. Fix the domain's reverse proxy (Nginx/aaPanel/CDN)"
+            echo "::error::to forward to http://127.0.0.1:${APP_PORT} — auto-rollback is SKIPPED"
+            echo "::error::because reverting the app would not fix the domain."
+            echo "FAILURE_REASON=public-domain-proxy-misconfigured" >> "$GITHUB_ENV"
+          else
+            echo ""
+            echo "::error::Neither the public domain nor the local app on 127.0.0.1:${APP_PORT}"
+            echo "::error::serves commit ${SHORT_SHA}. PM2 may have started a stale build."
+            echo "FAILURE_REASON=app-version-mismatch" >> "$GITHUB_ENV"
+          fi
           exit 1
 
       - name: Smoke test — homepage + /api/public/health
