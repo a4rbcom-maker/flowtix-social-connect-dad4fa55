@@ -275,6 +275,25 @@ jobs:
           DEPLOYED_AT="$DEPLOYED_AT" \
             pm2 start node_modules/.bin/srvx --name "$APP_NAME" --interpreter node --cwd "$DEPLOY_PATH" --update-env -- serve --entry "$SERVER_ENTRY" --static dist/client --prod --host 127.0.0.1 --port "$APP_PORT"
           pm2 save
+
+          # Confirm srvx actually bound to the port after start.
+          BOUND=0
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            sleep 1
+            if port_is_bound "${APP_PORT}"; then
+              echo "srvx is listening on port ${APP_PORT}."
+              BOUND=1
+              break
+            fi
+            echo "Waiting for srvx to bind ${APP_PORT} (attempt $attempt)…"
+          done
+
+          if [ "$BOUND" -ne 1 ]; then
+            echo "ERROR: srvx did not bind to port ${APP_PORT} after start."
+            pm2 describe "$APP_NAME" || true
+            pm2 logs "$APP_NAME" --lines 120 --nostream || true
+            exit 1
+          fi
           EOSSH
 
       - name: Verify SSR app locally on server
