@@ -233,28 +233,28 @@ jobs:
 
             cp "$CONF" "$BACKUP"
             python3 - <<'PY'
-from pathlib import Path
-
-conf = Path('/www/server/panel/vhost/nginx/flowtixtools.com.conf')
-text = conf.read_text()
-port = '3000'
-root = '/www/wwwroot/flowtixtools.com'
-managed_start = '    # FLOWTIXTOOLS_NODE_APP_START'
-managed_end = '    # FLOWTIXTOOLS_NODE_APP_END'
-block = f'''{managed_start}\n    location /assets/ {{\n        alias {root}/assets/;\n        access_log off;\n        expires 1y;\n        add_header Cache-Control "public, immutable";\n        try_files $uri =404;\n    }}\n\n    location / {{\n        proxy_pass http://127.0.0.1:{port};\n        proxy_http_version 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection "upgrade";\n    }}\n{managed_end}'''
-
-if managed_start in text and managed_end in text:
-    before = text.split(managed_start)[0]
-    after = text.split(managed_end, 1)[1]
-    text = before + block + after
-else:
-    insert_at = text.rfind('\n}')
-    if insert_at == -1:
-        raise SystemExit('Could not find closing brace in nginx config')
-    text = text[:insert_at] + '\n' + block + '\n' + text[insert_at:]
-
-conf.write_text(text)
-PY
+          from pathlib import Path
+          
+          conf = Path('/www/server/panel/vhost/nginx/flowtixtools.com.conf')
+          text = conf.read_text()
+          port = '3000'
+          root = '/www/wwwroot/flowtixtools.com'
+          managed_start = '    # FLOWTIXTOOLS_NODE_APP_START'
+          managed_end = '    # FLOWTIXTOOLS_NODE_APP_END'
+          block = f'''{managed_start}\n    location /assets/ {{\n        alias {root}/assets/;\n        access_log off;\n        expires 1y;\n        add_header Cache-Control "public, immutable";\n        try_files $uri =404;\n    }}\n\n    location / {{\n        proxy_pass http://127.0.0.1:{port};\n        proxy_http_version 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection "upgrade";\n    }}\n{managed_end}'''
+          
+          if managed_start in text and managed_end in text:
+              before = text.split(managed_start)[0]
+              after = text.split(managed_end, 1)[1]
+              text = before + block + after
+          else:
+              insert_at = text.rfind('\n}')
+              if insert_at == -1:
+                  raise SystemExit('Could not find closing brace in nginx config')
+              text = text[:insert_at] + '\n' + block + '\n' + text[insert_at:]
+          
+          conf.write_text(text)
+          PY
 
             nginx -t
             nginx -s reload
