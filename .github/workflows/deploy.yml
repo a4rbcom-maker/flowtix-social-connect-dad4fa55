@@ -31,10 +31,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          SERVER_HANDLER="dist/server/server.js"
-          SERVER_ENTRY="scripts/tanstack-node-server.mjs"
-          [ -f "$SERVER_HANDLER" ] || { echo "::error::SSR handler missing: $SERVER_HANDLER"; find dist -maxdepth 3 -type f 2>/dev/null | head -n 120 || true; exit 1; }
-          [ -f "$SERVER_ENTRY" ] || { echo "::error::Node SSR wrapper missing: $SERVER_ENTRY"; exit 1; }
+          SERVER_ENTRY="dist/server/server.js"
+          [ -f "$SERVER_ENTRY" ] || { echo "::error::SSR entry missing: $SERVER_ENTRY"; find dist -maxdepth 3 -type f 2>/dev/null | head -n 120 || true; exit 1; }
 
           DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
@@ -42,8 +40,6 @@ jobs:
           rm -rf deploy
           mkdir -p deploy
           cp -r dist deploy/dist
-          mkdir -p deploy/scripts
-          cp scripts/tanstack-node-server.mjs deploy/scripts/tanstack-node-server.mjs
           cp package.json deploy/package.json
           [ -f "bun.lockb" ] && cp bun.lockb deploy/bun.lockb
           [ -f "bun.lock" ] && cp bun.lock deploy/bun.lock
