@@ -93,11 +93,13 @@ jobs:
           path=${DEPLOY_PATH}
           EOF
 
-          # 1) Sync the full .output (server runtime) — scoped to this project's .output only
-          rsync -avz --delete \
-            -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
-            ./.output/ \
-            "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/.output/"
+          # 1) Sync the full .output (server runtime) when produced — scoped to this project's .output only
+          if [ -d ".output" ]; then
+            rsync -avz --delete \
+              -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
+              ./.output/ \
+              "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/.output/"
+          fi
 
           # Also sync dist because the existing aaPanel site currently contains dist/client + dist/server.
           if [ -d "dist" ]; then
