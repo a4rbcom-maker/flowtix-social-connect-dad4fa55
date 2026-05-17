@@ -81,7 +81,9 @@ jobs:
           echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
 
           echo "=== SSR bundle ready ==="
-          find deploy -maxdepth 3 -type f | head -n 160
+          (find deploy -maxdepth 2 -type f -not -path 'deploy/node_modules/*' | head -n 80) || true
+          echo "Total files in bundle: $(find deploy -type f | wc -l)"
+          echo "Bundle size: $(du -sh deploy | cut -f1)"
 
       - name: Setup SSH key
         env:
