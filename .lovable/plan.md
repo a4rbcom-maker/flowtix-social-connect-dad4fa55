@@ -1,30 +1,20 @@
-## الهدف
-إصلاح فشل GitHub Actions الظاهر في الصورة: `Process completed with exit code 141` داخل خطوة `Install dependencies and restart SSR app`، بحيث لا يقطع خطأ SIGPIPE الطباعة التشخيصية قبل تنفيذ منطق rollback.
+سأعدّل `.github/workflows/deploy.yml` لمعالجة فشل أول نشر بعد إضافة LAST_GOOD بدون تغيير منطق النشر العام.
 
-## التشخيص المختصر
-- `141 = SIGPIPE` غالبًا من pipeline تحت `set -euo pipefail`.
-- الملف الحالي أصلح أغلب `head` داخل مقارنة الملفات، لكن ما زال هناك خطر مهم: أمر الـ SSH نفسه موصول إلى `tee`:
-  ```bash
-  ssh ... 2>&1 <<'EOSSH' | tee /tmp/install-restart.log
-  ```
-  إذا خرج سكربت السيرفر بسرعة أو أغلق طرف الكتابة أثناء وجود مخرجات كثيرة، قد يرجع كود pipeline كـ `141` بدل كود الخطأ الحقيقي، خصوصًا مع `pipefail`.
-- النتيجة: GitHub يظهر `exit code 141` بدل سبب drift/rollback الحقيقي.
+الخطة:
+1. توحيد فحص صلاحية snapshot داخل خطوة `Install dependencies and restart SSR app` عبر helper مثل `is_valid_ssr_snapshot` يتأكد من الملفات المطلوبة، بما فيها `node_modules`.
+2. تحديث `integrity_rollback()` ليختار snapshot بالترتيب:
+   - `LAST_GOOD`
+   - `PREV_SNAPSHOT` عند غياب/عدم صلاحية `LAST_GOOD`
+   - أحدث snapshots متوافقة من `good-*` أو snapshots التاريخية كاحتياط أخير
+3. تحسين logs عند استخدام `PREV_SNAPSHOT` لتوضيح أن هذا متوقع في أول نشر بعد safety net، بدل رسالة `no_last_good` المضللة.
+4. إخراج metadata واضحة من `integrity_rollback`:
+   - `INTEGRITY_ROLLBACK_RESULT=restored`
+   - `INTEGRITY_ROLLBACK_KIND=last_good|prev_snapshot|latest_good|latest_snapshot`
+   - `INTEGRITY_ROLLBACK_SRC=...`
+5. تحديث معالجة نتيجة SSH في workflow بحيث رسالة GitHub تقول إن snapshot تم استرجاعه، وليس بالضرورة `LAST_GOOD` فقط، مع إبقاء `FAILURE_REASON=integrity-restored-last-good` حتى يستمر تخطي Auto rollback وعدم تشغيل PM2.
+6. التحقق من صحة YAML بعد التعديل فقط، بدون تشغيل build أو تغيير ملفات أخرى.
 
-## خطة التعديل
-1. تعديل خطوة `Install dependencies and restart SSR app` فقط في `.github/workflows/deploy.yml`.
-2. إزالة الاعتماد على pipe مباشر بين `ssh` و `tee` في هذه الخطوة.
-3. استبداله بنمط آمن:
-   - تشغيل `ssh` مع redirect للمخرجات إلى `/tmp/install-restart.log`.
-   - حفظ كود خروج `ssh` مباشرة في `SSH_EXIT`.
-   - طباعة اللوج بعد انتهاء الأمر باستخدام `cat /tmp/install-restart.log`.
-4. حماية `cat`/قراءة اللوج بـ `|| true` حتى لا تصبح هي سبب فشل جديد.
-5. الحفاظ على نفس منطق rollback الحالي كما هو:
-   - لو ظهر `INTEGRITY_ROLLBACK_RESULT=restored` يسجل `FAILURE_REASON=integrity-restored-last-good`.
-   - لو لا يوجد LAST_GOOD يسجل `integrity-no-snapshot`.
-   - لا يتم restart لـ PM2 قبل نجاح integrity checks.
-
-## النتيجة المتوقعة
-- لن يظهر `exit code 141` بسبب pipe/tee.
-- عند وجود اختلاف ملفات فعلي، سيظهر السبب الحقيقي مثل `file-list-drift`.
-- سيتم استدعاء rollback إلى `LAST_GOOD` قبل أي PM2 restart كما هو مطلوب.
-- ستظل خطوة Auto rollback تتصرف بنفس المنطق الحالي بدون توسيع نطاق التعديل.
+النتيجة المتوقعة:
+- عند `file-list-drift` أو checksum/manifest failure، سيتم استرجاع `LAST_GOOD` إن وجد.
+- في أول نشر لا يوجد فيه `LAST_GOOD`، سيتم استرجاع `PREV_SNAPSHOT` تلقائياً.
+- PM2 سيبقى محجوباً ولن يبدأ إلا بعد نجاح integrity checks؛ وعند rollback الداخلي سيبقى process القديم حيّاً كما هو.
