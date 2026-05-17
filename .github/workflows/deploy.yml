@@ -458,31 +458,40 @@ jobs:
           echo "  Missing on VPS (in CI but not on VPS): ${MISSING_COUNT}"
           echo "  Extra on VPS (on VPS but not in CI):   ${EXTRA_COUNT}"
 
+          # Diagnostics use `awk 'NR<=30'` instead of `head -n 30` to avoid
+          # SIGPIPE (exit 141) under `set -euo pipefail` — awk reads stdin to
+          # EOF so the upstream `printf`/`grep` never gets EPIPE.
+          set +o pipefail
           if [ "$MISSING_COUNT" -gt 0 ]; then
             echo "--- Missing files (first 30, all paths) ---"
-            echo "$MISSING" | head -n 30
-            MISSING_NM=$(echo "$MISSING" | grep -c '^\./node_modules/' || true)
-            MISSING_APP=$(echo "$MISSING" | grep -vc '^\./node_modules/' || true)
+            printf '%s\n' "$MISSING" | awk 'NR<=30'
+            MISSING_NM=$(printf '%s\n' "$MISSING" | grep -c '^\./node_modules/' 2>/dev/null || echo 0)
+            MISSING_APP=$(printf '%s\n' "$MISSING" | grep -vc '^\./node_modules/' 2>/dev/null || echo 0)
+            MISSING_NM=${MISSING_NM:-0}
+            MISSING_APP=${MISSING_APP:-0}
             echo "  missing inside node_modules: ${MISSING_NM}"
             echo "  missing outside node_modules: ${MISSING_APP}"
-            if [ "${MISSING_APP:-0}" -gt 0 ]; then
+            if [ "${MISSING_APP}" -gt 0 ]; then
               echo "--- Missing app files (first 30, excluding node_modules) ---"
-              echo "$MISSING" | grep -v '^\./node_modules/' | head -n 30
+              printf '%s\n' "$MISSING" | grep -v '^\./node_modules/' | awk 'NR<=30'
             fi
           fi
           if [ "$EXTRA_COUNT" -gt 0 ]; then
             echo "--- Extra files (first 30, all paths) ---"
-            echo "$EXTRA" | head -n 30
-            EXTRA_NM=$(echo "$EXTRA" | grep -c '^\./node_modules/' || true)
-            EXTRA_APP=$(echo "$EXTRA" | grep -vc '^\./node_modules/' || true)
+            printf '%s\n' "$EXTRA" | awk 'NR<=30'
+            EXTRA_NM=$(printf '%s\n' "$EXTRA" | grep -c '^\./node_modules/' 2>/dev/null || echo 0)
+            EXTRA_APP=$(printf '%s\n' "$EXTRA" | grep -vc '^\./node_modules/' 2>/dev/null || echo 0)
+            EXTRA_NM=${EXTRA_NM:-0}
+            EXTRA_APP=${EXTRA_APP:-0}
             echo "  extra inside node_modules: ${EXTRA_NM}"
             echo "  extra outside node_modules: ${EXTRA_APP}"
-            if [ "${EXTRA_APP:-0}" -gt 0 ]; then
+            if [ "${EXTRA_APP}" -gt 0 ]; then
               echo "--- Extra app files (first 30, excluding node_modules) ---"
-              echo "$EXTRA" | grep -v '^\./node_modules/' | head -n 30
+              printf '%s\n' "$EXTRA" | grep -v '^\./node_modules/' | awk 'NR<=30'
             fi
             echo "Hint: 'extra' files usually mean rsync --delete couldn't remove them (permissions) or a stale prior deploy left leftovers."
           fi
+          set -o pipefail
 
           # Hard gate: VPS file count MUST equal manifest count exactly.
           # rsync --delete is supposed to produce a byte-exact tree, so any

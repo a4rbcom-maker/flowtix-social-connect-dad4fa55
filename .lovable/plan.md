@@ -1,37 +1,67 @@
-الخطة المقترحة:
+## التشخيص
 
-1. تعديل فحص الدومين العام ليكون أوضح في التشخيص
-   - الإبقاء على فشل الـ deployment إذا كان الدومين العام لا يعرض نفس commit.
-   - طباعة الفرق بين:
-     - نتيجة `http://127.0.0.1:3100/deploy-version.json` على السيرفر.
-     - نتيجة `https://www.flowtixtools.com/deploy-version.json` و `https://flowtixtools.com/deploy-version.json`.
-   - توضيح هل المشكلة من التطبيق نفسه أم من إعدادات الـ proxy/upstream للدومين.
+كود الخروج **141 = 128 + SIGPIPE(13)**. مصدره الأسطر التشخيصية:
 
-2. منع rollback غير مفيد عند فشل الدومين فقط
-   - لأن الصورة توضح أن التطبيق نجح محليًا على PM2 لكن الدومين رجّع 404.
-   - سأجعل workflow يضع سبب الفشل في متغير مثل `FAILURE_REASON=public-domain-mismatch`.
-   - خطوة الـ rollback ستتخطى الرجوع التلقائي في هذه الحالة، لأن الرجوع لن يصلح proxy الدومين.
+```bash
+echo "$MISSING" | head -n 30
+echo "$MISSING" | grep -v '^\./node_modules/' | head -n 30
+echo "$EXTRA"   | head -n 30
+echo "$EXTRA"   | grep -v '^\./node_modules/' | head -n 30
+```
 
-3. تحسين smoke test ليختبر المسار الصحيح قبل اعتبار النشر ناجحًا
-   - فحص محلي على السيرفر:
-     - `/`
-     - `/api/public/health`
-     - `/deploy-version.json`
-   - ثم فحص الدومين العام بنفس المسارات.
-   - لو المحلي ناجح والعام 404، يفشل الـ deployment برسالة واضحة: إعدادات الدومين لا تمرر الطلبات إلى `127.0.0.1:3100`.
+تحت `set -euo pipefail`: لما `head` يقفل stdin بعد 30 سطر، الأمر اللي قبله (`echo`/`grep`) يأخذ SIGPIPE، و `pipefail` يحوّل الـ pipeline لفشل = **141**، فيخرج السكربت قبل ما يكمّل ويطبع `ERROR:` الحقيقي ويستدعي `integrity_rollback`.
 
-4. تقليل مشاكل فحص `node_modules`
-   - مراجعة خطوة manifest/checksum الحالية لأنها تشمل `node_modules` بالكامل.
-   - الإبقاء على التحقق الصارم، لكن تحسين رسائل الخطأ حتى تظهر أول ملفات ناقصة/زائدة داخل `node_modules` بوضوح لو الفشل من النقل أو الصلاحيات.
-   - عدم تغيير طريقة الشحن نفسها إلا إذا ظهر من اللوج أن الحجم أو عدد الملفات هو سبب الفشل.
+اللقطة في الصورة بتعرض ملفات `dashboard.*` — يعني فعلاً فيه drift بين CI و VPS (ملفات زيادة على السيرفر أو ناقصة)، والـ guard اشتغل صح لكن الطباعة قتلته.
 
-5. التحقق بعد التنفيذ
-   - مراجعة YAML للتأكد أن ترتيب الخطوات أصبح:
-     - نسخ الملفات
-     - تحقق manifest/checksum/count
-     - restart PM2
-     - local health/version check
-     - public domain smoke test
-     - تسجيل LAST_GOOD فقط بعد نجاح الدومين.
+## الإصلاح (ملف واحد: `.github/workflows/deploy.yml`)
 
-ملاحظة مهمة: الخطأ الظاهر في الصورة الأولى يعني غالبًا أن التطبيق يعمل على السيرفر، لكن الدومين لا يمرر الطلبات إلى PM2 على `127.0.0.1:3100` أو أن `PUBLIC_URL` يشير لدومين غير صحيح.
+### 1) استبدال `| head -n 30` بأدوات لا تقفل stdin مبكرًا
+
+في الأسطر 463، 470، 475، 482 نستخدم `awk 'NR<=30'` (أو `sed -n '1,30p'` مع `cat` drain). `awk` يقرأ كل الـ input لحد EOF فلا SIGPIPE.
+
+```bash
+printf '%s\n' "$MISSING" | awk 'NR<=30'
+printf '%s\n' "$MISSING" | grep -v '^\./node_modules/' | awk 'NR<=30'
+printf '%s\n' "$EXTRA"   | awk 'NR<=30'
+printf '%s\n' "$EXTRA"   | grep -v '^\./node_modules/' | awk 'NR<=30'
+```
+
+(ونستخدم `printf` بدل `echo` للأمان مع المحتوى).
+
+### 2) عزل أي pipeline تشخيصية تحت pipefail
+
+نلف بلوك الطباعة (السطور 461–485) بـ:
+```bash
+set +o pipefail
+... diagnostics ...
+set -o pipefail
+```
+كحزام أمان إضافي، عشان أي `head/grep/awk` مستقبلي ما يكسرش الـ step.
+
+### 3) تحسين عدّ `grep -c` (السطور 464–465، 476–477)
+
+`grep -c` يرجع 1 لو ما لقاش match — مع `set -e` بنحتاج `|| true` (موجود) لكن النتيجة لما `MISSING` فاضي بترجع سلسلة فاضية. نضمن قيمة عددية دائمًا:
+```bash
+MISSING_NM=$(printf '%s\n' "$MISSING" | grep -c '^\./node_modules/' 2>/dev/null || echo 0)
+MISSING_NM=${MISSING_NM:-0}
+```
+
+### 4) السبب الفعلي تحت السطح
+
+بعد الإصلاح، السكربت هيكمل ويطبع الـ ERROR المناسب (`file-list-drift` غالبًا) ويستدعي `integrity_rollback "file-list-drift"`، وبعدين تستلم الخطوة الخارجية الإشارة وتسجل `FAILURE_REASON=integrity-restored-last-good` (لو في LAST_GOOD) أو `integrity-no-snapshot`.
+
+هتشوف في الـ logs السبب الحقيقي (مثلاً: ملفات `dashboard.*` موجودة على VPS من deploy قديم و rsync مش قادر يحذفها بسبب صلاحيات، أو ملفات جديدة من CI ما وصلتش).
+
+## الخطوات
+
+1. تعديل `.github/workflows/deploy.yml` فقط في خطوة `Install dependencies and restart SSR app` (الأسطر 461–485):
+   - استبدال `head -n 30` بـ `awk 'NR<=30'`
+   - استبدال `echo "$VAR"` بـ `printf '%s\n' "$VAR"`
+   - تطبيق `set +o pipefail` حول بلوك الطباعة
+   - تأمين `MISSING_NM/MISSING_APP/EXTRA_NM/EXTRA_APP` بقيمة افتراضية 0
+
+2. إعادة تشغيل الـ workflow — لو لسه فيه drift، هيظهر السبب بوضوح ويتم rollback تلقائي.
+
+## ملاحظة للمستخدم
+
+الفشل الأصلي مش bug في الـ deployment نفسه — هو الـ integrity guard اللي طلبته اشتغل صح ورصد اختلاف حقيقي بين ملفات CI وVPS، بس الطباعة التشخيصية كسرت السكربت قبل ما يوضّح السبب. بعد الإصلاح هتشوف بالضبط أنهي ملفات ناقصة/زيادة وهيحصل rollback تلقائي لآخر نسخة LAST_GOOD.
