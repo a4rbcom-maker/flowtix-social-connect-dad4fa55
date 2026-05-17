@@ -246,7 +246,7 @@ jobs:
           if [ "$MODE" = "ssr" ]; then
             [ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
             if command -v bun >/dev/null 2>&1; then
-              bun install --production --no-save
+              bun install --production
               RUNNER="bun"
             else
               npm ci --omit=dev
@@ -384,7 +384,7 @@ jobs:
           done
           if [ -n "$ENTRY" ]; then
             if command -v bun >/dev/null 2>&1; then
-              bun install --production --no-save
+              bun install --production
               RUNNER="bun"
             else
               npm ci --omit=dev
