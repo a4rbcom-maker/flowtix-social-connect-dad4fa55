@@ -33,12 +33,23 @@ jobs:
       - name: Build project
         run: bun run build
 
+      - name: Install production-only dependencies for shipping
+        run: |
+          set -euo pipefail
+          # Build is done; now produce a node_modules tree containing ONLY
+          # production deps so the server doesn't need bun/npm to install.
+          rm -rf node_modules
+          bun install --production --frozen-lockfile
+          echo "Production node_modules size:"
+          du -sh node_modules || true
+
       - name: Prepare SSR deploy bundle
         run: |
           set -euo pipefail
 
           SERVER_ENTRY="dist/server/server.js"
           [ -f "$SERVER_ENTRY" ] || { echo "::error::SSR entry missing: $SERVER_ENTRY"; find dist -maxdepth 3 -type f 2>/dev/null | head -n 120 || true; exit 1; }
+          [ -d node_modules ] || { echo "::error::node_modules missing after production install"; exit 1; }
 
           DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
@@ -47,11 +58,10 @@ jobs:
           mkdir -p deploy
           cp -r dist deploy/dist
           cp -r scripts deploy/scripts
+          cp -r node_modules deploy/node_modules
           cp package.json deploy/package.json
           cp ecosystem.config.cjs deploy/ecosystem.config.cjs
-          [ -f "bun.lockb" ] && cp bun.lockb deploy/bun.lockb
-          [ -f "bun.lock" ] && cp bun.lock deploy/bun.lock
-          # NOTE: package-lock.json is intentionally NOT shipped — production uses Bun only.
+          # Lockfiles are NOT shipped — the server never runs install anymore.
 
           cat > deploy/deploy-version.json <<JSON
           {
@@ -140,7 +150,6 @@ jobs:
           echo "Creating snapshot: $SNAP"
           mkdir -p "$SNAP"
           rsync -a --delete \
-            --exclude='node_modules/' \
             --exclude='.env' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
@@ -169,7 +178,6 @@ jobs:
             "${DEPLOY_USER}@${SERVER_HOST}" "mkdir -p '${DEPLOY_PATH}'"
 
           rsync -az --delete \
-            --exclude='node_modules/' \
             --exclude='.env' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
@@ -202,32 +210,13 @@ jobs:
           [ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
           [ -f deploy-version.json ] || { echo "ERROR: deploy-version.json missing"; exit 1; }
 
-          # Make sure user-local bun (installed by this script previously) is on PATH
-          export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
-          export PATH="$BUN_INSTALL/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-
-          if ! command -v bun >/dev/null 2>&1; then
-            echo "Bun not found on server — installing automatically…"
-            curl -fsSL https://bun.sh/install | bash
-            export PATH="$BUN_INSTALL/bin:$PATH"
-            # Persist for future non-interactive SSH sessions
-            if [ -f "$HOME/.bashrc" ] && ! grep -q 'BUN_INSTALL' "$HOME/.bashrc"; then
-              {
-                echo ''
-                echo '# Bun (auto-installed by Flowtix deploy)'
-                echo 'export BUN_INSTALL="$HOME/.bun"'
-                echo 'export PATH="$BUN_INSTALL/bin:$PATH"'
-              } >> "$HOME/.bashrc"
-            fi
-          fi
-          command -v bun >/dev/null 2>&1 || { echo "ERROR: bun install failed — please install bun manually on the server"; exit 1; }
-          echo "Bun version on server: $(bun --version)"
-          bun install --production --frozen-lockfile
-
+          # node_modules is shipped from CI — server runs zero installs.
+          [ -d node_modules ] || { echo "ERROR: node_modules missing on server (CI ship failed)"; exit 1; }
           command -v pm2 >/dev/null 2>&1 || { echo "ERROR: pm2 is not installed on the server"; exit 1; }
           command -v node >/dev/null 2>&1 || { echo "ERROR: node is not installed on the server"; exit 1; }
           [ -f scripts/tanstack-node-server.mjs ] || { echo "ERROR: Node SSR runner missing: scripts/tanstack-node-server.mjs"; exit 1; }
           [ -f ecosystem.config.cjs ] || { echo "ERROR: PM2 ecosystem missing: ecosystem.config.cjs"; exit 1; }
+          echo "Node version on server: $(node --version)"
 
           # Helper: check if port is bound. Returns 0 if bound, 1 if free.
           port_is_bound() {
@@ -414,7 +403,6 @@ jobs:
           GOOD="$BACKUPS_DIR/good-$(date -u +%Y%m%d%H%M%S)-${SHORT_SHA}"
           mkdir -p "$GOOD"
           rsync -a --delete \
-            --exclude='node_modules/' \
             --exclude='.env' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
@@ -493,7 +481,6 @@ jobs:
           fi
 
           rsync -a --delete \
-            --exclude='node_modules/' \
             --exclude='.env' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
@@ -505,6 +492,7 @@ jobs:
           [ -f "$ENTRY" ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
           [ -f scripts/tanstack-node-server.mjs ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
           [ -f ecosystem.config.cjs ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
+          [ -d node_modules ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
 
           RESTORED_SHA="unknown"
           RESTORED_SHORT="unknown"
@@ -520,18 +508,6 @@ jobs:
           fi
           [ -z "$RESTORED_SHA" ] && RESTORED_SHA="$RESTORED_SHORT"
 
-          export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
-          export PATH="$BUN_INSTALL/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-          if ! command -v bun >/dev/null 2>&1; then
-            echo "Bun not found on server during rollback — installing automatically…"
-            curl -fsSL https://bun.sh/install | bash || true
-            export PATH="$BUN_INSTALL/bin:$PATH"
-          fi
-          if ! command -v bun >/dev/null 2>&1; then
-            echo "ROLLBACK_RESULT=bun_install_failed"
-            exit 0
-          fi
-          bun install --production --frozen-lockfile
 
           if [ -f .env ]; then
             while IFS= read -r line || [ -n "$line" ]; do
@@ -582,10 +558,6 @@ jobs:
           fi
           if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=no_valid_ssr_snapshot"; then
             echo "::warning::No compatible SSR rollback snapshot found — this is expected immediately after migrating from the old deployment architecture."
-            exit 0
-          fi
-          if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=bun_install_failed"; then
-            echo "::warning::Could not auto-install bun on the server during rollback — please install bun manually then re-run the workflow."
             exit 0
           fi
           if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=restore_incomplete"; then
