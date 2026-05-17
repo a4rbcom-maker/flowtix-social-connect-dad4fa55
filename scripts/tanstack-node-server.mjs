@@ -102,6 +102,23 @@ async function writeFetchResponse(fetchResponse, res) {
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+    if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/deploy-version.json") {
+      const sha = process.env.DEPLOY_SHA || process.env.GITHUB_SHA || "development";
+      const body = JSON.stringify({
+        sha,
+        short_sha: sha === "development" ? "dev" : sha.slice(0, 7),
+        run_id: process.env.DEPLOY_RUN_ID || process.env.GITHUB_RUN_ID || null,
+        repo: process.env.DEPLOY_REPOSITORY || process.env.GITHUB_REPOSITORY || null,
+        deployed_at: process.env.DEPLOYED_AT || new Date().toISOString(),
+        mode: "ssr",
+        status: "ok",
+      });
+      res.statusCode = 200;
+      res.setHeader("content-type", "application/json; charset=utf-8");
+      res.setHeader("cache-control", "no-store, max-age=0");
+      res.end(req.method === "HEAD" ? undefined : body);
+      return;
+    }
     if ((req.method === "GET" || req.method === "HEAD") && serveStatic(req, res, url.pathname)) {
       return;
     }
