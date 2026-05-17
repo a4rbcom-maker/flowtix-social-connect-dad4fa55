@@ -493,6 +493,16 @@ jobs:
               latest_good)
                 echo "→ LAST_GOOD/PREV_SNAPSHOT unusable — restoring from most recent smoke-verified good-* snapshot: $src" ;;
             esac
+            if [ "${INTEGRITY_ROLLBACK_DRY_RUN:-0}" = "1" ]; then
+              echo "🧪 DRY-RUN — skipping rsync. Would have restored:"
+              echo "   source : $src"
+              echo "   target : $DEPLOY_PATH"
+              echo "   excludes: .env .user.ini .htaccess .well-known/"
+              echo "INTEGRITY_ROLLBACK_RESULT=dry_run"
+              echo "INTEGRITY_ROLLBACK_KIND=$kind"
+              echo "INTEGRITY_ROLLBACK_SRC=$src"
+              return 0
+            fi
             rsync -a --delete \
               --exclude='.env' \
               --exclude='.user.ini' \
@@ -505,6 +515,17 @@ jobs:
             echo "INTEGRITY_ROLLBACK_SRC=$src"
             return 0
           }
+
+          # Dry-run hook: force integrity_rollback to run without breaking the
+          # bundle. Triggers immediately after the function is defined and
+          # exits the install step before PM2 is touched.
+          if [ "${INTEGRITY_ROLLBACK_DRY_RUN:-0}" = "1" ]; then
+            echo ""
+            echo "🧪 INTEGRITY_ROLLBACK_DRY_RUN=1 — forcing integrity_rollback path"
+            integrity_rollback "dry-run-forced" || true
+            echo "🧪 Dry-run finished. Exiting install step before PM2 is touched."
+            exit 1
+          fi
 
           echo "=== Verifying bundle against manifest ==="
           # Three independent counts must agree before we touch PM2:
