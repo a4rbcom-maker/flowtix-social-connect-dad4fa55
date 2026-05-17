@@ -255,17 +255,23 @@ jobs:
           PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
         run: |
           set -euo pipefail
-          PUBLIC_URL="${PUBLIC_URL_SECRET:-https://www.flowtixtools.com}"
-          PUBLIC_URL="${PUBLIC_URL%/}"
-          VERSION_URL="$PUBLIC_URL/deploy-version.json"
+          if [ -n "${PUBLIC_URL_SECRET:-}" ]; then
+            PUBLIC_URLS="${PUBLIC_URL_SECRET%/}"
+          else
+            PUBLIC_URLS="https://www.flowtixtools.com https://flowtixtools.com"
+          fi
 
           for i in $(seq 1 24); do
-            BODY=$(curl -fsS --max-time 20 "$VERSION_URL" || true)
-            echo "$BODY"
-            if echo "$BODY" | grep -q "$SHORT_SHA"; then
-              echo "✅ Public domain serves commit ${SHORT_SHA}"
-              exit 0
-            fi
+            for PUBLIC_URL in $PUBLIC_URLS; do
+              VERSION_URL="${PUBLIC_URL%/}/deploy-version.json"
+              BODY=$(curl -fsS --max-time 20 "$VERSION_URL" || true)
+              echo "$VERSION_URL"
+              echo "$BODY"
+              if echo "$BODY" | grep -q "$SHORT_SHA"; then
+                echo "✅ Public domain serves commit ${SHORT_SHA} via ${PUBLIC_URL%/}"
+                exit 0
+              fi
+            done
             sleep 5
           done
 
@@ -317,8 +323,11 @@ jobs:
           DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
           SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
           SSH_PORT="${SSH_PORT:-22}"
-          PUBLIC_URL="${PUBLIC_URL_SECRET:-https://www.flowtixtools.com}"
-          PUBLIC_URL="${PUBLIC_URL%/}"
+          if [ -n "${PUBLIC_URL_SECRET:-}" ]; then
+            PUBLIC_URLS="${PUBLIC_URL_SECRET%/}"
+          else
+            PUBLIC_URLS="https://www.flowtixtools.com https://flowtixtools.com"
+          fi
 
           if [ -z "${DEPLOY_PATH:-}" ] || [ -z "${BACKUPS_DIR:-}" ]; then
             echo "::warning::DEPLOY_PATH/BACKUPS_DIR not set — cannot rollback"
@@ -413,12 +422,14 @@ jobs:
 
           if [ -n "${RESTORED_SHORT:-}" ] && [ "$RESTORED_SHORT" != "unknown" ]; then
             for i in $(seq 1 12); do
-              BODY=$(curl -fsS --max-time 20 "$PUBLIC_URL/deploy-version.json" || true)
-              echo "$BODY"
-              if echo "$BODY" | grep -q "$RESTORED_SHORT"; then
-                echo "✅ Public domain now serves rolled-back commit ${RESTORED_SHORT}"
-                exit 0
-              fi
+              for PUBLIC_URL in $PUBLIC_URLS; do
+                BODY=$(curl -fsS --max-time 20 "${PUBLIC_URL%/}/deploy-version.json" || true)
+                echo "$BODY"
+                if echo "$BODY" | grep -q "$RESTORED_SHORT"; then
+                  echo "✅ Public domain now serves rolled-back commit ${RESTORED_SHORT} via ${PUBLIC_URL%/}"
+                  exit 0
+                fi
+              done
               sleep 5
             done
           fi
