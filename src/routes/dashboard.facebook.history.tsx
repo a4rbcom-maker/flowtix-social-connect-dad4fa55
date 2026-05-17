@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
-import { listJobs, getJob, cancelJob } from "@/server/fb-bot.functions";
+import { listJobs, getJob, cancelJob } from "@/lib/fb-bot.functions";
 
 export const Route = createFileRoute("/dashboard/facebook/history")({
   beforeLoad: async () => {

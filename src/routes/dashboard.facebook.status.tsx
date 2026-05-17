@@ -9,7 +9,7 @@ import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { toast } from "sonner";
-import { inspectFacebookConnection, disconnectFacebook } from "@/server/facebook.functions";
+import { inspectFacebookConnection, disconnectFacebook } from "@/lib/facebook.functions";
 
 export const Route = createFileRoute("/dashboard/facebook/status")({
   component: FacebookStatusPage,

@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
-import { listBotAccounts, createPostJob, createExtractPagesJob, createExtractCommentersJob } from "@/server/fb-bot.functions";
+import { listBotAccounts, createPostJob, createExtractPagesJob, createExtractCommentersJob } from "@/lib/fb-bot.functions";
 
 export const Route = createFileRoute("/dashboard/facebook/jobs")({
   beforeLoad: async () => {
