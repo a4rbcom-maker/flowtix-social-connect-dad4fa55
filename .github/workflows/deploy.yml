@@ -530,7 +530,16 @@ jobs:
           export DEPLOY_REPOSITORY="$RESTORED_REPO"
           export DEPLOYED_AT="$RESTORED_AT"
           export APP_NAME APP_PORT DEPLOY_PATH
-          pm2 startOrReload ecosystem.config.cjs --only "$APP_NAME" --update-env
+
+          for pm2_app in "$APP_NAME" flowtix flowtixtools flowtixtools-web flowtixtools-ssr flowtixtools-srvx; do
+            [ -n "$pm2_app" ] || continue
+            if pm2 describe "$pm2_app" >/dev/null 2>&1; then
+              echo "Stopping PM2 app before rollback start: $pm2_app"
+              pm2 delete "$pm2_app" || true
+            fi
+          done
+
+          pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env
           pm2 save
 
           echo "ROLLBACK_RESULT=ok"
