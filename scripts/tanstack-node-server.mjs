@@ -1,10 +1,10 @@
 import { createServer } from "node:http";
 import { createReadStream, existsSync, statSync } from "node:fs";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, normalize, resolve } from "node:path";
 import { Readable } from "node:stream";
 import handler from "../dist/server/server.js";
 
-const port = Number(process.env.PORT || 3000);
+const port = Number(process.env.PORT || process.env.APP_PORT || 3100);
 const root = process.cwd();
 const clientRoot = resolve(root, "dist/client");
 
