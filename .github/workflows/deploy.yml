@@ -362,15 +362,50 @@ jobs:
           : "${DEPLOY_USER:?Missing GitHub Secret: SERVER_USER or SSH_USER}"
           : "${SERVER_HOST:?Missing GitHub Secret: SERVER_IP or SSH_HOST}"
 
+          set +e
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
             "${DEPLOY_USER}@${SERVER_HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' DEPLOY_SHA='${GITHUB_SHA}' DEPLOY_RUN_ID='${GITHUB_RUN_ID}' DEPLOY_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOYED_AT='${DEPLOYED_AT}' bash -s" <<'EOSSH'
+            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' DEPLOY_SHA='${GITHUB_SHA}' DEPLOY_RUN_ID='${GITHUB_RUN_ID}' DEPLOY_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOYED_AT='${DEPLOYED_AT}' bash -s" 2>&1 <<'EOSSH' | tee /tmp/install-restart.log
           set -euo pipefail
           cd "$DEPLOY_PATH"
           [ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
           [ -f deploy-version.json ] || { echo "ERROR: deploy-version.json missing"; exit 1; }
           [ -f manifest.json ] || { echo "ERROR: manifest.json missing — bundle integrity unknown"; exit 1; }
           [ -f SHA256SUMS ] || { echo "ERROR: SHA256SUMS missing — bundle integrity unknown"; exit 1; }
+
+          # ===== Integrity-failure rollback =====
+          # If the freshly rsynced bundle is corrupt/incomplete, the FILES on disk
+          # at $DEPLOY_PATH are already broken (PM2 still has the old in-memory
+          # code, but any restart now would crash). Restore LAST_GOOD onto disk
+          # BEFORE we even touch PM2, so the next restart serves a known-good build.
+          integrity_rollback() {
+            local reason="$1"
+            echo ""
+            echo "=== Triggering integrity rollback (reason: ${reason}) ==="
+            if [ -z "${BACKUPS_DIR:-}" ] || [ ! -f "$BACKUPS_DIR/LAST_GOOD" ]; then
+              echo "::error::No LAST_GOOD marker at ${BACKUPS_DIR:-<unset>}/LAST_GOOD — cannot auto-restore."
+              echo "INTEGRITY_ROLLBACK_RESULT=no_last_good"
+              return 1
+            fi
+            local good
+            good=$(cat "$BACKUPS_DIR/LAST_GOOD" 2>/dev/null || true)
+            if [ -z "$good" ] || [ ! -d "$good" ] || [ ! -f "$good/dist/server/server.js" ]; then
+              echo "::error::LAST_GOOD points to invalid snapshot: ${good:-<empty>}"
+              echo "INTEGRITY_ROLLBACK_RESULT=invalid_last_good"
+              return 1
+            fi
+            echo "Restoring files from: $good → $DEPLOY_PATH"
+            rsync -a --delete \
+              --exclude='.env' \
+              --exclude='.user.ini' \
+              --exclude='.htaccess' \
+              --exclude='.well-known/' \
+              "$good/" "$DEPLOY_PATH/"
+            echo "✓ LAST_GOOD restored — PM2 keeps current in-memory process (no restart)."
+            echo "INTEGRITY_ROLLBACK_RESULT=restored"
+            echo "INTEGRITY_ROLLBACK_SRC=$good"
+            return 0
+          }
 
           echo "=== Verifying bundle against manifest ==="
           # Three independent counts must agree before we touch PM2:
@@ -387,12 +422,14 @@ jobs:
 
           if [ "$MANIFEST_TOTAL" != "$SUMS_FILES" ] || [ "$MANIFEST_PATHS" != "$SUMS_FILES" ]; then
             echo "ERROR: manifest is internally inconsistent — refusing to restart PM2"
+            integrity_rollback "manifest-inconsistent" || true
             exit 1
           fi
 
           if ! sha256sum --quiet -c SHA256SUMS; then
             echo "ERROR: checksum verification failed — bundle is corrupted or incomplete"
             echo "PM2 restart BLOCKED — current process kept alive on the previous build"
+            integrity_rollback "checksum-failed" || true
             exit 1
           fi
 
@@ -458,6 +495,7 @@ jobs:
             echo "ERROR: ${DRIFT} differing path(s) between CI bundle and VPS"
             echo "PM2 restart BLOCKED — current process kept alive on the previous build"
             rm -f "$EXPECTED_LIST" "$ACTUAL_LIST"
+            integrity_rollback "file-list-drift" || true
             exit 1
           fi
           rm -f "$EXPECTED_LIST" "$ACTUAL_LIST"
@@ -575,6 +613,23 @@ jobs:
             exit 1
           fi
           EOSSH
+          SSH_EXIT=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$SSH_EXIT" -ne 0 ]; then
+            if grep -q '^INTEGRITY_ROLLBACK_RESULT=restored' /tmp/install-restart.log; then
+              ROLLBACK_SRC=$(grep '^INTEGRITY_ROLLBACK_SRC=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
+              echo ""
+              echo "::warning::Bundle integrity check failed — LAST_GOOD was auto-restored on disk."
+              echo "::warning::Restored snapshot: ${ROLLBACK_SRC}"
+              echo "::warning::PM2 was NOT restarted; the previously-running process is still serving traffic."
+              echo "FAILURE_REASON=integrity-restored-last-good" >> "$GITHUB_ENV"
+            elif grep -qE '^INTEGRITY_ROLLBACK_RESULT=(no_last_good|invalid_last_good)' /tmp/install-restart.log; then
+              echo "::error::Bundle integrity check failed AND no valid LAST_GOOD snapshot was available to auto-restore."
+              echo "FAILURE_REASON=integrity-no-snapshot" >> "$GITHUB_ENV"
+            fi
+            exit "$SSH_EXIT"
+          fi
 
       - name: Verify SSR app locally on server
         env:
@@ -791,6 +846,14 @@ jobs:
           if [ "${FAILURE_REASON:-}" = "public-domain-proxy-misconfigured" ]; then
             echo "::warning::Skipping auto-rollback — failure reason is ${FAILURE_REASON}."
             echo "::warning::The new build is healthy on 127.0.0.1:${APP_PORT}. Fix the domain proxy/upstream instead."
+            exit 0
+          fi
+
+          # Integrity rollback already restored LAST_GOOD onto disk inside the
+          # restart step (before PM2 was touched). PM2 is still running the old
+          # in-memory process, so there is nothing left to do here.
+          if [ "${FAILURE_REASON:-}" = "integrity-restored-last-good" ]; then
+            echo "::warning::Skipping auto-rollback — LAST_GOOD was already restored on disk by the integrity check."
             exit 0
           fi
 
