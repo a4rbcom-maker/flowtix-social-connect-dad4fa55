@@ -584,6 +584,10 @@ jobs:
             echo "::warning::No compatible SSR rollback snapshot found — this is expected immediately after migrating from the old deployment architecture."
             exit 0
           fi
+          if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=bun_install_failed"; then
+            echo "::warning::Could not auto-install bun on the server during rollback — please install bun manually then re-run the workflow."
+            exit 0
+          fi
           if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=restore_incomplete"; then
             echo "::warning::Rollback snapshot restore was incomplete — site left as-is for manual inspection."
             exit 0
