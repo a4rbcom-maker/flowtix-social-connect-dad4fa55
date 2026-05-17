@@ -1,57 +1,37 @@
-## السبب الفعلي
+الخطة المقترحة:
 
-من اللوج (الصورة الثانية):
-```
-ERROR: bun is required on the server for production install (npm path disabled).
-Install bun with: curl -fsSL https://bun.sh/install | bash
-```
+1. تعديل فحص الدومين العام ليكون أوضح في التشخيص
+   - الإبقاء على فشل الـ deployment إذا كان الدومين العام لا يعرض نفس commit.
+   - طباعة الفرق بين:
+     - نتيجة `http://127.0.0.1:3100/deploy-version.json` على السيرفر.
+     - نتيجة `https://www.flowtixtools.com/deploy-version.json` و `https://flowtixtools.com/deploy-version.json`.
+   - توضيح هل المشكلة من التطبيق نفسه أم من إعدادات الـ proxy/upstream للدومين.
 
-الـ workflow بيفترض إن `bun` متثبت على الـ VPS، ولما مايلاقيهوش بيقتل النشر فورًا. وبعدها الـ Auto rollback بيفشل لأن أقرب snapshot قديم مش متوافق مع شكل الـ SSR الحالي (`is_valid_ssr_snapshot` بيرفضه).
+2. منع rollback غير مفيد عند فشل الدومين فقط
+   - لأن الصورة توضح أن التطبيق نجح محليًا على PM2 لكن الدومين رجّع 404.
+   - سأجعل workflow يضع سبب الفشل في متغير مثل `FAILURE_REASON=public-domain-mismatch`.
+   - خطوة الـ rollback ستتخطى الرجوع التلقائي في هذه الحالة، لأن الرجوع لن يصلح proxy الدومين.
 
-دي مش مشكلة كود، دي مشكلة bootstrap على السيرفر.
+3. تحسين smoke test ليختبر المسار الصحيح قبل اعتبار النشر ناجحًا
+   - فحص محلي على السيرفر:
+     - `/`
+     - `/api/public/health`
+     - `/deploy-version.json`
+   - ثم فحص الدومين العام بنفس المسارات.
+   - لو المحلي ناجح والعام 404، يفشل الـ deployment برسالة واضحة: إعدادات الدومين لا تمرر الطلبات إلى `127.0.0.1:3100`.
 
-## الحل النهائي (خطوتين فقط في `.github/workflows/deploy.yml`)
+4. تقليل مشاكل فحص `node_modules`
+   - مراجعة خطوة manifest/checksum الحالية لأنها تشمل `node_modules` بالكامل.
+   - الإبقاء على التحقق الصارم، لكن تحسين رسائل الخطأ حتى تظهر أول ملفات ناقصة/زائدة داخل `node_modules` بوضوح لو الفشل من النقل أو الصلاحيات.
+   - عدم تغيير طريقة الشحن نفسها إلا إذا ظهر من اللوج أن الحجم أو عدد الملفات هو سبب الفشل.
 
-### 1) Auto-bootstrap Bun على الـ VPS
+5. التحقق بعد التنفيذ
+   - مراجعة YAML للتأكد أن ترتيب الخطوات أصبح:
+     - نسخ الملفات
+     - تحقق manifest/checksum/count
+     - restart PM2
+     - local health/version check
+     - public domain smoke test
+     - تسجيل LAST_GOOD فقط بعد نجاح الدومين.
 
-في خطوة **Install dependencies and restart SSR app**، بدّل الـ block اللي بيعمل `exit 1` لما `bun` مش موجود بـ installer غير تفاعلي:
-
-```bash
-if ! command -v bun >/dev/null 2>&1; then
-  echo "Bun not found on server — installing automatically…"
-  export BUN_INSTALL="$HOME/.bun"
-  curl -fsSL https://bun.sh/install | bash
-  export PATH="$BUN_INSTALL/bin:$PATH"
-  # ثبّت في PATH للجلسات الجاية
-  grep -q 'BUN_INSTALL' "$HOME/.bashrc" 2>/dev/null || {
-    echo 'export BUN_INSTALL="$HOME/.bun"' >> "$HOME/.bashrc"
-    echo 'export PATH="$BUN_INSTALL/bin:$PATH"' >> "$HOME/.bashrc"
-  }
-fi
-# تأكيد نهائي
-command -v bun >/dev/null 2>&1 || { echo "ERROR: bun install failed"; exit 1; }
-echo "Bun version on server: $(bun --version)"
-```
-
-كده أول نشر هيثبّت Bun لوحده، وكل نشر بعديه هيلاقيه جاهز.
-
-### 2) تقوية الـ rollback لما مفيش snapshot متوافق
-
-حاليًا لو الـ snapshots القديمة مش بتطابق شكل SSR الجديد، الـ rollback بيطبع `ROLLBACK_RESULT=no_valid_ssr_snapshot` وبيخرج 0، لكن الخطوة نفسها بترجع exit 1 من مكان تاني (السطر 183 في الصورة الأولى).
-
-نخلي الـ rollback يعمل حاجة مفيدة لما مفيش snapshot:
-- لو السيرفر شغّال أصلًا (PM2 process حي وبيرد على البورت)، نسيب الموقع زي ما هو ونخرج success بـ warning.
-- لو لأ، نخرج بـ warning واضح إن المطلوب نشر يدوي.
-
-ودا بيمنع تحويل فشل النشر الأول لـ rollback failure مضلل.
-
-## ما لن أفعله
-
-- مش هغير منطق التطبيق ولا الـ routes ولا أي ملفات Supabase.
-- مش هرجع لـ npm.
-- مش هلمس الـ snapshots القديمة على السيرفر.
-
-## النتيجة المتوقعة
-
-- النشر القادم: Bun هيتثبّت تلقائيًا، الـ `bun install --production --frozen-lockfile` هينجح، PM2 هيقوم بنسخة `flowtixtools-web`، والـ `/deploy-version.json` هيعرض الـ SHA الجديد.
-- لو في أي خطوة بعد كده فشلت، الـ rollback هيدّي رسالة واضحة بدل ما يفشل بدون توضيح.
+ملاحظة مهمة: الخطأ الظاهر في الصورة الأولى يعني غالبًا أن التطبيق يعمل على السيرفر، لكن الدومين لا يمرر الطلبات إلى PM2 على `127.0.0.1:3100` أو أن `PUBLIC_URL` يشير لدومين غير صحيح.

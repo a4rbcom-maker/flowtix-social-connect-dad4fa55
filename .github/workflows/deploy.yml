@@ -422,12 +422,29 @@ jobs:
           echo "  Extra on VPS (on VPS but not in CI):   ${EXTRA_COUNT}"
 
           if [ "$MISSING_COUNT" -gt 0 ]; then
-            echo "--- Missing files (first 30) ---"
+            echo "--- Missing files (first 30, all paths) ---"
             echo "$MISSING" | head -n 30
+            MISSING_NM=$(echo "$MISSING" | grep -c '^\./node_modules/' || true)
+            MISSING_APP=$(echo "$MISSING" | grep -vc '^\./node_modules/' || true)
+            echo "  missing inside node_modules: ${MISSING_NM}"
+            echo "  missing outside node_modules: ${MISSING_APP}"
+            if [ "${MISSING_APP:-0}" -gt 0 ]; then
+              echo "--- Missing app files (first 30, excluding node_modules) ---"
+              echo "$MISSING" | grep -v '^\./node_modules/' | head -n 30
+            fi
           fi
           if [ "$EXTRA_COUNT" -gt 0 ]; then
-            echo "--- Extra files (first 30) ---"
+            echo "--- Extra files (first 30, all paths) ---"
             echo "$EXTRA" | head -n 30
+            EXTRA_NM=$(echo "$EXTRA" | grep -c '^\./node_modules/' || true)
+            EXTRA_APP=$(echo "$EXTRA" | grep -vc '^\./node_modules/' || true)
+            echo "  extra inside node_modules: ${EXTRA_NM}"
+            echo "  extra outside node_modules: ${EXTRA_APP}"
+            if [ "${EXTRA_APP:-0}" -gt 0 ]; then
+              echo "--- Extra app files (first 30, excluding node_modules) ---"
+              echo "$EXTRA" | grep -v '^\./node_modules/' | head -n 30
+            fi
+            echo "Hint: 'extra' files usually mean rsync --delete couldn't remove them (permissions) or a stale prior deploy left leftovers."
           fi
 
           # Hard gate: VPS file count MUST equal manifest count exactly.
@@ -595,6 +612,11 @@ jobs:
       - name: Verify public domain shows this commit
         env:
           PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
           set -euo pipefail
           if [ -n "${PUBLIC_URL_SECRET:-}" ]; then
@@ -617,7 +639,34 @@ jobs:
             sleep 5
           done
 
-          echo "::error::Public domain did not serve commit ${SHORT_SHA}. The app passed local PM2 health checks, so update the domain proxy/upstream to http://127.0.0.1:${APP_PORT}."
+          # ===== Public domain mismatch — diagnose proxy vs app =====
+          echo ""
+          echo "=== Public domain did not show commit ${SHORT_SHA}. Diagnosing… ==="
+
+          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
+          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          SSH_PORT="${SSH_PORT:-22}"
+
+          LOCAL_BODY=$(ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
+            "${DEPLOY_USER}@${SERVER_HOST}" \
+            "curl -fsS --max-time 10 http://127.0.0.1:${APP_PORT}/deploy-version.json || echo ''")
+          echo "→ Local (127.0.0.1:${APP_PORT}) /deploy-version.json:"
+          echo "  ${LOCAL_BODY:-<empty>}"
+
+          if echo "$LOCAL_BODY" | grep -q "$SHORT_SHA"; then
+            echo ""
+            echo "::error::Local PM2 serves commit ${SHORT_SHA} correctly on 127.0.0.1:${APP_PORT},"
+            echo "::error::but the public domain does NOT. This is a domain proxy/upstream problem,"
+            echo "::error::not an app problem. Fix the domain's reverse proxy (Nginx/aaPanel/CDN)"
+            echo "::error::to forward to http://127.0.0.1:${APP_PORT} — auto-rollback is SKIPPED"
+            echo "::error::because reverting the app would not fix the domain."
+            echo "FAILURE_REASON=public-domain-proxy-misconfigured" >> "$GITHUB_ENV"
+          else
+            echo ""
+            echo "::error::Neither the public domain nor the local app on 127.0.0.1:${APP_PORT}"
+            echo "::error::serves commit ${SHORT_SHA}. PM2 may have started a stale build."
+            echo "FAILURE_REASON=app-version-mismatch" >> "$GITHUB_ENV"
+          fi
           exit 1
 
       - name: Smoke test — homepage + /api/public/health
@@ -735,6 +784,16 @@ jobs:
           PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
         run: |
           set -euo pipefail
+
+          # Skip rollback when the failure is "app is fine, domain proxy is wrong".
+          # Reverting to a previous build will NOT fix the reverse proxy, and would
+          # only mask a working app behind a broken edge.
+          if [ "${FAILURE_REASON:-}" = "public-domain-proxy-misconfigured" ]; then
+            echo "::warning::Skipping auto-rollback — failure reason is ${FAILURE_REASON}."
+            echo "::warning::The new build is healthy on 127.0.0.1:${APP_PORT}. Fix the domain proxy/upstream instead."
+            exit 0
+          fi
+
           DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
           SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
           SSH_PORT="${SSH_PORT:-22}"
