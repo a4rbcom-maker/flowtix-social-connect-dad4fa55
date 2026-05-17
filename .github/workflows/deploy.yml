@@ -16,6 +16,134 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Preflight — validate workflow secrets & inputs
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          DEPLOY_PATH_SECRET: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+
+          ERRORS=0
+          # mask(): print "<len> chars, starts=XX…ends=YY" — never reveals the value.
+          mask() {
+            local v="$1"
+            local n=${#v}
+            if [ "$n" -eq 0 ]; then echo "(empty)"; return; fi
+            if [ "$n" -le 4 ]; then echo "len=${n} (too short to preview)"; return; fi
+            printf 'len=%s starts=%s…ends=%s\n' "$n" "${v:0:2}" "${v: -2}"
+          }
+          check_required() {
+            local name="$1" val="$2"
+            if [ -z "${val:-}" ]; then
+              echo "  ✗ ${name}: MISSING"
+              ERRORS=$((ERRORS+1))
+            else
+              echo "  ✓ ${name}: $(mask "$val")"
+            fi
+          }
+          check_optional() {
+            local name="$1" val="$2"
+            if [ -z "${val:-}" ]; then
+              echo "  • ${name}: not set (will use fallback)"
+            else
+              echo "  ✓ ${name}: $(mask "$val")"
+            fi
+          }
+
+          echo "=== Workflow-level env (non-secret) ==="
+          echo "  APP_NAME=${APP_NAME}"
+          echo "  APP_PORT=${APP_PORT}"
+          case "${APP_PORT}" in
+            ''|*[!0-9]*) echo "::error::APP_PORT must be numeric, got: ${APP_PORT}"; ERRORS=$((ERRORS+1)) ;;
+            *) [ "${APP_PORT}" -ge 1 ] && [ "${APP_PORT}" -le 65535 ] || { echo "::error::APP_PORT out of range"; ERRORS=$((ERRORS+1)); } ;;
+          esac
+
+          echo ""
+          echo "=== Required GitHub Secrets ==="
+          check_required SSH_PRIVATE_KEY "${SSH_PRIVATE_KEY:-}"
+
+          # Either SERVER_USER or SSH_USER must be present.
+          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
+          if [ -z "$DEPLOY_USER" ]; then
+            echo "  ✗ SERVER_USER / SSH_USER: BOTH MISSING (need at least one)"
+            ERRORS=$((ERRORS+1))
+          else
+            echo "  ✓ deploy user (SERVER_USER|SSH_USER): $(mask "$DEPLOY_USER")"
+          fi
+
+          # Either SERVER_IP or SSH_HOST must be present.
+          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          if [ -z "$SERVER_HOST" ]; then
+            echo "  ✗ SERVER_IP / SSH_HOST: BOTH MISSING (need at least one)"
+            ERRORS=$((ERRORS+1))
+          else
+            echo "  ✓ server host (SERVER_IP|SSH_HOST): $(mask "$SERVER_HOST")"
+          fi
+
+          echo ""
+          echo "=== Optional GitHub Secrets ==="
+          check_optional SSH_PORT "${SSH_PORT:-}"
+          check_optional DEPLOY_PATH "${DEPLOY_PATH_SECRET:-}"
+
+          echo ""
+          echo "=== Format validation ==="
+
+          # SSH private key must look like a PEM/OpenSSH key.
+          if [ -n "${SSH_PRIVATE_KEY:-}" ]; then
+            if printf '%s' "$SSH_PRIVATE_KEY" | grep -q -- "-----BEGIN .*PRIVATE KEY-----"; then
+              echo "  ✓ SSH_PRIVATE_KEY has a valid PEM header"
+            else
+              echo "::error::SSH_PRIVATE_KEY missing '-----BEGIN ... PRIVATE KEY-----' header (wrong format or extra wrapping?)"
+              ERRORS=$((ERRORS+1))
+            fi
+            if printf '%s' "$SSH_PRIVATE_KEY" | grep -q -- "-----END .*PRIVATE KEY-----"; then
+              echo "  ✓ SSH_PRIVATE_KEY has a valid PEM footer"
+            else
+              echo "::error::SSH_PRIVATE_KEY missing '-----END ... PRIVATE KEY-----' footer (truncated?)"
+              ERRORS=$((ERRORS+1))
+            fi
+          fi
+
+          # SSH_PORT (if set) must be numeric in range.
+          if [ -n "${SSH_PORT:-}" ]; then
+            case "${SSH_PORT}" in
+              ''|*[!0-9]*) echo "::error::SSH_PORT must be numeric, got: ${SSH_PORT}"; ERRORS=$((ERRORS+1)) ;;
+              *) [ "${SSH_PORT}" -ge 1 ] && [ "${SSH_PORT}" -le 65535 ] \
+                   && echo "  ✓ SSH_PORT in valid range" \
+                   || { echo "::error::SSH_PORT out of range"; ERRORS=$((ERRORS+1)); } ;;
+            esac
+          fi
+
+          # Host must not contain a scheme or a slash.
+          if [ -n "${SERVER_HOST:-}" ]; then
+            case "$SERVER_HOST" in
+              *://*|*/*) echo "::error::server host must be bare host/IP, not a URL. Got something containing '://' or '/'"; ERRORS=$((ERRORS+1)) ;;
+              *) echo "  ✓ server host looks like a bare host/IP" ;;
+            esac
+          fi
+
+          # Deploy path (if set) must match the project's safety prefix.
+          if [ -n "${DEPLOY_PATH_SECRET:-}" ]; then
+            case "$DEPLOY_PATH_SECRET" in
+              /www/wwwroot/*flowtix*) echo "  ✓ DEPLOY_PATH matches /www/wwwroot/*flowtix* safety rule" ;;
+              *) echo "::error::DEPLOY_PATH must match /www/wwwroot/*flowtix* — got: $DEPLOY_PATH_SECRET"; ERRORS=$((ERRORS+1)) ;;
+            esac
+          else
+            echo "  • DEPLOY_PATH unset — fallback /www/wwwroot/flowtixtools.com will be used"
+          fi
+
+          echo ""
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "::error::Preflight failed with ${ERRORS} problem(s). Fix the secrets above before redeploying."
+            exit 1
+          fi
+          echo "✓ Preflight passed — all secrets present and well-formed."
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
