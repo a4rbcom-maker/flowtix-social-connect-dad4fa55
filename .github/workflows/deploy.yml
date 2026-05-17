@@ -454,13 +454,9 @@ jobs:
 
           cd "$DEPLOY_PATH"
           ENTRY="dist/server/server.js"
-          if [ ! -f "$ENTRY" ]; then
-            ENTRY=""
-            for c in .output/server/index.mjs .output/server/index.js scripts/tanstack-node-server.mjs; do
-              if [ -f "$c" ]; then ENTRY="$c"; break; fi
-            done
-          fi
-          [ -n "$ENTRY" ] && [ -f "$ENTRY" ] || { echo "ROLLBACK_RESULT=bad_snapshot"; exit 0; }
+          [ -f "$ENTRY" ] || { echo "ROLLBACK_RESULT=bad_snapshot"; exit 0; }
+          [ -f scripts/tanstack-node-server.mjs ] || { echo "ROLLBACK_RESULT=bad_snapshot"; exit 0; }
+          [ -f ecosystem.config.cjs ] || { echo "ROLLBACK_RESULT=bad_snapshot"; exit 0; }
 
           RESTORED_SHA="unknown"
           RESTORED_SHORT="unknown"
@@ -484,9 +480,6 @@ jobs:
             npm install --omit=dev
           fi
 
-          if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
-            pm2 delete "$APP_NAME" || true
-          fi
           if [ -f .env ]; then
             while IFS= read -r line || [ -n "$line" ]; do
               case "$line" in ""|\#*) continue ;; esac
@@ -508,11 +501,8 @@ jobs:
           export DEPLOY_RUN_ID="$RESTORED_RUN"
           export DEPLOY_REPOSITORY="$RESTORED_REPO"
           export DEPLOYED_AT="$RESTORED_AT"
-          if [ "$ENTRY" = "dist/server/server.js" ] && [ -x node_modules/.bin/srvx ]; then
-            pm2 start node_modules/.bin/srvx --name "$APP_NAME" --interpreter node --cwd "$DEPLOY_PATH" --update-env -- serve --entry "$ENTRY" --static dist/client --prod --host 127.0.0.1 --port "$APP_PORT"
-          else
-            PORT="$APP_PORT" pm2 start "$ENTRY" --name "$APP_NAME" --interpreter node --cwd "$DEPLOY_PATH" --update-env
-          fi
+          export APP_NAME APP_PORT DEPLOY_PATH
+          pm2 startOrReload ecosystem.config.cjs --only "$APP_NAME" --update-env
           pm2 save
 
           echo "ROLLBACK_RESULT=ok"
