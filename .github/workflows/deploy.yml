@@ -380,12 +380,51 @@ jobs:
             echo "ERROR: checksum verification failed — bundle is corrupted or incomplete"
             exit 1
           fi
-          # Check for stray files not in manifest (delete handled by rsync --delete, but verify)
-          ACTUAL_FILES=$(find . -type f ! -name 'manifest.json' ! -name 'SHA256SUMS' | wc -l)
-          if [ "$ACTUAL_FILES" != "$SUMS_FILES" ]; then
-            echo "WARN: file count drift — manifest=${SUMS_FILES} actual=${ACTUAL_FILES}"
+          # === CI vs VPS file-list diff ===
+          # CI's authoritative list is the sorted left column of SHA256SUMS.
+          # We build the VPS list the same way and diff them.
+          # Any non-zero diff fails the deployment — rsync --delete must produce
+          # a byte-exact tree, so a single missing or extra file is a real problem.
+          EXPECTED_LIST=$(mktemp)
+          ACTUAL_LIST=$(mktemp)
+          awk '{ $1=""; sub(/^  /,""); print }' SHA256SUMS | LC_ALL=C sort > "$EXPECTED_LIST"
+          find . -type f ! -name 'manifest.json' ! -name 'SHA256SUMS' -printf './%P\n' \
+            | LC_ALL=C sort > "$ACTUAL_LIST"
+
+          EXPECTED_COUNT=$(wc -l < "$EXPECTED_LIST")
+          ACTUAL_COUNT=$(wc -l < "$ACTUAL_LIST")
+          MISSING=$(comm -23 "$EXPECTED_LIST" "$ACTUAL_LIST")   # in CI, not on VPS
+          EXTRA=$(comm -13 "$EXPECTED_LIST" "$ACTUAL_LIST")     # on VPS, not in CI
+          MISSING_COUNT=$([ -z "$MISSING" ] && echo 0 || echo "$MISSING" | wc -l)
+          EXTRA_COUNT=$([ -z "$EXTRA" ] && echo 0 || echo "$EXTRA" | wc -l)
+
+          echo "=== CI ↔ VPS file-list diff ==="
+          echo "  CI shipped : ${EXPECTED_COUNT} files"
+          echo "  VPS now has: ${ACTUAL_COUNT} files"
+          echo "  Missing on VPS (in CI but not on VPS): ${MISSING_COUNT}"
+          echo "  Extra on VPS (on VPS but not in CI):   ${EXTRA_COUNT}"
+
+          if [ "$MISSING_COUNT" -gt 0 ]; then
+            echo "--- Missing files (first 30) ---"
+            echo "$MISSING" | head -n 30
           fi
-          echo "Bundle verified: ${SUMS_FILES} files match manifest checksums"
+          if [ "$EXTRA_COUNT" -gt 0 ]; then
+            echo "--- Extra files (first 30) ---"
+            echo "$EXTRA" | head -n 30
+          fi
+
+          # Fail on any drift. rsync --delete should leave zero diff; anything
+          # else means transfer truncation, permissions blocking deletes, or
+          # stale leftovers from a previous broken deploy.
+          DRIFT=$((MISSING_COUNT + EXTRA_COUNT))
+          if [ "$DRIFT" -gt 0 ]; then
+            echo "ERROR: file-list drift between CI bundle and VPS — ${DRIFT} differing path(s)"
+            rm -f "$EXPECTED_LIST" "$ACTUAL_LIST"
+            exit 1
+          fi
+          rm -f "$EXPECTED_LIST" "$ACTUAL_LIST"
+          echo "✓ File list on VPS matches CI bundle exactly (${ACTUAL_COUNT} files)"
+          echo "✓ Bundle verified: ${SUMS_FILES} files match manifest checksums"
 
           # node_modules is shipped from CI — server runs zero installs.
           [ -d node_modules ] || { echo "ERROR: node_modules missing on server (CI ship failed)"; exit 1; }
