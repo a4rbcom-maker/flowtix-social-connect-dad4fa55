@@ -1,32 +1,52 @@
-## التشخيص
+المشكلة ليست في “ملف الاتصال” نفسه. المشكلة الأساسية مركبة من نقطتين:
 
-الفشل في الصورة يحدث داخل خطوة `Install dependencies and restart SSR app` عند أمر npm، وليس عند تشغيل التطبيق نفسه.
+1. إصدارات TanStack غير متطابقة
+- `@tanstack/react-start` عند `1.168.6`
+- `@tanstack/router-plugin` عند `1.168.6`
+- `@tanstack/react-router` عند `1.170.4`
+- ويوجد override لـ `@tanstack/router-core` إلى `1.171.2`
 
-السبب المرجّح: يوجد `package-lock.json` قديم وغير متزامن مع `package.json` بعد تحديث إصدارات TanStack إلى `1.168.x`، لذلك السيرفر الذي لا يجد Bun يستخدم `npm ci --omit=dev`، و`npm ci` يفشل لأن `package-lock.json` ما زال يحتوي مثلًا:
+هذا الخلط يكسر TypeScript module augmentation التي تضيف خاصية `server` إلى `createFileRoute`. لذلك TypeScript يرى route عادي من `@tanstack/react-router` ولا يرى دعم server routes، فيظهر الخطأ:
+`'server' does not exist in type ... FilebaseRouteOptionsInterface`
 
-- `@tanstack/react-start`: في `package.json` = `^1.168.0`، وفي `package-lock.json` = `^1.167.14`
-- `@tanstack/router-plugin`: في `package.json` = `^1.168.0`، وفي `package-lock.json` = `^1.167.10`
+2. خط النشر نفسه صار حساس جداً لأي فشل
+الصورة توضّح أن الفشل يحدث في خطوة:
+`Install dependencies and restart SSR app`
+ثم يحاول rollback، لكنه لا يجد snapshot متوافق لأن المعمارية اتغيّرت إلى SSR/Node، فيقول:
+`Skipping incompatible rollback snapshot`
+وهذا طبيعي بعد تغييرات كبيرة في طريقة النشر.
 
-## الخطة
+خطة الحل الجذري:
 
-1. **توحيد مدير الحزم في النشر**
-   - جعل workflow يعتمد على Bun بوضوح لأن المشروع لديه `bun.lockb` ومرحلة GitHub نفسها تستخدم Bun.
-   - في السيرفر: إذا Bun غير موجود، تثبيته أو الفشل برسالة واضحة تطلب تثبيت Bun، بدل السقوط تلقائيًا إلى `npm ci` مع lockfile غير متزامن.
+1. تثبيت TanStack كحزمة واحدة متوافقة
+- توحيد `@tanstack/react-start`, `@tanstack/react-router`, `@tanstack/router-plugin` على نفس عائلة إصدار مستقرة.
+- إزالة overrides/resolutions التي تجبر `router-core` على إصدار مختلف عن باقي الحزم، لأنها سبب محتمل لكسر augmentation.
+- إعادة توليد lockfile بـ Bun فقط.
 
-2. **إزالة مسار npm غير المستقر من deploy bundle**
-   - عدم نسخ `package-lock.json` إلى deploy bundle، لأن وجوده يفعّل مسار `npm ci` على السيرفرات التي لا تحتوي Bun.
-   - إبقاء `bun.lockb`/`bun.lock` فقط كمرجع تثبيت الإنتاج.
+2. تصحيح server routes حسب النسخة المستقرة
+- الإبقاء على `server: { handlers: ... }` لو النسخة المتوافقة تدعمه بشكل صحيح.
+- أو تحويل ملفات API إلى الصيغة الرسمية البديلة إن لزم الأمر، مثل `createServerFileRoute` من `@tanstack/react-start/server` إذا كانت النسخة المختارة تتطلب ذلك.
+- الملفات المستهدفة تحديداً:
+  - `src/routes/api/public/bot/job-update.ts`
+  - `src/routes/api/public/bot/next-job.ts`
+  - `src/routes/api/public/hooks/process-bulk-jobs.ts`
+  - `src/routes/deploy-version[.]json.ts`
 
-3. **تحديث rollback بنفس نفس المنطق**
-   - نفس تعديل التثبيت في مسار rollback حتى لا يرجع الفشل عند الاسترجاع.
+3. تنظيف النشر من مصادر عدم التوافق
+- التأكد أن `deploy` يشحن `bun.lockb` و`package.json` فقط.
+- تثبيت dependencies في GitHub Actions وعلى السيرفر بنفس مدير الحزم ونفس lockfile.
+- جعل خطوة التثبيت تفشل برسالة واضحة لو lockfile غير متوافق بدلاً من استخدام fallback يخفي المشكلة.
 
-4. **تحديث الخطة/التوثيق الداخلي**
-   - توثيق أن النشر production يستخدم Bun فقط، وأن خطأ npm ci كان بسبب `package-lock.json` قديم.
+4. جعل rollback لا يحول الفشل إلى “كارثة”
+- تعديل خطوة rollback بحيث لو لا يوجد snapshot SSR متوافق، لا تفشل الـ workflow بخطأ إضافي.
+- الرسالة الحالية معناها: “لا يوجد نسخة SSR قديمة نرجع لها”، وليس أن الكود نفسه يحتاج ملف اتصال جديد.
 
-5. **التحقق بعد التنفيذ**
-   - فحص workflow للتأكد أنه لم يعد يستدعي `npm ci` في مسار النشر الطبيعي أو rollback.
-   - التأكد أن `package.json` وملفات lock المعتمدة لا تعيد نفس التعارض.
+5. التحقق النهائي
+- تشغيل فحص TypeScript محلياً للتأكد أن `server` لم يعد يسبب TS2353.
+- التأكد أن build ينتج `dist/server/server.js`.
+- التأكد أن `/deploy-version.json` موجود كـ server route ويعمل بعد النشر.
 
-## النتيجة المتوقعة
-
-بعد تطبيق الخطة وتشغيل workflow مرة أخرى، خطوة `Install dependencies and restart SSR app` لن تفشل بسبب `npm ci`، وسنصل بعدها إما لتشغيل PM2 بنجاح أو لرسالة تشخيص حقيقية عن السيرفر/البورت إن بقيت مشكلة أخرى.
+النتيجة المتوقعة:
+- وقف حلقة أخطاء TanStack نهائياً بتوحيد الإصدارات بدل ترقيع كل خطأ لوحده.
+- عدم الحاجة لإعادة بناء “ملف الاتصال”.
+- النشر إما ينجح، أو يفشل بسبب واضح ومحدد بدون rollback مضلل.
