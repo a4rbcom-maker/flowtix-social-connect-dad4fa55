@@ -9,8 +9,10 @@ on:
 # cancel-in-progress: false → queue new runs instead of killing the running
 # one mid-rsync/PM2-restart (which would leave the server in an inconsistent
 # state). New runs wait until the current deploy finishes cleanly.
+# Note: concurrency.group does NOT support the `env` context, so the app
+# name is hard-coded here. Keep it in sync with the `env.APP_NAME` below.
 concurrency:
-  group: vps-deploy-${{ env.APP_NAME || 'flowtixtools-web' }}
+  group: vps-deploy-flowtixtools-web
   cancel-in-progress: false
 
 env:
