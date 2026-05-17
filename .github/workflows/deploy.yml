@@ -210,32 +210,13 @@ jobs:
           [ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
           [ -f deploy-version.json ] || { echo "ERROR: deploy-version.json missing"; exit 1; }
 
-          # Make sure user-local bun (installed by this script previously) is on PATH
-          export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
-          export PATH="$BUN_INSTALL/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-
-          if ! command -v bun >/dev/null 2>&1; then
-            echo "Bun not found on server — installing automatically…"
-            curl -fsSL https://bun.sh/install | bash
-            export PATH="$BUN_INSTALL/bin:$PATH"
-            # Persist for future non-interactive SSH sessions
-            if [ -f "$HOME/.bashrc" ] && ! grep -q 'BUN_INSTALL' "$HOME/.bashrc"; then
-              {
-                echo ''
-                echo '# Bun (auto-installed by Flowtix deploy)'
-                echo 'export BUN_INSTALL="$HOME/.bun"'
-                echo 'export PATH="$BUN_INSTALL/bin:$PATH"'
-              } >> "$HOME/.bashrc"
-            fi
-          fi
-          command -v bun >/dev/null 2>&1 || { echo "ERROR: bun install failed — please install bun manually on the server"; exit 1; }
-          echo "Bun version on server: $(bun --version)"
-          bun install --production --frozen-lockfile
-
+          # node_modules is shipped from CI — server runs zero installs.
+          [ -d node_modules ] || { echo "ERROR: node_modules missing on server (CI ship failed)"; exit 1; }
           command -v pm2 >/dev/null 2>&1 || { echo "ERROR: pm2 is not installed on the server"; exit 1; }
           command -v node >/dev/null 2>&1 || { echo "ERROR: node is not installed on the server"; exit 1; }
           [ -f scripts/tanstack-node-server.mjs ] || { echo "ERROR: Node SSR runner missing: scripts/tanstack-node-server.mjs"; exit 1; }
           [ -f ecosystem.config.cjs ] || { echo "ERROR: PM2 ecosystem missing: ecosystem.config.cjs"; exit 1; }
+          echo "Node version on server: $(node --version)"
 
           # Helper: check if port is bound. Returns 0 if bound, 1 if free.
           port_is_bound() {
