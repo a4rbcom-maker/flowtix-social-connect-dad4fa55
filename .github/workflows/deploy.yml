@@ -75,6 +75,36 @@ jobs:
           }
           JSON
 
+          # Build manifest.json: every shipped file with relative path, size, sha256.
+          # Used by the server to verify the bundle arrived intact before restart.
+          echo "Building deploy/manifest.json ..."
+          (
+            cd deploy
+            TOTAL_FILES=$(find . -type f ! -name 'manifest.json' | wc -l | tr -d ' ')
+            TOTAL_BYTES=$(find . -type f ! -name 'manifest.json' -exec stat -c '%s' {} + | awk '{s+=$1} END {print s+0}')
+            {
+              printf '{\n'
+              printf '  "generated_at": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              printf '  "sha": "%s",\n' "${GITHUB_SHA}"
+              printf '  "run_id": "%s",\n' "${GITHUB_RUN_ID}"
+              printf '  "total_files": %s,\n' "$TOTAL_FILES"
+              printf '  "total_bytes": %s,\n' "$TOTAL_BYTES"
+              printf '  "files": [\n'
+              find . -type f ! -name 'manifest.json' -printf '%P\n' | LC_ALL=C sort | \
+                awk 'BEGIN{first=1}
+                     { if(!first) printf ",\n"; first=0;
+                       printf "    {\"path\": \"%s\"}", $0 }'
+              printf '\n  ]\n'
+              printf '}\n'
+            } > manifest.json
+
+            # Sidecar: SHA256SUMS for fast server-side verification (sha256sum -c).
+            find . -type f ! -name 'manifest.json' ! -name 'SHA256SUMS' -print0 \
+              | LC_ALL=C sort -z \
+              | xargs -0 sha256sum > SHA256SUMS
+          )
+          echo "Manifest: $(jq -r '.total_files' deploy/manifest.json 2>/dev/null || grep total_files deploy/manifest.json) files, $(wc -l < deploy/SHA256SUMS) checksummed"
+
           echo "MODE=ssr" >> "$GITHUB_ENV"
           echo "SERVER_ENTRY=$SERVER_ENTRY" >> "$GITHUB_ENV"
           echo "DEPLOYED_AT=$DEPLOYED_AT" >> "$GITHUB_ENV"
@@ -211,6 +241,23 @@ jobs:
           cd "$DEPLOY_PATH"
           [ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
           [ -f deploy-version.json ] || { echo "ERROR: deploy-version.json missing"; exit 1; }
+          [ -f manifest.json ] || { echo "ERROR: manifest.json missing — bundle integrity unknown"; exit 1; }
+          [ -f SHA256SUMS ] || { echo "ERROR: SHA256SUMS missing — bundle integrity unknown"; exit 1; }
+
+          echo "=== Verifying bundle against manifest ==="
+          MANIFEST_FILES=$(grep -c '"path"' manifest.json || echo 0)
+          SUMS_FILES=$(wc -l < SHA256SUMS)
+          echo "manifest declares: ${MANIFEST_FILES} files; SHA256SUMS lists: ${SUMS_FILES}"
+          if ! sha256sum --quiet -c SHA256SUMS; then
+            echo "ERROR: checksum verification failed — bundle is corrupted or incomplete"
+            exit 1
+          fi
+          # Check for stray files not in manifest (delete handled by rsync --delete, but verify)
+          ACTUAL_FILES=$(find . -type f ! -name 'manifest.json' ! -name 'SHA256SUMS' | wc -l)
+          if [ "$ACTUAL_FILES" != "$SUMS_FILES" ]; then
+            echo "WARN: file count drift — manifest=${SUMS_FILES} actual=${ACTUAL_FILES}"
+          fi
+          echo "Bundle verified: ${SUMS_FILES} files match manifest checksums"
 
           # node_modules is shipped from CI — server runs zero installs.
           [ -d node_modules ] || { echo "ERROR: node_modules missing on server (CI ship failed)"; exit 1; }
