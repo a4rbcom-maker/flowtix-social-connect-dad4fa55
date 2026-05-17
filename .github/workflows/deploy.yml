@@ -35,6 +35,7 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
           DEPLOY_PATH_SECRET: ${{ secrets.DEPLOY_PATH }}
+          PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
         run: |
           set -euo pipefail
 
