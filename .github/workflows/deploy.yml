@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      integrity_rollback_dry_run:
+        description: "Dry-run integrity_rollback (print chosen snapshot, skip rsync). Forces an integrity failure to exercise the rollback path."
+        type: boolean
+        default: false
 
 # Global deploy lock: at most one deploy run touches the VPS at a time.
 # cancel-in-progress: false → queue new runs instead of killing the running
@@ -403,9 +408,10 @@ jobs:
           # Instead: redirect ssh output to a log file, capture ssh's own
           # exit code directly, then print the log afterwards.
           set +e
+          DRY_RUN_FLAG="${{ inputs.integrity_rollback_dry_run && '1' || '0' }}"
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
             "${DEPLOY_USER}@${SERVER_HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' DEPLOY_SHA='${GITHUB_SHA}' DEPLOY_RUN_ID='${GITHUB_RUN_ID}' DEPLOY_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOYED_AT='${DEPLOYED_AT}' bash -s" >/tmp/install-restart.log 2>&1 <<'EOSSH'
+            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' DEPLOY_SHA='${GITHUB_SHA}' DEPLOY_RUN_ID='${GITHUB_RUN_ID}' DEPLOY_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOYED_AT='${DEPLOYED_AT}' INTEGRITY_ROLLBACK_DRY_RUN='${DRY_RUN_FLAG}' bash -s" >/tmp/install-restart.log 2>&1 <<'EOSSH'
           set -euo pipefail
           cd "$DEPLOY_PATH"
           [ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
@@ -487,6 +493,16 @@ jobs:
               latest_good)
                 echo "→ LAST_GOOD/PREV_SNAPSHOT unusable — restoring from most recent smoke-verified good-* snapshot: $src" ;;
             esac
+            if [ "${INTEGRITY_ROLLBACK_DRY_RUN:-0}" = "1" ]; then
+              echo "🧪 DRY-RUN — skipping rsync. Would have restored:"
+              echo "   source : $src"
+              echo "   target : $DEPLOY_PATH"
+              echo "   excludes: .env .user.ini .htaccess .well-known/"
+              echo "INTEGRITY_ROLLBACK_RESULT=dry_run"
+              echo "INTEGRITY_ROLLBACK_KIND=$kind"
+              echo "INTEGRITY_ROLLBACK_SRC=$src"
+              return 0
+            fi
             rsync -a --delete \
               --exclude='.env' \
               --exclude='.user.ini' \
@@ -499,6 +515,17 @@ jobs:
             echo "INTEGRITY_ROLLBACK_SRC=$src"
             return 0
           }
+
+          # Dry-run hook: force integrity_rollback to run without breaking the
+          # bundle. Triggers immediately after the function is defined and
+          # exits the install step before PM2 is touched.
+          if [ "${INTEGRITY_ROLLBACK_DRY_RUN:-0}" = "1" ]; then
+            echo ""
+            echo "🧪 INTEGRITY_ROLLBACK_DRY_RUN=1 — forcing integrity_rollback path"
+            integrity_rollback "dry-run-forced" || true
+            echo "🧪 Dry-run finished. Exiting install step before PM2 is touched."
+            exit 1
+          fi
 
           echo "=== Verifying bundle against manifest ==="
           # Three independent counts must agree before we touch PM2:
@@ -721,7 +748,14 @@ jobs:
           cat /tmp/install-restart.log || true
 
           if [ "$SSH_EXIT" -ne 0 ]; then
-            if grep -q '^INTEGRITY_ROLLBACK_RESULT=restored' /tmp/install-restart.log; then
+            if grep -q '^INTEGRITY_ROLLBACK_RESULT=dry_run' /tmp/install-restart.log; then
+              ROLLBACK_SRC=$(grep '^INTEGRITY_ROLLBACK_SRC=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
+              ROLLBACK_KIND=$(grep '^INTEGRITY_ROLLBACK_KIND=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
+              echo ""
+              echo "::notice::🧪 integrity_rollback DRY-RUN finished — no files were touched."
+              echo "::notice::Would have restored kind=${ROLLBACK_KIND:-unknown} from: ${ROLLBACK_SRC:-unknown}"
+              echo "FAILURE_REASON=integrity-restored-last-good" >> "$GITHUB_ENV"
+            elif grep -q '^INTEGRITY_ROLLBACK_RESULT=restored' /tmp/install-restart.log; then
               ROLLBACK_SRC=$(grep '^INTEGRITY_ROLLBACK_SRC=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
               ROLLBACK_KIND=$(grep '^INTEGRITY_ROLLBACK_KIND=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
               echo ""
