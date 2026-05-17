@@ -748,7 +748,14 @@ jobs:
           cat /tmp/install-restart.log || true
 
           if [ "$SSH_EXIT" -ne 0 ]; then
-            if grep -q '^INTEGRITY_ROLLBACK_RESULT=restored' /tmp/install-restart.log; then
+            if grep -q '^INTEGRITY_ROLLBACK_RESULT=dry_run' /tmp/install-restart.log; then
+              ROLLBACK_SRC=$(grep '^INTEGRITY_ROLLBACK_SRC=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
+              ROLLBACK_KIND=$(grep '^INTEGRITY_ROLLBACK_KIND=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
+              echo ""
+              echo "::notice::🧪 integrity_rollback DRY-RUN finished — no files were touched."
+              echo "::notice::Would have restored kind=${ROLLBACK_KIND:-unknown} from: ${ROLLBACK_SRC:-unknown}"
+              echo "FAILURE_REASON=integrity-restored-last-good" >> "$GITHUB_ENV"
+            elif grep -q '^INTEGRITY_ROLLBACK_RESULT=restored' /tmp/install-restart.log; then
               ROLLBACK_SRC=$(grep '^INTEGRITY_ROLLBACK_SRC=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
               ROLLBACK_KIND=$(grep '^INTEGRITY_ROLLBACK_KIND=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
               echo ""
