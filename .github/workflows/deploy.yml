@@ -422,12 +422,29 @@ jobs:
           echo "  Extra on VPS (on VPS but not in CI):   ${EXTRA_COUNT}"
 
           if [ "$MISSING_COUNT" -gt 0 ]; then
-            echo "--- Missing files (first 30) ---"
+            echo "--- Missing files (first 30, all paths) ---"
             echo "$MISSING" | head -n 30
+            MISSING_NM=$(echo "$MISSING" | grep -c '^\./node_modules/' || true)
+            MISSING_APP=$(echo "$MISSING" | grep -vc '^\./node_modules/' || true)
+            echo "  missing inside node_modules: ${MISSING_NM}"
+            echo "  missing outside node_modules: ${MISSING_APP}"
+            if [ "${MISSING_APP:-0}" -gt 0 ]; then
+              echo "--- Missing app files (first 30, excluding node_modules) ---"
+              echo "$MISSING" | grep -v '^\./node_modules/' | head -n 30
+            fi
           fi
           if [ "$EXTRA_COUNT" -gt 0 ]; then
-            echo "--- Extra files (first 30) ---"
+            echo "--- Extra files (first 30, all paths) ---"
             echo "$EXTRA" | head -n 30
+            EXTRA_NM=$(echo "$EXTRA" | grep -c '^\./node_modules/' || true)
+            EXTRA_APP=$(echo "$EXTRA" | grep -vc '^\./node_modules/' || true)
+            echo "  extra inside node_modules: ${EXTRA_NM}"
+            echo "  extra outside node_modules: ${EXTRA_APP}"
+            if [ "${EXTRA_APP:-0}" -gt 0 ]; then
+              echo "--- Extra app files (first 30, excluding node_modules) ---"
+              echo "$EXTRA" | grep -v '^\./node_modules/' | head -n 30
+            fi
+            echo "Hint: 'extra' files usually mean rsync --delete couldn't remove them (permissions) or a stale prior deploy left leftovers."
           fi
 
           # Hard gate: VPS file count MUST equal manifest count exactly.
