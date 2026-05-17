@@ -784,6 +784,16 @@ jobs:
           PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
         run: |
           set -euo pipefail
+
+          # Skip rollback when the failure is "app is fine, domain proxy is wrong".
+          # Reverting to a previous build will NOT fix the reverse proxy, and would
+          # only mask a working app behind a broken edge.
+          if [ "${FAILURE_REASON:-}" = "public-domain-proxy-misconfigured" ]; then
+            echo "::warning::Skipping auto-rollback — failure reason is ${FAILURE_REASON}."
+            echo "::warning::The new build is healthy on 127.0.0.1:${APP_PORT}. Fix the domain proxy/upstream instead."
+            exit 0
+          fi
+
           DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
           SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
           SSH_PORT="${SSH_PORT:-22}"
