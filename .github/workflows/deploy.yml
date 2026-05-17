@@ -206,11 +206,8 @@ jobs:
 
           command -v pm2 >/dev/null 2>&1 || { echo "ERROR: pm2 is not installed on the server"; exit 1; }
           command -v node >/dev/null 2>&1 || { echo "ERROR: node is not installed on the server"; exit 1; }
-          [ -x node_modules/.bin/srvx ] || { echo "ERROR: srvx is not installed in production dependencies"; exit 1; }
-
-          if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
-            pm2 delete "$APP_NAME" || true
-          fi
+          [ -f scripts/tanstack-node-server.mjs ] || { echo "ERROR: Node SSR runner missing: scripts/tanstack-node-server.mjs"; exit 1; }
+          [ -f ecosystem.config.cjs ] || { echo "ERROR: PM2 ecosystem missing: ecosystem.config.cjs"; exit 1; }
 
           # Helper: check if port is bound. Returns 0 if bound, 1 if free.
           port_is_bound() {
@@ -227,29 +224,45 @@ jobs:
             return 1
           }
 
-          # Force-free the port in case a zombie process (or a previous srvx
-          # not managed by this PM2 name) is still bound to it.
-          PORT_FREE=0
-          for attempt in 1 2 3 4 5; do
-            if command -v fuser >/dev/null 2>&1; then
-              fuser -k "${APP_PORT}/tcp" 2>/dev/null || true
-            elif command -v lsof >/dev/null 2>&1; then
-              PIDS=$(lsof -ti tcp:"${APP_PORT}" 2>/dev/null || true)
-              [ -n "$PIDS" ] && kill -9 $PIDS 2>/dev/null || true
-            fi
-            sleep 1
-            if ! port_is_bound "${APP_PORT}"; then
-              echo "Port ${APP_PORT} is free."
-              PORT_FREE=1
-              break
-            fi
-            echo "Port ${APP_PORT} still busy (attempt $attempt)…"
-          done
-
-          if [ "$PORT_FREE" -ne 1 ]; then
-            echo "ERROR: Port ${APP_PORT} is still in use before starting srvx. Aborting."
+          print_port_diagnostics() {
+            echo "=== Port ${APP_PORT} diagnostics ==="
             (command -v ss >/dev/null 2>&1 && ss -ltnp "sport = :${APP_PORT}") || true
             (command -v lsof >/dev/null 2>&1 && lsof -iTCP:"${APP_PORT}" -sTCP:LISTEN) || true
+            pm2 list || true
+          }
+
+          port_pids() {
+            if command -v lsof >/dev/null 2>&1; then
+              lsof -tiTCP:"${APP_PORT}" -sTCP:LISTEN 2>/dev/null || true
+              return 0
+            fi
+            if command -v ss >/dev/null 2>&1; then
+              ss -ltnp "sport = :${APP_PORT}" 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' || true
+              return 0
+            fi
+          }
+
+          app_owns_port() {
+            local app_pid pids
+            app_pid="$(pm2 pid "$APP_NAME" 2>/dev/null | tr -d '[:space:]' || true)"
+            pids="$(port_pids | tr '\n' ' ')"
+            [ -n "$app_pid" ] && [ "$app_pid" != "0" ] && echo " $pids " | grep -q " $app_pid "
+          }
+
+          for old_app in flowtix flowtixtools flowtixtools-ssr flowtixtools-srvx; do
+            if [ "$old_app" != "$APP_NAME" ] && pm2 describe "$old_app" >/dev/null 2>&1; then
+              echo "Removing old PM2 app: $old_app"
+              pm2 delete "$old_app" || true
+            fi
+          done
+
+          pkill -f "$DEPLOY_PATH/node_modules/.bin/srvx" 2>/dev/null || true
+          pkill -f "$DEPLOY_PATH/scripts/tanstack-node-server.mjs" 2>/dev/null || true
+          pkill -f "$DEPLOY_PATH/dist/server/server.js" 2>/dev/null || true
+
+          if port_is_bound "${APP_PORT}" && ! app_owns_port; then
+            echo "ERROR: Port ${APP_PORT} is in use by a process outside PM2 app ${APP_NAME}. Aborting instead of killing an unknown service."
+            print_port_diagnostics
             exit 1
           fi
 
@@ -269,29 +282,28 @@ jobs:
           fi
           export SUPABASE_URL="${SUPABASE_URL:-${VITE_SUPABASE_URL:-}}"
           export SUPABASE_PUBLISHABLE_KEY="${SUPABASE_PUBLISHABLE_KEY:-${VITE_SUPABASE_PUBLISHABLE_KEY:-}}"
+          export APP_NAME APP_PORT DEPLOY_PATH
+          export NODE_ENV=production
+          export DEPLOY_SHA DEPLOY_RUN_ID DEPLOY_REPOSITORY DEPLOYED_AT
 
-          NODE_ENV=production \
-          DEPLOY_SHA="$DEPLOY_SHA" \
-          DEPLOY_RUN_ID="$DEPLOY_RUN_ID" \
-          DEPLOY_REPOSITORY="$DEPLOY_REPOSITORY" \
-          DEPLOYED_AT="$DEPLOYED_AT" \
-            pm2 start node_modules/.bin/srvx --name "$APP_NAME" --interpreter node --cwd "$DEPLOY_PATH" --update-env -- serve --entry "$SERVER_ENTRY" --static dist/client --prod --host 127.0.0.1 --port "$APP_PORT"
+          pm2 startOrReload ecosystem.config.cjs --only "$APP_NAME" --update-env
           pm2 save
 
-          # Confirm srvx actually bound to the port after start.
+          # Confirm the Node SSR app actually bound to the port after start.
           BOUND=0
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
             sleep 1
             if port_is_bound "${APP_PORT}"; then
-              echo "srvx is listening on port ${APP_PORT}."
+              echo "Node SSR app is listening on port ${APP_PORT}."
               BOUND=1
               break
             fi
-            echo "Waiting for srvx to bind ${APP_PORT} (attempt $attempt)…"
+            echo "Waiting for Node SSR app to bind ${APP_PORT} (attempt $attempt)…"
           done
 
           if [ "$BOUND" -ne 1 ]; then
-            echo "ERROR: srvx did not bind to port ${APP_PORT} after start."
+            echo "ERROR: Node SSR app did not bind to port ${APP_PORT} after start."
+            print_port_diagnostics
             pm2 describe "$APP_NAME" || true
             pm2 logs "$APP_NAME" --lines 120 --nostream || true
             exit 1
