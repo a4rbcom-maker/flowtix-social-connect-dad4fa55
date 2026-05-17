@@ -359,6 +359,7 @@ jobs:
 
           rsync -a --delete \
             --exclude='node_modules/' \
+            --exclude='.env' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
             --exclude='.well-known/' \
