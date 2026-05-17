@@ -1091,18 +1091,27 @@ jobs:
           fi
 
           RESTORED_SHORT=$(echo "$ROLLBACK_INFO" | grep '^ROLLBACK_SHORT=' | head -n1 | cut -d= -f2)
-          echo "Rolled back to commit ${RESTORED_SHORT:-unknown}"
+          ROLLBACK_SRC=$(echo "$ROLLBACK_INFO" | grep '^ROLLBACK_SRC=' | head -n1 | cut -d= -f2-)
+          PUBLIC_URL_SOURCE=$([ -n "${PUBLIC_URL_SECRET:-}" ] && echo "PUBLIC_URL secret" || echo "fallback list")
+          echo "Rolled back to commit ${RESTORED_SHORT:-unknown} (from snapshot: ${ROLLBACK_SRC:-unknown})"
+          echo "→ Verifying rollback against URLs from ${PUBLIC_URL_SOURCE}: $(for u in $PUBLIC_URLS; do mask_url "$u"; done | tr '\n' ' ')"
 
           if [ -n "${RESTORED_SHORT:-}" ] && [ "$RESTORED_SHORT" != "unknown" ]; then
+            LAST_TRIED=""
             for i in $(seq 1 12); do
               for PUBLIC_URL in $PUBLIC_URLS; do
-                BODY=$(curl -fsS --max-time 20 "${PUBLIC_URL%/}/deploy-version.json" || true)
+                LAST_TRIED="${PUBLIC_URL%/}"
+                BODY=$(curl -fsS --max-time 20 "${LAST_TRIED}/deploy-version.json" || true)
                 echo "$BODY"
                 if echo "$BODY" | grep -q "$RESTORED_SHORT"; then
-                  echo "✅ Public domain now serves rolled-back commit ${RESTORED_SHORT} via ${PUBLIC_URL%/}"
+                  echo "✅ Rollback verified — ${LAST_TRIED} now serves commit ${RESTORED_SHORT}"
+                  echo "   (snapshot source: ${ROLLBACK_SRC:-unknown}, PUBLIC_URL from: ${PUBLIC_URL_SOURCE})"
                   exit 0
                 fi
               done
               sleep 5
             done
+            echo "::warning::Rollback applied to commit ${RESTORED_SHORT} but verification timed out."
+            echo "::warning::Checked URL(s) from ${PUBLIC_URL_SOURCE}: $(for u in $PUBLIC_URLS; do mask_url "$u"; done | tr '\n' ' ')"
+            echo "::warning::Last URL tried: $(mask_url "${LAST_TRIED:-none}")"
           fi
