@@ -144,8 +144,11 @@ jobs:
             /www/wwwroot/*flowtix*) : ;;
             *) echo "::error::Refusing to deploy outside Flowtix path: $DEPLOY_PATH"; exit 1 ;;
           esac
+          BACKUPS_DIR="$(dirname "$DEPLOY_PATH")/flowtixtools-backups"
           echo "DEPLOY_PATH=$DEPLOY_PATH"
+          echo "BACKUPS_DIR=$BACKUPS_DIR"
           echo "DEPLOY_PATH=$DEPLOY_PATH" >> "$GITHUB_ENV"
+          echo "BACKUPS_DIR=$BACKUPS_DIR" >> "$GITHUB_ENV"
 
       - name: Snapshot current site
         env:
