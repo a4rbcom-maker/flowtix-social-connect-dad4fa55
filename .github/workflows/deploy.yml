@@ -150,7 +150,6 @@ jobs:
           echo "Creating snapshot: $SNAP"
           mkdir -p "$SNAP"
           rsync -a --delete \
-            --exclude='node_modules/' \
             --exclude='.env' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
