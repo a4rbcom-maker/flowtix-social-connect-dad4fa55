@@ -353,7 +353,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
         <div className="border-t border-border p-3 shrink-0">
           {sidebarOpen ? (
             <div className="space-y-2">
-              {userPlan.toLowerCase() === "free" && (
+              {isFree ? (
                 <Link
                   to="/dashboard/profile"
                   onClick={closeOnMobile}
@@ -367,6 +367,16 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                     <div className="truncate text-[10.5px] text-primary">{upgradeLabel} →</div>
                   </div>
                 </Link>
+              ) : (
+                <div className="flex items-center gap-2.5 rounded-lg border border-primary/30 bg-gradient-to-br from-primary/10 to-[oklch(0.66_0.26_320)]/10 p-2.5">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-primary to-[oklch(0.66_0.26_320)] text-primary-foreground">
+                    <Sparkles className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[12px] font-semibold text-foreground">{planLabel}</div>
+                    <div className="truncate text-[10.5px] text-muted-foreground">{lang === "ar" ? "اشتراك نشط" : "Active subscription"}</div>
+                  </div>
+                </div>
               )}
 
               <div className="flex items-center gap-2.5 rounded-lg px-1.5 py-1">
