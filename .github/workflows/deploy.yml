@@ -210,8 +210,24 @@ jobs:
             pm2 delete "$APP_NAME" || true
           fi
 
+          # Helper: check if port is bound. Returns 0 if bound, 1 if free.
+          port_is_bound() {
+            local p="$1"
+            if command -v ss >/dev/null 2>&1; then
+              ss -ltn "sport = :${p}" 2>/dev/null | grep -q ":${p}" && return 0
+            fi
+            if command -v lsof >/dev/null 2>&1; then
+              lsof -iTCP:"${p}" -sTCP:LISTEN -t >/dev/null 2>&1 && return 0
+            fi
+            if command -v netstat >/dev/null 2>&1; then
+              netstat -ltn 2>/dev/null | grep -q ":${p} " && return 0
+            fi
+            return 1
+          }
+
           # Force-free the port in case a zombie process (or a previous srvx
           # not managed by this PM2 name) is still bound to it.
+          PORT_FREE=0
           for attempt in 1 2 3 4 5; do
             if command -v fuser >/dev/null 2>&1; then
               fuser -k "${APP_PORT}/tcp" 2>/dev/null || true
@@ -220,13 +236,20 @@ jobs:
               [ -n "$PIDS" ] && kill -9 $PIDS 2>/dev/null || true
             fi
             sleep 1
-            if ! (command -v ss >/dev/null 2>&1 && ss -ltn "sport = :${APP_PORT}" | grep -q ":${APP_PORT}") \
-               && ! (command -v netstat >/dev/null 2>&1 && netstat -ltn 2>/dev/null | grep -q ":${APP_PORT} "); then
+            if ! port_is_bound "${APP_PORT}"; then
               echo "Port ${APP_PORT} is free."
+              PORT_FREE=1
               break
             fi
             echo "Port ${APP_PORT} still busy (attempt $attempt)…"
           done
+
+          if [ "$PORT_FREE" -ne 1 ]; then
+            echo "ERROR: Port ${APP_PORT} is still in use before starting srvx. Aborting."
+            (command -v ss >/dev/null 2>&1 && ss -ltnp "sport = :${APP_PORT}") || true
+            (command -v lsof >/dev/null 2>&1 && lsof -iTCP:"${APP_PORT}" -sTCP:LISTEN) || true
+            exit 1
+          fi
 
           if [ -f .env ]; then
             while IFS= read -r line || [ -n "$line" ]; do
@@ -252,6 +275,25 @@ jobs:
           DEPLOYED_AT="$DEPLOYED_AT" \
             pm2 start node_modules/.bin/srvx --name "$APP_NAME" --interpreter node --cwd "$DEPLOY_PATH" --update-env -- serve --entry "$SERVER_ENTRY" --static dist/client --prod --host 127.0.0.1 --port "$APP_PORT"
           pm2 save
+
+          # Confirm srvx actually bound to the port after start.
+          BOUND=0
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            sleep 1
+            if port_is_bound "${APP_PORT}"; then
+              echo "srvx is listening on port ${APP_PORT}."
+              BOUND=1
+              break
+            fi
+            echo "Waiting for srvx to bind ${APP_PORT} (attempt $attempt)…"
+          done
+
+          if [ "$BOUND" -ne 1 ]; then
+            echo "ERROR: srvx did not bind to port ${APP_PORT} after start."
+            pm2 describe "$APP_NAME" || true
+            pm2 logs "$APP_NAME" --lines 120 --nostream || true
+            exit 1
+          fi
           EOSSH
 
       - name: Verify SSR app locally on server
