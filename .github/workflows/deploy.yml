@@ -5,6 +5,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  APP_NAME: flowtixtools-web
+  APP_PORT: 3000
+  BACKUPS_DIR: /www/backups/flowtixtools
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -23,64 +28,95 @@ jobs:
       - name: Build project
         run: bun run build
 
-      # ──────────────────────────────────────────────────────────────────
-      # Prepare a clean static ./deploy/ folder
-      # ──────────────────────────────────────────────────────────────────
-      - name: Prepare deploy bundle (static)
+      - name: Prepare deploy bundle
         run: |
           set -euo pipefail
 
           echo "=== Build output tree ==="
-          for d in dist dist/client .output .output/public; do
+          for d in dist dist/client dist/server .output .output/public .output/server; do
             if [ -d "$d" ]; then
               echo "--- $d ---"
-              ls -la "$d" | head -n 40
+              ls -la "$d" | head -n 60
             fi
           done
 
-          STATIC_SRC=""
-          if [ -d "dist/client" ]; then
-            STATIC_SRC="dist/client"
-          elif [ -d ".output/public" ]; then
-            STATIC_SRC=".output/public"
-          fi
-
-          if [ -z "$STATIC_SRC" ]; then
-            echo "::error::No static build folder found (dist/client or .output/public)."
-            exit 1
-          fi
-
           rm -rf deploy
           mkdir -p deploy
-          cp -r "$STATIC_SRC"/. deploy/
 
-          # SPA shell fallback
-          if [ ! -f "deploy/index.html" ]; then
-            if [ -f "deploy/_shell/index.html" ]; then
-              echo "Using _shell/index.html as SPA entry"
-              cp deploy/_shell/index.html deploy/index.html
-            else
-              echo "::error::No index.html in built static output."
-              find deploy -maxdepth 2 -type f | head -n 40 || true
-              exit 1
+          MODE=""
+          SERVER_ENTRY=""
+          for entry in \
+            dist/server/server.js \
+            dist/server/index.mjs \
+            dist/server/index.js \
+            .output/server/index.mjs \
+            .output/server/index.js; do
+            if [ -f "$entry" ]; then
+              MODE="ssr"
+              SERVER_ENTRY="$entry"
+              break
             fi
-          fi
+          done
 
-          # Deploy version marker
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          cat > deploy/deploy-version.json <<JSON
+          cat > /tmp/deploy-version.json <<JSON
           {
             "sha": "${GITHUB_SHA}",
             "short_sha": "${SHORT_SHA}",
             "run_id": "${GITHUB_RUN_ID}",
             "repo": "${GITHUB_REPOSITORY}",
             "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "mode": "static"
+            "mode": "${MODE:-static}"
           }
           JSON
 
+          if [ "$MODE" = "ssr" ]; then
+            echo "Deploy MODE = ssr"
+            cp -r dist deploy/dist
+            [ -d ".output" ] && cp -r .output deploy/.output
+            cp package.json deploy/package.json
+            [ -f "bun.lockb" ] && cp bun.lockb deploy/bun.lockb
+            [ -f "bun.lock" ] && cp bun.lock deploy/bun.lock
+            [ -f "package-lock.json" ] && cp package-lock.json deploy/package-lock.json
+            cp /tmp/deploy-version.json deploy/deploy-version.json
+            if [ -d "deploy/dist/client" ]; then
+              cp /tmp/deploy-version.json deploy/dist/client/deploy-version.json
+            fi
+            echo "MODE=ssr" >> "$GITHUB_ENV"
+            echo "SERVER_ENTRY=$SERVER_ENTRY" >> "$GITHUB_ENV"
+          else
+            STATIC_SRC=""
+            if [ -d "dist/client" ]; then
+              STATIC_SRC="dist/client"
+            elif [ -d ".output/public" ]; then
+              STATIC_SRC=".output/public"
+            fi
+
+            if [ -z "$STATIC_SRC" ]; then
+              echo "::error::Build produced neither an SSR server entry nor a static client folder."
+              find dist .output -maxdepth 3 -type f 2>/dev/null | head -n 80 || true
+              exit 1
+            fi
+
+            echo "Deploy MODE = static (source: $STATIC_SRC)"
+            cp -r "$STATIC_SRC"/. deploy/
+            if [ ! -f "deploy/index.html" ]; then
+              if [ -f "deploy/_shell/index.html" ]; then
+                echo "Using _shell/index.html as SPA entry"
+                cp deploy/_shell/index.html deploy/index.html
+              else
+                echo "::error::Static output has no index.html and no _shell/index.html."
+                find deploy -maxdepth 2 -type f | head -n 80 || true
+                exit 1
+              fi
+            fi
+            cp /tmp/deploy-version.json deploy/deploy-version.json
+            echo "MODE=static" >> "$GITHUB_ENV"
+            echo "SERVER_ENTRY=" >> "$GITHUB_ENV"
+          fi
+
           echo "=== ./deploy ready ==="
-          ls -la deploy | head -n 30
+          find deploy -maxdepth 3 -type f | head -n 120
 
       - name: Setup SSH key
         env:
@@ -99,9 +135,6 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "$SSH_PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-      # ──────────────────────────────────────────────────────────────────
-      # Resolve DEPLOY_PATH from secret with safe default, no Nginx reads
-      # ──────────────────────────────────────────────────────────────────
       - name: Resolve deploy path
         env:
           DEPLOY_PATH_SECRET: ${{ secrets.DEPLOY_PATH }}
@@ -115,9 +148,6 @@ jobs:
           echo "DEPLOY_PATH=$DEPLOY_PATH"
           echo "DEPLOY_PATH=$DEPLOY_PATH" >> "$GITHUB_ENV"
 
-      # ──────────────────────────────────────────────────────────────────
-      # Snapshot the current live site before overwriting (for rollback)
-      # ──────────────────────────────────────────────────────────────────
       - name: Snapshot current site
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
@@ -133,11 +163,9 @@ jobs:
 
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
             "${DEPLOY_USER}@${SERVER_HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' bash -s" <<'EOSSH'
+            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' bash -s" <<'EOSSH'
           set -e
-          BACKUPS_DIR="/www/backups/flowtixtools"
           mkdir -p "$BACKUPS_DIR"
-
           if [ ! -d "$DEPLOY_PATH" ] || [ -z "$(ls -A "$DEPLOY_PATH" 2>/dev/null || true)" ]; then
             echo "No existing site to snapshot — skipping."
             exit 0
@@ -148,26 +176,19 @@ jobs:
             PREV_SHA=$(grep -o '"short_sha"[[:space:]]*:[[:space:]]*"[^"]*"' "$DEPLOY_PATH/deploy-version.json" | head -n1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "none")
             [ -z "$PREV_SHA" ] && PREV_SHA="none"
           fi
-          TS=$(date -u +%Y%m%d%H%M%S)
-          SNAP="$BACKUPS_DIR/${TS}-${PREV_SHA}"
+          SNAP="$BACKUPS_DIR/$(date -u +%Y%m%d%H%M%S)-${PREV_SHA}"
           echo "Creating snapshot: $SNAP"
           mkdir -p "$SNAP"
           rsync -a --delete \
+            --exclude='node_modules/' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
             --exclude='.well-known/' \
             "$DEPLOY_PATH/" "$SNAP/"
           echo "$SNAP" > "$BACKUPS_DIR/PREV_SNAPSHOT"
-
-          # Keep only the 5 most recent snapshots
           ls -1dt "$BACKUPS_DIR"/[0-9]* 2>/dev/null | tail -n +6 | xargs -r rm -rf
-          echo "Snapshots retained:"
-          ls -1dt "$BACKUPS_DIR"/[0-9]* 2>/dev/null || true
           EOSSH
 
-      # ──────────────────────────────────────────────────────────────────
-      # Rsync static bundle to web root (no Nginx/PM2 edits)
-      # ──────────────────────────────────────────────────────────────────
       - name: Deploy bundle via rsync
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
@@ -190,6 +211,7 @@ jobs:
             "${DEPLOY_USER}@${SERVER_HOST}" "mkdir -p ${DEPLOY_PATH}"
 
           rsync -avz --delete \
+            --exclude='node_modules/' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
             --exclude='.well-known/' \
@@ -198,10 +220,7 @@ jobs:
             ./deploy/ \
             "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/"
 
-      # ──────────────────────────────────────────────────────────────────
-      # Verify files landed on server
-      # ──────────────────────────────────────────────────────────────────
-      - name: Verify files on server
+      - name: Verify files on server and restart app
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -216,48 +235,66 @@ jobs:
 
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
             "${DEPLOY_USER}@${SERVER_HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' bash -s" <<'EOSSH'
+            "DEPLOY_PATH='${DEPLOY_PATH}' MODE='${MODE}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' bash -s" <<'EOSSH'
           set -e
           cd "$DEPLOY_PATH"
           echo "=== Top of $DEPLOY_PATH ==="
-          ls -la | head -n 40
-          [ -f index.html ] || { echo "ERROR: index.html missing"; exit 1; }
+          ls -la | head -n 60
           [ -f deploy-version.json ] || { echo "ERROR: deploy-version.json missing"; exit 1; }
-          echo "=== deploy-version.json ==="
           cat deploy-version.json
+
+          if [ "$MODE" = "ssr" ]; then
+            [ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
+            if command -v bun >/dev/null 2>&1; then
+              bun install --production
+              RUNNER="bun"
+            else
+              npm ci --omit=dev
+              RUNNER="node"
+            fi
+            if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
+              pm2 delete "$APP_NAME" || true
+            fi
+            PORT="$APP_PORT" NODE_ENV=production pm2 start "$SERVER_ENTRY" --name "$APP_NAME" --interpreter "$RUNNER" --update-env
+            pm2 save
+            for i in $(seq 1 20); do
+              if curl -fsS "http://127.0.0.1:${APP_PORT}/deploy-version.json" >/dev/null; then
+                echo "SSR app is responding"
+                exit 0
+              fi
+              if [ "$i" -eq 20 ]; then
+                echo "ERROR: SSR app not responding"
+                pm2 logs "$APP_NAME" --lines 120 --nostream || true
+                exit 1
+              fi
+              sleep 2
+            done
+          else
+            [ -f index.html ] || { echo "ERROR: index.html missing"; exit 1; }
+            if command -v pm2 >/dev/null 2>&1 && pm2 describe "$APP_NAME" >/dev/null 2>&1; then
+              pm2 delete "$APP_NAME" || true
+              pm2 save || true
+            fi
+          fi
           EOSSH
 
-      # ──────────────────────────────────────────────────────────────────
-      # Public verification — the domain must serve this commit
-      # ──────────────────────────────────────────────────────────────────
       - name: Verify public site shows this commit
-        id: verify_public
         run: |
           set -e
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
           URL_PRIMARY="https://www.flowtixtools.com/deploy-version.json"
-          OK=0
           for i in $(seq 1 12); do
             BODY=$(curl -fsS --max-time 20 "$URL_PRIMARY" || true)
             echo "$BODY"
             if echo "$BODY" | grep -q "$SHORT_SHA"; then
               echo "✅ Public site serves commit ${SHORT_SHA}"
-              OK=1
-              break
+              exit 0
             fi
             sleep 5
           done
-          if [ "$OK" -ne 1 ]; then
-            echo "::error::Public site did not update to commit ${SHORT_SHA} within timeout"
-            exit 1
-          fi
+          echo "::error::Public site did not update to commit ${SHORT_SHA} within timeout"
+          exit 1
 
-          echo "--- Homepage headers ---"
-          curl -fsSI --max-time 20 https://www.flowtixtools.com/ | head -n 20 || true
-
-      # ──────────────────────────────────────────────────────────────────
-      # Record this deploy as LAST_GOOD (snapshot of what is now live)
-      # ──────────────────────────────────────────────────────────────────
       - name: Record LAST_GOOD snapshot
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
@@ -274,13 +311,13 @@ jobs:
 
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
             "${DEPLOY_USER}@${SERVER_HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' SHORT_SHA='${SHORT_SHA}' bash -s" <<'EOSSH'
+            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' SHORT_SHA='${SHORT_SHA}' bash -s" <<'EOSSH'
           set -e
-          BACKUPS_DIR="/www/backups/flowtixtools"
           mkdir -p "$BACKUPS_DIR"
-          TS=$(date -u +%Y%m%d%H%M%S)
-          GOOD="$BACKUPS_DIR/good-${TS}-${SHORT_SHA}"
+          GOOD="$BACKUPS_DIR/good-$(date -u +%Y%m%d%H%M%S)-${SHORT_SHA}"
+          mkdir -p "$GOOD"
           rsync -a --delete \
+            --exclude='node_modules/' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
             --exclude='.well-known/' \
@@ -290,9 +327,6 @@ jobs:
           ls -1dt "$BACKUPS_DIR"/good-* 2>/dev/null | tail -n +6 | xargs -r rm -rf
           EOSSH
 
-      # ──────────────────────────────────────────────────────────────────
-      # AUTO ROLLBACK on any failure above (snapshot/deploy/verify)
-      # ──────────────────────────────────────────────────────────────────
       - name: Auto rollback on failure
         if: failure()
         env:
@@ -316,19 +350,17 @@ jobs:
             *) echo "::error::Refusing to rollback outside Flowtix path: $DEPLOY_PATH"; exit 1 ;;
           esac
 
-          echo "⚠️ Deploy failed — attempting automatic rollback to LAST_GOOD"
+          echo "⚠️ Deploy failed — attempting automatic rollback"
 
           ROLLBACK_INFO=$(ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
             "${DEPLOY_USER}@${SERVER_HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' bash -s" <<'EOSSH'
+            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' bash -s" <<'EOSSH'
           set -e
-          BACKUPS_DIR="/www/backups/flowtixtools"
           SRC=""
           if [ -f "$BACKUPS_DIR/LAST_GOOD" ]; then
             SRC=$(cat "$BACKUPS_DIR/LAST_GOOD")
           fi
           if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
-            # fallback to the snapshot we just took before this failed deploy
             if [ -f "$BACKUPS_DIR/PREV_SNAPSHOT" ]; then
               SRC=$(cat "$BACKUPS_DIR/PREV_SNAPSHOT")
             fi
@@ -337,18 +369,40 @@ jobs:
             echo "ROLLBACK_RESULT=none"
             exit 0
           fi
-          case "$DEPLOY_PATH" in
-            /www/wwwroot/*flowtix*) : ;;
-            *) echo "ROLLBACK_RESULT=refused"; exit 0 ;;
-          esac
+
           rsync -a --delete \
+            --exclude='node_modules/' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
             --exclude='.well-known/' \
             "$SRC/" "$DEPLOY_PATH/"
+
+          cd "$DEPLOY_PATH"
+          ENTRY=""
+          for entry in dist/server/server.js dist/server/index.mjs dist/server/index.js .output/server/index.mjs .output/server/index.js; do
+            if [ -f "$entry" ]; then ENTRY="$entry"; break; fi
+          done
+          if [ -n "$ENTRY" ]; then
+            if command -v bun >/dev/null 2>&1; then
+              bun install --production
+              RUNNER="bun"
+            else
+              npm ci --omit=dev
+              RUNNER="node"
+            fi
+            if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
+              pm2 delete "$APP_NAME" || true
+            fi
+            PORT="$APP_PORT" NODE_ENV=production pm2 start "$ENTRY" --name "$APP_NAME" --interpreter "$RUNNER" --update-env
+            pm2 save
+          elif command -v pm2 >/dev/null 2>&1 && pm2 describe "$APP_NAME" >/dev/null 2>&1; then
+            pm2 delete "$APP_NAME" || true
+            pm2 save || true
+          fi
+
           RESTORED_SHA="unknown"
           if [ -f "$DEPLOY_PATH/deploy-version.json" ]; then
-            RESTORED_SHA=$(grep -o '"short_sha"[[:space:]]*:[[:space:]]*"[^"]*"' "$DEPLOY_PATH/deploy-version.json" | head -n1 | sed 's/.*"\([^"]*\)"$/\1/')
+            RESTORED_SHA=$(grep -o '"short_sha"[[:space:]]*:[[:space:]]*"[^"]*"' "$DEPLOY_PATH/deploy-version.json" | head -n1 | sed 's/.*"\([^"]*\)"$/\1/' || echo unknown)
           fi
           echo "ROLLBACK_RESULT=ok"
           echo "ROLLBACK_SRC=$SRC"
@@ -359,24 +413,19 @@ jobs:
           echo "$ROLLBACK_INFO"
 
           if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=none"; then
-            echo "::warning::No previous snapshot found — site left as-is. (First deploy?)"
+            echo "::warning::No previous snapshot found — site left as-is."
             exit 0
-          fi
-          if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=refused"; then
-            echo "::error::Rollback refused (path safety check)"
-            exit 1
           fi
 
           RESTORED_SHA=$(echo "$ROLLBACK_INFO" | grep '^ROLLBACK_SHA=' | head -n1 | cut -d= -f2)
           echo "🔄 Rolled back to commit ${RESTORED_SHA:-unknown}"
 
-          # Verify rollback served publicly
           if [ -n "${RESTORED_SHA:-}" ] && [ "$RESTORED_SHA" != "unknown" ]; then
             for i in $(seq 1 10); do
               BODY=$(curl -fsS --max-time 20 "https://www.flowtixtools.com/deploy-version.json" || true)
               if echo "$BODY" | grep -q "$RESTORED_SHA"; then
                 echo "✅ Public site now serves rolled-back commit ${RESTORED_SHA}"
-                break
+                exit 0
               fi
               sleep 5
             done
