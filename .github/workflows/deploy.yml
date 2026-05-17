@@ -424,6 +424,24 @@ jobs:
           # at $DEPLOY_PATH are already broken (PM2 still has the old in-memory
           # code, but any restart now would crash). Restore LAST_GOOD onto disk
           # BEFORE we even touch PM2, so the next restart serves a known-good build.
+          # Diagnostic: print which required files are present/missing inside a snapshot.
+          diagnose_snapshot() {
+            local candidate="$1" label="$2"
+            echo "  ↳ ${label} diagnostic for: ${candidate:-<empty>}" >&2
+            if [ -z "$candidate" ] || [ ! -d "$candidate" ]; then
+              echo "      ✗ directory missing" >&2
+              return
+            fi
+            for f in dist/server/server.js scripts/tanstack-node-server.mjs ecosystem.config.cjs; do
+              if [ -f "$candidate/$f" ]; then echo "      ✓ $f" >&2
+              else echo "      ✗ $f (missing)" >&2; fi
+            done
+            if [ -d "$candidate/node_modules" ]; then echo "      ✓ node_modules/" >&2
+            else echo "      ✗ node_modules/ (missing)" >&2; fi
+          }
+
+          # Strict check — used for LAST_GOOD and good-* (smoke-test verified
+          # snapshots which MUST be fully runnable as-is).
           is_valid_ssr_snapshot() {
             local candidate="$1"
             [ -n "$candidate" ] \
@@ -434,33 +452,56 @@ jobs:
               && [ -d "$candidate/node_modules" ]
           }
 
+          # Looser check — used for PREV_SNAPSHOT only. PREV_SNAPSHOT captures
+          # whatever was on disk before this deploy, which may pre-date some
+          # newer files (e.g. scripts/tanstack-node-server.mjs added in a
+          # later commit). We require the bare minimum needed for PM2 to
+          # restart the previous build: SSR entry + ecosystem + node_modules.
+          # scripts/tanstack-node-server.mjs is preferred but not required —
+          # the previous build may have used a different runner.
+          is_runnable_prev_snapshot() {
+            local candidate="$1"
+            [ -n "$candidate" ] \
+              && [ -d "$candidate" ] \
+              && [ -f "$candidate/dist/server/server.js" ] \
+              && [ -f "$candidate/ecosystem.config.cjs" ] \
+              && [ -d "$candidate/node_modules" ]
+          }
+
           choose_integrity_snapshot() {
             # Echoes "<kind>|<path>" on success; non-zero on failure.
-            local marker candidate
-            for marker in LAST_GOOD PREV_SNAPSHOT; do
-              if [ -f "$BACKUPS_DIR/$marker" ]; then
-                candidate=$(cat "$BACKUPS_DIR/$marker" 2>/dev/null || true)
-                if is_valid_ssr_snapshot "$candidate"; then
-                  case "$marker" in
-                    LAST_GOOD)     echo "last_good|$candidate" ;;
-                    PREV_SNAPSHOT) echo "prev_snapshot|$candidate" ;;
-                  esac
-                  return 0
-                fi
-                echo "  ↳ $marker points to incompatible snapshot: ${candidate:-<empty>}" >&2
+            local candidate
+            # 1) LAST_GOOD — strict.
+            if [ -f "$BACKUPS_DIR/LAST_GOOD" ]; then
+              candidate=$(cat "$BACKUPS_DIR/LAST_GOOD" 2>/dev/null || true)
+              if is_valid_ssr_snapshot "$candidate"; then
+                echo "last_good|$candidate"
+                return 0
               fi
-            done
-            # Trusted fallback: scan only smoke-test-verified good-* snapshots.
-            # We intentionally do NOT scan generic timestamped snapshots ([0-9]*),
-            # because those are raw pre-deploy snapshots and may capture a
-            # broken build from an earlier failed deploy. Restoring an
-            # un-verified snapshot can put a known-bad build back on disk.
+              echo "  ↳ LAST_GOOD points to incompatible snapshot: ${candidate:-<empty>}" >&2
+              diagnose_snapshot "$candidate" "LAST_GOOD"
+            fi
+            # 2) PREV_SNAPSHOT — loose (must be runnable, not necessarily
+            #    matching the newest deploy shape).
+            if [ -f "$BACKUPS_DIR/PREV_SNAPSHOT" ]; then
+              candidate=$(cat "$BACKUPS_DIR/PREV_SNAPSHOT" 2>/dev/null || true)
+              if is_runnable_prev_snapshot "$candidate"; then
+                echo "prev_snapshot|$candidate"
+                return 0
+              fi
+              echo "  ↳ PREV_SNAPSHOT points to non-runnable snapshot: ${candidate:-<empty>}" >&2
+              diagnose_snapshot "$candidate" "PREV_SNAPSHOT"
+            fi
+            # 3) good-* — strict (smoke-test verified). We intentionally do
+            #    NOT scan generic [0-9]* snapshots — those are raw pre-deploy
+            #    captures from possibly-broken earlier deploys.
             while IFS= read -r candidate; do
               if is_valid_ssr_snapshot "$candidate"; then
                 echo "latest_good|$candidate"
                 return 0
               fi
               echo "  ↳ skipping incompatible good-* snapshot: $candidate" >&2
+              diagnose_snapshot "$candidate" "good-*"
             done < <(ls -1dt "$BACKUPS_DIR"/good-* 2>/dev/null || true)
             return 1
           }
@@ -1064,19 +1105,30 @@ jobs:
               && [ -f "$candidate/scripts/tanstack-node-server.mjs" ] \
               && [ -f "$candidate/ecosystem.config.cjs" ]
           }
+          is_runnable_prev_snapshot() {
+            local candidate="$1"
+            [ -d "$candidate" ] \
+              && [ -f "$candidate/dist/server/server.js" ] \
+              && [ -f "$candidate/ecosystem.config.cjs" ] \
+              && [ -d "$candidate/node_modules" ]
+          }
 
           choose_rollback_snapshot() {
             local candidate
-            for marker in LAST_GOOD PREV_SNAPSHOT; do
-              if [ -f "$BACKUPS_DIR/$marker" ]; then
-                candidate=$(cat "$BACKUPS_DIR/$marker")
-                if is_valid_ssr_snapshot "$candidate"; then
-                  echo "$candidate"
-                  return 0
-                fi
-                echo "Skipping incompatible rollback snapshot from $marker: ${candidate:-empty}" >&2
+            if [ -f "$BACKUPS_DIR/LAST_GOOD" ]; then
+              candidate=$(cat "$BACKUPS_DIR/LAST_GOOD")
+              if is_valid_ssr_snapshot "$candidate"; then
+                echo "$candidate"; return 0
               fi
-            done
+              echo "Skipping incompatible rollback snapshot from LAST_GOOD: ${candidate:-empty}" >&2
+            fi
+            if [ -f "$BACKUPS_DIR/PREV_SNAPSHOT" ]; then
+              candidate=$(cat "$BACKUPS_DIR/PREV_SNAPSHOT")
+              if is_runnable_prev_snapshot "$candidate"; then
+                echo "$candidate"; return 0
+              fi
+              echo "Skipping non-runnable rollback snapshot from PREV_SNAPSHOT: ${candidate:-empty}" >&2
+            fi
             while IFS= read -r candidate; do
               if is_valid_ssr_snapshot "$candidate"; then
                 echo "$candidate"
