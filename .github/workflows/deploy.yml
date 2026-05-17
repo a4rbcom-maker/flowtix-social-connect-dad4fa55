@@ -133,6 +133,7 @@ jobs:
           mkdir -p "$SNAP"
           rsync -a --delete \
             --exclude='node_modules/' \
+            --exclude='.env' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
             --exclude='.well-known/' \
@@ -161,6 +162,7 @@ jobs:
 
           rsync -az --delete \
             --exclude='node_modules/' \
+            --exclude='.env' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
             --exclude='.well-known/' \
@@ -300,6 +302,7 @@ jobs:
           mkdir -p "$GOOD"
           rsync -a --delete \
             --exclude='node_modules/' \
+            --exclude='.env' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
             --exclude='.well-known/' \
