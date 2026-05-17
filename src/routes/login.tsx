@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { Navbar } from "@/components/landing/Navbar";
-import { Mail, Lock, User, Phone, Loader2, ArrowRight } from "lucide-react";
+import { Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff } from "lucide-react";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
