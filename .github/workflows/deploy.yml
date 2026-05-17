@@ -27,95 +27,43 @@ jobs:
       - name: Build project
         run: bun run build
 
-      - name: Prepare deploy bundle
+      - name: Prepare SSR deploy bundle
         run: |
           set -euo pipefail
 
-          echo "=== Build output tree ==="
-          for d in dist dist/client dist/server .output .output/public .output/server; do
-            if [ -d "$d" ]; then
-              echo "--- $d ---"
-              ls -la "$d" | head -n 60
-            fi
-          done
+          SERVER_ENTRY="dist/server/server.js"
+          [ -f "$SERVER_ENTRY" ] || { echo "::error::SSR entry missing: $SERVER_ENTRY"; find dist -maxdepth 3 -type f 2>/dev/null | head -n 120 || true; exit 1; }
+
+          DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
 
           rm -rf deploy
           mkdir -p deploy
+          cp -r dist deploy/dist
+          cp package.json deploy/package.json
+          [ -f "bun.lockb" ] && cp bun.lockb deploy/bun.lockb
+          [ -f "bun.lock" ] && cp bun.lock deploy/bun.lock
+          [ -f "package-lock.json" ] && cp package-lock.json deploy/package-lock.json
 
-          MODE=""
-          SERVER_ENTRY=""
-          for entry in \
-            dist/server/server.js \
-            dist/server/index.mjs \
-            dist/server/index.js \
-            .output/server/index.mjs \
-            .output/server/index.js; do
-            if [ -f "$entry" ]; then
-              MODE="ssr"
-              SERVER_ENTRY="$entry"
-              break
-            fi
-          done
-
-          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          cat > /tmp/deploy-version.json <<JSON
+          cat > deploy/deploy-version.json <<JSON
           {
             "sha": "${GITHUB_SHA}",
             "short_sha": "${SHORT_SHA}",
             "run_id": "${GITHUB_RUN_ID}",
             "repo": "${GITHUB_REPOSITORY}",
-            "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "mode": "${MODE:-static}"
+            "deployed_at": "${DEPLOYED_AT}",
+            "mode": "ssr",
+            "status": "ok"
           }
           JSON
 
-          if [ "$MODE" = "ssr" ]; then
-            echo "Deploy MODE = ssr"
-            cp -r dist deploy/dist
-            [ -d ".output" ] && cp -r .output deploy/.output
-            cp package.json deploy/package.json
-            [ -f "bun.lockb" ] && cp bun.lockb deploy/bun.lockb
-            [ -f "bun.lock" ] && cp bun.lock deploy/bun.lock
-            [ -f "package-lock.json" ] && cp package-lock.json deploy/package-lock.json
-            cp /tmp/deploy-version.json deploy/deploy-version.json
-            if [ -d "deploy/dist/client" ]; then
-              cp /tmp/deploy-version.json deploy/dist/client/deploy-version.json
-            fi
-            echo "MODE=ssr" >> "$GITHUB_ENV"
-            echo "SERVER_ENTRY=$SERVER_ENTRY" >> "$GITHUB_ENV"
-          else
-            STATIC_SRC=""
-            if [ -d "dist/client" ]; then
-              STATIC_SRC="dist/client"
-            elif [ -d ".output/public" ]; then
-              STATIC_SRC=".output/public"
-            fi
+          echo "MODE=ssr" >> "$GITHUB_ENV"
+          echo "SERVER_ENTRY=$SERVER_ENTRY" >> "$GITHUB_ENV"
+          echo "DEPLOYED_AT=$DEPLOYED_AT" >> "$GITHUB_ENV"
+          echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
 
-            if [ -z "$STATIC_SRC" ]; then
-              echo "::error::Build produced neither an SSR server entry nor a static client folder."
-              find dist .output -maxdepth 3 -type f 2>/dev/null | head -n 80 || true
-              exit 1
-            fi
-
-            echo "Deploy MODE = static (source: $STATIC_SRC)"
-            cp -r "$STATIC_SRC"/. deploy/
-            if [ ! -f "deploy/index.html" ]; then
-              if [ -f "deploy/_shell/index.html" ]; then
-                echo "Using _shell/index.html as SPA entry"
-                cp deploy/_shell/index.html deploy/index.html
-              else
-                echo "::error::Static output has no index.html and no _shell/index.html."
-                find deploy -maxdepth 2 -type f | head -n 80 || true
-                exit 1
-              fi
-            fi
-            cp /tmp/deploy-version.json deploy/deploy-version.json
-            echo "MODE=static" >> "$GITHUB_ENV"
-            echo "SERVER_ENTRY=" >> "$GITHUB_ENV"
-          fi
-
-          echo "=== ./deploy ready ==="
-          find deploy -maxdepth 3 -type f | head -n 120
+          echo "=== SSR bundle ready ==="
+          find deploy -maxdepth 3 -type f | head -n 160
 
       - name: Setup SSH key
         env:
@@ -145,10 +93,10 @@ jobs:
             *) echo "::error::Refusing to deploy outside Flowtix path: $DEPLOY_PATH"; exit 1 ;;
           esac
           BACKUPS_DIR="$(dirname "$DEPLOY_PATH")/flowtixtools-backups"
-          echo "DEPLOY_PATH=$DEPLOY_PATH"
-          echo "BACKUPS_DIR=$BACKUPS_DIR"
           echo "DEPLOY_PATH=$DEPLOY_PATH" >> "$GITHUB_ENV"
           echo "BACKUPS_DIR=$BACKUPS_DIR" >> "$GITHUB_ENV"
+          echo "Deploy path: $DEPLOY_PATH"
+          echo "Backups dir: $BACKUPS_DIR"
 
       - name: Snapshot current site
         env:
@@ -162,11 +110,13 @@ jobs:
           DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
           SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
           SSH_PORT="${SSH_PORT:-22}"
+          : "${DEPLOY_USER:?Missing GitHub Secret: SERVER_USER or SSH_USER}"
+          : "${SERVER_HOST:?Missing GitHub Secret: SERVER_IP or SSH_HOST}"
 
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
             "${DEPLOY_USER}@${SERVER_HOST}" \
             "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' bash -s" <<'EOSSH'
-          set -e
+          set -euo pipefail
           mkdir -p "$BACKUPS_DIR"
           if [ ! -d "$DEPLOY_PATH" ] || [ -z "$(ls -A "$DEPLOY_PATH" 2>/dev/null || true)" ]; then
             echo "No existing site to snapshot — skipping."
@@ -203,16 +153,13 @@ jobs:
           DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
           SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
           SSH_PORT="${SSH_PORT:-22}"
-
-          case "$DEPLOY_PATH" in
-            /www/wwwroot/*flowtix*) : ;;
-            *) echo "::error::Refusing to deploy outside Flowtix path: $DEPLOY_PATH"; exit 1 ;;
-          esac
+          : "${DEPLOY_USER:?Missing GitHub Secret: SERVER_USER or SSH_USER}"
+          : "${SERVER_HOST:?Missing GitHub Secret: SERVER_IP or SSH_HOST}"
 
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" "mkdir -p ${DEPLOY_PATH}"
+            "${DEPLOY_USER}@${SERVER_HOST}" "mkdir -p '${DEPLOY_PATH}'"
 
-          rsync -avz --delete \
+          rsync -az --delete \
             --exclude='node_modules/' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
@@ -222,7 +169,55 @@ jobs:
             ./deploy/ \
             "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/"
 
-      - name: Verify files on server and restart app
+      - name: Install dependencies and restart SSR app
+        env:
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
+          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          SSH_PORT="${SSH_PORT:-22}"
+          : "${DEPLOY_USER:?Missing GitHub Secret: SERVER_USER or SSH_USER}"
+          : "${SERVER_HOST:?Missing GitHub Secret: SERVER_IP or SSH_HOST}"
+
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
+            "${DEPLOY_USER}@${SERVER_HOST}" \
+            "DEPLOY_PATH='${DEPLOY_PATH}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' DEPLOY_SHA='${GITHUB_SHA}' DEPLOY_RUN_ID='${GITHUB_RUN_ID}' DEPLOY_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOYED_AT='${DEPLOYED_AT}' bash -s" <<'EOSSH'
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          [ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
+          [ -f deploy-version.json ] || { echo "ERROR: deploy-version.json missing"; exit 1; }
+
+          if command -v bun >/dev/null 2>&1; then
+            bun install --production --frozen-lockfile || bun install --production
+          elif [ -f package-lock.json ]; then
+            npm ci --omit=dev
+          else
+            npm install --omit=dev
+          fi
+
+          command -v pm2 >/dev/null 2>&1 || { echo "ERROR: pm2 is not installed on the server"; exit 1; }
+          command -v node >/dev/null 2>&1 || { echo "ERROR: node is not installed on the server"; exit 1; }
+
+          if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
+            pm2 delete "$APP_NAME" || true
+          fi
+
+          PORT="$APP_PORT" \
+          NODE_ENV=production \
+          DEPLOY_SHA="$DEPLOY_SHA" \
+          DEPLOY_RUN_ID="$DEPLOY_RUN_ID" \
+          DEPLOY_REPOSITORY="$DEPLOY_REPOSITORY" \
+          DEPLOYED_AT="$DEPLOYED_AT" \
+            pm2 start "$SERVER_ENTRY" --name "$APP_NAME" --interpreter node --cwd "$DEPLOY_PATH" --update-env
+          pm2 save
+          EOSSH
+
+      - name: Verify SSR app locally on server
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -237,64 +232,44 @@ jobs:
 
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
             "${DEPLOY_USER}@${SERVER_HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' MODE='${MODE}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' bash -s" <<'EOSSH'
-          set -e
-          cd "$DEPLOY_PATH"
-          echo "=== Top of $DEPLOY_PATH ==="
-          ls -la | head -n 60
-          [ -f deploy-version.json ] || { echo "ERROR: deploy-version.json missing"; exit 1; }
-          cat deploy-version.json
-
-          if [ "$MODE" = "ssr" ]; then
-            [ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
-            if command -v bun >/dev/null 2>&1; then
-              bun install --production
-              RUNNER="bun"
-            else
-              npm ci --omit=dev
-              RUNNER="node"
+            "APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' SHORT_SHA='${SHORT_SHA}' bash -s" <<'EOSSH'
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            HOME_STATUS=$(curl -fsS --max-time 10 "http://127.0.0.1:${APP_PORT}/" >/dev/null && echo ok || echo fail)
+            VERSION_BODY=$(curl -fsS --max-time 10 "http://127.0.0.1:${APP_PORT}/deploy-version.json" || true)
+            echo "$VERSION_BODY"
+            if [ "$HOME_STATUS" = "ok" ] && echo "$VERSION_BODY" | grep -q "$SHORT_SHA"; then
+              echo "SSR app is healthy locally on port ${APP_PORT}"
+              exit 0
             fi
-            if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
-              pm2 delete "$APP_NAME" || true
-            fi
-            PORT="$APP_PORT" NODE_ENV=production pm2 start "$SERVER_ENTRY" --name "$APP_NAME" --interpreter "$RUNNER" --update-env
-            pm2 save
-            for i in $(seq 1 20); do
-              if curl -fsS "http://127.0.0.1:${APP_PORT}/deploy-version.json" >/dev/null; then
-                echo "SSR app is responding"
-                exit 0
-              fi
-              if [ "$i" -eq 20 ]; then
-                echo "ERROR: SSR app not responding"
-                pm2 logs "$APP_NAME" --lines 120 --nostream || true
-                exit 1
-              fi
-              sleep 2
-            done
-          else
-            [ -f index.html ] || { echo "ERROR: index.html missing"; exit 1; }
-            if command -v pm2 >/dev/null 2>&1 && pm2 describe "$APP_NAME" >/dev/null 2>&1; then
-              pm2 delete "$APP_NAME" || true
-              pm2 save || true
-            fi
-          fi
+            sleep 2
+          done
+          echo "ERROR: SSR app not responding correctly on 127.0.0.1:${APP_PORT}"
+          pm2 describe "$APP_NAME" || true
+          pm2 logs "$APP_NAME" --lines 160 --nostream || true
+          exit 1
           EOSSH
 
-      - name: Verify public site shows this commit
+      - name: Verify public domain shows this commit
+        env:
+          PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
         run: |
-          set -e
-          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          URL_PRIMARY="https://www.flowtixtools.com/deploy-version.json"
-          for i in $(seq 1 12); do
-            BODY=$(curl -fsS --max-time 20 "$URL_PRIMARY" || true)
+          set -euo pipefail
+          PUBLIC_URL="${PUBLIC_URL_SECRET:-https://www.flowtixtools.com}"
+          PUBLIC_URL="${PUBLIC_URL%/}"
+          VERSION_URL="$PUBLIC_URL/deploy-version.json"
+
+          for i in $(seq 1 24); do
+            BODY=$(curl -fsS --max-time 20 "$VERSION_URL" || true)
             echo "$BODY"
             if echo "$BODY" | grep -q "$SHORT_SHA"; then
-              echo "✅ Public site serves commit ${SHORT_SHA}"
+              echo "✅ Public domain serves commit ${SHORT_SHA}"
               exit 0
             fi
             sleep 5
           done
-          echo "::error::Public site did not update to commit ${SHORT_SHA} within timeout"
+
+          echo "::error::Public domain did not serve commit ${SHORT_SHA}. The app passed local PM2 health checks, so check Nginx/domain proxy to http://127.0.0.1:${APP_PORT}."
           exit 1
 
       - name: Record LAST_GOOD snapshot
@@ -309,12 +284,11 @@ jobs:
           DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
           SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
           SSH_PORT="${SSH_PORT:-22}"
-          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
 
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
             "${DEPLOY_USER}@${SERVER_HOST}" \
             "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' SHORT_SHA='${SHORT_SHA}' bash -s" <<'EOSSH'
-          set -e
+          set -euo pipefail
           mkdir -p "$BACKUPS_DIR"
           GOOD="$BACKUPS_DIR/good-$(date -u +%Y%m%d%H%M%S)-${SHORT_SHA}"
           mkdir -p "$GOOD"
@@ -337,27 +311,26 @@ jobs:
           SERVER_IP: ${{ secrets.SERVER_IP }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
+          PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
         run: |
           set -euo pipefail
           DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
           SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
           SSH_PORT="${SSH_PORT:-22}"
+          PUBLIC_URL="${PUBLIC_URL_SECRET:-https://www.flowtixtools.com}"
+          PUBLIC_URL="${PUBLIC_URL%/}"
 
-          if [ -z "${DEPLOY_PATH:-}" ]; then
-            echo "::warning::DEPLOY_PATH not set — cannot rollback"
+          if [ -z "${DEPLOY_PATH:-}" ] || [ -z "${BACKUPS_DIR:-}" ]; then
+            echo "::warning::DEPLOY_PATH/BACKUPS_DIR not set — cannot rollback"
             exit 0
           fi
-          case "$DEPLOY_PATH" in
-            /www/wwwroot/*flowtix*) : ;;
-            *) echo "::error::Refusing to rollback outside Flowtix path: $DEPLOY_PATH"; exit 1 ;;
-          esac
 
-          echo "⚠️ Deploy failed — attempting automatic rollback"
+          echo "Deploy failed — attempting automatic rollback"
 
           ROLLBACK_INFO=$(ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
             "${DEPLOY_USER}@${SERVER_HOST}" \
             "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' bash -s" <<'EOSSH'
-          set -e
+          set -euo pipefail
           SRC=""
           if [ -f "$BACKUPS_DIR/LAST_GOOD" ]; then
             SRC=$(cat "$BACKUPS_DIR/LAST_GOOD")
@@ -380,35 +353,47 @@ jobs:
             "$SRC/" "$DEPLOY_PATH/"
 
           cd "$DEPLOY_PATH"
-          ENTRY=""
-          for entry in dist/server/server.js dist/server/index.mjs dist/server/index.js .output/server/index.mjs .output/server/index.js; do
-            if [ -f "$entry" ]; then ENTRY="$entry"; break; fi
-          done
-          if [ -n "$ENTRY" ]; then
-            if command -v bun >/dev/null 2>&1; then
-              bun install --production
-              RUNNER="bun"
-            else
-              npm ci --omit=dev
-              RUNNER="node"
-            fi
-            if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
-              pm2 delete "$APP_NAME" || true
-            fi
-            PORT="$APP_PORT" NODE_ENV=production pm2 start "$ENTRY" --name "$APP_NAME" --interpreter "$RUNNER" --update-env
-            pm2 save
-          elif command -v pm2 >/dev/null 2>&1 && pm2 describe "$APP_NAME" >/dev/null 2>&1; then
-            pm2 delete "$APP_NAME" || true
-            pm2 save || true
-          fi
+          ENTRY="dist/server/server.js"
+          [ -f "$ENTRY" ] || { echo "ROLLBACK_RESULT=bad_snapshot"; exit 0; }
 
           RESTORED_SHA="unknown"
-          if [ -f "$DEPLOY_PATH/deploy-version.json" ]; then
-            RESTORED_SHA=$(grep -o '"short_sha"[[:space:]]*:[[:space:]]*"[^"]*"' "$DEPLOY_PATH/deploy-version.json" | head -n1 | sed 's/.*"\([^"]*\)"$/\1/' || echo unknown)
+          RESTORED_SHORT="unknown"
+          RESTORED_RUN=""
+          RESTORED_REPO=""
+          RESTORED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          if [ -f deploy-version.json ]; then
+            RESTORED_SHA=$(grep -o '"sha"[[:space:]]*:[[:space:]]*"[^"]*"' deploy-version.json | head -n1 | sed 's/.*"\([^"]*\)"$/\1/' || echo unknown)
+            RESTORED_SHORT=$(grep -o '"short_sha"[[:space:]]*:[[:space:]]*"[^"]*"' deploy-version.json | head -n1 | sed 's/.*"\([^"]*\)"$/\1/' || echo unknown)
+            RESTORED_RUN=$(grep -o '"run_id"[[:space:]]*:[[:space:]]*"[^"]*"' deploy-version.json | head -n1 | sed 's/.*"\([^"]*\)"$/\1/' || true)
+            RESTORED_REPO=$(grep -o '"repo"[[:space:]]*:[[:space:]]*"[^"]*"' deploy-version.json | head -n1 | sed 's/.*"\([^"]*\)"$/\1/' || true)
+            RESTORED_AT=$(grep -o '"deployed_at"[[:space:]]*:[[:space:]]*"[^"]*"' deploy-version.json | head -n1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "$RESTORED_AT")
           fi
+          [ -z "$RESTORED_SHA" ] && RESTORED_SHA="$RESTORED_SHORT"
+
+          if command -v bun >/dev/null 2>&1; then
+            bun install --production --frozen-lockfile || bun install --production
+          elif [ -f package-lock.json ]; then
+            npm ci --omit=dev
+          else
+            npm install --omit=dev
+          fi
+
+          if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
+            pm2 delete "$APP_NAME" || true
+          fi
+          PORT="$APP_PORT" \
+          NODE_ENV=production \
+          DEPLOY_SHA="$RESTORED_SHA" \
+          DEPLOY_RUN_ID="$RESTORED_RUN" \
+          DEPLOY_REPOSITORY="$RESTORED_REPO" \
+          DEPLOYED_AT="$RESTORED_AT" \
+            pm2 start "$ENTRY" --name "$APP_NAME" --interpreter node --cwd "$DEPLOY_PATH" --update-env
+          pm2 save
+
           echo "ROLLBACK_RESULT=ok"
           echo "ROLLBACK_SRC=$SRC"
           echo "ROLLBACK_SHA=$RESTORED_SHA"
+          echo "ROLLBACK_SHORT=$RESTORED_SHORT"
           EOSSH
           )
 
@@ -418,15 +403,20 @@ jobs:
             echo "::warning::No previous snapshot found — site left as-is."
             exit 0
           fi
+          if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=bad_snapshot"; then
+            echo "::error::Rollback snapshot does not contain SSR entry."
+            exit 1
+          fi
 
-          RESTORED_SHA=$(echo "$ROLLBACK_INFO" | grep '^ROLLBACK_SHA=' | head -n1 | cut -d= -f2)
-          echo "🔄 Rolled back to commit ${RESTORED_SHA:-unknown}"
+          RESTORED_SHORT=$(echo "$ROLLBACK_INFO" | grep '^ROLLBACK_SHORT=' | head -n1 | cut -d= -f2)
+          echo "Rolled back to commit ${RESTORED_SHORT:-unknown}"
 
-          if [ -n "${RESTORED_SHA:-}" ] && [ "$RESTORED_SHA" != "unknown" ]; then
-            for i in $(seq 1 10); do
-              BODY=$(curl -fsS --max-time 20 "https://www.flowtixtools.com/deploy-version.json" || true)
-              if echo "$BODY" | grep -q "$RESTORED_SHA"; then
-                echo "✅ Public site now serves rolled-back commit ${RESTORED_SHA}"
+          if [ -n "${RESTORED_SHORT:-}" ] && [ "$RESTORED_SHORT" != "unknown" ]; then
+            for i in $(seq 1 12); do
+              BODY=$(curl -fsS --max-time 20 "$PUBLIC_URL/deploy-version.json" || true)
+              echo "$BODY"
+              if echo "$BODY" | grep -q "$RESTORED_SHORT"; then
+                echo "✅ Public domain now serves rolled-back commit ${RESTORED_SHORT}"
                 exit 0
               fi
               sleep 5
