@@ -849,6 +849,14 @@ jobs:
             exit 0
           fi
 
+          # Integrity rollback already restored LAST_GOOD onto disk inside the
+          # restart step (before PM2 was touched). PM2 is still running the old
+          # in-memory process, so there is nothing left to do here.
+          if [ "${FAILURE_REASON:-}" = "integrity-restored-last-good" ]; then
+            echo "::warning::Skipping auto-rollback — LAST_GOOD was already restored on disk by the integrity check."
+            exit 0
+          fi
+
           DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
           SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
           SSH_PORT="${SSH_PORT:-22}"
