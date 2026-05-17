@@ -45,7 +45,7 @@ jobs:
           cp ecosystem.config.cjs deploy/ecosystem.config.cjs
           [ -f "bun.lockb" ] && cp bun.lockb deploy/bun.lockb
           [ -f "bun.lock" ] && cp bun.lock deploy/bun.lock
-          [ -f "package-lock.json" ] && cp package-lock.json deploy/package-lock.json
+          # NOTE: package-lock.json is intentionally NOT shipped — production uses Bun only.
 
           cat > deploy/deploy-version.json <<JSON
           {
@@ -196,13 +196,12 @@ jobs:
           [ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
           [ -f deploy-version.json ] || { echo "ERROR: deploy-version.json missing"; exit 1; }
 
-          if command -v bun >/dev/null 2>&1; then
-            bun install --production --frozen-lockfile || bun install --production
-          elif [ -f package-lock.json ]; then
-            npm ci --omit=dev
-          else
-            npm install --omit=dev
+          if ! command -v bun >/dev/null 2>&1; then
+            echo "ERROR: bun is required on the server for production install (npm path disabled)."
+            echo "Install bun with: curl -fsSL https://bun.sh/install | bash"
+            exit 1
           fi
+          bun install --production --frozen-lockfile || bun install --production
 
           command -v pm2 >/dev/null 2>&1 || { echo "ERROR: pm2 is not installed on the server"; exit 1; }
           command -v node >/dev/null 2>&1 || { echo "ERROR: node is not installed on the server"; exit 1; }
@@ -500,13 +499,11 @@ jobs:
           fi
           [ -z "$RESTORED_SHA" ] && RESTORED_SHA="$RESTORED_SHORT"
 
-          if command -v bun >/dev/null 2>&1; then
-            bun install --production --frozen-lockfile || bun install --production
-          elif [ -f package-lock.json ]; then
-            npm ci --omit=dev
-          else
-            npm install --omit=dev
+          if ! command -v bun >/dev/null 2>&1; then
+            echo "ERROR: bun is required on the server for rollback install."
+            exit 1
           fi
+          bun install --production --frozen-lockfile || bun install --production
 
           if [ -f .env ]; then
             while IFS= read -r line || [ -n "$line" ]; do
