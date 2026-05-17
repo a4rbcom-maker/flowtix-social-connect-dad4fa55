@@ -31,16 +31,20 @@ jobs:
       - name: Verify build output
         run: |
           set -e
-          if [ ! -d ".output" ]; then
-            echo "::error::Build did not produce .output directory"
+          if [ ! -d ".output" ] && [ ! -d "dist" ]; then
+            echo "::error::Build did not produce .output or dist directory"
             ls -la
             exit 1
           fi
-          echo "--- .output tree (top) ---"
-          ls -la .output
+          echo "--- build output tree (top) ---"
+          [ -d ".output" ] && ls -la .output || true
           [ -d ".output/server" ] && ls -la .output/server || true
           [ -d ".output/public" ] && ls -la .output/public || true
-          [ -d ".output/public/assets" ] && echo "assets count: $(ls .output/public/assets | wc -l)" || echo "::warning::No .output/public/assets directory"
+          [ -d ".output/public/assets" ] && echo ".output assets count: $(ls .output/public/assets | wc -l)" || true
+          [ -d "dist" ] && ls -la dist || true
+          [ -d "dist/server" ] && ls -la dist/server || true
+          [ -d "dist/client" ] && ls -la dist/client || true
+          [ -d "dist/client/assets" ] && echo "dist assets count: $(ls dist/client/assets | wc -l)" || true
 
       - name: Setup SSH key
         env:
@@ -79,13 +83,31 @@ jobs:
           esac
 
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" "mkdir -p ${DEPLOY_PATH}/.output"
+            "${DEPLOY_USER}@${SERVER_HOST}" "mkdir -p ${DEPLOY_PATH}/.output ${DEPLOY_PATH}/dist"
 
-          # 1) Sync the full .output (server runtime) — scoped to this project's .output only
-          rsync -avz --delete \
-            -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
-            ./.output/ \
-            "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/.output/"
+          cat > .deploy-version <<EOF
+          repo=${GITHUB_REPOSITORY}
+          sha=${GITHUB_SHA}
+          run_id=${GITHUB_RUN_ID}
+          deployed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          path=${DEPLOY_PATH}
+          EOF
+
+          # 1) Sync the full .output (server runtime) when produced — scoped to this project's .output only
+          if [ -d ".output" ]; then
+            rsync -avz --delete \
+              -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
+              ./.output/ \
+              "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/.output/"
+          fi
+
+          # Also sync dist because the existing aaPanel site currently contains dist/client + dist/server.
+          if [ -d "dist" ]; then
+            rsync -avz --delete \
+              -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
+              ./dist/ \
+              "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/dist/"
+          fi
 
           # 2) Mirror static public assets to the web root so Nginx can serve /assets/*
           if [ -d ".output/public" ]; then
@@ -93,9 +115,19 @@ jobs:
               -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
               ./.output/public/ \
               "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/"
+          elif [ -d "dist/client" ]; then
+            rsync -avz \
+              -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
+              ./dist/client/ \
+              "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/"
           else
-            echo "::warning::.output/public not found — skipping static mirror"
+            echo "::warning::No static public output found — skipping static mirror"
           fi
+
+          rsync -avz \
+            -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
+            ./.deploy-version \
+            "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/.deploy-version"
 
       - name: Verify files on server and restart PM2 app (scoped)
         env:
@@ -117,6 +149,8 @@ jobs:
 
             echo "=== Deployed files (top level) ==="
             ls -la | head -n 40
+            echo "=== Deploy marker ==="
+            cat .deploy-version || { echo "ERROR: .deploy-version missing in $DEPLOY_PATH"; exit 1; }
 
             echo "=== assets directory ==="
             if [ -d "assets" ]; then
@@ -128,12 +162,13 @@ jobs:
             fi
 
             ENTRY=""
-            for c in .output/server/index.mjs .output/server/index.js .output/index.mjs; do
+            for c in .output/server/index.mjs .output/server/index.js .output/index.mjs dist/server/index.mjs dist/server/index.js; do
               if [ -f "$c" ]; then ENTRY="$c"; break; fi
             done
             if [ -z "$ENTRY" ]; then
-              echo "ERROR: no server entry found under .output"
-              find .output -maxdepth 3 -type f | head
+              echo "ERROR: no server entry found under .output or dist/server"
+              [ -d .output ] && find .output -maxdepth 3 -type f | head || true
+              [ -d dist ] && find dist -maxdepth 3 -type f | head || true
               exit 1
             fi
             echo "Using entry: $ENTRY"
