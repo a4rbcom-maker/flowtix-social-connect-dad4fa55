@@ -723,13 +723,14 @@ jobs:
           if [ "$SSH_EXIT" -ne 0 ]; then
             if grep -q '^INTEGRITY_ROLLBACK_RESULT=restored' /tmp/install-restart.log; then
               ROLLBACK_SRC=$(grep '^INTEGRITY_ROLLBACK_SRC=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
+              ROLLBACK_KIND=$(grep '^INTEGRITY_ROLLBACK_KIND=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
               echo ""
-              echo "::warning::Bundle integrity check failed — LAST_GOOD was auto-restored on disk."
-              echo "::warning::Restored snapshot: ${ROLLBACK_SRC}"
+              echo "::warning::Bundle integrity check failed — snapshot was auto-restored on disk."
+              echo "::warning::Source kind: ${ROLLBACK_KIND:-unknown} — path: ${ROLLBACK_SRC}"
               echo "::warning::PM2 was NOT restarted; the previously-running process is still serving traffic."
               echo "FAILURE_REASON=integrity-restored-last-good" >> "$GITHUB_ENV"
-            elif grep -qE '^INTEGRITY_ROLLBACK_RESULT=(no_last_good|invalid_last_good)' /tmp/install-restart.log; then
-              echo "::error::Bundle integrity check failed AND no valid LAST_GOOD snapshot was available to auto-restore."
+            elif grep -qE '^INTEGRITY_ROLLBACK_RESULT=(no_valid_snapshot|no_backups_dir|no_last_good|invalid_last_good)' /tmp/install-restart.log; then
+              echo "::error::Bundle integrity check failed AND no valid snapshot was available to auto-restore."
               echo "FAILURE_REASON=integrity-no-snapshot" >> "$GITHUB_ENV"
             fi
             exit "$SSH_EXIT"
