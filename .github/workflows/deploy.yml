@@ -5,6 +5,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Global deploy lock: at most one deploy run touches the VPS at a time.
+# cancel-in-progress: false → queue new runs instead of killing the running
+# one mid-rsync/PM2-restart (which would leave the server in an inconsistent
+# state). New runs wait until the current deploy finishes cleanly.
+concurrency:
+  group: vps-deploy-${{ env.APP_NAME || 'flowtixtools-web' }}
+  cancel-in-progress: false
+
 env:
   APP_NAME: flowtixtools-web
   APP_PORT: 3100
