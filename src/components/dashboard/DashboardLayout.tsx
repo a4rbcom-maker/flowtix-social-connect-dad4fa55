@@ -137,10 +137,21 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const toggleGroup = (key: string) =>
     setOpenGroups((p) => ({ ...p, [key]: !p[key] }));
 
+  const [profilePlan, setProfilePlan] = useState<string | null>(null);
+  useEffect(() => {
+    if (!user) { setProfilePlan(null); return; }
+    let cancelled = false;
+    supabase.from("profiles").select("plan").eq("id", user.id).maybeSingle().then(({ data }) => {
+      if (!cancelled) setProfilePlan(data?.plan ?? "free");
+    });
+    return () => { cancelled = true; };
+  }, [user]);
+
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "";
-  const userPlan = (user?.user_metadata?.plan as string | undefined) || "Free";
+  const userPlan = profilePlan || (user?.user_metadata?.plan as string | undefined) || "free";
+  const isFree = userPlan.toLowerCase() === "free";
   const planLabel = lang === "ar"
-    ? (userPlan.toLowerCase() === "free" ? "الباقة المجانية" : `باقة ${userPlan}`)
+    ? (isFree ? "الباقة المجانية" : `باقة ${userPlan}`)
     : `${userPlan.charAt(0).toUpperCase() + userPlan.slice(1)} plan`;
   const upgradeLabel = lang === "ar" ? "ترقية" : "Upgrade";
 
