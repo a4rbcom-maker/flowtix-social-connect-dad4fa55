@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      integrity_rollback_dry_run:
+        description: "Dry-run integrity_rollback (print chosen snapshot, skip rsync). Forces an integrity failure to exercise the rollback path."
+        type: boolean
+        default: false
 
 # Global deploy lock: at most one deploy run touches the VPS at a time.
 # cancel-in-progress: false → queue new runs instead of killing the running
