@@ -63,6 +63,40 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "$SSH_PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
+      - name: Resolve live Nginx web root for flowtixtools.com
+        env:
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
+          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          SSH_PORT="${SSH_PORT:-22}"
+          LIVE_ROOT=$(ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
+            "${DEPLOY_USER}@${SERVER_HOST}" "python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          conf = Path('/www/server/panel/vhost/nginx/flowtixtools.com.conf')
+          if not conf.exists():
+              raise SystemExit('ERROR: Nginx vhost file not found: ' + str(conf))
+          text = conf.read_text()
+          if 'flowtixtools.com' not in text:
+              raise SystemExit('ERROR: vhost file does not contain flowtixtools.com')
+          roots = re.findall(r'^\s*root\s+([^;]+);', text, flags=re.M)
+          roots = [r.strip() for r in roots if 'flowtix' in r.lower()]
+          print(roots[-1] if roots else '/www/wwwroot/flowtixtools.com')
+          PY")
+          case "$LIVE_ROOT" in
+            /www/wwwroot/*flowtix*) : ;;
+            *) echo "::error::Unsafe or unexpected Nginx root: $LIVE_ROOT"; exit 1 ;;
+          esac
+          echo "Resolved DEPLOY_PATH=$LIVE_ROOT"
+          echo "DEPLOY_PATH=$LIVE_ROOT" >> "$GITHUB_ENV"
+
       - name: Deploy build artifacts via rsync (scoped to this project only)
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
@@ -76,10 +110,10 @@ jobs:
           SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
           SSH_PORT="${SSH_PORT:-22}"
 
-          # Safety: never operate outside /www/wwwroot/flowtixtools.com
+          # Safety: never operate outside the detected Flowtix web root
           case "$DEPLOY_PATH" in
-            /www/wwwroot/flowtixtools.com|/www/wwwroot/flowtixtools.com/*) : ;;
-            *) echo "::error::Refusing to deploy outside flowtixtools.com path"; exit 1 ;;
+            /www/wwwroot/*flowtix*) : ;;
+            *) echo "::error::Refusing to deploy outside detected Flowtix path: $DEPLOY_PATH"; exit 1 ;;
           esac
 
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
