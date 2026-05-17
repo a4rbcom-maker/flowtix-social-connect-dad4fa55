@@ -520,9 +520,16 @@ jobs:
           fi
           [ -z "$RESTORED_SHA" ] && RESTORED_SHA="$RESTORED_SHORT"
 
+          export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
+          export PATH="$BUN_INSTALL/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
           if ! command -v bun >/dev/null 2>&1; then
-            echo "ERROR: bun is required on the server for rollback install."
-            exit 1
+            echo "Bun not found on server during rollback — installing automatically…"
+            curl -fsSL https://bun.sh/install | bash || true
+            export PATH="$BUN_INSTALL/bin:$PATH"
+          fi
+          if ! command -v bun >/dev/null 2>&1; then
+            echo "ROLLBACK_RESULT=bun_install_failed"
+            exit 0
           fi
           bun install --production --frozen-lockfile
 
