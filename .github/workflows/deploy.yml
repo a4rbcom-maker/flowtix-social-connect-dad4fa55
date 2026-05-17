@@ -200,7 +200,7 @@ jobs:
 
             echo "=== PM2 status for $APP_NAME ==="
             pm2 describe "$APP_NAME" | head -n 30 || true
-EOSSH
+          EOSSH
 
       - name: Configure Nginx for this domain only and verify public site
         env:
@@ -262,4 +262,4 @@ PY
             echo "Nginx config updated safely. Backup: $BACKUP"
             echo "=== Public HTTP check ==="
             curl -I --max-time 20 https://www.flowtixtools.com/ || true
-EOSSH
+          EOSSH
