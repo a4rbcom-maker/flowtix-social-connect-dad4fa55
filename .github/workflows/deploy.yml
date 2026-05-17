@@ -652,7 +652,19 @@ jobs:
           # produced " ./path" (one leading space) because awk rebuilds with
           # single-space OFS, causing 100% disjoint diff vs find's `./%P` output.
           sed 's/^[0-9a-f]\{64\}  //' SHA256SUMS | LC_ALL=C sort > "$EXPECTED_LIST"
-          find . -type f ! -name 'manifest.json' ! -name 'SHA256SUMS' -printf './%P\n' \
+          # Match the shipped bundle while intentionally ignoring server-local
+          # files that rsync preserves via --exclude (env/secrets, panel files,
+          # ACME challenges, and logs). Those files are expected to exist only
+          # on the VPS and must not be treated as bundle drift.
+          find . -type f \
+            ! -name 'manifest.json' \
+            ! -name 'SHA256SUMS' \
+            ! -name '.env' \
+            ! -name '.user.ini' \
+            ! -name '.htaccess' \
+            ! -name '*.log' \
+            ! -path './.well-known/*' \
+            -printf './%P\n' \
             | LC_ALL=C sort > "$ACTUAL_LIST"
 
           EXPECTED_COUNT=$(wc -l < "$EXPECTED_LIST")
@@ -704,11 +716,11 @@ jobs:
           fi
           set -o pipefail
 
-          # Hard gate: VPS file count MUST equal manifest count exactly.
-          # rsync --delete is supposed to produce a byte-exact tree, so any
-          # mismatch means transfer truncation, permissions blocking deletes,
-          # or stale leftovers from a previous broken deploy. We will NOT
-          # restart PM2 in that state — the old (working) process keeps running.
+          # Hard gate: VPS file count MUST equal manifest count exactly after
+          # ignoring the same server-local files rsync intentionally preserves.
+          # Any remaining mismatch means transfer truncation, permissions
+          # blocking deletes, or stale leftovers from a previous broken deploy.
+          # We will NOT restart PM2 in that state — the old process keeps running.
           DRIFT=$((MISSING_COUNT + EXTRA_COUNT))
           if [ "$ACTUAL_COUNT" != "$MANIFEST_TOTAL" ] || [ "$DRIFT" -gt 0 ]; then
             echo "ERROR: VPS file count (${ACTUAL_COUNT}) != manifest (${MANIFEST_TOTAL})"
