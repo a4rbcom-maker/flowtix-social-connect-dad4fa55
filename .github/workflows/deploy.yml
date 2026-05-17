@@ -178,7 +178,6 @@ jobs:
             "${DEPLOY_USER}@${SERVER_HOST}" "mkdir -p '${DEPLOY_PATH}'"
 
           rsync -az --delete \
-            --exclude='node_modules/' \
             --exclude='.env' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
