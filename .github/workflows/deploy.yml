@@ -559,6 +559,79 @@ jobs:
           echo "::error::Public domain did not serve commit ${SHORT_SHA}. The app passed local PM2 health checks, so update the domain proxy/upstream to http://127.0.0.1:${APP_PORT}."
           exit 1
 
+      - name: Smoke test — homepage + /api/public/health
+        env:
+          PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
+        run: |
+          set -euo pipefail
+          if [ -n "${PUBLIC_URL_SECRET:-}" ]; then
+            BASE_URL="${PUBLIC_URL_SECRET%/}"
+          else
+            BASE_URL="https://www.flowtixtools.com"
+          fi
+
+          echo "=== Smoke test against ${BASE_URL} ==="
+          FAILED=0
+
+          # 1) Homepage must return 2xx and look like an HTML document.
+          echo "→ GET ${BASE_URL}/"
+          HOME_TMP=$(mktemp)
+          HOME_CODE=$(curl -sS -o "$HOME_TMP" -w "%{http_code}" \
+            --max-time 20 --retry 3 --retry-delay 4 --retry-connrefused \
+            -H "User-Agent: flowtix-smoke-test" \
+            "${BASE_URL}/" || echo "000")
+          HOME_SIZE=$(wc -c < "$HOME_TMP" | tr -d ' ')
+          echo "   status=${HOME_CODE}  bytes=${HOME_SIZE}"
+          if [ "$HOME_CODE" != "200" ]; then
+            echo "::error::Homepage returned HTTP ${HOME_CODE} (expected 200)"
+            FAILED=$((FAILED+1))
+          elif ! head -c 4096 "$HOME_TMP" | grep -qi "<html"; then
+            echo "::error::Homepage response is not HTML — first bytes:"
+            head -c 400 "$HOME_TMP" || true
+            echo
+            FAILED=$((FAILED+1))
+          else
+            echo "   ✓ homepage OK"
+          fi
+          rm -f "$HOME_TMP"
+
+          # 2) Health endpoint must return 200 + JSON {status:"ok"}.
+          echo "→ GET ${BASE_URL}/api/public/health"
+          HEALTH_TMP=$(mktemp)
+          HEALTH_CODE=$(curl -sS -o "$HEALTH_TMP" -w "%{http_code}" \
+            --max-time 15 --retry 3 --retry-delay 4 --retry-connrefused \
+            -H "User-Agent: flowtix-smoke-test" \
+            "${BASE_URL}/api/public/health" || echo "000")
+          HEALTH_BODY=$(cat "$HEALTH_TMP")
+          echo "   status=${HEALTH_CODE}  body=${HEALTH_BODY}"
+          if [ "$HEALTH_CODE" != "200" ]; then
+            echo "::error::Health endpoint returned HTTP ${HEALTH_CODE} (expected 200)"
+            FAILED=$((FAILED+1))
+          elif ! echo "$HEALTH_BODY" | grep -q '"status":"ok"'; then
+            echo "::error::Health endpoint response missing {\"status\":\"ok\"}"
+            FAILED=$((FAILED+1))
+          else
+            echo "   ✓ /api/public/health OK"
+          fi
+          rm -f "$HEALTH_TMP"
+
+          # 3) Confirm the build pinned by deploy-version.json matches this run's SHA.
+          echo "→ GET ${BASE_URL}/deploy-version.json"
+          VERSION_BODY=$(curl -fsS --max-time 15 "${BASE_URL}/deploy-version.json" || echo "")
+          echo "   body=${VERSION_BODY}"
+          if ! echo "$VERSION_BODY" | grep -q "$SHORT_SHA"; then
+            echo "::error::deploy-version.json does not contain SHA ${SHORT_SHA} — wrong build is live"
+            FAILED=$((FAILED+1))
+          else
+            echo "   ✓ deploy-version.json pinned to ${SHORT_SHA}"
+          fi
+
+          if [ "$FAILED" -gt 0 ]; then
+            echo "::error::Smoke test failed with ${FAILED} problem(s) — deployment is NOT healthy"
+            exit 1
+          fi
+          echo "✅ Smoke test passed — homepage, health, and version all green"
+
       - name: Record LAST_GOOD snapshot
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}

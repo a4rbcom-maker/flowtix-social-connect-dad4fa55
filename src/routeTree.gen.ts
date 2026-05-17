@@ -26,6 +26,7 @@ import { Route as DashboardFacebookJobsRouteImport } from './routes/dashboard.fa
 import { Route as DashboardFacebookHistoryRouteImport } from './routes/dashboard.facebook.history'
 import { Route as DashboardFacebookGroupsRouteImport } from './routes/dashboard.facebook.groups'
 import { Route as DashboardFacebookBotRouteImport } from './routes/dashboard.facebook.bot'
+import { Route as ApiPublicHealthRouteImport } from './routes/api/public/health'
 import { Route as ApiPublicHooksProcessBulkJobsRouteImport } from './routes/api/public/hooks/process-bulk-jobs'
 import { Route as ApiPublicBotNextJobRouteImport } from './routes/api/public/bot/next-job'
 import { Route as ApiPublicBotJobUpdateRouteImport } from './routes/api/public/bot/job-update'
@@ -116,6 +117,11 @@ const DashboardFacebookBotRoute = DashboardFacebookBotRouteImport.update({
   path: '/bot',
   getParentRoute: () => DashboardFacebookRoute,
 } as any)
+const ApiPublicHealthRoute = ApiPublicHealthRouteImport.update({
+  id: '/api/public/health',
+  path: '/api/public/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHooksProcessBulkJobsRoute =
   ApiPublicHooksProcessBulkJobsRouteImport.update({
     id: '/api/public/hooks/process-bulk-jobs',
@@ -146,6 +152,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
+  '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/history': typeof DashboardFacebookHistoryRoute
@@ -168,6 +175,7 @@ export interface FileRoutesByTo {
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
+  '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/history': typeof DashboardFacebookHistoryRoute
@@ -191,6 +199,7 @@ export interface FileRoutesById {
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
+  '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/history': typeof DashboardFacebookHistoryRoute
@@ -215,6 +224,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook'
     | '/dashboard/profile'
     | '/dashboard/whatsapp'
+    | '/api/public/health'
     | '/dashboard/facebook/bot'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/history'
@@ -237,6 +247,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook'
     | '/dashboard/profile'
     | '/dashboard/whatsapp'
+    | '/api/public/health'
     | '/dashboard/facebook/bot'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/history'
@@ -259,6 +270,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook'
     | '/dashboard/profile'
     | '/dashboard/whatsapp'
+    | '/api/public/health'
     | '/dashboard/facebook/bot'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/history'
@@ -276,6 +288,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  ApiPublicHealthRoute: typeof ApiPublicHealthRoute
   ApiPublicBotJobUpdateRoute: typeof ApiPublicBotJobUpdateRoute
   ApiPublicBotNextJobRoute: typeof ApiPublicBotNextJobRoute
   ApiPublicHooksProcessBulkJobsRoute: typeof ApiPublicHooksProcessBulkJobsRoute
@@ -402,6 +415,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardFacebookBotRouteImport
       parentRoute: typeof DashboardFacebookRoute
     }
+    '/api/public/health': {
+      id: '/api/public/health'
+      path: '/api/public/health'
+      fullPath: '/api/public/health'
+      preLoaderRoute: typeof ApiPublicHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/process-bulk-jobs': {
       id: '/api/public/hooks/process-bulk-jobs'
       path: '/api/public/hooks/process-bulk-jobs'
@@ -474,6 +494,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  ApiPublicHealthRoute: ApiPublicHealthRoute,
   ApiPublicBotJobUpdateRoute: ApiPublicBotJobUpdateRoute,
   ApiPublicBotNextJobRoute: ApiPublicBotNextJobRoute,
   ApiPublicHooksProcessBulkJobsRoute: ApiPublicHooksProcessBulkJobsRoute,
