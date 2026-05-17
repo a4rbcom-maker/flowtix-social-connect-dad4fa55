@@ -444,16 +444,18 @@ jobs:
                 echo "  ↳ $marker points to incompatible snapshot: ${candidate:-<empty>}" >&2
               fi
             done
-            # Fallback: scan recorded good-* and timestamped snapshots.
+            # Trusted fallback: scan only smoke-test-verified good-* snapshots.
+            # We intentionally do NOT scan generic timestamped snapshots ([0-9]*),
+            # because those are raw pre-deploy snapshots and may capture a
+            # broken build from an earlier failed deploy. Restoring an
+            # un-verified snapshot can put a known-bad build back on disk.
             while IFS= read -r candidate; do
               if is_valid_ssr_snapshot "$candidate"; then
-                case "$candidate" in
-                  *"/good-"*) echo "latest_good|$candidate" ;;
-                  *)          echo "latest_snapshot|$candidate" ;;
-                esac
+                echo "latest_good|$candidate"
                 return 0
               fi
-            done < <(ls -1dt "$BACKUPS_DIR"/good-* "$BACKUPS_DIR"/[0-9]* 2>/dev/null || true)
+              echo "  ↳ skipping incompatible good-* snapshot: $candidate" >&2
+            done < <(ls -1dt "$BACKUPS_DIR"/good-* 2>/dev/null || true)
             return 1
           }
 
