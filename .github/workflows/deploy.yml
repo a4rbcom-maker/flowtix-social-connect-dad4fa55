@@ -408,9 +408,10 @@ jobs:
           # Instead: redirect ssh output to a log file, capture ssh's own
           # exit code directly, then print the log afterwards.
           set +e
+          DRY_RUN_FLAG="${{ inputs.integrity_rollback_dry_run && '1' || '0' }}"
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
             "${DEPLOY_USER}@${SERVER_HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' DEPLOY_SHA='${GITHUB_SHA}' DEPLOY_RUN_ID='${GITHUB_RUN_ID}' DEPLOY_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOYED_AT='${DEPLOYED_AT}' bash -s" >/tmp/install-restart.log 2>&1 <<'EOSSH'
+            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' DEPLOY_SHA='${GITHUB_SHA}' DEPLOY_RUN_ID='${GITHUB_RUN_ID}' DEPLOY_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOYED_AT='${DEPLOYED_AT}' INTEGRITY_ROLLBACK_DRY_RUN='${DRY_RUN_FLAG}' bash -s" >/tmp/install-restart.log 2>&1 <<'EOSSH'
           set -euo pipefail
           cd "$DEPLOY_PATH"
           [ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
