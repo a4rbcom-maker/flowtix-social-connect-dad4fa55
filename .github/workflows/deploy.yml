@@ -890,6 +890,63 @@ jobs:
           exit 1
           EOSSH
 
+      - name: Verify Nginx upstream matches APP_PORT
+        env:
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
+          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          SSH_PORT="${SSH_PORT:-22}"
+
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
+            "${DEPLOY_USER}@${SERVER_HOST}" \
+            "APP_PORT='${APP_PORT}' bash -s" <<'EOSSH'
+          set -euo pipefail
+          echo "=== Scanning Nginx configs for upstream ports ==="
+          SEARCH_DIRS=()
+          for d in /www/server/panel/vhost/nginx /www/server/nginx/conf /etc/nginx; do
+            [ -d "$d" ] && SEARCH_DIRS+=("$d")
+          done
+          if [ ${#SEARCH_DIRS[@]} -eq 0 ]; then
+            echo "::warning::No Nginx config directory found — skipping upstream port check"
+            exit 0
+          fi
+          echo "Scanning: ${SEARCH_DIRS[*]}"
+
+          # Find all proxy_pass / upstream entries to 127.0.0.1:<port> or localhost:<port>
+          MATCHES=$(sudo -n grep -rEhn '(proxy_pass|server)[[:space:]]+https?://(127\.0\.0\.1|localhost):[0-9]+' \
+            "${SEARCH_DIRS[@]}" 2>/dev/null || true)
+
+          if [ -z "$MATCHES" ]; then
+            echo "::warning::No local upstream entries found in Nginx — cannot verify"
+            exit 0
+          fi
+          echo "Found upstream entries:"
+          echo "$MATCHES" | sed 's/^/  /'
+
+          # Extract ports and check for mismatches
+          BAD=$(echo "$MATCHES" \
+            | grep -oE '(127\.0\.0\.1|localhost):[0-9]+' \
+            | awk -F: '{print $2}' \
+            | sort -u \
+            | grep -v "^${APP_PORT}$" || true)
+
+          if [ -n "$BAD" ]; then
+            echo ""
+            echo "::error::Nginx upstream points to port(s) [$(echo $BAD | tr '\n' ' ')] but APP_PORT is ${APP_PORT}"
+            echo "::error::Fix on the server with:"
+            echo "::error::  sudo sed -i.bak 's/127.0.0.1:<old>/127.0.0.1:${APP_PORT}/g' /www/server/panel/vhost/nginx/*.conf"
+            echo "::error::  sudo nginx -t && sudo nginx -s reload"
+            exit 1
+          fi
+          echo "✓ All Nginx upstream entries point to 127.0.0.1:${APP_PORT}"
+          EOSSH
+
       - name: Verify public domain shows this commit
         env:
           PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
