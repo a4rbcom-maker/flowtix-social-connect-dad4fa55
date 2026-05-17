@@ -7,7 +7,7 @@ on:
 
 env:
   APP_NAME: flowtixtools-web
-  APP_PORT: ${{ vars.APP_PORT || '3100' }}
+  APP_PORT: 3100
 
 jobs:
   deploy:
@@ -242,22 +242,28 @@ jobs:
             fi
           }
 
-          app_owns_port() {
-            local app_pid pids
-            app_pid="$(pm2 pid "$APP_NAME" 2>/dev/null | tr -d '[:space:]' || true)"
-            pids="$(port_pids | tr '\n' ' ')"
-            [ -n "$app_pid" ] && [ "$app_pid" != "0" ] && echo " $pids " | grep -q " $app_pid "
+          wait_for_port_free() {
+            local p="$1"
+            for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+              if ! port_is_bound "$p"; then
+                return 0
+              fi
+              echo "Waiting for port ${p} to be released (attempt $attempt)…"
+              sleep 1
+            done
+            return 1
           }
 
-          for old_app in flowtix flowtixtools flowtixtools-ssr flowtixtools-srvx; do
-            if [ "$old_app" != "$APP_NAME" ] && pm2 describe "$old_app" >/dev/null 2>&1; then
-              echo "Removing old PM2 app: $old_app"
-              pm2 delete "$old_app" || true
+          for pm2_app in "$APP_NAME" flowtix flowtixtools flowtixtools-web flowtixtools-ssr flowtixtools-srvx; do
+            [ -n "$pm2_app" ] || continue
+            if pm2 describe "$pm2_app" >/dev/null 2>&1; then
+              echo "Stopping PM2 app before clean start: $pm2_app"
+              pm2 delete "$pm2_app" || true
             fi
           done
 
-          if port_is_bound "${APP_PORT}" && ! app_owns_port; then
-            echo "ERROR: Dedicated app port ${APP_PORT} is in use by a process outside PM2 app ${APP_NAME}. Aborting instead of killing an unknown service."
+          if ! wait_for_port_free "${APP_PORT}"; then
+            echo "ERROR: Dedicated app port ${APP_PORT} is still in use after stopping known PM2 apps. Aborting instead of killing an unknown service."
             print_port_diagnostics
             exit 1
           fi
@@ -282,7 +288,7 @@ jobs:
           export NODE_ENV=production
           export DEPLOY_SHA DEPLOY_RUN_ID DEPLOY_REPOSITORY DEPLOYED_AT
 
-          pm2 startOrReload ecosystem.config.cjs --only "$APP_NAME" --update-env
+          pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env
           pm2 save
 
           # Confirm the Node SSR app actually bound to the port after start.
