@@ -890,6 +890,84 @@ jobs:
           exit 1
           EOSSH
 
+      - name: Auto-fix Nginx upstream port (3001 → APP_PORT)
+        env:
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
+          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          SSH_PORT="${SSH_PORT:-22}"
+
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
+            "${DEPLOY_USER}@${SERVER_HOST}" \
+            "APP_PORT='${APP_PORT}' bash -s" <<'EOSSH'
+          set -euo pipefail
+          echo "=== Auto-fix: replace legacy port 3001 with ${APP_PORT} in Nginx ==="
+
+          SEARCH_DIRS=()
+          for d in /www/server/panel/vhost/nginx /www/server/nginx/conf /etc/nginx; do
+            [ -d "$d" ] && SEARCH_DIRS+=("$d")
+          done
+          if [ ${#SEARCH_DIRS[@]} -eq 0 ]; then
+            echo "::warning::No Nginx config directory found — skipping auto-fix"
+            exit 0
+          fi
+
+          if ! sudo -n true 2>/dev/null; then
+            echo "::warning::sudo requires a password on this server — cannot auto-fix Nginx"
+            echo "::warning::Run manually: sudo sed -i.bak 's/127.0.0.1:3001/127.0.0.1:${APP_PORT}/g; s/localhost:3001/localhost:${APP_PORT}/g' /www/server/panel/vhost/nginx/*.conf && sudo nginx -t && sudo nginx -s reload"
+            exit 0
+          fi
+
+          # Find files containing legacy 3001 reference (proxy_pass or upstream server)
+          AFFECTED=$(sudo -n grep -rlE '(127\.0\.0\.1|localhost):3001\b' "${SEARCH_DIRS[@]}" 2>/dev/null || true)
+
+          if [ -z "$AFFECTED" ]; then
+            echo "✓ No references to port 3001 found — nothing to fix"
+            exit 0
+          fi
+
+          echo "Files containing legacy port 3001:"
+          echo "$AFFECTED" | sed 's/^/  /'
+
+          TS=$(date +%Y%m%d-%H%M%S)
+          echo ""
+          echo "→ Backing up and rewriting (suffix .bak-${TS})…"
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            sudo -n cp -a "$f" "${f}.bak-${TS}"
+            sudo -n sed -i \
+              -e "s/127\.0\.0\.1:3001\b/127.0.0.1:${APP_PORT}/g" \
+              -e "s/localhost:3001\b/localhost:${APP_PORT}/g" \
+              "$f"
+            echo "  ✓ patched $f (backup: ${f}.bak-${TS})"
+          done <<< "$AFFECTED"
+
+          echo ""
+          echo "→ Validating Nginx config (nginx -t)…"
+          if ! sudo -n nginx -t; then
+            echo ""
+            echo "::error::nginx -t failed after auto-fix — rolling back patched files"
+            while IFS= read -r f; do
+              [ -z "$f" ] && continue
+              sudo -n mv "${f}.bak-${TS}" "$f"
+              echo "  ↺ reverted $f"
+            done <<< "$AFFECTED"
+            sudo -n nginx -t || true
+            exit 1
+          fi
+
+          echo ""
+          echo "→ Reloading Nginx…"
+          sudo -n nginx -s reload
+          echo "✓ Nginx auto-fix complete — upstream now targets ${APP_PORT}"
+          EOSSH
+
       - name: Verify Nginx upstream matches APP_PORT
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
