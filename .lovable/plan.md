@@ -1,89 +1,41 @@
-## الهدف
-إيقاف سلسلة مشاكل المزامنة والنشر، وتحويلها من محاولات عشوائية إلى مسار نشر واحد واضح: إما نشر Static مضمون، أو نشر SSR/PM2 صحيح، مع تحقق نهائي أن الموقع العام يعرض نفس نسخة GitHub.
+## الخطة المقترحة لإيقاف دوامة فشل النشر
 
-## التشخيص الحالي
-من آخر صورة، النشر لم يعد يفشل بسبب المسار فقط. الخطأ الآن واضح:
+المشكلة الحالية من الصور والـ workflow واضحة: آخر تعديل جعل GitHub Actions يحاول قراءة ملف Nginx داخل `/www/server/panel/vhost/nginx/...` لكن مستخدم SSH لا يملك صلاحية قراءة هذا المسار، لذلك يفشل قبل الوصول للـ rsync. كذلك خطوة تجهيز الباندل قد تفشل لأنها تطبع/تتعامل مع ملفات كثيرة بدون تشخيص كافٍ عند نقطة الخطأ.
 
-```text
-No server entry found under .output or dist/server
-ERROR: index.html missing in /www/wwwroot/flowtixtools.com
-```
+## ما سيتم تغييره
 
-هذا يعني أن الـ workflow يرفع `dist/client`، لكن لا يوجد `index.html` في جذر الموقع، وفي نفس الوقت لا يوجد server entry لتشغيله عبر PM2. إذن المشكلة الأساسية أن workflow الحالي يمزج بين 3 طرق نشر مختلفة:
+1. **إزالة خطوة قراءة Nginx المباشرة**
+   - لن نقرأ `/www/server/panel/vhost/nginx/flowtixtools.com.conf` من GitHub Actions لأنها تحتاج صلاحيات أعلى.
+   - سنعتمد على مسار نشر صريح وآمن من GitHub Secret باسم `DEPLOY_PATH`، مع fallback إلى `/www/wwwroot/flowtixtools.com`.
+   - سنضيف فحص أمان يمنع النشر خارج مسار يحتوي `flowtix`.
 
-1. Static files من `dist/client`
-2. Server runtime من `.output` أو `dist/server`
-3. تعديل Nginx وتشغيل PM2
+2. **تبسيط النشر إلى Static فقط مؤقتًا**
+   - بما أن الهدف الآن أن الموقع يتحدث بثبات بعد 3 أيام مشاكل، سنوقف تعديل Nginx وPM2 داخل الـ workflow مؤقتًا.
+   - الـ workflow سيبني المشروع، يجهز ملفات static من `dist/client` أو `.output/public`، ثم يرفعها فقط.
+   - هذا يقلل نقاط الفشل ويمنع workflow من كسر إعدادات السيرفر.
 
-وهذا سبب عدم الاستقرار خلال الأيام الماضية.
+3. **إصلاح خطوة Prepare deploy bundle**
+   - إضافة تشخيص واضح للملفات الناتجة من build.
+   - التأكد أن `index.html` موجود، ولو الناتج يحتوي `_shell/index.html` سيتم نسخه كـ `index.html`.
+   - عند الفشل سيطبع شجرة مختصرة ومفهومة بدل خروج غامض عند نهاية قائمة assets.
 
-## الخطة المقترحة
+4. **إضافة علامة تحقق بعد النشر**
+   - إنشاء `deploy-version.json` داخل ملفات النشر يحتوي commit/run/time.
+   - بعد rsync، فحص الملف على السيرفر مباشرة عبر SSH.
+   - ثم فحصه من `https://www.flowtixtools.com/deploy-version.json` للتأكد أن الدومين يخدم نفس النسخة.
 
-### 1. تثبيت وضع النشر بدل الخلط
-سأحوّل النشر إلى وضع واحد واضح بناءً على مخرجات البناء الفعلية:
-
-- إذا خرج `dist/client/index.html`: ننشر Static.
-- إذا خرج `dist/client/_shell/index.html`: ننسخه كـ `index.html` ثم ننشر Static.
-- إذا خرج `.output/server/index.mjs` أو `dist/server/index.mjs`: نشغل PM2 ونضبط Nginx proxy.
-- إذا لم يخرج أي من ذلك: يفشل الـ Action برسالة تشخيص واضحة قبل لمس السيرفر.
-
-### 2. وقف تعديل Nginx العنيف في كل Deploy
-بدل ما الـ workflow يعدل ملف Nginx كل مرة، سيتم جعله يتصرف بحذر:
-
-- يقرأ مسار `root` الحالي للدومين.
-- يطبع المسار في اللوج.
-- لا يغير Nginx إلا إذا كان محتاج فعلاً.
-- يحتفظ بنسخة backup قبل أي تعديل.
-- لا يلمس أي دومين أو مشروع آخر.
-
-### 3. إصلاح حالة Static الحالية
-بما أن آخر build ظاهر أنه يحتوي `dist/client/sitemap.xml` و `robots.txt` و assets لكن لا يحتوي `index.html` في الجذر، سأضيف fallback واضح:
-
-```text
-if dist/client/index.html exists -> deploy it
-else if dist/client/_shell/index.html exists -> copy it to index.html
-else fail before rsync
-```
-
-وبكده لن يصل السيرفر لحالة “ملفات assets موجودة لكن الصفحة الرئيسية مفقودة”.
-
-### 4. إضافة ملف تحقق عام بعد النشر
-سأضيف ملف نسخة مثل:
-
-```text
-/deploy-version.json
-```
-
-يحتوي:
-
-```json
-{
-  "sha": "GitHub commit",
-  "run_id": "GitHub Actions run",
-  "deployed_at": "timestamp",
-  "deploy_path": "actual nginx root"
-}
-```
-
-ثم الـ Action يعمل `curl` عليه من الموقع العام للتأكد أن التحديث وصل فعلاً إلى نفس الدومين، وليس إلى مسار آخر.
-
-### 5. تحقق نهائي من الموقع العام
-بعد النشر، الـ workflow سيتحقق من:
-
-- `https://www.flowtixtools.com/` يرجع 200.
-- الصفحة تحتوي HTML حقيقي وليس error page.
-- `/assets/...` متاح.
-- `/deploy-version.json` يعرض نفس commit الحالي.
-
-لو أي نقطة فشلت، اللوج سيقول السبب بوضوح.
+5. **إبقاء CI منفصل وغير مكرر**
+   - CI يبقى للـ pull_request فقط.
+   - Deploy يبقى للـ push على main فقط.
+   - لا تعديل على CI إلا إذا ظهر تكرار فعلي بعد مراجعة أسماء الـ workflows.
 
 ## النتيجة المتوقعة
-بعد تنفيذ الخطة، سيكون عندك إجابة مؤكدة من الـ Action:
 
-- أين تم النشر بالضبط.
-- هل Nginx يخدم نفس المسار أم لا.
-- هل `index.html` موجود أم لا.
-- هل الموقع العام يعرض آخر commit أم نسخة قديمة.
+- لن يفشل النشر بسبب Permission denied على ملفات Nginx.
+- لن يلمس الـ workflow إعدادات Nginx أو PM2، وبالتالي لن يكسر السيرفر.
+- كل نشر جديد إما ينجح ويثبت أن الدومين يخدم نفس commit، أو يفشل برسالة دقيقة في خطوة واحدة.
 
-## ملاحظة مهمة
-لو التطبيق يحتاج server functions أو SSR بشكل كامل، الحل الأفضل بعد استعادة الموقع هو تحويل النشر إلى SSR/PM2 مضبوط. لكن كخطوة إنقاذ الآن، سنجعل Static deploy يعمل أولاً حتى يرجع الموقع، ثم نثبت SSR لو احتجناه.
+## ملاحظات مهمة بعد التنفيذ
+
+- إذا كان المسار الحقيقي ليس `/www/wwwroot/flowtixtools.com`، يجب إضافة GitHub Secret باسم `DEPLOY_PATH` بالقيمة الصحيحة.
+- إذا كان الموقع يحتاج SSR فعلًا وليس static، نعيد إدخاله لاحقًا بعد استقرار النشر، لكن ليس الآن حتى لا نعيد نفس التعقيد.
