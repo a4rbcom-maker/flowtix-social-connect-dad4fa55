@@ -23,6 +23,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
+import { supabase } from "@/integrations/supabase/client";
 import { NotificationsBell } from "@/components/dashboard/NotificationsBell";
 import { ChannelStatusDot } from "@/components/dashboard/ChannelStatusDot";
 import { ChannelQuickActions } from "@/components/dashboard/ChannelQuickActions";
@@ -136,10 +137,21 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const toggleGroup = (key: string) =>
     setOpenGroups((p) => ({ ...p, [key]: !p[key] }));
 
+  const [profilePlan, setProfilePlan] = useState<string | null>(null);
+  useEffect(() => {
+    if (!user) { setProfilePlan(null); return; }
+    let cancelled = false;
+    supabase.from("profiles").select("plan").eq("id", user.id).maybeSingle().then(({ data }) => {
+      if (!cancelled) setProfilePlan(data?.plan ?? "free");
+    });
+    return () => { cancelled = true; };
+  }, [user]);
+
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "";
-  const userPlan = (user?.user_metadata?.plan as string | undefined) || "Free";
+  const userPlan = profilePlan || (user?.user_metadata?.plan as string | undefined) || "free";
+  const isFree = userPlan.toLowerCase() === "free";
   const planLabel = lang === "ar"
-    ? (userPlan.toLowerCase() === "free" ? "الباقة المجانية" : `باقة ${userPlan}`)
+    ? (isFree ? "الباقة المجانية" : `باقة ${userPlan}`)
     : `${userPlan.charAt(0).toUpperCase() + userPlan.slice(1)} plan`;
   const upgradeLabel = lang === "ar" ? "ترقية" : "Upgrade";
 
@@ -341,7 +353,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
         <div className="border-t border-border p-3 shrink-0">
           {sidebarOpen ? (
             <div className="space-y-2">
-              {userPlan.toLowerCase() === "free" && (
+              {isFree ? (
                 <Link
                   to="/dashboard/profile"
                   onClick={closeOnMobile}
@@ -355,6 +367,16 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                     <div className="truncate text-[10.5px] text-primary">{upgradeLabel} →</div>
                   </div>
                 </Link>
+              ) : (
+                <div className="flex items-center gap-2.5 rounded-lg border border-primary/30 bg-gradient-to-br from-primary/10 to-[oklch(0.66_0.26_320)]/10 p-2.5">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-primary to-[oklch(0.66_0.26_320)] text-primary-foreground">
+                    <Sparkles className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[12px] font-semibold text-foreground">{planLabel}</div>
+                    <div className="truncate text-[10.5px] text-muted-foreground">{lang === "ar" ? "اشتراك نشط" : "Active subscription"}</div>
+                  </div>
+                </div>
               )}
 
               <div className="flex items-center gap-2.5 rounded-lg px-1.5 py-1">
