@@ -383,10 +383,10 @@ jobs:
             "$SRC/" "$DEPLOY_PATH/"
 
           cd "$DEPLOY_PATH"
-          ENTRY="scripts/tanstack-node-server.mjs"
+          ENTRY="dist/server/server.js"
           if [ ! -f "$ENTRY" ]; then
             ENTRY=""
-            for c in .output/server/index.mjs .output/server/index.js dist/server/server.js; do
+            for c in .output/server/index.mjs .output/server/index.js scripts/tanstack-node-server.mjs; do
               if [ -f "$c" ]; then ENTRY="$c"; break; fi
             done
           fi
@@ -433,13 +433,16 @@ jobs:
           fi
           export SUPABASE_URL="${SUPABASE_URL:-${VITE_SUPABASE_URL:-}}"
           export SUPABASE_PUBLISHABLE_KEY="${SUPABASE_PUBLISHABLE_KEY:-${VITE_SUPABASE_PUBLISHABLE_KEY:-}}"
-          PORT="$APP_PORT" \
           NODE_ENV=production \
           DEPLOY_SHA="$RESTORED_SHA" \
           DEPLOY_RUN_ID="$RESTORED_RUN" \
           DEPLOY_REPOSITORY="$RESTORED_REPO" \
           DEPLOYED_AT="$RESTORED_AT" \
-            pm2 start "$ENTRY" --name "$APP_NAME" --interpreter node --cwd "$DEPLOY_PATH" --update-env
+            if [ "$ENTRY" = "dist/server/server.js" ] && [ -x node_modules/.bin/srvx ]; then
+              pm2 start node_modules/.bin/srvx --name "$APP_NAME" --interpreter node --cwd "$DEPLOY_PATH" --update-env -- serve --entry "$ENTRY" --static dist/client --prod --host 127.0.0.1 --port "$APP_PORT"
+            else
+              PORT="$APP_PORT" pm2 start "$ENTRY" --name "$APP_NAME" --interpreter node --cwd "$DEPLOY_PATH" --update-env
+            fi
           pm2 save
 
           echo "ROLLBACK_RESULT=ok"
