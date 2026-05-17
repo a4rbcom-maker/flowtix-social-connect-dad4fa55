@@ -7,7 +7,7 @@ on:
 
 env:
   APP_NAME: flowtixtools-web
-  APP_PORT: 3000
+  APP_PORT: ${{ vars.APP_PORT || '3100' }}
 
 jobs:
   deploy:
@@ -257,7 +257,7 @@ jobs:
           done
 
           if port_is_bound "${APP_PORT}" && ! app_owns_port; then
-            echo "ERROR: Port ${APP_PORT} is in use by a process outside PM2 app ${APP_NAME}. Aborting instead of killing an unknown service."
+            echo "ERROR: Dedicated app port ${APP_PORT} is in use by a process outside PM2 app ${APP_NAME}. Aborting instead of killing an unknown service."
             print_port_diagnostics
             exit 1
           fi
@@ -364,7 +364,7 @@ jobs:
             sleep 5
           done
 
-          echo "::error::Public domain did not serve commit ${SHORT_SHA}. The app passed local PM2 health checks, so check Nginx/domain proxy to http://127.0.0.1:${APP_PORT}."
+          echo "::error::Public domain did not serve commit ${SHORT_SHA}. The app passed local PM2 health checks, so update the domain proxy/upstream to http://127.0.0.1:${APP_PORT}."
           exit 1
 
       - name: Record LAST_GOOD snapshot
