@@ -247,9 +247,16 @@ jobs:
           text = conf.read_text()
           port = '3000'
           root = '/www/wwwroot/flowtixtools.com'
+          has_server_entry = any((Path(root) / p).is_file() for p in (
+              '.output/server/index.mjs', '.output/server/index.js', '.output/index.mjs',
+              'dist/server/index.mjs', 'dist/server/index.js',
+          ))
           managed_start = '    # FLOWTIXTOOLS_NODE_APP_START'
           managed_end = '    # FLOWTIXTOOLS_NODE_APP_END'
-          block = f'''{managed_start}\n    location /assets/ {{\n        alias {root}/assets/;\n        access_log off;\n        expires 1y;\n        add_header Cache-Control "public, immutable";\n        try_files $uri =404;\n    }}\n\n    location / {{\n        proxy_pass http://127.0.0.1:{port};\n        proxy_http_version 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection "upgrade";\n    }}\n{managed_end}'''
+          if has_server_entry:
+              block = f'''{managed_start}\n    location /assets/ {{\n        alias {root}/assets/;\n        access_log off;\n        expires 1y;\n        add_header Cache-Control "public, immutable";\n        try_files $uri =404;\n    }}\n\n    location / {{\n        proxy_pass http://127.0.0.1:{port};\n        proxy_http_version 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection "upgrade";\n    }}\n{managed_end}'''
+          else:
+              block = f'''{managed_start}\n    index index.html;\n\n    location /assets/ {{\n        alias {root}/assets/;\n        access_log off;\n        expires 1y;\n        add_header Cache-Control "public, immutable";\n        try_files $uri =404;\n    }}\n\n    location / {{\n        try_files $uri $uri/ /index.html;\n    }}\n{managed_end}'''
           
           if managed_start in text and managed_end in text:
               before = text.split(managed_start)[0]
