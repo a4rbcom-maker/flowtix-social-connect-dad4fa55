@@ -207,7 +207,8 @@ jobs:
             echo "Install bun with: curl -fsSL https://bun.sh/install | bash"
             exit 1
           fi
-          bun install --production --frozen-lockfile || bun install --production
+          echo "Bun version on server: $(bun --version)"
+          bun install --production --frozen-lockfile
 
           command -v pm2 >/dev/null 2>&1 || { echo "ERROR: pm2 is not installed on the server"; exit 1; }
           command -v node >/dev/null 2>&1 || { echo "ERROR: node is not installed on the server"; exit 1; }
