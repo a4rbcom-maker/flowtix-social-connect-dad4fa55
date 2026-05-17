@@ -1105,19 +1105,30 @@ jobs:
               && [ -f "$candidate/scripts/tanstack-node-server.mjs" ] \
               && [ -f "$candidate/ecosystem.config.cjs" ]
           }
+          is_runnable_prev_snapshot() {
+            local candidate="$1"
+            [ -d "$candidate" ] \
+              && [ -f "$candidate/dist/server/server.js" ] \
+              && [ -f "$candidate/ecosystem.config.cjs" ] \
+              && [ -d "$candidate/node_modules" ]
+          }
 
           choose_rollback_snapshot() {
             local candidate
-            for marker in LAST_GOOD PREV_SNAPSHOT; do
-              if [ -f "$BACKUPS_DIR/$marker" ]; then
-                candidate=$(cat "$BACKUPS_DIR/$marker")
-                if is_valid_ssr_snapshot "$candidate"; then
-                  echo "$candidate"
-                  return 0
-                fi
-                echo "Skipping incompatible rollback snapshot from $marker: ${candidate:-empty}" >&2
+            if [ -f "$BACKUPS_DIR/LAST_GOOD" ]; then
+              candidate=$(cat "$BACKUPS_DIR/LAST_GOOD")
+              if is_valid_ssr_snapshot "$candidate"; then
+                echo "$candidate"; return 0
               fi
-            done
+              echo "Skipping incompatible rollback snapshot from LAST_GOOD: ${candidate:-empty}" >&2
+            fi
+            if [ -f "$BACKUPS_DIR/PREV_SNAPSHOT" ]; then
+              candidate=$(cat "$BACKUPS_DIR/PREV_SNAPSHOT")
+              if is_runnable_prev_snapshot "$candidate"; then
+                echo "$candidate"; return 0
+              fi
+              echo "Skipping non-runnable rollback snapshot from PREV_SNAPSHOT: ${candidate:-empty}" >&2
+            fi
             while IFS= read -r candidate; do
               if is_valid_ssr_snapshot "$candidate"; then
                 echo "$candidate"
