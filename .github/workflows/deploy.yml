@@ -7,7 +7,7 @@ on:
 
 env:
   DEPLOY_PATH: /www/wwwroot/flowtixtools.com
-  APP_NAME: flowtix
+  APP_NAME: flowtixtools-web
   APP_PORT: 3000
 
 jobs:
@@ -36,9 +36,11 @@ jobs:
             ls -la
             exit 1
           fi
-          echo "--- .output tree ---"
+          echo "--- .output tree (top) ---"
           ls -la .output
           [ -d ".output/server" ] && ls -la .output/server || true
+          [ -d ".output/public" ] && ls -la .output/public || true
+          [ -d ".output/public/assets" ] && echo "assets count: $(ls .output/public/assets | wc -l)" || echo "::warning::No .output/public/assets directory"
 
       - name: Setup SSH key
         env:
@@ -57,7 +59,7 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "$SSH_PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Deploy build artifacts via rsync
+      - name: Deploy build artifacts via rsync (scoped to this project only)
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -69,14 +71,33 @@ jobs:
           DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
           SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
           SSH_PORT="${SSH_PORT:-22}"
+
+          # Safety: never operate outside /www/wwwroot/flowtixtools.com
+          case "$DEPLOY_PATH" in
+            /www/wwwroot/flowtixtools.com|/www/wwwroot/flowtixtools.com/*) : ;;
+            *) echo "::error::Refusing to deploy outside flowtixtools.com path"; exit 1 ;;
+          esac
+
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" "mkdir -p ${DEPLOY_PATH}"
+            "${DEPLOY_USER}@${SERVER_HOST}" "mkdir -p ${DEPLOY_PATH}/.output"
+
+          # 1) Sync the full .output (server runtime) — scoped to this project's .output only
           rsync -avz --delete \
             -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
             ./.output/ \
             "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/.output/"
 
-      - name: Restart app on server (PM2)
+          # 2) Mirror static public assets to the web root so Nginx can serve /assets/*
+          if [ -d ".output/public" ]; then
+            rsync -avz \
+              -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
+              ./.output/public/ \
+              "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/"
+          else
+            echo "::warning::.output/public not found — skipping static mirror"
+          fi
+
+      - name: Verify files on server and restart PM2 app (scoped)
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -89,11 +110,23 @@ jobs:
           SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
           SSH_PORT="${SSH_PORT:-22}"
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" bash -s <<'EOSSH'
+            "${DEPLOY_USER}@${SERVER_HOST}" \
+            "DEPLOY_PATH='${DEPLOY_PATH}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' bash -s" <<'EOSSH'
             set -e
-            cd ${DEPLOY_PATH:-/www/wwwroot/flowtixtools.com}
-            export PORT=3000
-            export NODE_ENV=production
+            cd "$DEPLOY_PATH"
+
+            echo "=== Deployed files (top level) ==="
+            ls -la | head -n 40
+
+            echo "=== assets directory ==="
+            if [ -d "assets" ]; then
+              echo "assets file count: $(ls assets | wc -l)"
+              ls assets | head -n 10
+            else
+              echo "ERROR: assets directory missing in $DEPLOY_PATH — static files will 404"
+              exit 1
+            fi
+
             ENTRY=""
             for c in .output/server/index.mjs .output/server/index.js .output/index.mjs; do
               if [ -f "$c" ]; then ENTRY="$c"; break; fi
@@ -104,10 +137,18 @@ jobs:
               exit 1
             fi
             echo "Using entry: $ENTRY"
-            if pm2 describe flowtix > /dev/null 2>&1; then
-              pm2 restart flowtix --update-env
+
+            export PORT="$APP_PORT"
+            export NODE_ENV=production
+
+            # PM2 is scoped strictly to this app name — won't touch other projects.
+            if pm2 describe "$APP_NAME" > /dev/null 2>&1; then
+              pm2 restart "$APP_NAME" --update-env
             else
-              pm2 start "$ENTRY" --name flowtix --update-env
+              pm2 start "$ENTRY" --name "$APP_NAME" --update-env
             fi
             pm2 save
+
+            echo "=== PM2 status for $APP_NAME ==="
+            pm2 describe "$APP_NAME" | head -n 30 || true
 EOSSH
