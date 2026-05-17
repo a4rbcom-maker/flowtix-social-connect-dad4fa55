@@ -210,9 +210,18 @@ jobs:
           fi
 
           if [ -f .env ]; then
-            set -a
-            . ./.env
-            set +a
+            while IFS= read -r line || [ -n "$line" ]; do
+              case "$line" in ""|\#*) continue ;; esac
+              key="${line%%=*}"
+              value="${line#*=}"
+              case "$key" in
+                SUPABASE_URL|SUPABASE_PUBLISHABLE_KEY|VITE_SUPABASE_URL|VITE_SUPABASE_PUBLISHABLE_KEY)
+                  value="${value%\"}"; value="${value#\"}"
+                  value="${value%\'}"; value="${value#\'}"
+                  export "$key=$value"
+                  ;;
+              esac
+            done < .env
           fi
           export SUPABASE_URL="${SUPABASE_URL:-${VITE_SUPABASE_URL:-}}"
           export SUPABASE_PUBLISHABLE_KEY="${SUPABASE_PUBLISHABLE_KEY:-${VITE_SUPABASE_PUBLISHABLE_KEY:-}}"
@@ -403,9 +412,18 @@ jobs:
             pm2 delete "$APP_NAME" || true
           fi
           if [ -f .env ]; then
-            set -a
-            . ./.env
-            set +a
+            while IFS= read -r line || [ -n "$line" ]; do
+              case "$line" in ""|\#*) continue ;; esac
+              key="${line%%=*}"
+              value="${line#*=}"
+              case "$key" in
+                SUPABASE_URL|SUPABASE_PUBLISHABLE_KEY|VITE_SUPABASE_URL|VITE_SUPABASE_PUBLISHABLE_KEY)
+                  value="${value%\"}"; value="${value#\"}"
+                  value="${value%\'}"; value="${value#\'}"
+                  export "$key=$value"
+                  ;;
+              esac
+            done < .env
           fi
           export SUPABASE_URL="${SUPABASE_URL:-${VITE_SUPABASE_URL:-}}"
           export SUPABASE_PUBLISHABLE_KEY="${SUPABASE_PUBLISHABLE_KEY:-${VITE_SUPABASE_PUBLISHABLE_KEY:-}}"
