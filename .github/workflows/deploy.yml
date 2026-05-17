@@ -40,7 +40,9 @@ jobs:
           rm -rf deploy
           mkdir -p deploy
           cp -r dist deploy/dist
+          cp -r scripts deploy/scripts
           cp package.json deploy/package.json
+          cp ecosystem.config.cjs deploy/ecosystem.config.cjs
           [ -f "bun.lockb" ] && cp bun.lockb deploy/bun.lockb
           [ -f "bun.lock" ] && cp bun.lock deploy/bun.lock
           [ -f "package-lock.json" ] && cp package-lock.json deploy/package-lock.json
