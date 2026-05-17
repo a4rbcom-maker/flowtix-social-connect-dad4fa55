@@ -83,7 +83,15 @@ jobs:
           esac
 
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" "mkdir -p ${DEPLOY_PATH}/.output"
+            "${DEPLOY_USER}@${SERVER_HOST}" "mkdir -p ${DEPLOY_PATH}/.output ${DEPLOY_PATH}/dist"
+
+          cat > .deploy-version <<EOF
+          repo=${GITHUB_REPOSITORY}
+          sha=${GITHUB_SHA}
+          run_id=${GITHUB_RUN_ID}
+          deployed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          path=${DEPLOY_PATH}
+          EOF
 
           # 1) Sync the full .output (server runtime) — scoped to this project's .output only
           rsync -avz --delete \
@@ -91,15 +99,33 @@ jobs:
             ./.output/ \
             "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/.output/"
 
+          # Also sync dist because the existing aaPanel site currently contains dist/client + dist/server.
+          if [ -d "dist" ]; then
+            rsync -avz --delete \
+              -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
+              ./dist/ \
+              "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/dist/"
+          fi
+
           # 2) Mirror static public assets to the web root so Nginx can serve /assets/*
           if [ -d ".output/public" ]; then
             rsync -avz \
               -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
               ./.output/public/ \
               "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/"
+          elif [ -d "dist/client" ]; then
+            rsync -avz \
+              -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
+              ./dist/client/ \
+              "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/"
           else
-            echo "::warning::.output/public not found — skipping static mirror"
+            echo "::warning::No static public output found — skipping static mirror"
           fi
+
+          rsync -avz \
+            -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
+            ./.deploy-version \
+            "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/.deploy-version"
 
       - name: Verify files on server and restart PM2 app (scoped)
         env:
