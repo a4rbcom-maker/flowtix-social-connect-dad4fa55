@@ -202,11 +202,25 @@ jobs:
           [ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
           [ -f deploy-version.json ] || { echo "ERROR: deploy-version.json missing"; exit 1; }
 
+          # Make sure user-local bun (installed by this script previously) is on PATH
+          export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
+          export PATH="$BUN_INSTALL/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
           if ! command -v bun >/dev/null 2>&1; then
-            echo "ERROR: bun is required on the server for production install (npm path disabled)."
-            echo "Install bun with: curl -fsSL https://bun.sh/install | bash"
-            exit 1
+            echo "Bun not found on server — installing automatically…"
+            curl -fsSL https://bun.sh/install | bash
+            export PATH="$BUN_INSTALL/bin:$PATH"
+            # Persist for future non-interactive SSH sessions
+            if [ -f "$HOME/.bashrc" ] && ! grep -q 'BUN_INSTALL' "$HOME/.bashrc"; then
+              {
+                echo ''
+                echo '# Bun (auto-installed by Flowtix deploy)'
+                echo 'export BUN_INSTALL="$HOME/.bun"'
+                echo 'export PATH="$BUN_INSTALL/bin:$PATH"'
+              } >> "$HOME/.bashrc"
+            fi
           fi
+          command -v bun >/dev/null 2>&1 || { echo "ERROR: bun install failed — please install bun manually on the server"; exit 1; }
           echo "Bun version on server: $(bun --version)"
           bun install --production --frozen-lockfile
 
