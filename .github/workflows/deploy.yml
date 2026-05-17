@@ -33,12 +33,23 @@ jobs:
       - name: Build project
         run: bun run build
 
+      - name: Install production-only dependencies for shipping
+        run: |
+          set -euo pipefail
+          # Build is done; now produce a node_modules tree containing ONLY
+          # production deps so the server doesn't need bun/npm to install.
+          rm -rf node_modules
+          bun install --production --frozen-lockfile
+          echo "Production node_modules size:"
+          du -sh node_modules || true
+
       - name: Prepare SSR deploy bundle
         run: |
           set -euo pipefail
 
           SERVER_ENTRY="dist/server/server.js"
           [ -f "$SERVER_ENTRY" ] || { echo "::error::SSR entry missing: $SERVER_ENTRY"; find dist -maxdepth 3 -type f 2>/dev/null | head -n 120 || true; exit 1; }
+          [ -d node_modules ] || { echo "::error::node_modules missing after production install"; exit 1; }
 
           DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
@@ -47,11 +58,10 @@ jobs:
           mkdir -p deploy
           cp -r dist deploy/dist
           cp -r scripts deploy/scripts
+          cp -r node_modules deploy/node_modules
           cp package.json deploy/package.json
           cp ecosystem.config.cjs deploy/ecosystem.config.cjs
-          [ -f "bun.lockb" ] && cp bun.lockb deploy/bun.lockb
-          [ -f "bun.lock" ] && cp bun.lock deploy/bun.lock
-          # NOTE: package-lock.json is intentionally NOT shipped — production uses Bun only.
+          # Lockfiles are NOT shipped — the server never runs install anymore.
 
           cat > deploy/deploy-version.json <<JSON
           {
