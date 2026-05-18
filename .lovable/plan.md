@@ -1,67 +1,41 @@
-## التشخيص النهائي
+## السبب الجذري (مؤكد بالشبكة)
 
-الكوكيز عندك سليمة (Cookie-Editor JSON، فيها c_user/xs/datr/fr، الحساب نظيف). المشكلة مش فيها.
+- الطلب `GET https://flowtixtools.com/dashboard/facebook/bot` يرجع **502 من Cloudflare** والـ Origin هو الـ VPS (`cf-ray: 9fdb84f10871cb73-PDX`, `cfOrigin;dur=546ms`, `cf-host-status: Error`).
+- `/` و `/api/public/health` يردّان 200 → المشكلة **مقصورة على SSR لهذا المسار** على الـ VPS، أي أن رندرة الصفحة على الخادم ترمي استثناء قبل ما يلتقطه `RootErrorComponent` فيرد الخادم 5xx ثم Cloudflare يحوّله 502.
+- النسخة المنشورة فعليًا على الإنتاج هي `29f09cf` (لأن آخر 4 deploys للـ VPS فشلت — منفصل عن هذا الإصلاح).
+- مسار `/dashboard/*` لا يحتاج SSR إطلاقًا: محتواه خاص بالمستخدم، غير قابل للأرشفة، ولا يحتاج SEO أو OG. تشغيله SSR يفتح بابًا للأخطاء (auth provider يقرأ session، استدعاء `useAuth` قبل hydrate، أي import يتفجّر في بيئة Node بدون env) — وأي خطأ منها = 502.
 
-**السبب الحقيقي:** السيرفر بتاع التطبيق (Cloudflare Workers) بيبعت طلب `fetch("https://m.facebook.com/me")` من IP تابع لـ Cloudflare Datacenter. فيسبوك عنده طبقة حماية صارمة بترفض كل الطلبات الجاية من IPs الـ Datacenters (AWS, GCP, Cloudflare, إلخ) حتى لو الكوكيز صحيحة 100%، وبيرجّع صفحة تسجيل الدخول/redirect على `/login` كرد افتراضي.
+## الإصلاح (تعديل بسيط ومستهدف)
 
-**الدليل من الكود** (`src/lib/fb-bot.functions.ts` سطر 307):
-```ts
-const res = await fetch("https://m.facebook.com/me", { ... cookies + UA ... })
-// res.body بيرجع صفحة login → lastError = "صفحة /me أعادت محتوى تسجيل دخول"
+### 1) تعطيل SSR لكل راوتس لوحة التحكم
+لكل ملف تحت `src/routes/dashboard*.tsx` نضيف `ssr: false` داخل `createFileRoute({...})`. هذا يجعل الخادم يرسل غلاف HTML فقط ويتم الرندر بالكامل على العميل، فيستحيل أن يفشل SSR على هذه المسارات.
+
+الملفات المعنية (12 ملف):
 ```
-ده اللي ظاهر في الـ Toast اللي بعتّه. نفس الكوكيز لو جرّبتها من متصفحك أو من VPS بـ IP منزلي → هترجع `profile_id={c_user}` عادي.
+dashboard.tsx, dashboard.activity.tsx, dashboard.bulk.tsx, dashboard.control.tsx,
+dashboard.facebook.tsx, dashboard.facebook.bot.tsx, dashboard.facebook.groups.tsx,
+dashboard.facebook.history.tsx, dashboard.facebook.jobs.tsx, dashboard.facebook.status.tsx,
+dashboard.profile.tsx, dashboard.whatsapp.tsx
+```
 
-**ليه بيشتغل من المعاينة لكن مش من Live؟** الاتنين بيشتغلوا على نفس Workers، الفرق إن فيسبوك ساعات بيسمح بطلبات نادرة من preview ثم يبدأ يحظر بعد تكرار. عملياً الاختبار من Workers مش موثوق نهائياً.
+### 2) errorComponent محلي لراوت البوت
+بدلًا من ترك أي استثناء يصعد للجذر، نضيف `errorComponent` خاص بـ `dashboard.facebook.bot.tsx` يعرض بطاقة خطأ عربية وزر "إعادة المحاولة" يستدعي `router.invalidate()` + `reset()`. هذا يضمن أن أسوأ حالة على العميل = UI ودود، لا شاشة بيضاء.
 
----
+### 3) تنظيف `beforeLoad`
+الحالي يستورد `supabase` ديناميكيًا ويستدعي `getSession()` بلا فائدة. مع `ssr: false` يصبح غير ضروري — نحذفه (`AuthProvider` في الجذر يتولى السيشن).
 
-## الحل (ملخّص)
+## ما لن أغيره
 
-عندنا أصلاً في الـ architecture **VPS Worker** المفروض هو اللي يعمل كل التفاعلات الحقيقية مع فيسبوك (لأنه هيشتغل ببراوزر حقيقي على IP منزلي/خاص). الحل إن **اختبار الحساب** يتم نفس الطريق:
+- **لن أمس** أي ملف server-fn، أو الـ middleware، أو ملفات SSR/Worker/`server.ts`.
+- **لن أعدل** الـ pipeline أو إعدادات VPS — هذا مسار منفصل (الـ 4 deploys الفاشلة موضوع آخر).
+- **لن أمس** صفحات عامة (`/`, `/login`, ...) — تبقى SSR لمصلحة SEO/OG.
 
-### الخطوات
+## ملاحظة مهمة عن النشر
 
-1. **تعديل `testBotAccount` في `src/lib/fb-bot.functions.ts`**:
-   - بدل ما السيرفر يعمل `fetch` مباشرة لفيسبوك، يعمل validation محلي بس على بنية الكوكيز:
-     - وجود `c_user` + `xs` + `datr` + `fr`
-     - `c_user` رقمي صالح
-     - `xs` مش فاضي
-   - لو الـ validation نجح → ينشئ **job جديد نوعه `account_test`** في جدول `fb_jobs` ويرجع للواجهة `status: "pending_test"` مع رسالة "تم إرسال طلب الاختبار لعامل VPS — النتيجة هتظهر خلال ثوانٍ".
-
-2. **إضافة handler للنوع ده في الـ VPS Worker** (لما نوصل لمرحلة بناءه — Phase 4):
-   - الـ worker بيسحب الـ job، يفتح بروسر مع الكوكيز، يدخل m.facebook.com/me، يتأكد من ظهور `profile_id`، ويرجّع النتيجة بكتابة `last_test_status` + `last_test_error` + `last_tested_at` على الحساب.
-
-3. **في واجهة `dashboard.facebook.bot.tsx`**:
-   - بعد ما المستخدم يدوس "اختبر الآن" → polling كل 3 ثواني على `getBotAccounts` لمدة 60 ثانية لحد ما `last_tested_at` يتحدّث.
-   - عرض رسالة واضحة: "⏳ في الانتظار — العامل بيختبر الحساب الآن"، ثم النتيجة النهائية.
-
-4. **حل مؤقت لحد ما VPS Worker يبقى جاهز**:
-   - نضيف رسالة واضحة في الواجهة (Banner أصفر فوق قائمة الحسابات):
-     > "الاختبار الفوري من السيرفر معطّل مؤقتاً — فيسبوك بيرفض طلبات Cloudflare. الحسابات هتتختبر تلقائياً أول ما VPS Worker يربط (Phase 4). دلوقتي بنتحقق فقط من بنية الكوكيز."
-   - والـ button يعمل بس structural validation ويعرض ✓ "الكوكيز كاملة وسليمة شكلياً" أو ✗ "ناقص كذا".
-
----
-
-## التفاصيل التقنية
-
-**ملفات هتتعدّل:**
-- `src/lib/fb-bot.functions.ts` — تبسيط `testBotAccount` (إزالة fetch لفيسبوك، إبقاء structural check فقط، إضافة job creation اختياري)
-- `src/routes/dashboard.facebook.bot.tsx` — تحديث رسائل النتيجة + banner تنبيهي
-
-**ملفات مش هتتعدّل:**
-- `crypto.server.ts`, `client.ts`, جداول الـ DB — مفيش تغيير schema.
-
-**ليه مش هنحاول workaround تاني؟**
-- Proxy services مدفوعة → تعقيد + تكلفة.
-- تغيير User-Agent مش بيحل المشكلة (فيسبوك بيشوف الـ IP الأول).
-- استخدام Graph API الرسمي → بيحتاج App Review من Meta وعملية الموافقة طويلة، ومش بيغطي كل المزايا اللي بتحتاجها (نشر في Groups بحساب شخصي مثلاً ممنوع رسمياً عبر API).
-
-VPS Worker بكوكيز هو الطريق العملي الوحيد لـ Facebook automation، وده اللي خطّطنا له من الأول.
-
----
+التعديل سيبقى في إصدار Lovable فورًا (preview + lovable.app)، لكنه **لن يظهر على `www.flowtixtools.com` إلا بعد نجاح Deploy to VPS**. آخر 4 محاولات فشلت. لو رضيت، بعد ما أنفّذ هذا التعديل وأتأكد أنه يحلّ المشكلة على Lovable، نفتح موضوع منفصل لإصلاح الـ pipeline (يحتاج logs الـ GitHub Actions).
 
 ## التحقق بعد التنفيذ
 
-1. تفتح صفحة `/dashboard/facebook/bot` على Live → مفيش error.
-2. تدوس "اختبر الآن" → ترجع رسالة "الكوكيز سليمة شكلياً، استنى VPS Worker" بدل صفحة login.
-3. الـ Banner التنبيهي ظاهر فوق القائمة.
+1. `curl -i https://flowtix-social-connect.lovable.app/dashboard/facebook/bot` → 200 + HTML غلاف.
+2. فتح الرابط في المتصفح → الصفحة تشتغل بدون "Something went wrong".
+3. لما الـ pipeline يعدّي: نفس الاختبارين على `www.flowtixtools.com`.
