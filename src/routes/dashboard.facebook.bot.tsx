@@ -160,6 +160,64 @@ const normalizeAccountPayload = (raw: unknown): Account | null => {
     : null;
 };
 
+type PrecheckUiResult = {
+  ok: boolean;
+  canContinue: boolean;
+  severity: "ok" | "warning" | "error";
+  method: "cookies" | "credentials" | "unknown";
+  present: string[];
+  missing: string[];
+  invalid: { name: string; reason: string }[];
+  totalCookies: number;
+  message: string;
+  debugCode: string;
+};
+
+const normalizePrecheckPayload = (raw: unknown, lang: "ar" | "en"): PrecheckUiResult => {
+  const payload = unwrapServerPayload(raw);
+  if (!payload || typeof payload !== "object" || typeof (payload as { ok?: unknown }).ok !== "boolean") {
+    console.error("[precheck] unexpected response shape", { rawType: typeof raw, raw });
+    return {
+      ok: false,
+      canContinue: false,
+      severity: "error",
+      method: "unknown",
+      present: [],
+      missing: [],
+      invalid: [],
+      totalCookies: 0,
+      message:
+        lang === "ar"
+          ? "تعذّر قراءة نتيجة الفحص من الخادم. حدّث الصفحة وسجّل الدخول مرة أخرى."
+          : "Could not read the server pre-check result. Refresh and sign in again.",
+      debugCode: "CLIENT_BAD_PRECHECK_SHAPE",
+    };
+  }
+
+  const dto = payload as Partial<PrecheckUiResult> & { ok: boolean };
+  return {
+    ok: dto.ok,
+    canContinue: Boolean(dto.canContinue),
+    severity: dto.severity ?? (dto.ok ? "ok" : "error"),
+    method: dto.method ?? "unknown",
+    present: Array.isArray(dto.present) ? dto.present : [],
+    missing: Array.isArray(dto.missing) ? dto.missing : [],
+    invalid: Array.isArray(dto.invalid) ? dto.invalid : [],
+    totalCookies: typeof dto.totalCookies === "number" ? dto.totalCookies : 0,
+    message:
+      typeof dto.message === "string" && dto.message.trim()
+        ? dto.message
+        : dto.ok
+          ? lang === "ar"
+            ? "اكتمل الفحص بنجاح."
+            : "Pre-check passed."
+          : lang === "ar"
+            ? "فشل الفحص — راجع التفاصيل أدناه."
+            : "Pre-check failed — see details below.",
+    debugCode: typeof dto.debugCode === "string" && dto.debugCode ? dto.debugCode : "UNKNOWN",
+  };
+};
+
 const describeServerActionError = (err: unknown, lang: "ar" | "en") => {
   const message = err instanceof Error ? err.message : String(err ?? "");
   if (AUTH_ERROR_RE.test(message)) {
