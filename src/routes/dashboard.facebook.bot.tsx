@@ -92,6 +92,11 @@ function BotAccountsPage() {
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testProgress, setTestProgress] = useState<{ value: number; label: string } | null>(null);
+  const [testLogs, setTestLogs] = useState<Record<string, TestEvent[]>>({});
+  const [autoRetry, setAutoRetry] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("fbBotAutoRetry") !== "0";
+  });
   const [retryCounts, setRetryCounts] = useState<Record<string, number>>({});
   const [groupsResult, setGroupsResult] = useState<{ accountName: string; groups: { id: string; name: string }[] } | null>(null);
   const [reloginFor, setReloginFor] = useState<{ id: string; name: string } | null>(null);
