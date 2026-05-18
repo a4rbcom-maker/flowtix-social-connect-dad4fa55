@@ -28,7 +28,7 @@ const addAccountSchema = z.union([cookiesSchema, credentialsSchema]);
 // Accepts: JSON array from extensions (EditThisCookie/Cookie-Editor), a single
 // JSON object with a `cookies` array, header-style "name=value; name2=value2",
 // or Netscape cookies.txt format. Returns a normalized array of cookie objects.
-type NormalizedCookie = { name: string; value: string; domain?: string; path?: string };
+type NormalizedCookie = { name: string; value: string; domain?: string; path?: string; expirationDate?: number };
 function parseCookiesInput(raw: string): NormalizedCookie[] | null {
   const text = raw.trim();
   if (!text) return null;
@@ -45,7 +45,9 @@ function parseCookiesInput(raw: string): NormalizedCookie[] | null {
           const name = (c.name ?? c.Name ?? c.key) as string | undefined;
           const value = (c.value ?? c.Value) as string | undefined;
           if (typeof name === "string" && typeof value === "string") {
-            out.push({ name, value, domain: c.domain, path: c.path });
+            const expRaw = (c as any).expirationDate ?? (c as any).expires ?? (c as any).expiry;
+            const expirationDate = typeof expRaw === "number" && isFinite(expRaw) && expRaw > 0 ? expRaw : undefined;
+            out.push({ name, value, domain: c.domain, path: c.path, expirationDate });
           }
         }
         if (out.length) return out;
@@ -62,7 +64,14 @@ function parseCookiesInput(raw: string): NormalizedCookie[] | null {
       if (!line || line.startsWith("#")) continue;
       const parts = line.split("\t");
       if (parts.length >= 7) {
-        out.push({ name: parts[5], value: parts[6], domain: parts[0], path: parts[2] });
+        const exp = Number(parts[4]);
+        out.push({
+          name: parts[5],
+          value: parts[6],
+          domain: parts[0],
+          path: parts[2],
+          expirationDate: isFinite(exp) && exp > 0 ? exp : undefined,
+        });
       }
     }
     if (out.length) return out;
@@ -78,6 +87,23 @@ function parseCookiesInput(raw: string): NormalizedCookie[] | null {
     if (name) out.push({ name, value });
   }
   return out.length ? out : null;
+}
+
+// Cookies whose expiry we track for "session about to expire" alerts.
+const REQUIRED_COOKIES = ["c_user", "xs", "fr", "datr", "sb"] as const;
+
+// Soonest expiry (Unix seconds) among the REQUIRED cookies. Skips session
+// cookies (no expirationDate). Returns null if none of the required cookies
+// have an expiry, which is treated as "unknown".
+function earliestRequiredExpiry(cookies: NormalizedCookie[]): number | null {
+  const required = new Set<string>(REQUIRED_COOKIES as readonly string[]);
+  let min: number | null = null;
+  for (const c of cookies) {
+    if (!required.has(c.name)) continue;
+    if (typeof c.expirationDate !== "number") continue;
+    if (min === null || c.expirationDate < min) min = c.expirationDate;
+  }
+  return min;
 }
 
 // ---------- addBotAccount ----------
