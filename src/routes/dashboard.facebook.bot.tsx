@@ -107,6 +107,10 @@ function BotAccountsPage() {
     testing: "جاري الاختبار…",
     testSuccess: "الكوكيز صالحة ✓",
     testFailed: "الاختبار فشل",
+    groupsFound: (n: number) => `تم العثور على ${n} جروب`,
+    groupsTitle: "الجروبات المتاحة",
+    groupsEmpty: "لم نتمكن من قراءة قائمة الجروبات تلقائيًا (قد تحتاج VPS Worker).",
+    close: "إغلاق",
   } : {
     title: "Facebook Bot Accounts",
     subtitle: "Link Facebook accounts for VPS Worker automation",
