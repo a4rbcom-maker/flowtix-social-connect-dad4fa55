@@ -1638,9 +1638,11 @@ function BotAccountsPage() {
                       )}
                       {precheck.result.message}
                     </p>
-                    <p className="mt-1 font-mono text-[11px] opacity-80">
-                      {precheck.result.debugCode}
-                    </p>
+                    {precheck.result.debugCode && precheck.result.debugCode !== "UNKNOWN" && (
+                      <p className="mt-1 font-mono text-[10px] opacity-60">
+                        {precheck.result.debugCode}
+                      </p>
+                    )}
                   </div>
 
                   {precheck.result.method === "cookies" && (
