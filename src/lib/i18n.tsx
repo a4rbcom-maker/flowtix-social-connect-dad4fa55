@@ -94,6 +94,7 @@ const translations = {
       pricing: "Pricing",
       faq: "FAQ",
       startFree: "Start Free",
+      dashboard: "Dashboard",
     },
     hero: {
       badge: "🚀 The Most Powerful Social Commerce Platform",
