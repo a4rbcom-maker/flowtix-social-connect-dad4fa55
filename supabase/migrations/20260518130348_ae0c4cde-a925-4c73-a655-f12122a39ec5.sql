@@ -1,0 +1,2 @@
+ALTER TABLE public.fb_bot_accounts ADD COLUMN IF NOT EXISTS cookie_expires_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_fb_bot_accounts_cookie_expires_at ON public.fb_bot_accounts(user_id, cookie_expires_at);

@@ -28,7 +28,7 @@ const addAccountSchema = z.union([cookiesSchema, credentialsSchema]);
 // Accepts: JSON array from extensions (EditThisCookie/Cookie-Editor), a single
 // JSON object with a `cookies` array, header-style "name=value; name2=value2",
 // or Netscape cookies.txt format. Returns a normalized array of cookie objects.
-type NormalizedCookie = { name: string; value: string; domain?: string; path?: string };
+type NormalizedCookie = { name: string; value: string; domain?: string; path?: string; expirationDate?: number };
 function parseCookiesInput(raw: string): NormalizedCookie[] | null {
   const text = raw.trim();
   if (!text) return null;
@@ -45,7 +45,9 @@ function parseCookiesInput(raw: string): NormalizedCookie[] | null {
           const name = (c.name ?? c.Name ?? c.key) as string | undefined;
           const value = (c.value ?? c.Value) as string | undefined;
           if (typeof name === "string" && typeof value === "string") {
-            out.push({ name, value, domain: c.domain, path: c.path });
+            const expRaw = (c as any).expirationDate ?? (c as any).expires ?? (c as any).expiry;
+            const expirationDate = typeof expRaw === "number" && isFinite(expRaw) && expRaw > 0 ? expRaw : undefined;
+            out.push({ name, value, domain: c.domain, path: c.path, expirationDate });
           }
         }
         if (out.length) return out;
@@ -62,7 +64,14 @@ function parseCookiesInput(raw: string): NormalizedCookie[] | null {
       if (!line || line.startsWith("#")) continue;
       const parts = line.split("\t");
       if (parts.length >= 7) {
-        out.push({ name: parts[5], value: parts[6], domain: parts[0], path: parts[2] });
+        const exp = Number(parts[4]);
+        out.push({
+          name: parts[5],
+          value: parts[6],
+          domain: parts[0],
+          path: parts[2],
+          expirationDate: isFinite(exp) && exp > 0 ? exp : undefined,
+        });
       }
     }
     if (out.length) return out;
@@ -80,6 +89,23 @@ function parseCookiesInput(raw: string): NormalizedCookie[] | null {
   return out.length ? out : null;
 }
 
+// Cookies whose expiry we track for "session about to expire" alerts.
+const REQUIRED_COOKIES = ["c_user", "xs", "fr", "datr", "sb"] as const;
+
+// Soonest expiry (Unix seconds) among the REQUIRED cookies. Skips session
+// cookies (no expirationDate). Returns null if none of the required cookies
+// have an expiry, which is treated as "unknown".
+function earliestRequiredExpiry(cookies: NormalizedCookie[]): number | null {
+  const required = new Set<string>(REQUIRED_COOKIES as readonly string[]);
+  let min: number | null = null;
+  for (const c of cookies) {
+    if (!required.has(c.name)) continue;
+    if (typeof c.expirationDate !== "number") continue;
+    if (min === null || c.expirationDate < min) min = c.expirationDate;
+  }
+  return min;
+}
+
 // ---------- addBotAccount ----------
 export const addBotAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -87,6 +113,7 @@ export const addBotAccount = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     let payload: unknown;
+    let cookieExpiresAt: string | null = null;
     if (data.method === "cookies") {
       const parsed = parseCookiesInput(data.cookies);
       if (!parsed || parsed.length === 0) {
@@ -95,6 +122,8 @@ export const addBotAccount = createServerFn({ method: "POST" })
         );
       }
       payload = { cookies: parsed };
+      const minExp = earliestRequiredExpiry(parsed);
+      if (minExp !== null) cookieExpiresAt = new Date(minExp * 1000).toISOString();
     } else {
       payload = {
         email: data.email,
@@ -112,8 +141,9 @@ export const addBotAccount = createServerFn({ method: "POST" })
         auth_method: data.method,
         encrypted_payload: encrypted,
         status: "untested",
+        cookie_expires_at: cookieExpiresAt,
       })
-      .select("id, display_name, auth_method, status, last_check_at, last_error, created_at")
+      .select("id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at")
       .single();
     if (error) throw new Error(error.message);
     return row;
@@ -126,11 +156,12 @@ export const listBotAccounts = createServerFn({ method: "GET" })
     const { supabase } = context;
     const { data, error } = await supabase
       .from("fb_bot_accounts")
-      .select("id, display_name, auth_method, status, last_check_at, last_error, created_at")
+      .select("id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return data ?? [];
   });
+
 
 // ---------- deleteBotAccount ----------
 export const deleteBotAccount = createServerFn({ method: "POST" })
@@ -278,7 +309,6 @@ export const cancelJob = createServerFn({ method: "POST" })
 // ---------- precheckBotAccount ----------
 // Returns presence of required cookies WITHOUT exposing values. Powers the
 // pre-flight check dialog before running testBotAccount.
-const REQUIRED_COOKIES = ["c_user", "xs", "fr", "datr", "sb"] as const;
 export const precheckBotAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
@@ -299,12 +329,15 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
         missing: [] as string[],
         invalid: [] as { name: string; reason: string }[],
         totalCookies: 0,
+        expiresAt: null as string | null,
+        expiresInDays: null as number | null,
+        expired: false,
         message: "هذا الحساب مُسجَّل بالبريد/كلمة السر — لا يمكن فحص الكوكيز.",
       };
     }
 
     const { decryptJson } = await import("@/server/crypto.server");
-    const payload = decryptJson<{ cookies: { name: string; value: string }[] }>(acc.encrypted_payload);
+    const payload = decryptJson<{ cookies: { name: string; value: string; expirationDate?: number }[] }>(acc.encrypted_payload);
     const cookies = payload.cookies ?? [];
     const byName = new Map(cookies.map((c) => [c.name, c.value]));
 
@@ -327,6 +360,24 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
       }
     }
 
+    // Expiry: prefer stored value, else recompute from payload and backfill.
+    const minExp = earliestRequiredExpiry(cookies as NormalizedCookie[]);
+    const expiresAt = minExp !== null ? new Date(minExp * 1000).toISOString() : null;
+    if (expiresAt) {
+      // Backfill DB column for older accounts so listBotAccounts sees expiry.
+      await supabase
+        .from("fb_bot_accounts")
+        .update({ cookie_expires_at: expiresAt })
+        .eq("id", data.id);
+    }
+    const now = Date.now();
+    const expiresInDays = minExp !== null ? Math.floor((minExp * 1000 - now) / 86_400_000) : null;
+    const expired = minExp !== null && minExp * 1000 <= now;
+
+    if (expired) {
+      invalid.push({ name: "expiry", reason: "انتهت صلاحية الجلسة — صدِّر كوكيز جديدة من Cookie-Editor" });
+    }
+
     const ok = missing.length === 0 && invalid.length === 0;
     return {
       ok,
@@ -335,13 +386,21 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
       missing,
       invalid,
       totalCookies: cookies.length,
+      expiresAt,
+      expiresInDays,
+      expired,
       message: ok
-        ? "الكوكيز المطلوبة كلها موجودة وصيغتها سليمة."
+        ? expiresInDays !== null && expiresInDays <= 7
+          ? `الكوكيز سليمة، لكن الجلسة تنتهي خلال ${expiresInDays} يوم — جدِّدها قريبًا.`
+          : "الكوكيز المطلوبة كلها موجودة وصيغتها سليمة."
+        : expired
+        ? "انتهت صلاحية جلسة فيسبوك — أعد تصدير الكوكيز."
         : missing.length > 0
         ? `كوكيز ناقصة: ${missing.join(", ")}`
         : `كوكيز فيها مشاكل في الصيغة: ${invalid.map((i) => i.name).join(", ")}`,
     };
   });
+
 
 // ---------- testBotAccount ----------
 // IMPORTANT: Facebook blocks server-to-server requests coming from datacenter

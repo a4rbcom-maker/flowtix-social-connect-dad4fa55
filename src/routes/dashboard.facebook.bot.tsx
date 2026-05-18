@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Plus, Trash2, ShieldCheck, ShieldAlert, Cookie, KeyRound, AlertTriangle, Loader2, CheckCircle2, XCircle, Clock, Activity, RotateCw, ExternalLink, LogIn } from "lucide-react";
+import { Plus, Trash2, ShieldCheck, ShieldAlert, Cookie, KeyRound, AlertTriangle, Loader2, CheckCircle2, XCircle, Clock, Activity, RotateCw, ExternalLink, LogIn, CalendarClock, Lock } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -34,9 +34,22 @@ type Account = {
   last_check_at: string | null;
   last_error: string | null;
   created_at: string;
+  cookie_expires_at: string | null;
 };
 
 type BotAccountStatus = "untested" | "active" | "invalid" | "checkpoint" | "disabled";
+
+// Classify cookie session lifetime for badges/alerts. Returns null when the
+// account has no expiry info (credentials accounts or session-only cookies).
+function classifyExpiry(iso: string | null): { state: "expired" | "soon" | "ok"; days: number } | null {
+  if (!iso) return null;
+  const ms = new Date(iso).getTime() - Date.now();
+  const days = Math.floor(ms / 86_400_000);
+  if (ms <= 0) return { state: "expired", days };
+  if (days <= 7) return { state: "soon", days };
+  return { state: "ok", days };
+}
+
 
 const normalizeStatus = (status: string | null | undefined): BotAccountStatus => {
   return status === "active" || status === "invalid" || status === "checkpoint" || status === "disabled"
@@ -515,6 +528,53 @@ const looksLikeCheckpoint = (status: string | null | undefined, lastError: strin
           </div>
         </Card>
 
+        {(() => {
+          const expiring = accounts
+            .map((a) => ({ a, e: classifyExpiry(a.cookie_expires_at) }))
+            .filter((x) => x.e && x.e.state !== "ok") as { a: Account; e: { state: "expired" | "soon"; days: number } }[];
+          if (expiring.length === 0) return null;
+          const expiredCount = expiring.filter((x) => x.e.state === "expired").length;
+          const soonCount = expiring.length - expiredCount;
+          const tone = expiredCount > 0
+            ? "border-red-500/40 bg-red-50/70 dark:bg-red-500/5 text-red-900 dark:text-red-200"
+            : "border-amber-500/40 bg-amber-50/70 dark:bg-amber-500/5 text-amber-900 dark:text-amber-200";
+          return (
+            <Card className={`${tone} p-4`}>
+              <div className="flex items-start gap-3">
+                <CalendarClock className="h-5 w-5 shrink-0 mt-0.5" />
+                <div className="text-sm leading-relaxed flex-1">
+                  <p className="font-semibold">
+                    {lang === "ar"
+                      ? expiredCount > 0
+                        ? `${expiredCount} حساب انتهت صلاحية جلسته${soonCount > 0 ? ` و${soonCount} على وشك الانتهاء` : ""}`
+                        : `${soonCount} حساب جلسته على وشك الانتهاء`
+                      : expiredCount > 0
+                        ? `${expiredCount} account${expiredCount > 1 ? "s" : ""} expired${soonCount > 0 ? `, ${soonCount} expiring soon` : ""}`
+                        : `${soonCount} account${soonCount > 1 ? "s" : ""} expiring soon`}
+                  </p>
+                  <ul className="mt-2 space-y-1 text-xs opacity-90">
+                    {expiring.map(({ a, e }) => (
+                      <li key={a.id} className="flex items-center justify-between gap-3">
+                        <span className="font-medium">{a.display_name}</span>
+                        <span className="font-mono">
+                          {e.state === "expired"
+                            ? (lang === "ar" ? `منتهية منذ ${Math.abs(e.days)} يوم` : `expired ${Math.abs(e.days)}d ago`)
+                            : (lang === "ar" ? `تبقّى ${e.days} يوم` : `${e.days}d left`)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-xs opacity-80">
+                    {lang === "ar"
+                      ? "أعد تصدير الكوكيز من إضافة Cookie-Editor واضغط «إعادة تسجيل الدخول» للحساب المتأثر."
+                      : "Re-export cookies from Cookie-Editor and click 'Re-login' on the affected account."}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          );
+        })()}
+
         <Card className="overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center p-12">
@@ -551,6 +611,33 @@ const looksLikeCheckpoint = (status: string | null | undefined, lastError: strin
                         <div className="space-y-1.5">
                           {statusBadge(a.status)}
                           <StatusReason status={normalizeStatus(a.status)} lastError={a.last_error} t={t} />
+                          {(() => {
+                            const e = classifyExpiry(a.cookie_expires_at);
+                            if (!e) {
+                              return a.auth_method === "cookies" ? (
+                                <p className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
+                                  <Lock className="h-3 w-3" />
+                                  {lang === "ar" ? "مشفّر · بدون تاريخ انتهاء معروف" : "Encrypted · no known expiry"}
+                                </p>
+                              ) : null;
+                            }
+                            const cls = e.state === "expired"
+                              ? "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300"
+                              : e.state === "soon"
+                              ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                              : "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300";
+                            const text = e.state === "expired"
+                              ? (lang === "ar" ? `انتهت الجلسة منذ ${Math.abs(e.days)} يوم` : `Session expired ${Math.abs(e.days)}d ago`)
+                              : e.state === "soon"
+                              ? (lang === "ar" ? `تنتهي خلال ${e.days} يوم` : `Expires in ${e.days}d`)
+                              : (lang === "ar" ? `صالحة ${e.days} يوم` : `Valid ${e.days}d`);
+                            return (
+                              <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${cls}`}>
+                                <CalendarClock className="h-3 w-3" />
+                                {text}
+                              </span>
+                            );
+                          })()}
                           {testingId === a.id && testProgress && (
                             <div className="max-w-xs space-y-1 pt-1">
                               <Progress value={testProgress.value} className="h-1.5" />
