@@ -144,6 +144,13 @@ function BotAccountsPage() {
     invalidHint: "الكوكيز غير صالحة أو منتهية. أعد تصديرها من المتصفح وحدّث الحساب.",
     disabledHint: "هذا الحساب معطّل ولن يُستخدم في المهام.",
     neverTested: "لم يُجرَ اختبار بعد",
+    retry: "إعادة المحاولة",
+    attemptLabel: (n: number) => `محاولة #${n}`,
+    progressInit: "بدء الاختبار…",
+    progressDecrypt: "قراءة الكوكيز…",
+    progressFetch: "الاتصال بفيسبوك…",
+    progressGroups: "جلب الجروبات…",
+    progressDone: "اكتمل ✓",
   } : {
     title: "Facebook Bot Accounts",
     subtitle: "Link Facebook accounts for VPS Worker automation",
