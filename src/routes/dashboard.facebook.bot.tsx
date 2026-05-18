@@ -1531,7 +1531,7 @@ function BotAccountsPage() {
               {lang === "ar" ? "إغلاق" : "Close"}
             </Button>
             <Button
-              disabled={!precheck?.result?.ok}
+              disabled={!precheck?.result?.canContinue}
               onClick={() => {
                 if (precheck) {
                   const id = precheck.id;
