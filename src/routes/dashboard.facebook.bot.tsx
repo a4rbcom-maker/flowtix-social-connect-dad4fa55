@@ -165,6 +165,12 @@ function BotAccountsPage() {
     groupsTitle: "Available groups",
     groupsEmpty: "Could not auto-read the groups list (may require VPS Worker).",
     close: "Close",
+    reasonLabel: "Reason",
+    untestedHint: "Click \"Test now\" to verify the cookies are valid.",
+    checkpointHint: "Facebook is asking for an extra verification. Log in manually, complete it, then re-export cookies.",
+    invalidHint: "Cookies are invalid or expired. Re-export them from the browser and update the account.",
+    disabledHint: "This account is disabled and won't be used in jobs.",
+    neverTested: "Not tested yet",
   };
 
   const load = async () => {
