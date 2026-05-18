@@ -287,26 +287,59 @@ function BotAccountsPage() {
     } catch (e) { toast.error(String(e)); }
   };
 
-  const handleTest = async (id: string) => {
+  const handleTest = async (id: string, isRetry = false) => {
     setTestingId(id);
+    const attempt = (retryCounts[id] ?? 0) + (isRetry ? 1 : 0);
+    if (isRetry) setRetryCounts((p) => ({ ...p, [id]: attempt }));
+
+    setTestProgress({ value: 10, label: t.progressInit });
+    const toastId = toast.loading(t.testing, { description: t.progressInit });
+
+    // Animated progress while the request is in-flight
+    const steps: Array<{ value: number; label: string; delay: number }> = [
+      { value: 30, label: t.progressDecrypt, delay: 250 },
+      { value: 60, label: t.progressFetch, delay: 700 },
+      { value: 85, label: t.progressGroups, delay: 1600 },
+    ];
+    const timers = steps.map((s) =>
+      setTimeout(() => {
+        setTestProgress({ value: s.value, label: s.label });
+        toast.loading(t.testing, { id: toastId, description: s.label });
+      }, s.delay),
+    );
+
     try {
       const updated = await call(testBotAccount, { id }) as (Account & { groups?: { id: string; name: string }[] }) | null;
+      timers.forEach(clearTimeout);
+      setTestProgress({ value: 100, label: t.progressDone });
       if (updated) {
         const { groups = [], ...accountRow } = updated;
         setAccounts((prev) => prev.map((a) => (a.id === id ? (accountRow as Account) : a)));
         if (accountRow.status === "active") {
-          toast.success(t.testSuccess, { description: t.groupsFound(groups.length) });
+          setRetryCounts((p) => ({ ...p, [id]: 0 }));
+          toast.success(t.testSuccess, { id: toastId, description: t.groupsFound(groups.length) });
           setGroupsResult({ accountName: accountRow.display_name, groups });
         } else {
-          toast.error(t.testFailed, { description: accountRow.last_error ?? t.statuses[normalizeStatus(accountRow.status)] });
+          toast.error(t.testFailed, {
+            id: toastId,
+            description: accountRow.last_error ?? t.statuses[normalizeStatus(accountRow.status)],
+            action: { label: t.retry, onClick: () => void handleTest(id, true) },
+          });
         }
       }
     } catch (e) {
-      toast.error(t.testFailed, { description: e instanceof Error ? e.message : String(e) });
+      timers.forEach(clearTimeout);
+      toast.error(t.testFailed, {
+        id: toastId,
+        description: e instanceof Error ? e.message : String(e),
+        action: { label: t.retry, onClick: () => void handleTest(id, true) },
+      });
     } finally {
       setTestingId(null);
+      setTimeout(() => setTestProgress(null), 600);
     }
   };
+
 
   const statusBadge = (rawStatus: Account["status"] | string | null | undefined) => {
     const s = normalizeStatus(rawStatus);
