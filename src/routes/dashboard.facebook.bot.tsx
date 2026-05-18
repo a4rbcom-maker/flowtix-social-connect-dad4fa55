@@ -582,27 +582,64 @@ function BotAccountsPage() {
     setPrecheck({ id, name, loading: true, result: null, error: null });
     try {
       const raw = await call(precheckBotAccount, { id });
-      // Try raw first (server fn returns the object directly), then unwrap as fallback.
-      const candidates = [raw, unwrapServerPayload(raw)];
-      const result = candidates.find(
-        (c) => c && typeof c === "object" && typeof (c as { ok?: unknown }).ok === "boolean",
-      ) as NonNullable<typeof precheck>["result"] | undefined;
-      if (!result) {
-        console.error("[precheck] unexpected response shape:", raw);
+      console.log("[precheck] raw response:", raw);
+
+      // Walk every plausible TanStack wrapper shape and pick the first object
+      // that carries our boolean `ok` field.
+      const visited = new Set<unknown>();
+      const queue: unknown[] = [raw];
+      let found: Record<string, unknown> | null = null;
+      while (queue.length) {
+        const cur = queue.shift();
+        if (!cur || typeof cur !== "object" || visited.has(cur)) continue;
+        visited.add(cur);
+        const obj = cur as Record<string, unknown>;
+        if (typeof obj.ok === "boolean" && Array.isArray(obj.present) && Array.isArray(obj.missing)) {
+          found = obj;
+          break;
+        }
+        for (const k of ["data", "result", "account", "payload", "body"]) {
+          if (k in obj) queue.push(obj[k]);
+        }
+      }
+
+      if (!found) {
+        console.error("[precheck] could not locate result in:", raw);
+        const dump = (() => {
+          try { return JSON.stringify(raw); } catch { return String(raw); }
+        })().slice(0, 300);
         throw new Error(
-          (lang === "ar" ? "استجابة غير متوقعة من الخادم: " : "Unexpected server response: ") +
-            JSON.stringify(raw).slice(0, 200),
+          (lang === "ar" ? "استجابة غير متوقعة من الخادم. " : "Unexpected server response. ") + dump,
         );
       }
-      // Guarantee a non-empty message so the UI never renders a blank box.
-      if (!result.message) {
-        result.message = result.ok
-          ? lang === "ar" ? "الفحص ناجح." : "Pre-check passed."
-          : lang === "ar" ? "فشل الفحص بدون رسالة من الخادم." : "Pre-check failed (no message from server).";
-      }
+
+      const result = {
+        ok: Boolean(found.ok),
+        method: (found.method === "credentials" ? "credentials" : "cookies") as "cookies" | "credentials",
+        present: (found.present as string[]) ?? [],
+        missing: (found.missing as string[]) ?? [],
+        invalid: (found.invalid as { name: string; reason: string }[]) ?? [],
+        totalCookies: typeof found.totalCookies === "number" ? found.totalCookies : 0,
+        message:
+          typeof found.message === "string" && found.message.trim().length > 0
+            ? found.message
+            : Boolean(found.ok)
+              ? lang === "ar" ? "الكوكيز سليمة." : "Cookies look valid."
+              : lang === "ar"
+                ? `فشل الفحص — ${
+                    (found.missing as string[])?.length
+                      ? "كوكيز ناقصة: " + (found.missing as string[]).join(", ")
+                      : (found.invalid as { name: string }[])?.length
+                        ? "كوكيز فيها مشاكل: " + (found.invalid as { name: string }[]).map((i) => i.name).join(", ")
+                        : "أعد تصدير الكوكيز من Cookie-Editor."
+                  }`
+                : "Pre-check failed — re-export your cookies.",
+      };
+
       setPrecheck({ id, name, loading: false, result, error: null });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      console.error("[precheck] failed:", e);
       setPrecheck({
         id,
         name,
