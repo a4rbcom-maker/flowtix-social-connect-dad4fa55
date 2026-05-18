@@ -41,21 +41,16 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  // SSR-safe: assume desktop-open. After mount we reconcile based on screen size.
-  // Start closed/mobile to match SSR (which has no window). The effect below
-  // promotes to desktop+open after hydration on md+ viewports.
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(false);
+  // Default: sidebar always open (both desktop and mobile overlay).
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isDesktop, setIsDesktop] = useState(true);
   const channelStatus = useChannelStatus(lang);
 
-  // Track viewport size and reconcile sidebar visibility.
+  // Track viewport size only — do not auto-collapse the sidebar.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const mql = window.matchMedia("(min-width: 768px)");
-    const apply = () => {
-      setIsDesktop(mql.matches);
-      setSidebarOpen(mql.matches); // open on desktop, closed on mobile
-    };
+    const apply = () => setIsDesktop(mql.matches);
     apply();
     mql.addEventListener("change", apply);
     return () => mql.removeEventListener("change", apply);
