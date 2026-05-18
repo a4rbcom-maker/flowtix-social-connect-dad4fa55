@@ -128,8 +128,11 @@ function normalizeStoredCookies(payload: unknown): NormalizedCookie[] {
   return [];
 }
 
-// Cookies whose expiry we track for "session about to expire" alerts.
-const REQUIRED_COOKIES = ["c_user", "xs", "fr", "datr", "sb"] as const;
+// Cookies needed to treat a stored Facebook session as usable. `sb` helps
+// Facebook recognize the browser but should not block progress by itself.
+const CRITICAL_COOKIES = ["c_user", "xs", "fr", "datr"] as const;
+const RECOMMENDED_COOKIES = ["sb"] as const;
+const REQUIRED_COOKIES = [...CRITICAL_COOKIES, ...RECOMMENDED_COOKIES] as const;
 
 // Soonest expiry (Unix seconds) among the REQUIRED cookies. Skips session
 // cookies (no expirationDate). Returns null if none of the required cookies
@@ -143,6 +146,37 @@ function earliestRequiredExpiry(cookies: NormalizedCookie[]): number | null {
     if (min === null || c.expirationDate < min) min = c.expirationDate;
   }
   return min;
+}
+
+function validateFacebookCookies(cookies: NormalizedCookie[]) {
+  const byName = new Map(cookies.map((c) => [c.name, c.value]));
+  const present: string[] = [];
+  const missing: string[] = [];
+  const invalid: { name: string; reason: string }[] = [];
+
+  for (const name of REQUIRED_COOKIES) {
+    const v = byName.get(name);
+    if (!v || v.length === 0) {
+      missing.push(name);
+      continue;
+    }
+    present.push(name);
+    if (name === "c_user" && !/^\d{6,}$/.test(v)) {
+      invalid.push({ name, reason: "c_user يجب أن يحتوي على أرقام فقط (6 خانات أو أكثر)" });
+    }
+    if (name === "xs" && v.length < 10) {
+      invalid.push({ name, reason: "xs قصير جدًا — صدِّر الكوكيز من جلسة نشطة" });
+    }
+  }
+
+  const missingCritical = missing.filter((name) =>
+    (CRITICAL_COOKIES as readonly string[]).includes(name),
+  );
+  const missingRecommended = missing.filter((name) =>
+    (RECOMMENDED_COOKIES as readonly string[]).includes(name),
+  );
+
+  return { present, missing, missingCritical, missingRecommended, invalid };
 }
 
 // ---------- addBotAccount ----------
@@ -215,11 +249,11 @@ const BOT_ACCOUNT_SAFE_SELECT =
 export const listBotAccounts = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<BotAccountsListResult> => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
     try {
       const { data, error } = await supabase
         .from("fb_bot_accounts")
-        .select(BOT_ACCOUNT_SAFE_SELECT)
+        .select(`${BOT_ACCOUNT_SAFE_SELECT}, encrypted_payload`)
         .order("created_at", { ascending: false });
       if (error) {
         console.error("[listBotAccounts] db error", error);
@@ -230,7 +264,51 @@ export const listBotAccounts = createServerFn({ method: "GET" })
           debugCode: "DB_READ_FAILED",
         };
       }
-      const accounts = (data ?? []) as BotAccountRow[];
+      const accounts: BotAccountRow[] = [];
+      for (const row of (data ?? []) as Array<BotAccountRow & { encrypted_payload?: string }>) {
+        const safe: BotAccountRow = {
+          id: row.id,
+          display_name: row.display_name,
+          auth_method: row.auth_method,
+          status: row.status,
+          last_check_at: row.last_check_at,
+          last_error: row.last_error,
+          created_at: row.created_at,
+          cookie_expires_at: row.cookie_expires_at,
+        };
+        if (row.auth_method === "cookies" && row.status !== "active" && row.encrypted_payload) {
+          try {
+            const { decryptJson } = await import("@/server/crypto.server");
+            const cookies = normalizeStoredCookies(decryptJson<unknown>(row.encrypted_payload));
+            const { missingCritical, missingRecommended, invalid } = validateFacebookCookies(cookies);
+            const minExp = earliestRequiredExpiry(cookies);
+            const expiresAt = minExp !== null ? new Date(minExp * 1000).toISOString() : null;
+            const expired = minExp !== null && minExp * 1000 <= Date.now();
+            if (missingCritical.length === 0 && invalid.length === 0 && !expired) {
+              const message = missingRecommended.length
+                ? `الحساب جاهز. ينقص فقط كوكيز مستحسنة غير مانعة: ${missingRecommended.join(", ")}.`
+                : null;
+              safe.status = "active";
+              safe.last_check_at = new Date().toISOString();
+              safe.last_error = message;
+              safe.cookie_expires_at = expiresAt;
+              await supabase
+                .from("fb_bot_accounts")
+                .update({
+                  status: "active",
+                  last_check_at: safe.last_check_at,
+                  last_error: message,
+                  cookie_expires_at: expiresAt,
+                })
+                .eq("id", row.id)
+                .eq("user_id", userId);
+            }
+          } catch (e) {
+            console.warn("[listBotAccounts] auto validation skipped:", e);
+          }
+        }
+        accounts.push(safe);
+      }
       return {
         ok: true,
         accounts,
@@ -518,25 +596,8 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
       );
     }
 
-    const byName = new Map(cookies.map((c) => [c.name, c.value]));
-    const present: string[] = [];
-    const missing: string[] = [];
-    const invalid: { name: string; reason: string }[] = [];
-
-    for (const name of REQUIRED_COOKIES) {
-      const v = byName.get(name);
-      if (!v || v.length === 0) {
-        missing.push(name);
-        continue;
-      }
-      present.push(name);
-      if (name === "c_user" && !/^\d{6,}$/.test(v)) {
-        invalid.push({ name, reason: "c_user يجب أن يحتوي على أرقام فقط (6 خانات أو أكثر)" });
-      }
-      if (name === "xs" && v.length < 10) {
-        invalid.push({ name, reason: "xs قصير جدًا — صدِّر الكوكيز من جلسة نشطة" });
-      }
-    }
+    const { present, missing, missingCritical, missingRecommended, invalid } =
+      validateFacebookCookies(cookies);
 
     // 4) Expiry calculation + DB backfill (failure here is non-fatal).
     const minExp = earliestRequiredExpiry(cookies);
@@ -561,27 +622,48 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
       });
     }
 
-    const ok = missing.length === 0 && invalid.length === 0;
+    const hasBlockingFailure = missingCritical.length > 0 || invalid.length > 0 || expired;
+    const ok = !hasBlockingFailure;
     const expiringSoon = ok && expiresInDays !== null && expiresInDays <= 7;
+    const hasWarning = missingRecommended.length > 0 || expiringSoon;
     const severity: PrecheckResult["severity"] = ok
-      ? expiringSoon
+      ? hasWarning
         ? "warning"
         : "ok"
       : "error";
 
     const message = ok
-      ? expiringSoon
-        ? `الكوكيز سليمة، لكن الجلسة تنتهي خلال ${expiresInDays} يوم — جدِّدها قريبًا.`
-        : "الكوكيز المطلوبة كلها موجودة وصيغتها سليمة."
+      ? missingRecommended.length > 0
+        ? `الكوكيز الأساسية سليمة. الكوكيز المستحسنة الناقصة: ${missingRecommended.join(", ")} — يمكن المتابعة الآن.`
+        : expiringSoon
+          ? `الكوكيز سليمة، لكن الجلسة تنتهي خلال ${expiresInDays} يوم — جدِّدها قريبًا.`
+          : "الكوكيز الأساسية سليمة والحساب جاهز لإنشاء المهام."
       : expired
         ? "انتهت صلاحية جلسة فيسبوك — أعد تصدير الكوكيز من Cookie-Editor."
-        : missing.length > 0
-          ? `كوكيز ناقصة: ${missing.join(", ")} — أعد تصدير الكوكيز من Cookie-Editor.`
+        : missingCritical.length > 0
+          ? `كوكيز أساسية ناقصة: ${missingCritical.join(", ")} — أعد تصدير الكوكيز من Cookie-Editor.`
           : `كوكيز فيها مشاكل في الصيغة: ${invalid.map((i) => i.name).join(", ")}`;
+
+    if (ok) {
+      try {
+        await supabase
+          .from("fb_bot_accounts")
+          .update({
+            status: "active",
+            last_check_at: new Date().toISOString(),
+            last_error: hasWarning ? message : null,
+            cookie_expires_at: expiresAt,
+          })
+          .eq("id", data.id)
+          .eq("user_id", userId);
+      } catch (e) {
+        console.warn("[precheckBotAccount] active status update failed (ignored):", e);
+      }
+    }
 
     return {
       ok,
-      canContinue: ok, // failed precheck blocks the test button
+      canContinue: ok,
       severity,
       method: "cookies",
       present,
@@ -592,7 +674,13 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
       expiresInDays,
       expired,
       message,
-      debugCode: ok ? (expiringSoon ? "OK_EXPIRING_SOON" : "OK") : "VALIDATION_FAILED",
+      debugCode: ok
+        ? missingRecommended.length > 0
+          ? "OK_MISSING_RECOMMENDED"
+          : expiringSoon
+            ? "OK_EXPIRING_SOON"
+            : "OK_READY"
+        : "VALIDATION_FAILED",
     };
   });
 
@@ -623,32 +711,20 @@ export const testBotAccount = createServerFn({ method: "POST" })
         const { decryptJson } = await import("@/server/crypto.server");
         const payload = decryptJson<unknown>(acc.encrypted_payload);
         const cookies = normalizeStoredCookies(payload);
-        const byName = new Map(cookies.map((c) => [c.name, c.value]));
-        const cUser = byName.get("c_user");
-        const xs = byName.get("xs");
-        const datr = byName.get("datr");
-        const fr = byName.get("fr");
+        const { missingCritical, missingRecommended, invalid } = validateFacebookCookies(cookies);
 
-        const missing: string[] = [];
-        if (!cUser) missing.push("c_user");
-        if (!xs) missing.push("xs");
-        if (!datr) missing.push("datr");
-        if (!fr) missing.push("fr");
-
-        if (missing.length > 0) {
+        if (missingCritical.length > 0) {
           status = "invalid";
-          lastError = `كوكيز ناقصة: ${missing.join(", ")} — صدِّر من جديد عبر Cookie-Editor`;
-        } else if (!/^\d{6,}$/.test(cUser!)) {
+          lastError = `كوكيز أساسية ناقصة: ${missingCritical.join(", ")} — صدِّر من جديد عبر Cookie-Editor`;
+        } else if (invalid.length > 0) {
           status = "invalid";
-          lastError = "قيمة c_user غير صالحة (يجب أن تكون أرقامًا فقط)";
-        } else if (xs!.length < 10) {
-          status = "invalid";
-          lastError = "قيمة xs قصيرة جدًا — صدِّر الكوكيز من جلسة نشطة";
+          lastError = `كوكيز فيها مشاكل: ${invalid.map((i) => `${i.name}: ${i.reason}`).join("؛ ")}`;
         } else {
           // Structurally valid. Mark as pending real verification by VPS Worker.
           status = "active";
-          lastError =
-            "الكوكيز سليمة شكليًا. التحقق الحقيقي من فيسبوك يتم عبر VPS Worker (قريبًا) — فيسبوك يرفض طلبات السيرفر المباشرة.";
+          lastError = missingRecommended.length
+            ? `الحساب جاهز. ينقص فقط كوكيز مستحسنة غير مانعة: ${missingRecommended.join(", ")}. التحقق الحي من فيسبوك يتم عبر VPS Worker.`
+            : "الحساب جاهز لإنشاء المهام. التحقق الحي من فيسبوك يتم عبر VPS Worker لأن فيسبوك يرفض طلبات السيرفر المباشرة.";
         }
       } else {
         lastError = "حسابات البريد/كلمة السر تُختبر عبر VPS Worker فقط";

@@ -103,21 +103,21 @@ function JobsHubPage() {
     }
     (async () => {
       try {
-        const { data: browserRows, error } = await supabase
-          .from("fb_bot_accounts")
-          .select(SAFE_ACCOUNT_SELECT)
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
-        if (error) throw error;
-        const data = (browserRows ?? []) as Account[];
+        const raw = await listAccountsFn();
+        const data: Account[] = Array.isArray((raw as { accounts?: unknown })?.accounts)
+          ? ((raw as { accounts: Account[] }).accounts)
+          : [];
         setAccounts(data);
         if (data.length > 0) setAccountId(data[0].id);
       } catch (e) {
         try {
-          const raw = await listAccountsFn();
-          const data: Account[] = Array.isArray((raw as { accounts?: unknown })?.accounts)
-            ? ((raw as { accounts: Account[] }).accounts)
-            : [];
+          const { data: browserRows, error } = await supabase
+            .from("fb_bot_accounts")
+            .select(SAFE_ACCOUNT_SELECT)
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false });
+          if (error) throw error;
+          const data = (browserRows ?? []) as Account[];
           setAccounts(data);
           if (data.length > 0) setAccountId(data[0].id);
         } catch (fallbackErr) {

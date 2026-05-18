@@ -556,32 +556,18 @@ function BotAccountsPage() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from("fb_bot_accounts")
-        .select(SAFE_ACCOUNT_SELECT)
-        .eq("user_id", currentUser.id)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("[fb-bot] browser list failed, falling back to server fn", error);
-        const raw = await listAccountsFn();
-        const result = normalizeAccountsPayload(raw, lang === "ar" ? "ar" : "en");
-        console.info("[fb-bot] listBotAccounts fallback result", {
-          ok: result.ok,
-          count: result.accounts.length,
-          debugCode: result.debugCode,
-        });
-        if (!result.ok) {
-          setLoadError({ message: result.message, debugCode: result.debugCode });
-          return;
-        }
-        setAccounts(sanitizeAccounts(result.accounts));
+      const raw = await listAccountsFn();
+      const result = normalizeAccountsPayload(raw, lang === "ar" ? "ar" : "en");
+      console.info("[fb-bot] listBotAccounts result", {
+        ok: result.ok,
+        count: result.accounts.length,
+        debugCode: result.debugCode,
+      });
+      if (!result.ok) {
+        setLoadError({ message: result.message, debugCode: result.debugCode });
         return;
       }
-
-      const list = (data ?? []) as Account[];
-      console.info("[fb-bot] browser list result", { count: list.length, debugCode: list.length ? "OK" : "OK_EMPTY" });
-      setAccounts(sanitizeAccounts(list));
+      setAccounts(sanitizeAccounts(result.accounts));
     } catch (e) {
       if (isAuthErr(e)) {
         handleAuthExpired();
@@ -734,6 +720,20 @@ function BotAccountsPage() {
       const raw = await precheckFn({ data: { id } });
       const result = normalizePrecheckPayload(raw, lang === "ar" ? "ar" : "en");
       console.info("[precheck] result", { ok: result.ok, debugCode: result.debugCode });
+      if (result.ok) {
+        setAccounts((prev) =>
+          prev.map((a) =>
+            a.id === id
+              ? {
+                  ...a,
+                  status: "active",
+                  last_check_at: new Date().toISOString(),
+                  last_error: result.severity === "warning" ? result.message : null,
+                }
+              : a,
+          ),
+        );
+      }
 
       setPrecheck({
         id,
@@ -1578,7 +1578,9 @@ function BotAccountsPage() {
                   <div
                     className={`rounded-md border px-3 py-3 text-sm ${
                       precheck.result.ok
-                        ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300"
+                        ? precheck.result.severity === "warning"
+                          ? "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300"
+                          : "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300"
                         : "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-300"
                     }`}
                   >
@@ -1590,12 +1592,15 @@ function BotAccountsPage() {
                       )}
                       {precheck.result.message}
                     </p>
+                    <p className="mt-1 font-mono text-[11px] opacity-80">
+                      {precheck.result.debugCode}
+                    </p>
                   </div>
 
                   {precheck.result.method === "cookies" && (
                     <div className="rounded-md border border-border bg-muted/30 p-3">
                       <p className="mb-2 text-xs font-semibold text-muted-foreground">
-                        {lang === "ar" ? "الكوكيز المطلوبة" : "Required cookies"} (
+                        {lang === "ar" ? "الكوكيز الأساسية والمستحسنة" : "Critical and recommended cookies"} (
                         {precheck.result.present.length}/5)
                         {" · "}
                         <span className="font-normal">
@@ -1608,21 +1613,32 @@ function BotAccountsPage() {
                           const isMissing = precheck.result!.missing.includes(name);
                           const invalid = precheck.result!.invalid.find((i) => i.name === name);
                           const ok = !isMissing && !invalid;
+                          const isRecommended = name === "sb";
+                          const softMissing = isMissing && isRecommended;
                           return (
                             <div
                               key={name}
                               className={`flex items-center gap-1.5 rounded border px-2 py-1.5 font-mono text-xs ${
                                 ok
                                   ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300"
+                                  : softMissing
+                                    ? "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300"
                                   : "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-300"
                               }`}
                             >
                               {ok ? (
                                 <CheckCircle2 className="h-3.5 w-3.5" />
+                              ) : softMissing ? (
+                                <AlertTriangle className="h-3.5 w-3.5" />
                               ) : (
                                 <XCircle className="h-3.5 w-3.5" />
                               )}
-                              {name}
+                              <span>{name}</span>
+                              {isRecommended && (
+                                <span className="text-[10px] opacity-75">
+                                  {lang === "ar" ? "مستحسن" : "recommended"}
+                                </span>
+                              )}
                             </div>
                           );
                         })}
