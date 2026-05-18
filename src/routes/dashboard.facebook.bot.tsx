@@ -758,9 +758,9 @@ function BotAccountsPage() {
     };
 
     try {
-      const updated = (await call(testBotAccount, { id })) as
+      const updated = (unwrapServerPayload(await testAccountFn({ data: { id } })) as
         | (Account & { groups?: { id: string; name: string }[] })
-        | null;
+        | null);
       timers.forEach(clearTimeout);
       updateLastEvent(id, { state: "ok" });
       setTestProgress({ value: 100, label: t.progressDone });
@@ -831,7 +831,7 @@ function BotAccountsPage() {
         handleAuthExpired();
         return;
       }
-      const reason = describeFbError(e, lang === "ar" ? "ar" : "en");
+      const reason = describeServerActionError(e, lang === "ar" ? "ar" : "en");
       pushEvent(id, { key: "error", state: "fail", detail: reason });
       const willRetry = scheduleAutoRetry(reason);
       toast.error(t.testFailed, {
