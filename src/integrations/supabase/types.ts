@@ -199,6 +199,7 @@ export type Database = {
       fb_bot_accounts: {
         Row: {
           auth_method: Database["public"]["Enums"]["fb_auth_method"]
+          cookie_expires_at: string | null
           created_at: string
           display_name: string
           encrypted_payload: string
@@ -211,6 +212,7 @@ export type Database = {
         }
         Insert: {
           auth_method: Database["public"]["Enums"]["fb_auth_method"]
+          cookie_expires_at?: string | null
           created_at?: string
           display_name: string
           encrypted_payload: string
@@ -223,6 +225,7 @@ export type Database = {
         }
         Update: {
           auth_method?: Database["public"]["Enums"]["fb_auth_method"]
+          cookie_expires_at?: string | null
           created_at?: string
           display_name?: string
           encrypted_payload?: string
