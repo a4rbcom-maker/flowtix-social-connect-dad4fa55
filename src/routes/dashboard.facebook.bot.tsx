@@ -105,8 +105,6 @@ type Account = {
 
 type BotAccountStatus = "untested" | "active" | "invalid" | "checkpoint" | "disabled";
 
-const BOT_ACCOUNT_SELECT =
-  "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at";
 const LEGACY_ERROR = /صفحة \/me|login page|\/me أعادت/i;
 const AUTH_ERROR_RE = /unauthorized|401|session|auth_required|auth_invalid|invalid token/i;
 
@@ -234,8 +232,11 @@ function StatusReason({
 function BotAccountsPage() {
   const { user, signOut } = useAuth();
   const { lang } = useI18n();
-  const { call } = useFacebookApi();
+  const listAccountsFn = useServerFn(listBotAccounts);
+  const addAccountFn = useServerFn(addBotAccount);
+  const deleteAccountFn = useServerFn(deleteBotAccount);
   const precheckFn = useServerFn(precheckBotAccount);
+  const testAccountFn = useServerFn(testBotAccount);
   const navigate = useNavigate();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
@@ -443,40 +444,26 @@ function BotAccountsPage() {
       description:
         lang === "ar" ? "سجّل الدخول مرة أخرى للمتابعة." : "Please sign in again to continue.",
     });
-    // Local session is already cleared inside useFacebookApi on auth failure;
     // signOut() flips AuthProvider state and we navigate to login.
     void signOut().finally(() => navigate({ to: "/login" }));
   };
 
-  const isAuthErr = (e: unknown) => e instanceof FbCallError && e.kind === "auth";
+  const isAuthErr = (e: unknown) => AUTH_ERROR_RE.test(e instanceof Error ? e.message : String(e ?? ""));
 
   const load = async () => {
     setLoading(true);
     try {
-      const raw = await call(listBotAccounts);
+      const raw = await listAccountsFn();
       // Defensive: tolerate direct arrays and wrapped server-function payloads.
       const list = normalizeAccountsPayload(raw);
-      if (list.length > 0) {
-        setAccounts(sanitizeAccounts(list));
-        return;
-      }
-
-      // Fallback read with the browser session. This keeps the UI honest when
-      // a server-function response is unexpectedly wrapped/empty while RLS still
-      // allows the signed-in user to read their own rows.
-      const { data, error } = await supabase
-        .from("fb_bot_accounts")
-        .select(BOT_ACCOUNT_SELECT)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      setAccounts(sanitizeAccounts((data ?? []) as Account[]));
+      setAccounts(sanitizeAccounts(list));
     } catch (e) {
       if (isAuthErr(e)) {
         handleAuthExpired();
         return;
       }
       console.error("[fb-bot] listBotAccounts failed:", e);
-      toast.error(describeFbError(e, lang === "ar" ? "ar" : "en"));
+      toast.error(describeServerActionError(e, lang === "ar" ? "ar" : "en"));
     } finally {
       setLoading(false);
     }
