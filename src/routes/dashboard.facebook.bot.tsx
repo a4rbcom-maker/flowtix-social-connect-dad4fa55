@@ -581,7 +581,18 @@ const looksLikeCheckpoint = (status: string | null | undefined, lastError: strin
                               {t.retry}
                             </Button>
                           )}
-                          {(a.status === "invalid" || a.status === "checkpoint") && a.auth_method === "cookies" && testingId !== a.id && (
+                          {looksLikeCheckpoint(a.status, a.last_error) && a.auth_method === "cookies" && testingId !== a.id && (
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="gap-1.5 bg-amber-500 hover:bg-amber-600 text-white"
+                              onClick={() => setCheckpointFor({ id: a.id, name: a.display_name, reason: a.last_error })}
+                            >
+                              <ShieldAlert className="h-3.5 w-3.5" />
+                              {lang === "ar" ? "إكمال التحقق" : "Complete verification"}
+                            </Button>
+                          )}
+                          {a.status === "invalid" && !looksLikeCheckpoint(a.status, a.last_error) && a.auth_method === "cookies" && testingId !== a.id && (
                             <Button
                               size="sm"
                               variant="default"
