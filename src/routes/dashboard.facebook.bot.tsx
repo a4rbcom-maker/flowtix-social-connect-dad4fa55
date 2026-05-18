@@ -433,6 +433,7 @@ function BotAccountsPage() {
                       </td>
                       <td className="px-4 py-3 align-top text-muted-foreground">
                         {a.last_check_at ? new Date(a.last_check_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US") : <span className="italic">{t.neverTested}</span>}
+                      </td>
                       <td className="px-4 py-3 text-end">
                         <div className="inline-flex items-center gap-1">
                           <Button
