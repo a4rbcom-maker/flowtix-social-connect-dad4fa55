@@ -351,40 +351,128 @@ export const cancelJob = createServerFn({ method: "POST" })
   });
 
 // ---------- precheckBotAccount ----------
-// Returns presence of required cookies WITHOUT exposing values. Powers the
-// pre-flight check dialog before running testBotAccount.
+// Pre-flight check before running testBotAccount. Returns a STABLE DTO and
+// NEVER throws on user-recoverable failures (missing account, bad payload,
+// decryption error) — the UI relies on the `severity` field to render a
+// clear Arabic message and decide whether the user can proceed to the test.
+export type PrecheckResult = {
+  ok: boolean;
+  canContinue: boolean;
+  severity: "ok" | "warning" | "error";
+  method: "cookies" | "credentials" | "unknown";
+  present: string[];
+  missing: string[];
+  invalid: { name: string; reason: string }[];
+  totalCookies: number;
+  expiresAt: string | null;
+  expiresInDays: number | null;
+  expired: boolean;
+  message: string;
+  debugCode: string;
+};
+
+function precheckFailure(
+  debugCode: string,
+  message: string,
+  method: PrecheckResult["method"] = "unknown",
+): PrecheckResult {
+  return {
+    ok: false,
+    canContinue: false,
+    severity: "error",
+    method,
+    present: [],
+    missing: [],
+    invalid: [],
+    totalCookies: 0,
+    expiresAt: null,
+    expiresInDays: null,
+    expired: false,
+    message,
+    debugCode,
+  };
+}
+
 export const precheckBotAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }) => {
+  .handler(async ({ data, context }): Promise<PrecheckResult> => {
     const { supabase } = context;
-    const { data: acc, error } = await supabase
-      .from("fb_bot_accounts")
-      .select("id, auth_method, encrypted_payload")
-      .eq("id", data.id)
-      .single();
-    if (error || !acc) throw new Error(error?.message ?? "Account not found");
 
+    // 1) Read the account row. Never throw — translate to Arabic message.
+    let acc: { id: string; auth_method: string; encrypted_payload: string } | null = null;
+    try {
+      const { data: row, error } = await supabase
+        .from("fb_bot_accounts")
+        .select("id, auth_method, encrypted_payload")
+        .eq("id", data.id)
+        .maybeSingle();
+      if (error) {
+        console.error("[precheckBotAccount] db error:", error);
+        return precheckFailure(
+          "DB_READ_FAILED",
+          "تعذّر قراءة بيانات الحساب من قاعدة البيانات. حدِّث الصفحة وأعد المحاولة.",
+        );
+      }
+      if (!row) {
+        return precheckFailure(
+          "ACCOUNT_NOT_FOUND",
+          "هذا الحساب لم يعد موجودًا. حدِّث الصفحة ثم أعد إضافته إن لزم.",
+        );
+      }
+      acc = row as { id: string; auth_method: string; encrypted_payload: string };
+    } catch (e) {
+      console.error("[precheckBotAccount] db threw:", e);
+      return precheckFailure(
+        "DB_EXCEPTION",
+        "حدث خطأ غير متوقع أثناء قراءة الحساب. أعد المحاولة بعد لحظات.",
+      );
+    }
+
+    // 2) Credentials accounts: cookies precheck doesn't apply.
     if (acc.auth_method !== "cookies") {
       return {
         ok: false,
-        method: "credentials" as const,
-        present: [] as string[],
-        missing: [] as string[],
-        invalid: [] as { name: string; reason: string }[],
+        canContinue: true,
+        severity: "warning",
+        method: "credentials",
+        present: [],
+        missing: [],
+        invalid: [],
         totalCookies: 0,
-        expiresAt: null as string | null,
-        expiresInDays: null as number | null,
+        expiresAt: null,
+        expiresInDays: null,
         expired: false,
-        message: "هذا الحساب مُسجَّل بالبريد/كلمة السر — لا يمكن فحص الكوكيز.",
+        message:
+          "هذا الحساب مُسجَّل بالبريد/كلمة السر — لا يمكن فحص الكوكيز. اضغط متابعة الاختبار.",
+        debugCode: "CREDENTIALS_ACCOUNT",
       };
     }
 
-    const { decryptJson } = await import("@/server/crypto.server");
-    const payload = decryptJson<unknown>(acc.encrypted_payload);
-    const cookies = normalizeStoredCookies(payload);
-    const byName = new Map(cookies.map((c) => [c.name, c.value]));
+    // 3) Decrypt + parse the stored payload. Never let errors escape.
+    let cookies: NormalizedCookie[] = [];
+    try {
+      const { decryptJson } = await import("@/server/crypto.server");
+      const payload = decryptJson<unknown>(acc.encrypted_payload);
+      cookies = normalizeStoredCookies(payload);
+    } catch (e) {
+      console.error("[precheckBotAccount] decrypt failed:", e);
+      return precheckFailure(
+        "DECRYPT_FAILED",
+        "تعذّر فك تشفير الكوكيز المحفوظة. احذف الحساب وأعد إضافته بكوكيز جديدة.",
+        "cookies",
+      );
+    }
 
+    if (cookies.length === 0) {
+      return precheckFailure(
+        "EMPTY_COOKIES",
+        "لا توجد كوكيز محفوظة لهذا الحساب. احذف الحساب وأعد إضافته بكوكيز جديدة من Cookie-Editor.",
+        "cookies",
+      );
+    }
+
+    const byName = new Map(cookies.map((c) => [c.name, c.value]));
     const present: string[] = [];
     const missing: string[] = [];
     const invalid: { name: string; reason: string }[] = [];
@@ -404,20 +492,22 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
       }
     }
 
-    // Expiry: prefer stored value, else recompute from payload and backfill.
-    const minExp = earliestRequiredExpiry(cookies as NormalizedCookie[]);
+    // 4) Expiry calculation + DB backfill (failure here is non-fatal).
+    const minExp = earliestRequiredExpiry(cookies);
     const expiresAt = minExp !== null ? new Date(minExp * 1000).toISOString() : null;
     if (expiresAt) {
-      // Backfill DB column for older accounts so listBotAccounts sees expiry.
-      await supabase
-        .from("fb_bot_accounts")
-        .update({ cookie_expires_at: expiresAt })
-        .eq("id", data.id);
+      try {
+        await supabase
+          .from("fb_bot_accounts")
+          .update({ cookie_expires_at: expiresAt })
+          .eq("id", data.id);
+      } catch (e) {
+        console.warn("[precheckBotAccount] expiry backfill failed (ignored):", e);
+      }
     }
     const now = Date.now();
     const expiresInDays = minExp !== null ? Math.floor((minExp * 1000 - now) / 86_400_000) : null;
     const expired = minExp !== null && minExp * 1000 <= now;
-
     if (expired) {
       invalid.push({
         name: "expiry",
@@ -426,19 +516,28 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
     }
 
     const ok = missing.length === 0 && invalid.length === 0;
+    const expiringSoon = ok && expiresInDays !== null && expiresInDays <= 7;
+    const severity: PrecheckResult["severity"] = ok
+      ? expiringSoon
+        ? "warning"
+        : "ok"
+      : "error";
+
     const message = ok
-      ? expiresInDays !== null && expiresInDays <= 7
+      ? expiringSoon
         ? `الكوكيز سليمة، لكن الجلسة تنتهي خلال ${expiresInDays} يوم — جدِّدها قريبًا.`
         : "الكوكيز المطلوبة كلها موجودة وصيغتها سليمة."
       : expired
-        ? "انتهت صلاحية جلسة فيسبوك — أعد تصدير الكوكيز."
+        ? "انتهت صلاحية جلسة فيسبوك — أعد تصدير الكوكيز من Cookie-Editor."
         : missing.length > 0
-          ? `كوكيز ناقصة: ${missing.join(", ")}`
+          ? `كوكيز ناقصة: ${missing.join(", ")} — أعد تصدير الكوكيز من Cookie-Editor.`
           : `كوكيز فيها مشاكل في الصيغة: ${invalid.map((i) => i.name).join(", ")}`;
 
-    const result = {
+    return {
       ok,
-      method: "cookies" as const,
+      canContinue: ok, // failed precheck blocks the test button
+      severity,
+      method: "cookies",
       present,
       missing,
       invalid,
@@ -446,10 +545,9 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
       expiresAt,
       expiresInDays,
       expired,
-      message: message || "تعذّر تكوين رسالة الفحص — جرّب مرة أخرى.",
+      message,
+      debugCode: ok ? (expiringSoon ? "OK_EXPIRING_SOON" : "OK") : "VALIDATION_FAILED",
     };
-    console.log("[precheckBotAccount] result:", { id: data.id, ok, missing: missing.length, invalid: invalid.length, totalCookies: cookies.length });
-    return result;
   });
 
 // ---------- testBotAccount ----------
