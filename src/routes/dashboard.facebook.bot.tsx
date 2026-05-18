@@ -335,6 +335,7 @@ function BotAccountsPage() {
   const navigate = useNavigate();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<{ message: string; debugCode: string } | null>(null);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"cookies" | "credentials">("cookies");
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
@@ -536,18 +537,29 @@ function BotAccountsPage() {
 
   const load = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const raw = await listAccountsFn();
-      // Defensive: tolerate direct arrays and wrapped server-function payloads.
-      const list = normalizeAccountsPayload(raw);
-      setAccounts(sanitizeAccounts(list));
+      const result = normalizeAccountsPayload(raw, lang === "ar" ? "ar" : "en");
+      console.info("[fb-bot] listBotAccounts result", {
+        ok: result.ok,
+        count: result.accounts.length,
+        debugCode: result.debugCode,
+      });
+      if (!result.ok) {
+        setLoadError({ message: result.message, debugCode: result.debugCode });
+        return;
+      }
+      setAccounts(sanitizeAccounts(result.accounts));
     } catch (e) {
       if (isAuthErr(e)) {
         handleAuthExpired();
         return;
       }
       console.error("[fb-bot] listBotAccounts failed:", e);
-      toast.error(describeServerActionError(e, lang === "ar" ? "ar" : "en"));
+      const message = describeServerActionError(e, lang === "ar" ? "ar" : "en");
+      setLoadError({ message, debugCode: "CLIENT_LIST_EXCEPTION" });
+      toast.error(message);
     } finally {
       setLoading(false);
     }
