@@ -1424,7 +1424,7 @@ function BotAccountsPage() {
                                 {t.retry}
                               </Button>
                             )}
-                          {looksLikeCheckpoint(a.status, a.last_error) &&
+                          {a.status === "checkpoint" &&
                             a.auth_method === "cookies" &&
                             testingId !== a.id && (
                               <Button
