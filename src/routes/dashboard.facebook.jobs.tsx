@@ -28,7 +28,7 @@ export const Route = createFileRoute("/dashboard/facebook/jobs")({
 type Account = { id: string; display_name: string; status: string };
 
 function JobsHubPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { lang } = useI18n();
   const listAccountsFn = useServerFn(listBotAccounts);
   const createPostJobFn = useServerFn(createPostJob);
@@ -94,7 +94,11 @@ function JobsHubPage() {
   };
 
   useEffect(() => {
-    if (!user) return;
+    if (authLoading) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     (async () => {
       try {
         const raw = await listAccountsFn();
@@ -110,7 +114,7 @@ function JobsHubPage() {
       } catch (e) { console.error("[fb-jobs] listBotAccounts failed:", e); toast.error(String(e)); }
       finally { setLoading(false); }
     })();
-  }, [user]);
+  }, [user, authLoading]);
 
   const submitPost = async () => {
     if (!accountId) return;
