@@ -218,6 +218,7 @@ function BotAccountsPage() {
   const { user, signOut } = useAuth();
   const { lang } = useI18n();
   const { call } = useFacebookApi();
+  const precheckFn = useServerFn(precheckBotAccount);
   const navigate = useNavigate();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
