@@ -155,6 +155,10 @@ function BotAccountsPage() {
     testing: "Testing…",
     testSuccess: "Cookies are valid ✓",
     testFailed: "Test failed",
+    groupsFound: (n: number) => `Found ${n} groups`,
+    groupsTitle: "Available groups",
+    groupsEmpty: "Could not auto-read the groups list (may require VPS Worker).",
+    close: "Close",
   };
 
   const load = async () => {
