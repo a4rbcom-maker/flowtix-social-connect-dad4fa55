@@ -482,6 +482,43 @@ function BotAccountsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!groupsResult} onOpenChange={(o) => !o && setGroupsResult(null)}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-green-600" />
+              {t.groupsTitle} — {groupsResult?.accountName}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[420px] overflow-y-auto">
+            {!groupsResult || groupsResult.groups.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">{t.groupsEmpty}</p>
+            ) : (
+              <ul className="divide-y divide-border/50">
+                {groupsResult.groups.map((g) => (
+                  <li key={g.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <a
+                      href={`https://facebook.com/groups/${g.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="truncate text-sm font-medium text-foreground hover:text-primary hover:underline"
+                    >
+                      {g.name}
+                    </a>
+                    <code className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                      {g.id}
+                    </code>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGroupsResult(null)}>{t.close}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
