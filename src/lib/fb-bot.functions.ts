@@ -20,6 +20,61 @@ const credentialsSchema = z.object({
 });
 const addAccountSchema = z.union([cookiesSchema, credentialsSchema]);
 
+// Accepts: JSON array from extensions (EditThisCookie/Cookie-Editor), a single
+// JSON object with a `cookies` array, header-style "name=value; name2=value2",
+// or Netscape cookies.txt format. Returns a normalized array of cookie objects.
+type NormalizedCookie = { name: string; value: string; domain?: string; path?: string };
+function parseCookiesInput(raw: string): NormalizedCookie[] | null {
+  const text = raw.trim();
+  if (!text) return null;
+
+  // 1) JSON
+  if (text.startsWith("[") || text.startsWith("{")) {
+    try {
+      const j = JSON.parse(text);
+      const arr = Array.isArray(j) ? j : Array.isArray((j as any)?.cookies) ? (j as any).cookies : null;
+      if (arr) {
+        const out: NormalizedCookie[] = [];
+        for (const c of arr) {
+          if (!c || typeof c !== "object") continue;
+          const name = (c.name ?? c.Name ?? c.key) as string | undefined;
+          const value = (c.value ?? c.Value) as string | undefined;
+          if (typeof name === "string" && typeof value === "string") {
+            out.push({ name, value, domain: c.domain, path: c.path });
+          }
+        }
+        if (out.length) return out;
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  // 2) Netscape cookies.txt (tab-separated, 7 fields)
+  if (text.includes("\t")) {
+    const out: NormalizedCookie[] = [];
+    for (const line of text.split(/\r?\n/)) {
+      if (!line || line.startsWith("#")) continue;
+      const parts = line.split("\t");
+      if (parts.length >= 7) {
+        out.push({ name: parts[5], value: parts[6], domain: parts[0], path: parts[2] });
+      }
+    }
+    if (out.length) return out;
+  }
+
+  // 3) Header string: "name=value; name2=value2"
+  const out: NormalizedCookie[] = [];
+  for (const pair of text.split(/;\s*|\n+/)) {
+    const eq = pair.indexOf("=");
+    if (eq <= 0) continue;
+    const name = pair.slice(0, eq).trim();
+    const value = pair.slice(eq + 1).trim();
+    if (name) out.push({ name, value });
+  }
+  return out.length ? out : null;
+}
+
 // ---------- addBotAccount ----------
 export const addBotAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
