@@ -481,6 +481,18 @@ function BotAccountsPage() {
                         <div className="space-y-1.5">
                           {statusBadge(a.status)}
                           <StatusReason status={normalizeStatus(a.status)} lastError={a.last_error} t={t} />
+                          {testingId === a.id && testProgress && (
+                            <div className="max-w-xs space-y-1 pt-1">
+                              <Progress value={testProgress.value} className="h-1.5" />
+                              <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                {testProgress.label}
+                              </p>
+                            </div>
+                          )}
+                          {(retryCounts[a.id] ?? 0) > 0 && (
+                            <p className="text-[10px] text-muted-foreground">{t.attemptLabel((retryCounts[a.id] ?? 0) + 1)}</p>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3 align-top text-muted-foreground">
@@ -502,6 +514,17 @@ function BotAccountsPage() {
                             )}
                             {testingId === a.id ? t.testing : t.testNow}
                           </Button>
+                          {(a.status === "invalid" || a.status === "checkpoint") && testingId !== a.id && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="gap-1.5"
+                              onClick={() => handleTest(a.id, true)}
+                            >
+                              <RotateCw className="h-3.5 w-3.5" />
+                              {t.retry}
+                            </Button>
+                          )}
                           <Button size="sm" variant="ghost" onClick={() => handleDelete(a.id)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
