@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useEffect, useState, type MouseEvent } from "react";
 import { Facebook, RefreshCw, Trash2, Users, Loader2, ExternalLink, ChevronDown, CheckCircle2, Copy, ShieldCheck, FlaskConical, XCircle, KeyRound, Send, Sparkles, AlertCircle, History, Clock, Cookie } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -28,7 +28,7 @@ export const Route = createFileRoute("/dashboard/facebook")({
     const { supabase } = await import("@/integrations/supabase/client");
     await supabase.auth.getSession();
   },
-  component: FacebookPage,
+  component: FacebookRouteShell,
 });
 
 interface Connection {
@@ -55,6 +55,11 @@ interface Page {
   fan_count?: number;
   link?: string;
   picture?: { data?: { url?: string } };
+}
+
+function FacebookRouteShell() {
+  const location = useLocation();
+  return location.pathname === "/dashboard/facebook" ? <FacebookPage /> : <Outlet />;
 }
 
 function FacebookPage() {
