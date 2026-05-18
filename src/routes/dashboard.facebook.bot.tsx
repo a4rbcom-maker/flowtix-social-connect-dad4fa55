@@ -1860,8 +1860,8 @@ function BotAccountsPage() {
                 </p>
                 <p className="mt-1 text-xs leading-relaxed">
                   {lang === "ar"
-                    ? 'فيسبوك طلب تأكيد هوية أو خطوة أمان إضافية (Checkpoint). أكمل الخطوات يدويًا ثم اضغط على "تم — أعد الاختبار".'
-                    : 'Facebook is requesting identity confirmation or an extra security step (Checkpoint). Complete it manually, then click "Done — re-test".'}
+                    ? "هذه النافذة تظهر فقط إذا رصد النظام صفحة Checkpoint صريحة من فيسبوك. لو فيسبوك يفتح طبيعيًا عندك في المتصفح، فالغالب أن المشكلة في الكوكيز (قديمة/ناقصة) وليست تحقق هوية."
+                    : "This dialog only appears when an explicit Facebook checkpoint page is detected. If Facebook opens normally in your browser, the issue is most likely stale or incomplete cookies, not an identity check."}
                 </p>
                 {checkpointFor.reason && (
                   <p className="mt-2 font-mono text-[10px] opacity-80 break-words">
@@ -1880,7 +1880,7 @@ function BotAccountsPage() {
                   </span>
                   <span>
                     {lang === "ar"
-                      ? "افتح فيسبوك في تبويب جديد ومن نفس المتصفح اللي صدّرت منه الكوكيز."
+                      ? "افتح فيسبوك في تبويب جديد بنفس المتصفح الذي صدّرت منه الكوكيز."
                       : "Open Facebook in a new tab using the same browser you exported cookies from."}
                   </span>
                 </li>
@@ -1890,8 +1890,8 @@ function BotAccountsPage() {
                   </span>
                   <span>
                     {lang === "ar"
-                      ? "اتبع التعليمات اللي بتظهر: تأكيد الهاتف، الإيميل، صورة، أو رفع هوية."
-                      : "Follow the on-screen instructions: phone, email, photo, or ID verification."}
+                      ? "إذا فتح فيسبوك مباشرة على الفيد بدون أي طلب تحقق: المشكلة في الكوكيز فقط — أعد تصديرها من Cookie-Editor وأضف الحساب من جديد."
+                      : "If Facebook loads straight to the feed with no verification prompt, the cookies are stale — re-export them via Cookie-Editor and re-add the account."}
                   </span>
                 </li>
                 <li className="flex gap-3">
@@ -1900,8 +1900,8 @@ function BotAccountsPage() {
                   </span>
                   <span>
                     {lang === "ar"
-                      ? "بعد ما تخلص وترجع للفيد بشكل طبيعي، رجع هنا واضغط على الزر بالأسفل."
-                      : "After you return to the normal feed, come back here and click the button below."}
+                      ? "إذا ظهرت لك فعلاً صفحة تحقق من فيسبوك، اتبع ما يطلبه فيسبوك حرفيًا (قد يكون رمز SMS، تأكيد جهاز، أو غيره)، وارجع للفيد."
+                      : "If Facebook does show a verification page, follow exactly what it asks (SMS code, device confirmation, etc.) and return to the feed."}
                   </span>
                 </li>
                 <li className="flex gap-3">
@@ -1910,8 +1910,8 @@ function BotAccountsPage() {
                   </span>
                   <span>
                     {lang === "ar"
-                      ? "هنعيد فحص الحساب تلقائيًا. لو فضلت المشكلة، صدِّر كوكيز جديدة من Cookie-Editor."
-                      : "We'll auto re-test the account. If it still fails, export fresh cookies via Cookie-Editor."}
+                      ? "ارجع هنا واضغط «تم — أعد الاختبار». لو الحالة لم تتغير، صدّر كوكيز جديدة وأعد إضافة الحساب."
+                      : "Come back here and click 'Done — re-test'. If it still fails, export fresh cookies and re-add the account."}
                   </span>
                 </li>
               </ol>
