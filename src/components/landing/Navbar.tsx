@@ -1,5 +1,6 @@
 import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
+import { useAuth } from "@/lib/auth";
 import { useState, useEffect } from "react";
 import { Link } from "@tanstack/react-router";
 const flowtixLogo = "/flowtix-logo.webp";
