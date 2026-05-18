@@ -52,11 +52,16 @@ function classify(message: string, status: number | null): FbErrorKind {
 async function getBearer(forceRefresh = false): Promise<string> {
   if (forceRefresh) {
     const { data, error } = await supabase.auth.refreshSession();
-    if (error || !data.session) throw new FbCallError("Session refresh failed", "auth", 401);
+    if (error || !data.session) {
+      // Refresh token is gone or rejected — clear the broken local session so
+      // the UI can prompt a fresh login instead of looping on a dead token.
+      try { await supabase.auth.signOut({ scope: "local" }); } catch { /* ignore */ }
+      throw new FbCallError("session_expired", "auth", 401);
+    }
     return data.session.access_token;
   }
   const { data } = await supabase.auth.getSession();
-  if (!data.session) throw new FbCallError("Not authenticated", "auth", 401);
+  if (!data.session) throw new FbCallError("session_expired", "auth", 401);
   return data.session.access_token;
 }
 

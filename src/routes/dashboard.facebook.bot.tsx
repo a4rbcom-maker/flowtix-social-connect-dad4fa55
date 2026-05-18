@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Plus, Trash2, ShieldCheck, ShieldAlert, Cookie, KeyRound, AlertTriangle, Loader2, CheckCircle2, XCircle, Clock, Activity, RotateCw, ExternalLink, LogIn, CalendarClock, Lock } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { useFacebookApi } from "@/features/facebook/api";
+import { useFacebookApi, describeFbError, FbCallError } from "@/features/facebook/api";
 import { addBotAccount, listBotAccounts, deleteBotAccount, testBotAccount, precheckBotAccount } from "@/lib/fb-bot.functions";
 
 // Per-route fallback: surfaces a friendly Arabic card instead of letting any
@@ -130,6 +130,7 @@ function BotAccountsPage() {
   const { user, signOut } = useAuth();
   const { lang } = useI18n();
   const { call } = useFacebookApi();
+  const navigate = useNavigate();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -297,6 +298,23 @@ function BotAccountsPage() {
     progressDone: "Done ✓",
   };
 
+  const handleAuthExpired = () => {
+    toast.error(
+      lang === "ar" ? "انتهت جلسة الدخول" : "Your session has expired",
+      {
+        description: lang === "ar"
+          ? "سجّل الدخول مرة أخرى للمتابعة."
+          : "Please sign in again to continue.",
+      },
+    );
+    // Local session is already cleared inside useFacebookApi on auth failure;
+    // signOut() flips AuthProvider state and we navigate to login.
+    void signOut().finally(() => navigate({ to: "/login" }));
+  };
+
+  const isAuthErr = (e: unknown) =>
+    e instanceof FbCallError && e.kind === "auth";
+
   const load = async () => {
     setLoading(true);
     try {
@@ -312,7 +330,8 @@ function BotAccountsPage() {
       );
       setAccounts(sanitized);
     } catch (e) {
-      toast.error(String(e));
+      if (isAuthErr(e)) { handleAuthExpired(); return; }
+      toast.error(describeFbError(e, lang === "ar" ? "ar" : "en"));
     } finally {
       setLoading(false);
     }
@@ -343,7 +362,8 @@ function BotAccountsPage() {
       setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
       void load();
     } catch (e) {
-      toast.error(t.saveFailed, { description: String(e instanceof Error ? e.message : e) });
+      if (isAuthErr(e)) { handleAuthExpired(); return; }
+      toast.error(t.saveFailed, { description: describeFbError(e, lang === "ar" ? "ar" : "en") });
     } finally {
       setSubmitting(false);
     }
@@ -364,7 +384,8 @@ function BotAccountsPage() {
       setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
       void load();
     } catch (e) {
-      toast.error(t.saveFailed, { description: String(e instanceof Error ? e.message : e) });
+      if (isAuthErr(e)) { handleAuthExpired(); return; }
+      toast.error(t.saveFailed, { description: describeFbError(e, lang === "ar" ? "ar" : "en") });
     } finally {
       setSubmitting(false);
     }
@@ -376,7 +397,10 @@ function BotAccountsPage() {
       await call(deleteBotAccount, { id });
       toast.success(t.deleted);
       await load();
-    } catch (e) { toast.error(String(e)); }
+    } catch (e) {
+      if (isAuthErr(e)) { handleAuthExpired(); return; }
+      toast.error(describeFbError(e, lang === "ar" ? "ar" : "en"));
+    }
   };
 
   const openPrecheck = async (id: string, name: string) => {
@@ -494,7 +518,8 @@ function BotAccountsPage() {
       }
     } catch (e) {
       timers.forEach(clearTimeout);
-      const reason = e instanceof Error ? e.message : String(e);
+      if (isAuthErr(e)) { toast.dismiss(toastId); handleAuthExpired(); return; }
+      const reason = describeFbError(e, lang === "ar" ? "ar" : "en");
       pushEvent(id, { key: "error", state: "fail", detail: reason });
       const willRetry = scheduleAutoRetry(reason);
       toast.error(t.testFailed, {
