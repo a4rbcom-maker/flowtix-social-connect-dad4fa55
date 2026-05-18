@@ -28,12 +28,13 @@ export const addBotAccount = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     let payload: unknown;
     if (data.method === "cookies") {
-      // Validate it parses as JSON
-      try {
-        payload = { cookies: JSON.parse(data.cookies) };
-      } catch {
-        throw new Error("Cookies must be valid JSON exported from the browser extension");
+      const parsed = parseCookiesInput(data.cookies);
+      if (!parsed || parsed.length === 0) {
+        throw new Error(
+          "تعذّر قراءة الكوكيز. الصق إما JSON المُصدَّر من إضافة المتصفح، أو سلسلة مثل name=value; name2=value2"
+        );
       }
+      payload = { cookies: parsed };
     } else {
       payload = {
         email: data.email,
