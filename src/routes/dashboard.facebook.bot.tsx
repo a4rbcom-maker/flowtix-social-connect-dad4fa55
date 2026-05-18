@@ -308,8 +308,8 @@ function BotAccountsPage() {
       },
     );
     // Local session is already cleared inside useFacebookApi on auth failure;
-    // signOut() here just ensures the AuthProvider state flips immediately.
-    void signOut();
+    // signOut() flips AuthProvider state and we navigate to login.
+    void signOut().finally(() => navigate({ to: "/login" }));
   };
 
   const isAuthErr = (e: unknown) =>
