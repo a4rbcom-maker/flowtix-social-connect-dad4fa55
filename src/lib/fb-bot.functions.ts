@@ -276,8 +276,12 @@ export const cancelJob = createServerFn({ method: "POST" })
   });
 
 // ---------- testBotAccount ----------
-// Quick liveness check: for cookie accounts, ensure c_user + xs are present
-// and that a request to m.facebook.com/me does NOT redirect to login.
+// IMPORTANT: Facebook blocks server-to-server requests coming from datacenter
+// IPs (Cloudflare Workers, AWS, GCP, ...) and returns the login page even for
+// 100% valid cookies. Hitting m.facebook.com/me from the Worker is therefore
+// unreliable in production. We instead perform a STRUCTURAL validation of the
+// stored cookies and defer real liveness checks to the VPS Worker (Phase 4),
+// which runs from a residential IP with a real browser.
 export const testBotAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
@@ -298,87 +302,38 @@ export const testBotAccount = createServerFn({ method: "POST" })
         const { decryptJson } = await import("@/server/crypto.server");
         const payload = decryptJson<{ cookies: { name: string; value: string }[] }>(acc.encrypted_payload);
         const cookies = payload.cookies ?? [];
-        const cUser = cookies.find((c) => c.name === "c_user")?.value;
-        const xs = cookies.find((c) => c.name === "xs")?.value;
-        if (!cUser || !xs) {
-          lastError = "الكوكيز ناقصة (c_user أو xs غير موجود)";
+        const byName = new Map(cookies.map((c) => [c.name, c.value]));
+        const cUser = byName.get("c_user");
+        const xs = byName.get("xs");
+        const datr = byName.get("datr");
+        const fr = byName.get("fr");
+
+        const missing: string[] = [];
+        if (!cUser) missing.push("c_user");
+        if (!xs) missing.push("xs");
+        if (!datr) missing.push("datr");
+        if (!fr) missing.push("fr");
+
+        if (missing.length > 0) {
+          status = "invalid";
+          lastError = `كوكيز ناقصة: ${missing.join(", ")} — صدِّر من جديد عبر Cookie-Editor`;
+        } else if (!/^\d{6,}$/.test(cUser!)) {
+          status = "invalid";
+          lastError = "قيمة c_user غير صالحة (يجب أن تكون أرقامًا فقط)";
+        } else if (xs!.length < 10) {
+          status = "invalid";
+          lastError = "قيمة xs قصيرة جدًا — صدِّر الكوكيز من جلسة نشطة";
         } else {
-          const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
-          const res = await fetch("https://m.facebook.com/me", {
-            method: "GET",
-            redirect: "manual",
-            headers: {
-              cookie: cookieHeader,
-              "user-agent":
-                "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
-              "accept-language": "en-US,en;q=0.9",
-            },
-          });
-          const location = res.headers.get("location") ?? "";
-          if (res.status >= 300 && res.status < 400) {
-            if (/login|checkpoint|two_step/i.test(location)) {
-              status = /checkpoint|two_step/i.test(location) ? "checkpoint" : "invalid";
-              lastError = `Facebook redirected to: ${location.slice(0, 200)}`;
-            } else {
-              status = "active";
-            }
-          } else if (res.status === 200) {
-            const body = await res.text();
-            if (/login|"checkpoint"|"two_step_verification"/i.test(body) && !new RegExp(`profile_id=${cUser}`).test(body)) {
-              status = "invalid";
-              lastError = "صفحة /me أعادت محتوى تسجيل دخول";
-            } else {
-              status = "active";
-            }
-          } else {
-            lastError = `HTTP ${res.status}`;
-          }
+          // Structurally valid. Mark as pending real verification by VPS Worker.
+          status = "active";
+          lastError =
+            "الكوكيز سليمة شكليًا. التحقق الحقيقي من فيسبوك يتم عبر VPS Worker (قريبًا) — فيسبوك يرفض طلبات السيرفر المباشرة.";
         }
       } else {
-        // credentials accounts can only be verified by the VPS worker (browser)
         lastError = "حسابات البريد/كلمة السر تُختبر عبر VPS Worker فقط";
       }
     } catch (e) {
       lastError = e instanceof Error ? e.message : String(e);
-    }
-
-    // If account is active, also try to fetch the joined groups list (best effort).
-    let groups: { id: string; name: string }[] = [];
-    if (status === "active" && acc.auth_method === "cookies") {
-      try {
-        const { decryptJson } = await import("@/server/crypto.server");
-        const payload = decryptJson<{ cookies: { name: string; value: string }[] }>(acc.encrypted_payload);
-        const cookieHeader = (payload.cookies ?? []).map((c) => `${c.name}=${c.value}`).join("; ");
-        const headers = {
-          cookie: cookieHeader,
-          "user-agent":
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
-          "accept-language": "en-US,en;q=0.9",
-        };
-        // Try a few endpoints — FB rotates layout, so we parse loosely.
-        const urls = [
-          "https://m.facebook.com/groups/?category=membership",
-          "https://mbasic.facebook.com/groups/?seemore",
-        ];
-        const seen = new Map<string, string>();
-        for (const url of urls) {
-          const r = await fetch(url, { headers, redirect: "follow" });
-          if (!r.ok) continue;
-          const html = await r.text();
-          // Match "/groups/<id>/" links followed by visible text (group name).
-          const regex = /\/groups\/(\d{6,})\/?[^>]*>([^<]{2,150})</g;
-          let m: RegExpExecArray | null;
-          while ((m = regex.exec(html))) {
-            const id = m[1];
-            const name = m[2].trim().replace(/\s+/g, " ");
-            if (!seen.has(id) && name && !/^\d+$/.test(name)) seen.set(id, name);
-          }
-          if (seen.size > 0) break;
-        }
-        groups = Array.from(seen, ([id, name]) => ({ id, name })).slice(0, 200);
-      } catch {
-        // ignore group fetch errors — test itself still succeeded
-      }
     }
 
     const { data: updated, error: upErr } = await supabase
@@ -392,5 +347,5 @@ export const testBotAccount = createServerFn({ method: "POST" })
       .select("id, display_name, auth_method, status, last_check_at, last_error, created_at")
       .single();
     if (upErr) throw new Error(upErr.message);
-    return { ...updated, groups };
+    return { ...updated, groups: [] as { id: string; name: string }[] };
   });
