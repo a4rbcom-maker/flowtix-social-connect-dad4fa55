@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { Navbar } from "@/components/landing/Navbar";
-import { Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { AlertCircle, Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff } from "lucide-react";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -50,6 +50,9 @@ function LoginPage() {
         back: "العودة للرئيسية",
         submit: "متابعة",
         forgot: "نسيت كلمة المرور؟",
+        invalidCredentials: "البريد الإلكتروني أو كلمة المرور غير صحيحة. تأكد من البيانات أو استخدم نسيت كلمة المرور.",
+        emailNotConfirmed: "حسابك لم يتم تأكيده بعد. تحقق من بريدك الإلكتروني ثم حاول مرة أخرى.",
+        defaultError: "حدث خطأ غير متوقع. حاول مرة أخرى بعد لحظات.",
       }
     : {
         login: "Sign In",
@@ -72,7 +75,19 @@ function LoginPage() {
         back: "Back to Home",
         submit: "Continue",
         forgot: "Forgot password?",
+        invalidCredentials: "The email or password is incorrect. Check your details or use Forgot password.",
+        emailNotConfirmed: "Your account is not confirmed yet. Check your email, then try again.",
+        defaultError: "Something went wrong. Please try again in a moment.",
       };
+
+  const getFriendlyAuthError = (err: unknown) => {
+    const message = err instanceof Error ? err.message.toLowerCase() : "";
+
+    if (message.includes("invalid login credentials")) return labels.invalidCredentials;
+    if (message.includes("email not confirmed")) return labels.emailNotConfirmed;
+
+    return labels.defaultError;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,7 +113,7 @@ function LoginPage() {
         setSuccess(labels.checkEmail);
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      setError(getFriendlyAuthError(err));
     } finally {
       setLoading(false);
     }
@@ -207,8 +222,9 @@ function LoginPage() {
               )}
 
               {error && (
-                <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
-                  {error}
+                <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm leading-6 text-destructive">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{error}</span>
                 </div>
               )}
               {success && (
