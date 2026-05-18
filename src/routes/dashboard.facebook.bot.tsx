@@ -81,6 +81,7 @@ function BotAccountsPage() {
   const [testProgress, setTestProgress] = useState<{ value: number; label: string } | null>(null);
   const [retryCounts, setRetryCounts] = useState<Record<string, number>>({});
   const [groupsResult, setGroupsResult] = useState<{ accountName: string; groups: { id: string; name: string }[] } | null>(null);
+  const [reloginFor, setReloginFor] = useState<{ id: string; name: string } | null>(null);
   const [precheck, setPrecheck] = useState<
     | {
         id: string;
