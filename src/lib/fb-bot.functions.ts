@@ -456,7 +456,7 @@ async function getPrecheckAuthContext(): Promise<PrecheckAuthContext | PrecheckR
 
 export const precheckBotAccount = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }): Promise<PrecheckResult> => {
+  .handler(async ({ data }): Promise<PrecheckResult> => {
     const auth = await getPrecheckAuthContext();
     if ("debugCode" in auth) return auth;
     const { supabase, userId } = auth;
