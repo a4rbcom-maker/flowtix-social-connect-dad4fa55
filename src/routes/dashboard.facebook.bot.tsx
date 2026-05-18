@@ -44,7 +44,7 @@ const normalizeStatus = (status: string | null | undefined): BotAccountStatus =>
 };
 
 function BotAccountsPage() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const { lang } = useI18n();
   const { call } = useFacebookApi();
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -96,6 +96,11 @@ function BotAccountsPage() {
     saveFailed: "فشل ربط الحساب",
     statuses: { untested: "لم يُختبر", active: "نشط ✓", invalid: "فشل — كوكيز غير صالحة", checkpoint: "تحقق مطلوب", disabled: "معطّل" } satisfies Record<BotAccountStatus, string>,
     backToFb: "→ الذهاب لمهام البوت",
+    sessionTitle: "أنت مسجَّل دخول بالحساب التالي",
+    sessionHint: "الحسابات المرتبطة تظهر فقط إذا كانت تخص نفس الـ user_id بالأسفل. لو ربطت من جلسة مختلفة، سجّل خروج وادخل بنفس الإيميل.",
+    signOutBtn: "تسجيل خروج وإعادة دخول",
+    copyId: "نسخ المُعرّف",
+    copied: "تم النسخ",
   } : {
     title: "Facebook Bot Accounts",
     subtitle: "Link Facebook accounts for VPS Worker automation",
@@ -131,6 +136,11 @@ function BotAccountsPage() {
     saveFailed: "Failed to link account",
     statuses: { untested: "Untested", active: "Active ✓", invalid: "Failed — invalid cookies", checkpoint: "Verify needed", disabled: "Disabled" } satisfies Record<BotAccountStatus, string>,
     backToFb: "→ Go to bot jobs",
+    sessionTitle: "You are signed in as",
+    sessionHint: "Linked accounts only appear if they belong to the same user_id below. If you linked from a different session, sign out and sign back in with the same email.",
+    signOutBtn: "Sign out & re-login",
+    copyId: "Copy ID",
+    copied: "Copied",
   };
 
   const load = async () => {
@@ -241,6 +251,36 @@ function BotAccountsPage() {
             </Button>
           </div>
         </div>
+
+        {user && (
+          <Card className="border-amber-500/30 bg-amber-500/5 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-400">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{t.sessionTitle}</p>
+                  <p className="mt-0.5 truncate text-sm text-foreground">{user.email}</p>
+                  <p className="mt-1 font-mono text-[11px] text-muted-foreground break-all">user_id: {user.id}</p>
+                  <p className="mt-2 text-xs text-muted-foreground leading-relaxed">{t.sessionHint}</p>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { navigator.clipboard.writeText(user.id); toast.success(t.copied); }}
+                >
+                  {t.copyId}
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => signOut()}>
+                  {t.signOutBtn}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
 
         <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm">
           <div className="mb-4 flex items-start gap-3">
