@@ -170,7 +170,7 @@ function BotAccountsPage() {
       setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
       void load();
     } catch (e) {
-      toast.error(String(e));
+      toast.error(t.saveFailed, { description: String(e instanceof Error ? e.message : e) });
     } finally {
       setSubmitting(false);
     }
