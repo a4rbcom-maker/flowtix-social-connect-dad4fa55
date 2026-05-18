@@ -40,8 +40,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
-import { useFacebookApi, describeFbError, FbCallError } from "@/features/facebook/api";
 import {
   addBotAccount,
   listBotAccounts,
@@ -107,9 +105,8 @@ type Account = {
 
 type BotAccountStatus = "untested" | "active" | "invalid" | "checkpoint" | "disabled";
 
-const BOT_ACCOUNT_SELECT =
-  "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at";
 const LEGACY_ERROR = /صفحة \/me|login page|\/me أعادت/i;
+const AUTH_ERROR_RE = /unauthorized|401|session|auth_required|auth_invalid|invalid token/i;
 
 // One row in the per-account test timeline. `key` matches a step in TEST_STEPS
 // so labels can be localized; `state` drives the icon (spinner/check/x).
@@ -161,6 +158,82 @@ const normalizeAccountPayload = (raw: unknown): Account | null => {
   return payload && typeof payload === "object" && typeof (payload as Account).id === "string"
     ? (payload as Account)
     : null;
+};
+
+type PrecheckUiResult = {
+  ok: boolean;
+  canContinue: boolean;
+  severity: "ok" | "warning" | "error";
+  method: "cookies" | "credentials" | "unknown";
+  present: string[];
+  missing: string[];
+  invalid: { name: string; reason: string }[];
+  totalCookies: number;
+  message: string;
+  debugCode: string;
+};
+
+const normalizePrecheckPayload = (raw: unknown, lang: "ar" | "en"): PrecheckUiResult => {
+  const payload = unwrapServerPayload(raw);
+  if (!payload || typeof payload !== "object" || typeof (payload as { ok?: unknown }).ok !== "boolean") {
+    console.error("[precheck] unexpected response shape", { rawType: typeof raw, raw });
+    return {
+      ok: false,
+      canContinue: false,
+      severity: "error",
+      method: "unknown",
+      present: [],
+      missing: [],
+      invalid: [],
+      totalCookies: 0,
+      message:
+        lang === "ar"
+          ? "تعذّر قراءة نتيجة الفحص من الخادم. حدّث الصفحة وسجّل الدخول مرة أخرى."
+          : "Could not read the server pre-check result. Refresh and sign in again.",
+      debugCode: "CLIENT_BAD_PRECHECK_SHAPE",
+    };
+  }
+
+  const dto = payload as Partial<PrecheckUiResult> & { ok: boolean };
+  return {
+    ok: dto.ok,
+    canContinue: Boolean(dto.canContinue),
+    severity: dto.severity ?? (dto.ok ? "ok" : "error"),
+    method: dto.method ?? "unknown",
+    present: Array.isArray(dto.present) ? dto.present : [],
+    missing: Array.isArray(dto.missing) ? dto.missing : [],
+    invalid: Array.isArray(dto.invalid) ? dto.invalid : [],
+    totalCookies: typeof dto.totalCookies === "number" ? dto.totalCookies : 0,
+    message:
+      typeof dto.message === "string" && dto.message.trim()
+        ? dto.message
+        : dto.ok
+          ? lang === "ar"
+            ? "اكتمل الفحص بنجاح."
+            : "Pre-check passed."
+          : lang === "ar"
+            ? "فشل الفحص — راجع التفاصيل أدناه."
+            : "Pre-check failed — see details below.",
+    debugCode: typeof dto.debugCode === "string" && dto.debugCode ? dto.debugCode : "UNKNOWN",
+  };
+};
+
+const describeServerActionError = (err: unknown, lang: "ar" | "en") => {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  if (AUTH_ERROR_RE.test(message)) {
+    return lang === "ar" ? "انتهت جلسة الدخول. سجّل الدخول مرة أخرى." : "Session expired. Please sign in again.";
+  }
+  if (/timeout|aborted/i.test(message)) {
+    return lang === "ar" ? "استغرقت العملية وقتًا طويلًا. حاول مرة أخرى." : "The request took too long. Please try again.";
+  }
+  if (/fetch|network|failed to fetch/i.test(message)) {
+    return lang === "ar" ? "تعذّر الاتصال بالخادم. تحقّق من الإنترنت." : "Couldn't reach the server. Check your internet.";
+  }
+  return message && message !== "[object Object]"
+    ? message
+    : lang === "ar"
+      ? "حدث خطأ غير متوقع. حدّث الصفحة وأعد المحاولة."
+      : "Something went wrong. Refresh and try again.";
 };
 
 const sanitizeAccounts = (list: Account[]): Account[] =>
@@ -217,8 +290,11 @@ function StatusReason({
 function BotAccountsPage() {
   const { user, signOut } = useAuth();
   const { lang } = useI18n();
-  const { call } = useFacebookApi();
+  const listAccountsFn = useServerFn(listBotAccounts);
+  const addAccountFn = useServerFn(addBotAccount);
+  const deleteAccountFn = useServerFn(deleteBotAccount);
   const precheckFn = useServerFn(precheckBotAccount);
+  const testAccountFn = useServerFn(testBotAccount);
   const navigate = useNavigate();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
@@ -247,18 +323,7 @@ function BotAccountsPage() {
     id: string;
     name: string;
     loading: boolean;
-    result: {
-      ok: boolean;
-      canContinue: boolean;
-      severity: "ok" | "warning" | "error";
-      method: "cookies" | "credentials" | "unknown";
-      present: string[];
-      missing: string[];
-      invalid: { name: string; reason: string }[];
-      totalCookies: number;
-      message: string;
-      debugCode: string;
-    } | null;
+    result: PrecheckUiResult | null;
     error: string | null;
   } | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -426,40 +491,26 @@ function BotAccountsPage() {
       description:
         lang === "ar" ? "سجّل الدخول مرة أخرى للمتابعة." : "Please sign in again to continue.",
     });
-    // Local session is already cleared inside useFacebookApi on auth failure;
     // signOut() flips AuthProvider state and we navigate to login.
     void signOut().finally(() => navigate({ to: "/login" }));
   };
 
-  const isAuthErr = (e: unknown) => e instanceof FbCallError && e.kind === "auth";
+  const isAuthErr = (e: unknown) => AUTH_ERROR_RE.test(e instanceof Error ? e.message : String(e ?? ""));
 
   const load = async () => {
     setLoading(true);
     try {
-      const raw = await call(listBotAccounts);
+      const raw = await listAccountsFn();
       // Defensive: tolerate direct arrays and wrapped server-function payloads.
       const list = normalizeAccountsPayload(raw);
-      if (list.length > 0) {
-        setAccounts(sanitizeAccounts(list));
-        return;
-      }
-
-      // Fallback read with the browser session. This keeps the UI honest when
-      // a server-function response is unexpectedly wrapped/empty while RLS still
-      // allows the signed-in user to read their own rows.
-      const { data, error } = await supabase
-        .from("fb_bot_accounts")
-        .select(BOT_ACCOUNT_SELECT)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      setAccounts(sanitizeAccounts((data ?? []) as Account[]));
+      setAccounts(sanitizeAccounts(list));
     } catch (e) {
       if (isAuthErr(e)) {
         handleAuthExpired();
         return;
       }
       console.error("[fb-bot] listBotAccounts failed:", e);
-      toast.error(describeFbError(e, lang === "ar" ? "ar" : "en"));
+      toast.error(describeServerActionError(e, lang === "ar" ? "ar" : "en"));
     } finally {
       setLoading(false);
     }
@@ -482,17 +533,21 @@ function BotAccountsPage() {
     try {
       const row =
         tab === "cookies"
-          ? await call(addBotAccount, {
-              method: "cookies",
-              displayName: form.displayName,
-              cookies: form.cookies,
+          ? await addAccountFn({
+              data: {
+                method: "cookies",
+                displayName: form.displayName,
+                cookies: form.cookies,
+              },
             })
-          : await call(addBotAccount, {
-              method: "credentials",
-              displayName: form.displayName,
-              email: form.email,
-              password: form.password,
-              twoFactorSecret: form.twoFactorSecret || null,
+          : await addAccountFn({
+              data: {
+                method: "credentials",
+                displayName: form.displayName,
+                email: form.email,
+                password: form.password,
+                twoFactorSecret: form.twoFactorSecret || null,
+              },
             });
       const account = normalizeAccountPayload(row);
       if (account) {
@@ -519,7 +574,7 @@ function BotAccountsPage() {
         handleAuthExpired();
         return;
       }
-      toast.error(t.saveFailed, { description: describeFbError(e, lang === "ar" ? "ar" : "en") });
+      toast.error(t.saveFailed, { description: describeServerActionError(e, lang === "ar" ? "ar" : "en") });
     } finally {
       setSubmitting(false);
     }
@@ -536,10 +591,12 @@ function BotAccountsPage() {
     }
     setSubmitting(true);
     try {
-      const row = await call(addBotAccount, {
-        method: "cookies",
-        displayName: form.displayName,
-        cookies: form.cookies,
+      const row = await addAccountFn({
+        data: {
+          method: "cookies",
+          displayName: form.displayName,
+          cookies: form.cookies,
+        },
       });
       const account = normalizeAccountPayload(row);
       if (account) {
@@ -562,7 +619,7 @@ function BotAccountsPage() {
         handleAuthExpired();
         return;
       }
-      toast.error(t.saveFailed, { description: describeFbError(e, lang === "ar" ? "ar" : "en") });
+      toast.error(t.saveFailed, { description: describeServerActionError(e, lang === "ar" ? "ar" : "en") });
     } finally {
       setSubmitting(false);
     }
@@ -571,7 +628,7 @@ function BotAccountsPage() {
   const handleDelete = async (id: string) => {
     if (!confirm(t.deleteConfirm)) return;
     try {
-      await call(deleteBotAccount, { id });
+      await deleteAccountFn({ data: { id } });
       toast.success(t.deleted);
       await load();
     } catch (e) {
@@ -579,7 +636,7 @@ function BotAccountsPage() {
         handleAuthExpired();
         return;
       }
-      toast.error(describeFbError(e, lang === "ar" ? "ar" : "en"));
+      toast.error(describeServerActionError(e, lang === "ar" ? "ar" : "en"));
     }
   };
 
@@ -587,78 +644,14 @@ function BotAccountsPage() {
     setPrecheck({ id, name, loading: true, result: null, error: null });
     try {
       const raw = await precheckFn({ data: { id } });
-      console.log("[precheck] raw response:", raw);
-
-      // Defensive unwrap: accept the DTO directly, or wrapped under
-      // common envelope keys. Look for an object with both `ok:boolean`
-      // and `message:string` — that's our PrecheckResult shape.
-      const candidates: unknown[] = [raw];
-      if (raw && typeof raw === "object") {
-        for (const k of ["result", "data", "payload", "body"] as const) {
-          const v = (raw as Record<string, unknown>)[k];
-          if (v) candidates.push(v);
-        }
-      }
-      const dto = candidates.find(
-        (c) =>
-          !!c &&
-          typeof c === "object" &&
-          typeof (c as { ok?: unknown }).ok === "boolean" &&
-          typeof (c as { message?: unknown }).message === "string",
-      ) as
-        | {
-            ok: boolean;
-            canContinue?: boolean;
-            severity?: "ok" | "warning" | "error";
-            method?: "cookies" | "credentials" | "unknown";
-            present?: string[];
-            missing?: string[];
-            invalid?: { name: string; reason: string }[];
-            totalCookies?: number;
-            message: string;
-            debugCode?: string;
-          }
-        | undefined;
-
-      if (!dto) {
-        console.error("[precheck] unexpected shape:", raw);
-        setPrecheck({
-          id,
-          name,
-          loading: false,
-          result: null,
-          error:
-            lang === "ar"
-              ? `تعذّر قراءة نتيجة الفحص. الشكل المُستلم: ${JSON.stringify(raw).slice(0, 300)}`
-              : `Could not read precheck result. Received: ${JSON.stringify(raw).slice(0, 300)}`,
-        });
-        return;
-      }
+      const result = normalizePrecheckPayload(raw, lang === "ar" ? "ar" : "en");
+      console.info("[precheck] result", { ok: result.ok, debugCode: result.debugCode });
 
       setPrecheck({
         id,
         name,
         loading: false,
-        result: {
-          ok: Boolean(dto.ok),
-          canContinue: Boolean(dto.canContinue),
-          severity: dto.severity ?? (dto.ok ? "ok" : "error"),
-          method: dto.method ?? "unknown",
-          present: Array.isArray(dto.present) ? dto.present : [],
-          missing: Array.isArray(dto.missing) ? dto.missing : [],
-          invalid: Array.isArray(dto.invalid) ? dto.invalid : [],
-          totalCookies: typeof dto.totalCookies === "number" ? dto.totalCookies : 0,
-          message:
-            dto.message ||
-            (dto.ok
-              ? lang === "ar"
-                ? "اكتمل الفحص بنجاح."
-                : "Pre-check passed."
-              : lang === "ar"
-                ? "فشل الفحص — راجع التفاصيل أدناه."
-                : "Pre-check failed — see details below."),
-          debugCode: dto.debugCode || "UNKNOWN",
-        },
+        result,
         error: null,
       });
     } catch (e) {
@@ -748,9 +741,9 @@ function BotAccountsPage() {
     };
 
     try {
-      const updated = (await call(testBotAccount, { id })) as
+      const updated = (unwrapServerPayload(await testAccountFn({ data: { id } })) as
         | (Account & { groups?: { id: string; name: string }[] })
-        | null;
+        | null);
       timers.forEach(clearTimeout);
       updateLastEvent(id, { state: "ok" });
       setTestProgress({ value: 100, label: t.progressDone });
@@ -821,7 +814,7 @@ function BotAccountsPage() {
         handleAuthExpired();
         return;
       }
-      const reason = describeFbError(e, lang === "ar" ? "ar" : "en");
+      const reason = describeServerActionError(e, lang === "ar" ? "ar" : "en");
       pushEvent(id, { key: "error", state: "fail", detail: reason });
       const willRetry = scheduleAutoRetry(reason);
       toast.error(t.testFailed, {
