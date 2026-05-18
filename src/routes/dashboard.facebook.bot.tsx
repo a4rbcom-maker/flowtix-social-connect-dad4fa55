@@ -369,7 +369,16 @@ function BotAccountsPage() {
       setTestingId(null);
       setTimeout(() => setTestProgress(null), 600);
     }
-  };
+};
+
+// Detect Facebook checkpoint / two-step / identity-confirmation hints inside
+// arbitrary error strings (Arabic + English keywords + FB URL fragments).
+const CHECKPOINT_KEYWORDS = /checkpoint|two_step|two-step|identity|confirm.{0,15}identity|account.{0,15}restricted|temporarily.{0,15}locked|تأكيد.{0,15}الهوية|التحقق|تم.{0,15}قفل|تأكيد.{0,15}هويتك/i;
+const looksLikeCheckpoint = (status: string | null | undefined, lastError: string | null | undefined): boolean => {
+  if (status === "checkpoint") return true;
+  if (lastError && CHECKPOINT_KEYWORDS.test(lastError)) return true;
+  return false;
+};
 
 
   const statusBadge = (rawStatus: Account["status"] | string | null | undefined) => {
