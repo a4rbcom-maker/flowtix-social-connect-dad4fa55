@@ -128,8 +128,11 @@ function normalizeStoredCookies(payload: unknown): NormalizedCookie[] {
   return [];
 }
 
-// Cookies whose expiry we track for "session about to expire" alerts.
-const REQUIRED_COOKIES = ["c_user", "xs", "fr", "datr", "sb"] as const;
+// Cookies needed to treat a stored Facebook session as usable. `sb` helps
+// Facebook recognize the browser but should not block progress by itself.
+const CRITICAL_COOKIES = ["c_user", "xs", "fr", "datr"] as const;
+const RECOMMENDED_COOKIES = ["sb"] as const;
+const REQUIRED_COOKIES = [...CRITICAL_COOKIES, ...RECOMMENDED_COOKIES] as const;
 
 // Soonest expiry (Unix seconds) among the REQUIRED cookies. Skips session
 // cookies (no expirationDate). Returns null if none of the required cookies
@@ -143,6 +146,37 @@ function earliestRequiredExpiry(cookies: NormalizedCookie[]): number | null {
     if (min === null || c.expirationDate < min) min = c.expirationDate;
   }
   return min;
+}
+
+function validateFacebookCookies(cookies: NormalizedCookie[]) {
+  const byName = new Map(cookies.map((c) => [c.name, c.value]));
+  const present: string[] = [];
+  const missing: string[] = [];
+  const invalid: { name: string; reason: string }[] = [];
+
+  for (const name of REQUIRED_COOKIES) {
+    const v = byName.get(name);
+    if (!v || v.length === 0) {
+      missing.push(name);
+      continue;
+    }
+    present.push(name);
+    if (name === "c_user" && !/^\d{6,}$/.test(v)) {
+      invalid.push({ name, reason: "c_user يجب أن يحتوي على أرقام فقط (6 خانات أو أكثر)" });
+    }
+    if (name === "xs" && v.length < 10) {
+      invalid.push({ name, reason: "xs قصير جدًا — صدِّر الكوكيز من جلسة نشطة" });
+    }
+  }
+
+  const missingCritical = missing.filter((name) =>
+    (CRITICAL_COOKIES as readonly string[]).includes(name),
+  );
+  const missingRecommended = missing.filter((name) =>
+    (RECOMMENDED_COOKIES as readonly string[]).includes(name),
+  );
+
+  return { present, missing, missingCritical, missingRecommended, invalid };
 }
 
 // ---------- addBotAccount ----------
