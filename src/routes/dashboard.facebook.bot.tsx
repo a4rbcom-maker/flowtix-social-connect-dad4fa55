@@ -44,7 +44,7 @@ const normalizeStatus = (status: string | null | undefined): BotAccountStatus =>
 };
 
 function BotAccountsPage() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const { lang } = useI18n();
   const { call } = useFacebookApi();
   const [accounts, setAccounts] = useState<Account[]>([]);
