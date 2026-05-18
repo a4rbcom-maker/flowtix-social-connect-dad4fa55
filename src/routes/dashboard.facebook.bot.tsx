@@ -809,6 +809,95 @@ function BotAccountsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!reloginFor} onOpenChange={(o) => !o && setReloginFor(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <LogIn className="h-5 w-5 text-primary" />
+              {lang === "ar" ? "إعادة تسجيل الدخول لفيسبوك" : "Re-login to Facebook"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {reloginFor && (
+            <div className="space-y-4">
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-900 dark:text-amber-200">
+                <p className="font-semibold">
+                  {lang === "ar" ? "الحساب:" : "Account:"} <span className="font-bold">{reloginFor.name}</span>
+                </p>
+                <p className="mt-1 text-xs leading-relaxed">
+                  {lang === "ar"
+                    ? "الكوكيز الحالية غير صالحة أو منتهية. اتبع الخطوات أدناه لتصدير كوكيز جديدة من جلسة نشطة."
+                    : "Current cookies are invalid or expired. Follow the steps below to export fresh cookies from an active session."}
+                </p>
+              </div>
+
+              <ol className="space-y-3 text-sm leading-relaxed">
+                <li className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">1</span>
+                  <span>
+                    {lang === "ar"
+                      ? "افتح فيسبوك في تبويب جديد وسجّل خروج ثم سجّل دخول من جديد بنفس الحساب."
+                      : "Open Facebook in a new tab, sign out and sign back in with the same account."}
+                  </span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">2</span>
+                  <span>
+                    {lang === "ar" ? (
+                      <>ثبّت إضافة <span className="font-mono font-semibold">Cookie-Editor</span> من Chrome Web Store إذا لم تكن مثبتة.</>
+                    ) : (
+                      <>Install the <span className="font-mono font-semibold">Cookie-Editor</span> extension from the Chrome Web Store if you don't have it.</>
+                    )}
+                  </span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">3</span>
+                  <span>
+                    {lang === "ar"
+                      ? "وأنت على صفحة facebook.com، افتح Cookie-Editor واضغط Export ثم \"Export as JSON\" (سيتم النسخ تلقائيًا)."
+                      : "While on facebook.com, open Cookie-Editor → Export → \"Export as JSON\" (it copies to clipboard automatically)."}
+                  </span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">4</span>
+                  <span>
+                    {lang === "ar"
+                      ? "احذف الحساب الحالي من هنا ثم اضغط \"ربط حساب جديد\" والصق الكوكيز الجديدة."
+                      : "Delete the current account here, then click \"Add new account\" and paste the new cookies."}
+                  </span>
+                </li>
+              </ol>
+
+              <div className="rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground leading-relaxed">
+                <p className="font-semibold text-foreground mb-1">
+                  {lang === "ar" ? "تأكد من وجود الكوكيز التالية:" : "Ensure these cookies are present:"}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {["c_user", "xs", "fr", "datr", "sb"].map((c) => (
+                    <span key={c} className="rounded border border-border bg-background px-1.5 py-0.5 font-mono">{c}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setReloginFor(null)}>
+              {lang === "ar" ? "إغلاق" : "Close"}
+            </Button>
+            <Button
+              asChild
+              className="gap-1.5"
+            >
+              <a href="https://www.facebook.com/login" target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-4 w-4" />
+                {lang === "ar" ? "افتح فيسبوك" : "Open Facebook"}
+              </a>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
