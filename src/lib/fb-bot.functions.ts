@@ -335,6 +335,44 @@ export const testBotAccount = createServerFn({ method: "POST" })
       lastError = e instanceof Error ? e.message : String(e);
     }
 
+    // If account is active, also try to fetch the joined groups list (best effort).
+    let groups: { id: string; name: string }[] = [];
+    if (status === "active" && acc.auth_method === "cookies") {
+      try {
+        const payload = decryptJson<{ cookies: { name: string; value: string }[] }>(acc.encrypted_payload);
+        const cookieHeader = (payload.cookies ?? []).map((c) => `${c.name}=${c.value}`).join("; ");
+        const headers = {
+          cookie: cookieHeader,
+          "user-agent":
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
+          "accept-language": "en-US,en;q=0.9",
+        };
+        // Try a few endpoints — FB rotates layout, so we parse loosely.
+        const urls = [
+          "https://m.facebook.com/groups/?category=membership",
+          "https://mbasic.facebook.com/groups/?seemore",
+        ];
+        const seen = new Map<string, string>();
+        for (const url of urls) {
+          const r = await fetch(url, { headers, redirect: "follow" });
+          if (!r.ok) continue;
+          const html = await r.text();
+          // Match "/groups/<id>/" links followed by visible text (group name).
+          const regex = /\/groups\/(\d{6,})\/?[^>]*>([^<]{2,150})</g;
+          let m: RegExpExecArray | null;
+          while ((m = regex.exec(html))) {
+            const id = m[1];
+            const name = m[2].trim().replace(/\s+/g, " ");
+            if (!seen.has(id) && name && !/^\d+$/.test(name)) seen.set(id, name);
+          }
+          if (seen.size > 0) break;
+        }
+        groups = Array.from(seen, ([id, name]) => ({ id, name })).slice(0, 200);
+      } catch {
+        // ignore group fetch errors — test itself still succeeded
+      }
+    }
+
     const { data: updated, error: upErr } = await supabase
       .from("fb_bot_accounts")
       .update({
@@ -346,5 +384,5 @@ export const testBotAccount = createServerFn({ method: "POST" })
       .select("id, display_name, auth_method, status, last_check_at, last_error, created_at")
       .single();
     if (upErr) throw new Error(upErr.message);
-    return updated;
+    return { ...updated, groups };
   });
