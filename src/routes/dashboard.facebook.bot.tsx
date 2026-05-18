@@ -521,11 +521,11 @@ function BotAccountsPage() {
           neverTested: "Not tested yet",
           retry: "Retry",
           attemptLabel: (n: number) => `Attempt #${n}`,
-          progressInit: "Starting test…",
-          progressDecrypt: "Reading cookies…",
-          progressFetch: "Contacting Facebook…",
-          progressGroups: "Fetching groups…",
-          progressDone: "Done ✓",
+          progressInit: "Starting pre-check…",
+          progressDecrypt: "Decrypting cookies…",
+          progressFetch: "Validating critical cookies…",
+          progressGroups: "Marking account ready for Worker…",
+          progressDone: "Account ready ✓",
         };
 
   const handleAuthExpired = () => {
