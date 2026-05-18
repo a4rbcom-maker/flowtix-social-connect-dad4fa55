@@ -403,10 +403,36 @@ function BotAccountsPage() {
                           {a.auth_method}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3">{statusBadge(a.status)}</td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {a.last_check_at ? new Date(a.last_check_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US") : "—"}
+                      <td className="px-4 py-3 align-top">
+                        <div className="space-y-1.5">
+                          {statusBadge(a.status)}
+                          {(() => {
+                            const s = normalizeStatus(a.status);
+                            const hint = s === "untested" ? t.untestedHint
+                              : s === "checkpoint" ? t.checkpointHint
+                              : s === "invalid" ? t.invalidHint
+                              : s === "disabled" ? t.disabledHint
+                              : null;
+                            if (s === "active") return null;
+                            return (
+                              <div className={`max-w-xs rounded-md border px-2 py-1.5 text-[11px] leading-relaxed ${
+                                s === "invalid" ? "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-300"
+                                : s === "checkpoint" ? "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300"
+                                : "border-border bg-muted/40 text-muted-foreground"
+                              }`}>
+                                {hint && <p>{hint}</p>}
+                                {a.last_error && (
+                                  <p className="mt-1 break-words font-mono text-[10px] opacity-90">
+                                    <span className="font-semibold">{t.reasonLabel}:</span> {a.last_error}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
                       </td>
+                      <td className="px-4 py-3 align-top text-muted-foreground">
+                        {a.last_check_at ? new Date(a.last_check_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US") : <span className="italic">{t.neverTested}</span>}
                       <td className="px-4 py-3 text-end">
                         <div className="inline-flex items-center gap-1">
                           <Button
