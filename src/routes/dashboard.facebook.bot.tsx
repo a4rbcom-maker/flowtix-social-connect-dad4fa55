@@ -225,6 +225,26 @@ function BotAccountsPage() {
     } catch (e) { toast.error(String(e)); }
   };
 
+  const handleTest = async (id: string) => {
+    setTestingId(id);
+    try {
+      const updated = await call(testBotAccount, { id });
+      if (updated) {
+        setAccounts((prev) => prev.map((a) => (a.id === id ? (updated as Account) : a)));
+        const u = updated as Account;
+        if (u.status === "active") {
+          toast.success(t.testSuccess);
+        } else {
+          toast.error(t.testFailed, { description: u.last_error ?? t.statuses[normalizeStatus(u.status)] });
+        }
+      }
+    } catch (e) {
+      toast.error(t.testFailed, { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setTestingId(null);
+    }
+  };
+
   const statusBadge = (rawStatus: Account["status"] | string | null | undefined) => {
     const s = normalizeStatus(rawStatus);
     const map: Record<BotAccountStatus, { color: string; icon: typeof CheckCircle2 }> = {
