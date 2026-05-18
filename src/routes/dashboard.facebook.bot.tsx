@@ -556,32 +556,18 @@ function BotAccountsPage() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from("fb_bot_accounts")
-        .select(SAFE_ACCOUNT_SELECT)
-        .eq("user_id", currentUser.id)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("[fb-bot] browser list failed, falling back to server fn", error);
-        const raw = await listAccountsFn();
-        const result = normalizeAccountsPayload(raw, lang === "ar" ? "ar" : "en");
-        console.info("[fb-bot] listBotAccounts fallback result", {
-          ok: result.ok,
-          count: result.accounts.length,
-          debugCode: result.debugCode,
-        });
-        if (!result.ok) {
-          setLoadError({ message: result.message, debugCode: result.debugCode });
-          return;
-        }
-        setAccounts(sanitizeAccounts(result.accounts));
+      const raw = await listAccountsFn();
+      const result = normalizeAccountsPayload(raw, lang === "ar" ? "ar" : "en");
+      console.info("[fb-bot] listBotAccounts result", {
+        ok: result.ok,
+        count: result.accounts.length,
+        debugCode: result.debugCode,
+      });
+      if (!result.ok) {
+        setLoadError({ message: result.message, debugCode: result.debugCode });
         return;
       }
-
-      const list = (data ?? []) as Account[];
-      console.info("[fb-bot] browser list result", { count: list.length, debugCode: list.length ? "OK" : "OK_EMPTY" });
-      setAccounts(sanitizeAccounts(list));
+      setAccounts(sanitizeAccounts(result.accounts));
     } catch (e) {
       if (isAuthErr(e)) {
         handleAuthExpired();
