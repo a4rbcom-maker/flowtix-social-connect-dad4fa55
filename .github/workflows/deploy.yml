@@ -215,7 +215,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          SERVER_ENTRY="dist/server/server.js"
+          SERVER_ENTRY="dist/server/index.js"
           [ -f "$SERVER_ENTRY" ] || { echo "::error::SSR entry missing: $SERVER_ENTRY"; find dist -maxdepth 3 -type f 2>/dev/null | head -n 120 || true; exit 1; }
           [ -d node_modules ] || { echo "::error::node_modules missing after production install"; exit 1; }
 
@@ -906,14 +906,14 @@ jobs:
           is_valid_ssr_snapshot() {
             local candidate="$1"
             [ -d "$candidate" ] \
-              && [ -f "$candidate/dist/server/server.js" ] \
+              && [ -f "$candidate/dist/server/index.js" ] \
               && [ -f "$candidate/scripts/tanstack-node-server.mjs" ] \
               && [ -f "$candidate/ecosystem.config.cjs" ]
           }
           is_runnable_prev_snapshot() {
             local candidate="$1"
             [ -d "$candidate" ] \
-              && [ -f "$candidate/dist/server/server.js" ] \
+              && [ -f "$candidate/dist/server/index.js" ] \
               && [ -f "$candidate/ecosystem.config.cjs" ] \
               && [ -d "$candidate/node_modules" ]
           }
@@ -958,7 +958,7 @@ jobs:
             "$SRC/" "$DEPLOY_PATH/"
 
           cd "$DEPLOY_PATH"
-          ENTRY="dist/server/server.js"
+          ENTRY="dist/server/index.js"
           [ -f "$ENTRY" ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
           [ -f scripts/tanstack-node-server.mjs ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
           [ -f ecosystem.config.cjs ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }

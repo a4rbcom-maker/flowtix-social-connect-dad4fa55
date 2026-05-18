@@ -22,7 +22,7 @@ process.on("uncaughtException", (error) => {
 
 async function getSsrHandler() {
   if (!ssrHandlerPromise) {
-    ssrHandlerPromise = import("../dist/server/server.js").then((module) => module.default ?? module);
+    ssrHandlerPromise = import("../dist/server/index.js").then((module) => module.default ?? module);
   }
   return ssrHandlerPromise;
 }
