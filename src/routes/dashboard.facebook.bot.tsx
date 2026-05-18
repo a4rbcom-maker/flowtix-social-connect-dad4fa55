@@ -39,6 +39,18 @@ type Account = {
 
 type BotAccountStatus = "untested" | "active" | "invalid" | "checkpoint" | "disabled";
 
+// One row in the per-account test timeline. `key` matches a step in TEST_STEPS
+// so labels can be localized; `state` drives the icon (spinner/check/x).
+type TestEvent = {
+  key: "init" | "decrypt" | "fetch" | "groups" | "done" | "retry" | "error";
+  state: "running" | "ok" | "fail" | "info";
+  at: number; // ms epoch
+  detail?: string;
+};
+
+const MAX_AUTO_RETRIES = 3;
+const RETRY_BACKOFF_MS = [1500, 3000, 6000]; // attempt 1/2/3
+
 // Classify cookie session lifetime for badges/alerts. Returns null when the
 // account has no expiry info (credentials accounts or session-only cookies).
 function classifyExpiry(iso: string | null): { state: "expired" | "soon" | "ok"; days: number } | null {
