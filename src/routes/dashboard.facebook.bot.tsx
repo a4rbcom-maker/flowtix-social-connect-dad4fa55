@@ -581,18 +581,28 @@ function BotAccountsPage() {
   const openPrecheck = async (id: string, name: string) => {
     setPrecheck({ id, name, loading: true, result: null, error: null });
     try {
-      const result = await call(precheckBotAccount, { id });
-      setPrecheck({ id, name, loading: false, result: result as any, error: null });
+      const raw = await call(precheckBotAccount, { id });
+      const result = unwrapServerPayload(raw) as NonNullable<typeof precheck>["result"];
+      if (!result || typeof result !== "object" || typeof (result as { ok?: unknown }).ok !== "boolean") {
+        throw new Error(
+          lang === "ar"
+            ? "استجابة غير متوقعة من الخادم"
+            : "Unexpected response from server",
+        );
+      }
+      setPrecheck({ id, name, loading: false, result, error: null });
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       setPrecheck({
         id,
         name,
         loading: false,
         result: null,
-        error: e instanceof Error ? e.message : String(e),
+        error: msg || (lang === "ar" ? "خطأ غير معروف" : "Unknown error"),
       });
     }
   };
+
 
   // Append an event to the per-account timeline (capped at last 30 events).
   const pushEvent = (id: string, ev: Omit<TestEvent, "at">) => {
