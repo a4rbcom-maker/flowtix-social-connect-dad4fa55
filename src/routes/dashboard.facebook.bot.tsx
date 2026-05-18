@@ -40,6 +40,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import {
   addBotAccount,
   listBotAccounts,
@@ -279,6 +280,9 @@ const sanitizeAccounts = (list: Account[]): Account[] =>
       ? { ...a, status: "untested" as BotAccountStatus, last_error: null, last_check_at: null }
       : a,
   );
+
+const SAFE_ACCOUNT_SELECT =
+  "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at";
 
 function StatusReason({
   status,
