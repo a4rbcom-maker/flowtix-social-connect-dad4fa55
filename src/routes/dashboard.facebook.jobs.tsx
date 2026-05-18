@@ -17,6 +17,7 @@ import { listBotAccounts, createPostJob, createExtractPagesJob, createExtractCom
 
 export const Route = createFileRoute("/dashboard/facebook/jobs")({
   beforeLoad: async () => {
+    if (typeof window === "undefined") return;
     const { supabase } = await import("@/integrations/supabase/client");
     await supabase.auth.getSession();
   },

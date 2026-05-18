@@ -16,6 +16,7 @@ import { listJobs, getJob, cancelJob } from "@/lib/fb-bot.functions";
 
 export const Route = createFileRoute("/dashboard/facebook/history")({
   beforeLoad: async () => {
+    if (typeof window === "undefined") return;
     const { supabase } = await import("@/integrations/supabase/client");
     await supabase.auth.getSession();
   },

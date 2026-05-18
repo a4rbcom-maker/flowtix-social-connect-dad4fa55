@@ -25,6 +25,7 @@ export const Route = createFileRoute("/dashboard/facebook")({
   // initial render fires getFacebookConnection before auth is restored, which
   // shows up as a silent 401 and an apparently "frozen" UI.
   beforeLoad: async () => {
+    if (typeof window === "undefined") return;
     const { supabase } = await import("@/integrations/supabase/client");
     await supabase.auth.getSession();
   },

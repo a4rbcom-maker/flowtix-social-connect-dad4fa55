@@ -18,6 +18,7 @@ import { addBotAccount, listBotAccounts, deleteBotAccount } from "@/lib/fb-bot.f
 
 export const Route = createFileRoute("/dashboard/facebook/bot")({
   beforeLoad: async () => {
+    if (typeof window === "undefined") return;
     const { supabase } = await import("@/integrations/supabase/client");
     await supabase.auth.getSession();
   },
