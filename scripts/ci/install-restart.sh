@@ -386,20 +386,16 @@ wait_for_port_free() {
   return 1
 }
 
-for pm2_app in "$APP_NAME" flowtix flowtixtools flowtixtools-web flowtixtools-ssr flowtixtools-srvx; do
-  [ -n "$pm2_app" ] || continue
-  if pm2 describe "$pm2_app" >/dev/null 2>&1; then
-    echo "Stopping PM2 app before clean start: $pm2_app"
+# Clean up legacy fork-mode apps under different names. Do NOT touch the
+# current $APP_NAME — we want to RELOAD it gracefully, not delete it.
+for pm2_app in flowtix flowtixtools flowtixtools-ssr flowtixtools-srvx; do
+  if [ "$pm2_app" != "$APP_NAME" ] && pm2 describe "$pm2_app" >/dev/null 2>&1; then
+    echo "Removing stale legacy PM2 app: $pm2_app"
     pm2 delete "$pm2_app" || true
   fi
 done
 
-if ! wait_for_port_free "${APP_PORT}"; then
-  echo "ERROR: Dedicated app port ${APP_PORT} is still in use after stopping known PM2 apps. Aborting instead of killing an unknown service."
-  print_port_diagnostics
-  exit 1
-fi
-
+# Load secrets from .env into env vars PM2 will inherit on (re)start/reload.
 if [ -f .env ]; then
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in ""|\#*) continue ;; esac
@@ -420,25 +416,79 @@ export APP_NAME APP_PORT DEPLOY_PATH
 export NODE_ENV=production
 export DEPLOY_SHA DEPLOY_RUN_ID DEPLOY_REPOSITORY DEPLOYED_AT
 
-pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env
+# === Zero-downtime release ===
+# If the app already runs under PM2 with cluster mode → graceful `reload`.
+# Workers restart one at a time; the other keeps serving on the same port,
+# so existing clients see no 502s, no dropped connections.
+# Otherwise (first deploy, or it died) → fresh `start`.
+APP_IS_RUNNING=0
+APP_IS_CLUSTER=0
+if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
+  APP_IS_RUNNING=1
+  if pm2 jlist 2>/dev/null | grep -A2 "\"name\":\"${APP_NAME}\"" | grep -q '"exec_mode":"cluster_mode"'; then
+    APP_IS_CLUSTER=1
+  fi
+fi
+
+if [ "$APP_IS_RUNNING" = "1" ] && [ "$APP_IS_CLUSTER" = "1" ]; then
+  echo "→ Graceful reload (cluster mode, no downtime)…"
+  pm2 reload ecosystem.config.cjs --only "$APP_NAME" --update-env
+else
+  if [ "$APP_IS_RUNNING" = "1" ]; then
+    echo "→ App running in fork mode — one-time migration to cluster (brief restart)."
+    pm2 delete "$APP_NAME" || true
+    wait_for_port_free "${APP_PORT}" || {
+      echo "ERROR: Port ${APP_PORT} still bound after delete."; print_port_diagnostics; exit 1;
+    }
+  fi
+  echo "→ Fresh start in cluster mode…"
+  pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env
+fi
 pm2 save
 
-# Confirm the Node SSR app actually bound to the port after start.
+# Confirm the Node SSR app bound the port after reload/start.
 BOUND=0
-for attempt in 1 2 3 4 5 6 7 8 9 10; do
+for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
   sleep 1
   if port_is_bound "${APP_PORT}"; then
-    echo "Node SSR app is listening on port ${APP_PORT}."
-    BOUND=1
-    break
+    BOUND=1; break
   fi
-  echo "Waiting for Node SSR app to bind ${APP_PORT} (attempt $attempt)…"
+  echo "Waiting for port ${APP_PORT} (attempt $attempt)…"
 done
-
 if [ "$BOUND" -ne 1 ]; then
-  echo "ERROR: Node SSR app did not bind to port ${APP_PORT} after start."
+  echo "ERROR: Node SSR app did not bind to port ${APP_PORT}."
   print_port_diagnostics
   pm2 describe "$APP_NAME" || true
   pm2 logs "$APP_NAME" --lines 120 --nostream || true
+  integrity_rollback "port-not-bound" || true
   exit 1
 fi
+echo "✓ App is listening on ${APP_PORT}."
+
+# === Health gate ===
+# The NEW workers are now serving. Probe local health before declaring success.
+# If health fails repeatedly, restore LAST_GOOD onto disk and reload again so
+# clients return to a known-good build instead of being stuck on a broken one.
+echo "→ Local health gate (http://127.0.0.1:${APP_PORT}/api/public/health)…"
+HEALTH_OK=0
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+  CODE=$(curl -fsS -o /tmp/health.out -w '%{http_code}' --max-time 5 \
+    "http://127.0.0.1:${APP_PORT}/api/public/health" || echo "000")
+  if [ "$CODE" = "200" ]; then HEALTH_OK=1; break; fi
+  echo "  health attempt $attempt → HTTP $CODE"
+  sleep 2
+done
+
+if [ "$HEALTH_OK" -ne 1 ]; then
+  echo "ERROR: Health endpoint did not return 200 after reload."
+  cat /tmp/health.out 2>/dev/null || true
+  pm2 logs "$APP_NAME" --lines 120 --nostream || true
+  echo "→ Auto-rollback: restoring LAST_GOOD and reloading…"
+  if integrity_rollback "post-reload-health-failed"; then
+    pm2 reload ecosystem.config.cjs --only "$APP_NAME" --update-env || \
+      pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env
+    pm2 save
+  fi
+  exit 1
+fi
+echo "✓ Health gate passed — new build is live for all clients."
