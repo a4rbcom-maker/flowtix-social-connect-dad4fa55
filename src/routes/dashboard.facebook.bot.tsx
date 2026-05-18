@@ -96,6 +96,11 @@ function BotAccountsPage() {
     saveFailed: "فشل ربط الحساب",
     statuses: { untested: "لم يُختبر", active: "نشط ✓", invalid: "فشل — كوكيز غير صالحة", checkpoint: "تحقق مطلوب", disabled: "معطّل" } satisfies Record<BotAccountStatus, string>,
     backToFb: "→ الذهاب لمهام البوت",
+    sessionTitle: "أنت مسجَّل دخول بالحساب التالي",
+    sessionHint: "الحسابات المرتبطة تظهر فقط إذا كانت تخص نفس الـ user_id بالأسفل. لو ربطت من جلسة مختلفة، سجّل خروج وادخل بنفس الإيميل.",
+    signOutBtn: "تسجيل خروج وإعادة دخول",
+    copyId: "نسخ المُعرّف",
+    copied: "تم النسخ",
   } : {
     title: "Facebook Bot Accounts",
     subtitle: "Link Facebook accounts for VPS Worker automation",
