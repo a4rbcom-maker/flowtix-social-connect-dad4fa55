@@ -268,3 +268,83 @@ export const cancelJob = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+// ---------- testBotAccount ----------
+// Quick liveness check: for cookie accounts, ensure c_user + xs are present
+// and that a request to m.facebook.com/me does NOT redirect to login.
+export const testBotAccount = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { data: acc, error } = await supabase
+      .from("fb_bot_accounts")
+      .select("id, auth_method, encrypted_payload")
+      .eq("id", data.id)
+      .single();
+    if (error || !acc) throw new Error(error?.message ?? "Account not found");
+
+    let status: "active" | "invalid" | "checkpoint" = "invalid";
+    let lastError: string | null = null;
+
+    try {
+      if (acc.auth_method === "cookies") {
+        const payload = decryptJson<{ cookies: { name: string; value: string }[] }>(acc.encrypted_payload);
+        const cookies = payload.cookies ?? [];
+        const cUser = cookies.find((c) => c.name === "c_user")?.value;
+        const xs = cookies.find((c) => c.name === "xs")?.value;
+        if (!cUser || !xs) {
+          lastError = "الكوكيز ناقصة (c_user أو xs غير موجود)";
+        } else {
+          const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+          const res = await fetch("https://m.facebook.com/me", {
+            method: "GET",
+            redirect: "manual",
+            headers: {
+              cookie: cookieHeader,
+              "user-agent":
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
+              "accept-language": "en-US,en;q=0.9",
+            },
+          });
+          const location = res.headers.get("location") ?? "";
+          if (res.status >= 300 && res.status < 400) {
+            if (/login|checkpoint|two_step/i.test(location)) {
+              status = /checkpoint|two_step/i.test(location) ? "checkpoint" : "invalid";
+              lastError = `Facebook redirected to: ${location.slice(0, 200)}`;
+            } else {
+              status = "active";
+            }
+          } else if (res.status === 200) {
+            const body = await res.text();
+            if (/login|"checkpoint"|"two_step_verification"/i.test(body) && !new RegExp(`profile_id=${cUser}`).test(body)) {
+              status = "invalid";
+              lastError = "صفحة /me أعادت محتوى تسجيل دخول";
+            } else {
+              status = "active";
+            }
+          } else {
+            lastError = `HTTP ${res.status}`;
+          }
+        }
+      } else {
+        // credentials accounts can only be verified by the VPS worker (browser)
+        lastError = "حسابات البريد/كلمة السر تُختبر عبر VPS Worker فقط";
+      }
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : String(e);
+    }
+
+    const { data: updated, error: upErr } = await supabase
+      .from("fb_bot_accounts")
+      .update({
+        status,
+        last_check_at: new Date().toISOString(),
+        last_error: lastError,
+      })
+      .eq("id", data.id)
+      .select("id, display_name, auth_method, status, last_check_at, last_error, created_at")
+      .single();
+    if (upErr) throw new Error(upErr.message);
+    return updated;
+  });
