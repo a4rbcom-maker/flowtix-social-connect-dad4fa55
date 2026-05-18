@@ -407,6 +407,22 @@ function BotAccountsPage() {
           </Card>
         )}
 
+        <Card className="border-amber-500/40 bg-amber-50/70 dark:bg-amber-500/5 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+            <div className="text-sm leading-relaxed">
+              <p className="font-semibold text-amber-900 dark:text-amber-200">
+                {lang === "ar" ? "تنبيه: الاختبار من السيرفر يتحقق من بنية الكوكيز فقط" : "Notice: Server-side test validates cookie structure only"}
+              </p>
+              <p className="mt-1 text-amber-900/80 dark:text-amber-100/80">
+                {lang === "ar"
+                  ? "فيسبوك يرفض طلبات السيرفر القادمة من Cloudflare/Datacenters حتى لو الكوكيز سليمة، ويُرجع صفحة تسجيل دخول. لذلك زر «اختبر الآن» يتحقق حاليًا فقط من اكتمال الكوكيز (c_user, xs, datr, fr) وصحة صيغتها. التحقق الفعلي ضد فيسبوك سيتم تلقائيًا عبر VPS Worker (المرحلة 4) بمتصفح حقيقي على IP منزلي."
+                  : "Facebook blocks server requests from Cloudflare/datacenter IPs and returns a login page even with valid cookies. The 'Test now' button currently only validates that cookies are well-formed (c_user, xs, datr, fr). Real Facebook verification will run via the VPS Worker (Phase 4) using a real browser on a residential IP."}
+              </p>
+            </div>
+          </div>
+        </Card>
+
         <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm">
           <div className="mb-4 flex items-start gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
