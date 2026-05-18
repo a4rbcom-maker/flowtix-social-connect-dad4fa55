@@ -146,21 +146,20 @@ function BotAccountsPage() {
     if (!form.displayName.trim()) { toast.error(t.displayName); return; }
     setSubmitting(true);
     try {
-      if (tab === "cookies") {
-        await call(addBotAccount, { method: "cookies", displayName: form.displayName, cookies: form.cookies });
-      } else {
-        await call(addBotAccount, {
-          method: "credentials",
-          displayName: form.displayName,
-          email: form.email,
-          password: form.password,
-          twoFactorSecret: form.twoFactorSecret || null,
-        });
-      }
+      const row = tab === "cookies"
+        ? await call(addBotAccount, { method: "cookies", displayName: form.displayName, cookies: form.cookies })
+        : await call(addBotAccount, {
+            method: "credentials",
+            displayName: form.displayName,
+            email: form.email,
+            password: form.password,
+            twoFactorSecret: form.twoFactorSecret || null,
+          });
+      if (row) setAccounts((prev) => [row as Account, ...prev.filter((a) => a.id !== (row as Account).id)]);
       toast.success(t.saved);
       setOpen(false);
       setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
-      await load();
+      void load();
     } catch (e) {
       toast.error(String(e));
     } finally {
@@ -173,10 +172,11 @@ function BotAccountsPage() {
     if (!form.cookies.trim()) { toast.error(t.cookiesRequired); return; }
     setSubmitting(true);
     try {
-      await call(addBotAccount, { method: "cookies", displayName: form.displayName, cookies: form.cookies });
+      const row = await call(addBotAccount, { method: "cookies", displayName: form.displayName, cookies: form.cookies });
+      if (row) setAccounts((prev) => [row as Account, ...prev.filter((a) => a.id !== (row as Account).id)]);
       toast.success(t.saved);
       setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
-      await load();
+      void load();
     } catch (e) {
       toast.error(String(e));
     } finally {
