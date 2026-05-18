@@ -82,6 +82,7 @@ function BotAccountsPage() {
   const [retryCounts, setRetryCounts] = useState<Record<string, number>>({});
   const [groupsResult, setGroupsResult] = useState<{ accountName: string; groups: { id: string; name: string }[] } | null>(null);
   const [reloginFor, setReloginFor] = useState<{ id: string; name: string } | null>(null);
+  const [checkpointFor, setCheckpointFor] = useState<{ id: string; name: string; reason: string | null } | null>(null);
   const [precheck, setPrecheck] = useState<
     | {
         id: string;
