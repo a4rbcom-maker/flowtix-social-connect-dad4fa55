@@ -43,6 +43,30 @@ const normalizeStatus = (status: string | null | undefined): BotAccountStatus =>
     : "untested";
 };
 
+function StatusReason({ status, lastError, t }: { status: BotAccountStatus; lastError: string | null; t: { untestedHint: string; checkpointHint: string; invalidHint: string; disabledHint: string; reasonLabel: string } }) {
+  if (status === "active") return null;
+  const hint = status === "untested" ? t.untestedHint
+    : status === "checkpoint" ? t.checkpointHint
+    : status === "invalid" ? t.invalidHint
+    : status === "disabled" ? t.disabledHint
+    : null;
+  const cls = status === "invalid"
+    ? "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-300"
+    : status === "checkpoint"
+    ? "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300"
+    : "border-border bg-muted/40 text-muted-foreground";
+  return (
+    <div className={`max-w-xs rounded-md border px-2 py-1.5 text-[11px] leading-relaxed ${cls}`}>
+      {hint && <p>{hint}</p>}
+      {lastError && (
+        <p className="mt-1 break-words font-mono text-[10px] opacity-90">
+          <span className="font-semibold">{t.reasonLabel}:</span> {lastError}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function BotAccountsPage() {
   const { user, signOut } = useAuth();
   const { lang } = useI18n();
