@@ -369,7 +369,11 @@ function BotAccountsPage() {
       toast.success(t.saved, { description: t.savedDesc });
       setOpen(false);
       setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
-      void load();
+      // NOTE: do NOT call load() here. The optimistic insert above already
+      // shows the row; a refetch would flip `loading` to true (hiding the
+      // table) and, if the read returns an empty/stale list for any reason
+      // (race, transient RLS, timeout), it would WIPE the just-added row
+      // and the user sees "saved" toast with an empty list right after.
     } catch (e) {
       if (isAuthErr(e)) { handleAuthExpired(); return; }
       toast.error(t.saveFailed, { description: describeFbError(e, lang === "ar" ? "ar" : "en") });
