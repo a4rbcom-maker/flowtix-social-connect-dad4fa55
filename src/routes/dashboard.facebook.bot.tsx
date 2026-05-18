@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Plus, Trash2, ShieldCheck, Cookie, KeyRound, AlertTriangle, Loader2, CheckCircle2, XCircle, Clock, Activity } from "lucide-react";
+import { Plus, Trash2, ShieldCheck, Cookie, KeyRound, AlertTriangle, Loader2, CheckCircle2, XCircle, Clock, Activity, RotateCw } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
@@ -77,6 +78,8 @@ function BotAccountsPage() {
   const [tab, setTab] = useState<"cookies" | "credentials">("cookies");
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [testProgress, setTestProgress] = useState<{ value: number; label: string } | null>(null);
+  const [retryCounts, setRetryCounts] = useState<Record<string, number>>({});
   const [groupsResult, setGroupsResult] = useState<{ accountName: string; groups: { id: string; name: string }[] } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
@@ -141,6 +144,13 @@ function BotAccountsPage() {
     invalidHint: "الكوكيز غير صالحة أو منتهية. أعد تصديرها من المتصفح وحدّث الحساب.",
     disabledHint: "هذا الحساب معطّل ولن يُستخدم في المهام.",
     neverTested: "لم يُجرَ اختبار بعد",
+    retry: "إعادة المحاولة",
+    attemptLabel: (n: number) => `محاولة #${n}`,
+    progressInit: "بدء الاختبار…",
+    progressDecrypt: "قراءة الكوكيز…",
+    progressFetch: "الاتصال بفيسبوك…",
+    progressGroups: "جلب الجروبات…",
+    progressDone: "اكتمل ✓",
   } : {
     title: "Facebook Bot Accounts",
     subtitle: "Link Facebook accounts for VPS Worker automation",
@@ -195,6 +205,13 @@ function BotAccountsPage() {
     invalidHint: "Cookies are invalid or expired. Re-export them from the browser and update the account.",
     disabledHint: "This account is disabled and won't be used in jobs.",
     neverTested: "Not tested yet",
+    retry: "Retry",
+    attemptLabel: (n: number) => `Attempt #${n}`,
+    progressInit: "Starting test…",
+    progressDecrypt: "Reading cookies…",
+    progressFetch: "Contacting Facebook…",
+    progressGroups: "Fetching groups…",
+    progressDone: "Done ✓",
   };
 
   const load = async () => {
@@ -270,26 +287,59 @@ function BotAccountsPage() {
     } catch (e) { toast.error(String(e)); }
   };
 
-  const handleTest = async (id: string) => {
+  const handleTest = async (id: string, isRetry = false) => {
     setTestingId(id);
+    const attempt = (retryCounts[id] ?? 0) + (isRetry ? 1 : 0);
+    if (isRetry) setRetryCounts((p) => ({ ...p, [id]: attempt }));
+
+    setTestProgress({ value: 10, label: t.progressInit });
+    const toastId = toast.loading(t.testing, { description: t.progressInit });
+
+    // Animated progress while the request is in-flight
+    const steps: Array<{ value: number; label: string; delay: number }> = [
+      { value: 30, label: t.progressDecrypt, delay: 250 },
+      { value: 60, label: t.progressFetch, delay: 700 },
+      { value: 85, label: t.progressGroups, delay: 1600 },
+    ];
+    const timers = steps.map((s) =>
+      setTimeout(() => {
+        setTestProgress({ value: s.value, label: s.label });
+        toast.loading(t.testing, { id: toastId, description: s.label });
+      }, s.delay),
+    );
+
     try {
       const updated = await call(testBotAccount, { id }) as (Account & { groups?: { id: string; name: string }[] }) | null;
+      timers.forEach(clearTimeout);
+      setTestProgress({ value: 100, label: t.progressDone });
       if (updated) {
         const { groups = [], ...accountRow } = updated;
         setAccounts((prev) => prev.map((a) => (a.id === id ? (accountRow as Account) : a)));
         if (accountRow.status === "active") {
-          toast.success(t.testSuccess, { description: t.groupsFound(groups.length) });
+          setRetryCounts((p) => ({ ...p, [id]: 0 }));
+          toast.success(t.testSuccess, { id: toastId, description: t.groupsFound(groups.length) });
           setGroupsResult({ accountName: accountRow.display_name, groups });
         } else {
-          toast.error(t.testFailed, { description: accountRow.last_error ?? t.statuses[normalizeStatus(accountRow.status)] });
+          toast.error(t.testFailed, {
+            id: toastId,
+            description: accountRow.last_error ?? t.statuses[normalizeStatus(accountRow.status)],
+            action: { label: t.retry, onClick: () => void handleTest(id, true) },
+          });
         }
       }
     } catch (e) {
-      toast.error(t.testFailed, { description: e instanceof Error ? e.message : String(e) });
+      timers.forEach(clearTimeout);
+      toast.error(t.testFailed, {
+        id: toastId,
+        description: e instanceof Error ? e.message : String(e),
+        action: { label: t.retry, onClick: () => void handleTest(id, true) },
+      });
     } finally {
       setTestingId(null);
+      setTimeout(() => setTestProgress(null), 600);
     }
   };
+
 
   const statusBadge = (rawStatus: Account["status"] | string | null | undefined) => {
     const s = normalizeStatus(rawStatus);
@@ -431,6 +481,18 @@ function BotAccountsPage() {
                         <div className="space-y-1.5">
                           {statusBadge(a.status)}
                           <StatusReason status={normalizeStatus(a.status)} lastError={a.last_error} t={t} />
+                          {testingId === a.id && testProgress && (
+                            <div className="max-w-xs space-y-1 pt-1">
+                              <Progress value={testProgress.value} className="h-1.5" />
+                              <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                {testProgress.label}
+                              </p>
+                            </div>
+                          )}
+                          {(retryCounts[a.id] ?? 0) > 0 && (
+                            <p className="text-[10px] text-muted-foreground">{t.attemptLabel((retryCounts[a.id] ?? 0) + 1)}</p>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3 align-top text-muted-foreground">
@@ -452,6 +514,17 @@ function BotAccountsPage() {
                             )}
                             {testingId === a.id ? t.testing : t.testNow}
                           </Button>
+                          {(a.status === "invalid" || a.status === "checkpoint") && testingId !== a.id && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="gap-1.5"
+                              onClick={() => handleTest(a.id, true)}
+                            >
+                              <RotateCw className="h-3.5 w-3.5" />
+                              {t.retry}
+                            </Button>
+                          )}
                           <Button size="sm" variant="ghost" onClick={() => handleDelete(a.id)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
