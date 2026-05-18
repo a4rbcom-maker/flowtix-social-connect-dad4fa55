@@ -92,6 +92,8 @@ function parseCookiesInput(raw: string): NormalizedCookie[] | null {
 function normalizeStoredCookies(payload: unknown): NormalizedCookie[] {
   const candidate = Array.isArray(payload)
     ? payload
+    : typeof payload === "string"
+      ? payload
     : payload && typeof payload === "object"
       ? (payload as { cookies?: unknown }).cookies
       : null;
