@@ -486,17 +486,21 @@ function BotAccountsPage() {
     try {
       const row =
         tab === "cookies"
-          ? await call(addBotAccount, {
-              method: "cookies",
-              displayName: form.displayName,
-              cookies: form.cookies,
+          ? await addAccountFn({
+              data: {
+                method: "cookies",
+                displayName: form.displayName,
+                cookies: form.cookies,
+              },
             })
-          : await call(addBotAccount, {
-              method: "credentials",
-              displayName: form.displayName,
-              email: form.email,
-              password: form.password,
-              twoFactorSecret: form.twoFactorSecret || null,
+          : await addAccountFn({
+              data: {
+                method: "credentials",
+                displayName: form.displayName,
+                email: form.email,
+                password: form.password,
+                twoFactorSecret: form.twoFactorSecret || null,
+              },
             });
       const account = normalizeAccountPayload(row);
       if (account) {
@@ -523,7 +527,7 @@ function BotAccountsPage() {
         handleAuthExpired();
         return;
       }
-      toast.error(t.saveFailed, { description: describeFbError(e, lang === "ar" ? "ar" : "en") });
+      toast.error(t.saveFailed, { description: describeServerActionError(e, lang === "ar" ? "ar" : "en") });
     } finally {
       setSubmitting(false);
     }
@@ -540,10 +544,12 @@ function BotAccountsPage() {
     }
     setSubmitting(true);
     try {
-      const row = await call(addBotAccount, {
-        method: "cookies",
-        displayName: form.displayName,
-        cookies: form.cookies,
+      const row = await addAccountFn({
+        data: {
+          method: "cookies",
+          displayName: form.displayName,
+          cookies: form.cookies,
+        },
       });
       const account = normalizeAccountPayload(row);
       if (account) {
@@ -566,7 +572,7 @@ function BotAccountsPage() {
         handleAuthExpired();
         return;
       }
-      toast.error(t.saveFailed, { description: describeFbError(e, lang === "ar" ? "ar" : "en") });
+      toast.error(t.saveFailed, { description: describeServerActionError(e, lang === "ar" ? "ar" : "en") });
     } finally {
       setSubmitting(false);
     }
@@ -575,7 +581,7 @@ function BotAccountsPage() {
   const handleDelete = async (id: string) => {
     if (!confirm(t.deleteConfirm)) return;
     try {
-      await call(deleteBotAccount, { id });
+      await deleteAccountFn({ data: { id } });
       toast.success(t.deleted);
       await load();
     } catch (e) {
@@ -583,7 +589,7 @@ function BotAccountsPage() {
         handleAuthExpired();
         return;
       }
-      toast.error(describeFbError(e, lang === "ar" ? "ar" : "en"));
+      toast.error(describeServerActionError(e, lang === "ar" ? "ar" : "en"));
     }
   };
 
