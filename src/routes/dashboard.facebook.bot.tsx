@@ -961,15 +961,22 @@ function BotAccountsPage() {
     }
   };
 
-  // Detect Facebook checkpoint / two-step / identity-confirmation hints inside
-  // arbitrary error strings (Arabic + English keywords + FB URL fragments).
+  // Strict Facebook checkpoint detector. Only matches explicit signals coming
+  // from the worker (URL fragments or exact phrases). We deliberately exclude
+  // generic words like "التحقق" / "identity" / "verification" because they
+  // appear in benign informational messages and were causing false positives
+  // that flipped healthy accounts into a misleading "Complete verification"
+  // state.
   const CHECKPOINT_KEYWORDS =
-    /checkpoint|two_step|two-step|identity|confirm.{0,15}identity|account.{0,15}restricted|temporarily.{0,15}locked|تأكيد.{0,15}الهوية|التحقق|تم.{0,15}قفل|تأكيد.{0,15}هويتك/i;
+    /\/checkpoint\/|\/two_factor\/|two_step_verification|account.{0,15}restricted|temporarily.{0,15}locked|confirm.{0,15}your.{0,15}identity|تأكيد.{0,15}هويتك|تأكيد.{0,15}الهوية|تم.{0,15}قفل.{0,15}الحساب/i;
   const looksLikeCheckpoint = (
     status: string | null | undefined,
     lastError: string | null | undefined,
   ): boolean => {
     if (status === "checkpoint") return true;
+    // Never treat an active account as a checkpoint, no matter what the
+    // last_error string contains.
+    if (status === "active") return false;
     if (lastError && CHECKPOINT_KEYWORDS.test(lastError)) return true;
     return false;
   };
