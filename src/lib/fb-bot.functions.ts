@@ -667,32 +667,20 @@ export const testBotAccount = createServerFn({ method: "POST" })
         const { decryptJson } = await import("@/server/crypto.server");
         const payload = decryptJson<unknown>(acc.encrypted_payload);
         const cookies = normalizeStoredCookies(payload);
-        const byName = new Map(cookies.map((c) => [c.name, c.value]));
-        const cUser = byName.get("c_user");
-        const xs = byName.get("xs");
-        const datr = byName.get("datr");
-        const fr = byName.get("fr");
+        const { missingCritical, missingRecommended, invalid } = validateFacebookCookies(cookies);
 
-        const missing: string[] = [];
-        if (!cUser) missing.push("c_user");
-        if (!xs) missing.push("xs");
-        if (!datr) missing.push("datr");
-        if (!fr) missing.push("fr");
-
-        if (missing.length > 0) {
+        if (missingCritical.length > 0) {
           status = "invalid";
-          lastError = `كوكيز ناقصة: ${missing.join(", ")} — صدِّر من جديد عبر Cookie-Editor`;
-        } else if (!/^\d{6,}$/.test(cUser!)) {
+          lastError = `كوكيز أساسية ناقصة: ${missingCritical.join(", ")} — صدِّر من جديد عبر Cookie-Editor`;
+        } else if (invalid.length > 0) {
           status = "invalid";
-          lastError = "قيمة c_user غير صالحة (يجب أن تكون أرقامًا فقط)";
-        } else if (xs!.length < 10) {
-          status = "invalid";
-          lastError = "قيمة xs قصيرة جدًا — صدِّر الكوكيز من جلسة نشطة";
+          lastError = `كوكيز فيها مشاكل: ${invalid.map((i) => `${i.name}: ${i.reason}`).join("؛ ")}`;
         } else {
           // Structurally valid. Mark as pending real verification by VPS Worker.
           status = "active";
-          lastError =
-            "الكوكيز سليمة شكليًا. التحقق الحقيقي من فيسبوك يتم عبر VPS Worker (قريبًا) — فيسبوك يرفض طلبات السيرفر المباشرة.";
+          lastError = missingRecommended.length
+            ? `الحساب جاهز. ينقص فقط كوكيز مستحسنة غير مانعة: ${missingRecommended.join(", ")}. التحقق الحي من فيسبوك يتم عبر VPS Worker.`
+            : "الحساب جاهز لإنشاء المهام. التحقق الحي من فيسبوك يتم عبر VPS Worker لأن فيسبوك يرفض طلبات السيرفر المباشرة.";
         }
       } else {
         lastError = "حسابات البريد/كلمة السر تُختبر عبر VPS Worker فقط";
