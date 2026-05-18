@@ -125,8 +125,10 @@ function BotAccountsPage() {
     twoFa: "2FA secret (optional)",
     save: "Save",
     cancel: "Cancel",
-    saved: "Saved",
-    statuses: { untested: "Untested", active: "Active", invalid: "Invalid", checkpoint: "Verify needed", disabled: "Disabled" } satisfies Record<BotAccountStatus, string>,
+    saved: "Account linked successfully",
+    savedDesc: "The account was added. Current status: \"Untested\" — refresh later to verify the cookies are valid.",
+    saveFailed: "Failed to link account",
+    statuses: { untested: "Untested", active: "Active ✓", invalid: "Failed — invalid cookies", checkpoint: "Verify needed", disabled: "Disabled" } satisfies Record<BotAccountStatus, string>,
     backToFb: "→ Go to bot jobs",
   };
 
