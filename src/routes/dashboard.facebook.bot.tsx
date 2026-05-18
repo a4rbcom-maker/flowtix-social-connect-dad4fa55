@@ -386,9 +386,25 @@ function BotAccountsPage() {
                         {a.last_check_at ? new Date(a.last_check_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US") : "—"}
                       </td>
                       <td className="px-4 py-3 text-end">
-                        <Button size="sm" variant="ghost" onClick={() => handleDelete(a.id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        <div className="inline-flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5"
+                            disabled={testingId === a.id}
+                            onClick={() => handleTest(a.id)}
+                          >
+                            {testingId === a.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Activity className="h-3.5 w-3.5" />
+                            )}
+                            {testingId === a.id ? t.testing : t.testNow}
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleDelete(a.id)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
