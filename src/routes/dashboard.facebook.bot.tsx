@@ -301,7 +301,16 @@ function BotAccountsPage() {
     setLoading(true);
     try {
       const data = await call(listBotAccounts);
-      setAccounts(data as Account[]);
+      // Defensive sanitization: older versions stored an obsolete error message
+      // from the deprecated /me probe. Treat any account still carrying that
+      // legacy text as "untested" in the UI so users see actionable state.
+      const LEGACY_ERROR = /صفحة \/me|login page|\/me أعادت/i;
+      const sanitized = (data as Account[]).map((a) =>
+        a.last_error && LEGACY_ERROR.test(a.last_error)
+          ? { ...a, status: "untested" as BotAccountStatus, last_error: null, last_check_at: null }
+          : a,
+      );
+      setAccounts(sanitized);
     } catch (e) {
       toast.error(String(e));
     } finally {
