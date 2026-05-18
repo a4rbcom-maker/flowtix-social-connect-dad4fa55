@@ -806,27 +806,29 @@ function BotAccountsPage() {
         </div>
 
         {user && (
-          <Card className="border-amber-500/30 bg-amber-500/5 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-400">
-                  <ShieldCheck className="h-5 w-5" />
+          <div className="group relative overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-br from-card via-card to-primary/5 p-4 shadow-sm transition-all hover:shadow-md">
+            <div className="absolute inset-y-0 start-0 w-1 bg-gradient-to-b from-primary to-primary/40" />
+            <div className="flex flex-wrap items-center justify-between gap-3 ps-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/20">
+                  <ShieldCheck className="h-4 w-4" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold">{t.sessionTitle}</p>
-                  <p className="mt-0.5 truncate text-sm text-foreground">{user.email}</p>
-                  <p className="mt-1 font-mono text-[11px] text-muted-foreground break-all">
-                    user_id: {user.id}
-                  </p>
-                  <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-                    {t.sessionHint}
-                  </p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-medium text-muted-foreground">{t.sessionTitle}</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/20">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      {lang === "ar" ? "نشط" : "Active"}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 truncate text-sm font-semibold text-foreground">{user.email}</p>
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="ghost"
+                  className="h-8 text-xs"
                   onClick={() => {
                     navigator.clipboard.writeText(user.id);
                     toast.success(t.copied);
@@ -834,31 +836,33 @@ function BotAccountsPage() {
                 >
                   {t.copyId}
                 </Button>
-                <Button size="sm" variant="destructive" onClick={() => signOut()}>
+                <Button size="sm" variant="outline" className="h-8 text-xs border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => signOut()}>
                   {t.signOutBtn}
                 </Button>
               </div>
             </div>
-          </Card>
+          </div>
         )}
 
-        <Card className="border-amber-500/40 bg-amber-50/70 dark:bg-amber-500/5 p-4">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
-            <div className="text-sm leading-relaxed">
-              <p className="font-semibold text-amber-900 dark:text-amber-200">
-                {lang === "ar"
-                  ? "تنبيه: الاختبار من السيرفر يتحقق من بنية الكوكيز فقط"
-                  : "Notice: Server-side test validates cookie structure only"}
-              </p>
-              <p className="mt-1 text-amber-900/80 dark:text-amber-100/80">
-                {lang === "ar"
-                  ? "فيسبوك يرفض طلبات السيرفر القادمة من Cloudflare/Datacenters حتى لو الكوكيز سليمة، ويُرجع صفحة تسجيل دخول. لذلك زر «اختبر الآن» يتحقق حاليًا فقط من اكتمال الكوكيز (c_user, xs, datr, fr) وصحة صيغتها. التحقق الفعلي ضد فيسبوك سيتم تلقائيًا عبر VPS Worker (المرحلة 4) بمتصفح حقيقي على IP منزلي."
-                  : "Facebook blocks server requests from Cloudflare/datacenter IPs and returns a login page even with valid cookies. The 'Test now' button currently only validates that cookies are well-formed (c_user, xs, datr, fr). Real Facebook verification will run via the VPS Worker (Phase 4) using a real browser on a residential IP."}
-              </p>
+        <details className="group rounded-xl border border-border/60 bg-muted/30 transition-all open:bg-amber-50/40 dark:open:bg-amber-500/5 open:border-amber-500/30">
+          <summary className="flex cursor-pointer items-center gap-3 px-4 py-3 list-none [&::-webkit-details-marker]:hidden">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="h-3.5 w-3.5" />
             </div>
+            <span className="flex-1 text-sm font-medium text-foreground">
+              {lang === "ar"
+                ? "ملاحظة حول آلية الاختبار"
+                : "About the test mechanism"}
+            </span>
+            <svg className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
+          </summary>
+          <div className="px-4 pb-4 ps-14 text-xs leading-relaxed text-muted-foreground">
+            {lang === "ar"
+              ? "فيسبوك يرفض طلبات السيرفر القادمة من Cloudflare/Datacenters حتى لو الكوكيز سليمة. لذلك زر «اختبر الآن» يتحقق حاليًا فقط من اكتمال الكوكيز (c_user, xs, datr, fr) وصحة صيغتها. التحقق الفعلي سيتم تلقائيًا عبر VPS Worker بمتصفح حقيقي على IP منزلي."
+              : "Facebook blocks server requests from Cloudflare/datacenter IPs. The 'Test now' button currently only validates that cookies are well-formed (c_user, xs, datr, fr). Real verification runs via the VPS Worker using a real browser on a residential IP."}
           </div>
-        </Card>
+        </details>
+
 
         <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm">
           <div className="mb-4 flex items-start gap-3">
