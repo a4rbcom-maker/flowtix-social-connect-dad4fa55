@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useRouter, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import {
   Plus,
@@ -217,6 +218,7 @@ function BotAccountsPage() {
   const { user, signOut } = useAuth();
   const { lang } = useI18n();
   const { call } = useFacebookApi();
+  const precheckFn = useServerFn(precheckBotAccount);
   const navigate = useNavigate();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
@@ -247,12 +249,15 @@ function BotAccountsPage() {
     loading: boolean;
     result: {
       ok: boolean;
-      method: "cookies" | "credentials";
+      canContinue: boolean;
+      severity: "ok" | "warning" | "error";
+      method: "cookies" | "credentials" | "unknown";
       present: string[];
       missing: string[];
       invalid: { name: string; reason: string }[];
       totalCookies: number;
       message: string;
+      debugCode: string;
     } | null;
     error: string | null;
   } | null>(null);
@@ -581,71 +586,69 @@ function BotAccountsPage() {
   const openPrecheck = async (id: string, name: string) => {
     setPrecheck({ id, name, loading: true, result: null, error: null });
     try {
-      const raw = await call(precheckBotAccount, { id });
-      console.log("[precheck] raw response:", raw);
+      // Call the server fn directly via useServerFn. attachSupabaseAuth
+      // middleware (registered in src/start.ts) attaches the bearer token
+      // automatically — no manual header juggling required.
+      const result = await precheckFn({ data: { id } });
 
-      // Walk every plausible TanStack wrapper shape and pick the first object
-      // that carries our boolean `ok` field.
-      const visited = new Set<unknown>();
-      const queue: unknown[] = [raw];
-      let found: Record<string, unknown> | null = null;
-      while (queue.length) {
-        const cur = queue.shift();
-        if (!cur || typeof cur !== "object" || visited.has(cur)) continue;
-        visited.add(cur);
-        const obj = cur as Record<string, unknown>;
-        if (typeof obj.ok === "boolean" && Array.isArray(obj.present) && Array.isArray(obj.missing)) {
-          found = obj;
-          break;
-        }
-        for (const k of ["data", "result", "account", "payload", "body"]) {
-          if (k in obj) queue.push(obj[k]);
-        }
+      // Server function returns a flat PrecheckResult DTO with stable fields.
+      // If anything is missing, treat it as a hard server-shape error and
+      // surface a stable Arabic message without leaking JSON to the user.
+      if (
+        !result ||
+        typeof result !== "object" ||
+        typeof (result as { ok?: unknown }).ok !== "boolean"
+      ) {
+        console.error("[precheck] unexpected shape:", result);
+        setPrecheck({
+          id,
+          name,
+          loading: false,
+          result: null,
+          error:
+            lang === "ar"
+              ? "تعذّر قراءة نتيجة الفحص من الخادم. أعد المحاولة بعد لحظات."
+              : "Could not read precheck result. Please try again in a moment.",
+        });
+        return;
       }
 
-      if (!found) {
-        console.error("[precheck] could not locate result in:", raw);
-        const dump = (() => {
-          try { return JSON.stringify(raw); } catch { return String(raw); }
-        })().slice(0, 300);
-        throw new Error(
-          (lang === "ar" ? "استجابة غير متوقعة من الخادم. " : "Unexpected server response. ") + dump,
-        );
-      }
-
-      const result = {
-        ok: Boolean(found.ok),
-        method: (found.method === "credentials" ? "credentials" : "cookies") as "cookies" | "credentials",
-        present: (found.present as string[]) ?? [],
-        missing: (found.missing as string[]) ?? [],
-        invalid: (found.invalid as { name: string; reason: string }[]) ?? [],
-        totalCookies: typeof found.totalCookies === "number" ? found.totalCookies : 0,
-        message:
-          typeof found.message === "string" && found.message.trim().length > 0
-            ? found.message
-            : Boolean(found.ok)
-              ? lang === "ar" ? "الكوكيز سليمة." : "Cookies look valid."
-              : lang === "ar"
-                ? `فشل الفحص — ${
-                    (found.missing as string[])?.length
-                      ? "كوكيز ناقصة: " + (found.missing as string[]).join(", ")
-                      : (found.invalid as { name: string }[])?.length
-                        ? "كوكيز فيها مشاكل: " + (found.invalid as { name: string }[]).map((i) => i.name).join(", ")
-                        : "أعد تصدير الكوكيز من Cookie-Editor."
-                  }`
-                : "Pre-check failed — re-export your cookies.",
-      };
-
-      setPrecheck({ id, name, loading: false, result, error: null });
+      setPrecheck({
+        id,
+        name,
+        loading: false,
+        result: {
+          ok: Boolean(result.ok),
+          canContinue: Boolean(result.canContinue),
+          severity: result.severity,
+          method: result.method,
+          present: Array.isArray(result.present) ? result.present : [],
+          missing: Array.isArray(result.missing) ? result.missing : [],
+          invalid: Array.isArray(result.invalid) ? result.invalid : [],
+          totalCookies: typeof result.totalCookies === "number" ? result.totalCookies : 0,
+          message: result.message || (lang === "ar" ? "اكتمل الفحص." : "Precheck complete."),
+          debugCode: result.debugCode || "UNKNOWN",
+        },
+        error: null,
+      });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
       console.error("[precheck] failed:", e);
+      const raw = e instanceof Error ? e.message : String(e);
+      // Distinguish auth from other failures so the toast routes the user
+      // back to login when the session has expired.
+      if (/unauthorized|401|session/i.test(raw)) {
+        handleAuthExpired();
+        return;
+      }
       setPrecheck({
         id,
         name,
         loading: false,
         result: null,
-        error: msg || (lang === "ar" ? "خطأ غير معروف" : "Unknown error"),
+        error:
+          lang === "ar"
+            ? "تعذّر الاتصال بالخادم لإجراء الفحص. تأكد من الاتصال وأعد المحاولة."
+            : "Could not reach the server for the precheck. Check your connection and try again.",
       });
     }
   };
@@ -1528,7 +1531,7 @@ function BotAccountsPage() {
               {lang === "ar" ? "إغلاق" : "Close"}
             </Button>
             <Button
-              disabled={!precheck?.result?.ok}
+              disabled={!precheck?.result?.canContinue}
               onClick={() => {
                 if (precheck) {
                   const id = precheck.id;
