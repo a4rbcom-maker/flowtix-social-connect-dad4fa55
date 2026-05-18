@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Plus, Trash2, ShieldCheck, ShieldAlert, Cookie, KeyRound, AlertTriangle, Loader2, CheckCircle2, XCircle, Clock, Activity, RotateCw, ExternalLink, LogIn } from "lucide-react";
+import { Plus, Trash2, ShieldCheck, ShieldAlert, Cookie, KeyRound, AlertTriangle, Loader2, CheckCircle2, XCircle, Clock, Activity, RotateCw, ExternalLink, LogIn, CalendarClock, Lock } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
