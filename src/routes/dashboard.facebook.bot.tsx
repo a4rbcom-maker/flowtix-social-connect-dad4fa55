@@ -40,6 +40,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import {
   addBotAccount,
   listBotAccounts,
@@ -148,9 +149,46 @@ const unwrapServerPayload = (raw: unknown): unknown => {
   return obj.data ?? obj.result ?? obj.account ?? raw;
 };
 
-const normalizeAccountsPayload = (raw: unknown): Account[] => {
+type AccountsPayloadResult = {
+  ok: boolean;
+  accounts: Account[];
+  message: string;
+  debugCode: string;
+};
+
+const normalizeAccountsPayload = (raw: unknown, lang: "ar" | "en"): AccountsPayloadResult => {
   const payload = unwrapServerPayload(raw);
-  return Array.isArray(payload) ? (payload as Account[]) : [];
+  if (Array.isArray(payload)) {
+    return { ok: true, accounts: payload as Account[], message: "OK_LEGACY_ARRAY", debugCode: "OK_LEGACY_ARRAY" };
+  }
+  if (payload && typeof payload === "object") {
+    const dto = payload as { ok?: unknown; accounts?: unknown; message?: unknown; debugCode?: unknown };
+    if (Array.isArray(dto.accounts)) {
+      return {
+        ok: dto.ok !== false,
+        accounts: dto.accounts as Account[],
+        message:
+          typeof dto.message === "string" && dto.message.trim()
+            ? dto.message
+            : dto.ok === false
+              ? lang === "ar"
+                ? "تعذّر تحميل الحسابات."
+                : "Could not load accounts."
+              : "OK",
+        debugCode: typeof dto.debugCode === "string" ? dto.debugCode : "UNKNOWN_LIST_DTO",
+      };
+    }
+  }
+  console.error("[fb-bot] unexpected list response shape", { rawType: typeof raw, raw });
+  return {
+    ok: false,
+    accounts: [],
+    message:
+      lang === "ar"
+        ? "تعذّر قراءة نتيجة تحميل الحسابات من الخادم. أعد المحاولة."
+        : "Could not read the accounts response from the server. Try again.",
+    debugCode: "CLIENT_BAD_LIST_SHAPE",
+  };
 };
 
 const normalizeAccountPayload = (raw: unknown): Account | null => {
@@ -243,6 +281,9 @@ const sanitizeAccounts = (list: Account[]): Account[] =>
       : a,
   );
 
+const SAFE_ACCOUNT_SELECT =
+  "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at";
+
 function StatusReason({
   status,
   lastError,
@@ -288,7 +329,7 @@ function StatusReason({
 }
 
 function BotAccountsPage() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, loading: authLoading } = useAuth();
   const { lang } = useI18n();
   const listAccountsFn = useServerFn(listBotAccounts);
   const addAccountFn = useServerFn(addBotAccount);
@@ -298,6 +339,7 @@ function BotAccountsPage() {
   const navigate = useNavigate();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<{ message: string; debugCode: string } | null>(null);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"cookies" | "credentials">("cookies");
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
@@ -499,10 +541,46 @@ function BotAccountsPage() {
 
   const load = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
-      const raw = await listAccountsFn();
-      // Defensive: tolerate direct arrays and wrapped server-function payloads.
-      const list = normalizeAccountsPayload(raw);
+      const sessionResult = await supabase.auth.getSession();
+      const currentUser = sessionResult.data.session?.user ?? user;
+      if (!currentUser) {
+        setLoadError({
+          message:
+            lang === "ar"
+              ? "لم يتم العثور على جلسة دخول نشطة. سجّل الدخول مرة أخرى لعرض حساباتك."
+              : "No active session was found. Sign in again to view your accounts.",
+          debugCode: "NO_AUTH_SESSION",
+        });
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("fb_bot_accounts")
+        .select(SAFE_ACCOUNT_SELECT)
+        .eq("user_id", currentUser.id)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("[fb-bot] browser list failed, falling back to server fn", error);
+        const raw = await listAccountsFn();
+        const result = normalizeAccountsPayload(raw, lang === "ar" ? "ar" : "en");
+        console.info("[fb-bot] listBotAccounts fallback result", {
+          ok: result.ok,
+          count: result.accounts.length,
+          debugCode: result.debugCode,
+        });
+        if (!result.ok) {
+          setLoadError({ message: result.message, debugCode: result.debugCode });
+          return;
+        }
+        setAccounts(sanitizeAccounts(result.accounts));
+        return;
+      }
+
+      const list = (data ?? []) as Account[];
+      console.info("[fb-bot] browser list result", { count: list.length, debugCode: list.length ? "OK" : "OK_EMPTY" });
       setAccounts(sanitizeAccounts(list));
     } catch (e) {
       if (isAuthErr(e)) {
@@ -510,19 +588,29 @@ function BotAccountsPage() {
         return;
       }
       console.error("[fb-bot] listBotAccounts failed:", e);
-      toast.error(describeServerActionError(e, lang === "ar" ? "ar" : "en"));
+      const message = describeServerActionError(e, lang === "ar" ? "ar" : "en");
+      setLoadError({ message, debugCode: "CLIENT_LIST_EXCEPTION" });
+      toast.error(message);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    if (authLoading) return;
     if (user) {
       void load();
     } else {
       setLoading(false);
+      setLoadError({
+        message:
+          lang === "ar"
+            ? "لم يتم العثور على جلسة دخول نشطة. سجّل الدخول مرة أخرى لعرض حساباتك."
+            : "No active session was found. Sign in again to view your accounts.",
+        debugCode: "NO_AUTH_SESSION",
+      });
     }
-  }, [user]);
+  }, [user, authLoading]);
 
   const handleAdd = async () => {
     if (!form.displayName.trim()) {
@@ -1066,6 +1154,19 @@ function BotAccountsPage() {
           {loading ? (
             <div className="flex items-center justify-center p-12">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : loadError ? (
+            <div className="p-12 text-center">
+              <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-destructive/70" />
+              <p className="font-semibold text-foreground">
+                {lang === "ar" ? "تعذّر تحميل الحسابات" : "Could not load accounts"}
+              </p>
+              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{loadError.message}</p>
+              <p className="mt-2 font-mono text-[11px] text-muted-foreground">{loadError.debugCode}</p>
+              <Button className="mt-4 gap-2" variant="outline" onClick={() => void load()}>
+                <RotateCw className="h-4 w-4" />
+                {t.retry}
+              </Button>
             </div>
           ) : accounts.length === 0 ? (
             <div className="p-12 text-center text-muted-foreground">
