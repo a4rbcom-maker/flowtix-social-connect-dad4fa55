@@ -1116,6 +1116,19 @@ function BotAccountsPage() {
             <div className="flex items-center justify-center p-12">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
+          ) : loadError ? (
+            <div className="p-12 text-center">
+              <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-destructive/70" />
+              <p className="font-semibold text-foreground">
+                {lang === "ar" ? "تعذّر تحميل الحسابات" : "Could not load accounts"}
+              </p>
+              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{loadError.message}</p>
+              <p className="mt-2 font-mono text-[11px] text-muted-foreground">{loadError.debugCode}</p>
+              <Button className="mt-4 gap-2" variant="outline" onClick={() => void load()}>
+                <RotateCw className="h-4 w-4" />
+                {t.retry}
+              </Button>
+            </div>
           ) : accounts.length === 0 ? (
             <div className="p-12 text-center text-muted-foreground">
               <ShieldCheck className="mx-auto mb-3 h-10 w-10 opacity-40" />
