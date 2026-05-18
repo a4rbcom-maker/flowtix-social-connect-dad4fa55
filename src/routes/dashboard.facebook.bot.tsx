@@ -34,9 +34,22 @@ type Account = {
   last_check_at: string | null;
   last_error: string | null;
   created_at: string;
+  cookie_expires_at: string | null;
 };
 
 type BotAccountStatus = "untested" | "active" | "invalid" | "checkpoint" | "disabled";
+
+// Classify cookie session lifetime for badges/alerts. Returns null when the
+// account has no expiry info (credentials accounts or session-only cookies).
+function classifyExpiry(iso: string | null): { state: "expired" | "soon" | "ok"; days: number } | null {
+  if (!iso) return null;
+  const ms = new Date(iso).getTime() - Date.now();
+  const days = Math.floor(ms / 86_400_000);
+  if (ms <= 0) return { state: "expired", days };
+  if (days <= 7) return { state: "soon", days };
+  return { state: "ok", days };
+}
+
 
 const normalizeStatus = (status: string | null | undefined): BotAccountStatus => {
   return status === "active" || status === "invalid" || status === "checkpoint" || status === "disabled"
