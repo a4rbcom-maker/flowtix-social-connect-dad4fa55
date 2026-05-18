@@ -678,6 +678,125 @@ function BotAccountsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!precheck} onOpenChange={(o) => !o && setPrecheck(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              {lang === "ar" ? "فحص الكوكيز قبل الاختبار" : "Cookie pre-check"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {precheck && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                {lang === "ar" ? "الحساب:" : "Account:"}{" "}
+                <span className="font-semibold text-foreground">{precheck.name}</span>
+              </p>
+
+              {precheck.loading && (
+                <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-3 text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  {lang === "ar" ? "جارٍ فحص الكوكيز…" : "Checking cookies…"}
+                </div>
+              )}
+
+              {precheck.error && (
+                <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-3 text-sm text-red-700 dark:text-red-300">
+                  <p className="font-semibold">{lang === "ar" ? "تعذّر إجراء الفحص" : "Pre-check failed"}</p>
+                  <p className="mt-1 font-mono text-xs opacity-90">{precheck.error}</p>
+                </div>
+              )}
+
+              {precheck.result && (
+                <>
+                  <div
+                    className={`rounded-md border px-3 py-3 text-sm ${
+                      precheck.result.ok
+                        ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300"
+                        : "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-300"
+                    }`}
+                  >
+                    <p className="flex items-center gap-2 font-semibold">
+                      {precheck.result.ok ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                      {precheck.result.message}
+                    </p>
+                  </div>
+
+                  {precheck.result.method === "cookies" && (
+                    <div className="rounded-md border border-border bg-muted/30 p-3">
+                      <p className="mb-2 text-xs font-semibold text-muted-foreground">
+                        {lang === "ar" ? "الكوكيز المطلوبة" : "Required cookies"} ({precheck.result.present.length}/5)
+                        {" · "}
+                        <span className="font-normal">
+                          {lang === "ar" ? "إجمالي محفوظ:" : "stored total:"} {precheck.result.totalCookies}
+                        </span>
+                      </p>
+                      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                        {(["c_user", "xs", "fr", "datr", "sb"] as const).map((name) => {
+                          const isMissing = precheck.result!.missing.includes(name);
+                          const invalid = precheck.result!.invalid.find((i) => i.name === name);
+                          const ok = !isMissing && !invalid;
+                          return (
+                            <div
+                              key={name}
+                              className={`flex items-center gap-1.5 rounded border px-2 py-1.5 font-mono text-xs ${
+                                ok
+                                  ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300"
+                                  : "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-300"
+                              }`}
+                            >
+                              {ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+                              {name}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {precheck.result.invalid.length > 0 && (
+                        <ul className="mt-3 space-y-1 text-xs text-red-700 dark:text-red-300">
+                          {precheck.result.invalid.map((i) => (
+                            <li key={i.name}>
+                              <span className="font-mono font-semibold">{i.name}</span>: {i.reason}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {precheck.result.missing.length > 0 && (
+                        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                          {lang === "ar"
+                            ? "افتح فيسبوك في المتصفح، سجّل دخول من جديد، ثم صدِّر الكوكيز كـ JSON عبر إضافة Cookie-Editor واحفظها بديلًا عن الحالية."
+                            : "Open Facebook, sign in fresh, then export cookies as JSON via the Cookie-Editor extension and replace the current ones."}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setPrecheck(null)}>
+              {lang === "ar" ? "إغلاق" : "Close"}
+            </Button>
+            <Button
+              disabled={!precheck?.result?.ok}
+              onClick={() => {
+                if (precheck) {
+                  const id = precheck.id;
+                  setPrecheck(null);
+                  void handleTest(id);
+                }
+              }}
+              className="gap-1.5"
+            >
+              <Activity className="h-4 w-4" />
+              {lang === "ar" ? "متابعة الاختبار" : "Run test"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
