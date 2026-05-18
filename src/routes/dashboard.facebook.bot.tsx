@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { useFacebookApi } from "@/features/facebook/api";
+import { useFacebookApi, describeFbError, FbCallError } from "@/features/facebook/api";
 import { addBotAccount, listBotAccounts, deleteBotAccount, testBotAccount, precheckBotAccount } from "@/lib/fb-bot.functions";
 
 // Per-route fallback: surfaces a friendly Arabic card instead of letting any
