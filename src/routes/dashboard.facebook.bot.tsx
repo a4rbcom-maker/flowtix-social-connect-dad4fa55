@@ -304,7 +304,7 @@ function BotAccountsPage() {
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {accounts.map((a) => (
-                    <tr key={a.id} className="hover:bg-muted/30">
+                    <tr key={a.id} className={`transition-colors hover:bg-muted/30 ${justAddedId === a.id ? "bg-primary/10 animate-pulse" : ""}`}>
                       <td className="px-4 py-3 font-medium">{a.display_name}</td>
                       <td className="px-4 py-3">
                         <Badge variant="outline" className="gap-1">
