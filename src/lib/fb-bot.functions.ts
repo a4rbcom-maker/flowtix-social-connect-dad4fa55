@@ -438,71 +438,11 @@ function precheckFailure(
   };
 }
 
-type PrecheckAuthContext = {
-  supabase: ReturnType<typeof createClient<Database>>;
-  userId: string;
-};
-
-async function getPrecheckAuthContext(): Promise<PrecheckAuthContext | PrecheckResult> {
-  try {
-    const SUPABASE_URL = process.env.SUPABASE_URL;
-    const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
-
-    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-      console.error("[precheckBotAccount] auth config missing");
-      return precheckFailure(
-        "AUTH_CONFIG_MISSING",
-        "إعدادات المصادقة غير مكتملة على الخادم. أعد المحاولة بعد لحظات.",
-      );
-    }
-
-    const { getRequestHeader } = await import("@tanstack/react-start/server");
-    const authHeader = getRequestHeader("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return precheckFailure(
-        "AUTH_REQUIRED",
-        "انتهت جلسة الدخول أو لم تصل للخادم. سجّل الدخول مرة أخرى ثم أعد الفحص.",
-      );
-    }
-
-    const token = authHeader.replace("Bearer ", "").trim();
-    if (!token) {
-      return precheckFailure(
-        "AUTH_TOKEN_EMPTY",
-        "جلسة الدخول غير صالحة. سجّل الدخول مرة أخرى ثم أعد الفحص.",
-      );
-    }
-
-    const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-      auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
-    });
-
-    const { data, error } = await supabase.auth.getClaims(token);
-    if (error || !data?.claims?.sub) {
-      console.error("[precheckBotAccount] invalid auth token:", error);
-      return precheckFailure(
-        "AUTH_INVALID",
-        "جلسة الدخول غير صالحة أو منتهية. سجّل الدخول مرة أخرى ثم أعد الفحص.",
-      );
-    }
-
-    return { supabase, userId: data.claims.sub };
-  } catch (e) {
-    console.error("[precheckBotAccount] auth check failed:", e);
-    return precheckFailure(
-      "AUTH_EXCEPTION",
-      "تعذّر التحقق من جلسة الدخول. حدِّث الصفحة وسجّل الدخول مرة أخرى.",
-    );
-  }
-}
-
 export const precheckBotAccount = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
-  .handler(async ({ data }): Promise<PrecheckResult> => {
-    const auth = await getPrecheckAuthContext();
-    if ("debugCode" in auth) return auth;
-    const { supabase, userId } = auth;
+  .handler(async ({ data, context }): Promise<PrecheckResult> => {
+    const { supabase, userId } = context;
 
     // 1) Read the account row. Never throw — translate to Arabic message.
     let acc: { id: string; auth_method: string; encrypted_payload: string } | null = null;
