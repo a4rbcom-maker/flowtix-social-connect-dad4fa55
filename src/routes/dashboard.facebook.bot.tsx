@@ -323,18 +323,7 @@ function BotAccountsPage() {
     id: string;
     name: string;
     loading: boolean;
-    result: {
-      ok: boolean;
-      canContinue: boolean;
-      severity: "ok" | "warning" | "error";
-      method: "cookies" | "credentials" | "unknown";
-      present: string[];
-      missing: string[];
-      invalid: { name: string; reason: string }[];
-      totalCookies: number;
-      message: string;
-      debugCode: string;
-    } | null;
+    result: PrecheckUiResult | null;
     error: string | null;
   } | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -655,78 +644,14 @@ function BotAccountsPage() {
     setPrecheck({ id, name, loading: true, result: null, error: null });
     try {
       const raw = await precheckFn({ data: { id } });
-      console.log("[precheck] raw response:", raw);
-
-      // Defensive unwrap: accept the DTO directly, or wrapped under
-      // common envelope keys. Look for an object with both `ok:boolean`
-      // and `message:string` — that's our PrecheckResult shape.
-      const candidates: unknown[] = [raw];
-      if (raw && typeof raw === "object") {
-        for (const k of ["result", "data", "payload", "body"] as const) {
-          const v = (raw as Record<string, unknown>)[k];
-          if (v) candidates.push(v);
-        }
-      }
-      const dto = candidates.find(
-        (c) =>
-          !!c &&
-          typeof c === "object" &&
-          typeof (c as { ok?: unknown }).ok === "boolean" &&
-          typeof (c as { message?: unknown }).message === "string",
-      ) as
-        | {
-            ok: boolean;
-            canContinue?: boolean;
-            severity?: "ok" | "warning" | "error";
-            method?: "cookies" | "credentials" | "unknown";
-            present?: string[];
-            missing?: string[];
-            invalid?: { name: string; reason: string }[];
-            totalCookies?: number;
-            message: string;
-            debugCode?: string;
-          }
-        | undefined;
-
-      if (!dto) {
-        console.error("[precheck] unexpected shape:", raw);
-        setPrecheck({
-          id,
-          name,
-          loading: false,
-          result: null,
-          error:
-            lang === "ar"
-              ? `تعذّر قراءة نتيجة الفحص. الشكل المُستلم: ${JSON.stringify(raw).slice(0, 300)}`
-              : `Could not read precheck result. Received: ${JSON.stringify(raw).slice(0, 300)}`,
-        });
-        return;
-      }
+      const result = normalizePrecheckPayload(raw, lang === "ar" ? "ar" : "en");
+      console.info("[precheck] result", { ok: result.ok, debugCode: result.debugCode });
 
       setPrecheck({
         id,
         name,
         loading: false,
-        result: {
-          ok: Boolean(dto.ok),
-          canContinue: Boolean(dto.canContinue),
-          severity: dto.severity ?? (dto.ok ? "ok" : "error"),
-          method: dto.method ?? "unknown",
-          present: Array.isArray(dto.present) ? dto.present : [],
-          missing: Array.isArray(dto.missing) ? dto.missing : [],
-          invalid: Array.isArray(dto.invalid) ? dto.invalid : [],
-          totalCookies: typeof dto.totalCookies === "number" ? dto.totalCookies : 0,
-          message:
-            dto.message ||
-            (dto.ok
-              ? lang === "ar"
-                ? "اكتمل الفحص بنجاح."
-                : "Pre-check passed."
-              : lang === "ar"
-                ? "فشل الفحص — راجع التفاصيل أدناه."
-                : "Pre-check failed — see details below."),
-          debugCode: dto.debugCode || "UNKNOWN",
-        },
+        result,
         error: null,
       });
     } catch (e) {
