@@ -364,10 +364,12 @@ function BotAccountsPage() {
             password: form.password,
             twoFactorSecret: form.twoFactorSecret || null,
           });
-      if (row) {
+      if (row && typeof (row as Account).id === "string") {
         setAccounts((prev) => [row as Account, ...prev.filter((a) => a.id !== (row as Account).id)]);
         setJustAddedId((row as Account).id);
         setTimeout(() => setJustAddedId(null), 4000);
+      } else {
+        throw new Error(lang === "ar" ? "تم الحفظ لكن لم يرجع الحساب من الخادم. حدّث الصفحة وتأكد من الجلسة." : "Saved, but the server did not return the account row. Refresh and check your session.");
       }
       toast.success(t.saved, { description: t.savedDesc });
       setOpen(false);
@@ -391,10 +393,12 @@ function BotAccountsPage() {
     setSubmitting(true);
     try {
       const row = await call(addBotAccount, { method: "cookies", displayName: form.displayName, cookies: form.cookies });
-      if (row) {
+      if (row && typeof (row as Account).id === "string") {
         setAccounts((prev) => [row as Account, ...prev.filter((a) => a.id !== (row as Account).id)]);
         setJustAddedId((row as Account).id);
         setTimeout(() => setJustAddedId(null), 4000);
+      } else {
+        throw new Error(lang === "ar" ? "تم الحفظ لكن لم يرجع الحساب من الخادم. حدّث الصفحة وتأكد من الجلسة." : "Saved, but the server did not return the account row. Refresh and check your session.");
       }
       toast.success(t.saved, { description: t.savedDesc });
       setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
