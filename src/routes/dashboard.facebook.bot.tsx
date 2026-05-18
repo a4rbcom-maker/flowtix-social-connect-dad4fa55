@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
 import { addBotAccount, listBotAccounts, deleteBotAccount, testBotAccount, precheckBotAccount } from "@/lib/fb-bot.functions";
@@ -38,6 +39,18 @@ type Account = {
 };
 
 type BotAccountStatus = "untested" | "active" | "invalid" | "checkpoint" | "disabled";
+
+// One row in the per-account test timeline. `key` matches a step in TEST_STEPS
+// so labels can be localized; `state` drives the icon (spinner/check/x).
+type TestEvent = {
+  key: "init" | "decrypt" | "fetch" | "groups" | "done" | "retry" | "error";
+  state: "running" | "ok" | "fail" | "info";
+  at: number; // ms epoch
+  detail?: string;
+};
+
+const MAX_AUTO_RETRIES = 3;
+const RETRY_BACKOFF_MS = [1500, 3000, 6000]; // attempt 1/2/3
 
 // Classify cookie session lifetime for badges/alerts. Returns null when the
 // account has no expiry info (credentials accounts or session-only cookies).
@@ -92,6 +105,11 @@ function BotAccountsPage() {
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testProgress, setTestProgress] = useState<{ value: number; label: string } | null>(null);
+  const [testLogs, setTestLogs] = useState<Record<string, TestEvent[]>>({});
+  const [autoRetry, setAutoRetry] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("fbBotAutoRetry") !== "0";
+  });
   const [retryCounts, setRetryCounts] = useState<Record<string, number>>({});
   const [groupsResult, setGroupsResult] = useState<{ accountName: string; groups: { id: string; name: string }[] } | null>(null);
   const [reloginFor, setReloginFor] = useState<{ id: string; name: string } | null>(null);
@@ -330,35 +348,75 @@ function BotAccountsPage() {
     }
   };
 
+  // Append an event to the per-account timeline (capped at last 30 events).
+  const pushEvent = (id: string, ev: Omit<TestEvent, "at">) => {
+    setTestLogs((prev) => {
+      const next = [...(prev[id] ?? []), { ...ev, at: Date.now() }];
+      return { ...prev, [id]: next.slice(-30) };
+    });
+  };
+
+  const updateLastEvent = (id: string, patch: Partial<TestEvent>) => {
+    setTestLogs((prev) => {
+      const list = prev[id] ?? [];
+      if (list.length === 0) return prev;
+      const copy = [...list];
+      copy[copy.length - 1] = { ...copy[copy.length - 1], ...patch };
+      return { ...prev, [id]: copy };
+    });
+  };
+
   const handleTest = async (id: string, isRetry = false) => {
     setTestingId(id);
     const attempt = (retryCounts[id] ?? 0) + (isRetry ? 1 : 0);
     if (isRetry) setRetryCounts((p) => ({ ...p, [id]: attempt }));
+    if (!isRetry) setTestLogs((p) => ({ ...p, [id]: [] }));
 
-
+    if (isRetry) {
+      pushEvent(id, { key: "retry", state: "info", detail: t.attemptLabel(attempt + 1) });
+    }
+    pushEvent(id, { key: "init", state: "running" });
     setTestProgress({ value: 10, label: t.progressInit });
     const toastId = toast.loading(t.testing, { description: t.progressInit });
 
-    // Animated progress while the request is in-flight
-    const steps: Array<{ value: number; label: string; delay: number }> = [
-      { value: 30, label: t.progressDecrypt, delay: 250 },
-      { value: 60, label: t.progressFetch, delay: 700 },
-      { value: 85, label: t.progressGroups, delay: 1600 },
+    // Animated progress + event timeline while the request is in-flight.
+    const steps: Array<{ value: number; label: string; delay: number; key: TestEvent["key"] }> = [
+      { value: 30, label: t.progressDecrypt, delay: 250, key: "decrypt" },
+      { value: 60, label: t.progressFetch, delay: 700, key: "fetch" },
+      { value: 85, label: t.progressGroups, delay: 1600, key: "groups" },
     ];
     const timers = steps.map((s) =>
       setTimeout(() => {
+        // Mark previous step ok, start the next one.
+        updateLastEvent(id, { state: "ok" });
+        pushEvent(id, { key: s.key, state: "running" });
         setTestProgress({ value: s.value, label: s.label });
         toast.loading(t.testing, { id: toastId, description: s.label });
       }, s.delay),
     );
 
+    const scheduleAutoRetry = (reason: string) => {
+      if (!autoRetry) return false;
+      if (attempt + 1 >= MAX_AUTO_RETRIES) return false;
+      const wait = RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)];
+      pushEvent(id, {
+        key: "retry",
+        state: "info",
+        detail: lang === "ar"
+          ? `إعادة محاولة تلقائية خلال ${Math.round(wait / 1000)} ث — ${reason}`
+          : `Auto-retry in ${Math.round(wait / 1000)}s — ${reason}`,
+      });
+      setTimeout(() => void handleTest(id, true), wait);
+      return true;
+    };
+
     try {
       const updated = await call(testBotAccount, { id }) as (Account & { groups?: { id: string; name: string }[] }) | null;
       timers.forEach(clearTimeout);
+      updateLastEvent(id, { state: "ok" });
       setTestProgress({ value: 100, label: t.progressDone });
       if (updated) {
         const { groups = [], ...accountRow } = updated;
-        // Auto-detect checkpoint hints in the error message and coerce status.
         const detectedCheckpoint = looksLikeCheckpoint(accountRow.status, accountRow.last_error);
         const finalAccount = (detectedCheckpoint && accountRow.status !== "active"
           ? { ...accountRow, status: "checkpoint" }
@@ -366,9 +424,11 @@ function BotAccountsPage() {
         setAccounts((prev) => prev.map((a) => (a.id === id ? finalAccount : a)));
         if (finalAccount.status === "active") {
           setRetryCounts((p) => ({ ...p, [id]: 0 }));
+          pushEvent(id, { key: "done", state: "ok", detail: t.groupsFound(groups.length) });
           toast.success(t.testSuccess, { id: toastId, description: t.groupsFound(groups.length) });
           setGroupsResult({ accountName: finalAccount.display_name, groups });
         } else if (detectedCheckpoint) {
+          pushEvent(id, { key: "error", state: "fail", detail: finalAccount.last_error ?? "checkpoint" });
           toast.warning(lang === "ar" ? "حساب يحتاج تحقق (Checkpoint)" : "Account needs verification (Checkpoint)", {
             id: toastId,
             description: lang === "ar" ? "اضغط \"إكمال التحقق\" لمتابعة الخطوات" : "Click \"Complete verification\" to continue",
@@ -377,20 +437,31 @@ function BotAccountsPage() {
               onClick: () => setCheckpointFor({ id, name: finalAccount.display_name, reason: finalAccount.last_error }),
             },
           });
+          // Don't auto-retry checkpoints — user action is required.
         } else {
+          const reason = finalAccount.last_error ?? t.statuses[normalizeStatus(finalAccount.status)];
+          pushEvent(id, { key: "error", state: "fail", detail: reason });
+          const willRetry = scheduleAutoRetry(reason);
           toast.error(t.testFailed, {
             id: toastId,
-            description: finalAccount.last_error ?? t.statuses[normalizeStatus(finalAccount.status)],
-            action: { label: t.retry, onClick: () => void handleTest(id, true) },
+            description: willRetry
+              ? (lang === "ar" ? `${reason} — جاري إعادة المحاولة…` : `${reason} — retrying…`)
+              : reason,
+            action: willRetry ? undefined : { label: t.retry, onClick: () => void handleTest(id, true) },
           });
         }
       }
     } catch (e) {
       timers.forEach(clearTimeout);
+      const reason = e instanceof Error ? e.message : String(e);
+      pushEvent(id, { key: "error", state: "fail", detail: reason });
+      const willRetry = scheduleAutoRetry(reason);
       toast.error(t.testFailed, {
         id: toastId,
-        description: e instanceof Error ? e.message : String(e),
-        action: { label: t.retry, onClick: () => void handleTest(id, true) },
+        description: willRetry
+          ? (lang === "ar" ? `${reason} — جاري إعادة المحاولة…` : `${reason} — retrying…`)
+          : reason,
+        action: willRetry ? undefined : { label: t.retry, onClick: () => void handleTest(id, true) },
       });
     } finally {
       setTestingId(null);
@@ -575,6 +646,20 @@ const looksLikeCheckpoint = (status: string | null | undefined, lastError: strin
           );
         })()}
 
+        <div className="flex items-center justify-end gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
+          <RotateCw className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-muted-foreground">
+            {lang === "ar" ? `إعادة محاولة تلقائية بعد الفشل (حتى ${MAX_AUTO_RETRIES} محاولات)` : `Auto-retry on failure (up to ${MAX_AUTO_RETRIES} attempts)`}
+          </span>
+          <Switch
+            checked={autoRetry}
+            onCheckedChange={(v: boolean) => {
+              setAutoRetry(v);
+              try { localStorage.setItem("fbBotAutoRetry", v ? "1" : "0"); } catch {}
+            }}
+          />
+        </div>
+
         <Card className="overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center p-12">
@@ -648,7 +733,51 @@ const looksLikeCheckpoint = (status: string | null | undefined, lastError: strin
                             </div>
                           )}
                           {Boolean(retryCounts[a.id]) && (
-                            <p className="text-[10px] text-muted-foreground">{t.attemptLabel((retryCounts[a.id] ?? 0) + 1)}</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {t.attemptLabel((retryCounts[a.id] ?? 0) + 1)}
+                              {" · "}
+                              {lang === "ar" ? `الحد الأقصى ${MAX_AUTO_RETRIES}` : `max ${MAX_AUTO_RETRIES}`}
+                            </p>
+                          )}
+                          {(testLogs[a.id]?.length ?? 0) > 0 && (
+                            <details className="max-w-xs rounded-md border border-border bg-muted/30 px-2 py-1.5 text-[11px]" open={testingId === a.id}>
+                              <summary className="cursor-pointer select-none font-medium text-foreground">
+                                {lang === "ar" ? "سجل الأحداث" : "Event log"}
+                                <span className="ms-1 text-muted-foreground">({testLogs[a.id]!.length})</span>
+                              </summary>
+                              <ul className="mt-1.5 space-y-1">
+                                {testLogs[a.id]!.map((ev, i) => {
+                                  const label =
+                                    ev.key === "init" ? t.progressInit
+                                    : ev.key === "decrypt" ? t.progressDecrypt
+                                    : ev.key === "fetch" ? t.progressFetch
+                                    : ev.key === "groups" ? t.progressGroups
+                                    : ev.key === "done" ? t.progressDone
+                                    : ev.key === "retry" ? (lang === "ar" ? "إعادة محاولة" : "Retry")
+                                    : (lang === "ar" ? "خطأ" : "Error");
+                                  const Icon = ev.state === "ok" ? CheckCircle2
+                                    : ev.state === "fail" ? XCircle
+                                    : ev.state === "running" ? Loader2
+                                    : Clock;
+                                  const cls = ev.state === "ok" ? "text-emerald-600"
+                                    : ev.state === "fail" ? "text-red-600"
+                                    : ev.state === "running" ? "text-primary"
+                                    : "text-muted-foreground";
+                                  return (
+                                    <li key={i} className="flex items-start gap-1.5 leading-tight">
+                                      <Icon className={`mt-0.5 h-3 w-3 shrink-0 ${cls} ${ev.state === "running" ? "animate-spin" : ""}`} />
+                                      <span className="flex-1">
+                                        <span className="font-medium text-foreground">{label}</span>
+                                        {ev.detail && <span className="ms-1 text-muted-foreground">— {ev.detail}</span>}
+                                      </span>
+                                      <span className="font-mono text-[10px] text-muted-foreground/70">
+                                        {new Date(ev.at).toLocaleTimeString(lang === "ar" ? "ar-EG" : "en-US", { hour12: false })}
+                                      </span>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </details>
                           )}
                         </div>
                       </td>
