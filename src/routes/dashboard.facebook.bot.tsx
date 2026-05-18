@@ -586,20 +586,42 @@ function BotAccountsPage() {
   const openPrecheck = async (id: string, name: string) => {
     setPrecheck({ id, name, loading: true, result: null, error: null });
     try {
-      // Call the server fn directly via useServerFn. attachSupabaseAuth
-      // middleware (registered in src/start.ts) attaches the bearer token
-      // automatically — no manual header juggling required.
-      const result = await precheckFn({ data: { id } });
+      const raw = await precheckFn({ data: { id } });
+      console.log("[precheck] raw response:", raw);
 
-      // Server function returns a flat PrecheckResult DTO with stable fields.
-      // If anything is missing, treat it as a hard server-shape error and
-      // surface a stable Arabic message without leaking JSON to the user.
-      if (
-        !result ||
-        typeof result !== "object" ||
-        typeof (result as { ok?: unknown }).ok !== "boolean"
-      ) {
-        console.error("[precheck] unexpected shape:", result);
+      // Defensive unwrap: accept the DTO directly, or wrapped under
+      // common envelope keys. Look for an object with both `ok:boolean`
+      // and `message:string` — that's our PrecheckResult shape.
+      const candidates: unknown[] = [raw];
+      if (raw && typeof raw === "object") {
+        for (const k of ["result", "data", "payload", "body"] as const) {
+          const v = (raw as Record<string, unknown>)[k];
+          if (v) candidates.push(v);
+        }
+      }
+      const dto = candidates.find(
+        (c) =>
+          !!c &&
+          typeof c === "object" &&
+          typeof (c as { ok?: unknown }).ok === "boolean" &&
+          typeof (c as { message?: unknown }).message === "string",
+      ) as
+        | {
+            ok: boolean;
+            canContinue?: boolean;
+            severity?: "ok" | "warning" | "error";
+            method?: "cookies" | "credentials" | "unknown";
+            present?: string[];
+            missing?: string[];
+            invalid?: { name: string; reason: string }[];
+            totalCookies?: number;
+            message: string;
+            debugCode?: string;
+          }
+        | undefined;
+
+      if (!dto) {
+        console.error("[precheck] unexpected shape:", raw);
         setPrecheck({
           id,
           name,
@@ -607,8 +629,8 @@ function BotAccountsPage() {
           result: null,
           error:
             lang === "ar"
-              ? "تعذّر قراءة نتيجة الفحص من الخادم. أعد المحاولة بعد لحظات."
-              : "Could not read precheck result. Please try again in a moment.",
+              ? `تعذّر قراءة نتيجة الفحص. الشكل المُستلم: ${JSON.stringify(raw).slice(0, 300)}`
+              : `Could not read precheck result. Received: ${JSON.stringify(raw).slice(0, 300)}`,
         });
         return;
       }
@@ -618,16 +640,24 @@ function BotAccountsPage() {
         name,
         loading: false,
         result: {
-          ok: Boolean(result.ok),
-          canContinue: Boolean(result.canContinue),
-          severity: result.severity,
-          method: result.method,
-          present: Array.isArray(result.present) ? result.present : [],
-          missing: Array.isArray(result.missing) ? result.missing : [],
-          invalid: Array.isArray(result.invalid) ? result.invalid : [],
-          totalCookies: typeof result.totalCookies === "number" ? result.totalCookies : 0,
-          message: result.message || (lang === "ar" ? "اكتمل الفحص." : "Precheck complete."),
-          debugCode: result.debugCode || "UNKNOWN",
+          ok: Boolean(dto.ok),
+          canContinue: Boolean(dto.canContinue),
+          severity: dto.severity ?? (dto.ok ? "ok" : "error"),
+          method: dto.method ?? "unknown",
+          present: Array.isArray(dto.present) ? dto.present : [],
+          missing: Array.isArray(dto.missing) ? dto.missing : [],
+          invalid: Array.isArray(dto.invalid) ? dto.invalid : [],
+          totalCookies: typeof dto.totalCookies === "number" ? dto.totalCookies : 0,
+          message:
+            dto.message ||
+            (dto.ok
+              ? lang === "ar"
+                ? "اكتمل الفحص بنجاح."
+                : "Pre-check passed."
+              : lang === "ar"
+                ? "فشل الفحص — راجع التفاصيل أدناه."
+                : "Pre-check failed — see details below."),
+          debugCode: dto.debugCode || "UNKNOWN",
         },
         error: null,
       });
