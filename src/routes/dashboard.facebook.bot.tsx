@@ -297,6 +297,23 @@ function BotAccountsPage() {
     progressDone: "Done ✓",
   };
 
+  const handleAuthExpired = () => {
+    toast.error(
+      lang === "ar" ? "انتهت جلسة الدخول" : "Your session has expired",
+      {
+        description: lang === "ar"
+          ? "سجّل الدخول مرة أخرى للمتابعة."
+          : "Please sign in again to continue.",
+      },
+    );
+    // Local session is already cleared inside useFacebookApi on auth failure;
+    // signOut() here just ensures the AuthProvider state flips immediately.
+    void signOut();
+  };
+
+  const isAuthErr = (e: unknown) =>
+    e instanceof FbCallError && e.kind === "auth";
+
   const load = async () => {
     setLoading(true);
     try {
@@ -312,7 +329,8 @@ function BotAccountsPage() {
       );
       setAccounts(sanitized);
     } catch (e) {
-      toast.error(String(e));
+      if (isAuthErr(e)) { handleAuthExpired(); return; }
+      toast.error(describeFbError(e, lang === "ar" ? "ar" : "en"));
     } finally {
       setLoading(false);
     }
@@ -343,7 +361,8 @@ function BotAccountsPage() {
       setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
       void load();
     } catch (e) {
-      toast.error(t.saveFailed, { description: String(e instanceof Error ? e.message : e) });
+      if (isAuthErr(e)) { handleAuthExpired(); return; }
+      toast.error(t.saveFailed, { description: describeFbError(e, lang === "ar" ? "ar" : "en") });
     } finally {
       setSubmitting(false);
     }
@@ -364,7 +383,8 @@ function BotAccountsPage() {
       setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
       void load();
     } catch (e) {
-      toast.error(t.saveFailed, { description: String(e instanceof Error ? e.message : e) });
+      if (isAuthErr(e)) { handleAuthExpired(); return; }
+      toast.error(t.saveFailed, { description: describeFbError(e, lang === "ar" ? "ar" : "en") });
     } finally {
       setSubmitting(false);
     }
@@ -376,7 +396,10 @@ function BotAccountsPage() {
       await call(deleteBotAccount, { id });
       toast.success(t.deleted);
       await load();
-    } catch (e) { toast.error(String(e)); }
+    } catch (e) {
+      if (isAuthErr(e)) { handleAuthExpired(); return; }
+      toast.error(describeFbError(e, lang === "ar" ? "ar" : "en"));
+    }
   };
 
   const openPrecheck = async (id: string, name: string) => {
