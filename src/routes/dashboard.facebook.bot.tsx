@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
-import { addBotAccount, listBotAccounts, deleteBotAccount, testBotAccount } from "@/lib/fb-bot.functions";
+import { addBotAccount, listBotAccounts, deleteBotAccount, testBotAccount, precheckBotAccount } from "@/lib/fb-bot.functions";
 
 export const Route = createFileRoute("/dashboard/facebook/bot")({
   beforeLoad: async () => {
