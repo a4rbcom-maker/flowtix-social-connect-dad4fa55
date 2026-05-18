@@ -490,7 +490,7 @@ function BotAccountsPage() {
                               </p>
                             </div>
                           )}
-                          {(retryCounts[a.id] ?? 0) > 0 && (
+                          {Boolean(retryCounts[a.id]) && (
                             <p className="text-[10px] text-muted-foreground">{t.attemptLabel((retryCounts[a.id] ?? 0) + 1)}</p>
                           )}
                         </div>
