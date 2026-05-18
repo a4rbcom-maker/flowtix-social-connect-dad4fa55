@@ -182,12 +182,16 @@ function BotAccountsPage() {
     setSubmitting(true);
     try {
       const row = await call(addBotAccount, { method: "cookies", displayName: form.displayName, cookies: form.cookies });
-      if (row) setAccounts((prev) => [row as Account, ...prev.filter((a) => a.id !== (row as Account).id)]);
-      toast.success(t.saved);
+      if (row) {
+        setAccounts((prev) => [row as Account, ...prev.filter((a) => a.id !== (row as Account).id)]);
+        setJustAddedId((row as Account).id);
+        setTimeout(() => setJustAddedId(null), 4000);
+      }
+      toast.success(t.saved, { description: t.savedDesc });
       setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
       void load();
     } catch (e) {
-      toast.error(String(e));
+      toast.error(t.saveFailed, { description: String(e instanceof Error ? e.message : e) });
     } finally {
       setSubmitting(false);
     }
