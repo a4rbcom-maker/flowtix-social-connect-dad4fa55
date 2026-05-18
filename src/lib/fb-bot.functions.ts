@@ -249,11 +249,11 @@ const BOT_ACCOUNT_SAFE_SELECT =
 export const listBotAccounts = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<BotAccountsListResult> => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
     try {
       const { data, error } = await supabase
         .from("fb_bot_accounts")
-        .select(BOT_ACCOUNT_SAFE_SELECT)
+        .select(`${BOT_ACCOUNT_SAFE_SELECT}, encrypted_payload`)
         .order("created_at", { ascending: false });
       if (error) {
         console.error("[listBotAccounts] db error", error);
@@ -264,7 +264,51 @@ export const listBotAccounts = createServerFn({ method: "GET" })
           debugCode: "DB_READ_FAILED",
         };
       }
-      const accounts = (data ?? []) as BotAccountRow[];
+      const accounts: BotAccountRow[] = [];
+      for (const row of (data ?? []) as Array<BotAccountRow & { encrypted_payload?: string }>) {
+        const safe: BotAccountRow = {
+          id: row.id,
+          display_name: row.display_name,
+          auth_method: row.auth_method,
+          status: row.status,
+          last_check_at: row.last_check_at,
+          last_error: row.last_error,
+          created_at: row.created_at,
+          cookie_expires_at: row.cookie_expires_at,
+        };
+        if (row.auth_method === "cookies" && row.status !== "active" && row.encrypted_payload) {
+          try {
+            const { decryptJson } = await import("@/server/crypto.server");
+            const cookies = normalizeStoredCookies(decryptJson<unknown>(row.encrypted_payload));
+            const { missingCritical, missingRecommended, invalid } = validateFacebookCookies(cookies);
+            const minExp = earliestRequiredExpiry(cookies);
+            const expiresAt = minExp !== null ? new Date(minExp * 1000).toISOString() : null;
+            const expired = minExp !== null && minExp * 1000 <= Date.now();
+            if (missingCritical.length === 0 && invalid.length === 0 && !expired) {
+              const message = missingRecommended.length
+                ? `الحساب جاهز. ينقص فقط كوكيز مستحسنة غير مانعة: ${missingRecommended.join(", ")}.`
+                : null;
+              safe.status = "active";
+              safe.last_check_at = new Date().toISOString();
+              safe.last_error = message;
+              safe.cookie_expires_at = expiresAt;
+              await supabase
+                .from("fb_bot_accounts")
+                .update({
+                  status: "active",
+                  last_check_at: safe.last_check_at,
+                  last_error: message,
+                  cookie_expires_at: expiresAt,
+                })
+                .eq("id", row.id)
+                .eq("user_id", userId);
+            }
+          } catch (e) {
+            console.warn("[listBotAccounts] auto validation skipped:", e);
+          }
+        }
+        accounts.push(safe);
+      }
       return {
         ok: true,
         accounts,
