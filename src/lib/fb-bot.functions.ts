@@ -190,19 +190,62 @@ export const addBotAccount = createServerFn({ method: "POST" })
     return row;
   });
 
+type BotAccountRow = {
+  id: string;
+  display_name: string;
+  auth_method: "cookies" | "credentials";
+  status: "untested" | "active" | "invalid" | "checkpoint" | "disabled";
+  last_check_at: string | null;
+  last_error: string | null;
+  created_at: string;
+  cookie_expires_at: string | null;
+};
+
+export type BotAccountsListResult = {
+  ok: boolean;
+  accounts: BotAccountRow[];
+  message: string;
+  debugCode: string;
+};
+
+const BOT_ACCOUNT_SAFE_SELECT =
+  "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at";
+
 // ---------- listBotAccounts ----------
 export const listBotAccounts = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }): Promise<BotAccountsListResult> => {
     const { supabase } = context;
-    const { data, error } = await supabase
-      .from("fb_bot_accounts")
-      .select(
-        "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at",
-      )
-      .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    return data ?? [];
+    try {
+      const { data, error } = await supabase
+        .from("fb_bot_accounts")
+        .select(BOT_ACCOUNT_SAFE_SELECT)
+        .order("created_at", { ascending: false });
+      if (error) {
+        console.error("[listBotAccounts] db error", error);
+        return {
+          ok: false,
+          accounts: [],
+          message: "تعذّر تحميل حسابات البوت من قاعدة البيانات. أعد المحاولة.",
+          debugCode: "DB_READ_FAILED",
+        };
+      }
+      const accounts = (data ?? []) as BotAccountRow[];
+      return {
+        ok: true,
+        accounts,
+        message: accounts.length > 0 ? "تم تحميل الحسابات." : "لا توجد حسابات محفوظة لهذا المستخدم.",
+        debugCode: accounts.length > 0 ? "OK" : "OK_EMPTY",
+      };
+    } catch (e) {
+      console.error("[listBotAccounts] unexpected error", e);
+      return {
+        ok: false,
+        accounts: [],
+        message: "حدث خطأ غير متوقع أثناء تحميل الحسابات. حدّث الصفحة وأعد المحاولة.",
+        debugCode: "LIST_EXCEPTION",
+      };
+    }
   });
 
 // ---------- deleteBotAccount ----------
@@ -682,7 +725,7 @@ export const testBotAccount = createServerFn({ method: "POST" })
         last_error: lastError,
       })
       .eq("id", data.id)
-      .select("id, display_name, auth_method, status, last_check_at, last_error, created_at")
+      .select(BOT_ACCOUNT_SAFE_SELECT)
       .single();
     if (upErr) throw new Error(upErr.message);
     return { ...updated, groups: [] as { id: string; name: string }[] };
