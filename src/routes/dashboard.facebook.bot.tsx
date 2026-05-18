@@ -52,6 +52,7 @@ function BotAccountsPage() {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"cookies" | "credentials">("cookies");
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
+  const [testingId, setTestingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
     displayName: "",
