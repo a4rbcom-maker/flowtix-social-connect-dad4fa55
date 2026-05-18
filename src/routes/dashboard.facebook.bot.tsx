@@ -111,6 +111,12 @@ function BotAccountsPage() {
     groupsTitle: "الجروبات المتاحة",
     groupsEmpty: "لم نتمكن من قراءة قائمة الجروبات تلقائيًا (قد تحتاج VPS Worker).",
     close: "إغلاق",
+    reasonLabel: "السبب",
+    untestedHint: "اضغط \"اختبر الآن\" للتحقق من صلاحية الكوكيز.",
+    checkpointHint: "فيسبوك يطلب تحقق إضافي. سجّل دخول يدويًا وأكمل التحقق ثم أعد تصدير الكوكيز.",
+    invalidHint: "الكوكيز غير صالحة أو منتهية. أعد تصديرها من المتصفح وحدّث الحساب.",
+    disabledHint: "هذا الحساب معطّل ولن يُستخدم في المهام.",
+    neverTested: "لم يُجرَ اختبار بعد",
   } : {
     title: "Facebook Bot Accounts",
     subtitle: "Link Facebook accounts for VPS Worker automation",
