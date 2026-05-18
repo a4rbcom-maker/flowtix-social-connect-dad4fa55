@@ -395,7 +395,8 @@ function BotAccountsPage() {
       }
       toast.success(t.saved, { description: t.savedDesc });
       setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
-      void load();
+      // Optimistic insert above is the source of truth; skip the refetch so
+      // a stale/timed-out list response can't blank the row.
     } catch (e) {
       if (isAuthErr(e)) { handleAuthExpired(); return; }
       toast.error(t.saveFailed, { description: describeFbError(e, lang === "ar" ? "ar" : "en") });
