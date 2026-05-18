@@ -237,14 +237,15 @@ function BotAccountsPage() {
   const handleTest = async (id: string) => {
     setTestingId(id);
     try {
-      const updated = await call(testBotAccount, { id });
+      const updated = await call(testBotAccount, { id }) as (Account & { groups?: { id: string; name: string }[] }) | null;
       if (updated) {
-        setAccounts((prev) => prev.map((a) => (a.id === id ? (updated as Account) : a)));
-        const u = updated as Account;
-        if (u.status === "active") {
-          toast.success(t.testSuccess);
+        const { groups = [], ...accountRow } = updated;
+        setAccounts((prev) => prev.map((a) => (a.id === id ? (accountRow as Account) : a)));
+        if (accountRow.status === "active") {
+          toast.success(t.testSuccess, { description: t.groupsFound(groups.length) });
+          setGroupsResult({ accountName: accountRow.display_name, groups });
         } else {
-          toast.error(t.testFailed, { description: u.last_error ?? t.statuses[normalizeStatus(u.status)] });
+          toast.error(t.testFailed, { description: accountRow.last_error ?? t.statuses[normalizeStatus(accountRow.status)] });
         }
       }
     } catch (e) {
