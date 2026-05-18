@@ -111,6 +111,12 @@ function BotAccountsPage() {
     groupsTitle: "الجروبات المتاحة",
     groupsEmpty: "لم نتمكن من قراءة قائمة الجروبات تلقائيًا (قد تحتاج VPS Worker).",
     close: "إغلاق",
+    reasonLabel: "السبب",
+    untestedHint: "اضغط \"اختبر الآن\" للتحقق من صلاحية الكوكيز.",
+    checkpointHint: "فيسبوك يطلب تحقق إضافي. سجّل دخول يدويًا وأكمل التحقق ثم أعد تصدير الكوكيز.",
+    invalidHint: "الكوكيز غير صالحة أو منتهية. أعد تصديرها من المتصفح وحدّث الحساب.",
+    disabledHint: "هذا الحساب معطّل ولن يُستخدم في المهام.",
+    neverTested: "لم يُجرَ اختبار بعد",
   } : {
     title: "Facebook Bot Accounts",
     subtitle: "Link Facebook accounts for VPS Worker automation",
@@ -159,6 +165,12 @@ function BotAccountsPage() {
     groupsTitle: "Available groups",
     groupsEmpty: "Could not auto-read the groups list (may require VPS Worker).",
     close: "Close",
+    reasonLabel: "Reason",
+    untestedHint: "Click \"Test now\" to verify the cookies are valid.",
+    checkpointHint: "Facebook is asking for an extra verification. Log in manually, complete it, then re-export cookies.",
+    invalidHint: "Cookies are invalid or expired. Re-export them from the browser and update the account.",
+    disabledHint: "This account is disabled and won't be used in jobs.",
+    neverTested: "Not tested yet",
   };
 
   const load = async () => {
@@ -391,9 +403,36 @@ function BotAccountsPage() {
                           {a.auth_method}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3">{statusBadge(a.status)}</td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {a.last_check_at ? new Date(a.last_check_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US") : "—"}
+                      <td className="px-4 py-3 align-top">
+                        <div className="space-y-1.5">
+                          {statusBadge(a.status)}
+                          {(() => {
+                            const s = normalizeStatus(a.status);
+                            const hint = s === "untested" ? t.untestedHint
+                              : s === "checkpoint" ? t.checkpointHint
+                              : s === "invalid" ? t.invalidHint
+                              : s === "disabled" ? t.disabledHint
+                              : null;
+                            if (s === "active") return null;
+                            return (
+                              <div className={`max-w-xs rounded-md border px-2 py-1.5 text-[11px] leading-relaxed ${
+                                s === "invalid" ? "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-300"
+                                : s === "checkpoint" ? "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300"
+                                : "border-border bg-muted/40 text-muted-foreground"
+                              }`}>
+                                {hint && <p>{hint}</p>}
+                                {a.last_error && (
+                                  <p className="mt-1 break-words font-mono text-[10px] opacity-90">
+                                    <span className="font-semibold">{t.reasonLabel}:</span> {a.last_error}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 align-top text-muted-foreground">
+                        {a.last_check_at ? new Date(a.last_check_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US") : <span className="italic">{t.neverTested}</span>}
                       </td>
                       <td className="px-4 py-3 text-end">
                         <div className="inline-flex items-center gap-1">
