@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Plus, Trash2, ShieldCheck, Cookie, KeyRound, AlertTriangle, Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Plus, Trash2, ShieldCheck, Cookie, KeyRound, AlertTriangle, Loader2, CheckCircle2, XCircle, Clock, Activity } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
-import { addBotAccount, listBotAccounts, deleteBotAccount } from "@/lib/fb-bot.functions";
+import { addBotAccount, listBotAccounts, deleteBotAccount, testBotAccount } from "@/lib/fb-bot.functions";
 
 export const Route = createFileRoute("/dashboard/facebook/bot")({
   beforeLoad: async () => {
@@ -52,6 +52,7 @@ function BotAccountsPage() {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"cookies" | "credentials">("cookies");
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
+  const [testingId, setTestingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
     displayName: "",
@@ -101,6 +102,10 @@ function BotAccountsPage() {
     signOutBtn: "تسجيل خروج وإعادة دخول",
     copyId: "نسخ المُعرّف",
     copied: "تم النسخ",
+    testNow: "اختبر الآن",
+    testing: "جاري الاختبار…",
+    testSuccess: "الكوكيز صالحة ✓",
+    testFailed: "الاختبار فشل",
   } : {
     title: "Facebook Bot Accounts",
     subtitle: "Link Facebook accounts for VPS Worker automation",
@@ -141,6 +146,10 @@ function BotAccountsPage() {
     signOutBtn: "Sign out & re-login",
     copyId: "Copy ID",
     copied: "Copied",
+    testNow: "Test now",
+    testing: "Testing…",
+    testSuccess: "Cookies are valid ✓",
+    testFailed: "Test failed",
   };
 
   const load = async () => {
@@ -214,6 +223,26 @@ function BotAccountsPage() {
       toast.success(t.deleted);
       await load();
     } catch (e) { toast.error(String(e)); }
+  };
+
+  const handleTest = async (id: string) => {
+    setTestingId(id);
+    try {
+      const updated = await call(testBotAccount, { id });
+      if (updated) {
+        setAccounts((prev) => prev.map((a) => (a.id === id ? (updated as Account) : a)));
+        const u = updated as Account;
+        if (u.status === "active") {
+          toast.success(t.testSuccess);
+        } else {
+          toast.error(t.testFailed, { description: u.last_error ?? t.statuses[normalizeStatus(u.status)] });
+        }
+      }
+    } catch (e) {
+      toast.error(t.testFailed, { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setTestingId(null);
+    }
   };
 
   const statusBadge = (rawStatus: Account["status"] | string | null | undefined) => {
@@ -357,9 +386,25 @@ function BotAccountsPage() {
                         {a.last_check_at ? new Date(a.last_check_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US") : "—"}
                       </td>
                       <td className="px-4 py-3 text-end">
-                        <Button size="sm" variant="ghost" onClick={() => handleDelete(a.id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        <div className="inline-flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5"
+                            disabled={testingId === a.id}
+                            onClick={() => handleTest(a.id)}
+                          >
+                            {testingId === a.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Activity className="h-3.5 w-3.5" />
+                            )}
+                            {testingId === a.id ? t.testing : t.testNow}
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleDelete(a.id)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
