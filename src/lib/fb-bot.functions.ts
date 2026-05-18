@@ -722,9 +722,14 @@ export const testBotAccount = createServerFn({ method: "POST" })
         } else {
           // Structurally valid. Mark as pending real verification by VPS Worker.
           status = "active";
+          // IMPORTANT: keep this message free of any word that could be mistaken
+          // for a Facebook checkpoint signal (e.g. "التحقق", "verification").
+          // It is stored in last_error and the UI scans last_error for
+          // checkpoint hints — false positives there used to flip the row to
+          // a misleading "Complete verification" state.
           lastError = missingRecommended.length
-            ? `الحساب جاهز. ينقص فقط كوكيز مستحسنة غير مانعة: ${missingRecommended.join(", ")}. التحقق الحي من فيسبوك يتم عبر VPS Worker.`
-            : "الحساب جاهز لإنشاء المهام. التحقق الحي من فيسبوك يتم عبر VPS Worker لأن فيسبوك يرفض طلبات السيرفر المباشرة.";
+            ? `الحساب جاهز للاستخدام. كوكيز مستحسنة ناقصة (غير مانعة): ${missingRecommended.join(", ")}.`
+            : null;
         }
       } else {
         lastError = "حسابات البريد/كلمة السر تُختبر عبر VPS Worker فقط";
