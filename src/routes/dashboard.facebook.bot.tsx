@@ -571,6 +571,17 @@ function BotAccountsPage() {
                               {t.retry}
                             </Button>
                           )}
+                          {(a.status === "invalid" || a.status === "checkpoint") && a.auth_method === "cookies" && testingId !== a.id && (
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="gap-1.5"
+                              onClick={() => setReloginFor({ id: a.id, name: a.display_name })}
+                            >
+                              <LogIn className="h-3.5 w-3.5" />
+                              {lang === "ar" ? "إعادة تسجيل الدخول" : "Re-login"}
+                            </Button>
+                          )}
                           <Button size="sm" variant="ghost" onClick={() => handleDelete(a.id)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
