@@ -304,7 +304,6 @@ export const cancelJob = createServerFn({ method: "POST" })
 // ---------- precheckBotAccount ----------
 // Returns presence of required cookies WITHOUT exposing values. Powers the
 // pre-flight check dialog before running testBotAccount.
-const REQUIRED_COOKIES = ["c_user", "xs", "fr", "datr", "sb"] as const;
 export const precheckBotAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
