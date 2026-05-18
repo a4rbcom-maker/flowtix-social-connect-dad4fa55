@@ -653,7 +653,7 @@ const looksLikeCheckpoint = (status: string | null | undefined, lastError: strin
           </span>
           <Switch
             checked={autoRetry}
-            onCheckedChange={(v) => {
+            onCheckedChange={(v: boolean) => {
               setAutoRetry(v);
               try { localStorage.setItem("fbBotAutoRetry", v ? "1" : "0"); } catch {}
             }}
