@@ -680,10 +680,15 @@ jobs:
             echo "→ PUBLIC_URL secret unset — using fallbacks: $(for u in $PUBLIC_URLS; do mask_url "$u"; done | tr '\n' ' ')"
           fi
 
+          # Cache-buster + no-cache header so Cloudflare/edge caches never
+          # serve a stale deploy-version.json that masks a real failure.
           for i in $(seq 1 24); do
             for PUBLIC_URL in $PUBLIC_URLS; do
-              VERSION_URL="${PUBLIC_URL%/}/deploy-version.json"
-              BODY=$(curl -fsS --max-time 20 "$VERSION_URL" || true)
+              VERSION_URL="${PUBLIC_URL%/}/deploy-version.json?ts=${GITHUB_RUN_ID}-${i}"
+              BODY=$(curl -fsS --max-time 20 \
+                -H "Cache-Control: no-cache" \
+                -H "Pragma: no-cache" \
+                "$VERSION_URL" || true)
               echo "$VERSION_URL"
               echo "$BODY"
               if echo "$BODY" | grep -q "$SHORT_SHA"; then
