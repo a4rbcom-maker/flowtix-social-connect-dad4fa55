@@ -345,15 +345,29 @@ function BotAccountsPage() {
       setTestProgress({ value: 100, label: t.progressDone });
       if (updated) {
         const { groups = [], ...accountRow } = updated;
-        setAccounts((prev) => prev.map((a) => (a.id === id ? (accountRow as Account) : a)));
-        if (accountRow.status === "active") {
+        // Auto-detect checkpoint hints in the error message and coerce status.
+        const detectedCheckpoint = looksLikeCheckpoint(accountRow.status, accountRow.last_error);
+        const finalAccount = (detectedCheckpoint && accountRow.status !== "active"
+          ? { ...accountRow, status: "checkpoint" }
+          : accountRow) as Account;
+        setAccounts((prev) => prev.map((a) => (a.id === id ? finalAccount : a)));
+        if (finalAccount.status === "active") {
           setRetryCounts((p) => ({ ...p, [id]: 0 }));
           toast.success(t.testSuccess, { id: toastId, description: t.groupsFound(groups.length) });
-          setGroupsResult({ accountName: accountRow.display_name, groups });
+          setGroupsResult({ accountName: finalAccount.display_name, groups });
+        } else if (detectedCheckpoint) {
+          toast.warning(lang === "ar" ? "حساب يحتاج تحقق (Checkpoint)" : "Account needs verification (Checkpoint)", {
+            id: toastId,
+            description: lang === "ar" ? "اضغط \"إكمال التحقق\" لمتابعة الخطوات" : "Click \"Complete verification\" to continue",
+            action: {
+              label: lang === "ar" ? "إكمال التحقق" : "Verify",
+              onClick: () => setCheckpointFor({ id, name: finalAccount.display_name, reason: finalAccount.last_error }),
+            },
+          });
         } else {
           toast.error(t.testFailed, {
             id: toastId,
-            description: accountRow.last_error ?? t.statuses[normalizeStatus(accountRow.status)],
+            description: finalAccount.last_error ?? t.statuses[normalizeStatus(finalAccount.status)],
             action: { label: t.retry, onClick: () => void handleTest(id, true) },
           });
         }
