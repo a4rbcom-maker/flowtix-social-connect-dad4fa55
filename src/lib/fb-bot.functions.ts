@@ -28,7 +28,13 @@ const addAccountSchema = z.union([cookiesSchema, credentialsSchema]);
 // Accepts: JSON array from extensions (EditThisCookie/Cookie-Editor), a single
 // JSON object with a `cookies` array, header-style "name=value; name2=value2",
 // or Netscape cookies.txt format. Returns a normalized array of cookie objects.
-type NormalizedCookie = { name: string; value: string; domain?: string; path?: string; expirationDate?: number };
+type NormalizedCookie = {
+  name: string;
+  value: string;
+  domain?: string;
+  path?: string;
+  expirationDate?: number;
+};
 function parseCookiesInput(raw: string): NormalizedCookie[] | null {
   const text = raw.trim();
   if (!text) return null;
@@ -37,7 +43,11 @@ function parseCookiesInput(raw: string): NormalizedCookie[] | null {
   if (text.startsWith("[") || text.startsWith("{")) {
     try {
       const j = JSON.parse(text);
-      const arr = Array.isArray(j) ? j : Array.isArray((j as any)?.cookies) ? (j as any).cookies : null;
+      const arr = Array.isArray(j)
+        ? j
+        : Array.isArray((j as any)?.cookies)
+          ? (j as any).cookies
+          : null;
       if (arr) {
         const out: NormalizedCookie[] = [];
         for (const c of arr) {
@@ -46,7 +56,8 @@ function parseCookiesInput(raw: string): NormalizedCookie[] | null {
           const value = (c.value ?? c.Value) as string | undefined;
           if (typeof name === "string" && typeof value === "string") {
             const expRaw = (c as any).expirationDate ?? (c as any).expires ?? (c as any).expiry;
-            const expirationDate = typeof expRaw === "number" && isFinite(expRaw) && expRaw > 0 ? expRaw : undefined;
+            const expirationDate =
+              typeof expRaw === "number" && isFinite(expRaw) && expRaw > 0 ? expRaw : undefined;
             out.push({ name, value, domain: c.domain, path: c.path, expirationDate });
           }
         }
@@ -89,6 +100,32 @@ function parseCookiesInput(raw: string): NormalizedCookie[] | null {
   return out.length ? out : null;
 }
 
+function normalizeStoredCookies(payload: unknown): NormalizedCookie[] {
+  const candidate = Array.isArray(payload)
+    ? payload
+    : typeof payload === "string"
+      ? payload
+      : payload && typeof payload === "object"
+        ? (payload as { cookies?: unknown }).cookies
+        : null;
+
+  if (Array.isArray(candidate)) {
+    return candidate
+      .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
+      .map((c) => ({
+        name: String(c.name ?? c.Name ?? c.key ?? ""),
+        value: String(c.value ?? c.Value ?? ""),
+        domain: typeof c.domain === "string" ? c.domain : undefined,
+        path: typeof c.path === "string" ? c.path : undefined,
+        expirationDate: typeof c.expirationDate === "number" ? c.expirationDate : undefined,
+      }))
+      .filter((c) => c.name.length > 0);
+  }
+
+  if (typeof candidate === "string") return parseCookiesInput(candidate) ?? [];
+  return [];
+}
+
 // Cookies whose expiry we track for "session about to expire" alerts.
 const REQUIRED_COOKIES = ["c_user", "xs", "fr", "datr", "sb"] as const;
 
@@ -118,7 +155,7 @@ export const addBotAccount = createServerFn({ method: "POST" })
       const parsed = parseCookiesInput(data.cookies);
       if (!parsed || parsed.length === 0) {
         throw new Error(
-          "تعذّر قراءة الكوكيز. الصق إما JSON المُصدَّر من إضافة المتصفح، أو سلسلة مثل name=value; name2=value2"
+          "تعذّر قراءة الكوكيز. الصق إما JSON المُصدَّر من إضافة المتصفح، أو سلسلة مثل name=value; name2=value2",
         );
       }
       payload = { cookies: parsed };
@@ -143,7 +180,9 @@ export const addBotAccount = createServerFn({ method: "POST" })
         status: "untested",
         cookie_expires_at: cookieExpiresAt,
       })
-      .select("id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at")
+      .select(
+        "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at",
+      )
       .single();
     if (error) throw new Error(error.message);
     return row;
@@ -156,12 +195,13 @@ export const listBotAccounts = createServerFn({ method: "GET" })
     const { supabase } = context;
     const { data, error } = await supabase
       .from("fb_bot_accounts")
-      .select("id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at")
+      .select(
+        "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at",
+      )
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return data ?? [];
   });
-
 
 // ---------- deleteBotAccount ----------
 export const deleteBotAccount = createServerFn({ method: "POST" })
@@ -234,10 +274,12 @@ export const createExtractPagesJob = createServerFn({ method: "POST" })
 export const createExtractCommentersJob = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
-    z.object({
-      accountId: z.string().uuid(),
-      postUrl: z.string().trim().url().max(500),
-    }).parse(d),
+    z
+      .object({
+        accountId: z.string().uuid(),
+        postUrl: z.string().trim().url().max(500),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
@@ -264,7 +306,9 @@ export const listJobs = createServerFn({ method: "GET" })
     const { supabase } = context;
     const { data, error } = await supabase
       .from("fb_jobs")
-      .select("id, job_type, status, progress, total_items, processed_items, created_at, completed_at, error_message, account_id")
+      .select(
+        "id, job_type, status, progress, total_items, processed_items, created_at, completed_at, error_message, account_id",
+      )
       .order("created_at", { ascending: false })
       .limit(100);
     if (error) throw new Error(error.message);
@@ -337,8 +381,8 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
     }
 
     const { decryptJson } = await import("@/server/crypto.server");
-    const payload = decryptJson<{ cookies: { name: string; value: string; expirationDate?: number }[] }>(acc.encrypted_payload);
-    const cookies = payload.cookies ?? [];
+    const payload = decryptJson<unknown>(acc.encrypted_payload);
+    const cookies = normalizeStoredCookies(payload);
     const byName = new Map(cookies.map((c) => [c.name, c.value]));
 
     const present: string[] = [];
@@ -375,7 +419,10 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
     const expired = minExp !== null && minExp * 1000 <= now;
 
     if (expired) {
-      invalid.push({ name: "expiry", reason: "انتهت صلاحية الجلسة — صدِّر كوكيز جديدة من Cookie-Editor" });
+      invalid.push({
+        name: "expiry",
+        reason: "انتهت صلاحية الجلسة — صدِّر كوكيز جديدة من Cookie-Editor",
+      });
     }
 
     const ok = missing.length === 0 && invalid.length === 0;
@@ -394,13 +441,12 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
           ? `الكوكيز سليمة، لكن الجلسة تنتهي خلال ${expiresInDays} يوم — جدِّدها قريبًا.`
           : "الكوكيز المطلوبة كلها موجودة وصيغتها سليمة."
         : expired
-        ? "انتهت صلاحية جلسة فيسبوك — أعد تصدير الكوكيز."
-        : missing.length > 0
-        ? `كوكيز ناقصة: ${missing.join(", ")}`
-        : `كوكيز فيها مشاكل في الصيغة: ${invalid.map((i) => i.name).join(", ")}`,
+          ? "انتهت صلاحية جلسة فيسبوك — أعد تصدير الكوكيز."
+          : missing.length > 0
+            ? `كوكيز ناقصة: ${missing.join(", ")}`
+            : `كوكيز فيها مشاكل في الصيغة: ${invalid.map((i) => i.name).join(", ")}`,
     };
   });
-
 
 // ---------- testBotAccount ----------
 // IMPORTANT: Facebook blocks server-to-server requests coming from datacenter
@@ -427,8 +473,8 @@ export const testBotAccount = createServerFn({ method: "POST" })
     try {
       if (acc.auth_method === "cookies") {
         const { decryptJson } = await import("@/server/crypto.server");
-        const payload = decryptJson<{ cookies: { name: string; value: string }[] }>(acc.encrypted_payload);
-        const cookies = payload.cookies ?? [];
+        const payload = decryptJson<unknown>(acc.encrypted_payload);
+        const cookies = normalizeStoredCookies(payload);
         const byName = new Map(cookies.map((c) => [c.name, c.value]));
         const cUser = byName.get("c_user");
         const xs = byName.get("xs");
