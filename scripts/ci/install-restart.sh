@@ -30,7 +30,7 @@ diagnose_snapshot() {
     echo "      ✗ directory missing" >&2
     return
   fi
-  for f in dist/server/server.js scripts/tanstack-node-server.mjs ecosystem.config.cjs; do
+  for f in dist/server/index.js scripts/tanstack-node-server.mjs ecosystem.config.cjs; do
     if [ -f "$candidate/$f" ]; then echo "      ✓ $f" >&2
     else echo "      ✗ $f (missing)" >&2; fi
   done
@@ -44,7 +44,7 @@ is_valid_ssr_snapshot() {
   local candidate="$1"
   [ -n "$candidate" ] \
     && [ -d "$candidate" ] \
-    && [ -f "$candidate/dist/server/server.js" ] \
+    && [ -f "$candidate/dist/server/index.js" ] \
     && [ -f "$candidate/scripts/tanstack-node-server.mjs" ] \
     && [ -f "$candidate/ecosystem.config.cjs" ] \
     && [ -d "$candidate/node_modules" ]
@@ -61,7 +61,7 @@ is_runnable_prev_snapshot() {
   local candidate="$1"
   [ -n "$candidate" ] \
     && [ -d "$candidate" ] \
-    && [ -f "$candidate/dist/server/server.js" ] \
+    && [ -f "$candidate/dist/server/index.js" ] \
     && [ -f "$candidate/ecosystem.config.cjs" ] \
     && [ -d "$candidate/node_modules" ]
 }
@@ -80,7 +80,7 @@ verdict_snapshot() {
     return 1
   fi
   local missing=""
-  [ -f "$path/dist/server/server.js" ]            || missing="${missing}dist/server/server.js "
+  [ -f "$path/dist/server/index.js" ]            || missing="${missing}dist/server/index.js "
   [ -f "$path/ecosystem.config.cjs" ]             || missing="${missing}ecosystem.config.cjs "
   [ -d "$path/node_modules" ]                     || missing="${missing}node_modules/ "
   if [ "$mode" = "strict" ]; then
