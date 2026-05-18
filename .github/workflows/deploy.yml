@@ -815,6 +815,44 @@ jobs:
           fi
           echo "✅ Smoke test passed — homepage, health, and version all green"
 
+      - name: Smoke test — dashboard routes must not 5xx
+        env:
+          PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
+        run: |
+          set -euo pipefail
+          # Dashboard routes are user-scoped (ssr: false) — they should return
+          # an HTML shell (200) or a redirect to /login (3xx). They must NEVER
+          # return 5xx. This catches origin SSR regressions like the previous
+          # 502 on /dashboard/facebook/bot before users hit them.
+          BASE_URL="${PUBLIC_URL_SECRET:-https://www.flowtixtools.com}"
+          BASE_URL="${BASE_URL%/}"
+          ROUTES=(
+            "/dashboard"
+            "/dashboard/facebook"
+            "/dashboard/facebook/bot"
+            "/dashboard/facebook/groups"
+            "/dashboard/whatsapp"
+            "/dashboard/profile"
+          )
+          FAILED=0
+          for path in "${ROUTES[@]}"; do
+            CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
+              --max-time 20 --retry 2 --retry-delay 3 \
+              -H "User-Agent: flowtix-smoke-test" \
+              -H "Cache-Control: no-cache" \
+              "${BASE_URL}${path}?ts=${GITHUB_RUN_ID}" || echo "000")
+            echo "   ${BASE_URL}${path} -> ${CODE}"
+            case "$CODE" in
+              2*|3*) : ;;
+              *) echo "::error::Dashboard route ${path} returned HTTP ${CODE} (expected 2xx/3xx)"; FAILED=$((FAILED+1)) ;;
+            esac
+          done
+          if [ "$FAILED" -gt 0 ]; then
+            echo "::error::${FAILED} dashboard route(s) returned 5xx — origin SSR is unhealthy"
+            exit 1
+          fi
+          echo "✅ All dashboard routes return non-5xx"
+
       - name: Record LAST_GOOD snapshot
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
