@@ -136,6 +136,11 @@ function BotAccountsPage() {
     saveFailed: "Failed to link account",
     statuses: { untested: "Untested", active: "Active ✓", invalid: "Failed — invalid cookies", checkpoint: "Verify needed", disabled: "Disabled" } satisfies Record<BotAccountStatus, string>,
     backToFb: "→ Go to bot jobs",
+    sessionTitle: "You are signed in as",
+    sessionHint: "Linked accounts only appear if they belong to the same user_id below. If you linked from a different session, sign out and sign back in with the same email.",
+    signOutBtn: "Sign out & re-login",
+    copyId: "Copy ID",
+    copied: "Copied",
   };
 
   const load = async () => {
