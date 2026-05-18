@@ -1614,17 +1614,22 @@ function BotAccountsPage() {
                           const invalid = precheck.result!.invalid.find((i) => i.name === name);
                           const ok = !isMissing && !invalid;
                           const isRecommended = name === "sb";
+                          const softMissing = isMissing && isRecommended;
                           return (
                             <div
                               key={name}
                               className={`flex items-center gap-1.5 rounded border px-2 py-1.5 font-mono text-xs ${
                                 ok
                                   ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300"
+                                  : softMissing
+                                    ? "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300"
                                   : "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-300"
                               }`}
                             >
                               {ok ? (
                                 <CheckCircle2 className="h-3.5 w-3.5" />
+                              ) : softMissing ? (
+                                <AlertTriangle className="h-3.5 w-3.5" />
                               ) : (
                                 <XCircle className="h-3.5 w-3.5" />
                               )}
