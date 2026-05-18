@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import type { Tables } from "@/integrations/supabase/types";
 
 export const Route = createFileRoute("/dashboard/bulk")({
+  ssr: false,
   component: BulkSendPage,
 });
 

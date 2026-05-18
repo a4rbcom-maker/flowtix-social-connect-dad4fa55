@@ -25,6 +25,7 @@ import { fetchFacebookGroups, getFacebookConnection } from "@/lib/facebook.funct
 import type { Tables } from "@/integrations/supabase/types";
 
 export const Route = createFileRoute("/dashboard/control")({
+  ssr: false,
   component: ControlPanel,
 });
 

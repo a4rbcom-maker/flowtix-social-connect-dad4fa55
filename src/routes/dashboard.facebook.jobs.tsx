@@ -16,6 +16,7 @@ import { useFacebookApi } from "@/features/facebook/api";
 import { listBotAccounts, createPostJob, createExtractPagesJob, createExtractCommentersJob } from "@/lib/fb-bot.functions";
 
 export const Route = createFileRoute("/dashboard/facebook/jobs")({
+  ssr: false,
   beforeLoad: async () => {
     if (typeof window === "undefined") return;
     const { supabase } = await import("@/integrations/supabase/client");

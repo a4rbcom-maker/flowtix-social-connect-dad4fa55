@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Plus, Trash2, ShieldCheck, ShieldAlert, Cookie, KeyRound, AlertTriangle, Loader2, CheckCircle2, XCircle, Clock, Activity, RotateCw, ExternalLink, LogIn, CalendarClock, Lock } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
@@ -18,13 +18,45 @@ import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
 import { addBotAccount, listBotAccounts, deleteBotAccount, testBotAccount, precheckBotAccount } from "@/lib/fb-bot.functions";
 
+// Per-route fallback: surfaces a friendly Arabic card instead of letting any
+// runtime error bubble to the root and crash the SSR boundary (502 on origin).
+function BotErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+  const router = useRouter();
+  console.error("[/dashboard/facebook/bot]", error);
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4" dir="rtl">
+      <div className="max-w-md text-center">
+        <h1 className="text-2xl font-bold text-foreground">تعذّر تحميل صفحة البوت</h1>
+        <p className="mt-3 text-sm text-muted-foreground">
+          حصل خطأ مؤقت أثناء تحميل حسابات البوت. جرّب إعادة المحاولة، أو ارجع للوحة التحكم.
+        </p>
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => { router.invalidate(); reset(); }}
+            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            إعادة المحاولة
+          </button>
+          <Link
+            to="/dashboard"
+            className="inline-flex items-center justify-center rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            لوحة التحكم
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export const Route = createFileRoute("/dashboard/facebook/bot")({
-  beforeLoad: async () => {
-    if (typeof window === "undefined") return;
-    const { supabase } = await import("@/integrations/supabase/client");
-    await supabase.auth.getSession();
-  },
+  // Dashboard pages are user-scoped, not SEO-relevant; rendering them on the
+  // server is what triggered the origin 502 on www.flowtixtools.com. Render
+  // entirely on the client so any per-user code path runs after hydration.
+  ssr: false,
   component: BotAccountsPage,
+  errorComponent: BotErrorComponent,
 });
 
 type Account = {
