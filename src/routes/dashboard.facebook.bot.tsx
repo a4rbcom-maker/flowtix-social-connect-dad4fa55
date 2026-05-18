@@ -102,6 +102,10 @@ function BotAccountsPage() {
     signOutBtn: "تسجيل خروج وإعادة دخول",
     copyId: "نسخ المُعرّف",
     copied: "تم النسخ",
+    testNow: "اختبر الآن",
+    testing: "جاري الاختبار…",
+    testSuccess: "الكوكيز صالحة ✓",
+    testFailed: "الاختبار فشل",
   } : {
     title: "Facebook Bot Accounts",
     subtitle: "Link Facebook accounts for VPS Worker automation",
