@@ -347,35 +347,75 @@ function BotAccountsPage() {
     }
   };
 
+  // Append an event to the per-account timeline (capped at last 30 events).
+  const pushEvent = (id: string, ev: Omit<TestEvent, "at">) => {
+    setTestLogs((prev) => {
+      const next = [...(prev[id] ?? []), { ...ev, at: Date.now() }];
+      return { ...prev, [id]: next.slice(-30) };
+    });
+  };
+
+  const updateLastEvent = (id: string, patch: Partial<TestEvent>) => {
+    setTestLogs((prev) => {
+      const list = prev[id] ?? [];
+      if (list.length === 0) return prev;
+      const copy = [...list];
+      copy[copy.length - 1] = { ...copy[copy.length - 1], ...patch };
+      return { ...prev, [id]: copy };
+    });
+  };
+
   const handleTest = async (id: string, isRetry = false) => {
     setTestingId(id);
     const attempt = (retryCounts[id] ?? 0) + (isRetry ? 1 : 0);
     if (isRetry) setRetryCounts((p) => ({ ...p, [id]: attempt }));
+    if (!isRetry) setTestLogs((p) => ({ ...p, [id]: [] }));
 
-
+    if (isRetry) {
+      pushEvent(id, { key: "retry", state: "info", detail: t.attemptLabel(attempt + 1) });
+    }
+    pushEvent(id, { key: "init", state: "running" });
     setTestProgress({ value: 10, label: t.progressInit });
     const toastId = toast.loading(t.testing, { description: t.progressInit });
 
-    // Animated progress while the request is in-flight
-    const steps: Array<{ value: number; label: string; delay: number }> = [
-      { value: 30, label: t.progressDecrypt, delay: 250 },
-      { value: 60, label: t.progressFetch, delay: 700 },
-      { value: 85, label: t.progressGroups, delay: 1600 },
+    // Animated progress + event timeline while the request is in-flight.
+    const steps: Array<{ value: number; label: string; delay: number; key: TestEvent["key"] }> = [
+      { value: 30, label: t.progressDecrypt, delay: 250, key: "decrypt" },
+      { value: 60, label: t.progressFetch, delay: 700, key: "fetch" },
+      { value: 85, label: t.progressGroups, delay: 1600, key: "groups" },
     ];
     const timers = steps.map((s) =>
       setTimeout(() => {
+        // Mark previous step ok, start the next one.
+        updateLastEvent(id, { state: "ok" });
+        pushEvent(id, { key: s.key, state: "running" });
         setTestProgress({ value: s.value, label: s.label });
         toast.loading(t.testing, { id: toastId, description: s.label });
       }, s.delay),
     );
 
+    const scheduleAutoRetry = (reason: string) => {
+      if (!autoRetry) return false;
+      if (attempt + 1 >= MAX_AUTO_RETRIES) return false;
+      const wait = RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)];
+      pushEvent(id, {
+        key: "retry",
+        state: "info",
+        detail: lang === "ar"
+          ? `إعادة محاولة تلقائية خلال ${Math.round(wait / 1000)} ث — ${reason}`
+          : `Auto-retry in ${Math.round(wait / 1000)}s — ${reason}`,
+      });
+      setTimeout(() => void handleTest(id, true), wait);
+      return true;
+    };
+
     try {
       const updated = await call(testBotAccount, { id }) as (Account & { groups?: { id: string; name: string }[] }) | null;
       timers.forEach(clearTimeout);
+      updateLastEvent(id, { state: "ok" });
       setTestProgress({ value: 100, label: t.progressDone });
       if (updated) {
         const { groups = [], ...accountRow } = updated;
-        // Auto-detect checkpoint hints in the error message and coerce status.
         const detectedCheckpoint = looksLikeCheckpoint(accountRow.status, accountRow.last_error);
         const finalAccount = (detectedCheckpoint && accountRow.status !== "active"
           ? { ...accountRow, status: "checkpoint" }
@@ -383,9 +423,11 @@ function BotAccountsPage() {
         setAccounts((prev) => prev.map((a) => (a.id === id ? finalAccount : a)));
         if (finalAccount.status === "active") {
           setRetryCounts((p) => ({ ...p, [id]: 0 }));
+          pushEvent(id, { key: "done", state: "ok", detail: t.groupsFound(groups.length) });
           toast.success(t.testSuccess, { id: toastId, description: t.groupsFound(groups.length) });
           setGroupsResult({ accountName: finalAccount.display_name, groups });
         } else if (detectedCheckpoint) {
+          pushEvent(id, { key: "error", state: "fail", detail: finalAccount.last_error ?? "checkpoint" });
           toast.warning(lang === "ar" ? "حساب يحتاج تحقق (Checkpoint)" : "Account needs verification (Checkpoint)", {
             id: toastId,
             description: lang === "ar" ? "اضغط \"إكمال التحقق\" لمتابعة الخطوات" : "Click \"Complete verification\" to continue",
@@ -394,20 +436,31 @@ function BotAccountsPage() {
               onClick: () => setCheckpointFor({ id, name: finalAccount.display_name, reason: finalAccount.last_error }),
             },
           });
+          // Don't auto-retry checkpoints — user action is required.
         } else {
+          const reason = finalAccount.last_error ?? t.statuses[normalizeStatus(finalAccount.status)];
+          pushEvent(id, { key: "error", state: "fail", detail: reason });
+          const willRetry = scheduleAutoRetry(reason);
           toast.error(t.testFailed, {
             id: toastId,
-            description: finalAccount.last_error ?? t.statuses[normalizeStatus(finalAccount.status)],
-            action: { label: t.retry, onClick: () => void handleTest(id, true) },
+            description: willRetry
+              ? (lang === "ar" ? `${reason} — جاري إعادة المحاولة…` : `${reason} — retrying…`)
+              : reason,
+            action: willRetry ? undefined : { label: t.retry, onClick: () => void handleTest(id, true) },
           });
         }
       }
     } catch (e) {
       timers.forEach(clearTimeout);
+      const reason = e instanceof Error ? e.message : String(e);
+      pushEvent(id, { key: "error", state: "fail", detail: reason });
+      const willRetry = scheduleAutoRetry(reason);
       toast.error(t.testFailed, {
         id: toastId,
-        description: e instanceof Error ? e.message : String(e),
-        action: { label: t.retry, onClick: () => void handleTest(id, true) },
+        description: willRetry
+          ? (lang === "ar" ? `${reason} — جاري إعادة المحاولة…` : `${reason} — retrying…`)
+          : reason,
+        action: willRetry ? undefined : { label: t.retry, onClick: () => void handleTest(id, true) },
       });
     } finally {
       setTestingId(null);
