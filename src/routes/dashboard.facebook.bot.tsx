@@ -51,6 +51,7 @@ function BotAccountsPage() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"cookies" | "credentials">("cookies");
+  const [justAddedId, setJustAddedId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
     displayName: "",
@@ -90,8 +91,10 @@ function BotAccountsPage() {
     twoFa: "مفتاح 2FA (اختياري)",
     save: "حفظ",
     cancel: "إلغاء",
-    saved: "تم الحفظ",
-    statuses: { untested: "لم يُختبر", active: "نشط", invalid: "غير صالح", checkpoint: "تحقق مطلوب", disabled: "معطّل" } satisfies Record<BotAccountStatus, string>,
+    saved: "تم ربط الحساب بنجاح",
+    savedDesc: "تمت إضافة الحساب للقائمة. الحالة الحالية: \"لم يُختبر\" — اضغط تحديث لاحقًا للتحقق من صلاحية الكوكيز.",
+    saveFailed: "فشل ربط الحساب",
+    statuses: { untested: "لم يُختبر", active: "نشط ✓", invalid: "فشل — كوكيز غير صالحة", checkpoint: "تحقق مطلوب", disabled: "معطّل" } satisfies Record<BotAccountStatus, string>,
     backToFb: "→ الذهاب لمهام البوت",
   } : {
     title: "Facebook Bot Accounts",
@@ -123,8 +126,10 @@ function BotAccountsPage() {
     twoFa: "2FA secret (optional)",
     save: "Save",
     cancel: "Cancel",
-    saved: "Saved",
-    statuses: { untested: "Untested", active: "Active", invalid: "Invalid", checkpoint: "Verify needed", disabled: "Disabled" } satisfies Record<BotAccountStatus, string>,
+    saved: "Account linked successfully",
+    savedDesc: "The account was added. Current status: \"Untested\" — refresh later to verify the cookies are valid.",
+    saveFailed: "Failed to link account",
+    statuses: { untested: "Untested", active: "Active ✓", invalid: "Failed — invalid cookies", checkpoint: "Verify needed", disabled: "Disabled" } satisfies Record<BotAccountStatus, string>,
     backToFb: "→ Go to bot jobs",
   };
 
@@ -155,13 +160,17 @@ function BotAccountsPage() {
             password: form.password,
             twoFactorSecret: form.twoFactorSecret || null,
           });
-      if (row) setAccounts((prev) => [row as Account, ...prev.filter((a) => a.id !== (row as Account).id)]);
-      toast.success(t.saved);
+      if (row) {
+        setAccounts((prev) => [row as Account, ...prev.filter((a) => a.id !== (row as Account).id)]);
+        setJustAddedId((row as Account).id);
+        setTimeout(() => setJustAddedId(null), 4000);
+      }
+      toast.success(t.saved, { description: t.savedDesc });
       setOpen(false);
       setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
       void load();
     } catch (e) {
-      toast.error(String(e));
+      toast.error(t.saveFailed, { description: String(e instanceof Error ? e.message : e) });
     } finally {
       setSubmitting(false);
     }
@@ -173,12 +182,16 @@ function BotAccountsPage() {
     setSubmitting(true);
     try {
       const row = await call(addBotAccount, { method: "cookies", displayName: form.displayName, cookies: form.cookies });
-      if (row) setAccounts((prev) => [row as Account, ...prev.filter((a) => a.id !== (row as Account).id)]);
-      toast.success(t.saved);
+      if (row) {
+        setAccounts((prev) => [row as Account, ...prev.filter((a) => a.id !== (row as Account).id)]);
+        setJustAddedId((row as Account).id);
+        setTimeout(() => setJustAddedId(null), 4000);
+      }
+      toast.success(t.saved, { description: t.savedDesc });
       setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
       void load();
     } catch (e) {
-      toast.error(String(e));
+      toast.error(t.saveFailed, { description: String(e instanceof Error ? e.message : e) });
     } finally {
       setSubmitting(false);
     }
@@ -291,7 +304,7 @@ function BotAccountsPage() {
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {accounts.map((a) => (
-                    <tr key={a.id} className="hover:bg-muted/30">
+                    <tr key={a.id} className={`transition-colors hover:bg-muted/30 ${justAddedId === a.id ? "bg-primary/10 animate-pulse" : ""}`}>
                       <td className="px-4 py-3 font-medium">{a.display_name}</td>
                       <td className="px-4 py-3">
                         <Badge variant="outline" className="gap-1">
