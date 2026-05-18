@@ -305,6 +305,16 @@ function BotAccountsPage() {
     } catch (e) { toast.error(String(e)); }
   };
 
+  const openPrecheck = async (id: string, name: string) => {
+    setPrecheck({ id, name, loading: true, result: null, error: null });
+    try {
+      const result = await call(precheckBotAccount, { id });
+      setPrecheck({ id, name, loading: false, result: result as any, error: null });
+    } catch (e) {
+      setPrecheck({ id, name, loading: false, result: null, error: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
   const handleTest = async (id: string, isRetry = false) => {
     setTestingId(id);
     const attempt = (retryCounts[id] ?? 0) + (isRetry ? 1 : 0);
