@@ -582,7 +582,7 @@ function BotAccountsPage() {
     setPrecheck({ id, name, loading: true, result: null, error: null });
     try {
       const raw = await call(precheckBotAccount, { id });
-      const result = unwrapServerPayload(raw) as PrecheckResult | null;
+      const result = unwrapServerPayload(raw) as NonNullable<typeof precheck>["result"];
       if (!result || typeof result !== "object" || typeof (result as { ok?: unknown }).ok !== "boolean") {
         throw new Error(
           lang === "ar"
