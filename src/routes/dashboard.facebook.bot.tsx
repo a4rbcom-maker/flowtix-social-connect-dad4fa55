@@ -550,7 +550,7 @@ function BotAccountsPage() {
                             variant="outline"
                             className="gap-1.5"
                             disabled={testingId === a.id}
-                            onClick={() => handleTest(a.id)}
+                            onClick={() => openPrecheck(a.id, a.display_name)}
                           >
                             {testingId === a.id ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
