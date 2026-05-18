@@ -528,6 +528,53 @@ const looksLikeCheckpoint = (status: string | null | undefined, lastError: strin
           </div>
         </Card>
 
+        {(() => {
+          const expiring = accounts
+            .map((a) => ({ a, e: classifyExpiry(a.cookie_expires_at) }))
+            .filter((x) => x.e && x.e.state !== "ok") as { a: Account; e: { state: "expired" | "soon"; days: number } }[];
+          if (expiring.length === 0) return null;
+          const expiredCount = expiring.filter((x) => x.e.state === "expired").length;
+          const soonCount = expiring.length - expiredCount;
+          const tone = expiredCount > 0
+            ? "border-red-500/40 bg-red-50/70 dark:bg-red-500/5 text-red-900 dark:text-red-200"
+            : "border-amber-500/40 bg-amber-50/70 dark:bg-amber-500/5 text-amber-900 dark:text-amber-200";
+          return (
+            <Card className={`${tone} p-4`}>
+              <div className="flex items-start gap-3">
+                <CalendarClock className="h-5 w-5 shrink-0 mt-0.5" />
+                <div className="text-sm leading-relaxed flex-1">
+                  <p className="font-semibold">
+                    {lang === "ar"
+                      ? expiredCount > 0
+                        ? `${expiredCount} حساب انتهت صلاحية جلسته${soonCount > 0 ? ` و${soonCount} على وشك الانتهاء` : ""}`
+                        : `${soonCount} حساب جلسته على وشك الانتهاء`
+                      : expiredCount > 0
+                        ? `${expiredCount} account${expiredCount > 1 ? "s" : ""} expired${soonCount > 0 ? `, ${soonCount} expiring soon` : ""}`
+                        : `${soonCount} account${soonCount > 1 ? "s" : ""} expiring soon`}
+                  </p>
+                  <ul className="mt-2 space-y-1 text-xs opacity-90">
+                    {expiring.map(({ a, e }) => (
+                      <li key={a.id} className="flex items-center justify-between gap-3">
+                        <span className="font-medium">{a.display_name}</span>
+                        <span className="font-mono">
+                          {e.state === "expired"
+                            ? (lang === "ar" ? `منتهية منذ ${Math.abs(e.days)} يوم` : `expired ${Math.abs(e.days)}d ago`)
+                            : (lang === "ar" ? `تبقّى ${e.days} يوم` : `${e.days}d left`)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-xs opacity-80">
+                    {lang === "ar"
+                      ? "أعد تصدير الكوكيز من إضافة Cookie-Editor واضغط «إعادة تسجيل الدخول» للحساب المتأثر."
+                      : "Re-export cookies from Cookie-Editor and click 'Re-login' on the affected account."}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          );
+        })()}
+
         <Card className="overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center p-12">
