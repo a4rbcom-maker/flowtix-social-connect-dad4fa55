@@ -53,6 +53,7 @@ function BotAccountsPage() {
   const [tab, setTab] = useState<"cookies" | "credentials">("cookies");
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [groupsResult, setGroupsResult] = useState<{ accountName: string; groups: { id: string; name: string }[] } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
     displayName: "",
@@ -106,6 +107,10 @@ function BotAccountsPage() {
     testing: "جاري الاختبار…",
     testSuccess: "الكوكيز صالحة ✓",
     testFailed: "الاختبار فشل",
+    groupsFound: (n: number) => `تم العثور على ${n} جروب`,
+    groupsTitle: "الجروبات المتاحة",
+    groupsEmpty: "لم نتمكن من قراءة قائمة الجروبات تلقائيًا (قد تحتاج VPS Worker).",
+    close: "إغلاق",
   } : {
     title: "Facebook Bot Accounts",
     subtitle: "Link Facebook accounts for VPS Worker automation",
@@ -150,6 +155,10 @@ function BotAccountsPage() {
     testing: "Testing…",
     testSuccess: "Cookies are valid ✓",
     testFailed: "Test failed",
+    groupsFound: (n: number) => `Found ${n} groups`,
+    groupsTitle: "Available groups",
+    groupsEmpty: "Could not auto-read the groups list (may require VPS Worker).",
+    close: "Close",
   };
 
   const load = async () => {
@@ -228,14 +237,15 @@ function BotAccountsPage() {
   const handleTest = async (id: string) => {
     setTestingId(id);
     try {
-      const updated = await call(testBotAccount, { id });
+      const updated = await call(testBotAccount, { id }) as (Account & { groups?: { id: string; name: string }[] }) | null;
       if (updated) {
-        setAccounts((prev) => prev.map((a) => (a.id === id ? (updated as Account) : a)));
-        const u = updated as Account;
-        if (u.status === "active") {
-          toast.success(t.testSuccess);
+        const { groups = [], ...accountRow } = updated;
+        setAccounts((prev) => prev.map((a) => (a.id === id ? (accountRow as Account) : a)));
+        if (accountRow.status === "active") {
+          toast.success(t.testSuccess, { description: t.groupsFound(groups.length) });
+          setGroupsResult({ accountName: accountRow.display_name, groups });
         } else {
-          toast.error(t.testFailed, { description: u.last_error ?? t.statuses[normalizeStatus(u.status)] });
+          toast.error(t.testFailed, { description: accountRow.last_error ?? t.statuses[normalizeStatus(accountRow.status)] });
         }
       }
     } catch (e) {
@@ -469,6 +479,43 @@ function BotAccountsPage() {
               {submitting && <Loader2 className="me-2 h-4 w-4 animate-spin" />}
               {t.save}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!groupsResult} onOpenChange={(o) => !o && setGroupsResult(null)}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-green-600" />
+              {t.groupsTitle} — {groupsResult?.accountName}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[420px] overflow-y-auto">
+            {!groupsResult || groupsResult.groups.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">{t.groupsEmpty}</p>
+            ) : (
+              <ul className="divide-y divide-border/50">
+                {groupsResult.groups.map((g) => (
+                  <li key={g.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <a
+                      href={`https://facebook.com/groups/${g.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="truncate text-sm font-medium text-foreground hover:text-primary hover:underline"
+                    >
+                      {g.name}
+                    </a>
+                    <code className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                      {g.id}
+                    </code>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGroupsResult(null)}>{t.close}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
