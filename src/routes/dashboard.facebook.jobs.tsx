@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { Loader2, Send, Eye, AlertCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -12,7 +13,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { useFacebookApi } from "@/features/facebook/api";
 import { listBotAccounts, createPostJob, createExtractPagesJob, createExtractCommentersJob } from "@/lib/fb-bot.functions";
 
 export const Route = createFileRoute("/dashboard/facebook/jobs")({
@@ -30,7 +30,10 @@ type Account = { id: string; display_name: string; status: string };
 function JobsHubPage() {
   const { user } = useAuth();
   const { lang } = useI18n();
-  const { call } = useFacebookApi();
+  const listAccountsFn = useServerFn(listBotAccounts);
+  const createPostJobFn = useServerFn(createPostJob);
+  const createExtractPagesJobFn = useServerFn(createExtractPagesJob);
+  const createExtractCommentersJobFn = useServerFn(createExtractCommentersJob);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountId, setAccountId] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -94,11 +97,13 @@ function JobsHubPage() {
     if (!user) return;
     (async () => {
       try {
-        const raw = await call(listBotAccounts);
+        const raw = await listAccountsFn();
         const data: Account[] = Array.isArray(raw)
           ? (raw as Account[])
-          : Array.isArray((raw as { data?: unknown })?.data)
-            ? ((raw as { data: Account[] }).data)
+          : Array.isArray((raw as { accounts?: unknown })?.accounts)
+            ? ((raw as { accounts: Account[] }).accounts)
+            : Array.isArray((raw as { data?: unknown })?.data)
+              ? ((raw as unknown as { data: Account[] }).data)
             : [];
         setAccounts(data);
         if (data.length > 0) setAccountId(data[0].id);
@@ -113,13 +118,13 @@ function JobsHubPage() {
     if (ids.length === 0) { toast.error(t.groupIds); return; }
     setBusy(true);
     try {
-      await call(createPostJob, {
+      await createPostJobFn({ data: {
         accountId,
         content,
         groupIds: ids,
         intervalMinutes,
         scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
-      });
+      } });
       toast.success(t.created);
       setContent(""); setGroupIds(""); setScheduledAt("");
     } catch (e) { toast.error(String(e)); } finally { setBusy(false); }
@@ -129,7 +134,7 @@ function JobsHubPage() {
     if (!accountId) return;
     setBusy(true);
     try {
-      await call(createExtractPagesJob, { accountId });
+      await createExtractPagesJobFn({ data: { accountId } });
       toast.success(t.created);
     } catch (e) { toast.error(String(e)); } finally { setBusy(false); }
   };
@@ -138,7 +143,7 @@ function JobsHubPage() {
     if (!accountId || !postUrl) return;
     setBusy(true);
     try {
-      await call(createExtractCommentersJob, { accountId, postUrl });
+      await createExtractCommentersJobFn({ data: { accountId, postUrl } });
       toast.success(t.created);
       setPostUrl("");
     } catch (e) { toast.error(String(e)); } finally { setBusy(false); }
