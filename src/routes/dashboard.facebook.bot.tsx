@@ -40,8 +40,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
-import { useFacebookApi, describeFbError, FbCallError } from "@/features/facebook/api";
 import {
   addBotAccount,
   listBotAccounts,
@@ -110,6 +108,7 @@ type BotAccountStatus = "untested" | "active" | "invalid" | "checkpoint" | "disa
 const BOT_ACCOUNT_SELECT =
   "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at";
 const LEGACY_ERROR = /صفحة \/me|login page|\/me أعادت/i;
+const AUTH_ERROR_RE = /unauthorized|401|session|auth_required|auth_invalid|invalid token/i;
 
 // One row in the per-account test timeline. `key` matches a step in TEST_STEPS
 // so labels can be localized; `state` drives the icon (spinner/check/x).
@@ -161,6 +160,24 @@ const normalizeAccountPayload = (raw: unknown): Account | null => {
   return payload && typeof payload === "object" && typeof (payload as Account).id === "string"
     ? (payload as Account)
     : null;
+};
+
+const describeServerActionError = (err: unknown, lang: "ar" | "en") => {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  if (AUTH_ERROR_RE.test(message)) {
+    return lang === "ar" ? "انتهت جلسة الدخول. سجّل الدخول مرة أخرى." : "Session expired. Please sign in again.";
+  }
+  if (/timeout|aborted/i.test(message)) {
+    return lang === "ar" ? "استغرقت العملية وقتًا طويلًا. حاول مرة أخرى." : "The request took too long. Please try again.";
+  }
+  if (/fetch|network|failed to fetch/i.test(message)) {
+    return lang === "ar" ? "تعذّر الاتصال بالخادم. تحقّق من الإنترنت." : "Couldn't reach the server. Check your internet.";
+  }
+  return message && message !== "[object Object]"
+    ? message
+    : lang === "ar"
+      ? "حدث خطأ غير متوقع. حدّث الصفحة وأعد المحاولة."
+      : "Something went wrong. Refresh and try again.";
 };
 
 const sanitizeAccounts = (list: Account[]): Account[] =>
