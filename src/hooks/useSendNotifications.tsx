@@ -125,7 +125,7 @@ function showStatusToast(row: SendLogRow, lang: "ar" | "en") {
     failed: { ar: "فشل", en: "Failed" },
   };
   const status = row.status as SendStatus;
-  const label = map[status][lang];
+  const label = map[status]?.[lang] ?? (lang === "ar" ? "تحديث جديد" : "New update");
   const desc = `${label}${row.recipient ? ` — ${row.recipient}` : ""}`;
   if (status === "success") toast.success(row.title, { description: desc });
   else if (status === "failed") toast.error(row.title, { description: row.error_message || desc });
