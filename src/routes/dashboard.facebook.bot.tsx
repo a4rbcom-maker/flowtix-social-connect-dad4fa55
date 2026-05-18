@@ -102,6 +102,24 @@ const normalizeStatus = (status: string | null | undefined): BotAccountStatus =>
     : "untested";
 };
 
+const unwrapServerPayload = (raw: unknown): unknown => {
+  if (!raw || typeof raw !== "object") return raw;
+  const obj = raw as { data?: unknown; result?: unknown; account?: unknown };
+  return obj.data ?? obj.result ?? obj.account ?? raw;
+};
+
+const normalizeAccountsPayload = (raw: unknown): Account[] => {
+  const payload = unwrapServerPayload(raw);
+  return Array.isArray(payload) ? payload as Account[] : [];
+};
+
+const normalizeAccountPayload = (raw: unknown): Account | null => {
+  const payload = unwrapServerPayload(raw);
+  return payload && typeof payload === "object" && typeof (payload as Account).id === "string"
+    ? payload as Account
+    : null;
+};
+
 function StatusReason({ status, lastError, t }: { status: BotAccountStatus; lastError: string | null; t: { untestedHint: string; checkpointHint: string; invalidHint: string; disabledHint: string; reasonLabel: string } }) {
   if (status === "active") return null;
   const hint = status === "untested" ? t.untestedHint
