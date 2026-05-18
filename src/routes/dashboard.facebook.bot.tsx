@@ -205,6 +205,13 @@ function BotAccountsPage() {
     invalidHint: "Cookies are invalid or expired. Re-export them from the browser and update the account.",
     disabledHint: "This account is disabled and won't be used in jobs.",
     neverTested: "Not tested yet",
+    retry: "Retry",
+    attemptLabel: (n: number) => `Attempt #${n}`,
+    progressInit: "Starting test…",
+    progressDecrypt: "Reading cookies…",
+    progressFetch: "Contacting Facebook…",
+    progressGroups: "Fetching groups…",
+    progressDone: "Done ✓",
   };
 
   const load = async () => {
