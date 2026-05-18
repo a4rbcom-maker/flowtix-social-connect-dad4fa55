@@ -78,6 +78,8 @@ function BotAccountsPage() {
   const [tab, setTab] = useState<"cookies" | "credentials">("cookies");
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [testProgress, setTestProgress] = useState<{ value: number; label: string } | null>(null);
+  const [retryCounts, setRetryCounts] = useState<Record<string, number>>({});
   const [groupsResult, setGroupsResult] = useState<{ accountName: string; groups: { id: string; name: string }[] } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
