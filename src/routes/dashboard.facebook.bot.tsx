@@ -611,6 +611,33 @@ const looksLikeCheckpoint = (status: string | null | undefined, lastError: strin
                         <div className="space-y-1.5">
                           {statusBadge(a.status)}
                           <StatusReason status={normalizeStatus(a.status)} lastError={a.last_error} t={t} />
+                          {(() => {
+                            const e = classifyExpiry(a.cookie_expires_at);
+                            if (!e) {
+                              return a.auth_method === "cookies" ? (
+                                <p className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
+                                  <Lock className="h-3 w-3" />
+                                  {lang === "ar" ? "مشفّر · بدون تاريخ انتهاء معروف" : "Encrypted · no known expiry"}
+                                </p>
+                              ) : null;
+                            }
+                            const cls = e.state === "expired"
+                              ? "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300"
+                              : e.state === "soon"
+                              ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                              : "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300";
+                            const text = e.state === "expired"
+                              ? (lang === "ar" ? `انتهت الجلسة منذ ${Math.abs(e.days)} يوم` : `Session expired ${Math.abs(e.days)}d ago`)
+                              : e.state === "soon"
+                              ? (lang === "ar" ? `تنتهي خلال ${e.days} يوم` : `Expires in ${e.days}d`)
+                              : (lang === "ar" ? `صالحة ${e.days} يوم` : `Valid ${e.days}d`);
+                            return (
+                              <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${cls}`}>
+                                <CalendarClock className="h-3 w-3" />
+                                {text}
+                              </span>
+                            );
+                          })()}
                           {testingId === a.id && testProgress && (
                             <div className="max-w-xs space-y-1 pt-1">
                               <Progress value={testProgress.value} className="h-1.5" />
