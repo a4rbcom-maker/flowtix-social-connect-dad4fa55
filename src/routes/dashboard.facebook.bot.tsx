@@ -252,6 +252,36 @@ function BotAccountsPage() {
           </div>
         </div>
 
+        {user && (
+          <Card className="border-amber-500/30 bg-amber-500/5 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-400">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{t.sessionTitle}</p>
+                  <p className="mt-0.5 truncate text-sm text-foreground">{user.email}</p>
+                  <p className="mt-1 font-mono text-[11px] text-muted-foreground break-all">user_id: {user.id}</p>
+                  <p className="mt-2 text-xs text-muted-foreground leading-relaxed">{t.sessionHint}</p>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { navigator.clipboard.writeText(user.id); toast.success(t.copied); }}
+                >
+                  {t.copyId}
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => signOut()}>
+                  {t.signOutBtn}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
+
         <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm">
           <div className="mb-4 flex items-start gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
