@@ -426,7 +426,17 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
     }
 
     const ok = missing.length === 0 && invalid.length === 0;
-    return {
+    const message = ok
+      ? expiresInDays !== null && expiresInDays <= 7
+        ? `الكوكيز سليمة، لكن الجلسة تنتهي خلال ${expiresInDays} يوم — جدِّدها قريبًا.`
+        : "الكوكيز المطلوبة كلها موجودة وصيغتها سليمة."
+      : expired
+        ? "انتهت صلاحية جلسة فيسبوك — أعد تصدير الكوكيز."
+        : missing.length > 0
+          ? `كوكيز ناقصة: ${missing.join(", ")}`
+          : `كوكيز فيها مشاكل في الصيغة: ${invalid.map((i) => i.name).join(", ")}`;
+
+    const result = {
       ok,
       method: "cookies" as const,
       present,
@@ -436,16 +446,10 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
       expiresAt,
       expiresInDays,
       expired,
-      message: ok
-        ? expiresInDays !== null && expiresInDays <= 7
-          ? `الكوكيز سليمة، لكن الجلسة تنتهي خلال ${expiresInDays} يوم — جدِّدها قريبًا.`
-          : "الكوكيز المطلوبة كلها موجودة وصيغتها سليمة."
-        : expired
-          ? "انتهت صلاحية جلسة فيسبوك — أعد تصدير الكوكيز."
-          : missing.length > 0
-            ? `كوكيز ناقصة: ${missing.join(", ")}`
-            : `كوكيز فيها مشاكل في الصيغة: ${invalid.map((i) => i.name).join(", ")}`,
+      message: message || "تعذّر تكوين رسالة الفحص — جرّب مرة أخرى.",
     };
+    console.log("[precheckBotAccount] result:", { id: data.id, ok, missing: missing.length, invalid: invalid.length, totalCookies: cookies.length });
+    return result;
   });
 
 // ---------- testBotAccount ----------
