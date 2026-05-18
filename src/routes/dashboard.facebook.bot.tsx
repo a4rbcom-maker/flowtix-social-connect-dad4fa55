@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { useFacebookApi, describeFbError, FbCallError } from "@/features/facebook/api";
 import { addBotAccount, listBotAccounts, deleteBotAccount, testBotAccount, precheckBotAccount } from "@/lib/fb-bot.functions";
 
@@ -72,6 +73,9 @@ type Account = {
 
 type BotAccountStatus = "untested" | "active" | "invalid" | "checkpoint" | "disabled";
 
+const BOT_ACCOUNT_SELECT = "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at";
+const LEGACY_ERROR = /صفحة \/me|login page|\/me أعادت/i;
+
 // One row in the per-account test timeline. `key` matches a step in TEST_STEPS
 // so labels can be localized; `state` drives the icon (spinner/check/x).
 type TestEvent = {
@@ -119,6 +123,12 @@ const normalizeAccountPayload = (raw: unknown): Account | null => {
     ? payload as Account
     : null;
 };
+
+const sanitizeAccounts = (list: Account[]): Account[] => list.map((a) =>
+  a.last_error && LEGACY_ERROR.test(a.last_error)
+    ? { ...a, status: "untested" as BotAccountStatus, last_error: null, last_check_at: null }
+    : a,
+);
 
 function StatusReason({ status, lastError, t }: { status: BotAccountStatus; lastError: string | null; t: { untestedHint: string; checkpointHint: string; invalidHint: string; disabledHint: string; reasonLabel: string } }) {
   if (status === "active") return null;
