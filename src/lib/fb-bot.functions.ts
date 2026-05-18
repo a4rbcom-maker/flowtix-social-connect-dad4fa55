@@ -275,6 +275,74 @@ export const cancelJob = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// ---------- precheckBotAccount ----------
+// Returns presence of required cookies WITHOUT exposing values. Powers the
+// pre-flight check dialog before running testBotAccount.
+const REQUIRED_COOKIES = ["c_user", "xs", "fr", "datr", "sb"] as const;
+export const precheckBotAccount = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { data: acc, error } = await supabase
+      .from("fb_bot_accounts")
+      .select("id, auth_method, encrypted_payload")
+      .eq("id", data.id)
+      .single();
+    if (error || !acc) throw new Error(error?.message ?? "Account not found");
+
+    if (acc.auth_method !== "cookies") {
+      return {
+        ok: false,
+        method: "credentials" as const,
+        present: [] as string[],
+        missing: [] as string[],
+        invalid: [] as { name: string; reason: string }[],
+        totalCookies: 0,
+        message: "هذا الحساب مُسجَّل بالبريد/كلمة السر — لا يمكن فحص الكوكيز.",
+      };
+    }
+
+    const { decryptJson } = await import("@/server/crypto.server");
+    const payload = decryptJson<{ cookies: { name: string; value: string }[] }>(acc.encrypted_payload);
+    const cookies = payload.cookies ?? [];
+    const byName = new Map(cookies.map((c) => [c.name, c.value]));
+
+    const present: string[] = [];
+    const missing: string[] = [];
+    const invalid: { name: string; reason: string }[] = [];
+
+    for (const name of REQUIRED_COOKIES) {
+      const v = byName.get(name);
+      if (!v || v.length === 0) {
+        missing.push(name);
+        continue;
+      }
+      present.push(name);
+      if (name === "c_user" && !/^\d{6,}$/.test(v)) {
+        invalid.push({ name, reason: "c_user يجب أن يحتوي على أرقام فقط (6 خانات أو أكثر)" });
+      }
+      if (name === "xs" && v.length < 10) {
+        invalid.push({ name, reason: "xs قصير جدًا — صدِّر الكوكيز من جلسة نشطة" });
+      }
+    }
+
+    const ok = missing.length === 0 && invalid.length === 0;
+    return {
+      ok,
+      method: "cookies" as const,
+      present,
+      missing,
+      invalid,
+      totalCookies: cookies.length,
+      message: ok
+        ? "الكوكيز المطلوبة كلها موجودة وصيغتها سليمة."
+        : missing.length > 0
+        ? `كوكيز ناقصة: ${missing.join(", ")}`
+        : `كوكيز فيها مشاكل في الصيغة: ${invalid.map((i) => i.name).join(", ")}`,
+    };
+  });
+
 // ---------- testBotAccount ----------
 // IMPORTANT: Facebook blocks server-to-server requests coming from datacenter
 // IPs (Cloudflare Workers, AWS, GCP, ...) and returns the login page even for
