@@ -160,8 +160,12 @@ function BotAccountsPage() {
             password: form.password,
             twoFactorSecret: form.twoFactorSecret || null,
           });
-      if (row) setAccounts((prev) => [row as Account, ...prev.filter((a) => a.id !== (row as Account).id)]);
-      toast.success(t.saved);
+      if (row) {
+        setAccounts((prev) => [row as Account, ...prev.filter((a) => a.id !== (row as Account).id)]);
+        setJustAddedId((row as Account).id);
+        setTimeout(() => setJustAddedId(null), 4000);
+      }
+      toast.success(t.saved, { description: t.savedDesc });
       setOpen(false);
       setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
       void load();
