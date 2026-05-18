@@ -933,6 +933,99 @@ const looksLikeCheckpoint = (status: string | null | undefined, lastError: strin
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!checkpointFor} onOpenChange={(o) => !o && setCheckpointFor(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-amber-500" />
+              {lang === "ar" ? "إكمال التحقق على فيسبوك" : "Complete Facebook verification"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {checkpointFor && (
+            <div className="space-y-4">
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-900 dark:text-amber-200">
+                <p className="font-semibold">
+                  {lang === "ar" ? "الحساب:" : "Account:"} <span className="font-bold">{checkpointFor.name}</span>
+                </p>
+                <p className="mt-1 text-xs leading-relaxed">
+                  {lang === "ar"
+                    ? "فيسبوك طلب تأكيد هوية أو خطوة أمان إضافية (Checkpoint). أكمل الخطوات يدويًا ثم اضغط على \"تم — أعد الاختبار\"."
+                    : "Facebook is requesting identity confirmation or an extra security step (Checkpoint). Complete it manually, then click \"Done — re-test\"."}
+                </p>
+                {checkpointFor.reason && (
+                  <p className="mt-2 font-mono text-[10px] opacity-80 break-words">
+                    <span className="font-semibold">{lang === "ar" ? "السبب من فيسبوك:" : "FB reason:"}</span> {checkpointFor.reason}
+                  </p>
+                )}
+              </div>
+
+              <ol className="space-y-3 text-sm leading-relaxed">
+                <li className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-xs font-bold text-amber-700 dark:text-amber-300">1</span>
+                  <span>
+                    {lang === "ar"
+                      ? "افتح فيسبوك في تبويب جديد ومن نفس المتصفح اللي صدّرت منه الكوكيز."
+                      : "Open Facebook in a new tab using the same browser you exported cookies from."}
+                  </span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-xs font-bold text-amber-700 dark:text-amber-300">2</span>
+                  <span>
+                    {lang === "ar"
+                      ? "اتبع التعليمات اللي بتظهر: تأكيد الهاتف، الإيميل، صورة، أو رفع هوية."
+                      : "Follow the on-screen instructions: phone, email, photo, or ID verification."}
+                  </span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-xs font-bold text-amber-700 dark:text-amber-300">3</span>
+                  <span>
+                    {lang === "ar"
+                      ? "بعد ما تخلص وترجع للفيد بشكل طبيعي، رجع هنا واضغط على الزر بالأسفل."
+                      : "After you return to the normal feed, come back here and click the button below."}
+                  </span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-xs font-bold text-amber-700 dark:text-amber-300">4</span>
+                  <span>
+                    {lang === "ar"
+                      ? "هنعيد فحص الحساب تلقائيًا. لو فضلت المشكلة، صدِّر كوكيز جديدة من Cookie-Editor."
+                      : "We'll auto re-test the account. If it still fails, export fresh cookies via Cookie-Editor."}
+                  </span>
+                </li>
+              </ol>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button asChild variant="outline" className="gap-1.5">
+              <a href="https://www.facebook.com/" target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-4 w-4" />
+                {lang === "ar" ? "افتح فيسبوك" : "Open Facebook"}
+              </a>
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setCheckpointFor(null)}>
+                {lang === "ar" ? "لاحقًا" : "Later"}
+              </Button>
+              <Button
+                className="gap-1.5 bg-amber-500 hover:bg-amber-600 text-white"
+                onClick={() => {
+                  if (checkpointFor) {
+                    const id = checkpointFor.id;
+                    setCheckpointFor(null);
+                    void handleTest(id, true);
+                  }
+                }}
+              >
+                <RotateCw className="h-4 w-4" />
+                {lang === "ar" ? "تم — أعد الاختبار" : "Done — re-test"}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
