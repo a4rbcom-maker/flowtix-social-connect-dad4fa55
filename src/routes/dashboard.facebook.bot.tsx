@@ -28,10 +28,18 @@ type Account = {
   id: string;
   display_name: string;
   auth_method: "cookies" | "credentials";
-  status: "untested" | "active" | "invalid" | "checkpoint" | "disabled";
+  status: BotAccountStatus;
   last_check_at: string | null;
   last_error: string | null;
   created_at: string;
+};
+
+type BotAccountStatus = "untested" | "active" | "invalid" | "checkpoint" | "disabled";
+
+const normalizeStatus = (status: string | null | undefined): BotAccountStatus => {
+  return status === "active" || status === "invalid" || status === "checkpoint" || status === "disabled"
+    ? status
+    : "untested";
 };
 
 function BotAccountsPage() {
@@ -82,7 +90,7 @@ function BotAccountsPage() {
     save: "حفظ",
     cancel: "إلغاء",
     saved: "تم الحفظ",
-    statuses: { untested: "لم يُختبر", active: "نشط", invalid: "غير صالح", checkpoint: "تحقق مطلوب", disabled: "معطّل" },
+    statuses: { untested: "لم يُختبر", active: "نشط", invalid: "غير صالح", checkpoint: "تحقق مطلوب", disabled: "معطّل" } satisfies Record<BotAccountStatus, string>,
     backToFb: "→ الذهاب لمهام البوت",
   } : {
     title: "Facebook Bot Accounts",
@@ -115,7 +123,7 @@ function BotAccountsPage() {
     save: "Save",
     cancel: "Cancel",
     saved: "Saved",
-    statuses: { untested: "Untested", active: "Active", invalid: "Invalid", checkpoint: "Verify needed", disabled: "Disabled" },
+    statuses: { untested: "Untested", active: "Active", invalid: "Invalid", checkpoint: "Verify needed", disabled: "Disabled" } satisfies Record<BotAccountStatus, string>,
     backToFb: "→ Go to bot jobs",
   };
 
@@ -184,8 +192,9 @@ function BotAccountsPage() {
     } catch (e) { toast.error(String(e)); }
   };
 
-  const statusBadge = (s: Account["status"]) => {
-    const map: Record<Account["status"], { color: string; icon: typeof CheckCircle2 }> = {
+  const statusBadge = (rawStatus: Account["status"] | string | null | undefined) => {
+    const s = normalizeStatus(rawStatus);
+    const map: Record<BotAccountStatus, { color: string; icon: typeof CheckCircle2 }> = {
       untested: { color: "bg-muted text-muted-foreground", icon: Clock },
       active: { color: "bg-green-500/15 text-green-700 dark:text-green-400", icon: CheckCircle2 },
       invalid: { color: "bg-red-500/15 text-red-700 dark:text-red-400", icon: XCircle },
