@@ -446,11 +446,11 @@ function BotAccountsPage() {
           neverTested: "لم يُجرَ اختبار بعد",
           retry: "إعادة المحاولة",
           attemptLabel: (n: number) => `محاولة #${n}`,
-          progressInit: "بدء الاختبار…",
-          progressDecrypt: "قراءة الكوكيز…",
-          progressFetch: "الاتصال بفيسبوك…",
-          progressGroups: "جلب الجروبات…",
-          progressDone: "اكتمل ✓",
+          progressInit: "بدء الفحص…",
+          progressDecrypt: "فك تشفير الكوكيز…",
+          progressFetch: "التحقق من الكوكيز الأساسية…",
+          progressGroups: "اعتماد الحساب للـ Worker…",
+          progressDone: "الحساب جاهز ✓",
         }
       : {
           title: "Facebook Bot Accounts",
