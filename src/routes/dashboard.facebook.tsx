@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState, type MouseEvent } from "react";
-import { Facebook, RefreshCw, Trash2, Users, Loader2, ExternalLink, ChevronDown, CheckCircle2, Copy, ShieldCheck, FlaskConical, XCircle, KeyRound, Send, Sparkles, AlertCircle, History, Clock } from "lucide-react";
+import { Facebook, RefreshCw, Trash2, Users, Loader2, ExternalLink, ChevronDown, CheckCircle2, Copy, ShieldCheck, FlaskConical, XCircle, KeyRound, Send, Sparkles, AlertCircle, History, Clock, Cookie } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
@@ -289,6 +289,9 @@ function FacebookPage() {
         tokenPlaceholder: "الصق توكن فيسبوك هنا...",
         tokenHelp: "احصل على التوكن من Graph API Explorer",
         getToken: "الحصول على توكن",
+        botCookiesTitle: "عايز إعداد البوت بالـ Cookies؟",
+        botCookiesDesc: "ده مكان مختلف عن Access Token. افتح صفحة حسابات البوت والصق Cookies JSON مباشرة.",
+        openBotCookies: "فتح إعداد Cookies للبوت",
         connect: "ربط الحساب",
         connecting: "جاري الربط...",
         disconnect: "إلغاء الربط",
@@ -389,6 +392,9 @@ function FacebookPage() {
         tokenPlaceholder: "Paste your Facebook token here...",
         tokenHelp: "Get a token from Graph API Explorer",
         getToken: "Get Token",
+        botCookiesTitle: "Need the Cookies bot setup?",
+        botCookiesDesc: "This is separate from Access Token. Open Bot accounts and paste the Cookies JSON directly.",
+        openBotCookies: "Open bot Cookies setup",
         connect: "Connect Account",
         connecting: "Connecting...",
         disconnect: "Disconnect",
