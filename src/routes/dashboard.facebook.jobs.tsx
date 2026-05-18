@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { listBotAccounts, createPostJob, createExtractPagesJob, createExtractCommentersJob } from "@/lib/fb-bot.functions";
 
 export const Route = createFileRoute("/dashboard/facebook/jobs")({
@@ -26,6 +27,7 @@ export const Route = createFileRoute("/dashboard/facebook/jobs")({
 });
 
 type Account = { id: string; display_name: string; status: string };
+const SAFE_ACCOUNT_SELECT = "id, display_name, status";
 
 function JobsHubPage() {
   const { user, loading: authLoading } = useAuth();
@@ -101,17 +103,28 @@ function JobsHubPage() {
     }
     (async () => {
       try {
-        const raw = await listAccountsFn();
-        const data: Account[] = Array.isArray(raw)
-          ? (raw as Account[])
-          : Array.isArray((raw as { accounts?: unknown })?.accounts)
-            ? ((raw as { accounts: Account[] }).accounts)
-            : Array.isArray((raw as { data?: unknown })?.data)
-              ? ((raw as unknown as { data: Account[] }).data)
-            : [];
+        const { data: browserRows, error } = await supabase
+          .from("fb_bot_accounts")
+          .select(SAFE_ACCOUNT_SELECT)
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        const data = (browserRows ?? []) as Account[];
         setAccounts(data);
         if (data.length > 0) setAccountId(data[0].id);
-      } catch (e) { console.error("[fb-jobs] listBotAccounts failed:", e); toast.error(String(e)); }
+      } catch (e) {
+        try {
+          const raw = await listAccountsFn();
+          const data: Account[] = Array.isArray((raw as { accounts?: unknown })?.accounts)
+            ? ((raw as { accounts: Account[] }).accounts)
+            : [];
+          setAccounts(data);
+          if (data.length > 0) setAccountId(data[0].id);
+        } catch (fallbackErr) {
+          console.error("[fb-jobs] listBotAccounts failed:", fallbackErr);
+          toast.error(String(fallbackErr));
+        }
+      }
       finally { setLoading(false); }
     })();
   }, [user, authLoading]);
