@@ -337,14 +337,8 @@ function BotAccountsPage() {
     setLoading(true);
     try {
       const raw = await call(listBotAccounts);
-      // Defensive: tolerate any non-array shape (empty body, wrapped envelope,
-      // legacy fields) so a malformed response never crashes the page with
-      // "s.map is not a function".
-      const list: Account[] = Array.isArray(raw)
-        ? (raw as Account[])
-        : Array.isArray((raw as { data?: unknown })?.data)
-          ? ((raw as { data: Account[] }).data)
-          : [];
+      // Defensive: tolerate direct arrays and wrapped server-function payloads.
+      const list = normalizeAccountsPayload(raw);
       // Older versions stored an obsolete error message from the deprecated
       // /me probe. Treat any account still carrying that legacy text as
       // "untested" in the UI so users see actionable state.
@@ -382,9 +376,10 @@ function BotAccountsPage() {
             password: form.password,
             twoFactorSecret: form.twoFactorSecret || null,
           });
-      if (row && typeof (row as Account).id === "string") {
-        setAccounts((prev) => [row as Account, ...prev.filter((a) => a.id !== (row as Account).id)]);
-        setJustAddedId((row as Account).id);
+      const account = normalizeAccountPayload(row);
+      if (account) {
+        setAccounts((prev) => [account, ...prev.filter((a) => a.id !== account.id)]);
+        setJustAddedId(account.id);
         setTimeout(() => setJustAddedId(null), 4000);
       } else {
         throw new Error(lang === "ar" ? "تم الحفظ لكن لم يرجع الحساب من الخادم. حدّث الصفحة وتأكد من الجلسة." : "Saved, but the server did not return the account row. Refresh and check your session.");
@@ -411,9 +406,10 @@ function BotAccountsPage() {
     setSubmitting(true);
     try {
       const row = await call(addBotAccount, { method: "cookies", displayName: form.displayName, cookies: form.cookies });
-      if (row && typeof (row as Account).id === "string") {
-        setAccounts((prev) => [row as Account, ...prev.filter((a) => a.id !== (row as Account).id)]);
-        setJustAddedId((row as Account).id);
+      const account = normalizeAccountPayload(row);
+      if (account) {
+        setAccounts((prev) => [account, ...prev.filter((a) => a.id !== account.id)]);
+        setJustAddedId(account.id);
         setTimeout(() => setJustAddedId(null), 4000);
       } else {
         throw new Error(lang === "ar" ? "تم الحفظ لكن لم يرجع الحساب من الخادم. حدّث الصفحة وتأكد من الجلسة." : "Saved, but the server did not return the account row. Refresh and check your session.");
