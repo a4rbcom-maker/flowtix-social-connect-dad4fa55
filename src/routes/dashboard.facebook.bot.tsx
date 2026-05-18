@@ -349,16 +349,20 @@ function BotAccountsPage() {
       const raw = await call(listBotAccounts);
       // Defensive: tolerate direct arrays and wrapped server-function payloads.
       const list = normalizeAccountsPayload(raw);
-      // Older versions stored an obsolete error message from the deprecated
-      // /me probe. Treat any account still carrying that legacy text as
-      // "untested" in the UI so users see actionable state.
-      const LEGACY_ERROR = /صفحة \/me|login page|\/me أعادت/i;
-      const sanitized = list.map((a) =>
-        a.last_error && LEGACY_ERROR.test(a.last_error)
-          ? { ...a, status: "untested" as BotAccountStatus, last_error: null, last_check_at: null }
-          : a,
-      );
-      setAccounts(sanitized);
+      if (list.length > 0) {
+        setAccounts(sanitizeAccounts(list));
+        return;
+      }
+
+      // Fallback read with the browser session. This keeps the UI honest when
+      // a server-function response is unexpectedly wrapped/empty while RLS still
+      // allows the signed-in user to read their own rows.
+      const { data, error } = await supabase
+        .from("fb_bot_accounts")
+        .select(BOT_ACCOUNT_SELECT)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setAccounts(sanitizeAccounts((data ?? []) as Account[]));
     } catch (e) {
       if (isAuthErr(e)) { handleAuthExpired(); return; }
       console.error("[fb-bot] listBotAccounts failed:", e);
