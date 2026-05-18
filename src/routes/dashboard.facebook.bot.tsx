@@ -556,24 +556,63 @@ function BotAccountsPage() {
         return;
       }
 
-      const raw = await listAccountsFn();
-      const result = normalizeAccountsPayload(raw, lang === "ar" ? "ar" : "en");
-      console.info("[fb-bot] listBotAccounts result", {
-        ok: result.ok,
-        count: result.accounts.length,
-        debugCode: result.debugCode,
-      });
-      if (!result.ok) {
-        setLoadError({ message: result.message, debugCode: result.debugCode });
-        return;
+      // Try server function first; on ANY failure (bad shape, 500, network),
+      // fall back to a direct browser-side Supabase query so the page is never
+      // blocked by server-fn issues. The user's session + RLS keep this safe.
+      const browserFallback = async (): Promise<Account[]> => {
+        const { data, error } = await supabase
+          .from("fb_bot_accounts")
+          .select(
+            "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at",
+          )
+          .eq("user_id", currentUser.id)
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        return (data ?? []) as Account[];
+      };
+
+      let accountsResult: Account[] | null = null;
+      try {
+        const raw = await listAccountsFn();
+        const result = normalizeAccountsPayload(raw, lang === "ar" ? "ar" : "en");
+        console.info("[fb-bot] listBotAccounts result", {
+          ok: result.ok,
+          count: result.accounts.length,
+          debugCode: result.debugCode,
+        });
+        if (result.ok) {
+          accountsResult = result.accounts;
+        } else {
+          console.warn("[fb-bot] server result not ok, using browser fallback", result.debugCode);
+        }
+      } catch (e) {
+        if (isAuthErr(e)) {
+          handleAuthExpired();
+          return;
+        }
+        console.warn("[fb-bot] listBotAccounts threw, using browser fallback:", e);
       }
-      setAccounts(sanitizeAccounts(result.accounts));
+
+      if (accountsResult === null) {
+        try {
+          accountsResult = await browserFallback();
+          console.info("[fb-bot] browser fallback loaded", { count: accountsResult.length });
+        } catch (e) {
+          console.error("[fb-bot] browser fallback failed:", e);
+          const message = describeServerActionError(e, lang === "ar" ? "ar" : "en");
+          setLoadError({ message, debugCode: "CLIENT_LIST_EXCEPTION" });
+          toast.error(message);
+          return;
+        }
+      }
+
+      setAccounts(sanitizeAccounts(accountsResult));
     } catch (e) {
       if (isAuthErr(e)) {
         handleAuthExpired();
         return;
       }
-      console.error("[fb-bot] listBotAccounts failed:", e);
+      console.error("[fb-bot] load failed:", e);
       const message = describeServerActionError(e, lang === "ar" ? "ar" : "en");
       setLoadError({ message, debugCode: "CLIENT_LIST_EXCEPTION" });
       toast.error(message);
