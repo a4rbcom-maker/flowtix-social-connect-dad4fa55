@@ -90,8 +90,10 @@ function BotAccountsPage() {
     twoFa: "مفتاح 2FA (اختياري)",
     save: "حفظ",
     cancel: "إلغاء",
-    saved: "تم الحفظ",
-    statuses: { untested: "لم يُختبر", active: "نشط", invalid: "غير صالح", checkpoint: "تحقق مطلوب", disabled: "معطّل" } satisfies Record<BotAccountStatus, string>,
+    saved: "تم ربط الحساب بنجاح",
+    savedDesc: "تمت إضافة الحساب للقائمة. الحالة الحالية: \"لم يُختبر\" — اضغط تحديث لاحقًا للتحقق من صلاحية الكوكيز.",
+    saveFailed: "فشل ربط الحساب",
+    statuses: { untested: "لم يُختبر", active: "نشط ✓", invalid: "فشل — كوكيز غير صالحة", checkpoint: "تحقق مطلوب", disabled: "معطّل" } satisfies Record<BotAccountStatus, string>,
     backToFb: "→ الذهاب لمهام البوت",
   } : {
     title: "Facebook Bot Accounts",
