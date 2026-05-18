@@ -552,25 +552,8 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
       );
     }
 
-    const byName = new Map(cookies.map((c) => [c.name, c.value]));
-    const present: string[] = [];
-    const missing: string[] = [];
-    const invalid: { name: string; reason: string }[] = [];
-
-    for (const name of REQUIRED_COOKIES) {
-      const v = byName.get(name);
-      if (!v || v.length === 0) {
-        missing.push(name);
-        continue;
-      }
-      present.push(name);
-      if (name === "c_user" && !/^\d{6,}$/.test(v)) {
-        invalid.push({ name, reason: "c_user يجب أن يحتوي على أرقام فقط (6 خانات أو أكثر)" });
-      }
-      if (name === "xs" && v.length < 10) {
-        invalid.push({ name, reason: "xs قصير جدًا — صدِّر الكوكيز من جلسة نشطة" });
-      }
-    }
+    const { present, missing, missingCritical, missingRecommended, invalid } =
+      validateFacebookCookies(cookies);
 
     // 4) Expiry calculation + DB backfill (failure here is non-fatal).
     const minExp = earliestRequiredExpiry(cookies);
@@ -595,27 +578,48 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
       });
     }
 
-    const ok = missing.length === 0 && invalid.length === 0;
+    const hasBlockingFailure = missingCritical.length > 0 || invalid.length > 0 || expired;
+    const ok = !hasBlockingFailure;
     const expiringSoon = ok && expiresInDays !== null && expiresInDays <= 7;
+    const hasWarning = missingRecommended.length > 0 || expiringSoon;
     const severity: PrecheckResult["severity"] = ok
-      ? expiringSoon
+      ? hasWarning
         ? "warning"
         : "ok"
       : "error";
 
     const message = ok
-      ? expiringSoon
-        ? `الكوكيز سليمة، لكن الجلسة تنتهي خلال ${expiresInDays} يوم — جدِّدها قريبًا.`
-        : "الكوكيز المطلوبة كلها موجودة وصيغتها سليمة."
+      ? missingRecommended.length > 0
+        ? `الكوكيز الأساسية سليمة. الكوكيز المستحسنة الناقصة: ${missingRecommended.join(", ")} — يمكن المتابعة الآن.`
+        : expiringSoon
+          ? `الكوكيز سليمة، لكن الجلسة تنتهي خلال ${expiresInDays} يوم — جدِّدها قريبًا.`
+          : "الكوكيز الأساسية سليمة والحساب جاهز لإنشاء المهام."
       : expired
         ? "انتهت صلاحية جلسة فيسبوك — أعد تصدير الكوكيز من Cookie-Editor."
-        : missing.length > 0
-          ? `كوكيز ناقصة: ${missing.join(", ")} — أعد تصدير الكوكيز من Cookie-Editor.`
+        : missingCritical.length > 0
+          ? `كوكيز أساسية ناقصة: ${missingCritical.join(", ")} — أعد تصدير الكوكيز من Cookie-Editor.`
           : `كوكيز فيها مشاكل في الصيغة: ${invalid.map((i) => i.name).join(", ")}`;
+
+    if (ok) {
+      try {
+        await supabase
+          .from("fb_bot_accounts")
+          .update({
+            status: "active",
+            last_check_at: new Date().toISOString(),
+            last_error: hasWarning ? message : null,
+            cookie_expires_at: expiresAt,
+          })
+          .eq("id", data.id)
+          .eq("user_id", userId);
+      } catch (e) {
+        console.warn("[precheckBotAccount] active status update failed (ignored):", e);
+      }
+    }
 
     return {
       ok,
-      canContinue: ok, // failed precheck blocks the test button
+      canContinue: ok,
       severity,
       method: "cookies",
       present,
@@ -626,7 +630,13 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
       expiresInDays,
       expired,
       message,
-      debugCode: ok ? (expiringSoon ? "OK_EXPIRING_SOON" : "OK") : "VALIDATION_FAILED",
+      debugCode: ok
+        ? missingRecommended.length > 0
+          ? "OK_MISSING_RECOMMENDED"
+          : expiringSoon
+            ? "OK_EXPIRING_SOON"
+            : "OK_READY"
+        : "VALIDATION_FAILED",
     };
   });
 
