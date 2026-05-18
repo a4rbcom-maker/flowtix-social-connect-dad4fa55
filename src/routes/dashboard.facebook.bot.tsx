@@ -148,9 +148,46 @@ const unwrapServerPayload = (raw: unknown): unknown => {
   return obj.data ?? obj.result ?? obj.account ?? raw;
 };
 
-const normalizeAccountsPayload = (raw: unknown): Account[] => {
+type AccountsPayloadResult = {
+  ok: boolean;
+  accounts: Account[];
+  message: string;
+  debugCode: string;
+};
+
+const normalizeAccountsPayload = (raw: unknown, lang: "ar" | "en"): AccountsPayloadResult => {
   const payload = unwrapServerPayload(raw);
-  return Array.isArray(payload) ? (payload as Account[]) : [];
+  if (Array.isArray(payload)) {
+    return { ok: true, accounts: payload as Account[], message: "OK_LEGACY_ARRAY", debugCode: "OK_LEGACY_ARRAY" };
+  }
+  if (payload && typeof payload === "object") {
+    const dto = payload as { ok?: unknown; accounts?: unknown; message?: unknown; debugCode?: unknown };
+    if (Array.isArray(dto.accounts)) {
+      return {
+        ok: dto.ok !== false,
+        accounts: dto.accounts as Account[],
+        message:
+          typeof dto.message === "string" && dto.message.trim()
+            ? dto.message
+            : dto.ok === false
+              ? lang === "ar"
+                ? "تعذّر تحميل الحسابات."
+                : "Could not load accounts."
+              : "OK",
+        debugCode: typeof dto.debugCode === "string" ? dto.debugCode : "UNKNOWN_LIST_DTO",
+      };
+    }
+  }
+  console.error("[fb-bot] unexpected list response shape", { rawType: typeof raw, raw });
+  return {
+    ok: false,
+    accounts: [],
+    message:
+      lang === "ar"
+        ? "تعذّر قراءة نتيجة تحميل الحسابات من الخادم. أعد المحاولة."
+        : "Could not read the accounts response from the server. Try again.",
+    debugCode: "CLIENT_BAD_LIST_SHAPE",
+  };
 };
 
 const normalizeAccountPayload = (raw: unknown): Account | null => {
