@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, statSync, readFileSync } from "node:fs";
 import { extname, normalize, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { createAlertManager } from "./server-alerts.mjs";
@@ -7,8 +7,36 @@ import { createAlertManager } from "./server-alerts.mjs";
 const port = Number(process.env.PORT || process.env.APP_PORT || 3100);
 const root = process.cwd();
 const clientRoot = resolve(root, "dist/client");
+const versionFilePath = resolve(root, "deploy-version.json");
 const alerts = createAlertManager({ root });
 let ssrHandlerPromise;
+
+// Source of truth = deploy-version.json on disk. We re-read it each request
+// (it's tiny and only written on deploy) so PM2 doesn't have to be restarted
+// for the version endpoint to reflect the freshly-rsynced bundle. Env vars
+// are kept as a fallback only for local dev where no version file exists.
+function readDeployVersion() {
+  try {
+    if (existsSync(versionFilePath)) {
+      const raw = readFileSync(versionFilePath, "utf8");
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") return { ...parsed, source: "file" };
+    }
+  } catch {
+    // fall through to env
+  }
+  const sha = process.env.DEPLOY_SHA || process.env.GITHUB_SHA || "development";
+  return {
+    sha,
+    short_sha: sha === "development" ? "dev" : sha.slice(0, 7),
+    run_id: process.env.DEPLOY_RUN_ID || process.env.GITHUB_RUN_ID || null,
+    repo: process.env.DEPLOY_REPOSITORY || process.env.GITHUB_REPOSITORY || null,
+    deployed_at: process.env.DEPLOYED_AT || new Date().toISOString(),
+    mode: "ssr",
+    status: "ok",
+    source: "env",
+  };
+}
 
 process.on("unhandledRejection", (error) => {
   void alerts.notify({ kind: "process-unhandled-rejection", error });
@@ -141,16 +169,7 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/deploy-version.json") {
-      const sha = process.env.DEPLOY_SHA || process.env.GITHUB_SHA || "development";
-      const body = JSON.stringify({
-        sha,
-        short_sha: sha === "development" ? "dev" : sha.slice(0, 7),
-        run_id: process.env.DEPLOY_RUN_ID || process.env.GITHUB_RUN_ID || null,
-        repo: process.env.DEPLOY_REPOSITORY || process.env.GITHUB_REPOSITORY || null,
-        deployed_at: process.env.DEPLOYED_AT || new Date().toISOString(),
-        mode: "ssr",
-        status: "ok",
-      });
+      const body = JSON.stringify(readDeployVersion());
       res.statusCode = 200;
       res.setHeader("content-type", "application/json; charset=utf-8");
       res.setHeader("cache-control", "no-store, max-age=0");
