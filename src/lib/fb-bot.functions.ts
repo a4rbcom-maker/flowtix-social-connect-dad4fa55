@@ -329,12 +329,15 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
         missing: [] as string[],
         invalid: [] as { name: string; reason: string }[],
         totalCookies: 0,
+        expiresAt: null as string | null,
+        expiresInDays: null as number | null,
+        expired: false,
         message: "هذا الحساب مُسجَّل بالبريد/كلمة السر — لا يمكن فحص الكوكيز.",
       };
     }
 
     const { decryptJson } = await import("@/server/crypto.server");
-    const payload = decryptJson<{ cookies: { name: string; value: string }[] }>(acc.encrypted_payload);
+    const payload = decryptJson<{ cookies: { name: string; value: string; expirationDate?: number }[] }>(acc.encrypted_payload);
     const cookies = payload.cookies ?? [];
     const byName = new Map(cookies.map((c) => [c.name, c.value]));
 
@@ -357,6 +360,24 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
       }
     }
 
+    // Expiry: prefer stored value, else recompute from payload and backfill.
+    const minExp = earliestRequiredExpiry(cookies as NormalizedCookie[]);
+    const expiresAt = minExp !== null ? new Date(minExp * 1000).toISOString() : null;
+    if (expiresAt) {
+      // Backfill DB column for older accounts so listBotAccounts sees expiry.
+      await supabase
+        .from("fb_bot_accounts")
+        .update({ cookie_expires_at: expiresAt })
+        .eq("id", data.id);
+    }
+    const now = Date.now();
+    const expiresInDays = minExp !== null ? Math.floor((minExp * 1000 - now) / 86_400_000) : null;
+    const expired = minExp !== null && minExp * 1000 <= now;
+
+    if (expired) {
+      invalid.push({ name: "expiry", reason: "انتهت صلاحية الجلسة — صدِّر كوكيز جديدة من Cookie-Editor" });
+    }
+
     const ok = missing.length === 0 && invalid.length === 0;
     return {
       ok,
@@ -365,13 +386,21 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
       missing,
       invalid,
       totalCookies: cookies.length,
+      expiresAt,
+      expiresInDays,
+      expired,
       message: ok
-        ? "الكوكيز المطلوبة كلها موجودة وصيغتها سليمة."
+        ? expiresInDays !== null && expiresInDays <= 7
+          ? `الكوكيز سليمة، لكن الجلسة تنتهي خلال ${expiresInDays} يوم — جدِّدها قريبًا.`
+          : "الكوكيز المطلوبة كلها موجودة وصيغتها سليمة."
+        : expired
+        ? "انتهت صلاحية جلسة فيسبوك — أعد تصدير الكوكيز."
         : missing.length > 0
         ? `كوكيز ناقصة: ${missing.join(", ")}`
         : `كوكيز فيها مشاكل في الصيغة: ${invalid.map((i) => i.name).join(", ")}`,
     };
   });
+
 
 // ---------- testBotAccount ----------
 // IMPORTANT: Facebook blocks server-to-server requests coming from datacenter
