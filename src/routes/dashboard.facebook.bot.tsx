@@ -146,6 +146,10 @@ function BotAccountsPage() {
     signOutBtn: "Sign out & re-login",
     copyId: "Copy ID",
     copied: "Copied",
+    testNow: "Test now",
+    testing: "Testing…",
+    testSuccess: "Cookies are valid ✓",
+    testFailed: "Test failed",
   };
 
   const load = async () => {
