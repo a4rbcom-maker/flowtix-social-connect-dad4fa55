@@ -346,7 +346,10 @@ function BotAccountsPage() {
     }
   };
 
-  useEffect(() => { if (user) load(); }, [user]);
+  useEffect(() => {
+    if (user) { void load(); }
+    else { setLoading(false); }
+  }, [user]);
 
   const handleAdd = async () => {
     if (!form.displayName.trim()) { toast.error(t.displayName); return; }
