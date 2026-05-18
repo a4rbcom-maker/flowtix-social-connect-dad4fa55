@@ -248,12 +248,15 @@ function BotAccountsPage() {
     loading: boolean;
     result: {
       ok: boolean;
-      method: "cookies" | "credentials";
+      canContinue: boolean;
+      severity: "ok" | "warning" | "error";
+      method: "cookies" | "credentials" | "unknown";
       present: string[];
       missing: string[];
       invalid: { name: string; reason: string }[];
       totalCookies: number;
       message: string;
+      debugCode: string;
     } | null;
     error: string | null;
   } | null>(null);
