@@ -8,6 +8,7 @@ const flowtixLogo = "/flowtix-logo.webp";
 export function Navbar() {
   const { t, lang, setLang, dir } = useI18n();
   const { theme, toggleTheme, mounted } = useTheme();
+  const { user, loading: authLoading } = useAuth();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
