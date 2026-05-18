@@ -11,6 +11,7 @@ const translations = {
       pricing: "الأسعار",
       faq: "الأسئلة الشائعة",
       startFree: "ابدأ مجاناً",
+      dashboard: "لوحة التحكم",
     },
     hero: {
       badge: "🚀 أقوى منصة للتجارة الاجتماعية",
