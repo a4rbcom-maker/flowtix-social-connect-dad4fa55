@@ -325,7 +325,7 @@ function StatusReason({
 }
 
 function BotAccountsPage() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, loading: authLoading } = useAuth();
   const { lang } = useI18n();
   const listAccountsFn = useServerFn(listBotAccounts);
   const addAccountFn = useServerFn(addBotAccount);
@@ -566,12 +566,20 @@ function BotAccountsPage() {
   };
 
   useEffect(() => {
+    if (authLoading) return;
     if (user) {
       void load();
     } else {
       setLoading(false);
+      setLoadError({
+        message:
+          lang === "ar"
+            ? "لم يتم العثور على جلسة دخول نشطة. سجّل الدخول مرة أخرى لعرض حساباتك."
+            : "No active session was found. Sign in again to view your accounts.",
+        debugCode: "NO_AUTH_SESSION",
+      });
     }
-  }, [user]);
+  }, [user, authLoading]);
 
   const handleAdd = async () => {
     if (!form.displayName.trim()) {
