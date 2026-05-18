@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Plus, Trash2, ShieldCheck, Cookie, KeyRound, AlertTriangle, Loader2, CheckCircle2, XCircle, Clock, Activity, RotateCw, ExternalLink, LogIn } from "lucide-react";
+import { Plus, Trash2, ShieldCheck, ShieldAlert, Cookie, KeyRound, AlertTriangle, Loader2, CheckCircle2, XCircle, Clock, Activity, RotateCw, ExternalLink, LogIn } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -82,6 +82,7 @@ function BotAccountsPage() {
   const [retryCounts, setRetryCounts] = useState<Record<string, number>>({});
   const [groupsResult, setGroupsResult] = useState<{ accountName: string; groups: { id: string; name: string }[] } | null>(null);
   const [reloginFor, setReloginFor] = useState<{ id: string; name: string } | null>(null);
+  const [checkpointFor, setCheckpointFor] = useState<{ id: string; name: string; reason: string | null } | null>(null);
   const [precheck, setPrecheck] = useState<
     | {
         id: string;
@@ -344,15 +345,29 @@ function BotAccountsPage() {
       setTestProgress({ value: 100, label: t.progressDone });
       if (updated) {
         const { groups = [], ...accountRow } = updated;
-        setAccounts((prev) => prev.map((a) => (a.id === id ? (accountRow as Account) : a)));
-        if (accountRow.status === "active") {
+        // Auto-detect checkpoint hints in the error message and coerce status.
+        const detectedCheckpoint = looksLikeCheckpoint(accountRow.status, accountRow.last_error);
+        const finalAccount = (detectedCheckpoint && accountRow.status !== "active"
+          ? { ...accountRow, status: "checkpoint" }
+          : accountRow) as Account;
+        setAccounts((prev) => prev.map((a) => (a.id === id ? finalAccount : a)));
+        if (finalAccount.status === "active") {
           setRetryCounts((p) => ({ ...p, [id]: 0 }));
           toast.success(t.testSuccess, { id: toastId, description: t.groupsFound(groups.length) });
-          setGroupsResult({ accountName: accountRow.display_name, groups });
+          setGroupsResult({ accountName: finalAccount.display_name, groups });
+        } else if (detectedCheckpoint) {
+          toast.warning(lang === "ar" ? "حساب يحتاج تحقق (Checkpoint)" : "Account needs verification (Checkpoint)", {
+            id: toastId,
+            description: lang === "ar" ? "اضغط \"إكمال التحقق\" لمتابعة الخطوات" : "Click \"Complete verification\" to continue",
+            action: {
+              label: lang === "ar" ? "إكمال التحقق" : "Verify",
+              onClick: () => setCheckpointFor({ id, name: finalAccount.display_name, reason: finalAccount.last_error }),
+            },
+          });
         } else {
           toast.error(t.testFailed, {
             id: toastId,
-            description: accountRow.last_error ?? t.statuses[normalizeStatus(accountRow.status)],
+            description: finalAccount.last_error ?? t.statuses[normalizeStatus(finalAccount.status)],
             action: { label: t.retry, onClick: () => void handleTest(id, true) },
           });
         }
@@ -368,7 +383,16 @@ function BotAccountsPage() {
       setTestingId(null);
       setTimeout(() => setTestProgress(null), 600);
     }
-  };
+};
+
+// Detect Facebook checkpoint / two-step / identity-confirmation hints inside
+// arbitrary error strings (Arabic + English keywords + FB URL fragments).
+const CHECKPOINT_KEYWORDS = /checkpoint|two_step|two-step|identity|confirm.{0,15}identity|account.{0,15}restricted|temporarily.{0,15}locked|تأكيد.{0,15}الهوية|التحقق|تم.{0,15}قفل|تأكيد.{0,15}هويتك/i;
+const looksLikeCheckpoint = (status: string | null | undefined, lastError: string | null | undefined): boolean => {
+  if (status === "checkpoint") return true;
+  if (lastError && CHECKPOINT_KEYWORDS.test(lastError)) return true;
+  return false;
+};
 
 
   const statusBadge = (rawStatus: Account["status"] | string | null | undefined) => {
@@ -571,7 +595,18 @@ function BotAccountsPage() {
                               {t.retry}
                             </Button>
                           )}
-                          {(a.status === "invalid" || a.status === "checkpoint") && a.auth_method === "cookies" && testingId !== a.id && (
+                          {looksLikeCheckpoint(a.status, a.last_error) && a.auth_method === "cookies" && testingId !== a.id && (
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="gap-1.5 bg-amber-500 hover:bg-amber-600 text-white"
+                              onClick={() => setCheckpointFor({ id: a.id, name: a.display_name, reason: a.last_error })}
+                            >
+                              <ShieldAlert className="h-3.5 w-3.5" />
+                              {lang === "ar" ? "إكمال التحقق" : "Complete verification"}
+                            </Button>
+                          )}
+                          {a.status === "invalid" && !looksLikeCheckpoint(a.status, a.last_error) && a.auth_method === "cookies" && testingId !== a.id && (
                             <Button
                               size="sm"
                               variant="default"
@@ -895,6 +930,99 @@ function BotAccountsPage() {
                 {lang === "ar" ? "افتح فيسبوك" : "Open Facebook"}
               </a>
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!checkpointFor} onOpenChange={(o) => !o && setCheckpointFor(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-amber-500" />
+              {lang === "ar" ? "إكمال التحقق على فيسبوك" : "Complete Facebook verification"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {checkpointFor && (
+            <div className="space-y-4">
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-900 dark:text-amber-200">
+                <p className="font-semibold">
+                  {lang === "ar" ? "الحساب:" : "Account:"} <span className="font-bold">{checkpointFor.name}</span>
+                </p>
+                <p className="mt-1 text-xs leading-relaxed">
+                  {lang === "ar"
+                    ? "فيسبوك طلب تأكيد هوية أو خطوة أمان إضافية (Checkpoint). أكمل الخطوات يدويًا ثم اضغط على \"تم — أعد الاختبار\"."
+                    : "Facebook is requesting identity confirmation or an extra security step (Checkpoint). Complete it manually, then click \"Done — re-test\"."}
+                </p>
+                {checkpointFor.reason && (
+                  <p className="mt-2 font-mono text-[10px] opacity-80 break-words">
+                    <span className="font-semibold">{lang === "ar" ? "السبب من فيسبوك:" : "FB reason:"}</span> {checkpointFor.reason}
+                  </p>
+                )}
+              </div>
+
+              <ol className="space-y-3 text-sm leading-relaxed">
+                <li className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-xs font-bold text-amber-700 dark:text-amber-300">1</span>
+                  <span>
+                    {lang === "ar"
+                      ? "افتح فيسبوك في تبويب جديد ومن نفس المتصفح اللي صدّرت منه الكوكيز."
+                      : "Open Facebook in a new tab using the same browser you exported cookies from."}
+                  </span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-xs font-bold text-amber-700 dark:text-amber-300">2</span>
+                  <span>
+                    {lang === "ar"
+                      ? "اتبع التعليمات اللي بتظهر: تأكيد الهاتف، الإيميل، صورة، أو رفع هوية."
+                      : "Follow the on-screen instructions: phone, email, photo, or ID verification."}
+                  </span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-xs font-bold text-amber-700 dark:text-amber-300">3</span>
+                  <span>
+                    {lang === "ar"
+                      ? "بعد ما تخلص وترجع للفيد بشكل طبيعي، رجع هنا واضغط على الزر بالأسفل."
+                      : "After you return to the normal feed, come back here and click the button below."}
+                  </span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-xs font-bold text-amber-700 dark:text-amber-300">4</span>
+                  <span>
+                    {lang === "ar"
+                      ? "هنعيد فحص الحساب تلقائيًا. لو فضلت المشكلة، صدِّر كوكيز جديدة من Cookie-Editor."
+                      : "We'll auto re-test the account. If it still fails, export fresh cookies via Cookie-Editor."}
+                  </span>
+                </li>
+              </ol>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button asChild variant="outline" className="gap-1.5">
+              <a href="https://www.facebook.com/" target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-4 w-4" />
+                {lang === "ar" ? "افتح فيسبوك" : "Open Facebook"}
+              </a>
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setCheckpointFor(null)}>
+                {lang === "ar" ? "لاحقًا" : "Later"}
+              </Button>
+              <Button
+                className="gap-1.5 bg-amber-500 hover:bg-amber-600 text-white"
+                onClick={() => {
+                  if (checkpointFor) {
+                    const id = checkpointFor.id;
+                    setCheckpointFor(null);
+                    void handleTest(id, true);
+                  }
+                }}
+              >
+                <RotateCw className="h-4 w-4" />
+                {lang === "ar" ? "تم — أعد الاختبار" : "Done — re-test"}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
