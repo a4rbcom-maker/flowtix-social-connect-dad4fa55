@@ -834,13 +834,35 @@ jobs:
             "/dashboard/whatsapp"
             "/dashboard/profile"
           )
+
+          # Warm-up: SSR cold-start after PM2 restart can take 20-40s for
+          # less-visited routes. Hit each route once (ignoring result) so the
+          # real check below runs against a warmed worker.
+          echo "=== Warming up SSR routes (cold-start absorber) ==="
+          for path in "${ROUTES[@]}"; do
+            curl -sS -o /dev/null -w "warmup ${path} -> %{http_code} in %{time_total}s\n" \
+              --max-time 45 \
+              -H "User-Agent: flowtix-smoke-warmup" \
+              "${BASE_URL}${path}?warmup=${GITHUB_RUN_ID}" || true
+          done
+
+          echo "=== Verifying dashboard routes ==="
           FAILED=0
           for path in "${ROUTES[@]}"; do
-            CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
-              --max-time 20 --retry 2 --retry-delay 3 \
-              -H "User-Agent: flowtix-smoke-test" \
-              -H "Cache-Control: no-cache" \
-              "${BASE_URL}${path}?ts=${GITHUB_RUN_ID}" || echo "000")
+            # Per-route retry loop. curl --retry doesn't retry on HTTP 000
+            # (connect failure) reliably across versions, so do it ourselves.
+            CODE="000"
+            for attempt in 1 2 3 4; do
+              CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
+                --max-time 45 \
+                -H "User-Agent: flowtix-smoke-test" \
+                -H "Cache-Control: no-cache" \
+                "${BASE_URL}${path}?ts=${GITHUB_RUN_ID}-${attempt}" || echo "000")
+              case "$CODE" in
+                2*|3*) break ;;
+                *) echo "   attempt ${attempt}: ${path} -> ${CODE} (retrying)"; sleep 5 ;;
+              esac
+            done
             echo "   ${BASE_URL}${path} -> ${CODE}"
             case "$CODE" in
               2*|3*) : ;;
@@ -852,6 +874,7 @@ jobs:
             exit 1
           fi
           echo "✅ All dashboard routes return non-5xx"
+
 
       - name: Record LAST_GOOD snapshot
         env:
