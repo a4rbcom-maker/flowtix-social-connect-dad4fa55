@@ -89,6 +89,30 @@ function parseCookiesInput(raw: string): NormalizedCookie[] | null {
   return out.length ? out : null;
 }
 
+function normalizeStoredCookies(payload: unknown): NormalizedCookie[] {
+  const candidate = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === "object"
+      ? (payload as { cookies?: unknown }).cookies
+      : null;
+
+  if (Array.isArray(candidate)) {
+    return candidate
+      .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
+      .map((c) => ({
+        name: String(c.name ?? c.Name ?? c.key ?? ""),
+        value: String(c.value ?? c.Value ?? ""),
+        domain: typeof c.domain === "string" ? c.domain : undefined,
+        path: typeof c.path === "string" ? c.path : undefined,
+        expirationDate: typeof c.expirationDate === "number" ? c.expirationDate : undefined,
+      }))
+      .filter((c) => c.name.length > 0);
+  }
+
+  if (typeof candidate === "string") return parseCookiesInput(candidate) ?? [];
+  return [];
+}
+
 // Cookies whose expiry we track for "session about to expire" alerts.
 const REQUIRED_COOKIES = ["c_user", "xs", "fr", "datr", "sb"] as const;
 
@@ -337,8 +361,8 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
     }
 
     const { decryptJson } = await import("@/server/crypto.server");
-    const payload = decryptJson<{ cookies: { name: string; value: string; expirationDate?: number }[] }>(acc.encrypted_payload);
-    const cookies = payload.cookies ?? [];
+    const payload = decryptJson<unknown>(acc.encrypted_payload);
+    const cookies = normalizeStoredCookies(payload);
     const byName = new Map(cookies.map((c) => [c.name, c.value]));
 
     const present: string[] = [];
@@ -427,8 +451,8 @@ export const testBotAccount = createServerFn({ method: "POST" })
     try {
       if (acc.auth_method === "cookies") {
         const { decryptJson } = await import("@/server/crypto.server");
-        const payload = decryptJson<{ cookies: { name: string; value: string }[] }>(acc.encrypted_payload);
-        const cookies = payload.cookies ?? [];
+        const payload = decryptJson<unknown>(acc.encrypted_payload);
+        const cookies = normalizeStoredCookies(payload);
         const byName = new Map(cookies.map((c) => [c.name, c.value]));
         const cUser = byName.get("c_user");
         const xs = byName.get("xs");
