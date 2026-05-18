@@ -1,41 +1,81 @@
-## السبب الجذري (مؤكد بالشبكة)
+## الهدف
+تحويل النشر على الـVPS من سلسلة ترقيعات إلى مسار مستقر: لا يعلن نجاح النشر إلا إذا كان الإصدار الصحيح ظاهرًا على الدومين، ولو حصل فشل نعرف هل السبب من التطبيق أم من البروكسي/Cloudflare أم من السيرفر، مع تقليل احتمالية 502 لمسارات لوحة التحكم.
 
-- الطلب `GET https://flowtixtools.com/dashboard/facebook/bot` يرجع **502 من Cloudflare** والـ Origin هو الـ VPS (`cf-ray: 9fdb84f10871cb73-PDX`, `cfOrigin;dur=546ms`, `cf-host-status: Error`).
-- `/` و `/api/public/health` يردّان 200 → المشكلة **مقصورة على SSR لهذا المسار** على الـ VPS، أي أن رندرة الصفحة على الخادم ترمي استثناء قبل ما يلتقطه `RootErrorComponent` فيرد الخادم 5xx ثم Cloudflare يحوّله 502.
-- النسخة المنشورة فعليًا على الإنتاج هي `29f09cf` (لأن آخر 4 deploys للـ VPS فشلت — منفصل عن هذا الإصلاح).
-- مسار `/dashboard/*` لا يحتاج SSR إطلاقًا: محتواه خاص بالمستخدم، غير قابل للأرشفة، ولا يحتاج SEO أو OG. تشغيله SSR يفتح بابًا للأخطاء (auth provider يقرأ session، استدعاء `useAuth` قبل hydrate، أي import يتفجّر في بيئة Node بدون env) — وأي خطأ منها = 502.
+## ما ظهر من الفحص
+- آخر فشل واضح في الصورة ليس من كود صفحة البوت مباشرة: `/deploy-version.json` على `www.flowtixtools.com` رجع 502، ثم فشل لأنه لا يحتوي SHA الجديد.
+- ملف النشر موجود لكنه معقد جدًا ويخلط بين: بناء التطبيق، نقل الملفات، تشغيل PM2، فحص Nginx، فحص Cloudflare/الدومين، والـrollback.
+- يوجد endpoint داخلي للإصدار في Node runner (`/deploy-version.json`) لكنه يعتمد على env وقت تشغيل PM2، وليس بالضرورة يقرأ الملف المنشور نفسه، وهذا يفتح باب mismatch بين الملفات على القرص وما يعلنه السيرفر.
+- Smoke test الحالي يفحص الصفحة الرئيسية والصحة والإصدار، لكنه لا يفحص مسارات لوحة التحكم التي سببت 502 سابقًا.
+- تم تعطيل SSR للـdashboard routes سابقًا، وهذا صحيح كحماية، لكن الاستقرار الجذري يحتاج تثبيت pipeline + proxy + smoke tests.
 
-## الإصلاح (تعديل بسيط ومستهدف)
+## خطة الإصلاح الجذري
 
-### 1) تعطيل SSR لكل راوتس لوحة التحكم
-لكل ملف تحت `src/routes/dashboard*.tsx` نضيف `ssr: false` داخل `createFileRoute({...})`. هذا يجعل الخادم يرسل غلاف HTML فقط ويتم الرندر بالكامل على العميل، فيستحيل أن يفشل SSR على هذه المسارات.
+### 1) جعل `/deploy-version.json` مصدر حقيقة واحد
+- تعديل Node SSR runner ليقرأ `deploy-version.json` من القرص أولًا بدل تكوينه من متغيرات البيئة فقط.
+- إبقاء fallback من env للتطوير فقط.
+- النتيجة: لو الملفات الجديدة وصلت للسيرفر، endpoint الإصدار يعكس الحقيقة الموجودة على القرص، لا حالة PM2 القديمة.
 
-الملفات المعنية (12 ملف):
-```
-dashboard.tsx, dashboard.activity.tsx, dashboard.bulk.tsx, dashboard.control.tsx,
-dashboard.facebook.tsx, dashboard.facebook.bot.tsx, dashboard.facebook.groups.tsx,
-dashboard.facebook.history.tsx, dashboard.facebook.jobs.tsx, dashboard.facebook.status.tsx,
-dashboard.profile.tsx, dashboard.whatsapp.tsx
-```
+### 2) إضافة endpoints تشخيصية آمنة للنشر
+- توسيع `/api/public/health` ليعرض معلومات غير حساسة مفيدة مثل:
+  - `status`
+  - `service`
+  - `uptime_seconds`
+  - `build.short_sha` أو `build.sha` من ملف الإصدار
+- عدم عرض أسرار أو مفاتيح.
+- الهدف: أي مراقبة خارجية تعرف بسرعة هل التطبيق حي وهل الإصدار صحيح.
 
-### 2) errorComponent محلي لراوت البوت
-بدلًا من ترك أي استثناء يصعد للجذر، نضيف `errorComponent` خاص بـ `dashboard.facebook.bot.tsx` يعرض بطاقة خطأ عربية وزر "إعادة المحاولة" يستدعي `router.invalidate()` + `reset()`. هذا يضمن أن أسوأ حالة على العميل = UI ودود، لا شاشة بيضاء.
+### 3) فصل فشل التطبيق عن فشل البروكسي بوضوح
+- تحسين خطوة “Verify public domain shows this commit” بحيث تطبع مقارنة منظمة بين:
+  - `http://127.0.0.1:3100/deploy-version.json` من داخل السيرفر
+  - الدومين العام `/deploy-version.json`
+  - status code وbody snippet لكل واحد
+- لو المحلي صحيح والعام خطأ: يوقف النشر برسالة “proxy/CDN problem” بدون rollback للتطبيق.
+- لو المحلي خطأ: يعتبرها مشكلة تشغيل PM2/ملفات ويرجع للـrollback.
 
-### 3) تنظيف `beforeLoad`
-الحالي يستورد `supabase` ديناميكيًا ويستدعي `getSession()` بلا فائدة. مع `ssr: false` يصبح غير ضروري — نحذفه (`AuthProvider` في الجذر يتولى السيشن).
+### 4) Smoke test لمسارات المشكلة نفسها
+- إضافة فحص public HTTP بعد النشر لمسارات حرجة:
+  - `/dashboard`
+  - `/dashboard/facebook`
+  - `/dashboard/facebook/bot`
+- التوقع لهذه المسارات بعد `ssr: false`: ترجع HTML shell أو redirect منطقي، لكن لا ترجع 500/502.
+- هذا يمنع رجوع نفس مشكلة البوت بدون اكتشاف.
+
+### 5) جعل Cloudflare/cache لا يخدع فحص الإصدار
+- في فحص `/deploy-version.json` استخدام headers تمنع الكاش:
+  - `Cache-Control: no-cache`
+  - query مثل `?ts=<run_id>` عند الفحص
+- والتأكد أن السيرفر نفسه يرسل `Cache-Control: no-store` لهذا المسار.
+- الهدف: لا نقبل HTML/JSON قديم من الكاش كدليل نجاح أو فشل.
+
+### 6) تقليل هشاشة ملف deploy.yml
+- بدون تغيير البنية بالكامل، سنلمّع الأجزاء الأكثر خطرًا فقط:
+  - توحيد اختيار `PUBLIC_URLS` في shell صغير واضح داخل نفس workflow.
+  - توحيد طباعة status/body في دالة واحدة بدل تكرار curl بأشكال مختلفة.
+  - إبقاء rollback الحالي كما هو إلا إذا احتجنا تعديل بسيط ليتوافق مع مصدر الحقيقة الجديد.
+
+### 7) إضافة دليل تشغيل مختصر داخل الريبو
+- إنشاء ملف توثيق قصير مثل `docs/deployment-runbook.md` يوضح:
+  - ماذا يعني فشل `deploy-version.json`.
+  - كيف نعرف أن المشكلة Nginx/Cloudflare وليست التطبيق.
+  - أوامر آمنة للفحص على VPS.
+  - متى نعمل rollback ومتى لا.
+- هذا يمنع تكرار التخمين كل مرة.
+
+## الملفات المتوقع تعديلها
+- `scripts/tanstack-node-server.mjs`
+- `src/routes/api/public/health.ts`
+- `.github/workflows/deploy.yml`
+- ملف توثيق جديد للنشر، غالبًا `docs/deployment-runbook.md`
 
 ## ما لن أغيره
+- لن أغير إعدادات Cloudflare أو DNS من داخل الكود.
+- لن أضيف أسرار أو أطبع مفاتيح.
+- لن ألمس ملفات Lovable Cloud/Supabase auto-generated.
+- لن أغير منطق البوت أو قاعدة البيانات ضمن هذه الخطة.
 
-- **لن أمس** أي ملف server-fn، أو الـ middleware، أو ملفات SSR/Worker/`server.ts`.
-- **لن أعدل** الـ pipeline أو إعدادات VPS — هذا مسار منفصل (الـ 4 deploys الفاشلة موضوع آخر).
-- **لن أمس** صفحات عامة (`/`, `/login`, ...) — تبقى SSR لمصلحة SEO/OG.
-
-## ملاحظة مهمة عن النشر
-
-التعديل سيبقى في إصدار Lovable فورًا (preview + lovable.app)، لكنه **لن يظهر على `www.flowtixtools.com` إلا بعد نجاح Deploy to VPS**. آخر 4 محاولات فشلت. لو رضيت، بعد ما أنفّذ هذا التعديل وأتأكد أنه يحلّ المشكلة على Lovable، نفتح موضوع منفصل لإصلاح الـ pipeline (يحتاج logs الـ GitHub Actions).
-
-## التحقق بعد التنفيذ
-
-1. `curl -i https://flowtix-social-connect.lovable.app/dashboard/facebook/bot` → 200 + HTML غلاف.
-2. فتح الرابط في المتصفح → الصفحة تشتغل بدون "Something went wrong".
-3. لما الـ pipeline يعدّي: نفس الاختبارين على `www.flowtixtools.com`.
+## نتيجة متوقعة
+بعد التنفيذ، أي deploy جديد سيعطي نتيجة قاطعة:
+- التطبيق الجديد شغال محليًا والدومين يعرضه: نجاح.
+- التطبيق شغال محليًا والدومين لا يعرضه: مشكلة proxy/CDN واضحة.
+- التطبيق لا يعمل محليًا: rollback وتشخيص PM2 واضح.
+- مسار `/dashboard/facebook/bot` لن يرجع 502 بدون أن يمسكه smoke test.
