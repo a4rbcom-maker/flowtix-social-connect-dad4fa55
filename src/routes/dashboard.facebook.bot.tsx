@@ -1627,6 +1627,7 @@ function BotAccountsPage() {
                           const isMissing = precheck.result!.missing.includes(name);
                           const invalid = precheck.result!.invalid.find((i) => i.name === name);
                           const ok = !isMissing && !invalid;
+                          const isRecommended = name === "sb";
                           return (
                             <div
                               key={name}
@@ -1641,7 +1642,12 @@ function BotAccountsPage() {
                               ) : (
                                 <XCircle className="h-3.5 w-3.5" />
                               )}
-                              {name}
+                              <span>{name}</span>
+                              {isRecommended && (
+                                <span className="text-[10px] opacity-75">
+                                  {lang === "ar" ? "مستحسن" : "recommended"}
+                                </span>
+                              )}
                             </div>
                           );
                         })}
