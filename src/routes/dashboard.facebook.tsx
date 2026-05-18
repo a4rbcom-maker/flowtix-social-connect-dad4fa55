@@ -1,6 +1,6 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useEffect, useState, type MouseEvent } from "react";
-import { Facebook, RefreshCw, Trash2, Users, Loader2, ExternalLink, ChevronDown, CheckCircle2, Copy, ShieldCheck, FlaskConical, XCircle, KeyRound, Send, Sparkles, AlertCircle, History, Clock } from "lucide-react";
+import { Facebook, RefreshCw, Trash2, Users, Loader2, ExternalLink, ChevronDown, CheckCircle2, Copy, ShieldCheck, FlaskConical, XCircle, KeyRound, Send, Sparkles, AlertCircle, History, Clock, Cookie } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,7 +28,7 @@ export const Route = createFileRoute("/dashboard/facebook")({
     const { supabase } = await import("@/integrations/supabase/client");
     await supabase.auth.getSession();
   },
-  component: FacebookPage,
+  component: FacebookRouteShell,
 });
 
 interface Connection {
@@ -55,6 +55,11 @@ interface Page {
   fan_count?: number;
   link?: string;
   picture?: { data?: { url?: string } };
+}
+
+function FacebookRouteShell() {
+  const location = useLocation();
+  return location.pathname === "/dashboard/facebook" ? <FacebookPage /> : <Outlet />;
 }
 
 function FacebookPage() {
@@ -289,6 +294,9 @@ function FacebookPage() {
         tokenPlaceholder: "الصق توكن فيسبوك هنا...",
         tokenHelp: "احصل على التوكن من Graph API Explorer",
         getToken: "الحصول على توكن",
+        botCookiesTitle: "عايز إعداد البوت بالـ Cookies؟",
+        botCookiesDesc: "ده مكان مختلف عن Access Token. افتح صفحة حسابات البوت والصق Cookies JSON مباشرة.",
+        openBotCookies: "فتح إعداد Cookies للبوت",
         connect: "ربط الحساب",
         connecting: "جاري الربط...",
         disconnect: "إلغاء الربط",
@@ -389,6 +397,9 @@ function FacebookPage() {
         tokenPlaceholder: "Paste your Facebook token here...",
         tokenHelp: "Get a token from Graph API Explorer",
         getToken: "Get Token",
+        botCookiesTitle: "Need the Cookies bot setup?",
+        botCookiesDesc: "This is separate from Access Token. Open Bot accounts and paste the Cookies JSON directly.",
+        openBotCookies: "Open bot Cookies setup",
         connect: "Connect Account",
         connecting: "Connecting...",
         disconnect: "Disconnect",
@@ -725,6 +736,26 @@ function FacebookPage() {
   return (
     <DashboardLayout title={t.title}>
       <div className="mx-auto max-w-5xl space-y-6">
+        <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                <Cookie className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-foreground">{t.botCookiesTitle}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{t.botCookiesDesc}</p>
+              </div>
+            </div>
+            <Link to="/dashboard/facebook/bot">
+              <button className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:opacity-90">
+                <Cookie className="h-4 w-4" />
+                {t.openBotCookies}
+              </button>
+            </Link>
+          </div>
+        </div>
+
         {/* Token expiry banner — only when expired or within EXPIRY_WARN_DAYS.
             Reads silently from inspectFacebookConnection on mount. The user
             can dismiss for the current view; persists per-token in sessionStorage. */}

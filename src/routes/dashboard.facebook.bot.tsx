@@ -55,6 +55,11 @@ function BotAccountsPage() {
     title: "حسابات بوت فيسبوك",
     subtitle: "اربط حسابات فيسبوك للنشر التلقائي والاستخراج عبر VPS Worker",
     add: "ربط حساب جديد",
+    directTitle: "إضافة حساب بالـ Cookies مباشرة",
+    directSubtitle: "الصق JSON من إضافة Cookie Editor هنا واحفظ الحساب بدون فتح نوافذ أو تبويبات إضافية.",
+    cookiesLabel: "Cookies JSON",
+    saveCookies: "حفظ حساب Cookies",
+    cookiesRequired: "الصق Cookies JSON أولاً",
     none: "لا توجد حسابات بعد",
     name: "الاسم",
     method: "الطريقة",
@@ -83,6 +88,11 @@ function BotAccountsPage() {
     title: "Facebook Bot Accounts",
     subtitle: "Link Facebook accounts for VPS Worker automation",
     add: "Add new account",
+    directTitle: "Add a Cookies account directly",
+    directSubtitle: "Paste the Cookie Editor JSON here and save without opening extra dialogs or tabs.",
+    cookiesLabel: "Cookies JSON",
+    saveCookies: "Save Cookies account",
+    cookiesRequired: "Paste the Cookies JSON first",
     none: "No accounts yet",
     name: "Name",
     method: "Method",
@@ -149,6 +159,22 @@ function BotAccountsPage() {
     }
   };
 
+  const handleSaveCookies = async () => {
+    if (!form.displayName.trim()) { toast.error(t.displayName); return; }
+    if (!form.cookies.trim()) { toast.error(t.cookiesRequired); return; }
+    setSubmitting(true);
+    try {
+      await call(addBotAccount, { method: "cookies", displayName: form.displayName, cookies: form.cookies });
+      toast.success(t.saved);
+      setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
+      await load();
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm(t.deleteConfirm)) return;
     try {
@@ -192,6 +218,44 @@ function BotAccountsPage() {
             </Button>
           </div>
         </div>
+
+        <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm">
+          <div className="mb-4 flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+              <Cookie className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-foreground">{t.directTitle}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">{t.directSubtitle}</p>
+            </div>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-[minmax(220px,320px)_1fr]">
+            <div className="space-y-2">
+              <Label>{t.displayName}</Label>
+              <Input
+                placeholder={t.displayNamePh}
+                value={form.displayName}
+                onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>{t.cookiesLabel}</Label>
+              <Textarea
+                rows={7}
+                placeholder={t.cookiesPh}
+                className="font-mono text-xs"
+                value={form.cookies}
+                onChange={(e) => setForm({ ...form, cookies: e.target.value })}
+              />
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+            <Button onClick={handleSaveCookies} disabled={submitting} className="gap-2">
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+              {t.saveCookies}
+            </Button>
+          </div>
+        </Card>
 
         <Card className="overflow-hidden">
           {loading ? (
