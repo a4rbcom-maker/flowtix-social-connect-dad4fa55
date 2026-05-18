@@ -582,13 +582,23 @@ function BotAccountsPage() {
     setPrecheck({ id, name, loading: true, result: null, error: null });
     try {
       const raw = await call(precheckBotAccount, { id });
-      const result = unwrapServerPayload(raw) as NonNullable<typeof precheck>["result"];
-      if (!result || typeof result !== "object" || typeof (result as { ok?: unknown }).ok !== "boolean") {
+      // Try raw first (server fn returns the object directly), then unwrap as fallback.
+      const candidates = [raw, unwrapServerPayload(raw)];
+      const result = candidates.find(
+        (c) => c && typeof c === "object" && typeof (c as { ok?: unknown }).ok === "boolean",
+      ) as NonNullable<typeof precheck>["result"] | undefined;
+      if (!result) {
+        console.error("[precheck] unexpected response shape:", raw);
         throw new Error(
-          lang === "ar"
-            ? "استجابة غير متوقعة من الخادم"
-            : "Unexpected response from server",
+          (lang === "ar" ? "استجابة غير متوقعة من الخادم: " : "Unexpected server response: ") +
+            JSON.stringify(raw).slice(0, 200),
         );
+      }
+      // Guarantee a non-empty message so the UI never renders a blank box.
+      if (!result.message) {
+        result.message = result.ok
+          ? lang === "ar" ? "الفحص ناجح." : "Pre-check passed."
+          : lang === "ar" ? "فشل الفحص بدون رسالة من الخادم." : "Pre-check failed (no message from server).";
       }
       setPrecheck({ id, name, loading: false, result, error: null });
     } catch (e) {
