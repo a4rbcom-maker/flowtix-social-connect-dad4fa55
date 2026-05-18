@@ -734,6 +734,20 @@ function BotAccountsPage() {
       const raw = await precheckFn({ data: { id } });
       const result = normalizePrecheckPayload(raw, lang === "ar" ? "ar" : "en");
       console.info("[precheck] result", { ok: result.ok, debugCode: result.debugCode });
+      if (result.ok) {
+        setAccounts((prev) =>
+          prev.map((a) =>
+            a.id === id
+              ? {
+                  ...a,
+                  status: "active",
+                  last_check_at: new Date().toISOString(),
+                  last_error: result.severity === "warning" ? result.message : null,
+                }
+              : a,
+          ),
+        );
+      }
 
       setPrecheck({
         id,
