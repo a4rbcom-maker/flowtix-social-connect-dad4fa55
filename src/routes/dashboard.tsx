@@ -23,7 +23,7 @@ import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import type { Tables } from "@/integrations/supabase/types";
 
 export const Route = createFileRoute("/dashboard")({
-  component: DashboardPage,
+  component: DashboardRouteShell,
 });
 
 interface ConnectionStatus {
@@ -31,12 +31,15 @@ interface ConnectionStatus {
   whatsapp: { connected: boolean; type?: string | null; ai_enabled?: boolean };
 }
 
-function DashboardPage() {
+function DashboardRouteShell() {
+  const location = useLocation();
+  return location.pathname === "/dashboard" ? <DashboardOverview /> : <Outlet />;
+}
+
+function DashboardOverview() {
   const { user, loading: authLoading } = useAuth();
   const { lang } = useI18n();
   const navigate = useNavigate();
-  const location = useLocation();
-  const isOverviewRoute = location.pathname === "/dashboard";
   const [profile, setProfile] = useState<Tables<"profiles"> | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>({
     facebook: { connected: false },
@@ -76,10 +79,6 @@ function DashboardPage() {
       setLoading(false);
     })();
   }, [user]);
-
-  if (!isOverviewRoute) {
-    return <Outlet />;
-  }
 
   const t = lang === "ar"
     ? {
