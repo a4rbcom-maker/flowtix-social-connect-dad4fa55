@@ -517,7 +517,8 @@ function BotAccountsPage() {
       }
     } catch (e) {
       timers.forEach(clearTimeout);
-      const reason = e instanceof Error ? e.message : String(e);
+      if (isAuthErr(e)) { toast.dismiss(toastId); handleAuthExpired(); return; }
+      const reason = describeFbError(e, lang === "ar" ? "ar" : "en");
       pushEvent(id, { key: "error", state: "fail", detail: reason });
       const willRetry = scheduleAutoRetry(reason);
       toast.error(t.testFailed, {
