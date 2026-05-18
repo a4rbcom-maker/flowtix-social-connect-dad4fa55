@@ -645,6 +645,20 @@ const looksLikeCheckpoint = (status: string | null | undefined, lastError: strin
           );
         })()}
 
+        <div className="flex items-center justify-end gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
+          <RotateCw className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-muted-foreground">
+            {lang === "ar" ? `إعادة محاولة تلقائية بعد الفشل (حتى ${MAX_AUTO_RETRIES} محاولات)` : `Auto-retry on failure (up to ${MAX_AUTO_RETRIES} attempts)`}
+          </span>
+          <Switch
+            checked={autoRetry}
+            onCheckedChange={(v) => {
+              setAutoRetry(v);
+              try { localStorage.setItem("fbBotAutoRetry", v ? "1" : "0"); } catch {}
+            }}
+          />
+        </div>
+
         <Card className="overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center p-12">
