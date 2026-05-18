@@ -310,6 +310,7 @@ function BotAccountsPage() {
     const attempt = (retryCounts[id] ?? 0) + (isRetry ? 1 : 0);
     if (isRetry) setRetryCounts((p) => ({ ...p, [id]: attempt }));
 
+
     setTestProgress({ value: 10, label: t.progressInit });
     const toastId = toast.loading(t.testing, { description: t.progressInit });
 
