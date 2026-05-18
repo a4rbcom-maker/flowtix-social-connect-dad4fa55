@@ -24,6 +24,7 @@ import { markAllRead, type SendChannel, type SendLogRow, type SendStatus } from 
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/dashboard/activity")({
+  ssr: false,
   component: ActivityPage,
 });
 

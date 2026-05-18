@@ -23,6 +23,7 @@ import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import type { Tables } from "@/integrations/supabase/types";
 
 export const Route = createFileRoute("/dashboard")({
+  ssr: false,
   component: DashboardRouteShell,
 });
 

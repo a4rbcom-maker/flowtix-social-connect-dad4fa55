@@ -20,6 +20,7 @@ import { openExternalUrl, ExternalLinkButton } from "@/components/shared/Externa
 import { useFacebookApi, describeFbError } from "@/features/facebook/api";
 
 export const Route = createFileRoute("/dashboard/facebook")({
+  ssr: false,
   // Gate the route on a hydrated Supabase session so the very first server-fn
   // call in the page already carries a valid bearer token. Without this, the
   // initial render fires getFacebookConnection before auth is restored, which

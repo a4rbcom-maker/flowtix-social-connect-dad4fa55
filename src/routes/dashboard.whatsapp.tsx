@@ -4,6 +4,7 @@ import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { useI18n } from "@/lib/i18n";
 
 export const Route = createFileRoute("/dashboard/whatsapp")({
+  ssr: false,
   component: WhatsAppPage,
 });
 

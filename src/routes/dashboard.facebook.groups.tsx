@@ -26,6 +26,7 @@ import {
 import { logSendActivity, updateSendStatus } from "@/lib/notifications";
 
 export const Route = createFileRoute("/dashboard/facebook/groups")({
+  ssr: false,
   component: FacebookGroupsPage,
 });
 

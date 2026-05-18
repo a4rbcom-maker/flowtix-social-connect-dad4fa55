@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { inspectFacebookConnection, disconnectFacebook } from "@/lib/facebook.functions";
 
 export const Route = createFileRoute("/dashboard/facebook/status")({
+  ssr: false,
   component: FacebookStatusPage,
 });
 
