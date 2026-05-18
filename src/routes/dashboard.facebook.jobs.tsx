@@ -94,10 +94,15 @@ function JobsHubPage() {
     if (!user) return;
     (async () => {
       try {
-        const data = await call(listBotAccounts);
-        setAccounts(data as Account[]);
-        if ((data as Account[]).length > 0) setAccountId((data as Account[])[0].id);
-      } catch (e) { toast.error(String(e)); }
+        const raw = await call(listBotAccounts);
+        const data: Account[] = Array.isArray(raw)
+          ? (raw as Account[])
+          : Array.isArray((raw as { data?: unknown })?.data)
+            ? ((raw as { data: Account[] }).data)
+            : [];
+        setAccounts(data);
+        if (data.length > 0) setAccountId(data[0].id);
+      } catch (e) { console.error("[fb-jobs] listBotAccounts failed:", e); toast.error(String(e)); }
       finally { setLoading(false); }
     })();
   }, [user]);

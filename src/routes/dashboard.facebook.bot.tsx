@@ -318,12 +318,20 @@ function BotAccountsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const data = await call(listBotAccounts);
-      // Defensive sanitization: older versions stored an obsolete error message
-      // from the deprecated /me probe. Treat any account still carrying that
-      // legacy text as "untested" in the UI so users see actionable state.
+      const raw = await call(listBotAccounts);
+      // Defensive: tolerate any non-array shape (empty body, wrapped envelope,
+      // legacy fields) so a malformed response never crashes the page with
+      // "s.map is not a function".
+      const list: Account[] = Array.isArray(raw)
+        ? (raw as Account[])
+        : Array.isArray((raw as { data?: unknown })?.data)
+          ? ((raw as { data: Account[] }).data)
+          : [];
+      // Older versions stored an obsolete error message from the deprecated
+      // /me probe. Treat any account still carrying that legacy text as
+      // "untested" in the UI so users see actionable state.
       const LEGACY_ERROR = /صفحة \/me|login page|\/me أعادت/i;
-      const sanitized = (data as Account[]).map((a) =>
+      const sanitized = list.map((a) =>
         a.last_error && LEGACY_ERROR.test(a.last_error)
           ? { ...a, status: "untested" as BotAccountStatus, last_error: null, last_check_at: null }
           : a,
@@ -331,6 +339,7 @@ function BotAccountsPage() {
       setAccounts(sanitized);
     } catch (e) {
       if (isAuthErr(e)) { handleAuthExpired(); return; }
+      console.error("[fb-bot] listBotAccounts failed:", e);
       toast.error(describeFbError(e, lang === "ar" ? "ar" : "en"));
     } finally {
       setLoading(false);
