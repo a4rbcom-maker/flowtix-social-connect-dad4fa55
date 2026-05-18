@@ -113,6 +113,7 @@ export const addBotAccount = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     let payload: unknown;
+    let cookieExpiresAt: string | null = null;
     if (data.method === "cookies") {
       const parsed = parseCookiesInput(data.cookies);
       if (!parsed || parsed.length === 0) {
@@ -121,6 +122,8 @@ export const addBotAccount = createServerFn({ method: "POST" })
         );
       }
       payload = { cookies: parsed };
+      const minExp = earliestRequiredExpiry(parsed);
+      if (minExp !== null) cookieExpiresAt = new Date(minExp * 1000).toISOString();
     } else {
       payload = {
         email: data.email,
@@ -138,8 +141,9 @@ export const addBotAccount = createServerFn({ method: "POST" })
         auth_method: data.method,
         encrypted_payload: encrypted,
         status: "untested",
+        cookie_expires_at: cookieExpiresAt,
       })
-      .select("id, display_name, auth_method, status, last_check_at, last_error, created_at")
+      .select("id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at")
       .single();
     if (error) throw new Error(error.message);
     return row;
@@ -152,11 +156,12 @@ export const listBotAccounts = createServerFn({ method: "GET" })
     const { supabase } = context;
     const { data, error } = await supabase
       .from("fb_bot_accounts")
-      .select("id, display_name, auth_method, status, last_check_at, last_error, created_at")
+      .select("id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return data ?? [];
   });
+
 
 // ---------- deleteBotAccount ----------
 export const deleteBotAccount = createServerFn({ method: "POST" })
