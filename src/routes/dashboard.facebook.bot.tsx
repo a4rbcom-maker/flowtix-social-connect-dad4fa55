@@ -1592,7 +1592,9 @@ function BotAccountsPage() {
                   <div
                     className={`rounded-md border px-3 py-3 text-sm ${
                       precheck.result.ok
-                        ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300"
+                        ? precheck.result.severity === "warning"
+                          ? "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300"
+                          : "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300"
                         : "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-300"
                     }`}
                   >
@@ -1604,12 +1606,15 @@ function BotAccountsPage() {
                       )}
                       {precheck.result.message}
                     </p>
+                    <p className="mt-1 font-mono text-[11px] opacity-80">
+                      {precheck.result.debugCode}
+                    </p>
                   </div>
 
                   {precheck.result.method === "cookies" && (
                     <div className="rounded-md border border-border bg-muted/30 p-3">
                       <p className="mb-2 text-xs font-semibold text-muted-foreground">
-                        {lang === "ar" ? "الكوكيز المطلوبة" : "Required cookies"} (
+                        {lang === "ar" ? "الكوكيز الأساسية والمستحسنة" : "Critical and recommended cookies"} (
                         {precheck.result.present.length}/5)
                         {" · "}
                         <span className="font-normal">
