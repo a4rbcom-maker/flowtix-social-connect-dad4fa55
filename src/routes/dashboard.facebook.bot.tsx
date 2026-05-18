@@ -718,7 +718,51 @@ const looksLikeCheckpoint = (status: string | null | undefined, lastError: strin
                             </div>
                           )}
                           {Boolean(retryCounts[a.id]) && (
-                            <p className="text-[10px] text-muted-foreground">{t.attemptLabel((retryCounts[a.id] ?? 0) + 1)}</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {t.attemptLabel((retryCounts[a.id] ?? 0) + 1)}
+                              {" · "}
+                              {lang === "ar" ? `الحد الأقصى ${MAX_AUTO_RETRIES}` : `max ${MAX_AUTO_RETRIES}`}
+                            </p>
+                          )}
+                          {(testLogs[a.id]?.length ?? 0) > 0 && (
+                            <details className="max-w-xs rounded-md border border-border bg-muted/30 px-2 py-1.5 text-[11px]" open={testingId === a.id}>
+                              <summary className="cursor-pointer select-none font-medium text-foreground">
+                                {lang === "ar" ? "سجل الأحداث" : "Event log"}
+                                <span className="ms-1 text-muted-foreground">({testLogs[a.id]!.length})</span>
+                              </summary>
+                              <ul className="mt-1.5 space-y-1">
+                                {testLogs[a.id]!.map((ev, i) => {
+                                  const label =
+                                    ev.key === "init" ? t.progressInit
+                                    : ev.key === "decrypt" ? t.progressDecrypt
+                                    : ev.key === "fetch" ? t.progressFetch
+                                    : ev.key === "groups" ? t.progressGroups
+                                    : ev.key === "done" ? t.progressDone
+                                    : ev.key === "retry" ? (lang === "ar" ? "إعادة محاولة" : "Retry")
+                                    : (lang === "ar" ? "خطأ" : "Error");
+                                  const Icon = ev.state === "ok" ? CheckCircle2
+                                    : ev.state === "fail" ? XCircle
+                                    : ev.state === "running" ? Loader2
+                                    : Clock;
+                                  const cls = ev.state === "ok" ? "text-emerald-600"
+                                    : ev.state === "fail" ? "text-red-600"
+                                    : ev.state === "running" ? "text-primary"
+                                    : "text-muted-foreground";
+                                  return (
+                                    <li key={i} className="flex items-start gap-1.5 leading-tight">
+                                      <Icon className={`mt-0.5 h-3 w-3 shrink-0 ${cls} ${ev.state === "running" ? "animate-spin" : ""}`} />
+                                      <span className="flex-1">
+                                        <span className="font-medium text-foreground">{label}</span>
+                                        {ev.detail && <span className="ms-1 text-muted-foreground">— {ev.detail}</span>}
+                                      </span>
+                                      <span className="font-mono text-[10px] text-muted-foreground/70">
+                                        {new Date(ev.at).toLocaleTimeString(lang === "ar" ? "ar-EG" : "en-US", { hour12: false })}
+                                      </span>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </details>
                           )}
                         </div>
                       </td>
