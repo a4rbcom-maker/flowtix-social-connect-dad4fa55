@@ -3,7 +3,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { encryptJson, decryptJson } from "@/server/crypto.server";
+// NOTE: `@/server/crypto.server` is intentionally NOT imported at the top.
+// The TanStack Start server-fn transformer strips `.handler()` bodies from the
+// client bundle but keeps top-level imports. Importing a `*.server.ts` module
+// here makes the published client chunk fail to evaluate (Import Protection),
+// which manifests as the global "Something went wrong" page on prod only.
+// Each handler dynamically imports the crypto helpers when needed.
 
 // ---------- Schemas ----------
 const cookiesSchema = z.object({
@@ -97,6 +102,7 @@ export const addBotAccount = createServerFn({ method: "POST" })
         twoFactorSecret: data.twoFactorSecret || null,
       };
     }
+    const { encryptJson } = await import("@/server/crypto.server");
     const encrypted = encryptJson(payload);
     const { data: row, error } = await supabase
       .from("fb_bot_accounts")
@@ -289,6 +295,7 @@ export const testBotAccount = createServerFn({ method: "POST" })
 
     try {
       if (acc.auth_method === "cookies") {
+        const { decryptJson } = await import("@/server/crypto.server");
         const payload = decryptJson<{ cookies: { name: string; value: string }[] }>(acc.encrypted_payload);
         const cookies = payload.cookies ?? [];
         const cUser = cookies.find((c) => c.name === "c_user")?.value;
@@ -339,6 +346,7 @@ export const testBotAccount = createServerFn({ method: "POST" })
     let groups: { id: string; name: string }[] = [];
     if (status === "active" && acc.auth_method === "cookies") {
       try {
+        const { decryptJson } = await import("@/server/crypto.server");
         const payload = decryptJson<{ cookies: { name: string; value: string }[] }>(acc.encrypted_payload);
         const cookieHeader = (payload.cookies ?? []).map((c) => `${c.name}=${c.value}`).join("; ");
         const headers = {
