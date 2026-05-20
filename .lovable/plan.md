@@ -1,48 +1,50 @@
-## السبب الجذري
+## استخراج رسائل الصفحة (Messenger Conversations)
 
-من فحص طلبات الشبكة الحقيقية لصفحة `/dashboard/facebook`، استجابة `inspectFacebookConnection` تحتوي على:
+إضافة قسم جديد لسحب محادثات Inbox للصفحات المربوطة وعرض بيانات العملاء المتفاعلين، مع تصدير CSV.
 
-```
-validationError: "(#4) Application request limit reached"
-granted: []   declined: []   missingScopes: [كل الصلاحيات]
-```
+### المتطلبات (Permissions)
+- `pages_messaging` (مطلوب) — لقراءة محادثات Inbox الصفحة
+- `pages_show_list` + `pages_read_engagement` (موجودين بالفعل)
+- بانر تحذير واضح: لو التوكن مش متضمن `pages_messaging` نعرض زرار "أعد توليد التوكن بكل الصلاحيات" بدل ما نكسر الصفحة
 
-هذا خطأ من Meta نفسه (Error Code 4): **تطبيق فيسبوك الذي يولّد التوكن وصل سقف الاستدعاءات اليومي**. التوكن صحيح وغير منتهي، لكن أي نداء على `/me` أو `/me/permissions` يُرفض من Graph API.
+### Server Functions الجديدة في `src/lib/facebook.functions.ts`
+1. **`listPagesForMessaging`** — يرجع الصفحات اللي معاها `pages_messaging` access (من `/me/accounts` بـ Page Access Tokens)
+2. **`fetchPageConversations({ pageId, limit=25, after? })`** — يستدعي:
+   - `GET /{page-id}/conversations?fields=participants,snippet,updated_time,message_count,unread_count&access_token={page_token}` مع pagination cursor
+   - يرجع: `conversations[]`, `paging.cursors.after`
+3. **`fetchConversationMessages({ pageId, conversationId, limit=50 })`** — يستدعي:
+   - `GET /{conversation-id}/messages?fields=from,to,message,created_time,attachments` (آخر 50 رسالة)
+4. **`extractLeadsFromConversations({ pageId, max=100 })`** — يجمع العملاء المهتمين من آخر N محادثة:
+   - اسم العميل، PSID، آخر رسالة، تاريخ آخر تفاعل، عدد الرسائل، حالة (unread/replied)
 
-النتيجة في الواجهة: `testFacebookToken` و`connectFacebook` يرجعان استجابة فيها `profile: null` ورسالة خطأ Meta الخام، فيتعامل معها كود الواجهة على أنها "رد غير مكتمل" بدلاً من رسالة واضحة.
+كل الـ functions تستخدم `requireSupabaseAuth` middleware وتقرأ التوكن من `facebook_connections` للمستخدم الحالي.
 
-## الخطة
+### Route الجديد: `src/routes/dashboard.facebook.messages.tsx`
+- Page selector (Select من الصفحات المتاحة)
+- 3 tabs:
+  - **المحادثات** — جدول: المشارك، آخر رسالة (snippet)، تاريخ التحديث، عدد الرسائل، غير مقروء. زرار "عرض" يفتح Dialog فيه آخر 50 رسالة (ScrollArea).
+  - **العملاء المهتمين (Leads)** — جدول: اسم، آخر تفاعل، عدد رسائل، حالة. زرار "تصدير CSV" (يستخدم نفس `downloadCsv` helper الموجود في insights).
+  - **إحصائيات سريعة** — إجمالي المحادثات، غير المقروء، متوسط الرسائل لكل محادثة.
+- Pagination بـ "تحميل المزيد" (cursor-based).
+- معالجة أخطاء عبر `useFacebookApi` + `describeFbError` (نفس النمط الموجود).
 
-### 1. رسائل خطأ صادقة وواضحة بدل "رد الخادم غير مكتمل"
-- في `src/lib/facebook.functions.ts`: توسعة `classifyFbError` لتشمل صراحة:
-  - `code === 4` → نوع جديد `app_rate_limited` مع رسالة: "تطبيقك على فيسبوك تجاوز حد الاستدعاءات اليومي (#4). انتظر ساعة، أو ارفع الحد من Meta App Dashboard → App Rate Limits."
-  - `code === 17` → "تجاوزت حد الاستدعاءات على مستوى المستخدم (#17). انتظر قليلاً."
-  - `code === 32 / 613` → حد الصفحة/المجموعة.
-- في `src/routes/dashboard.facebook.tsx`: 
-  - `friendlyError` يتعرّف على `(#4)` و `application request limit` و `rate limit` ويعرض الرسالة العربية المفصّلة أعلاه + رابط لـ Meta App Dashboard.
-  - `normalizeAuthResponse` عند `!id` يضيف `fbType` ورسالة الخطأ الأصلية بدلاً من جملة "رد غير مكتمل" المضلِّلة.
+### Navigation
+- إضافة عنصر في `DashboardLayout` sidebar تحت قسم Facebook: "رسائل Inbox" / "Messenger Inbox" بأيقونة `MessageCircle` من lucide.
+- لا تعديل في `routeTree.gen.ts` يدوياً (auto-generated).
 
-### 2. تجنّب استنزاف الحد (المعالجة الجذرية)
-- **زر "اختبار التوكن" يعيد استخدام نتيجة `inspectFacebookConnection` المخزّنة** إذا كان نفس التوكن مخزّن بالفعل، بدل استدعاء `/me` و`/me/permissions` مرتين على كل ضغطة.
-- **`getFacebookConnection` المُستدعى عند فتح الصفحة لا يستدعي `inspectFacebookConnection` تلقائياً** عند كل تحميل — فقط مرة واحدة بعد اتصال جديد أو عند ضغط زر "تحديث".
-- إضافة `localStorage` cache قصير (30 ثانية) لنتيجة `testFacebookToken` لنفس التوكن، فلا يضرب FB أكثر من مرة في الدقيقة.
+### Translations (i18n inline داخل الـ route)
+عربي/إنجليزي لكل النصوص (titles, columns, empty states, permission warning).
 
-### 3. مؤشّر حالة التطبيق
-- لافتة أعلى الصفحة (بنفس نمط لافتة انتهاء الصلاحية الحالية) تظهر فقط إذا اكتُشف `app_rate_limited`، توضح:
-  - رسالة الخطأ
-  - الخطوات: انتظار ساعة، أو زيادة الحد من Meta App Dashboard
-  - زر يفتح `developers.facebook.com/apps` مباشرة
+### اعتبارات أمان/خصوصية
+- لا نخزن محتوى الرسائل في قاعدة بياناتنا — fetch مباشر من Graph API عند الطلب.
+- CSV التصدير يحتوي فقط على: اسم، PSID، آخر رسالة (snippet مختصر)، تاريخ — بدون محتوى رسائل كامل افتراضياً.
+- timeout موحد عبر `FB_CALL_TIMEOUT_MS`.
 
-### 4. تحقّق الإصلاح
-- لا يمكن إعادة الاختبار يدوياً (يحتاج توكن حقيقي للمستخدم)، لكن سنتأكد:
-  - من خلال قراءة شبكة بعد التغيير أن عدد طلبات `_serverFn` انخفض (لا inspect تلقائي + cache).
-  - أن استجابة test/connect المخزّنة في `network_requests` لم تعد تحتوي على نص خطأ خام أو `profile: null` بدون رسالة مفهومة.
-  - فحص TypeScript/ESLint للملفّين.
+### الملفات المتأثرة
+- `src/lib/facebook.functions.ts` (إضافة 4 server functions)
+- `src/routes/dashboard.facebook.messages.tsx` (ملف جديد)
+- `src/components/dashboard/DashboardLayout.tsx` (إضافة لينك)
 
-## ملفّات ستتغيّر
-- `src/lib/facebook.functions.ts` — تصنيف خطأ #4 و#17، طبقة cache بسيطة على الخادم اختيارية.
-- `src/routes/dashboard.facebook.tsx` — رسائل خطأ + لافتة rate-limit + إزالة الـ inspect التلقائي عند كل تحميل + cache نتيجة الاختبار.
-- `src/features/facebook/api.ts` — إضافة `app_rate_limited` لـ `FbErrorKind` و `describeFbError`.
-
-## ملاحظة مهمة للمستخدم
-الإصلاحات أعلاه ستجعل الرسائل واضحة وستوقف إهدار الحد، لكن **لن تُعيد عمل الـ API فوراً** — يجب الانتظار حتى يُعاد ضبط الحد من فيسبوك (عادة ساعة)، أو طلب رفع الحد من Meta App Dashboard → App Rate Limits.
+### ملاحظات مهمة
+- Graph API بترجع conversations فقط للمستخدمين اللي راسلوا الصفحة خلال آخر 24 ساعة إلا لو عندك `pages_messaging` كاملة + الصفحة في Live Mode (غير Development).
+- لو الصفحة جديدة (New Page Experience) ممكن بعض الحقول ترجع فاضية — هنعرض رسالة واضحة بدل صفحة فاضية.
