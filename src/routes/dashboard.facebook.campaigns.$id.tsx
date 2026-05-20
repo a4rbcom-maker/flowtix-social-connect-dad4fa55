@@ -1,6 +1,6 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, XCircle, Clock, Loader2, Play, Pause } from "lucide-react";
+import { ArrowLeft, CheckCircle2, XCircle, Clock, Loader2, Play, Pause, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -8,9 +8,46 @@ import { supabase } from "@/integrations/supabase/client";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { getCampaign, getCampaignResults, startCampaign, pauseCampaign } from "@/lib/fb-campaigns.functions";
 
+function CampaignDetailErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+  const router = useRouter();
+  return (
+    <DashboardLayout title="تفاصيل الحملة">
+      <div className="max-w-xl mx-auto mt-12 rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-center">
+        <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-destructive" />
+        <h2 className="text-lg font-semibold text-foreground mb-2">حدث خطأ في تحميل تفاصيل الحملة</h2>
+        <pre className="mt-3 max-h-40 overflow-auto rounded-md bg-muted p-3 text-left font-mono text-xs text-destructive whitespace-pre-wrap break-words">
+          {error?.message ?? "Unknown error"}
+        </pre>
+        <div className="mt-4 flex items-center justify-center gap-2">
+          <button
+            onClick={() => { router.invalidate(); reset(); }}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+          >
+            إعادة المحاولة
+          </button>
+          <Link to="/dashboard/facebook/campaigns" className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm hover:bg-accent">
+            عودة للحملات
+          </Link>
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+}
+
 export const Route = createFileRoute("/dashboard/facebook/campaigns/$id")({
   ssr: false,
   component: CampaignDetailPage,
+  errorComponent: CampaignDetailErrorComponent,
+  notFoundComponent: () => (
+    <DashboardLayout title="تفاصيل الحملة">
+      <div className="max-w-xl mx-auto mt-12 rounded-2xl border border-border bg-card p-6 text-center">
+        <h2 className="text-lg font-semibold text-foreground mb-2">الحملة غير موجودة</h2>
+        <Link to="/dashboard/facebook/campaigns" className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">
+          عودة للحملات
+        </Link>
+      </div>
+    </DashboardLayout>
+  ),
 });
 
 type Campaign = {

@@ -1,50 +1,42 @@
-## استخراج رسائل الصفحة (Messenger Conversations)
+## المشكلة
 
-إضافة قسم جديد لسحب محادثات Inbox للصفحات المربوطة وعرض بيانات العملاء المتفاعلين، مع تصدير CSV.
+كل صفحات الحملات (`/dashboard/facebook/campaigns`, `/new`, `/$id`) بتعرض شاشة "Something went wrong" العامة فور الفتح.
 
-### المتطلبات (Permissions)
-- `pages_messaging` (مطلوب) — لقراءة محادثات Inbox الصفحة
-- `pages_show_list` + `pages_read_engagement` (موجودين بالفعل)
-- بانر تحذير واضح: لو التوكن مش متضمن `pages_messaging` نعرض زرار "أعد توليد التوكن بكل الصلاحيات" بدل ما نكسر الصفحة
+لما فحصت الصفحات بالمتصفح كمستخدم khaled.tqnee نفسه:
+- صفحة القائمة بتفتح طبيعي (حالة فاضية)
+- مفيش أي أخطاء في الـ console أو network
+- كل الـ exports موجودة في `fb-campaigns.functions.ts`
+- جدول `fb_campaigns` موجود في قاعدة البيانات
 
-### Server Functions الجديدة في `src/lib/facebook.functions.ts`
-1. **`listPagesForMessaging`** — يرجع الصفحات اللي معاها `pages_messaging` access (من `/me/accounts` بـ Page Access Tokens)
-2. **`fetchPageConversations({ pageId, limit=25, after? })`** — يستدعي:
-   - `GET /{page-id}/conversations?fields=participants,snippet,updated_time,message_count,unread_count&access_token={page_token}` مع pagination cursor
-   - يرجع: `conversations[]`, `paging.cursors.after`
-3. **`fetchConversationMessages({ pageId, conversationId, limit=50 })`** — يستدعي:
-   - `GET /{conversation-id}/messages?fields=from,to,message,created_time,attachments` (آخر 50 رسالة)
-4. **`extractLeadsFromConversations({ pageId, max=100 })`** — يجمع العملاء المهتمين من آخر N محادثة:
-   - اسم العميل، PSID، آخر رسالة، تاريخ آخر تفاعل، عدد الرسائل، حالة (unread/replied)
+يعني الخطأ بيحصل عندك بس مش عندي — على الأرجح:
+1. كاش متصفح قديم بعد آخر تعديل
+2. أو خطأ في الـ runtime مش ظاهر لأن الـ routes الـ 3 **ماعندهاش `errorComponent`** خاص بيها، فأي خطأ بيتم التقاطه في `defaultErrorComponent` العام (اللي في الصورة) من غير ما نعرف رسالة الخطأ.
 
-كل الـ functions تستخدم `requireSupabaseAuth` middleware وتقرأ التوكن من `facebook_connections` للمستخدم الحالي.
+## الحل
 
-### Route الجديد: `src/routes/dashboard.facebook.messages.tsx`
-- Page selector (Select من الصفحات المتاحة)
-- 3 tabs:
-  - **المحادثات** — جدول: المشارك، آخر رسالة (snippet)، تاريخ التحديث، عدد الرسائل، غير مقروء. زرار "عرض" يفتح Dialog فيه آخر 50 رسالة (ScrollArea).
-  - **العملاء المهتمين (Leads)** — جدول: اسم، آخر تفاعل، عدد رسائل، حالة. زرار "تصدير CSV" (يستخدم نفس `downloadCsv` helper الموجود في insights).
-  - **إحصائيات سريعة** — إجمالي المحادثات، غير المقروء، متوسط الرسائل لكل محادثة.
-- Pagination بـ "تحميل المزيد" (cursor-based).
-- معالجة أخطاء عبر `useFacebookApi` + `describeFbError` (نفس النمط الموجود).
+### 1. إضافة `errorComponent` لكل route من الحملات (الأولوية)
+حالياً كل routes الحملات معتمدة على `defaultErrorComponent` العام اللي بيخفي رسالة الخطأ في الـ production. هضيف لكل route من الـ 3:
+- `errorComponent`: يعرض رسالة الخطأ الفعلية + زر "إعادة المحاولة" يستدعي `router.invalidate()` + `reset()`
+- `notFoundComponent`: للـ `$id` لما الحملة مش موجودة
 
-### Navigation
-- إضافة عنصر في `DashboardLayout` sidebar تحت قسم Facebook: "رسائل Inbox" / "Messenger Inbox" بأيقونة `MessageCircle` من lucide.
-- لا تعديل في `routeTree.gen.ts` يدوياً (auto-generated).
+### 2. تحسين `defaultErrorComponent` في `src/router.tsx`
+- يعرض `error.message` دايماً (مش بس في DEV) لكن بشكل مرتب وقابل للإخفاء، عشان نعرف سبب أي خطأ مستقبلي
+- زر "Try again" يعمل `router.invalidate()` + reload للبيانات
 
-### Translations (i18n inline داخل الـ route)
-عربي/إنجليزي لكل النصوص (titles, columns, empty states, permission warning).
+### 3. تحسين `callFn` helper
+في الـ 3 ملفات في علاقة `callFn` بترمي helper بيبعث `headers` يدوي. ده مش لازم (لأن `attachSupabaseAuth` موجود في `src/start.ts`). هبسطها:
+- لو الـ session موجودة، استدعي السيرفر فانكشن مباشرة: `await listCampaigns()` أو `await saveCampaign({ data: payload })`
+- ده يقلل احتمال الأخطاء الـ type-cast بـ `as never`
 
-### اعتبارات أمان/خصوصية
-- لا نخزن محتوى الرسائل في قاعدة بياناتنا — fetch مباشر من Graph API عند الطلب.
-- CSV التصدير يحتوي فقط على: اسم، PSID، آخر رسالة (snippet مختصر)، تاريخ — بدون محتوى رسائل كامل افتراضياً.
-- timeout موحد عبر `FB_CALL_TIMEOUT_MS`.
+### 4. اختبار بعد التعديل
+- فتح كل صفحة من الـ 3 في المتصفح والتأكد إنها بتشغل
+- لو لسة فيه خطأ، رسالته هتكون ظاهرة في الـ errorComponent الجديد عشان نعالجها
 
-### الملفات المتأثرة
-- `src/lib/facebook.functions.ts` (إضافة 4 server functions)
-- `src/routes/dashboard.facebook.messages.tsx` (ملف جديد)
-- `src/components/dashboard/DashboardLayout.tsx` (إضافة لينك)
+## الملفات المعدّلة
+- `src/router.tsx` — عرض رسالة الخطأ
+- `src/routes/dashboard.facebook.campaigns.tsx` — errorComponent + تبسيط callFn
+- `src/routes/dashboard.facebook.campaigns.new.tsx` — errorComponent + تبسيط callFn
+- `src/routes/dashboard.facebook.campaigns.$id.tsx` — errorComponent + notFoundComponent + تبسيط callFn
 
-### ملاحظات مهمة
-- Graph API بترجع conversations فقط للمستخدمين اللي راسلوا الصفحة خلال آخر 24 ساعة إلا لو عندك `pages_messaging` كاملة + الصفحة في Live Mode (غير Development).
-- لو الصفحة جديدة (New Page Experience) ممكن بعض الحقول ترجع فاضية — هنعرض رسالة واضحة بدل صفحة فاضية.
+## ملاحظة
+لو ممكن قبل ما أبدأ التنفيذ، حدّث الصفحة مرة بـ Ctrl+Shift+R (hard refresh). لو لسه بتدي نفس الخطأ، التنفيذ هيكشف رسالة الخطأ الحقيقية ويصلحها.
