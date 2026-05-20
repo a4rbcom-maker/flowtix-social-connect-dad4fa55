@@ -293,7 +293,15 @@ export const connectFacebook = createServerFn({ method: "POST" })
         };
       }
 
-      return { success: true as const, profile, granted, declined, savedOnly: false as const, warning: null, error: null };
+      return {
+        success: true as const,
+        profile,
+        granted,
+        declined,
+        savedOnly: false as const,
+        warning: null,
+        error: null,
+      };
     } catch (err) {
       console.error("[connectFacebook] failed:", err);
       if (isFacebookErrorOfType(err, "app_rate_limited")) {
@@ -539,6 +547,7 @@ export const inspectFacebookConnection = createServerFn({ method: "GET" })
     let dataAccessExpiresAt: string | null = null;
     let appName: string | null = null;
     let isExpired = false;
+    let validationErrorType: FacebookApiError["type"] | null = null;
 
     try {
       const [me, perms] = await Promise.all([
@@ -548,9 +557,13 @@ export const inspectFacebookConnection = createServerFn({ method: "GET" })
       profile = { id: String(me.id), name: me.name, email: me.email ?? null };
       ({ granted, declined } = parsePermissions(perms));
     } catch (err) {
-      valid = false;
+      validationErrorType = err instanceof FacebookApiError ? err.type : null;
+      valid = validationErrorType === "app_rate_limited";
       validationError = err instanceof Error ? err.message : "Token validation failed";
       if (validationError.toLowerCase().includes("expired")) isExpired = true;
+      if (validationErrorType === "app_rate_limited" && row.fb_user_id) {
+        profile = { id: row.fb_user_id, name: row.fb_user_name ?? "Facebook", email: row.fb_user_email };
+      }
     }
 
     if (valid) {
@@ -583,13 +596,17 @@ export const inspectFacebookConnection = createServerFn({ method: "GET" })
       "pages_manage_metadata",
     ];
     const grantedSet = new Set(Array.isArray(granted) ? granted : []);
-    const missingScopes = requiredScopes.filter((s) => !grantedSet.has(s));
+    const missingScopes =
+      validationErrorType === "app_rate_limited"
+        ? []
+        : requiredScopes.filter((s) => !grantedSet.has(s));
 
     return {
       connected: true as const,
       valid,
       isExpired,
       validationError,
+      validationErrorType,
       tokenPreview,
       tokenLength: token.length,
       profile,
