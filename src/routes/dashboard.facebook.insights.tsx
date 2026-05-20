@@ -109,6 +109,23 @@ function InsightsPage() {
         bestHoursDesc: "متوسط عدد المتابعين المتصلين بالساعة (آخر 7 أيام)",
         warningTitle: "تحذيرات",
         warningDesc: "بعض المقاييس مش متاحة (مهملة من Meta أو الصلاحيات ناقصة):",
+        export: "تصدير CSV",
+        genderTotal: "إجمالي الجنس",
+        demoEmptyTitle: "البيانات الديموغرافية غير متاحة",
+        demoEmptyBody:
+          "Meta أهملت مقاييس عمر/جنس/دولة المعجبين لصفحات تجربة الصفحة الجديدة، وهتتشال نهائيًا في يونيو 2026. شوف قسم \"جمهور البوستات\" تحت كبديل عملي.",
+        audienceTitle: "جمهور البوستات (بديل ديموغرافي)",
+        audienceDesc:
+          "أكتر ناس تفاعلت مع آخر بوستاتك — مستخرجة من التعليقات والإعجابات. ده المتاح حاليًا بدل ديموغرافيا المعجبين المهجورة.",
+        topCommenters: "أكتر المعلقين",
+        topReactors: "أكتر المتفاعلين",
+        uniqueUsers: "أشخاص فريدون",
+        totalComments: "تعليقات",
+        totalReactions: "تفاعلات",
+        postsScanned: "بوستات مفحوصة",
+        loadAudience: "تحميل جمهور البوستات",
+        loadingAudience: "بنحلل آخر البوستات…",
+        count: "العدد",
       }
     : {
         title: "Page Insights",
@@ -137,6 +154,24 @@ function InsightsPage() {
         bestHoursDesc: "Avg followers online per hour (last 7 days)",
         warningTitle: "Notes",
         warningDesc: "Some metrics are unavailable (deprecated by Meta or missing permission):",
+        export: "Export CSV",
+        genderTotal: "Gender split",
+        demoEmptyTitle: "Demographics unavailable",
+        demoEmptyBody:
+          "Meta deprecated fan age/gender/country metrics for New Page Experience pages — full removal June 2026. See the Post Audience section below as a practical alternative.",
+        audienceTitle: "Post audience (demographics alternative)",
+        audienceDesc:
+          "Real people who engaged with your recent posts — extracted from comments and reactions. This is what's actually available now in place of the deprecated fan demographics.",
+        topCommenters: "Top commenters",
+        topReactors: "Top reactors",
+        uniqueUsers: "Unique people",
+        totalComments: "Comments",
+        totalReactions: "Reactions",
+        postsScanned: "Posts scanned",
+        loadAudience: "Load post audience",
+        loadingAudience: "Analyzing recent posts…",
+        count: "Count",
+
       };
 
   // Load pages once
