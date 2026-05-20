@@ -414,57 +414,161 @@ function InsightsPage() {
             </Card>
 
             {/* Demographics */}
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Card className="p-5">
-                <div className="mb-4 flex items-center gap-2">
-                  <Users className="h-4 w-4 text-primary" />
-                  <h3 className="font-semibold">{t.genderAge}</h3>
-                </div>
-                {genderAgeChart.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">—</p>
-                ) : (
-                  <div className="h-64 w-full">
-                    <ResponsiveContainer>
-                      <BarChart data={genderAgeChart}>
-                        <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                        <XAxis dataKey="age" fontSize={11} />
-                        <YAxis fontSize={11} />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="male" name={t.male} fill="#3b82f6" />
-                        <Bar dataKey="female" name={t.female} fill="#ec4899" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </Card>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">{t.demographics}</h3>
+              </div>
+              {demoEmpty ? (
+                <Card className="border-amber-300/50 bg-amber-50/50 p-6 dark:bg-amber-950/20">
+                  <p className="mb-1 font-semibold">{t.demoEmptyTitle}</p>
+                  <p className="text-sm text-muted-foreground">{t.demoEmptyBody}</p>
+                </Card>
+              ) : (
+                <div className="grid gap-4 lg:grid-cols-3">
+                  {/* Gender pie */}
+                  <Card className="p-5">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-primary" />
+                        <h3 className="font-semibold">{t.genderTotal}</h3>
+                      </div>
+                      {genderTotal.length > 0 && (
+                        <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => downloadCsv(`gender-total-${page.id}.csv`, genderTotal.map((g) => ({ name: g.name, value: g.value, pct: g.pct })))}>
+                          <Download className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                    {genderTotal.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">—</p>
+                    ) : (
+                      <div className="h-64 w-full">
+                        <ResponsiveContainer>
+                          <PieChart>
+                            <Pie data={genderTotal} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90} label={(e: { pct: number; name: string }) => `${e.name} ${e.pct}%`}>
+                              <Cell fill="#3b82f6" />
+                              <Cell fill="#ec4899" />
+                            </Pie>
+                            <Tooltip />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </Card>
 
-              <Card className="p-5">
-                <div className="mb-4 flex items-center gap-2">
-                  <Globe2 className="h-4 w-4 text-primary" />
-                  <h3 className="font-semibold">{t.country}</h3>
+                  {/* Gender × age bars */}
+                  <Card className="p-5">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-primary" />
+                        <h3 className="font-semibold">{t.genderAge}</h3>
+                      </div>
+                      {genderAgeChart.length > 0 && (
+                        <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => downloadCsv(`gender-age-${page.id}.csv`, genderAgeChart)}>
+                          <Download className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                    {genderAgeChart.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">—</p>
+                    ) : (
+                      <div className="h-64 w-full">
+                        <ResponsiveContainer>
+                          <BarChart data={genderAgeChart}>
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                            <XAxis dataKey="age" fontSize={11} />
+                            <YAxis fontSize={11} />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="male" name={t.male} fill="#3b82f6" />
+                            <Bar dataKey="female" name={t.female} fill="#ec4899" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </Card>
+
+                  {/* Country */}
+                  <Card className="p-5">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Globe2 className="h-4 w-4 text-primary" />
+                        <h3 className="font-semibold">{t.country}</h3>
+                      </div>
+                      {countryChart.length > 0 && (
+                        <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => downloadCsv(`countries-${page.id}.csv`, countryChart)}>
+                          <Download className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                    {countryChart.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">—</p>
+                    ) : (
+                      <div className="h-64 w-full">
+                        <ResponsiveContainer>
+                          <BarChart data={countryChart} layout="vertical" margin={{ left: 20 }}>
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                            <XAxis type="number" fontSize={11} />
+                            <YAxis dataKey="name" type="category" fontSize={11} width={80} />
+                            <Tooltip />
+                            <Bar dataKey="count" fill="hsl(var(--primary))">
+                              {countryChart.map((_, i) => (
+                                <Cell key={i} fill="hsl(var(--primary))" fillOpacity={1 - i * 0.05} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </Card>
                 </div>
-                {countryChart.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">—</p>
-                ) : (
-                  <div className="h-64 w-full">
-                    <ResponsiveContainer>
-                      <BarChart data={countryChart} layout="vertical" margin={{ left: 20 }}>
-                        <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                        <XAxis type="number" fontSize={11} />
-                        <YAxis dataKey="name" type="category" fontSize={11} width={80} />
-                        <Tooltip />
-                        <Bar dataKey="count" fill="hsl(var(--primary))">
-                          {countryChart.map((_, i) => (
-                            <Cell key={i} fill="hsl(var(--primary))" fillOpacity={1 - i * 0.05} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </Card>
+              )}
             </div>
+
+            {/* Post audience — alternative when fan demographics are deprecated */}
+            <Card className="p-5">
+              <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <MessageCircle className="h-4 w-4 text-primary" />
+                  <h3 className="font-semibold">{t.audienceTitle}</h3>
+                </div>
+                <div className="flex gap-2">
+                  {audience?.ok && (audience.topCommenters.length > 0 || audience.topReactors.length > 0) && (
+                    <Button variant="ghost" size="sm" className="h-8 gap-1" onClick={() => downloadCsv(`post-audience-${page.id}.csv`, [...audience.topCommenters.map((c) => ({ type: "commenter", id: c.id, name: c.name, count: c.count })), ...audience.topReactors.map((r) => ({ type: "reactor", id: r.id, name: r.name, count: r.count }))])}>
+                      <Download className="h-3 w-3" />
+                      {t.export}
+                    </Button>
+                  )}
+                  <Button size="sm" onClick={() => void loadAudience(pageId)} disabled={loadingAudience}>
+                    {loadingAudience ? <Loader2 className="h-4 w-4 animate-spin" /> : t.loadAudience}
+                  </Button>
+                </div>
+              </div>
+              <p className="mb-4 text-xs text-muted-foreground">{t.audienceDesc}</p>
+
+              {loadingAudience && (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <span className="ms-3 text-sm text-muted-foreground">{t.loadingAudience}</span>
+                </div>
+              )}
+
+              {audience?.ok && !loadingAudience && (
+                <>
+                  <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <MiniStat icon={<Users className="h-4 w-4 text-primary" />} label={t.uniqueUsers} value={audience.totals.uniqueUsers} />
+                    <MiniStat icon={<MessageCircle className="h-4 w-4 text-primary" />} label={t.totalComments} value={audience.totals.comments} />
+                    <MiniStat icon={<ThumbsUp className="h-4 w-4 text-primary" />} label={t.totalReactions} value={audience.totals.reactions} />
+                    <MiniStat icon={<TrendingUp className="h-4 w-4 text-primary" />} label={t.postsScanned} value={audience.totals.posts} />
+                  </div>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <AudienceList title={t.topCommenters} items={audience.topCommenters} icon={<MessageCircle className="h-4 w-4" />} countLabel={t.count} />
+                    <AudienceList title={t.topReactors} items={audience.topReactors} icon={<ThumbsUp className="h-4 w-4" />} countLabel={t.count} />
+                  </div>
+                </>
+              )}
+            </Card>
+
+
 
             {/* Best hours */}
             <Card className="p-5">
