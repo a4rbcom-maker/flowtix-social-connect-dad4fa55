@@ -673,7 +673,8 @@ function FacebookPage() {
     return {
       profile: {
         id,
-        name: value?.savedOnly && name.startsWith("Facebook token saved") ? t.savedPendingName : name,
+        name:
+          value?.savedOnly && name.startsWith("Facebook token saved") ? t.savedPendingName : name,
         email: typeof profile?.email === "string" ? profile.email : null,
       },
       granted: toStringArray(value?.granted),
@@ -766,7 +767,9 @@ function FacebookPage() {
       const raw = err instanceof Error ? err.message : t.testFailed;
       const fbType = (err as Error & { fbType?: string })?.fbType ?? null;
       const rateLimited = isAppRateLimitError(raw, fbType);
-      const msg = rateLimited ? `${friendlyError(raw)} ${t.testLimitedButCanSave}` : friendlyError(raw);
+      const msg = rateLimited
+        ? `${friendlyError(raw)} ${t.testLimitedButCanSave}`
+        : friendlyError(raw);
       writeTokenTestCache(cleaned, { error: { message: raw, type: fbType } });
       rememberRateLimitIfNeeded(raw, fbType);
       setTestResult(null);

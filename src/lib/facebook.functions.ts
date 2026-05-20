@@ -192,12 +192,19 @@ function normalizeProfile(me: { id?: unknown; name?: unknown; email?: unknown })
   };
 }
 
-function isFacebookErrorOfType(err: unknown, type: FacebookApiError["type"]): err is FacebookApiError {
+function isFacebookErrorOfType(
+  err: unknown,
+  type: FacebookApiError["type"],
+): err is FacebookApiError {
   return err instanceof FacebookApiError && err.type === type;
 }
 
 function savedOnlyProfile(
-  row: { fb_user_id?: string | null; fb_user_name?: string | null; fb_user_email?: string | null } | null,
+  row: {
+    fb_user_id?: string | null;
+    fb_user_name?: string | null;
+    fb_user_email?: string | null;
+  } | null,
   token: string,
 ) {
   return {
@@ -562,7 +569,11 @@ export const inspectFacebookConnection = createServerFn({ method: "GET" })
       validationError = err instanceof Error ? err.message : "Token validation failed";
       if (validationError.toLowerCase().includes("expired")) isExpired = true;
       if (validationErrorType === "app_rate_limited" && row.fb_user_id) {
-        profile = { id: row.fb_user_id, name: row.fb_user_name ?? "Facebook", email: row.fb_user_email };
+        profile = {
+          id: row.fb_user_id,
+          name: row.fb_user_name ?? "Facebook",
+          email: row.fb_user_email,
+        };
       }
     }
 
