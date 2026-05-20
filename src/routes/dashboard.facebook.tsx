@@ -96,9 +96,8 @@ function FacebookPage() {
   const { lang } = useI18n();
   const navigate = useNavigate();
   const [connection, setConnection] = useState<Connection | null>(null);
-  // Token expiry awareness — populated silently on dashboard open via
-  // inspectFacebookConnection (no token leaves the server). Used to render
-  // a top banner when the token is expired or about to expire.
+  // Token expiry awareness — populated only when the user manually checks the
+  // token, so opening the page does not spend Meta Graph API quota.
   const { call: fbCall } = useFacebookApi();
   const [tokenExpiry, setTokenExpiry] = useState<{
     expiresAt: string | null;
