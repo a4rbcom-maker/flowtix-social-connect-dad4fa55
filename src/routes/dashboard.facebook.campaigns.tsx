@@ -12,6 +12,7 @@ import {
   startCampaign,
   pauseCampaign,
 } from "@/lib/fb-campaigns.functions";
+import { safeArray } from "@/lib/safe-data";
 
 function CampaignsErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
@@ -117,7 +118,7 @@ function CampaignsPage() {
   };
 
   const load = async () => {
-    try { setItems(await callFn(listCampaigns) as CampaignRow[]); }
+    try { setItems(safeArray<CampaignRow>(await callFn(listCampaigns))); }
     catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
   };
 
