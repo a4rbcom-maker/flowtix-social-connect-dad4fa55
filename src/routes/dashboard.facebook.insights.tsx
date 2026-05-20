@@ -26,6 +26,8 @@ import {
   Bar,
   Legend,
   Cell,
+  PieChart,
+  Pie,
 } from "recharts";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -34,7 +36,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { fetchFacebookPages, fetchPageInsights } from "@/lib/facebook.functions";
+import { Download, MessageCircle, ThumbsUp } from "lucide-react";
+import { fetchFacebookPages, fetchPageInsights, fetchPageAudienceFromPosts } from "@/lib/facebook.functions";
+
 
 export const Route = createFileRoute("/dashboard/facebook/insights")({
   ssr: false,
