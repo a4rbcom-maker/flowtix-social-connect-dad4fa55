@@ -206,35 +206,63 @@ export const connectFacebook = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const token = data.access_token;
 
-    // 1) verify token via /me
-    const me = await fbGet("/me?fields=id,name,email", token);
-    const profile = normalizeProfile(me);
+    try {
+      const me = await fbGet("/me?fields=id,name,email", token);
+      const profile = normalizeProfile(me);
 
-    // 2) upsert connection
-    const { error } = await supabase.from("facebook_connections").upsert(
-      {
-        user_id: userId,
-        access_token: token,
-        fb_user_id: profile.id,
-        fb_user_name: profile.name,
-        fb_user_email: profile.email,
-        last_synced_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id" },
-    );
+      let granted: string[] = [];
+      let declined: string[] = [];
+      try {
+        const perms = await fbGet("/me/permissions", token);
+        ({ granted, declined } = parsePermissions(perms));
+      } catch (permErr) {
+        console.warn("[connectFacebook] permissions fetch failed:", permErr);
+      }
 
-    if (error) throw new Error(error.message);
+      const { error: dbError } = await supabase.from("facebook_connections").upsert(
+        {
+          user_id: userId,
+          access_token: token,
+          fb_user_id: profile.id,
+          fb_user_name: profile.name,
+          fb_user_email: profile.email,
+          last_synced_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" },
+      );
 
-    return {
-      success: true,
-      profile,
-    };
+      if (dbError) {
+        return {
+          success: false as const,
+          profile,
+          granted,
+          declined,
+          error: {
+            message: `Database error: ${dbError.message}`,
+            code: null,
+            subcode: null,
+            type: "unknown" as const,
+            missingPermission: null,
+            httpStatus: 500,
+          },
+        };
+      }
+
+      return { success: true as const, profile, granted, declined, error: null };
+    } catch (err) {
+      console.error("[connectFacebook] failed:", err);
+      return {
+        success: false as const,
+        profile: null,
+        granted: [] as string[],
+        declined: [] as string[],
+        error: serializeError(err),
+      };
+    }
   });
 
 /**
  * Test a Facebook access token WITHOUT saving it.
- * Returns the profile info + granted permissions so the user can verify
- * the token works and has the right scopes before connecting.
  */
 export const testFacebookToken = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -247,15 +275,28 @@ export const testFacebookToken = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const token = data.access_token;
-    const me = await fbGet("/me?fields=id,name,email", token);
-    const perms = await fbGet("/me/permissions", token);
-    const { granted, declined } = parsePermissions(perms);
-    return {
-      success: true,
-      profile: normalizeProfile(me),
-      granted,
-      declined,
-    };
+    try {
+      const me = await fbGet("/me?fields=id,name,email", token);
+      const profile = normalizeProfile(me);
+      let granted: string[] = [];
+      let declined: string[] = [];
+      try {
+        const perms = await fbGet("/me/permissions", token);
+        ({ granted, declined } = parsePermissions(perms));
+      } catch (permErr) {
+        console.warn("[testFacebookToken] permissions fetch failed:", permErr);
+      }
+      return { success: true as const, profile, granted, declined, error: null };
+    } catch (err) {
+      console.error("[testFacebookToken] failed:", err);
+      return {
+        success: false as const,
+        profile: null,
+        granted: [] as string[],
+        declined: [] as string[],
+        error: serializeError(err),
+      };
+    }
   });
 
 /** Disconnect: remove the stored connection. */
