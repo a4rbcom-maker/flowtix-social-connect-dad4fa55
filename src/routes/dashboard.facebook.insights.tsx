@@ -52,6 +52,8 @@ export const Route = createFileRoute("/dashboard/facebook/insights")({
 
 type Page = { id: string; name: string; fan_count?: number; picture?: { data?: { url?: string } } };
 type Insights = Awaited<ReturnType<typeof fetchPageInsights>>;
+type Audience = Awaited<ReturnType<typeof fetchPageAudienceFromPosts>>;
+
 
 const COUNTRY_NAMES_AR: Record<string, string> = {
   EG: "مصر", SA: "السعودية", AE: "الإمارات", US: "الولايات المتحدة", GB: "بريطانيا",
