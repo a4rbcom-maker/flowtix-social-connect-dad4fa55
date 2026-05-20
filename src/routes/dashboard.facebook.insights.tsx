@@ -68,6 +68,7 @@ function InsightsPage() {
   const ar = lang === "ar";
   const listPagesFn = useServerFn(fetchFacebookPages);
   const fetchInsightsFn = useServerFn(fetchPageInsights);
+  const fetchAudienceFn = useServerFn(fetchPageAudienceFromPosts);
 
   const [pages, setPages] = useState<Page[]>([]);
   const [pageId, setPageId] = useState<string>("");
@@ -75,6 +76,10 @@ function InsightsPage() {
   const [pagesError, setPagesError] = useState<string | null>(null);
   const [insights, setInsights] = useState<Insights | null>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
+  const [audience, setAudience] = useState<Audience | null>(null);
+  const [loadingAudience, setLoadingAudience] = useState(false);
+
+
 
   const t = ar
     ? {
