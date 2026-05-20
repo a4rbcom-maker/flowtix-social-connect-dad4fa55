@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
+import { buildPostToGroupsPayload } from "@/lib/fb-job-payload";
 // NOTE: `@/server/crypto.server` is intentionally NOT imported at the top.
 // The TanStack Start server-fn transformer strips `.handler()` bodies from the
 // client bundle but keeps top-level imports. Importing a `*.server.ts` module
@@ -356,11 +357,13 @@ export const createPostJob = createServerFn({ method: "POST" })
         user_id: userId,
         account_id: data.accountId,
         job_type: "post_to_groups",
-        payload: {
+        payload: buildPostToGroupsPayload({
           content: data.content,
           groupIds: data.groupIds,
+          targetKind: "groups",
+          mediaUrls: [],
           intervalMinutes: data.intervalMinutes,
-        },
+        }),
         total_items: data.groupIds.length,
         scheduled_at: data.scheduledAt ?? new Date().toISOString(),
         status: "pending",
