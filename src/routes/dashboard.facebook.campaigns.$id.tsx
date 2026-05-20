@@ -183,6 +183,32 @@ function CampaignDetailPage() {
     return <span className={`text-[10px] px-2 py-0.5 rounded-full border ${cls}`}>{label}</span>;
   };
 
+  const renderMediaRow = (r: Result, ev: MediaEvent) => {
+    const d = (r.data ?? {}) as { count?: number; durationMs?: number; target?: string };
+    const meta = ev === "media_download_start" ? { icon: <Download className="w-3.5 h-3.5" />, label: t.mediaDownloadStart, cls: "text-sky-600 bg-sky-500/10 border-sky-500/30" }
+      : ev === "media_download_done" ? { icon: <Download className="w-3.5 h-3.5" />, label: t.mediaDownloadDone, cls: "text-emerald-600 bg-emerald-500/10 border-emerald-500/30" }
+      : ev === "media_download_failed" ? { icon: <XCircle className="w-3.5 h-3.5" />, label: t.mediaDownloadFailed, cls: "text-destructive bg-destructive/10 border-destructive/30" }
+      : ev === "media_upload_done" ? { icon: <Upload className="w-3.5 h-3.5" />, label: t.mediaUploadDone, cls: "text-violet-600 bg-violet-500/10 border-violet-500/30" }
+      : { icon: <Trash2 className="w-3.5 h-3.5" />, label: t.mediaCleanupDone, cls: "text-amber-600 bg-amber-500/10 border-amber-500/30" };
+    const detailBits: string[] = [];
+    if (typeof d.count === "number") detailBits.push(`${d.count} ${t.files}`);
+    if (typeof d.durationMs === "number") detailBits.push(`${t.duration}: ${d.durationMs} ${t.ms}`);
+    if (d.target) detailBits.push(`→ ${c.target_names?.[d.target] ?? d.target}`);
+    return (
+      <tr key={r.id} className="bg-muted/20">
+        <td className="px-4 py-2" colSpan={2}>
+          <span className={`inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full border ${meta.cls}`}>
+            {meta.icon}
+            <span className="font-medium">{meta.label}</span>
+            {detailBits.length > 0 && <span className="opacity-70">· {detailBits.join(" · ")}</span>}
+          </span>
+        </td>
+        <td className="px-4 py-2 text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</td>
+        <td className="px-4 py-2 text-xs text-destructive truncate max-w-[280px]">{r.error ?? "—"}</td>
+      </tr>
+    );
+  };
+
   return (
     <DashboardLayout title={c.name}>
       <div dir={dir} className="space-y-6">
