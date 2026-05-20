@@ -135,17 +135,21 @@ function FacebookGroupsPage() {
     if (!authLoading && !user) navigate({ to: "/login" });
   }, [user, authLoading, navigate]);
 
-  // Check connection on mount
+  // Check connection on mount (both Graph API and bot accounts)
   useEffect(() => {
     if (!user) return;
     (async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
-        const res = await getFacebookConnection({
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        } as never);
-        setConnected(!!res.connection);
+        const [connRes, botRes] = await Promise.all([
+          getFacebookConnection({
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          } as never).catch(() => ({ connection: null })),
+          supabase.from("fb_bot_accounts").select("id").eq("user_id", user.id).limit(1),
+        ]);
+        setConnected(!!connRes.connection);
+        setHasBotAccount((botRes.data?.length ?? 0) > 0);
       } catch {
         setConnected(false);
       }
