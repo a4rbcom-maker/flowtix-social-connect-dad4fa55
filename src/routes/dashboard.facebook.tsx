@@ -274,7 +274,6 @@ function FacebookPage() {
     } catch {
       /* corrupt entry — ignore */
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [SYNC_LOG_KEY]);
 
   const recordSync = (ev: Omit<SyncEvent, "id" | "at">) => {
