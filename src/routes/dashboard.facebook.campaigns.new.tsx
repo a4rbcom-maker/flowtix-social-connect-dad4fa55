@@ -14,6 +14,7 @@ import { fetchFacebookGroups } from "@/lib/facebook.functions";
 import {
   listTextTemplates, listMediaAssets, saveCampaign, startCampaign,
 } from "@/lib/fb-campaigns.functions";
+import { safeArray, safeObject } from "@/lib/safe-data";
 import type { Tables } from "@/integrations/supabase/types";
 
 function NewCampaignErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
@@ -139,10 +140,10 @@ function NewCampaignPage() {
           callFn<Template[]>(listTextTemplates),
           callFn<Media[]>(listMediaAssets),
         ]);
-        const accs = a.accounts ?? [];
+        const accs = safeArray<BotAccount>(safeObject<{ accounts?: unknown }>(a)?.accounts);
         setAccounts(accs);
-        setTemplates(tpl);
-        setMedia(med);
+        setTemplates(safeArray<Template>(tpl));
+        setMedia(safeArray<Media>(med));
         if (accs.length === 1) setAccountId(accs[0].id);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Failed to load");
@@ -154,10 +155,11 @@ function NewCampaignPage() {
   const loadGroups = async () => {
     setGroupsLoading(true);
     try {
-      const res = await callFn<{ groups: Group[]; error: unknown }>(fetchFacebookGroups);
+      const res = await callFn<{ groups?: unknown; error: unknown }>(fetchFacebookGroups);
       if (res.error) throw new Error("Connect your Facebook account first");
-      setGroups(res.groups);
-      toast.success(`${res.groups.length} ${lang === "ar" ? "جروب" : "groups"}`);
+      const list = safeArray<Group>(res.groups);
+      setGroups(list);
+      toast.success(`${list.length} ${lang === "ar" ? "جروب" : "groups"}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
     } finally {

@@ -7,11 +7,21 @@ import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { listMediaAssets, recordMediaAsset, deleteMediaAsset } from "@/lib/fb-campaigns.functions";
+import { safeArray } from "@/lib/safe-data";
 import type { Tables } from "@/integrations/supabase/types";
 
 export const Route = createFileRoute("/dashboard/facebook/media")({
   ssr: false,
   component: MediaPage,
+  errorComponent: ({ error, reset }) => (
+    <DashboardLayout title="مكتبة الوسائط">
+      <div className="mx-auto mt-12 max-w-xl rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-center">
+        <p className="text-lg font-semibold text-foreground">حدث خطأ في تحميل مكتبة الوسائط</p>
+        <pre className="mt-3 max-h-40 overflow-auto rounded-md bg-muted p-3 text-left font-mono text-xs text-destructive whitespace-pre-wrap break-words">{error?.message ?? "Unknown error"}</pre>
+        <button onClick={reset} className="mt-4 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">إعادة المحاولة</button>
+      </div>
+    </DashboardLayout>
+  ),
 });
 
 type Asset = Tables<"fb_media_assets">;
@@ -57,7 +67,7 @@ function MediaPage() {
   };
 
   const load = async () => {
-    try { setItems(await callFn<Asset[]>(listMediaAssets)); }
+    try { setItems(safeArray<Asset>(await callFn<unknown>(listMediaAssets as unknown as (opts: never) => Promise<unknown>))); }
     catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
   };
 

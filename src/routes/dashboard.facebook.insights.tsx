@@ -38,6 +38,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Download, MessageCircle, ThumbsUp } from "lucide-react";
 import { fetchFacebookPages, fetchPageInsights, fetchPageAudienceFromPosts } from "@/lib/facebook.functions";
+import { safeArray } from "@/lib/safe-data";
 
 
 export const Route = createFileRoute("/dashboard/facebook/insights")({
@@ -48,6 +49,15 @@ export const Route = createFileRoute("/dashboard/facebook/insights")({
     await supabase.auth.getSession();
   },
   component: InsightsPage,
+  errorComponent: ({ error, reset }) => (
+    <DashboardLayout title="تحليلات الصفحة">
+      <div className="mx-auto mt-12 max-w-xl rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-center">
+        <p className="text-lg font-semibold text-foreground">حدث خطأ في تحميل تحليلات الصفحة</p>
+        <pre className="mt-3 max-h-40 overflow-auto rounded-md bg-muted p-3 text-left font-mono text-xs text-destructive whitespace-pre-wrap break-words">{error?.message ?? "Unknown error"}</pre>
+        <button onClick={reset} className="mt-4 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">إعادة المحاولة</button>
+      </div>
+    </DashboardLayout>
+  ),
 });
 
 type Page = { id: string; name: string; fan_count?: number; picture?: { data?: { url?: string } } };
@@ -189,8 +199,9 @@ function InsightsPage() {
         if (res.error) {
           setPagesError(res.error.message);
         } else {
-          setPages(res.pages as Page[]);
-          if (res.pages.length > 0) setPageId(String((res.pages[0] as Page).id));
+          const list = safeArray<Page>(res.pages);
+          setPages(list);
+          if (list.length > 0) setPageId(String(list[0].id));
         }
       } catch (e) {
         if (!cancelled) setPagesError(String(e));
@@ -243,22 +254,22 @@ function InsightsPage() {
   const genderAgeChart = useMemo(() => {
     if (!insights?.ok) return [];
     const buckets = new Map<string, { age: string; male: number; female: number }>();
-    for (const r of insights.demographics.genderAge) {
+    for (const r of safeArray<{ age?: string; gender?: string; count?: number }>(insights.demographics?.genderAge)) {
       if (!r.age) continue;
       let b = buckets.get(r.age);
       if (!b) {
         b = { age: r.age, male: 0, female: 0 };
         buckets.set(r.age, b);
       }
-      if (r.gender === "male") b.male += r.count;
-      else if (r.gender === "female") b.female += r.count;
+      if (r.gender === "male") b.male += Number(r.count ?? 0);
+      else if (r.gender === "female") b.female += Number(r.count ?? 0);
     }
     return Array.from(buckets.values()).sort((a, b) => a.age.localeCompare(b.age));
   }, [insights]);
 
   const countryChart = useMemo(() => {
     if (!insights?.ok) return [];
-    return insights.demographics.country.map((c) => ({
+    return safeArray<{ code: string; count: number }>(insights.demographics?.country).map((c) => ({
       name: ar ? (COUNTRY_NAMES_AR[c.code] ?? c.code) : c.code,
       code: c.code,
       count: c.count,
@@ -577,12 +588,12 @@ function InsightsPage() {
                 <h3 className="font-semibold">{t.bestHours}</h3>
               </div>
               <p className="mb-4 text-xs text-muted-foreground">{t.bestHoursDesc}</p>
-              {insights.onlineHourly.every((h) => h.avg === 0) ? (
+              {safeArray<{ hour: number; avg: number }>(insights.onlineHourly).every((h) => h.avg === 0) ? (
                 <p className="text-sm text-muted-foreground">—</p>
               ) : (
                 <div className="h-56 w-full">
                   <ResponsiveContainer>
-                    <BarChart data={insights.onlineHourly}>
+                    <BarChart data={safeArray(insights.onlineHourly)}>
                       <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                       <XAxis dataKey="hour" fontSize={11} tickFormatter={(h: number) => `${h}:00`} />
                       <YAxis fontSize={11} />
@@ -594,12 +605,12 @@ function InsightsPage() {
               )}
             </Card>
 
-            {insights.warnings.length > 0 && (
+            {safeArray<string>(insights.warnings).length > 0 && (
               <Card className="border-amber-300/40 bg-amber-50/50 p-4 text-sm dark:bg-amber-950/20">
                 <p className="mb-2 font-medium">{t.warningTitle}</p>
                 <p className="mb-2 text-xs text-muted-foreground">{t.warningDesc}</p>
                 <ul className="list-inside list-disc space-y-1 text-xs text-muted-foreground">
-                  {insights.warnings.map((w, i) => (
+                  {safeArray<string>(insights.warnings).map((w, i) => (
                     <li key={i}>{w}</li>
                   ))}
                 </ul>
