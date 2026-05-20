@@ -634,6 +634,13 @@ function FacebookPage() {
     setConnecting(true);
     try {
       const res = await fbCall(connectFacebook, { access_token: cleaned });
+      if (!res || !res.profile) {
+        throw new Error(
+          lang === "ar"
+            ? "رد غير متوقع من الخادم. غالباً النسخة المنشورة قديمة — أعد النشر."
+            : "Unexpected server response. The deployed version may be outdated — redeploy.",
+        );
+      }
       toast.success(
         lang === "ar"
           ? `تم الربط بنجاح: ${res.profile.name}`
