@@ -703,7 +703,8 @@ function FacebookPage() {
         result?: TokenCheckResult;
         error?: { message: string; type?: string | null };
       };
-      const ttl = cached.error?.type === "app_rate_limited" ? RATE_LIMIT_CACHE_TTL_MS : TEST_CACHE_TTL_MS;
+      const ttl =
+        cached.error?.type === "app_rate_limited" ? RATE_LIMIT_CACHE_TTL_MS : TEST_CACHE_TTL_MS;
       if (!cached.at || Date.now() - cached.at > ttl) return null;
       return cached;
     } catch {
