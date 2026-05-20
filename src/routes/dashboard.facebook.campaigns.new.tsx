@@ -21,7 +21,7 @@ export const Route = createFileRoute("/dashboard/facebook/campaigns/new")({
   component: NewCampaignPage,
 });
 
-type BotAccount = Tables<"fb_bot_accounts">;
+type BotAccount = { id: string; display_name: string };
 type Template = Tables<"fb_text_templates">;
 type Media = Tables<"fb_media_assets">;
 type Group = { id: string; name: string };
