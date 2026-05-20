@@ -192,6 +192,7 @@ integrity_rollback() {
     --exclude='.env' \
     --exclude='.user.ini' \
     --exclude='.htaccess' \
+    --exclude='var/' \
     --exclude='.well-known/' \
     "$src/" "$DEPLOY_PATH/"
   echo "✓ Snapshot restored — PM2 keeps current in-memory process (no restart)."
@@ -252,8 +253,8 @@ ACTUAL_LIST=$(mktemp)
 sed 's/^[0-9a-f]\{64\}  //' SHA256SUMS | LC_ALL=C sort > "$EXPECTED_LIST"
 # Match the shipped bundle while intentionally ignoring server-local
 # files that rsync preserves via --exclude (env/secrets, panel files,
-# ACME challenges, and logs). Those files are expected to exist only
-# on the VPS and must not be treated as bundle drift.
+# ACME challenges, logs, and app runtime state under var/). Those files
+# are expected to exist only on the VPS and must not be treated as bundle drift.
 find . -type f \
   ! -name 'manifest.json' \
   ! -name 'SHA256SUMS' \
@@ -261,6 +262,7 @@ find . -type f \
   ! -name '.user.ini' \
   ! -name '.htaccess' \
   ! -name '*.log' \
+  ! -path './var/*' \
   ! -path './.well-known/*' \
   -printf './%P\n' \
   | LC_ALL=C sort > "$ACTUAL_LIST"
