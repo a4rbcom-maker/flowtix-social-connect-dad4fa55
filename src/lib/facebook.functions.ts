@@ -635,3 +635,230 @@ export const inspectFacebookConnection = createServerFn({ method: "GET" })
       },
     };
   });
+
+/**
+ * Fetch full Page Insights: basic info, daily engagement, audience demographics,
+ * and online presence. Each metric is fetched independently so a single failure
+ * (deprecated metric, missing permission) doesn't kill the whole response.
+ */
+export const fetchPageInsights = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({ pageId: z.string().trim().min(1).max(100) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: row, error } = await supabase
+      .from("facebook_connections")
+      .select("access_token")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!row?.access_token) {
+      return {
+        ok: false as const,
+        error: {
+          message: "لا يوجد ربط فيسبوك. الرجاء الربط أولاً.",
+          type: "invalid_token" as const,
+        },
+        page: null,
+        daily: [],
+        demographics: { genderAge: [], country: [] },
+        onlineHourly: [],
+        warnings: [] as string[],
+      };
+    }
+    const userToken = row.access_token;
+
+    try {
+      await ensurePermissions(userToken, ["pages_show_list", "pages_read_engagement"]);
+
+      // Step 1: get a page access token (needed for page insights)
+      const accountsRes = await fbGet(
+        `/me/accounts?fields=id,access_token&limit=200`,
+        userToken,
+      );
+      const accounts = (accountsRes.data ?? []) as Array<{ id: string; access_token: string }>;
+      const acct = accounts.find((a) => String(a.id) === String(data.pageId));
+      if (!acct?.access_token) {
+        return {
+          ok: false as const,
+          error: {
+            message:
+              "تعذّر العثور على Page Access Token. تأكد إنك أدمن للصفحة وإن الصلاحيات ممنوحة.",
+            type: "permission_denied" as const,
+          },
+          page: null,
+          daily: [],
+          demographics: { genderAge: [], country: [] },
+          onlineHourly: [],
+          warnings: [] as string[],
+        };
+      }
+      const pageToken = acct.access_token;
+      const warnings: string[] = [];
+
+      // Step 2: page basic info
+      const pageInfo = await fbGet(
+        `/${encodeURIComponent(data.pageId)}?fields=id,name,fan_count,followers_count,picture.type(large),link,category`,
+        pageToken,
+      );
+
+      // Helper: safe insight fetch — failures become warnings instead of throwing
+      const safeInsight = async (metric: string, period: string, days?: number) => {
+        const qs = new URLSearchParams();
+        qs.set("metric", metric);
+        qs.set("period", period);
+        if (days) {
+          const until = Math.floor(Date.now() / 1000);
+          const since = until - days * 86400;
+          qs.set("since", String(since));
+          qs.set("until", String(until));
+        }
+        try {
+          const r = await fbGet(`/${encodeURIComponent(data.pageId)}/insights?${qs}`, pageToken);
+          return (r.data ?? []) as Array<{
+            name: string;
+            period: string;
+            values: Array<{ value: unknown; end_time?: string }>;
+            title?: string;
+          }>;
+        } catch (e) {
+          warnings.push(`${metric}: ${e instanceof Error ? e.message : "failed"}`);
+          return [];
+        }
+      };
+
+      // Step 3: daily engagement (last 28 days)
+      const dailyMetrics = await safeInsight(
+        "page_impressions,page_impressions_unique,page_post_engagements,page_views_total,page_fan_adds,page_fan_removes",
+        "day",
+        28,
+      );
+
+      // Pivot daily into [{ date, impressions, reach, engagements, views, fanAdds, fanRemoves }]
+      const dailyMap = new Map<
+        string,
+        {
+          date: string;
+          impressions: number;
+          reach: number;
+          engagements: number;
+          views: number;
+          fanAdds: number;
+          fanRemoves: number;
+        }
+      >();
+      const keyMap: Record<string, keyof Omit<ReturnType<typeof emptyDay>, "date">> = {
+        page_impressions: "impressions",
+        page_impressions_unique: "reach",
+        page_post_engagements: "engagements",
+        page_views_total: "views",
+        page_fan_adds: "fanAdds",
+        page_fan_removes: "fanRemoves",
+      };
+      function emptyDay() {
+        return {
+          date: "",
+          impressions: 0,
+          reach: 0,
+          engagements: 0,
+          views: 0,
+          fanAdds: 0,
+          fanRemoves: 0,
+        };
+      }
+      for (const m of dailyMetrics) {
+        const field = keyMap[m.name];
+        if (!field) continue;
+        for (const v of m.values ?? []) {
+          const date = (v.end_time ?? "").slice(0, 10);
+          if (!date) continue;
+          let bucket = dailyMap.get(date);
+          if (!bucket) {
+            bucket = { ...emptyDay(), date };
+            dailyMap.set(date, bucket);
+          }
+          const num = typeof v.value === "number" ? v.value : Number(v.value) || 0;
+          bucket[field] = num;
+        }
+      }
+      const daily = Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+      // Step 4: demographics
+      const demoMetrics = await safeInsight("page_fans_gender_age,page_fans_country", "lifetime");
+      let genderAge: Array<{ bucket: string; gender: string; age: string; count: number }> = [];
+      let country: Array<{ code: string; count: number }> = [];
+      for (const m of demoMetrics) {
+        const latest = m.values?.[m.values.length - 1]?.value as
+          | Record<string, number>
+          | undefined;
+        if (!latest || typeof latest !== "object") continue;
+        if (m.name === "page_fans_gender_age") {
+          genderAge = Object.entries(latest).map(([k, v]) => {
+            const [g, ...rest] = k.split(".");
+            return {
+              bucket: k,
+              gender: g === "M" ? "male" : g === "F" ? "female" : "unknown",
+              age: rest.join("."),
+              count: Number(v) || 0,
+            };
+          });
+        } else if (m.name === "page_fans_country") {
+          country = Object.entries(latest)
+            .map(([code, v]) => ({ code, count: Number(v) || 0 }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 15);
+        }
+      }
+
+      // Step 5: best activity times (avg of last 7 days, hourly buckets)
+      const onlineMetrics = await safeInsight("page_fans_online_per_day", "day", 7);
+      const hourBuckets = new Array<number>(24).fill(0);
+      const hourCounts = new Array<number>(24).fill(0);
+      for (const m of onlineMetrics) {
+        for (const v of m.values ?? []) {
+          const obj = v.value as Record<string, number> | undefined;
+          if (!obj || typeof obj !== "object") continue;
+          for (const [hourStr, count] of Object.entries(obj)) {
+            const h = Number(hourStr);
+            if (!Number.isFinite(h) || h < 0 || h > 23) continue;
+            hourBuckets[h] += Number(count) || 0;
+            hourCounts[h] += 1;
+          }
+        }
+      }
+      const onlineHourly = hourBuckets.map((sum, h) => ({
+        hour: h,
+        avg: hourCounts[h] > 0 ? Math.round(sum / hourCounts[h]) : 0,
+      }));
+
+      return {
+        ok: true as const,
+        error: null,
+        page: {
+          id: String(pageInfo.id),
+          name: String(pageInfo.name ?? ""),
+          fan_count: Number(pageInfo.fan_count ?? 0),
+          followers_count: Number(pageInfo.followers_count ?? pageInfo.fan_count ?? 0),
+          picture: pageInfo.picture?.data?.url ?? null,
+          link: pageInfo.link ?? null,
+          category: pageInfo.category ?? null,
+        },
+        daily,
+        demographics: { genderAge, country },
+        onlineHourly,
+        warnings,
+      };
+    } catch (err) {
+      return {
+        ok: false as const,
+        error: serializeError(err),
+        page: null,
+        daily: [],
+        demographics: { genderAge: [] as Array<{ bucket: string; gender: string; age: string; count: number }>, country: [] as Array<{ code: string; count: number }> },
+        onlineHourly: [] as Array<{ hour: number; avg: number }>,
+        warnings: [] as string[],
+      };
+    }
+  });
