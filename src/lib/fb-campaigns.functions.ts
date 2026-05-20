@@ -314,6 +314,15 @@ export const startCampaign = createServerFn({ method: "POST" })
     }
 
     // Create the job (reuses the existing `post_to_groups` worker action).
+    const jobPayload = buildPostToGroupsPayload({
+      content,
+      groupIds: c.target_ids,
+      targetKind: (c.target_kind as "groups" | "pages") ?? "groups",
+      mediaUrls,
+      delayMinSeconds: c.delay_min_seconds,
+      delayMaxSeconds: c.delay_max_seconds,
+    });
+
     const { data: job, error: jErr } = await supabase
       .from("fb_jobs")
       .insert({
@@ -321,16 +330,7 @@ export const startCampaign = createServerFn({ method: "POST" })
         account_id: c.account_id,
         campaign_id: c.id,
         job_type: "post_to_groups",
-        payload: {
-          content,
-          groupIds: c.target_ids,
-          targetKind: c.target_kind,
-          mediaUrls,
-          delayMinSeconds: c.delay_min_seconds,
-          delayMaxSeconds: c.delay_max_seconds,
-          // Backwards compat for the existing worker:
-          intervalMinutes: Math.max(1, Math.round(c.delay_min_seconds / 60)),
-        },
+        payload: jobPayload,
         total_items: c.target_ids.length,
         scheduled_at: new Date().toISOString(),
         status: "pending",
