@@ -134,6 +134,7 @@ function FacebookPage() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TokenCheckResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
+  const [testErrorType, setTestErrorType] = useState<string | null>(null);
   const loadedConnectionForRef = useRef<string | null>(null);
 
   const requiredScopes = [
@@ -738,6 +739,7 @@ function FacebookPage() {
     setTesting(true);
     setTestResult(null);
     setTestError(null);
+    setTestErrorType(null);
     try {
       const cached = readTokenTestCache(cleaned);
       if (cached?.result) {
@@ -769,7 +771,9 @@ function FacebookPage() {
       rememberRateLimitIfNeeded(raw, fbType);
       setTestResult(null);
       setTestError(msg);
-      toast.error(`${t.testFailed} — ${msg}`);
+      setTestErrorType(fbType);
+      if (rateLimited) toast.warning(msg);
+      else toast.error(`${t.testFailed} — ${msg}`);
     } finally {
       setTesting(false);
     }
@@ -801,6 +805,7 @@ function FacebookPage() {
       setToken("");
       setTestResult(null);
       setTestError(null);
+      setTestErrorType(null);
       // refresh connection
       const c = await fbCall(getFacebookConnection);
       setConnection(c.connection);
@@ -810,6 +815,7 @@ function FacebookPage() {
       const msg = friendlyError(raw);
       rememberRateLimitIfNeeded(raw, fbType);
       setTestError(msg);
+      setTestErrorType(fbType);
       toast.error(msg);
     } finally {
       setConnecting(false);
