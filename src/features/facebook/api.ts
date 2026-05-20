@@ -47,7 +47,8 @@ function classify(message: string, status: number | null): FbErrorKind {
   if (m.includes("application request limit") || m.includes("(#4)")) return "app_rate_limited";
   if (m.includes("permission") || m.includes("scope")) return "permission";
   if (m.includes("rate") || m.includes("limit")) return "rate_limited";
-  if (m.includes("fetch") || m.includes("network") || m.includes("failed to fetch")) return "network";
+  if (m.includes("fetch") || m.includes("network") || m.includes("failed to fetch"))
+    return "network";
   return "unknown";
 }
 
@@ -57,7 +58,11 @@ async function getBearer(forceRefresh = false): Promise<string> {
     if (error || !data.session) {
       // Refresh token is gone or rejected — clear the broken local session so
       // the UI can prompt a fresh login instead of looping on a dead token.
-      try { await supabase.auth.signOut({ scope: "local" }); } catch { /* ignore */ }
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+      } catch {
+        /* ignore */
+      }
       throw new FbCallError("session_expired", "auth", 401);
     }
     return data.session.access_token;
@@ -75,10 +80,7 @@ type ServerFn<TInput, TOutput> = (opts: {
 
 export function useFacebookApi() {
   const call = useCallback(
-    async <TInput, TOutput>(
-      fn: ServerFn<TInput, TOutput>,
-      input?: TInput,
-    ): Promise<TOutput> => {
+    async <TInput, TOutput>(fn: ServerFn<TInput, TOutput>, input?: TInput): Promise<TOutput> => {
       const invoke = async (token: string): Promise<TOutput> => {
         const ctrl = new AbortController();
         const t = setTimeout(() => ctrl.abort(), FB_CALL_TIMEOUT_MS);
@@ -99,9 +101,10 @@ export function useFacebookApi() {
         return await invoke(token);
       } catch (err) {
         const raw = err instanceof Error ? err.message : String(err);
-        const status = (err as { status?: number; httpStatus?: number })?.status
-          ?? (err as { httpStatus?: number })?.httpStatus
-          ?? null;
+        const status =
+          (err as { status?: number; httpStatus?: number })?.status ??
+          (err as { httpStatus?: number })?.httpStatus ??
+          null;
         const kind = classify(raw, status);
 
         // Single retry on auth failure with a freshly-refreshed session.
@@ -130,9 +133,10 @@ export function useFacebookApi() {
  * Keep messages short, actionable, and self-contained.
  */
 export function describeFbError(err: unknown, lang: "ar" | "en"): string {
-  const e = err instanceof FbCallError
-    ? err
-    : new FbCallError(err instanceof Error ? err.message : String(err), "unknown");
+  const e =
+    err instanceof FbCallError
+      ? err
+      : new FbCallError(err instanceof Error ? err.message : String(err), "unknown");
   const ar = {
     auth: "انتهت الجلسة. أعد تسجيل الدخول.",
     network: "تعذّر الاتصال بالخادم. تحقّق من الإنترنت.",

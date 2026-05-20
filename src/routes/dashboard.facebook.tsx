@@ -567,7 +567,11 @@ function FacebookPage() {
 
   const friendlyError = (raw: string): string => {
     const m = raw.toLowerCase();
-    if (m.includes("application request limit") || m.includes("(#4)") || m.includes("app_rate_limited")) {
+    if (
+      m.includes("application request limit") ||
+      m.includes("(#4)") ||
+      m.includes("app_rate_limited")
+    ) {
       return lang === "ar"
         ? "تطبيق فيسبوك وصل حد الاستدعاءات اليومي من Meta (#4). التوكن صحيح غالباً، لكن Meta يرفض الطلبات مؤقتاً. انتظر حتى يُعاد ضبط الحد أو ارفع الحد من Meta App Dashboard → App Rate Limits."
         : "The Facebook app reached Meta's daily request limit (#4). The token is likely valid, but Meta is temporarily rejecting requests. Wait for the limit to reset or increase it in Meta App Dashboard → App Rate Limits.";
@@ -691,7 +695,10 @@ function FacebookPage() {
   ) => {
     if (typeof window === "undefined") return;
     try {
-      window.localStorage.setItem(tokenCacheKey(cleaned), JSON.stringify({ at: Date.now(), ...value }));
+      window.localStorage.setItem(
+        tokenCacheKey(cleaned),
+        JSON.stringify({ at: Date.now(), ...value }),
+      );
     } catch {
       /* ignore quota / privacy mode */
     }
