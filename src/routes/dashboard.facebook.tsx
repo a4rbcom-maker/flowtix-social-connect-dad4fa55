@@ -1,6 +1,26 @@
 import { createFileRoute, useNavigate, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useEffect, useState, type MouseEvent } from "react";
-import { Facebook, RefreshCw, Trash2, Users, Loader2, ExternalLink, ChevronDown, CheckCircle2, Copy, ShieldCheck, FlaskConical, XCircle, KeyRound, Send, Sparkles, AlertCircle, History, Clock, Cookie } from "lucide-react";
+import {
+  Facebook,
+  RefreshCw,
+  Trash2,
+  Users,
+  Loader2,
+  ExternalLink,
+  ChevronDown,
+  CheckCircle2,
+  Copy,
+  ShieldCheck,
+  FlaskConical,
+  XCircle,
+  KeyRound,
+  Send,
+  Sparkles,
+  AlertCircle,
+  History,
+  Clock,
+  Cookie,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
@@ -88,8 +108,16 @@ function FacebookPage() {
   const [pages, setPages] = useState<Page[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [loadingPages, setLoadingPages] = useState(false);
-  const [groupsError, setGroupsError] = useState<{ type: string; message: string; missingPermission: string | null } | null>(null);
-  const [pagesError, setPagesError] = useState<{ type: string; message: string; missingPermission: string | null } | null>(null);
+  const [groupsError, setGroupsError] = useState<{
+    type: string;
+    message: string;
+    missingPermission: string | null;
+  } | null>(null);
+  const [pagesError, setPagesError] = useState<{
+    type: string;
+    message: string;
+    missingPermission: string | null;
+  } | null>(null);
   const [tab, setTab] = useState<"groups" | "pages">("groups");
   const [guideOpen, setGuideOpen] = useState(true);
   const [testing, setTesting] = useState(false);
@@ -141,7 +169,9 @@ function FacebookPage() {
   };
   const clearDebug = () => setDebugLogs([]);
   const copyDebug = async () => {
-    const text = debugLogs.map((l) => `[${l.ts}] ${l.level.toUpperCase()} ${l.step}${l.detail ? " — " + l.detail : ""}`).join("\n");
+    const text = debugLogs
+      .map((l) => `[${l.ts}] ${l.level.toUpperCase()} ${l.step}${l.detail ? " — " + l.detail : ""}`)
+      .join("\n");
     try {
       await navigator.clipboard.writeText(text || "(empty)");
       toast.success(lang === "ar" ? "تم نسخ السجل" : "Log copied");
@@ -157,7 +187,11 @@ function FacebookPage() {
       debugLog("success", "copyScopes:clipboard.writeText", "ok");
       toast.success(lang === "ar" ? "تم نسخ الصلاحيات" : "Scopes copied");
     } catch (err) {
-      debugLog("error", "copyScopes:clipboard.writeText", err instanceof Error ? err.message : String(err));
+      debugLog(
+        "error",
+        "copyScopes:clipboard.writeText",
+        err instanceof Error ? err.message : String(err),
+      );
       toast.error(lang === "ar" ? "فشل نسخ الصلاحيات" : "Copy failed");
     }
   };
@@ -193,15 +227,12 @@ function FacebookPage() {
       debugLog("error", "reconnect:clipboard", err instanceof Error ? err.message : String(err));
     }
     if (copied) {
-      toast.success(
-        lang === "ar" ? "تم نسخ الصلاحيات الناقصة" : "Missing scopes copied",
-        {
-          description:
-            lang === "ar"
-              ? "افتح Graph API Explorer، اضغط \"Add a Permission\" والصق الصلاحيات، ثم اضغط Generate Access Token."
-              : "Open Graph API Explorer, click \"Add a Permission\", paste the scopes, then click Generate Access Token.",
-        },
-      );
+      toast.success(lang === "ar" ? "تم نسخ الصلاحيات الناقصة" : "Missing scopes copied", {
+        description:
+          lang === "ar"
+            ? 'افتح Graph API Explorer، اضغط "Add a Permission" والصق الصلاحيات، ثم اضغط Generate Access Token.'
+            : 'Open Graph API Explorer, click "Add a Permission", paste the scopes, then click Generate Access Token.',
+      });
     } else {
       toast.warning(
         lang === "ar" ? "تعذّر نسخ الصلاحيات تلقائياً" : "Could not copy scopes automatically",
@@ -287,214 +318,226 @@ function FacebookPage() {
   const lastGroupsSync = syncLog.find((e) => e.kind === "groups");
   const lastPagesSync = syncLog.find((e) => e.kind === "pages");
 
-
-  const t = lang === "ar"
-    ? {
-        title: "ربط فيسبوك",
-        subtitle: "اربط حساب فيسبوك لتحميل جروباتك وصفحاتك تلقائياً",
-        tokenLabel: "Access Token",
-        tokenPlaceholder: "الصق توكن فيسبوك هنا...",
-        tokenHelp: "احصل على التوكن من Graph API Explorer",
-        getToken: "الحصول على توكن",
-        botCookiesTitle: "عايز إعداد البوت بالـ Cookies؟",
-        botCookiesDesc: "ده مكان مختلف عن Access Token. افتح صفحة حسابات البوت والصق Cookies JSON مباشرة.",
-        openBotCookies: "فتح إعداد Cookies للبوت",
-        connect: "ربط الحساب",
-        connecting: "جاري الربط...",
-        disconnect: "إلغاء الربط",
-        connected: "مرتبط",
-        connectedAs: "مرتبط باسم",
-        loadGroups: "تحميل الجروبات",
-        loadPages: "تحميل الصفحات",
-        groups: "الجروبات",
-        pages: "الصفحات",
-        members: "عضو",
-        fans: "متابع",
-        noGroups: "لا توجد جروبات. اضغط \"تحميل الجروبات\".",
-        noPages: "لا توجد صفحات. اضغط \"تحميل الصفحات\".",
-        show: "عرض",
-        hide: "إخفاء",
-        warning: "⚠️ ملاحظة: /me/groups يُرجع فقط الجروبات التي يكون التطبيق مثبّتاً فيها (سياسة Meta).",
-        lastSync: "آخر مزامنة",
-        notSynced: "لم تتم المزامنة بعد",
-        guideTitle: "دليل الحصول على User Access Token",
-        guideSubtitle: "اتبع الخطوات التالية للحصول على توكن صالح من Graph API Explorer",
-        steps: [
-          {
-            title: "افتح Graph API Explorer",
-            desc: "انتقل إلى أداة Meta الرسمية لاختبار الـ API",
-            action: "فتح Graph Explorer",
-            link: "https://developers.facebook.com/tools/explorer/",
-          },
-          {
-            title: "اختر تطبيقك من القائمة العلوية",
-            desc: "في الزاوية العلوية اليمنى اختر Meta App الخاص بك (أو أنشئ تطبيقاً جديداً من developers.facebook.com)",
-          },
-          {
-            title: "اختر User Token وأضف الصلاحيات (Permissions)",
-            desc: "اضغط على \"Add a Permission\" وأضف الصلاحيات التالية:",
-          },
-          {
-            title: "اضغط Generate Access Token",
-            desc: "ستظهر نافذة فيسبوك لتأكيد الصلاحيات. وافق عليها كلها.",
-          },
-          {
-            title: "انسخ التوكن والصقه هنا",
-            desc: "انسخ التوكن من حقل Access Token في Graph Explorer والصقه في الحقل أدناه ثم اضغط \"ربط الحساب\".",
-          },
-        ],
-        scopesLabel: "الصلاحيات المطلوبة",
-        copyScopes: "نسخ الصلاحيات",
-        securityNote: "نخزّن التوكن مشفّراً في قاعدة بياناتك فقط — لن يصل إليه أي طرف خارجي.",
-        showGuide: "عرض الدليل",
-        hideGuide: "إخفاء الدليل",
-        test: "اختبار التوكن",
-        testing: "جاري الاختبار...",
-        testSuccess: "التوكن صالح",
-        testFailed: "التوكن غير صالح",
-        grantedScopes: "الصلاحيات الممنوحة",
-        missingScopes: "صلاحيات ناقصة",
-        noMissing: "كل الصلاحيات المطلوبة موجودة ✓",
-        confirmConnect: "تأكيد الربط وحفظ التوكن",
-        testFirst: "اختبر التوكن أولاً قبل الربط",
-        savingSecure: "سيتم حفظ التوكن بشكل آمن في قاعدة بياناتك المحمية بـ RLS — لا يمكن لأي مستخدم آخر الوصول إليه.",
-        quickStart: "بدء سريع في 3 خطوات",
-        quick1Title: "احصل على التوكن",
-        quick1Desc: "من Graph API Explorer مع الصلاحيات المطلوبة",
-        quick2Title: "اختبر التوكن",
-        quick2Desc: "نتأكد من صلاحيته وصلاحياته قبل الحفظ",
-        quick3Title: "ثبّت الربط",
-        quick3Desc: "نخزّن التوكن مشفّراً ونبدأ التحميل",
-        errInvalidToken: "التوكن غير صالح أو منتهي الصلاحية. أنشئ توكن جديد من Graph Explorer.",
-        errExpired: "انتهت صلاحية التوكن. أعد توليده من Graph Explorer.",
-        errPermission: "صلاحيات ناقصة. تأكد من إضافة كل الصلاحيات المطلوبة.",
-        errNetwork: "تعذّر الاتصال بفيسبوك. تحقق من اتصالك بالإنترنت.",
-        reconnect: "إعادة ربط بالصلاحيات الناقصة",
-        reconnectAll: "إعادة الربط بصلاحيات كاملة",
-        reconnectToastTitle: "تم نسخ الصلاحيات الناقصة",
-        reconnectToastDesc: "افتح Graph API Explorer، اضغط \"Add a Permission\" والصق الصلاحيات، ثم اضغط Generate Access Token.",
-        syncHistoryTitle: "سجل آخر مزامنة",
-        syncHistorySubtitle: "آخر عمليات تحميل الجروبات والصفحات مع وقت ونتيجة كل عملية",
-        showHistory: "عرض السجل",
-        hideHistory: "إخفاء السجل",
-        clearHistory: "مسح السجل",
-        noHistory: "لا توجد عمليات مزامنة بعد. اضغط \"تحميل الجروبات\" أو \"تحميل الصفحات\" للبدء.",
-        lastGroupsSync: "آخر تحميل للجروبات",
-        lastPagesSync: "آخر تحميل للصفحات",
-        neverSynced: "لم يتم التحميل بعد",
-        syncSuccess: "نجاح",
-        syncFailed: "فشل",
-        syncCount: (n: number) => `تم تحميل ${n}`,
-        scopesSectionTitle: "Scopes المطلوبة",
-        scopesSectionSubtitle: "انسخ القائمة كاملة والصقها داخل حقل \"Add a Permission\" في Graph API Explorer.",
-        scopesCopyComma: "نسخ بفواصل (Graph Explorer)",
-        scopesCopyLines: "نسخ سطر لكل صلاحية",
-        scopesCopied: "تم النسخ — الصق في Graph Explorer",
-        scopesCount: (n: number) => `${n} صلاحية`,
-      }
-    : {
-        title: "Facebook Connection",
-        subtitle: "Link your Facebook account to load your groups and pages",
-        tokenLabel: "Access Token",
-        tokenPlaceholder: "Paste your Facebook token here...",
-        tokenHelp: "Get a token from Graph API Explorer",
-        getToken: "Get Token",
-        botCookiesTitle: "Need the Cookies bot setup?",
-        botCookiesDesc: "This is separate from Access Token. Open Bot accounts and paste the Cookies JSON directly.",
-        openBotCookies: "Open bot Cookies setup",
-        connect: "Connect Account",
-        connecting: "Connecting...",
-        disconnect: "Disconnect",
-        connected: "Connected",
-        connectedAs: "Connected as",
-        loadGroups: "Load Groups",
-        loadPages: "Load Pages",
-        groups: "Groups",
-        pages: "Pages",
-        members: "members",
-        fans: "fans",
-        noGroups: "No groups loaded yet. Click \"Load Groups\".",
-        noPages: "No pages loaded yet. Click \"Load Pages\".",
-        show: "Show",
-        hide: "Hide",
-        warning: "⚠️ Note: /me/groups only returns groups where your app is installed (Meta policy).",
-        lastSync: "Last synced",
-        notSynced: "Not synced yet",
-        guideTitle: "How to Get a User Access Token",
-        guideSubtitle: "Follow these steps to generate a valid token from Graph API Explorer",
-        steps: [
-          {
-            title: "Open Graph API Explorer",
-            desc: "Go to Meta's official tool for testing the Graph API",
-            action: "Open Graph Explorer",
-            link: "https://developers.facebook.com/tools/explorer/",
-          },
-          {
-            title: "Select your App from the top dropdown",
-            desc: "In the top-right corner, pick your Meta App (or create one at developers.facebook.com)",
-          },
-          {
-            title: "Choose User Token and add Permissions",
-            desc: "Click \"Add a Permission\" and add the following scopes:",
-          },
-          {
-            title: "Click Generate Access Token",
-            desc: "A Facebook dialog will ask you to confirm the permissions. Approve all of them.",
-          },
-          {
-            title: "Copy the token and paste it below",
-            desc: "Copy the value from the Access Token field in Graph Explorer, paste it below, and click \"Connect Account\".",
-          },
-        ],
-        scopesLabel: "Required Scopes",
-        copyScopes: "Copy scopes",
-        securityNote: "We store the token encrypted in your own database — no third party can access it.",
-        showGuide: "Show guide",
-        hideGuide: "Hide guide",
-        test: "Test token",
-        testing: "Testing...",
-        testSuccess: "Token is valid",
-        testFailed: "Token is invalid",
-        grantedScopes: "Granted permissions",
-        missingScopes: "Missing permissions",
-        noMissing: "All required permissions granted ✓",
-        confirmConnect: "Confirm & save token securely",
-        testFirst: "Test the token before connecting",
-        savingSecure: "Token will be stored securely in your RLS-protected database — no other user can access it.",
-        quickStart: "Quick start in 3 steps",
-        quick1Title: "Get a token",
-        quick1Desc: "From Graph API Explorer with the required scopes",
-        quick2Title: "Test the token",
-        quick2Desc: "We verify it's valid and has the right permissions",
-        quick3Title: "Confirm linking",
-        quick3Desc: "Token is stored encrypted and loading begins",
-        errInvalidToken: "Token is invalid or malformed. Generate a new one from Graph Explorer.",
-        errExpired: "Token has expired. Re-generate it from Graph Explorer.",
-        errPermission: "Missing permissions. Make sure all required scopes are granted.",
-        errNetwork: "Could not reach Facebook. Check your internet connection.",
-        reconnect: "Reconnect with missing scopes",
-        reconnectAll: "Reconnect with full permissions",
-        reconnectToastTitle: "Missing scopes copied",
-        reconnectToastDesc: "Open Graph API Explorer, click \"Add a Permission\", paste the scopes, then click Generate Access Token.",
-        syncHistoryTitle: "Last sync history",
-        syncHistorySubtitle: "Most recent Load Groups / Load Pages attempts with timestamp and outcome",
-        showHistory: "Show history",
-        hideHistory: "Hide history",
-        clearHistory: "Clear history",
-        noHistory: "No sync runs yet. Click \"Load Groups\" or \"Load Pages\" to start.",
-        lastGroupsSync: "Last groups load",
-        lastPagesSync: "Last pages load",
-        neverSynced: "Never loaded yet",
-        syncSuccess: "Success",
-        syncFailed: "Failed",
-        syncCount: (n: number) => `${n} loaded`,
-        scopesSectionTitle: "Required Scopes",
-        scopesSectionSubtitle: "Copy the full list and paste it into the \"Add a Permission\" field in Graph API Explorer.",
-        scopesCopyComma: "Copy comma-separated (Graph Explorer)",
-        scopesCopyLines: "Copy one per line",
-        scopesCopied: "Copied — paste in Graph Explorer",
-        scopesCount: (n: number) => `${n} scopes`,
-      };
+  const t =
+    lang === "ar"
+      ? {
+          title: "ربط فيسبوك",
+          subtitle: "اربط حساب فيسبوك لتحميل جروباتك وصفحاتك تلقائياً",
+          tokenLabel: "Access Token",
+          tokenPlaceholder: "الصق توكن فيسبوك هنا...",
+          tokenHelp: "احصل على التوكن من Graph API Explorer",
+          getToken: "الحصول على توكن",
+          botCookiesTitle: "عايز إعداد البوت بالـ Cookies؟",
+          botCookiesDesc:
+            "ده مكان مختلف عن Access Token. افتح صفحة حسابات البوت والصق Cookies JSON مباشرة.",
+          openBotCookies: "فتح إعداد Cookies للبوت",
+          connect: "ربط الحساب",
+          connecting: "جاري الربط...",
+          disconnect: "إلغاء الربط",
+          connected: "مرتبط",
+          connectedAs: "مرتبط باسم",
+          loadGroups: "تحميل الجروبات",
+          loadPages: "تحميل الصفحات",
+          groups: "الجروبات",
+          pages: "الصفحات",
+          members: "عضو",
+          fans: "متابع",
+          noGroups: 'لا توجد جروبات. اضغط "تحميل الجروبات".',
+          noPages: 'لا توجد صفحات. اضغط "تحميل الصفحات".',
+          show: "عرض",
+          hide: "إخفاء",
+          warning:
+            "⚠️ ملاحظة: /me/groups يُرجع فقط الجروبات التي يكون التطبيق مثبّتاً فيها (سياسة Meta).",
+          lastSync: "آخر مزامنة",
+          notSynced: "لم تتم المزامنة بعد",
+          guideTitle: "دليل الحصول على User Access Token",
+          guideSubtitle: "اتبع الخطوات التالية للحصول على توكن صالح من Graph API Explorer",
+          steps: [
+            {
+              title: "افتح Graph API Explorer",
+              desc: "انتقل إلى أداة Meta الرسمية لاختبار الـ API",
+              action: "فتح Graph Explorer",
+              link: "https://developers.facebook.com/tools/explorer/",
+            },
+            {
+              title: "اختر تطبيقك من القائمة العلوية",
+              desc: "في الزاوية العلوية اليمنى اختر Meta App الخاص بك (أو أنشئ تطبيقاً جديداً من developers.facebook.com)",
+            },
+            {
+              title: "اختر User Token وأضف الصلاحيات (Permissions)",
+              desc: 'اضغط على "Add a Permission" وأضف الصلاحيات التالية:',
+            },
+            {
+              title: "اضغط Generate Access Token",
+              desc: "ستظهر نافذة فيسبوك لتأكيد الصلاحيات. وافق عليها كلها.",
+            },
+            {
+              title: "انسخ التوكن والصقه هنا",
+              desc: 'انسخ التوكن من حقل Access Token في Graph Explorer والصقه في الحقل أدناه ثم اضغط "ربط الحساب".',
+            },
+          ],
+          scopesLabel: "الصلاحيات المطلوبة",
+          copyScopes: "نسخ الصلاحيات",
+          securityNote: "نخزّن التوكن مشفّراً في قاعدة بياناتك فقط — لن يصل إليه أي طرف خارجي.",
+          showGuide: "عرض الدليل",
+          hideGuide: "إخفاء الدليل",
+          test: "اختبار التوكن",
+          testing: "جاري الاختبار...",
+          testSuccess: "التوكن صالح",
+          testFailed: "التوكن غير صالح",
+          grantedScopes: "الصلاحيات الممنوحة",
+          missingScopes: "صلاحيات ناقصة",
+          noMissing: "كل الصلاحيات المطلوبة موجودة ✓",
+          confirmConnect: "تأكيد الربط وحفظ التوكن",
+          testFirst: "اختبر التوكن أولاً قبل الربط",
+          savingSecure:
+            "سيتم حفظ التوكن بشكل آمن في قاعدة بياناتك المحمية بـ RLS — لا يمكن لأي مستخدم آخر الوصول إليه.",
+          quickStart: "بدء سريع في 3 خطوات",
+          quick1Title: "احصل على التوكن",
+          quick1Desc: "من Graph API Explorer مع الصلاحيات المطلوبة",
+          quick2Title: "اختبر التوكن",
+          quick2Desc: "نتأكد من صلاحيته وصلاحياته قبل الحفظ",
+          quick3Title: "ثبّت الربط",
+          quick3Desc: "نخزّن التوكن مشفّراً ونبدأ التحميل",
+          errInvalidToken: "التوكن غير صالح أو منتهي الصلاحية. أنشئ توكن جديد من Graph Explorer.",
+          errExpired: "انتهت صلاحية التوكن. أعد توليده من Graph Explorer.",
+          errPermission: "صلاحيات ناقصة. تأكد من إضافة كل الصلاحيات المطلوبة.",
+          errNetwork: "تعذّر الاتصال بفيسبوك. تحقق من اتصالك بالإنترنت.",
+          reconnect: "إعادة ربط بالصلاحيات الناقصة",
+          reconnectAll: "إعادة الربط بصلاحيات كاملة",
+          reconnectToastTitle: "تم نسخ الصلاحيات الناقصة",
+          reconnectToastDesc:
+            'افتح Graph API Explorer، اضغط "Add a Permission" والصق الصلاحيات، ثم اضغط Generate Access Token.',
+          syncHistoryTitle: "سجل آخر مزامنة",
+          syncHistorySubtitle: "آخر عمليات تحميل الجروبات والصفحات مع وقت ونتيجة كل عملية",
+          showHistory: "عرض السجل",
+          hideHistory: "إخفاء السجل",
+          clearHistory: "مسح السجل",
+          noHistory: 'لا توجد عمليات مزامنة بعد. اضغط "تحميل الجروبات" أو "تحميل الصفحات" للبدء.',
+          lastGroupsSync: "آخر تحميل للجروبات",
+          lastPagesSync: "آخر تحميل للصفحات",
+          neverSynced: "لم يتم التحميل بعد",
+          syncSuccess: "نجاح",
+          syncFailed: "فشل",
+          syncCount: (n: number) => `تم تحميل ${n}`,
+          scopesSectionTitle: "Scopes المطلوبة",
+          scopesSectionSubtitle:
+            'انسخ القائمة كاملة والصقها داخل حقل "Add a Permission" في Graph API Explorer.',
+          scopesCopyComma: "نسخ بفواصل (Graph Explorer)",
+          scopesCopyLines: "نسخ سطر لكل صلاحية",
+          scopesCopied: "تم النسخ — الصق في Graph Explorer",
+          scopesCount: (n: number) => `${n} صلاحية`,
+        }
+      : {
+          title: "Facebook Connection",
+          subtitle: "Link your Facebook account to load your groups and pages",
+          tokenLabel: "Access Token",
+          tokenPlaceholder: "Paste your Facebook token here...",
+          tokenHelp: "Get a token from Graph API Explorer",
+          getToken: "Get Token",
+          botCookiesTitle: "Need the Cookies bot setup?",
+          botCookiesDesc:
+            "This is separate from Access Token. Open Bot accounts and paste the Cookies JSON directly.",
+          openBotCookies: "Open bot Cookies setup",
+          connect: "Connect Account",
+          connecting: "Connecting...",
+          disconnect: "Disconnect",
+          connected: "Connected",
+          connectedAs: "Connected as",
+          loadGroups: "Load Groups",
+          loadPages: "Load Pages",
+          groups: "Groups",
+          pages: "Pages",
+          members: "members",
+          fans: "fans",
+          noGroups: 'No groups loaded yet. Click "Load Groups".',
+          noPages: 'No pages loaded yet. Click "Load Pages".',
+          show: "Show",
+          hide: "Hide",
+          warning:
+            "⚠️ Note: /me/groups only returns groups where your app is installed (Meta policy).",
+          lastSync: "Last synced",
+          notSynced: "Not synced yet",
+          guideTitle: "How to Get a User Access Token",
+          guideSubtitle: "Follow these steps to generate a valid token from Graph API Explorer",
+          steps: [
+            {
+              title: "Open Graph API Explorer",
+              desc: "Go to Meta's official tool for testing the Graph API",
+              action: "Open Graph Explorer",
+              link: "https://developers.facebook.com/tools/explorer/",
+            },
+            {
+              title: "Select your App from the top dropdown",
+              desc: "In the top-right corner, pick your Meta App (or create one at developers.facebook.com)",
+            },
+            {
+              title: "Choose User Token and add Permissions",
+              desc: 'Click "Add a Permission" and add the following scopes:',
+            },
+            {
+              title: "Click Generate Access Token",
+              desc: "A Facebook dialog will ask you to confirm the permissions. Approve all of them.",
+            },
+            {
+              title: "Copy the token and paste it below",
+              desc: 'Copy the value from the Access Token field in Graph Explorer, paste it below, and click "Connect Account".',
+            },
+          ],
+          scopesLabel: "Required Scopes",
+          copyScopes: "Copy scopes",
+          securityNote:
+            "We store the token encrypted in your own database — no third party can access it.",
+          showGuide: "Show guide",
+          hideGuide: "Hide guide",
+          test: "Test token",
+          testing: "Testing...",
+          testSuccess: "Token is valid",
+          testFailed: "Token is invalid",
+          grantedScopes: "Granted permissions",
+          missingScopes: "Missing permissions",
+          noMissing: "All required permissions granted ✓",
+          confirmConnect: "Confirm & save token securely",
+          testFirst: "Test the token before connecting",
+          savingSecure:
+            "Token will be stored securely in your RLS-protected database — no other user can access it.",
+          quickStart: "Quick start in 3 steps",
+          quick1Title: "Get a token",
+          quick1Desc: "From Graph API Explorer with the required scopes",
+          quick2Title: "Test the token",
+          quick2Desc: "We verify it's valid and has the right permissions",
+          quick3Title: "Confirm linking",
+          quick3Desc: "Token is stored encrypted and loading begins",
+          errInvalidToken: "Token is invalid or malformed. Generate a new one from Graph Explorer.",
+          errExpired: "Token has expired. Re-generate it from Graph Explorer.",
+          errPermission: "Missing permissions. Make sure all required scopes are granted.",
+          errNetwork: "Could not reach Facebook. Check your internet connection.",
+          reconnect: "Reconnect with missing scopes",
+          reconnectAll: "Reconnect with full permissions",
+          reconnectToastTitle: "Missing scopes copied",
+          reconnectToastDesc:
+            'Open Graph API Explorer, click "Add a Permission", paste the scopes, then click Generate Access Token.',
+          syncHistoryTitle: "Last sync history",
+          syncHistorySubtitle:
+            "Most recent Load Groups / Load Pages attempts with timestamp and outcome",
+          showHistory: "Show history",
+          hideHistory: "Hide history",
+          clearHistory: "Clear history",
+          noHistory: 'No sync runs yet. Click "Load Groups" or "Load Pages" to start.',
+          lastGroupsSync: "Last groups load",
+          lastPagesSync: "Last pages load",
+          neverSynced: "Never loaded yet",
+          syncSuccess: "Success",
+          syncFailed: "Failed",
+          syncCount: (n: number) => `${n} loaded`,
+          scopesSectionTitle: "Required Scopes",
+          scopesSectionSubtitle:
+            'Copy the full list and paste it into the "Add a Permission" field in Graph API Explorer.',
+          scopesCopyComma: "Copy comma-separated (Graph Explorer)",
+          scopesCopyLines: "Copy one per line",
+          scopesCopied: "Copied — paste in Graph Explorer",
+          scopesCount: (n: number) => `${n} scopes`,
+        };
 
   useEffect(() => {
     if (!authLoading && !user) navigate({ to: "/login" });
@@ -593,7 +636,8 @@ function FacebookPage() {
     if (m.includes("invalid") && m.includes("token")) return t.errInvalidToken;
     if (m.includes("oauth") || m.includes("190")) return t.errInvalidToken;
     if (m.includes("permission") || m.includes("scope")) return t.errPermission;
-    if (m.includes("fetch") || m.includes("network") || m.includes("failed to fetch")) return t.errNetwork;
+    if (m.includes("fetch") || m.includes("network") || m.includes("failed to fetch"))
+      return t.errNetwork;
     return raw;
   };
 
@@ -607,14 +651,23 @@ function FacebookPage() {
 
   const normalizeAuthResponse = (res: unknown) => {
     const unwrapped = (res as { data?: unknown })?.data ?? res;
-    const value = unwrapped as {
-      profile?: { id?: unknown; name?: unknown; email?: unknown };
-      granted?: unknown;
-      declined?: unknown;
-    } | null | undefined;
+    const value = unwrapped as
+      | {
+          profile?: { id?: unknown; name?: unknown; email?: unknown };
+          granted?: unknown;
+          declined?: unknown;
+        }
+      | null
+      | undefined;
     const profile = value?.profile;
-    const id = typeof profile?.id === "string" || typeof profile?.id === "number" ? String(profile.id) : "";
-    const name = typeof profile?.name === "string" && profile.name.trim() ? profile.name.trim() : (id ? `Facebook ${id}` : "");
+    const id =
+      typeof profile?.id === "string" || typeof profile?.id === "number" ? String(profile.id) : "";
+    const name =
+      typeof profile?.name === "string" && profile.name.trim()
+        ? profile.name.trim()
+        : id
+          ? `Facebook ${id}`
+          : "";
     if (!id) {
       throw new Error(
         lang === "ar"
@@ -710,18 +763,27 @@ function FacebookPage() {
     }
   };
 
-  const friendlyFbError = (e: { type: string; message: string; missingPermission: string | null }) => {
+  const friendlyFbError = (e: {
+    type: string;
+    message: string;
+    missingPermission: string | null;
+  }) => {
     if (lang !== "ar") return e.message;
     switch (e.type) {
-      case "auth_expired": return "انتهت صلاحية رمز الوصول. أعد ربط الحساب.";
-      case "invalid_token": return "رمز الوصول غير صالح أو تم إبطاله. أعد الربط.";
+      case "auth_expired":
+        return "انتهت صلاحية رمز الوصول. أعد ربط الحساب.";
+      case "invalid_token":
+        return "رمز الوصول غير صالح أو تم إبطاله. أعد الربط.";
       case "permission_denied":
         return e.missingPermission
           ? `الصلاحية الناقصة: ${e.missingPermission}. أعد الربط وامنح هذه الصلاحية.`
           : "الصلاحيات غير كافية. أعد الربط وامنح كل الصلاحيات المطلوبة.";
-      case "rate_limited": return "تم تجاوز حد الاستدعاءات. حاول بعد قليل.";
-      case "network": return "تعذّر الاتصال بفيسبوك. تحقق من الإنترنت وحاول مرة أخرى.";
-      default: return e.message;
+      case "rate_limited":
+        return "تم تجاوز حد الاستدعاءات. حاول بعد قليل.";
+      case "network":
+        return "تعذّر الاتصال بفيسبوك. تحقق من الإنترنت وحاول مرة أخرى.";
+      default:
+        return e.message;
     }
   };
 
@@ -743,7 +805,11 @@ function FacebookPage() {
       } else {
         setGroups(res.groups);
         recordSync({ kind: "groups", status: "success", count: res.groups.length });
-        toast.success(lang === "ar" ? `تم تحميل ${res.groups.length} جروب` : `Loaded ${res.groups.length} groups`);
+        toast.success(
+          lang === "ar"
+            ? `تم تحميل ${res.groups.length} جروب`
+            : `Loaded ${res.groups.length} groups`,
+        );
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to load groups";
@@ -773,7 +839,9 @@ function FacebookPage() {
       } else {
         setPages(res.pages);
         recordSync({ kind: "pages", status: "success", count: res.pages.length });
-        toast.success(lang === "ar" ? `تم تحميل ${res.pages.length} صفحة` : `Loaded ${res.pages.length} pages`);
+        toast.success(
+          lang === "ar" ? `تم تحميل ${res.pages.length} صفحة` : `Loaded ${res.pages.length} pages`,
+        );
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to load pages";
@@ -825,7 +893,8 @@ function FacebookPage() {
           const daysLeft = tokenExpiry.expiresAt
             ? Math.floor((new Date(tokenExpiry.expiresAt).getTime() - Date.now()) / 86_400_000)
             : null;
-          const expiringSoon = !expired && daysLeft !== null && daysLeft >= 0 && daysLeft <= EXPIRY_WARN_DAYS;
+          const expiringSoon =
+            !expired && daysLeft !== null && daysLeft >= 0 && daysLeft <= EXPIRY_WARN_DAYS;
           if (!expired && !expiringSoon) return null;
 
           const tone = expired
@@ -834,7 +903,9 @@ function FacebookPage() {
           const iconTone = expired ? "text-destructive" : "text-amber-600 dark:text-amber-400";
 
           const title = expired
-            ? lang === "ar" ? "انتهت صلاحية توكن فيسبوك" : "Facebook token has expired"
+            ? lang === "ar"
+              ? "انتهت صلاحية توكن فيسبوك"
+              : "Facebook token has expired"
             : lang === "ar"
               ? `توكن فيسبوك ينتهي خلال ${daysLeft} يوم`
               : `Facebook token expires in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`;
@@ -857,7 +928,9 @@ function FacebookPage() {
           return (
             <div className={`relative rounded-2xl border p-5 shadow-sm ${tone}`}>
               <div className="flex items-start gap-3">
-                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-card ${iconTone}`}>
+                <div
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-card ${iconTone}`}
+                >
                   <AlertCircle className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -866,7 +939,8 @@ function FacebookPage() {
                   {expiresOn && (
                     <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-card/60 px-2 py-1 text-xs text-foreground/80 ring-1 ring-border">
                       <Clock className="h-3.5 w-3.5" />
-                      {lang === "ar" ? "ينتهي في:" : "Expires:"} <span className="font-mono">{expiresOn}</span>
+                      {lang === "ar" ? "ينتهي في:" : "Expires:"}{" "}
+                      <span className="font-mono">{expiresOn}</span>
                     </p>
                   )}
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -898,7 +972,9 @@ function FacebookPage() {
           <div className="rounded-2xl border border-border/50 bg-gradient-to-br from-primary/5 via-card to-[oklch(0.66_0.26_320)]/5 p-5 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">{t.quickStart}</h3>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">
+                {t.quickStart}
+              </h3>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
               {[
@@ -906,7 +982,10 @@ function FacebookPage() {
                 { icon: FlaskConical, title: t.quick2Title, desc: t.quick2Desc, n: 2 },
                 { icon: Send, title: t.quick3Title, desc: t.quick3Desc, n: 3 },
               ].map((s) => (
-                <div key={s.n} className="relative rounded-xl border border-border/50 bg-card/60 p-4 backdrop-blur-sm">
+                <div
+                  key={s.n}
+                  className="relative rounded-xl border border-border/50 bg-card/60 p-4 backdrop-blur-sm"
+                >
                   <div className="mb-2 flex items-center gap-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-[oklch(0.66_0.26_320)] text-xs font-bold text-white shadow">
                       {s.n}
@@ -1018,7 +1097,9 @@ function FacebookPage() {
                   <p className="text-sm text-muted-foreground">{t.guideSubtitle}</p>
                 </div>
               </div>
-              <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${guideOpen ? "rotate-180" : ""}`} />
+              <ChevronDown
+                className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${guideOpen ? "rotate-180" : ""}`}
+              />
             </button>
 
             {guideOpen && (
@@ -1052,7 +1133,10 @@ function FacebookPage() {
                                 onClick={(e) => openExternal(e, "https://www.facebook.com/login")}
                                 className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent"
                               >
-                                {lang === "ar" ? "تسجيل الدخول إلى فيسبوك أولاً" : "Log in to Facebook first"} <ExternalLink className="h-3.5 w-3.5" />
+                                {lang === "ar"
+                                  ? "تسجيل الدخول إلى فيسبوك أولاً"
+                                  : "Log in to Facebook first"}{" "}
+                                <ExternalLink className="h-3.5 w-3.5" />
                               </a>
                             </div>
                             <p className="text-xs text-muted-foreground">
@@ -1130,8 +1214,11 @@ function FacebookPage() {
                     <p className="text-sm text-muted-foreground">{connection.fb_user_email}</p>
                   )}
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {t.lastSync}: {connection.last_synced_at
-                      ? new Date(connection.last_synced_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")
+                    {t.lastSync}:{" "}
+                    {connection.last_synced_at
+                      ? new Date(connection.last_synced_at).toLocaleString(
+                          lang === "ar" ? "ar-EG" : "en-US",
+                        )
                       : t.notSynced}
                   </p>
                 </div>
@@ -1159,13 +1246,19 @@ function FacebookPage() {
                 {t.warning}
               </div>
               <div>
-                <label className="mb-2 block text-sm font-medium text-foreground">{t.tokenLabel}</label>
+                <label className="mb-2 block text-sm font-medium text-foreground">
+                  {t.tokenLabel}
+                </label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
                     <input
                       type={showToken ? "text" : "password"}
                       value={token}
-                      onChange={(e) => { setToken(e.target.value); setTestResult(null); setTestError(null); }}
+                      onChange={(e) => {
+                        setToken(e.target.value);
+                        setTestResult(null);
+                        setTestError(null);
+                      }}
                       placeholder={t.tokenPlaceholder}
                       className="w-full rounded-xl border border-border bg-background px-4 py-2.5 pr-20 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                     />
@@ -1184,7 +1277,9 @@ function FacebookPage() {
                     href="https://developers.facebook.com/tools/explorer/"
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={(e) => openExternal(e, "https://developers.facebook.com/tools/explorer/")}
+                    onClick={(e) =>
+                      openExternal(e, "https://developers.facebook.com/tools/explorer/")
+                    }
                     className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
                   >
                     {t.getToken} <ExternalLink className="h-3 w-3" />
@@ -1206,7 +1301,9 @@ function FacebookPage() {
                       onClick={(e) => e.currentTarget.select()}
                       className="flex-1 rounded-lg border border-border bg-muted/40 px-3 py-1.5 font-mono text-xs text-foreground focus:border-primary focus:outline-none"
                       dir="ltr"
-                      aria-label={lang === "ar" ? "رابط Graph API Explorer" : "Graph API Explorer URL"}
+                      aria-label={
+                        lang === "ar" ? "رابط Graph API Explorer" : "Graph API Explorer URL"
+                      }
                     />
                     <button
                       type="button"
@@ -1216,7 +1313,11 @@ function FacebookPage() {
                           await navigator.clipboard.writeText(url);
                           toast.success(lang === "ar" ? "تم نسخ الرابط" : "Link copied");
                         } catch {
-                          toast.error(lang === "ar" ? "فشل النسخ — حدد النص يدوياً" : "Copy failed — select the text manually");
+                          toast.error(
+                            lang === "ar"
+                              ? "فشل النسخ — حدد النص يدوياً"
+                              : "Copy failed — select the text manually",
+                          );
                         }
                       }}
                       className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium hover:bg-accent"
@@ -1256,7 +1357,9 @@ function FacebookPage() {
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <p className="text-xs font-semibold text-foreground">
                           {lang === "ar" ? "سجل الأحداث" : "Event log"}{" "}
-                          <span className="font-mono text-muted-foreground">({debugLogs.length})</span>
+                          <span className="font-mono text-muted-foreground">
+                            ({debugLogs.length})
+                          </span>
                         </p>
                         <div className="flex gap-1">
                           <button
@@ -1301,7 +1404,9 @@ function FacebookPage() {
                               <span className="shrink-0 uppercase">{l.level}</span>
                               <span className="break-all">
                                 <b>{l.step}</b>
-                                {l.detail && <span className="text-muted-foreground"> — {l.detail}</span>}
+                                {l.detail && (
+                                  <span className="text-muted-foreground"> — {l.detail}</span>
+                                )}
                               </span>
                             </div>
                           ))
@@ -1326,7 +1431,9 @@ function FacebookPage() {
                     <CheckCircle2 className="h-4 w-4" />
                     {t.testSuccess}: {testResult.profile.name}
                     {testResult.profile.email && (
-                      <span className="font-normal text-muted-foreground">({testResult.profile.email})</span>
+                      <span className="font-normal text-muted-foreground">
+                        ({testResult.profile.email})
+                      </span>
                     )}
                   </div>
                   <div className="mb-2">
@@ -1335,7 +1442,10 @@ function FacebookPage() {
                     </p>
                     <div className="flex flex-wrap gap-1.5">
                       {testResult.granted.map((s) => (
-                        <span key={s} className="inline-flex items-center gap-1 rounded-md bg-card px-2 py-1 font-mono text-xs ring-1 ring-border">
+                        <span
+                          key={s}
+                          className="inline-flex items-center gap-1 rounded-md bg-card px-2 py-1 font-mono text-xs ring-1 ring-border"
+                        >
                           <CheckCircle2 className="h-3 w-3 text-green-500" /> {s}
                         </span>
                       ))}
@@ -1344,7 +1454,9 @@ function FacebookPage() {
                   {(() => {
                     const missing = missingRequiredScopes(testResult.granted);
                     return missing.length === 0 ? (
-                      <p className="mt-2 text-xs text-green-700 dark:text-green-400">{t.noMissing}</p>
+                      <p className="mt-2 text-xs text-green-700 dark:text-green-400">
+                        {t.noMissing}
+                      </p>
                     ) : (
                       <div className="mt-2">
                         <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-amber-600">
@@ -1352,7 +1464,10 @@ function FacebookPage() {
                         </p>
                         <div className="flex flex-wrap gap-1.5">
                           {missing.map((s) => (
-                            <span key={s} className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 font-mono text-xs text-amber-900 ring-1 ring-amber-300 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-800">
+                            <span
+                              key={s}
+                              className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 font-mono text-xs text-amber-900 ring-1 ring-amber-300 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-800"
+                            >
                               <XCircle className="h-3 w-3" /> {s}
                             </span>
                           ))}
@@ -1378,9 +1493,13 @@ function FacebookPage() {
                   className="inline-flex items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-5 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {testing ? (
-                    <><Loader2 className="h-4 w-4 animate-spin" /> {t.testing}</>
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" /> {t.testing}
+                    </>
                   ) : (
-                    <><FlaskConical className="h-4 w-4" /> {t.test}</>
+                    <>
+                      <FlaskConical className="h-4 w-4" /> {t.test}
+                    </>
                   )}
                 </button>
                 <button
@@ -1389,11 +1508,17 @@ function FacebookPage() {
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/30 transition-all hover:shadow-xl hover:shadow-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {connecting ? (
-                    <><Loader2 className="h-4 w-4 animate-spin" /> {t.connecting}</>
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" /> {t.connecting}
+                    </>
                   ) : testResult ? (
-                    <><ShieldCheck className="h-4 w-4" /> {t.confirmConnect}</>
+                    <>
+                      <ShieldCheck className="h-4 w-4" /> {t.confirmConnect}
+                    </>
                   ) : (
-                    <><Facebook className="h-4 w-4" /> {t.connect}</>
+                    <>
+                      <Facebook className="h-4 w-4" /> {t.connect}
+                    </>
                   )}
                 </button>
               </div>
@@ -1459,7 +1584,9 @@ function FacebookPage() {
                     onClick={() => setSyncLogOpen((v) => !v)}
                     className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground hover:bg-accent"
                   >
-                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${syncLogOpen ? "rotate-180" : ""}`} />
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 transition-transform ${syncLogOpen ? "rotate-180" : ""}`}
+                    />
                     {syncLogOpen ? t.hideHistory : t.showHistory}
                   </button>
                   {syncLog.length > 0 && (
@@ -1482,7 +1609,10 @@ function FacebookPage() {
                   { ev: lastGroupsSync, label: t.lastGroupsSync, Icon: Users },
                   { ev: lastPagesSync, label: t.lastPagesSync, Icon: Facebook },
                 ].map(({ ev, label, Icon }) => (
-                  <div key={label} className="flex items-start gap-2.5 rounded-lg border border-border/50 bg-card px-3 py-2">
+                  <div
+                    key={label}
+                    className="flex items-start gap-2.5 rounded-lg border border-border/50 bg-card px-3 py-2"
+                  >
                     <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium text-muted-foreground">{label}</p>
@@ -1506,10 +1636,14 @@ function FacebookPage() {
                           </span>
                         </div>
                       ) : (
-                        <p className="mt-1 text-[11px] italic text-muted-foreground">{t.neverSynced}</p>
+                        <p className="mt-1 text-[11px] italic text-muted-foreground">
+                          {t.neverSynced}
+                        </p>
                       )}
                       {ev && ev.status === "error" && ev.errorMessage && (
-                        <p className="mt-1 line-clamp-2 text-[11px] text-destructive/80">{ev.errorMessage}</p>
+                        <p className="mt-1 line-clamp-2 text-[11px] text-destructive/80">
+                          {ev.errorMessage}
+                        </p>
                       )}
                     </div>
                   </div>
@@ -1517,15 +1651,18 @@ function FacebookPage() {
               </div>
 
               {/* Full chronological log (collapsible) */}
-              {syncLogOpen && (
-                syncLog.length === 0 ? (
+              {syncLogOpen &&
+                (syncLog.length === 0 ? (
                   <p className="mt-3 rounded-lg border border-dashed border-border/60 bg-card/40 px-3 py-4 text-center text-xs text-muted-foreground">
                     {t.noHistory}
                   </p>
                 ) : (
                   <ul className="mt-3 max-h-64 space-y-1.5 overflow-y-auto rounded-lg border border-border/50 bg-card p-2">
                     {syncLog.map((ev) => (
-                      <li key={ev.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 text-xs odd:bg-muted/30">
+                      <li
+                        key={ev.id}
+                        className="flex items-start gap-2 rounded-md px-2 py-1.5 text-xs odd:bg-muted/30"
+                      >
                         {ev.status === "success" ? (
                           <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-600" />
                         ) : (
@@ -1537,7 +1674,13 @@ function FacebookPage() {
                               {ev.kind === "groups" ? t.loadGroups : t.loadPages}
                             </span>
                             <span className="text-muted-foreground">·</span>
-                            <span className={ev.status === "success" ? "text-green-700 dark:text-green-400" : "text-destructive"}>
+                            <span
+                              className={
+                                ev.status === "success"
+                                  ? "text-green-700 dark:text-green-400"
+                                  : "text-destructive"
+                              }
+                            >
                               {ev.status === "success"
                                 ? typeof ev.count === "number"
                                   ? t.syncCount(ev.count)
@@ -1545,26 +1688,37 @@ function FacebookPage() {
                                 : t.syncFailed}
                             </span>
                             <span className="text-muted-foreground">·</span>
-                            <time dateTime={ev.at} title={new Date(ev.at).toLocaleString()} className="text-muted-foreground">
+                            <time
+                              dateTime={ev.at}
+                              title={new Date(ev.at).toLocaleString()}
+                              className="text-muted-foreground"
+                            >
                               {formatRelative(ev.at)}
                             </time>
                           </div>
                           {ev.status === "error" && ev.errorMessage && (
-                            <p className="mt-0.5 text-[11px] text-destructive/80">{ev.errorMessage}</p>
+                            <p className="mt-0.5 text-[11px] text-destructive/80">
+                              {ev.errorMessage}
+                            </p>
                           )}
                         </div>
                       </li>
                     ))}
                   </ul>
-                )
-              )}
+                ))}
             </div>
 
             {tab === "groups" && groupsError && (
               <FbErrorBanner
                 err={groupsError}
                 onRetry={handleLoadGroups}
-                onReconnect={() => handleReconnect(groupsError.missingPermission ? [groupsError.missingPermission] : requiredScopes)}
+                onReconnect={() =>
+                  handleReconnect(
+                    groupsError.missingPermission
+                      ? [groupsError.missingPermission]
+                      : requiredScopes,
+                  )
+                }
                 lang={lang}
                 friendly={friendlyFbError}
                 reconnectLabel={t.reconnectAll}
@@ -1574,22 +1728,34 @@ function FacebookPage() {
               <FbErrorBanner
                 err={pagesError}
                 onRetry={handleLoadPages}
-                onReconnect={() => handleReconnect(pagesError.missingPermission ? [pagesError.missingPermission] : requiredScopes)}
+                onReconnect={() =>
+                  handleReconnect(
+                    pagesError.missingPermission ? [pagesError.missingPermission] : requiredScopes,
+                  )
+                }
                 lang={lang}
                 friendly={friendlyFbError}
                 reconnectLabel={t.reconnectAll}
               />
             )}
 
-            {tab === "groups" && !groupsError && (
-              groups.length === 0 ? (
+            {tab === "groups" &&
+              !groupsError &&
+              (groups.length === 0 ? (
                 <p className="py-12 text-center text-sm text-muted-foreground">{t.noGroups}</p>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {groups.map((g) => (
-                    <div key={g.id} className="overflow-hidden rounded-xl border border-border/50 bg-background transition-all hover:border-primary/30 hover:shadow-md">
+                    <div
+                      key={g.id}
+                      className="overflow-hidden rounded-xl border border-border/50 bg-background transition-all hover:border-primary/30 hover:shadow-md"
+                    >
                       {g.cover?.source && (
-                        <img src={g.cover.source} alt={g.name} className="h-24 w-full object-cover" />
+                        <img
+                          src={g.cover.source}
+                          alt={g.name}
+                          className="h-24 w-full object-cover"
+                        />
                       )}
                       <div className="p-4">
                         <h3 className="line-clamp-1 font-semibold text-foreground">{g.name}</h3>
@@ -1608,24 +1774,33 @@ function FacebookPage() {
                     </div>
                   ))}
                 </div>
-              )
-            )}
+              ))}
 
-            {tab === "pages" && !pagesError && (
-              pages.length === 0 ? (
+            {tab === "pages" &&
+              !pagesError &&
+              (pages.length === 0 ? (
                 <p className="py-12 text-center text-sm text-muted-foreground">{t.noPages}</p>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {pages.map((p) => (
-                    <div key={p.id} className="rounded-xl border border-border/50 bg-background p-4 transition-all hover:border-primary/30 hover:shadow-md">
+                    <div
+                      key={p.id}
+                      className="rounded-xl border border-border/50 bg-background p-4 transition-all hover:border-primary/30 hover:shadow-md"
+                    >
                       <div className="flex gap-3">
                         {p.picture?.data?.url && (
-                          <img src={p.picture.data.url} alt={p.name} className="h-12 w-12 shrink-0 rounded-full object-cover" />
+                          <img
+                            src={p.picture.data.url}
+                            alt={p.name}
+                            className="h-12 w-12 shrink-0 rounded-full object-cover"
+                          />
                         )}
                         <div className="min-w-0 flex-1">
                           <h3 className="line-clamp-1 font-semibold text-foreground">{p.name}</h3>
                           {p.category && (
-                            <p className="line-clamp-1 text-xs text-muted-foreground">{p.category}</p>
+                            <p className="line-clamp-1 text-xs text-muted-foreground">
+                              {p.category}
+                            </p>
                           )}
                           {typeof p.fan_count === "number" && (
                             <p className="mt-1 text-xs text-muted-foreground">
@@ -1637,8 +1812,7 @@ function FacebookPage() {
                     </div>
                   ))}
                 </div>
-              )
-            )}
+              ))}
           </div>
         )}
       </div>
@@ -1646,7 +1820,11 @@ function FacebookPage() {
   );
 }
 
-interface FbErr { type: string; message: string; missingPermission: string | null }
+interface FbErr {
+  type: string;
+  message: string;
+  missingPermission: string | null;
+}
 function FbErrorBanner({
   err,
   onRetry,
@@ -1701,11 +1879,16 @@ function FbErrorBanner({
             {(isAuth || isPerm) && (
               <button
                 type="button"
-                onClick={() => (onReconnect ? onReconnect() : (window.location.hash = "fb-token-form"))}
+                onClick={() =>
+                  onReconnect ? onReconnect() : (window.location.hash = "fb-token-form")
+                }
                 className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
               >
                 <KeyRound className="h-3.5 w-3.5" />
-                {reconnectLabel ?? (lang === "ar" ? "إعادة الربط بصلاحيات كاملة" : "Reconnect with full permissions")}
+                {reconnectLabel ??
+                  (lang === "ar"
+                    ? "إعادة الربط بصلاحيات كاملة"
+                    : "Reconnect with full permissions")}
                 <ExternalLink className="h-3 w-3 opacity-80" />
               </button>
             )}
