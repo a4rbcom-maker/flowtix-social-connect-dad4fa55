@@ -664,6 +664,44 @@ function FacebookPage() {
   // copying a token from Graph API Explorer or a chat. FB tokens never contain
   // whitespace, so this is always safe and prevents "invalid token" errors.
   const cleanToken = (raw: string) => raw.replace(/\s+/g, "");
+  const TEST_CACHE_TTL_MS = 30_000;
+  const tokenCacheKey = (cleaned: string) =>
+    `flowtix:fb:test:${cleaned.length}:${cleaned.slice(0, 8)}:${cleaned.slice(-8)}`;
+
+  const readTokenTestCache = (cleaned: string) => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(tokenCacheKey(cleaned));
+      if (!raw) return null;
+      const cached = JSON.parse(raw) as {
+        at?: number;
+        result?: TokenCheckResult;
+        error?: { message: string; type?: string | null };
+      };
+      if (!cached.at || Date.now() - cached.at > TEST_CACHE_TTL_MS) return null;
+      return cached;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeTokenTestCache = (
+    cleaned: string,
+    value: { result?: TokenCheckResult; error?: { message: string; type?: string | null } },
+  ) => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(tokenCacheKey(cleaned), JSON.stringify({ at: Date.now(), ...value }));
+    } catch {
+      /* ignore quota / privacy mode */
+    }
+  };
+
+  const rememberRateLimitIfNeeded = (message: string, type?: string | null) => {
+    if (!isAppRateLimitError(message, type)) return;
+    setAppRateLimitMessage(friendlyError(message));
+    setRateLimitDismissed(false);
+  };
 
   const handleTest = async () => {
     const cleaned = cleanToken(token);
