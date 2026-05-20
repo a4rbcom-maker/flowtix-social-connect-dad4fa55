@@ -356,12 +356,7 @@ export const inspectFacebookConnection = createServerFn({ method: "GET" })
         fbGet("/me/permissions", token),
       ]);
       profile = { id: String(me.id), name: me.name, email: me.email ?? null };
-      granted = (perms.data ?? [])
-        .filter((p: { status: string }) => p.status === "granted")
-        .map((p: { permission: string }) => p.permission);
-      declined = (perms.data ?? [])
-        .filter((p: { status: string }) => p.status !== "granted")
-        .map((p: { permission: string }) => p.permission);
+      ({ granted, declined } = parsePermissions(perms));
     } catch (err) {
       valid = false;
       validationError = err instanceof Error ? err.message : "Token validation failed";
@@ -397,7 +392,8 @@ export const inspectFacebookConnection = createServerFn({ method: "GET" })
       "pages_read_engagement",
       "pages_manage_metadata",
     ];
-    const missingScopes = requiredScopes.filter((s) => !granted.includes(s));
+    const grantedSet = new Set(Array.isArray(granted) ? granted : []);
+    const missingScopes = requiredScopes.filter((s) => !grantedSet.has(s));
 
     return {
       connected: true as const,
