@@ -406,6 +406,10 @@ function FacebookPage() {
           quick2Desc: "نتأكد من صلاحيته وصلاحياته قبل الحفظ",
           quick3Title: "ثبّت الربط",
           quick3Desc: "نخزّن التوكن مشفّراً ونبدأ التحميل",
+          savedDespiteLimit: "تم حفظ التوكن، لكن Meta يرفض الفحص مؤقتاً بسبب حد الطلبات.",
+          savedPendingName: "تم حفظ التوكن — فحص Meta مؤجل",
+          testLimitedButCanSave:
+            "لا يمكن الاختبار الآن بسبب حد طلبات Meta، لكن يمكنك حفظ التوكن وسيتم فحصه لاحقاً عند عودة الحد.",
           errInvalidToken: "التوكن غير صالح أو منتهي الصلاحية. أنشئ توكن جديد من Graph Explorer.",
           errExpired: "انتهت صلاحية التوكن. أعد توليده من Graph Explorer.",
           errPermission: "صلاحيات ناقصة. تأكد من إضافة كل الصلاحيات المطلوبة.",
@@ -515,6 +519,11 @@ function FacebookPage() {
           quick2Desc: "We verify it's valid and has the right permissions",
           quick3Title: "Confirm linking",
           quick3Desc: "Token is stored encrypted and loading begins",
+          savedDespiteLimit:
+            "Token was saved, but Meta is temporarily refusing validation because the request limit is reached.",
+          savedPendingName: "Token saved — Meta check pending",
+          testLimitedButCanSave:
+            "Testing is blocked by Meta's request limit right now. You can still save the token and it will be checked later when the limit resets.",
           errInvalidToken: "Token is invalid or malformed. Generate a new one from Graph Explorer.",
           errExpired: "Token has expired. Re-generate it from Graph Explorer.",
           errPermission: "Missing permissions. Make sure all required scopes are granted.",
