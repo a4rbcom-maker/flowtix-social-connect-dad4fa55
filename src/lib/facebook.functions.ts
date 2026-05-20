@@ -144,6 +144,27 @@ function parsePermissions(perms: unknown) {
   return { granted, declined };
 }
 
+function normalizeProfile(me: { id?: unknown; name?: unknown; email?: unknown }) {
+  const id = typeof me.id === "string" || typeof me.id === "number" ? String(me.id) : "";
+  if (!id) {
+    throw new FacebookApiError({
+      message: "Facebook returned no user id for this token.",
+      code: null,
+      subcode: null,
+      type: "invalid_token",
+      missingPermission: null,
+      httpStatus: 400,
+      raw: me,
+    });
+  }
+  const name = typeof me.name === "string" && me.name.trim() ? me.name.trim() : `Facebook ${id}`;
+  return {
+    id,
+    name,
+    email: typeof me.email === "string" && me.email.trim() ? me.email : null,
+  };
+}
+
 /**
  * Verify a Facebook access token, fetch user profile,
  * and persist the connection for the current user.
@@ -161,6 +182,7 @@ export const connectFacebook = createServerFn({ method: "POST" })
 
     // 1) verify token via /me
     const me = await fbGet("/me?fields=id,name,email", token);
+    const profile = normalizeProfile(me);
 
     // 2) upsert connection
     const { error } = await supabase
@@ -169,9 +191,9 @@ export const connectFacebook = createServerFn({ method: "POST" })
         {
           user_id: userId,
           access_token: token,
-          fb_user_id: String(me.id),
-          fb_user_name: me.name ?? null,
-          fb_user_email: me.email ?? null,
+          fb_user_id: profile.id,
+          fb_user_name: profile.name,
+          fb_user_email: profile.email,
           last_synced_at: new Date().toISOString(),
         },
         { onConflict: "user_id" },
@@ -181,7 +203,7 @@ export const connectFacebook = createServerFn({ method: "POST" })
 
     return {
       success: true,
-      profile: { id: me.id, name: me.name, email: me.email ?? null },
+      profile,
     };
   });
 
@@ -204,7 +226,7 @@ export const testFacebookToken = createServerFn({ method: "POST" })
     const { granted, declined } = parsePermissions(perms);
     return {
       success: true,
-      profile: { id: me.id, name: me.name, email: me.email ?? null },
+      profile: normalizeProfile(me),
       granted,
       declined,
     };
