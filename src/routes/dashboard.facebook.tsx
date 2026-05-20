@@ -134,7 +134,7 @@ function FacebookPage() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TokenCheckResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
-  const loadedConnectionRef = useRef(false);
+  const loadedConnectionForRef = useRef<string | null>(null);
 
   const requiredScopes = [
     "public_profile",
@@ -555,8 +555,8 @@ function FacebookPage() {
   // automatic checks were exhausting the quota before the user clicked anything.
   useEffect(() => {
     if (!user) return;
-    if (loadedConnectionRef.current) return;
-    loadedConnectionRef.current = true;
+    if (loadedConnectionForRef.current === user.id) return;
+    loadedConnectionForRef.current = user.id;
     (async () => {
       try {
         const res = await fbCall(getFacebookConnection);
