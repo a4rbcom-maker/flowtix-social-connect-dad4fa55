@@ -192,6 +192,21 @@ function normalizeProfile(me: { id?: unknown; name?: unknown; email?: unknown })
   };
 }
 
+function isFacebookErrorOfType(err: unknown, type: FacebookApiError["type"]): err is FacebookApiError {
+  return err instanceof FacebookApiError && err.type === type;
+}
+
+function savedOnlyProfile(
+  row: { fb_user_id?: string | null; fb_user_name?: string | null; fb_user_email?: string | null } | null,
+  token: string,
+) {
+  return {
+    id: row?.fb_user_id ?? `saved-token-${token.length}-${token.slice(-4)}`,
+    name: row?.fb_user_name ?? "Facebook token saved — Meta check pending",
+    email: row?.fb_user_email ?? null,
+  };
+}
+
 /**
  * Verify a Facebook access token, fetch user profile,
  * and persist the connection for the current user.
@@ -208,6 +223,31 @@ export const connectFacebook = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const token = data.access_token;
+
+    const { data: existing, error: existingError } = await supabase
+      .from("facebook_connections")
+      .select("fb_user_id, fb_user_name, fb_user_email")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (existingError) {
+      return {
+        success: false as const,
+        profile: null,
+        granted: [] as string[],
+        declined: [] as string[],
+        savedOnly: false as const,
+        warning: null,
+        error: {
+          message: `Database error: ${existingError.message}`,
+          code: null,
+          subcode: null,
+          type: "unknown" as const,
+          missingPermission: null,
+          httpStatus: 500,
+        },
+      };
+    }
 
     try {
       const me = await fbGet("/me?fields=id,name,email", token);
@@ -240,6 +280,8 @@ export const connectFacebook = createServerFn({ method: "POST" })
           profile,
           granted,
           declined,
+          savedOnly: false as const,
+          warning: null,
           error: {
             message: `Database error: ${dbError.message}`,
             code: null,
@@ -251,14 +293,58 @@ export const connectFacebook = createServerFn({ method: "POST" })
         };
       }
 
-      return { success: true as const, profile, granted, declined, error: null };
+      return { success: true as const, profile, granted, declined, savedOnly: false as const, warning: null, error: null };
     } catch (err) {
       console.error("[connectFacebook] failed:", err);
+      if (isFacebookErrorOfType(err, "app_rate_limited")) {
+        const { error: dbError } = await supabase.from("facebook_connections").upsert(
+          {
+            user_id: userId,
+            access_token: token,
+            fb_user_id: existing?.fb_user_id ?? null,
+            fb_user_name: existing?.fb_user_name ?? null,
+            fb_user_email: existing?.fb_user_email ?? null,
+            last_synced_at: existing ? undefined : null,
+          },
+          { onConflict: "user_id" },
+        );
+
+        if (dbError) {
+          return {
+            success: false as const,
+            profile: null,
+            granted: [] as string[],
+            declined: [] as string[],
+            savedOnly: false as const,
+            warning: null,
+            error: {
+              message: `Database error: ${dbError.message}`,
+              code: null,
+              subcode: null,
+              type: "unknown" as const,
+              missingPermission: null,
+              httpStatus: 500,
+            },
+          };
+        }
+
+        return {
+          success: true as const,
+          profile: savedOnlyProfile(existing, token),
+          granted: [] as string[],
+          declined: [] as string[],
+          savedOnly: true as const,
+          warning: serializeError(err),
+          error: null,
+        };
+      }
       return {
         success: false as const,
         profile: null,
         granted: [] as string[],
         declined: [] as string[],
+        savedOnly: false as const,
+        warning: null,
         error: serializeError(err),
       };
     }
