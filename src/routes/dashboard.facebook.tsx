@@ -545,69 +545,15 @@ function FacebookPage() {
     if (!authLoading && !user) navigate({ to: "/login" });
   }, [user, authLoading, navigate]);
 
-  // Load existing connection + token expiry inspection. The expiry check
-  // runs silently in the background; if the token is expired or expires
-  // within EXPIRY_WARN_DAYS, the UI surfaces a banner + one-time toast.
+  // Load existing connection only. Do NOT inspect the Facebook token on every
+  // page open: Meta counts those Graph calls toward the app limit, and repeated
+  // automatic checks were exhausting the quota before the user clicked anything.
   useEffect(() => {
     if (!user) return;
     (async () => {
       try {
         const res = await fbCall(getFacebookConnection);
         setConnection(res.connection);
-
-        // Only inspect if there's actually a stored connection.
-        if (res.connection) {
-          try {
-            const insp = await fbCall(inspectFacebookConnection);
-            if (insp.connected) {
-              setTokenExpiry({
-                expiresAt: insp.expiresAt,
-                dataAccessExpiresAt: insp.dataAccessExpiresAt,
-                isExpired: insp.isExpired,
-                valid: insp.valid,
-              });
-
-              // One-time toast for expired or near-expiry tokens.
-              const dismissedKey = `flowtix:fb:expiry-toast:${user.id}:${insp.expiresAt ?? "none"}`;
-              const alreadyToasted = window.sessionStorage.getItem(dismissedKey) === "1";
-              if (!alreadyToasted) {
-                if (insp.isExpired || insp.valid === false) {
-                  toast.error(
-                    lang === "ar" ? "انتهت صلاحية توكن فيسبوك" : "Facebook token has expired",
-                    {
-                      description:
-                        lang === "ar"
-                          ? "أعد توليد التوكن من Graph API Explorer ثم اربط الحساب من جديد."
-                          : "Generate a new token from Graph API Explorer and reconnect.",
-                    },
-                  );
-                  window.sessionStorage.setItem(dismissedKey, "1");
-                } else if (insp.expiresAt) {
-                  const daysLeft = Math.floor(
-                    (new Date(insp.expiresAt).getTime() - Date.now()) / 86_400_000,
-                  );
-                  if (daysLeft >= 0 && daysLeft <= EXPIRY_WARN_DAYS) {
-                    toast.warning(
-                      lang === "ar"
-                        ? `توكن فيسبوك ينتهي خلال ${daysLeft} يوم`
-                        : `Facebook token expires in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`,
-                      {
-                        description:
-                          lang === "ar"
-                            ? "ننصح بتجديد التوكن قبل الانتهاء لتجنّب توقف تحميل الجروبات والصفحات."
-                            : "Renew the token before it expires to avoid disruption.",
-                      },
-                    );
-                    window.sessionStorage.setItem(dismissedKey, "1");
-                  }
-                }
-              }
-            }
-          } catch (inspErr) {
-            // Inspection is best-effort; don't block the page if it fails.
-            console.warn("Token inspection failed", inspErr);
-          }
-        }
       } catch (err) {
         console.error("Load connection failed", err);
         toast.error(describeFbError(err, lang === "ar" ? "ar" : "en"));
