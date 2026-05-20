@@ -1408,6 +1408,7 @@ function FacebookPage() {
                         setToken(e.target.value);
                         setTestResult(null);
                         setTestError(null);
+                        setTestErrorType(null);
                       }}
                       placeholder={t.tokenPlaceholder}
                       className="w-full rounded-xl border border-border bg-background px-4 py-2.5 pr-20 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -1572,6 +1573,13 @@ function FacebookPage() {
                   <div className="flex-1">
                     <p className="text-sm font-semibold text-destructive">{t.testFailed}</p>
                     <p className="mt-1 text-sm text-foreground/80">{testError}</p>
+                    {testErrorType === "app_rate_limited" && (
+                      <p className="mt-2 text-xs font-medium text-foreground/70">
+                        {lang === "ar"
+                          ? "الحفظ متاح الآن بدون استهلاك طلبات إضافية من Meta. التحميل سيعمل بعد عودة الحد."
+                          : "Saving is available now without spending more Meta requests. Loading will work after the limit resets."}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
