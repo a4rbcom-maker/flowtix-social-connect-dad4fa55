@@ -261,8 +261,8 @@ function InsightsPage() {
         b = { age: r.age, male: 0, female: 0 };
         buckets.set(r.age, b);
       }
-      if (r.gender === "male") b.male += r.count;
-      else if (r.gender === "female") b.female += r.count;
+      if (r.gender === "male") b.male += Number(r.count ?? 0);
+      else if (r.gender === "female") b.female += Number(r.count ?? 0);
     }
     return Array.from(buckets.values()).sort((a, b) => a.age.localeCompare(b.age));
   }, [insights]);
