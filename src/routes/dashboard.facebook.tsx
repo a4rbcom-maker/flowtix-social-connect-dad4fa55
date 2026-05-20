@@ -810,6 +810,8 @@ function FacebookPage() {
         return e.missingPermission
           ? `الصلاحية الناقصة: ${e.missingPermission}. أعد الربط وامنح هذه الصلاحية.`
           : "الصلاحيات غير كافية. أعد الربط وامنح كل الصلاحيات المطلوبة.";
+      case "app_rate_limited":
+        return "تطبيق فيسبوك وصل حد الاستدعاءات اليومي من Meta (#4). انتظر حتى يُعاد ضبط الحد أو ارفعه من Meta App Dashboard.";
       case "rate_limited":
         return "تم تجاوز حد الاستدعاءات. حاول بعد قليل.";
       case "network":
@@ -826,6 +828,7 @@ function FacebookPage() {
       const res = await fbCall(fetchFacebookGroups);
       if (res.error) {
         setGroups([]);
+        rememberRateLimitIfNeeded(res.error.message, res.error.type);
         setGroupsError(res.error);
         recordSync({
           kind: "groups",
@@ -860,6 +863,7 @@ function FacebookPage() {
       const res = await fbCall(fetchFacebookPages);
       if (res.error) {
         setPages([]);
+        rememberRateLimitIfNeeded(res.error.message, res.error.type);
         setPagesError(res.error);
         recordSync({
           kind: "pages",
