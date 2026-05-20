@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import {
   Facebook,
   RefreshCw,
@@ -84,6 +84,8 @@ type TokenCheckResult = {
   profile: { id: string; name: string; email: string | null };
   granted: string[];
   declined: string[];
+  savedOnly?: boolean;
+  warning?: { message?: string; type?: string; missingPermission?: string | null } | null;
 };
 
 function FacebookRouteShell() {
@@ -132,6 +134,8 @@ function FacebookPage() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TokenCheckResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
+  const [testErrorType, setTestErrorType] = useState<string | null>(null);
+  const loadedConnectionForRef = useRef<string | null>(null);
 
   const requiredScopes = [
     "public_profile",
@@ -403,6 +407,10 @@ function FacebookPage() {
           quick2Desc: "نتأكد من صلاحيته وصلاحياته قبل الحفظ",
           quick3Title: "ثبّت الربط",
           quick3Desc: "نخزّن التوكن مشفّراً ونبدأ التحميل",
+          savedDespiteLimit: "تم حفظ التوكن، لكن Meta يرفض الفحص مؤقتاً بسبب حد الطلبات.",
+          savedPendingName: "تم حفظ التوكن — فحص Meta مؤجل",
+          testLimitedButCanSave:
+            "لا يمكن الاختبار الآن بسبب حد طلبات Meta، لكن يمكنك حفظ التوكن وسيتم فحصه لاحقاً عند عودة الحد.",
           errInvalidToken: "التوكن غير صالح أو منتهي الصلاحية. أنشئ توكن جديد من Graph Explorer.",
           errExpired: "انتهت صلاحية التوكن. أعد توليده من Graph Explorer.",
           errPermission: "صلاحيات ناقصة. تأكد من إضافة كل الصلاحيات المطلوبة.",
@@ -512,6 +520,11 @@ function FacebookPage() {
           quick2Desc: "We verify it's valid and has the right permissions",
           quick3Title: "Confirm linking",
           quick3Desc: "Token is stored encrypted and loading begins",
+          savedDespiteLimit:
+            "Token was saved, but Meta is temporarily refusing validation because the request limit is reached.",
+          savedPendingName: "Token saved — Meta check pending",
+          testLimitedButCanSave:
+            "Testing is blocked by Meta's request limit right now. You can still save the token and it will be checked later when the limit resets.",
           errInvalidToken: "Token is invalid or malformed. Generate a new one from Graph Explorer.",
           errExpired: "Token has expired. Re-generate it from Graph Explorer.",
           errPermission: "Missing permissions. Make sure all required scopes are granted.",
@@ -552,6 +565,8 @@ function FacebookPage() {
   // automatic checks were exhausting the quota before the user clicked anything.
   useEffect(() => {
     if (!user) return;
+    if (loadedConnectionForRef.current === user.id) return;
+    loadedConnectionForRef.current = user.id;
     (async () => {
       try {
         const res = await fbCall(getFacebookConnection);
@@ -626,6 +641,8 @@ function FacebookPage() {
           profile?: { id?: unknown; name?: unknown; email?: unknown } | null;
           granted?: unknown;
           declined?: unknown;
+          savedOnly?: boolean;
+          warning?: { message?: string; type?: string; missingPermission?: string | null } | null;
           error?: { message?: string; type?: string; missingPermission?: string | null } | null;
         }
       | null
@@ -656,11 +673,14 @@ function FacebookPage() {
     return {
       profile: {
         id,
-        name,
+        name:
+          value?.savedOnly && name.startsWith("Facebook token saved") ? t.savedPendingName : name,
         email: typeof profile?.email === "string" ? profile.email : null,
       },
       granted: toStringArray(value?.granted),
       declined: toStringArray(value?.declined),
+      savedOnly: value?.savedOnly === true,
+      warning: value?.warning ?? null,
     };
   };
 
@@ -669,6 +689,7 @@ function FacebookPage() {
   // whitespace, so this is always safe and prevents "invalid token" errors.
   const cleanToken = (raw: string) => raw.replace(/\s+/g, "");
   const TEST_CACHE_TTL_MS = 30_000;
+  const RATE_LIMIT_CACHE_TTL_MS = 15 * 60_000;
   const tokenCacheKey = (cleaned: string) =>
     `flowtix:fb:test:${cleaned.length}:${cleaned.slice(0, 8)}:${cleaned.slice(-8)}`;
 
@@ -682,7 +703,9 @@ function FacebookPage() {
         result?: TokenCheckResult;
         error?: { message: string; type?: string | null };
       };
-      if (!cached.at || Date.now() - cached.at > TEST_CACHE_TTL_MS) return null;
+      const ttl =
+        cached.error?.type === "app_rate_limited" ? RATE_LIMIT_CACHE_TTL_MS : TEST_CACHE_TTL_MS;
+      if (!cached.at || Date.now() - cached.at > ttl) return null;
       return cached;
     } catch {
       return null;
@@ -710,6 +733,9 @@ function FacebookPage() {
     setRateLimitDismissed(false);
   };
 
+  const connectionName = (name: string | null | undefined) =>
+    name?.startsWith("Facebook token saved") ? t.savedPendingName : name || t.savedPendingName;
+
   const handleTest = async () => {
     const cleaned = cleanToken(token);
     if (cleaned.length < 20) {
@@ -720,6 +746,7 @@ function FacebookPage() {
     setTesting(true);
     setTestResult(null);
     setTestError(null);
+    setTestErrorType(null);
     try {
       const cached = readTokenTestCache(cleaned);
       if (cached?.result) {
@@ -745,12 +772,17 @@ function FacebookPage() {
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : t.testFailed;
       const fbType = (err as Error & { fbType?: string })?.fbType ?? null;
-      const msg = friendlyError(raw);
+      const rateLimited = isAppRateLimitError(raw, fbType);
+      const msg = rateLimited
+        ? `${friendlyError(raw)} ${t.testLimitedButCanSave}`
+        : friendlyError(raw);
       writeTokenTestCache(cleaned, { error: { message: raw, type: fbType } });
       rememberRateLimitIfNeeded(raw, fbType);
       setTestResult(null);
       setTestError(msg);
-      toast.error(`${t.testFailed} — ${msg}`);
+      setTestErrorType(fbType);
+      if (rateLimited) toast.warning(msg);
+      else toast.error(`${t.testFailed} — ${msg}`);
     } finally {
       setTesting(false);
     }
@@ -767,13 +799,22 @@ function FacebookPage() {
     try {
       const res = await fbCall(connectFacebook, { access_token: cleaned });
       const normalized = normalizeAuthResponse(res);
-      setAppRateLimitMessage(null);
+      if (normalized.warning?.message) {
+        rememberRateLimitIfNeeded(normalized.warning.message, normalized.warning.type);
+      } else {
+        setAppRateLimitMessage(null);
+      }
       toast.success(
-        lang === "ar"
-          ? `تم الربط بنجاح: ${normalized.profile.name}`
-          : `Connected as ${normalized.profile.name}`,
+        normalized.savedOnly
+          ? t.savedDespiteLimit
+          : lang === "ar"
+            ? `تم الربط بنجاح: ${normalized.profile.name}`
+            : `Connected as ${normalized.profile.name}`,
       );
       setToken("");
+      setTestResult(null);
+      setTestError(null);
+      setTestErrorType(null);
       // refresh connection
       const c = await fbCall(getFacebookConnection);
       setConnection(c.connection);
@@ -783,6 +824,7 @@ function FacebookPage() {
       const msg = friendlyError(raw);
       rememberRateLimitIfNeeded(raw, fbType);
       setTestError(msg);
+      setTestErrorType(fbType);
       toast.error(msg);
     } finally {
       setConnecting(false);
@@ -1312,7 +1354,7 @@ function FacebookPage() {
                     {t.connected}
                   </div>
                   <p className="text-base font-semibold text-foreground">
-                    {t.connectedAs}: {connection.fb_user_name}
+                    {t.connectedAs}: {connectionName(connection.fb_user_name)}
                   </p>
                   {connection.fb_user_email && (
                     <p className="text-sm text-muted-foreground">{connection.fb_user_email}</p>
@@ -1325,6 +1367,12 @@ function FacebookPage() {
                         )
                       : t.notSynced}
                   </p>
+                  {connection.fb_user_name?.startsWith("Facebook token saved") && (
+                    <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      {t.savedDespiteLimit}
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
@@ -1375,6 +1423,7 @@ function FacebookPage() {
                         setToken(e.target.value);
                         setTestResult(null);
                         setTestError(null);
+                        setTestErrorType(null);
                       }}
                       placeholder={t.tokenPlaceholder}
                       className="w-full rounded-xl border border-border bg-background px-4 py-2.5 pr-20 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -1539,6 +1588,13 @@ function FacebookPage() {
                   <div className="flex-1">
                     <p className="text-sm font-semibold text-destructive">{t.testFailed}</p>
                     <p className="mt-1 text-sm text-foreground/80">{testError}</p>
+                    {testErrorType === "app_rate_limited" && (
+                      <p className="mt-2 text-xs font-medium text-foreground/70">
+                        {lang === "ar"
+                          ? "الحفظ متاح الآن بدون استهلاك طلبات إضافية من Meta. التحميل سيعمل بعد عودة الحد."
+                          : "Saving is available now without spending more Meta requests. Loading will work after the limit resets."}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
