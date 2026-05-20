@@ -35,7 +35,7 @@ import {
   inspectFacebookConnection,
   testFacebookToken,
 } from "@/lib/facebook.functions";
-import { openExternalUrl, ExternalLinkButton } from "@/components/shared/ExternalLinkButton";
+import { openExternalUrl } from "@/components/shared/ExternalLinkButton";
 
 import { useFacebookApi, describeFbError } from "@/features/facebook/api";
 
@@ -59,6 +59,7 @@ interface Connection {
   fb_user_email: string | null;
   last_synced_at: string | null;
   created_at: string;
+  token_preview?: string | null;
 }
 
 interface Group {
@@ -79,6 +80,12 @@ interface Page {
   picture?: { data?: { url?: string } };
 }
 
+type TokenCheckResult = {
+  profile: { id: string; name: string; email: string | null };
+  granted: string[];
+  declined: string[];
+};
+
 function FacebookRouteShell() {
   const location = useLocation();
   return location.pathname === "/dashboard/facebook" ? <FacebookPage /> : <Outlet />;
@@ -89,9 +96,8 @@ function FacebookPage() {
   const { lang } = useI18n();
   const navigate = useNavigate();
   const [connection, setConnection] = useState<Connection | null>(null);
-  // Token expiry awareness — populated silently on dashboard open via
-  // inspectFacebookConnection (no token leaves the server). Used to render
-  // a top banner when the token is expired or about to expire.
+  // Token expiry awareness — populated only when the user manually checks the
+  // token, so opening the page does not spend Meta Graph API quota.
   const { call: fbCall } = useFacebookApi();
   const [tokenExpiry, setTokenExpiry] = useState<{
     expiresAt: string | null;
@@ -99,11 +105,14 @@ function FacebookPage() {
     isExpired: boolean;
     valid: boolean;
   } | null>(null);
+  const [appRateLimitMessage, setAppRateLimitMessage] = useState<string | null>(null);
+  const [rateLimitDismissed, setRateLimitDismissed] = useState(false);
   const [expiryDismissed, setExpiryDismissed] = useState(false);
   const EXPIRY_WARN_DAYS = 7;
   const [token, setToken] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [inspectingToken, setInspectingToken] = useState(false);
   const [groups, setGroups] = useState<Group[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
@@ -121,11 +130,7 @@ function FacebookPage() {
   const [tab, setTab] = useState<"groups" | "pages">("groups");
   const [guideOpen, setGuideOpen] = useState(true);
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{
-    profile: { id: string; name: string; email: string | null };
-    granted: string[];
-    declined: string[];
-  } | null>(null);
+  const [testResult, setTestResult] = useState<TokenCheckResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
 
   const requiredScopes = [
@@ -542,69 +547,15 @@ function FacebookPage() {
     if (!authLoading && !user) navigate({ to: "/login" });
   }, [user, authLoading, navigate]);
 
-  // Load existing connection + token expiry inspection. The expiry check
-  // runs silently in the background; if the token is expired or expires
-  // within EXPIRY_WARN_DAYS, the UI surfaces a banner + one-time toast.
+  // Load existing connection only. Do NOT inspect the Facebook token on every
+  // page open: Meta counts those Graph calls toward the app limit, and repeated
+  // automatic checks were exhausting the quota before the user clicked anything.
   useEffect(() => {
     if (!user) return;
     (async () => {
       try {
         const res = await fbCall(getFacebookConnection);
         setConnection(res.connection);
-
-        // Only inspect if there's actually a stored connection.
-        if (res.connection) {
-          try {
-            const insp = await fbCall(inspectFacebookConnection);
-            if (insp.connected) {
-              setTokenExpiry({
-                expiresAt: insp.expiresAt,
-                dataAccessExpiresAt: insp.dataAccessExpiresAt,
-                isExpired: insp.isExpired,
-                valid: insp.valid,
-              });
-
-              // One-time toast for expired or near-expiry tokens.
-              const dismissedKey = `flowtix:fb:expiry-toast:${user.id}:${insp.expiresAt ?? "none"}`;
-              const alreadyToasted = window.sessionStorage.getItem(dismissedKey) === "1";
-              if (!alreadyToasted) {
-                if (insp.isExpired || insp.valid === false) {
-                  toast.error(
-                    lang === "ar" ? "انتهت صلاحية توكن فيسبوك" : "Facebook token has expired",
-                    {
-                      description:
-                        lang === "ar"
-                          ? "أعد توليد التوكن من Graph API Explorer ثم اربط الحساب من جديد."
-                          : "Generate a new token from Graph API Explorer and reconnect.",
-                    },
-                  );
-                  window.sessionStorage.setItem(dismissedKey, "1");
-                } else if (insp.expiresAt) {
-                  const daysLeft = Math.floor(
-                    (new Date(insp.expiresAt).getTime() - Date.now()) / 86_400_000,
-                  );
-                  if (daysLeft >= 0 && daysLeft <= EXPIRY_WARN_DAYS) {
-                    toast.warning(
-                      lang === "ar"
-                        ? `توكن فيسبوك ينتهي خلال ${daysLeft} يوم`
-                        : `Facebook token expires in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`,
-                      {
-                        description:
-                          lang === "ar"
-                            ? "ننصح بتجديد التوكن قبل الانتهاء لتجنّب توقف تحميل الجروبات والصفحات."
-                            : "Renew the token before it expires to avoid disruption.",
-                      },
-                    );
-                    window.sessionStorage.setItem(dismissedKey, "1");
-                  }
-                }
-              }
-            }
-          } catch (inspErr) {
-            // Inspection is best-effort; don't block the page if it fails.
-            console.warn("Token inspection failed", inspErr);
-          }
-        }
       } catch (err) {
         console.error("Load connection failed", err);
         toast.error(describeFbError(err, lang === "ar" ? "ar" : "en"));
@@ -616,6 +567,20 @@ function FacebookPage() {
 
   const friendlyError = (raw: string): string => {
     const m = raw.toLowerCase();
+    if (
+      m.includes("application request limit") ||
+      m.includes("(#4)") ||
+      m.includes("app_rate_limited")
+    ) {
+      return lang === "ar"
+        ? "تطبيق فيسبوك وصل حد الاستدعاءات اليومي من Meta (#4). التوكن صحيح غالباً، لكن Meta يرفض الطلبات مؤقتاً. انتظر حتى يُعاد ضبط الحد أو ارفع الحد من Meta App Dashboard → App Rate Limits."
+        : "The Facebook app reached Meta's daily request limit (#4). The token is likely valid, but Meta is temporarily rejecting requests. Wait for the limit to reset or increase it in Meta App Dashboard → App Rate Limits.";
+    }
+    if (m.includes("rate") || m.includes("limit")) {
+      return lang === "ar"
+        ? "تم تجاوز حد طلبات فيسبوك مؤقتاً. انتظر قليلاً ثم أعد المحاولة."
+        : "Facebook rate limit was reached. Wait a bit, then try again.";
+    }
     if (m.includes("cannot read") && m.includes("includes")) {
       return lang === "ar"
         ? "التوكن صحيح، لكن رد الصلاحيات من الخادم غير مكتمل. جرّب الحفظ مباشرة أو أعد تحميل الصفحة."
@@ -639,6 +604,11 @@ function FacebookPage() {
       return t.errNetwork;
     return raw;
   };
+
+  const isAppRateLimitError = (message: string, type?: string | null) =>
+    type === "app_rate_limited" ||
+    message.toLowerCase().includes("application request limit") ||
+    message.includes("(#4)");
 
   const toStringArray = (value: unknown): string[] =>
     Array.isArray(value) ? value.filter((s): s is string => typeof s === "string") : [];
@@ -679,8 +649,8 @@ function FacebookPage() {
     if (!id) {
       throw new Error(
         lang === "ar"
-          ? "رد الخادم غير مكتمل. حدّث الصفحة وجرب مرة أخرى، وإذا حدث هذا على الموقع فقط فأعد النشر."
-          : "The server response was incomplete. Refresh and try again; if this only happens on the live site, redeploy.",
+          ? "لم يرجع فيسبوك بيانات الحساب. إذا ظهرت رسالة حد الاستدعاءات (#4)، فالمشكلة من حد Meta وليست من التوكن."
+          : "Facebook did not return the profile. If you see request limit (#4), this is Meta's app limit, not the token.",
       );
     }
     return {
@@ -698,6 +668,47 @@ function FacebookPage() {
   // copying a token from Graph API Explorer or a chat. FB tokens never contain
   // whitespace, so this is always safe and prevents "invalid token" errors.
   const cleanToken = (raw: string) => raw.replace(/\s+/g, "");
+  const TEST_CACHE_TTL_MS = 30_000;
+  const tokenCacheKey = (cleaned: string) =>
+    `flowtix:fb:test:${cleaned.length}:${cleaned.slice(0, 8)}:${cleaned.slice(-8)}`;
+
+  const readTokenTestCache = (cleaned: string) => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(tokenCacheKey(cleaned));
+      if (!raw) return null;
+      const cached = JSON.parse(raw) as {
+        at?: number;
+        result?: TokenCheckResult;
+        error?: { message: string; type?: string | null };
+      };
+      if (!cached.at || Date.now() - cached.at > TEST_CACHE_TTL_MS) return null;
+      return cached;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeTokenTestCache = (
+    cleaned: string,
+    value: { result?: TokenCheckResult; error?: { message: string; type?: string | null } },
+  ) => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        tokenCacheKey(cleaned),
+        JSON.stringify({ at: Date.now(), ...value }),
+      );
+    } catch {
+      /* ignore quota / privacy mode */
+    }
+  };
+
+  const rememberRateLimitIfNeeded = (message: string, type?: string | null) => {
+    if (!isAppRateLimitError(message, type)) return;
+    setAppRateLimitMessage(friendlyError(message));
+    setRateLimitDismissed(false);
+  };
 
   const handleTest = async () => {
     const cleaned = cleanToken(token);
@@ -710,8 +721,20 @@ function FacebookPage() {
     setTestResult(null);
     setTestError(null);
     try {
+      const cached = readTokenTestCache(cleaned);
+      if (cached?.result) {
+        setTestResult(cached.result);
+        toast.success(`${t.testSuccess}: ${cached.result.profile.name}`);
+        return;
+      }
+      if (cached?.error) {
+        rememberRateLimitIfNeeded(cached.error.message, cached.error.type);
+        throw new Error(cached.error.message);
+      }
       const res = await fbCall(testFacebookToken, { access_token: cleaned });
       const normalized = normalizeAuthResponse(res);
+      writeTokenTestCache(cleaned, { result: normalized });
+      setAppRateLimitMessage(null);
       setTestResult(normalized);
       const missing = missingRequiredScopes(normalized.granted);
       if (missing.length === 0) {
@@ -721,7 +744,10 @@ function FacebookPage() {
       }
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : t.testFailed;
+      const fbType = (err as Error & { fbType?: string })?.fbType ?? null;
       const msg = friendlyError(raw);
+      writeTokenTestCache(cleaned, { error: { message: raw, type: fbType } });
+      rememberRateLimitIfNeeded(raw, fbType);
       setTestResult(null);
       setTestError(msg);
       toast.error(`${t.testFailed} — ${msg}`);
@@ -741,6 +767,7 @@ function FacebookPage() {
     try {
       const res = await fbCall(connectFacebook, { access_token: cleaned });
       const normalized = normalizeAuthResponse(res);
+      setAppRateLimitMessage(null);
       toast.success(
         lang === "ar"
           ? `تم الربط بنجاح: ${normalized.profile.name}`
@@ -752,7 +779,11 @@ function FacebookPage() {
       setConnection(c.connection);
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : "Connection failed";
-      toast.error(friendlyError(raw));
+      const fbType = (err as Error & { fbType?: string })?.fbType ?? null;
+      const msg = friendlyError(raw);
+      rememberRateLimitIfNeeded(raw, fbType);
+      setTestError(msg);
+      toast.error(msg);
     } finally {
       setConnecting(false);
     }
@@ -771,6 +802,35 @@ function FacebookPage() {
     }
   };
 
+  const handleInspectToken = async () => {
+    if (!connection) return;
+    setInspectingToken(true);
+    try {
+      const insp = await fbCall(inspectFacebookConnection);
+      if (insp.connected) {
+        setTokenExpiry({
+          expiresAt: insp.expiresAt,
+          dataAccessExpiresAt: insp.dataAccessExpiresAt,
+          isExpired: insp.isExpired,
+          valid: insp.valid,
+        });
+        if (insp.validationError) {
+          rememberRateLimitIfNeeded(insp.validationError);
+          toast.warning(friendlyError(insp.validationError));
+        } else {
+          setAppRateLimitMessage(null);
+          toast.success(lang === "ar" ? "تم فحص حالة التوكن" : "Token status checked");
+        }
+      }
+    } catch (err: unknown) {
+      const raw = err instanceof Error ? err.message : "Token inspection failed";
+      rememberRateLimitIfNeeded(raw);
+      toast.error(friendlyError(raw));
+    } finally {
+      setInspectingToken(false);
+    }
+  };
+
   const friendlyFbError = (e: {
     type: string;
     message: string;
@@ -786,6 +846,8 @@ function FacebookPage() {
         return e.missingPermission
           ? `الصلاحية الناقصة: ${e.missingPermission}. أعد الربط وامنح هذه الصلاحية.`
           : "الصلاحيات غير كافية. أعد الربط وامنح كل الصلاحيات المطلوبة.";
+      case "app_rate_limited":
+        return "تطبيق فيسبوك وصل حد الاستدعاءات اليومي من Meta (#4). انتظر حتى يُعاد ضبط الحد أو ارفعه من Meta App Dashboard.";
       case "rate_limited":
         return "تم تجاوز حد الاستدعاءات. حاول بعد قليل.";
       case "network":
@@ -802,6 +864,7 @@ function FacebookPage() {
       const res = await fbCall(fetchFacebookGroups);
       if (res.error) {
         setGroups([]);
+        rememberRateLimitIfNeeded(res.error.message, res.error.type);
         setGroupsError(res.error);
         recordSync({
           kind: "groups",
@@ -836,6 +899,7 @@ function FacebookPage() {
       const res = await fbCall(fetchFacebookPages);
       if (res.error) {
         setPages([]);
+        rememberRateLimitIfNeeded(res.error.message, res.error.type);
         setPagesError(res.error);
         recordSync({
           kind: "pages",
@@ -892,9 +956,41 @@ function FacebookPage() {
           </div>
         </div>
 
-        {/* Token expiry banner — only when expired or within EXPIRY_WARN_DAYS.
-            Reads silently from inspectFacebookConnection on mount. The user
-            can dismiss for the current view; persists per-token in sessionStorage. */}
+        {appRateLimitMessage && !rateLimitDismissed && (
+          <div className="relative rounded-2xl border border-amber-400/50 bg-amber-50 p-5 shadow-sm dark:bg-amber-950/20">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-card text-amber-600 dark:text-amber-400">
+                <AlertCircle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-bold text-foreground">
+                  {lang === "ar" ? "حد طلبات Meta ممتلئ" : "Meta request limit reached"}
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">{appRateLimitMessage}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => openExternal(e, "https://developers.facebook.com/apps/")}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-90"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    {lang === "ar" ? "فتح Meta App Dashboard" : "Open Meta App Dashboard"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRateLimitDismissed(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent"
+                  >
+                    {lang === "ar" ? "إخفاء مؤقتاً" : "Dismiss"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Token expiry banner — only after a manual status check. This avoids
+            spending Meta quota on every page load. */}
         {(() => {
           if (!connection || !tokenExpiry || expiryDismissed) return null;
           const expired = tokenExpiry.isExpired || tokenExpiry.valid === false;
@@ -1231,6 +1327,19 @@ function FacebookPage() {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleInspectToken}
+                    disabled={inspectingToken}
+                    className="inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {inspectingToken ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    {lang === "ar" ? "فحص التوكن" : "Check token"}
+                  </button>
                   <Link
                     to="/dashboard/facebook/status"
                     className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-primary/20 hover:opacity-95"

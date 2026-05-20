@@ -15,6 +15,7 @@ export class FacebookApiError extends Error {
   type:
     | "auth_expired"
     | "permission_denied"
+    | "app_rate_limited"
     | "rate_limited"
     | "not_found"
     | "invalid_token"
@@ -71,7 +72,9 @@ function classifyFbError(
   if (code === 190)
     type = subcode === 463 || /expired/i.test(rawMsg) ? "auth_expired" : "invalid_token";
   else if (code === 10 || (code !== null && code >= 200 && code <= 299)) type = "permission_denied";
-  else if (code === 4 || code === 17 || code === 32 || code === 613) type = "rate_limited";
+  else if (code === 4 || /application request limit reached/i.test(rawMsg))
+    type = "app_rate_limited";
+  else if (code === 17 || code === 32 || code === 613) type = "rate_limited";
   else if (code === 803 || status === 404) type = "not_found";
 
   return new FacebookApiError({
@@ -316,11 +319,22 @@ export const getFacebookConnection = createServerFn({ method: "GET" })
     const { supabase, userId } = context;
     const { data, error } = await supabase
       .from("facebook_connections")
-      .select("fb_user_id, fb_user_name, fb_user_email, last_synced_at, created_at")
+      .select("access_token, fb_user_id, fb_user_name, fb_user_email, last_synced_at, created_at")
       .eq("user_id", userId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    return { connection: data };
+    if (!data) return { connection: null };
+    const token = data.access_token ?? "";
+    return {
+      connection: {
+        fb_user_id: data.fb_user_id,
+        fb_user_name: data.fb_user_name,
+        fb_user_email: data.fb_user_email,
+        last_synced_at: data.last_synced_at,
+        created_at: data.created_at,
+        token_preview: token ? `${token.slice(0, 6)}…${token.slice(-4)}` : null,
+      },
+    };
   });
 
 /**

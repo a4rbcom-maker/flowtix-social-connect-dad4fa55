@@ -22,6 +22,7 @@ export type FbErrorKind =
   | "permission"
   | "expired"
   | "invalid_token"
+  | "app_rate_limited"
   | "rate_limited"
   | "unknown";
 
@@ -43,9 +44,11 @@ function classify(message: string, status: number | null): FbErrorKind {
   if (m.includes("expired")) return "expired";
   if (m.includes("invalid") && m.includes("token")) return "invalid_token";
   if (m.includes("oauth") || m.includes("190")) return "invalid_token";
+  if (m.includes("application request limit") || m.includes("(#4)")) return "app_rate_limited";
   if (m.includes("permission") || m.includes("scope")) return "permission";
   if (m.includes("rate") || m.includes("limit")) return "rate_limited";
-  if (m.includes("fetch") || m.includes("network") || m.includes("failed to fetch")) return "network";
+  if (m.includes("fetch") || m.includes("network") || m.includes("failed to fetch"))
+    return "network";
   return "unknown";
 }
 
@@ -55,7 +58,11 @@ async function getBearer(forceRefresh = false): Promise<string> {
     if (error || !data.session) {
       // Refresh token is gone or rejected — clear the broken local session so
       // the UI can prompt a fresh login instead of looping on a dead token.
-      try { await supabase.auth.signOut({ scope: "local" }); } catch { /* ignore */ }
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+      } catch {
+        /* ignore */
+      }
       throw new FbCallError("session_expired", "auth", 401);
     }
     return data.session.access_token;
@@ -73,10 +80,7 @@ type ServerFn<TInput, TOutput> = (opts: {
 
 export function useFacebookApi() {
   const call = useCallback(
-    async <TInput, TOutput>(
-      fn: ServerFn<TInput, TOutput>,
-      input?: TInput,
-    ): Promise<TOutput> => {
+    async <TInput, TOutput>(fn: ServerFn<TInput, TOutput>, input?: TInput): Promise<TOutput> => {
       const invoke = async (token: string): Promise<TOutput> => {
         const ctrl = new AbortController();
         const t = setTimeout(() => ctrl.abort(), FB_CALL_TIMEOUT_MS);
@@ -97,9 +101,10 @@ export function useFacebookApi() {
         return await invoke(token);
       } catch (err) {
         const raw = err instanceof Error ? err.message : String(err);
-        const status = (err as { status?: number; httpStatus?: number })?.status
-          ?? (err as { httpStatus?: number })?.httpStatus
-          ?? null;
+        const status =
+          (err as { status?: number; httpStatus?: number })?.status ??
+          (err as { httpStatus?: number })?.httpStatus ??
+          null;
         const kind = classify(raw, status);
 
         // Single retry on auth failure with a freshly-refreshed session.
@@ -128,9 +133,10 @@ export function useFacebookApi() {
  * Keep messages short, actionable, and self-contained.
  */
 export function describeFbError(err: unknown, lang: "ar" | "en"): string {
-  const e = err instanceof FbCallError
-    ? err
-    : new FbCallError(err instanceof Error ? err.message : String(err), "unknown");
+  const e =
+    err instanceof FbCallError
+      ? err
+      : new FbCallError(err instanceof Error ? err.message : String(err), "unknown");
   const ar = {
     auth: "انتهت الجلسة. أعد تسجيل الدخول.",
     network: "تعذّر الاتصال بالخادم. تحقّق من الإنترنت.",
@@ -138,6 +144,8 @@ export function describeFbError(err: unknown, lang: "ar" | "en"): string {
     permission: "صلاحيات ناقصة في توكن فيسبوك. أعد التوليد بكل الصلاحيات.",
     expired: "انتهت صلاحية التوكن. أنشئ توكن جديد من Graph Explorer.",
     invalid_token: "التوكن غير صالح أو تم إبطاله.",
+    app_rate_limited:
+      "تطبيق فيسبوك وصل حد الاستدعاءات اليومي. انتظر حتى يُعاد ضبط الحد أو ارفع الحد من إعدادات Meta.",
     rate_limited: "تم تجاوز حد طلبات فيسبوك. حاول بعد قليل.",
     unknown: e.message || "حدث خطأ غير متوقع.",
   } as const;
@@ -148,6 +156,8 @@ export function describeFbError(err: unknown, lang: "ar" | "en"): string {
     permission: "Missing permissions in your Facebook token. Re-generate with all required scopes.",
     expired: "Token has expired. Create a new one from Graph Explorer.",
     invalid_token: "Token is invalid or was revoked.",
+    app_rate_limited:
+      "The Facebook app reached its daily request limit. Wait for the limit to reset or increase it in Meta settings.",
     rate_limited: "Facebook rate limit hit. Try again shortly.",
     unknown: e.message || "Something went wrong.",
   } as const;
