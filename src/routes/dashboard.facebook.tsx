@@ -652,15 +652,26 @@ function FacebookPage() {
     const unwrapped = (res as { data?: unknown })?.data ?? res;
     const value = unwrapped as
       | {
-          profile?: { id?: unknown; name?: unknown; email?: unknown };
+          success?: boolean;
+          profile?: { id?: unknown; name?: unknown; email?: unknown } | null;
           granted?: unknown;
           declined?: unknown;
+          error?: { message?: string; type?: string; missingPermission?: string | null } | null;
         }
       | null
       | undefined;
-    const profile = value?.profile;
+
+    if (value?.error) {
+      const err = new Error(value.error.message || "Unknown server error");
+      (err as Error & { fbType?: string }).fbType = value.error.type;
+      throw err;
+    }
+
+    const profile = value?.profile ?? null;
     const id =
-      typeof profile?.id === "string" || typeof profile?.id === "number" ? String(profile.id) : "";
+      typeof profile?.id === "string" || typeof profile?.id === "number"
+        ? String(profile?.id)
+        : "";
     const name =
       typeof profile?.name === "string" && profile.name.trim()
         ? profile.name.trim()
