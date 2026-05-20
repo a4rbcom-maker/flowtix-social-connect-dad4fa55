@@ -206,8 +206,8 @@ function MessagesPage() {
       try {
         const res = await listPagesFn();
         if (cancelled) return;
-        if (!res.ok) {
-          setPagesError(res.error?.message ?? "Failed to load pages");
+        if (res.error) {
+          setPagesError(res.error.message ?? "Failed to load pages");
           setPages([]);
         } else {
           const list = (res.pages ?? []) as Page[];
