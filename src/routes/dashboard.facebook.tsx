@@ -606,15 +606,16 @@ function FacebookPage() {
   };
 
   const normalizeAuthResponse = (res: unknown) => {
-    const value = res as {
+    const unwrapped = (res as { data?: unknown })?.data ?? res;
+    const value = unwrapped as {
       profile?: { id?: unknown; name?: unknown; email?: unknown };
       granted?: unknown;
       declined?: unknown;
     } | null | undefined;
     const profile = value?.profile;
     const id = typeof profile?.id === "string" || typeof profile?.id === "number" ? String(profile.id) : "";
-    const name = typeof profile?.name === "string" && profile.name.trim() ? profile.name : "";
-    if (!id || !name) {
+    const name = typeof profile?.name === "string" && profile.name.trim() ? profile.name.trim() : (id ? `Facebook ${id}` : "");
+    if (!id) {
       throw new Error(
         lang === "ar"
           ? "رد الخادم غير مكتمل. حدّث الصفحة وجرب مرة أخرى، وإذا حدث هذا على الموقع فقط فأعد النشر."
