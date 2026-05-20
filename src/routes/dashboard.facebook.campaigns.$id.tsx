@@ -122,7 +122,7 @@ function CampaignDetailPage() {
         callFn<unknown>(getCampaign as unknown as (opts: never) => Promise<unknown>, { id }),
         callFn<{ results: Result[]; job: unknown }>(getCampaignResults as unknown as (opts: never) => Promise<{ results: Result[]; job: unknown }>, { id }),
       ]);
-      setC(camp as Campaign);
+      setC(normalizeCampaign(camp));
       setResults(res.results);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
   };
