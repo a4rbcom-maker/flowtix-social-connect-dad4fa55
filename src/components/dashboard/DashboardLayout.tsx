@@ -93,6 +93,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
           children: [
             { kind: "leaf", icon: LinkIcon, label: labels.fbConnect, to: "/dashboard/facebook" },
             { kind: "leaf", icon: Users, label: labels.fbGroups, to: "/dashboard/facebook/groups" },
+            { kind: "leaf", icon: Activity, label: lang === "ar" ? "تحليلات الصفحة" : "Page insights", to: "/dashboard/facebook/insights" },
             { kind: "leaf", icon: Bot, label: lang === "ar" ? "حسابات البوت" : "Bot accounts", to: "/dashboard/facebook/bot" },
             { kind: "leaf", icon: Sparkles, label: lang === "ar" ? "حملات النشر" : "Campaigns", to: "/dashboard/facebook/campaigns" },
             { kind: "leaf", icon: Send, label: lang === "ar" ? "القوالب النصية" : "Templates", to: "/dashboard/facebook/templates" },
