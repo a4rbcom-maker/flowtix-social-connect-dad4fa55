@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, XCircle, Clock, Loader2, Play, Pause, AlertTriangle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, XCircle, Clock, Loader2, Play, Pause, AlertTriangle, Download, Upload, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -88,7 +88,14 @@ function normalizeCampaign(raw: unknown): Campaign {
     delay_max_seconds: Number(r.delay_max_seconds ?? 0),
   };
 }
-type Result = { id: string; target: string | null; status: string; error: string | null; created_at: string };
+type Result = { id: string; target: string | null; status: string; error: string | null; created_at: string; data: Record<string, unknown> | null };
+
+type MediaEvent = "media_download_start" | "media_download_done" | "media_download_failed" | "media_upload_done" | "media_cleanup_done";
+function getMediaEvent(r: Result): MediaEvent | null {
+  if (r.target !== "__media__") return null;
+  const ev = r.data && typeof r.data === "object" ? (r.data as { event?: unknown }).event : null;
+  return typeof ev === "string" ? (ev as MediaEvent) : null;
+}
 
 function CampaignDetailPage() {
   const { id } = Route.useParams();
@@ -103,11 +110,19 @@ function CampaignDetailPage() {
     ? { back: "العودة", progress: "التقدم", start: "بدء", pause: "إيقاف", delay: "الفاصل الزمني",
         seconds: "ثانية", target: "الوجهة", status: "الحالة", time: "الوقت", error: "خطأ",
         pending: "قيد الانتظار", success: "ناجح", failed: "فشل", skipped: "تجاوز",
-        empty: "لا توجد نتائج بعد. ابدأ الحملة لتظهر النتائج لايف هنا." }
+        empty: "لا توجد نتائج بعد. ابدأ الحملة لتظهر النتائج لايف هنا.",
+        mediaDownloadStart: "بدء تنزيل الوسائط", mediaDownloadDone: "اكتمل تنزيل الوسائط",
+        mediaDownloadFailed: "فشل تنزيل الوسائط", mediaUploadDone: "تم رفع الوسائط للمجموعة",
+        mediaCleanupDone: "تم تنظيف الملفات المؤقتة", mediaEvent: "حدث وسائط",
+        files: "ملف", duration: "المدة", ms: "م.ث" }
     : { back: "Back", progress: "Progress", start: "Start", pause: "Pause", delay: "Interval",
         seconds: "sec", target: "Target", status: "Status", time: "Time", error: "Error",
         pending: "Pending", success: "Success", failed: "Failed", skipped: "Skipped",
-        empty: "No results yet. Start the campaign to see live results here." };
+        empty: "No results yet. Start the campaign to see live results here.",
+        mediaDownloadStart: "Media download started", mediaDownloadDone: "Media download completed",
+        mediaDownloadFailed: "Media download failed", mediaUploadDone: "Media uploaded to group",
+        mediaCleanupDone: "Temp files cleaned up", mediaEvent: "Media event",
+        files: "files", duration: "duration", ms: "ms" };
 
   useEffect(() => { if (!loading && !user) navigate({ to: "/login" }); }, [user, loading, navigate]);
 
@@ -168,6 +183,32 @@ function CampaignDetailPage() {
     return <span className={`text-[10px] px-2 py-0.5 rounded-full border ${cls}`}>{label}</span>;
   };
 
+  const renderMediaRow = (r: Result, ev: MediaEvent) => {
+    const d = (r.data ?? {}) as { count?: number; durationMs?: number; target?: string };
+    const meta = ev === "media_download_start" ? { icon: <Download className="w-3.5 h-3.5" />, label: t.mediaDownloadStart, cls: "text-sky-600 bg-sky-500/10 border-sky-500/30" }
+      : ev === "media_download_done" ? { icon: <Download className="w-3.5 h-3.5" />, label: t.mediaDownloadDone, cls: "text-emerald-600 bg-emerald-500/10 border-emerald-500/30" }
+      : ev === "media_download_failed" ? { icon: <XCircle className="w-3.5 h-3.5" />, label: t.mediaDownloadFailed, cls: "text-destructive bg-destructive/10 border-destructive/30" }
+      : ev === "media_upload_done" ? { icon: <Upload className="w-3.5 h-3.5" />, label: t.mediaUploadDone, cls: "text-violet-600 bg-violet-500/10 border-violet-500/30" }
+      : { icon: <Trash2 className="w-3.5 h-3.5" />, label: t.mediaCleanupDone, cls: "text-amber-600 bg-amber-500/10 border-amber-500/30" };
+    const detailBits: string[] = [];
+    if (typeof d.count === "number") detailBits.push(`${d.count} ${t.files}`);
+    if (typeof d.durationMs === "number") detailBits.push(`${t.duration}: ${d.durationMs} ${t.ms}`);
+    if (d.target) detailBits.push(`→ ${c.target_names?.[d.target] ?? d.target}`);
+    return (
+      <tr key={r.id} className="bg-muted/20">
+        <td className="px-4 py-2" colSpan={2}>
+          <span className={`inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full border ${meta.cls}`}>
+            {meta.icon}
+            <span className="font-medium">{meta.label}</span>
+            {detailBits.length > 0 && <span className="opacity-70">· {detailBits.join(" · ")}</span>}
+          </span>
+        </td>
+        <td className="px-4 py-2 text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</td>
+        <td className="px-4 py-2 text-xs text-destructive truncate max-w-[280px]">{r.error ?? "—"}</td>
+      </tr>
+    );
+  };
+
   return (
     <DashboardLayout title={c.name}>
       <div dir={dir} className="space-y-6">
@@ -222,14 +263,18 @@ function CampaignDetailPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {results.map((r) => (
-                  <tr key={r.id} className="hover:bg-accent/40">
-                    <td className="px-4 py-2 text-foreground">{(r.target && c.target_names?.[r.target]) ?? r.target ?? "—"}</td>
-                    <td className="px-4 py-2">{statusBadge(r.status)}</td>
-                    <td className="px-4 py-2 text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</td>
-                    <td className="px-4 py-2 text-xs text-destructive truncate max-w-[280px]">{r.error ?? "—"}</td>
-                  </tr>
-                ))}
+                {results.map((r) => {
+                  const ev = getMediaEvent(r);
+                  if (ev) return renderMediaRow(r, ev);
+                  return (
+                    <tr key={r.id} className="hover:bg-accent/40">
+                      <td className="px-4 py-2 text-foreground">{(r.target && c.target_names?.[r.target]) ?? r.target ?? "—"}</td>
+                      <td className="px-4 py-2">{statusBadge(r.status)}</td>
+                      <td className="px-4 py-2 text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</td>
+                      <td className="px-4 py-2 text-xs text-destructive truncate max-w-[280px]">{r.error ?? "—"}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
