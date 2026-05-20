@@ -574,12 +574,49 @@ function FacebookPage() {
 
   const friendlyError = (raw: string): string => {
     const m = raw.toLowerCase();
+    if (m.includes("cannot read") && m.includes("profile")) {
+      return lang === "ar"
+        ? "رد الخادم غير مكتمل. حدّث الصفحة وجرب مرة أخرى، وإذا حدث هذا على الموقع فقط فأعد النشر."
+        : "The server response was incomplete. Refresh and try again; if this only happens on the live site, redeploy.";
+    }
+    if (m.includes("unexpected server response") || m.includes("رد غير متوقع")) {
+      return lang === "ar"
+        ? "رد الخادم غير مكتمل. حدّث الصفحة وجرب مرة أخرى."
+        : "The server response was incomplete. Refresh and try again.";
+    }
     if (m.includes("expired")) return t.errExpired;
     if (m.includes("invalid") && m.includes("token")) return t.errInvalidToken;
     if (m.includes("oauth") || m.includes("190")) return t.errInvalidToken;
     if (m.includes("permission") || m.includes("scope")) return t.errPermission;
     if (m.includes("fetch") || m.includes("network") || m.includes("failed to fetch")) return t.errNetwork;
     return raw;
+  };
+
+  const normalizeAuthResponse = (res: unknown) => {
+    const value = res as {
+      profile?: { id?: unknown; name?: unknown; email?: unknown };
+      granted?: unknown;
+      declined?: unknown;
+    } | null | undefined;
+    const profile = value?.profile;
+    const id = typeof profile?.id === "string" || typeof profile?.id === "number" ? String(profile.id) : "";
+    const name = typeof profile?.name === "string" && profile.name.trim() ? profile.name : "";
+    if (!id || !name) {
+      throw new Error(
+        lang === "ar"
+          ? "رد الخادم غير مكتمل. حدّث الصفحة وجرب مرة أخرى، وإذا حدث هذا على الموقع فقط فأعد النشر."
+          : "The server response was incomplete. Refresh and try again; if this only happens on the live site, redeploy.",
+      );
+    }
+    return {
+      profile: {
+        id,
+        name,
+        email: typeof profile?.email === "string" ? profile.email : null,
+      },
+      granted: Array.isArray(value?.granted) ? value.granted.filter((s): s is string => typeof s === "string") : [],
+      declined: Array.isArray(value?.declined) ? value.declined.filter((s): s is string => typeof s === "string") : [],
+    };
   };
 
   // Strip ALL whitespace (spaces, newlines, tabs) that often sneaks in when
@@ -599,17 +636,11 @@ function FacebookPage() {
     setTestError(null);
     try {
       const res = await fbCall(testFacebookToken, { access_token: cleaned });
-      if (!res || !res.profile) {
-        throw new Error(
-          lang === "ar"
-            ? "رد غير متوقع من الخادم. غالباً النسخة المنشورة قديمة — أعد النشر."
-            : "Unexpected server response. The deployed version may be outdated — redeploy.",
-        );
-      }
-      setTestResult({ profile: res.profile, granted: res.granted ?? [], declined: res.declined ?? [] });
-      const missing = requiredScopes.filter((s) => !(res.granted ?? []).includes(s));
+      const normalized = normalizeAuthResponse(res);
+      setTestResult(normalized);
+      const missing = requiredScopes.filter((s) => !normalized.granted.includes(s));
       if (missing.length === 0) {
-        toast.success(`${t.testSuccess}: ${res.profile.name}`);
+        toast.success(`${t.testSuccess}: ${normalized.profile.name}`);
       } else {
         toast.warning(`${t.testSuccess} — ${t.missingScopes}: ${missing.length}`);
       }
@@ -634,17 +665,11 @@ function FacebookPage() {
     setConnecting(true);
     try {
       const res = await fbCall(connectFacebook, { access_token: cleaned });
-      if (!res || !res.profile) {
-        throw new Error(
-          lang === "ar"
-            ? "رد غير متوقع من الخادم. غالباً النسخة المنشورة قديمة — أعد النشر."
-            : "Unexpected server response. The deployed version may be outdated — redeploy.",
-        );
-      }
+      const normalized = normalizeAuthResponse(res);
       toast.success(
         lang === "ar"
-          ? `تم الربط بنجاح: ${res.profile.name}`
-          : `Connected as ${res.profile.name}`,
+          ? `تم الربط بنجاح: ${normalized.profile.name}`
+          : `Connected as ${normalized.profile.name}`,
       );
       setToken("");
       // refresh connection

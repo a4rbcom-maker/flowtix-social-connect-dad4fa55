@@ -731,7 +731,7 @@ jobs:
           fi
           exit 1
 
-      - name: Smoke test — homepage + /api/public/health
+      - name: Smoke test — homepage + /api/public/health/
         env:
           PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
         run: |
@@ -781,12 +781,14 @@ jobs:
           rm -f "$HOME_TMP"
 
           # 2) Health endpoint must return 200 + JSON {status:"ok"}.
-          echo "→ GET ${BASE_URL}/api/public/health"
+          # Self-hosted Nginx/CDN routing on this server resolves the route reliably
+          # with the trailing slash, while the app still owns the same health handler.
+          echo "→ GET ${BASE_URL}/api/public/health/"
           HEALTH_TMP=$(mktemp)
           HEALTH_CODE=$(curl -sS -o "$HEALTH_TMP" -w "%{http_code}" \
             --max-time 15 --retry 3 --retry-delay 4 --retry-connrefused \
             -H "User-Agent: flowtix-smoke-test" \
-            "${BASE_URL}/api/public/health" || echo "000")
+            "${BASE_URL}/api/public/health/" || echo "000")
           HEALTH_BODY=$(cat "$HEALTH_TMP")
           echo "   status=${HEALTH_CODE}  body=${HEALTH_BODY}"
           if [ "$HEALTH_CODE" != "200" ]; then
