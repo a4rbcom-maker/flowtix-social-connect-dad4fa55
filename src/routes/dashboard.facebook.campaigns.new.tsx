@@ -113,14 +113,15 @@ function NewCampaignPage() {
     (async () => {
       try {
         const [a, tpl, med] = await Promise.all([
-          callFn<BotAccount[]>(listBotAccounts),
+          callFn<{ accounts: BotAccount[] }>(listBotAccounts),
           callFn<Template[]>(listTextTemplates),
           callFn<Media[]>(listMediaAssets),
         ]);
-        setAccounts(a);
+        const accs = a.accounts ?? [];
+        setAccounts(accs);
         setTemplates(tpl);
         setMedia(med);
-        if (a.length === 1) setAccountId(a[0].id);
+        if (accs.length === 1) setAccountId(accs[0].id);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Failed to load");
       }
