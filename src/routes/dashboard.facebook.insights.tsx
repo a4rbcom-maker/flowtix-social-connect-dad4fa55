@@ -467,6 +467,3 @@ function sumField(rows: Array<Record<string, number | string>>, field: string): 
   return rows.reduce((acc, r) => acc + (Number(r[field]) || 0), 0);
 }
 
-// Unused but kept imported to satisfy tree-shaker for potential pie variant
-void PieChart;
-void Pie;
