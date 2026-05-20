@@ -25,6 +25,7 @@ import { Route as DashboardFacebookTemplatesRouteImport } from './routes/dashboa
 import { Route as DashboardFacebookStatusRouteImport } from './routes/dashboard.facebook.status'
 import { Route as DashboardFacebookMediaRouteImport } from './routes/dashboard.facebook.media'
 import { Route as DashboardFacebookJobsRouteImport } from './routes/dashboard.facebook.jobs'
+import { Route as DashboardFacebookInsightsRouteImport } from './routes/dashboard.facebook.insights'
 import { Route as DashboardFacebookHistoryRouteImport } from './routes/dashboard.facebook.history'
 import { Route as DashboardFacebookGroupsRouteImport } from './routes/dashboard.facebook.groups'
 import { Route as DashboardFacebookCampaignsRouteImport } from './routes/dashboard.facebook.campaigns'
@@ -117,6 +118,12 @@ const DashboardFacebookJobsRoute = DashboardFacebookJobsRouteImport.update({
   path: '/jobs',
   getParentRoute: () => DashboardFacebookRoute,
 } as any)
+const DashboardFacebookInsightsRoute =
+  DashboardFacebookInsightsRouteImport.update({
+    id: '/insights',
+    path: '/insights',
+    getParentRoute: () => DashboardFacebookRoute,
+  } as any)
 const DashboardFacebookHistoryRoute =
   DashboardFacebookHistoryRouteImport.update({
     id: '/history',
@@ -191,6 +198,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/history': typeof DashboardFacebookHistoryRoute
+  '/dashboard/facebook/insights': typeof DashboardFacebookInsightsRoute
   '/dashboard/facebook/jobs': typeof DashboardFacebookJobsRoute
   '/dashboard/facebook/media': typeof DashboardFacebookMediaRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
@@ -219,6 +227,7 @@ export interface FileRoutesByTo {
   '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/history': typeof DashboardFacebookHistoryRoute
+  '/dashboard/facebook/insights': typeof DashboardFacebookInsightsRoute
   '/dashboard/facebook/jobs': typeof DashboardFacebookJobsRoute
   '/dashboard/facebook/media': typeof DashboardFacebookMediaRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
@@ -248,6 +257,7 @@ export interface FileRoutesById {
   '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/history': typeof DashboardFacebookHistoryRoute
+  '/dashboard/facebook/insights': typeof DashboardFacebookInsightsRoute
   '/dashboard/facebook/jobs': typeof DashboardFacebookJobsRoute
   '/dashboard/facebook/media': typeof DashboardFacebookMediaRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
@@ -278,6 +288,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/campaigns'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/history'
+    | '/dashboard/facebook/insights'
     | '/dashboard/facebook/jobs'
     | '/dashboard/facebook/media'
     | '/dashboard/facebook/status'
@@ -306,6 +317,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/campaigns'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/history'
+    | '/dashboard/facebook/insights'
     | '/dashboard/facebook/jobs'
     | '/dashboard/facebook/media'
     | '/dashboard/facebook/status'
@@ -334,6 +346,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/campaigns'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/history'
+    | '/dashboard/facebook/insights'
     | '/dashboard/facebook/jobs'
     | '/dashboard/facebook/media'
     | '/dashboard/facebook/status'
@@ -472,6 +485,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardFacebookJobsRouteImport
       parentRoute: typeof DashboardFacebookRoute
     }
+    '/dashboard/facebook/insights': {
+      id: '/dashboard/facebook/insights'
+      path: '/insights'
+      fullPath: '/dashboard/facebook/insights'
+      preLoaderRoute: typeof DashboardFacebookInsightsRouteImport
+      parentRoute: typeof DashboardFacebookRoute
+    }
     '/dashboard/facebook/history': {
       id: '/dashboard/facebook/history'
       path: '/history'
@@ -566,6 +586,7 @@ interface DashboardFacebookRouteChildren {
   DashboardFacebookCampaignsRoute: typeof DashboardFacebookCampaignsRouteWithChildren
   DashboardFacebookGroupsRoute: typeof DashboardFacebookGroupsRoute
   DashboardFacebookHistoryRoute: typeof DashboardFacebookHistoryRoute
+  DashboardFacebookInsightsRoute: typeof DashboardFacebookInsightsRoute
   DashboardFacebookJobsRoute: typeof DashboardFacebookJobsRoute
   DashboardFacebookMediaRoute: typeof DashboardFacebookMediaRoute
   DashboardFacebookStatusRoute: typeof DashboardFacebookStatusRoute
@@ -577,6 +598,7 @@ const DashboardFacebookRouteChildren: DashboardFacebookRouteChildren = {
   DashboardFacebookCampaignsRoute: DashboardFacebookCampaignsRouteWithChildren,
   DashboardFacebookGroupsRoute: DashboardFacebookGroupsRoute,
   DashboardFacebookHistoryRoute: DashboardFacebookHistoryRoute,
+  DashboardFacebookInsightsRoute: DashboardFacebookInsightsRoute,
   DashboardFacebookJobsRoute: DashboardFacebookJobsRoute,
   DashboardFacebookMediaRoute: DashboardFacebookMediaRoute,
   DashboardFacebookStatusRoute: DashboardFacebookStatusRoute,
@@ -623,13 +645,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
