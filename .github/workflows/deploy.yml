@@ -354,6 +354,7 @@ jobs:
             --exclude='.env' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
+            --exclude='var/' \
             --exclude='.well-known/' \
             "$DEPLOY_PATH/" "$SNAP/"
           echo "$SNAP" > "$BACKUPS_DIR/PREV_SNAPSHOT"
@@ -383,6 +384,7 @@ jobs:
             --exclude='.user.ini' \
             --exclude='.htaccess' \
             --exclude='.well-known/' \
+            --exclude='var/' \
             --exclude='*.log' \
             -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
             ./deploy/ \
@@ -900,6 +902,7 @@ jobs:
             --exclude='.env' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
+            --exclude='var/' \
             --exclude='.well-known/' \
             "$DEPLOY_PATH/" "$GOOD/"
           echo "$GOOD" > "$BACKUPS_DIR/LAST_GOOD"
@@ -1020,6 +1023,7 @@ jobs:
             --exclude='.env' \
             --exclude='.user.ini' \
             --exclude='.htaccess' \
+            --exclude='var/' \
             --exclude='.well-known/' \
             "$SRC/" "$DEPLOY_PATH/"
 
