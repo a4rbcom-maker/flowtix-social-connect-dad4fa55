@@ -7,6 +7,7 @@ import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { getCampaign, getCampaignResults, startCampaign, pauseCampaign } from "@/lib/fb-campaigns.functions";
+import { safeArray } from "@/lib/safe-data";
 
 function CampaignDetailErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
@@ -123,7 +124,7 @@ function CampaignDetailPage() {
         callFn<{ results: Result[]; job: unknown }>(getCampaignResults as unknown as (opts: never) => Promise<{ results: Result[]; job: unknown }>, { id }),
       ]);
       setC(normalizeCampaign(camp));
-      setResults(res.results);
+      setResults(safeArray<Result>(res.results));
     } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
   };
 
