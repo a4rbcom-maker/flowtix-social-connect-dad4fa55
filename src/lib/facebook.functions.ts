@@ -998,3 +998,282 @@ export const fetchPageAudienceFromPosts = createServerFn({ method: "POST" })
       };
     }
   });
+
+/**
+ * Helper: resolve a Page Access Token for a given pageId from the user's
+ * stored connection. Returns either { ok: true, pageToken } or an error envelope.
+ */
+async function getPageAccessToken(
+  supabase: { from: (t: string) => { select: (s: string) => { eq: (k: string, v: string) => { maybeSingle: () => Promise<{ data: { access_token?: string | null } | null; error: { message: string } | null }> } } } },
+  userId: string,
+  pageId: string,
+  requiredPerms: string[],
+): Promise<
+  | { ok: true; pageToken: string }
+  | { ok: false; error: { message: string; type: "invalid_token" | "permission_denied" } }
+> {
+  const { data: row, error } = await supabase
+    .from("facebook_connections")
+    .select("access_token")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) return { ok: false, error: { message: error.message, type: "invalid_token" } };
+  if (!row?.access_token)
+    return { ok: false, error: { message: "لا يوجد ربط فيسبوك.", type: "invalid_token" } };
+  await ensurePermissions(row.access_token, requiredPerms);
+  const accountsRes = await fbGet(
+    `/me/accounts?fields=id,access_token&limit=200`,
+    row.access_token,
+  );
+  const accounts = (accountsRes.data ?? []) as Array<{ id: string; access_token: string }>;
+  const acct = accounts.find((a) => String(a.id) === String(pageId));
+  if (!acct?.access_token)
+    return {
+      ok: false,
+      error: {
+        message: "Page Access Token غير متاح. تأكد إنك أدمن للصفحة.",
+        type: "permission_denied",
+      },
+    };
+  return { ok: true, pageToken: acct.access_token };
+}
+
+/**
+ * List Messenger conversations for a Page Inbox (paginated, cursor-based).
+ * Requires pages_messaging + pages_show_list.
+ */
+export const fetchPageConversations = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        pageId: z.string().trim().min(1).max(100),
+        limit: z.number().int().min(1).max(100).optional(),
+        after: z.string().trim().max(500).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    try {
+      const got = await getPageAccessToken(supabase, userId, data.pageId, [
+        "pages_show_list",
+        "pages_messaging",
+      ]);
+      if (!got.ok)
+        return { ok: false as const, error: got.error, conversations: [], nextCursor: null };
+
+      const limit = data.limit ?? 25;
+      const qs = new URLSearchParams();
+      qs.set(
+        "fields",
+        "id,participants,snippet,updated_time,message_count,unread_count",
+      );
+      qs.set("limit", String(limit));
+      if (data.after) qs.set("after", data.after);
+      const res = await fbGet(
+        `/${encodeURIComponent(data.pageId)}/conversations?${qs}`,
+        got.pageToken,
+      );
+      const rows = (res.data ?? []) as Array<{
+        id: string;
+        snippet?: string;
+        updated_time?: string;
+        message_count?: number;
+        unread_count?: number;
+        participants?: { data?: Array<{ id: string; name?: string; email?: string }> };
+      }>;
+      const conversations = rows.map((c) => {
+        const others = (c.participants?.data ?? []).filter(
+          (p) => String(p.id) !== String(data.pageId),
+        );
+        const other = others[0] ?? c.participants?.data?.[0];
+        return {
+          id: c.id,
+          snippet: c.snippet ?? "",
+          updatedTime: c.updated_time ?? null,
+          messageCount: c.message_count ?? 0,
+          unreadCount: c.unread_count ?? 0,
+          participantId: other?.id ?? "",
+          participantName: other?.name ?? "غير معروف",
+        };
+      });
+      const nextCursor =
+        (res.paging as { cursors?: { after?: string }; next?: string } | undefined)?.next
+          ? (res.paging as { cursors?: { after?: string } }).cursors?.after ?? null
+          : null;
+      return { ok: true as const, error: null, conversations, nextCursor };
+    } catch (err) {
+      return {
+        ok: false as const,
+        error: serializeError(err),
+        conversations: [] as Array<{
+          id: string;
+          snippet: string;
+          updatedTime: string | null;
+          messageCount: number;
+          unreadCount: number;
+          participantId: string;
+          participantName: string;
+        }>,
+        nextCursor: null as string | null,
+      };
+    }
+  });
+
+/**
+ * Fetch the latest messages for a specific conversation. Requires pages_messaging.
+ */
+export const fetchConversationMessages = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        pageId: z.string().trim().min(1).max(100),
+        conversationId: z.string().trim().min(1).max(200),
+        limit: z.number().int().min(1).max(100).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    try {
+      const got = await getPageAccessToken(supabase, userId, data.pageId, [
+        "pages_show_list",
+        "pages_messaging",
+      ]);
+      if (!got.ok) return { ok: false as const, error: got.error, messages: [] };
+
+      const limit = data.limit ?? 50;
+      const res = await fbGet(
+        `/${encodeURIComponent(data.conversationId)}/messages?fields=id,from,to,message,created_time&limit=${limit}`,
+        got.pageToken,
+      );
+      const rows = (res.data ?? []) as Array<{
+        id: string;
+        message?: string;
+        created_time?: string;
+        from?: { id: string; name?: string };
+        to?: { data?: Array<{ id: string; name?: string }> };
+      }>;
+      const messages = rows.map((m) => ({
+        id: m.id,
+        text: m.message ?? "",
+        createdTime: m.created_time ?? null,
+        fromId: m.from?.id ?? "",
+        fromName: m.from?.name ?? "",
+        isFromPage: String(m.from?.id ?? "") === String(data.pageId),
+      }));
+      return { ok: true as const, error: null, messages };
+    } catch (err) {
+      return {
+        ok: false as const,
+        error: serializeError(err),
+        messages: [] as Array<{
+          id: string;
+          text: string;
+          createdTime: string | null;
+          fromId: string;
+          fromName: string;
+          isFromPage: boolean;
+        }>,
+      };
+    }
+  });
+
+/**
+ * Extract leads from recent Messenger conversations — aggregates participant
+ * info (name, PSID, last interaction, message count, unread status).
+ */
+export const extractLeadsFromConversations = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        pageId: z.string().trim().min(1).max(100),
+        max: z.number().int().min(1).max(200).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    try {
+      const got = await getPageAccessToken(supabase, userId, data.pageId, [
+        "pages_show_list",
+        "pages_messaging",
+      ]);
+      if (!got.ok)
+        return {
+          ok: false as const,
+          error: got.error,
+          leads: [],
+          totals: { conversations: 0, unread: 0, totalMessages: 0 },
+        };
+
+      const max = data.max ?? 100;
+      const qs = new URLSearchParams();
+      qs.set(
+        "fields",
+        "id,participants,snippet,updated_time,message_count,unread_count",
+      );
+      qs.set("limit", String(Math.min(max, 100)));
+      const res = await fbGet(
+        `/${encodeURIComponent(data.pageId)}/conversations?${qs}`,
+        got.pageToken,
+      );
+      const rows = (res.data ?? []) as Array<{
+        id: string;
+        snippet?: string;
+        updated_time?: string;
+        message_count?: number;
+        unread_count?: number;
+        participants?: { data?: Array<{ id: string; name?: string }> };
+      }>;
+      let totalMessages = 0;
+      let totalUnread = 0;
+      const leads = rows.map((c) => {
+        const others = (c.participants?.data ?? []).filter(
+          (p) => String(p.id) !== String(data.pageId),
+        );
+        const other = others[0] ?? c.participants?.data?.[0];
+        totalMessages += c.message_count ?? 0;
+        totalUnread += c.unread_count ?? 0;
+        return {
+          conversationId: c.id,
+          psid: other?.id ?? "",
+          name: other?.name ?? "غير معروف",
+          lastSnippet: c.snippet ?? "",
+          lastInteraction: c.updated_time ?? null,
+          messageCount: c.message_count ?? 0,
+          unreadCount: c.unread_count ?? 0,
+          status: (c.unread_count ?? 0) > 0 ? ("unread" as const) : ("replied" as const),
+        };
+      });
+      return {
+        ok: true as const,
+        error: null,
+        leads,
+        totals: {
+          conversations: leads.length,
+          unread: totalUnread,
+          totalMessages,
+        },
+      };
+    } catch (err) {
+      return {
+        ok: false as const,
+        error: serializeError(err),
+        leads: [] as Array<{
+          conversationId: string;
+          psid: string;
+          name: string;
+          lastSnippet: string;
+          lastInteraction: string | null;
+          messageCount: number;
+          unreadCount: number;
+          status: "unread" | "replied";
+        }>,
+        totals: { conversations: 0, unread: 0, totalMessages: 0 },
+      };
+    }
+  });
