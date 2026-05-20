@@ -785,16 +785,19 @@ export const fetchPageInsights = createServerFn({ method: "POST" })
       }
       const daily = Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date));
 
-      // Step 4: demographics
+      // Step 4: demographics (deprecated by Meta — fully removed June 2026.
+      // Many "New Page Experience" pages already return empty arrays here.)
       const demoMetrics = await safeInsight("page_fans_gender_age,page_fans_country", "lifetime");
       let genderAge: Array<{ bucket: string; gender: string; age: string; count: number }> = [];
       let country: Array<{ code: string; count: number }> = [];
+      let demoReceived = { genderAge: false, country: false };
       for (const m of demoMetrics) {
         const latest = m.values?.[m.values.length - 1]?.value as
           | Record<string, number>
           | undefined;
         if (!latest || typeof latest !== "object") continue;
         if (m.name === "page_fans_gender_age") {
+          demoReceived.genderAge = true;
           genderAge = Object.entries(latest).map(([k, v]) => {
             const [g, ...rest] = k.split(".");
             return {
@@ -805,12 +808,25 @@ export const fetchPageInsights = createServerFn({ method: "POST" })
             };
           });
         } else if (m.name === "page_fans_country") {
+          demoReceived.country = true;
           country = Object.entries(latest)
             .map(([code, v]) => ({ code, count: Number(v) || 0 }))
             .sort((a, b) => b.count - a.count)
             .slice(0, 15);
         }
       }
+      // Add explicit warning if Meta returned the metric but with no rows
+      if (demoReceived.genderAge && genderAge.length === 0) {
+        warnings.push(
+          "page_fans_gender_age: مهجور من Meta لصفحات التجربة الجديدة (سيتم حذفه نهائيًا يونيو 2026).",
+        );
+      }
+      if (demoReceived.country && country.length === 0) {
+        warnings.push(
+          "page_fans_country: مهجور من Meta لصفحات التجربة الجديدة (سيتم حذفه نهائيًا يونيو 2026).",
+        );
+      }
+
 
       // Step 5: best activity times (avg of last 7 days, hourly buckets)
       const onlineMetrics = await safeInsight("page_fans_online_per_day", "day", 7);
@@ -859,6 +875,126 @@ export const fetchPageInsights = createServerFn({ method: "POST" })
         demographics: { genderAge: [] as Array<{ bucket: string; gender: string; age: string; count: number }>, country: [] as Array<{ code: string; count: number }> },
         onlineHourly: [] as Array<{ hour: number; avg: number }>,
         warnings: [] as string[],
+      };
+    }
+  });
+
+/**
+ * Derive an audience signal from recent post engagement (commenters + reactors).
+ * Use as a fallback when Page Insights demographics are empty (Meta deprecated
+ * page_fans_gender_age / page_fans_country for New Page Experience pages).
+ *
+ * Returns top engaged users (name + id + count) — these are real people who
+ * interacted with the page, not aggregated demographics. The frontend can group
+ * by name prefix or just show the list directly.
+ */
+export const fetchPageAudienceFromPosts = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        pageId: z.string().trim().min(1).max(100),
+        postLimit: z.number().int().min(1).max(50).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: row, error } = await supabase
+      .from("facebook_connections")
+      .select("access_token")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!row?.access_token) {
+      return {
+        ok: false as const,
+        error: { message: "لا يوجد ربط فيسبوك.", type: "invalid_token" as const },
+        topCommenters: [],
+        topReactors: [],
+        totals: { posts: 0, comments: 0, reactions: 0, uniqueUsers: 0 },
+      };
+    }
+
+    try {
+      await ensurePermissions(row.access_token, ["pages_show_list", "pages_read_engagement"]);
+
+      // Get page access token
+      const accountsRes = await fbGet(`/me/accounts?fields=id,access_token&limit=200`, row.access_token);
+      const accounts = (accountsRes.data ?? []) as Array<{ id: string; access_token: string }>;
+      const acct = accounts.find((a) => String(a.id) === String(data.pageId));
+      if (!acct?.access_token) {
+        return {
+          ok: false as const,
+          error: { message: "Page Access Token غير متاح. تأكد إنك أدمن للصفحة.", type: "permission_denied" as const },
+          topCommenters: [],
+          topReactors: [],
+          totals: { posts: 0, comments: 0, reactions: 0, uniqueUsers: 0 },
+        };
+      }
+      const pageToken = acct.access_token;
+      const postLimit = data.postLimit ?? 25;
+
+      // Fetch recent posts with reactions + comments expanded
+      const postsRes = await fbGet(
+        `/${encodeURIComponent(data.pageId)}/posts?fields=id,reactions.summary(true).limit(50){id,name,type},comments.summary(true).limit(50){from{id,name},message}&limit=${postLimit}`,
+        pageToken,
+      );
+      const posts = (postsRes.data ?? []) as Array<{
+        id: string;
+        reactions?: { data?: Array<{ id: string; name: string; type?: string }>; summary?: { total_count?: number } };
+        comments?: { data?: Array<{ from?: { id: string; name: string }; message?: string }>; summary?: { total_count?: number } };
+      }>;
+
+      const commenters = new Map<string, { id: string; name: string; count: number }>();
+      const reactors = new Map<string, { id: string; name: string; count: number; types: Record<string, number> }>();
+      const allUserIds = new Set<string>();
+      let totalComments = 0;
+      let totalReactions = 0;
+
+      for (const p of posts) {
+        totalComments += p.comments?.summary?.total_count ?? 0;
+        totalReactions += p.reactions?.summary?.total_count ?? 0;
+        for (const c of p.comments?.data ?? []) {
+          if (!c.from?.id) continue;
+          allUserIds.add(c.from.id);
+          const cur = commenters.get(c.from.id) ?? { id: c.from.id, name: c.from.name, count: 0 };
+          cur.count += 1;
+          commenters.set(c.from.id, cur);
+        }
+        for (const r of p.reactions?.data ?? []) {
+          if (!r.id) continue;
+          allUserIds.add(r.id);
+          const cur = reactors.get(r.id) ?? { id: r.id, name: r.name, count: 0, types: {} };
+          cur.count += 1;
+          const t = r.type ?? "LIKE";
+          cur.types[t] = (cur.types[t] ?? 0) + 1;
+          reactors.set(r.id, cur);
+        }
+      }
+
+      const topCommenters = Array.from(commenters.values()).sort((a, b) => b.count - a.count).slice(0, 30);
+      const topReactors = Array.from(reactors.values()).sort((a, b) => b.count - a.count).slice(0, 30);
+
+      return {
+        ok: true as const,
+        error: null,
+        topCommenters,
+        topReactors,
+        totals: {
+          posts: posts.length,
+          comments: totalComments,
+          reactions: totalReactions,
+          uniqueUsers: allUserIds.size,
+        },
+      };
+    } catch (err) {
+      return {
+        ok: false as const,
+        error: serializeError(err),
+        topCommenters: [],
+        topReactors: [],
+        totals: { posts: 0, comments: 0, reactions: 0, uniqueUsers: 0 },
       };
     }
   });

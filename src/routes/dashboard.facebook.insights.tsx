@@ -26,6 +26,8 @@ import {
   Bar,
   Legend,
   Cell,
+  PieChart,
+  Pie,
 } from "recharts";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -34,7 +36,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { fetchFacebookPages, fetchPageInsights } from "@/lib/facebook.functions";
+import { Download, MessageCircle, ThumbsUp } from "lucide-react";
+import { fetchFacebookPages, fetchPageInsights, fetchPageAudienceFromPosts } from "@/lib/facebook.functions";
+
 
 export const Route = createFileRoute("/dashboard/facebook/insights")({
   ssr: false,
@@ -48,6 +52,8 @@ export const Route = createFileRoute("/dashboard/facebook/insights")({
 
 type Page = { id: string; name: string; fan_count?: number; picture?: { data?: { url?: string } } };
 type Insights = Awaited<ReturnType<typeof fetchPageInsights>>;
+type Audience = Awaited<ReturnType<typeof fetchPageAudienceFromPosts>>;
+
 
 const COUNTRY_NAMES_AR: Record<string, string> = {
   EG: "مصر", SA: "السعودية", AE: "الإمارات", US: "الولايات المتحدة", GB: "بريطانيا",
@@ -62,6 +68,7 @@ function InsightsPage() {
   const ar = lang === "ar";
   const listPagesFn = useServerFn(fetchFacebookPages);
   const fetchInsightsFn = useServerFn(fetchPageInsights);
+  const fetchAudienceFn = useServerFn(fetchPageAudienceFromPosts);
 
   const [pages, setPages] = useState<Page[]>([]);
   const [pageId, setPageId] = useState<string>("");
@@ -69,6 +76,10 @@ function InsightsPage() {
   const [pagesError, setPagesError] = useState<string | null>(null);
   const [insights, setInsights] = useState<Insights | null>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
+  const [audience, setAudience] = useState<Audience | null>(null);
+  const [loadingAudience, setLoadingAudience] = useState(false);
+
+
 
   const t = ar
     ? {
@@ -98,6 +109,23 @@ function InsightsPage() {
         bestHoursDesc: "متوسط عدد المتابعين المتصلين بالساعة (آخر 7 أيام)",
         warningTitle: "تحذيرات",
         warningDesc: "بعض المقاييس مش متاحة (مهملة من Meta أو الصلاحيات ناقصة):",
+        export: "تصدير CSV",
+        genderTotal: "إجمالي الجنس",
+        demoEmptyTitle: "البيانات الديموغرافية غير متاحة",
+        demoEmptyBody:
+          "Meta أهملت مقاييس عمر/جنس/دولة المعجبين لصفحات تجربة الصفحة الجديدة، وهتتشال نهائيًا في يونيو 2026. شوف قسم \"جمهور البوستات\" تحت كبديل عملي.",
+        audienceTitle: "جمهور البوستات (بديل ديموغرافي)",
+        audienceDesc:
+          "أكتر ناس تفاعلت مع آخر بوستاتك — مستخرجة من التعليقات والإعجابات. ده المتاح حاليًا بدل ديموغرافيا المعجبين المهجورة.",
+        topCommenters: "أكتر المعلقين",
+        topReactors: "أكتر المتفاعلين",
+        uniqueUsers: "أشخاص فريدون",
+        totalComments: "تعليقات",
+        totalReactions: "تفاعلات",
+        postsScanned: "بوستات مفحوصة",
+        loadAudience: "تحميل جمهور البوستات",
+        loadingAudience: "بنحلل آخر البوستات…",
+        count: "العدد",
       }
     : {
         title: "Page Insights",
@@ -126,6 +154,24 @@ function InsightsPage() {
         bestHoursDesc: "Avg followers online per hour (last 7 days)",
         warningTitle: "Notes",
         warningDesc: "Some metrics are unavailable (deprecated by Meta or missing permission):",
+        export: "Export CSV",
+        genderTotal: "Gender split",
+        demoEmptyTitle: "Demographics unavailable",
+        demoEmptyBody:
+          "Meta deprecated fan age/gender/country metrics for New Page Experience pages — full removal June 2026. See the Post Audience section below as a practical alternative.",
+        audienceTitle: "Post audience (demographics alternative)",
+        audienceDesc:
+          "Real people who engaged with your recent posts — extracted from comments and reactions. This is what's actually available now in place of the deprecated fan demographics.",
+        topCommenters: "Top commenters",
+        topReactors: "Top reactors",
+        uniqueUsers: "Unique people",
+        totalComments: "Comments",
+        totalReactions: "Reactions",
+        postsScanned: "Posts scanned",
+        loadAudience: "Load post audience",
+        loadingAudience: "Analyzing recent posts…",
+        count: "Count",
+
       };
 
   // Load pages once
@@ -172,11 +218,27 @@ function InsightsPage() {
     }
   };
 
+  const loadAudience = async (id: string) => {
+    if (!id) return;
+    setLoadingAudience(true);
+    setAudience(null);
+    try {
+      const res = await fetchAudienceFn({ data: { pageId: id, postLimit: 25 } });
+      setAudience(res);
+      if (!res.ok) toast.error(res.error?.message ?? "Failed to load audience");
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setLoadingAudience(false);
+    }
+  };
+
   // Auto-load when page changes
   useEffect(() => {
     if (pageId) void loadInsights(pageId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageId]);
+
 
   const genderAgeChart = useMemo(() => {
     if (!insights?.ok) return [];
@@ -198,9 +260,27 @@ function InsightsPage() {
     if (!insights?.ok) return [];
     return insights.demographics.country.map((c) => ({
       name: ar ? (COUNTRY_NAMES_AR[c.code] ?? c.code) : c.code,
+      code: c.code,
       count: c.count,
     }));
   }, [insights, ar]);
+
+  const genderTotal = useMemo(() => {
+    const totals = { male: 0, female: 0 };
+    for (const b of genderAgeChart) {
+      totals.male += b.male;
+      totals.female += b.female;
+    }
+    const sum = totals.male + totals.female;
+    if (sum === 0) return [];
+    return [
+      { name: t.male, value: totals.male, pct: Math.round((totals.male / sum) * 100) },
+      { name: t.female, value: totals.female, pct: Math.round((totals.female / sum) * 100) },
+    ];
+  }, [genderAgeChart, t.male, t.female]);
+
+  const demoEmpty = genderAgeChart.length === 0 && countryChart.length === 0;
+
 
   // ── Render ───────────────────────────────────────────────────────────
   if (loadingPages) {
@@ -334,57 +414,161 @@ function InsightsPage() {
             </Card>
 
             {/* Demographics */}
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Card className="p-5">
-                <div className="mb-4 flex items-center gap-2">
-                  <Users className="h-4 w-4 text-primary" />
-                  <h3 className="font-semibold">{t.genderAge}</h3>
-                </div>
-                {genderAgeChart.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">—</p>
-                ) : (
-                  <div className="h-64 w-full">
-                    <ResponsiveContainer>
-                      <BarChart data={genderAgeChart}>
-                        <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                        <XAxis dataKey="age" fontSize={11} />
-                        <YAxis fontSize={11} />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="male" name={t.male} fill="#3b82f6" />
-                        <Bar dataKey="female" name={t.female} fill="#ec4899" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </Card>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">{t.demographics}</h3>
+              </div>
+              {demoEmpty ? (
+                <Card className="border-amber-300/50 bg-amber-50/50 p-6 dark:bg-amber-950/20">
+                  <p className="mb-1 font-semibold">{t.demoEmptyTitle}</p>
+                  <p className="text-sm text-muted-foreground">{t.demoEmptyBody}</p>
+                </Card>
+              ) : (
+                <div className="grid gap-4 lg:grid-cols-3">
+                  {/* Gender pie */}
+                  <Card className="p-5">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-primary" />
+                        <h3 className="font-semibold">{t.genderTotal}</h3>
+                      </div>
+                      {genderTotal.length > 0 && (
+                        <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => downloadCsv(`gender-total-${page.id}.csv`, genderTotal.map((g) => ({ name: g.name, value: g.value, pct: g.pct })))}>
+                          <Download className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                    {genderTotal.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">—</p>
+                    ) : (
+                      <div className="h-64 w-full">
+                        <ResponsiveContainer>
+                          <PieChart>
+                            <Pie data={genderTotal} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90} label={(e: { pct: number; name: string }) => `${e.name} ${e.pct}%`}>
+                              <Cell fill="#3b82f6" />
+                              <Cell fill="#ec4899" />
+                            </Pie>
+                            <Tooltip />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </Card>
 
-              <Card className="p-5">
-                <div className="mb-4 flex items-center gap-2">
-                  <Globe2 className="h-4 w-4 text-primary" />
-                  <h3 className="font-semibold">{t.country}</h3>
+                  {/* Gender × age bars */}
+                  <Card className="p-5">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-primary" />
+                        <h3 className="font-semibold">{t.genderAge}</h3>
+                      </div>
+                      {genderAgeChart.length > 0 && (
+                        <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => downloadCsv(`gender-age-${page.id}.csv`, genderAgeChart)}>
+                          <Download className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                    {genderAgeChart.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">—</p>
+                    ) : (
+                      <div className="h-64 w-full">
+                        <ResponsiveContainer>
+                          <BarChart data={genderAgeChart}>
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                            <XAxis dataKey="age" fontSize={11} />
+                            <YAxis fontSize={11} />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="male" name={t.male} fill="#3b82f6" />
+                            <Bar dataKey="female" name={t.female} fill="#ec4899" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </Card>
+
+                  {/* Country */}
+                  <Card className="p-5">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Globe2 className="h-4 w-4 text-primary" />
+                        <h3 className="font-semibold">{t.country}</h3>
+                      </div>
+                      {countryChart.length > 0 && (
+                        <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => downloadCsv(`countries-${page.id}.csv`, countryChart)}>
+                          <Download className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                    {countryChart.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">—</p>
+                    ) : (
+                      <div className="h-64 w-full">
+                        <ResponsiveContainer>
+                          <BarChart data={countryChart} layout="vertical" margin={{ left: 20 }}>
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                            <XAxis type="number" fontSize={11} />
+                            <YAxis dataKey="name" type="category" fontSize={11} width={80} />
+                            <Tooltip />
+                            <Bar dataKey="count" fill="hsl(var(--primary))">
+                              {countryChart.map((_, i) => (
+                                <Cell key={i} fill="hsl(var(--primary))" fillOpacity={1 - i * 0.05} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </Card>
                 </div>
-                {countryChart.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">—</p>
-                ) : (
-                  <div className="h-64 w-full">
-                    <ResponsiveContainer>
-                      <BarChart data={countryChart} layout="vertical" margin={{ left: 20 }}>
-                        <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                        <XAxis type="number" fontSize={11} />
-                        <YAxis dataKey="name" type="category" fontSize={11} width={80} />
-                        <Tooltip />
-                        <Bar dataKey="count" fill="hsl(var(--primary))">
-                          {countryChart.map((_, i) => (
-                            <Cell key={i} fill="hsl(var(--primary))" fillOpacity={1 - i * 0.05} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </Card>
+              )}
             </div>
+
+            {/* Post audience — alternative when fan demographics are deprecated */}
+            <Card className="p-5">
+              <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <MessageCircle className="h-4 w-4 text-primary" />
+                  <h3 className="font-semibold">{t.audienceTitle}</h3>
+                </div>
+                <div className="flex gap-2">
+                  {audience?.ok && (audience.topCommenters.length > 0 || audience.topReactors.length > 0) && (
+                    <Button variant="ghost" size="sm" className="h-8 gap-1" onClick={() => downloadCsv(`post-audience-${page.id}.csv`, [...audience.topCommenters.map((c) => ({ type: "commenter", id: c.id, name: c.name, count: c.count })), ...audience.topReactors.map((r) => ({ type: "reactor", id: r.id, name: r.name, count: r.count }))])}>
+                      <Download className="h-3 w-3" />
+                      {t.export}
+                    </Button>
+                  )}
+                  <Button size="sm" onClick={() => void loadAudience(pageId)} disabled={loadingAudience}>
+                    {loadingAudience ? <Loader2 className="h-4 w-4 animate-spin" /> : t.loadAudience}
+                  </Button>
+                </div>
+              </div>
+              <p className="mb-4 text-xs text-muted-foreground">{t.audienceDesc}</p>
+
+              {loadingAudience && (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <span className="ms-3 text-sm text-muted-foreground">{t.loadingAudience}</span>
+                </div>
+              )}
+
+              {audience?.ok && !loadingAudience && (
+                <>
+                  <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <MiniStat icon={<Users className="h-4 w-4 text-primary" />} label={t.uniqueUsers} value={audience.totals.uniqueUsers} />
+                    <MiniStat icon={<MessageCircle className="h-4 w-4 text-primary" />} label={t.totalComments} value={audience.totals.comments} />
+                    <MiniStat icon={<ThumbsUp className="h-4 w-4 text-primary" />} label={t.totalReactions} value={audience.totals.reactions} />
+                    <MiniStat icon={<TrendingUp className="h-4 w-4 text-primary" />} label={t.postsScanned} value={audience.totals.posts} />
+                  </div>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <AudienceList title={t.topCommenters} items={audience.topCommenters} icon={<MessageCircle className="h-4 w-4" />} countLabel={t.count} />
+                    <AudienceList title={t.topReactors} items={audience.topReactors} icon={<ThumbsUp className="h-4 w-4" />} countLabel={t.count} />
+                  </div>
+                </>
+              )}
+            </Card>
+
+
 
             {/* Best hours */}
             <Card className="p-5">
@@ -467,3 +651,69 @@ function sumField(rows: Array<Record<string, number | string>>, field: string): 
   return rows.reduce((acc, r) => acc + (Number(r[field]) || 0), 0);
 }
 
+
+function downloadCsv(filename: string, rows: Array<Record<string, unknown>>) {
+  if (rows.length === 0) return;
+  const headers = Array.from(
+    rows.reduce<Set<string>>((acc, r) => {
+      Object.keys(r).forEach((k) => acc.add(k));
+      return acc;
+    }, new Set<string>()),
+  );
+  const escape = (v: unknown) => {
+    const s = v == null ? "" : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [
+    headers.join(","),
+    ...rows.map((r) => headers.map((h) => escape(r[h])).join(",")),
+  ].join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function AudienceList({
+  title,
+  items,
+  icon,
+  countLabel,
+}: {
+  title: string;
+  items: Array<{ id: string; name: string; count: number }>;
+  icon: React.ReactNode;
+  countLabel: string;
+}) {
+  return (
+    <div className="rounded-lg border bg-muted/20 p-4">
+      <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+        {icon}
+        <span>{title}</span>
+        <span className="text-xs text-muted-foreground">({items.length})</span>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">—</p>
+      ) : (
+        <ul className="max-h-80 space-y-1 overflow-y-auto pe-1 text-sm">
+          {items.map((it, i) => (
+            <li key={it.id} className="flex items-center justify-between gap-3 rounded px-2 py-1.5 hover:bg-background">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="w-5 shrink-0 text-xs text-muted-foreground">{i + 1}</span>
+                <span className="truncate">{it.name}</span>
+              </div>
+              <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary" title={countLabel}>
+                {it.count}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
