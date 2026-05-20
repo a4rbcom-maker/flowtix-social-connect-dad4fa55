@@ -124,7 +124,21 @@ async function runPostToGroups({ page, job, report }) {
 
         // Attach media if any
         if (mediaFiles.length > 0) {
+          const tUp = Date.now();
           await attachMedia(page, mediaFiles);
+          await report({
+            result: {
+              target: "__media__",
+              status: "skipped",
+              data: {
+                event: "media_upload_done",
+                target: gid,
+                count: mediaFiles.length,
+                durationMs: Date.now() - tUp,
+                at: new Date().toISOString(),
+              },
+            },
+          });
         }
 
         // Click Post
