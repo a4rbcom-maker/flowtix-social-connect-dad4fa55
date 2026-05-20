@@ -785,16 +785,19 @@ export const fetchPageInsights = createServerFn({ method: "POST" })
       }
       const daily = Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date));
 
-      // Step 4: demographics
+      // Step 4: demographics (deprecated by Meta — fully removed June 2026.
+      // Many "New Page Experience" pages already return empty arrays here.)
       const demoMetrics = await safeInsight("page_fans_gender_age,page_fans_country", "lifetime");
       let genderAge: Array<{ bucket: string; gender: string; age: string; count: number }> = [];
       let country: Array<{ code: string; count: number }> = [];
+      let demoReceived = { genderAge: false, country: false };
       for (const m of demoMetrics) {
         const latest = m.values?.[m.values.length - 1]?.value as
           | Record<string, number>
           | undefined;
         if (!latest || typeof latest !== "object") continue;
         if (m.name === "page_fans_gender_age") {
+          demoReceived.genderAge = true;
           genderAge = Object.entries(latest).map(([k, v]) => {
             const [g, ...rest] = k.split(".");
             return {
@@ -805,12 +808,25 @@ export const fetchPageInsights = createServerFn({ method: "POST" })
             };
           });
         } else if (m.name === "page_fans_country") {
+          demoReceived.country = true;
           country = Object.entries(latest)
             .map(([code, v]) => ({ code, count: Number(v) || 0 }))
             .sort((a, b) => b.count - a.count)
             .slice(0, 15);
         }
       }
+      // Add explicit warning if Meta returned the metric but with no rows
+      if (demoReceived.genderAge && genderAge.length === 0) {
+        warnings.push(
+          "page_fans_gender_age: مهجور من Meta لصفحات التجربة الجديدة (سيتم حذفه نهائيًا يونيو 2026).",
+        );
+      }
+      if (demoReceived.country && country.length === 0) {
+        warnings.push(
+          "page_fans_country: مهجور من Meta لصفحات التجربة الجديدة (سيتم حذفه نهائيًا يونيو 2026).",
+        );
+      }
+
 
       // Step 5: best activity times (avg of last 7 days, hourly buckets)
       const onlineMetrics = await safeInsight("page_fans_online_per_day", "day", 7);
