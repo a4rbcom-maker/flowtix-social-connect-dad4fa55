@@ -22,6 +22,7 @@ export type FbErrorKind =
   | "permission"
   | "expired"
   | "invalid_token"
+  | "app_rate_limited"
   | "rate_limited"
   | "unknown";
 
@@ -43,6 +44,7 @@ function classify(message: string, status: number | null): FbErrorKind {
   if (m.includes("expired")) return "expired";
   if (m.includes("invalid") && m.includes("token")) return "invalid_token";
   if (m.includes("oauth") || m.includes("190")) return "invalid_token";
+  if (m.includes("application request limit") || m.includes("(#4)")) return "app_rate_limited";
   if (m.includes("permission") || m.includes("scope")) return "permission";
   if (m.includes("rate") || m.includes("limit")) return "rate_limited";
   if (m.includes("fetch") || m.includes("network") || m.includes("failed to fetch")) return "network";
@@ -138,6 +140,8 @@ export function describeFbError(err: unknown, lang: "ar" | "en"): string {
     permission: "صلاحيات ناقصة في توكن فيسبوك. أعد التوليد بكل الصلاحيات.",
     expired: "انتهت صلاحية التوكن. أنشئ توكن جديد من Graph Explorer.",
     invalid_token: "التوكن غير صالح أو تم إبطاله.",
+    app_rate_limited:
+      "تطبيق فيسبوك وصل حد الاستدعاءات اليومي. انتظر حتى يُعاد ضبط الحد أو ارفع الحد من إعدادات Meta.",
     rate_limited: "تم تجاوز حد طلبات فيسبوك. حاول بعد قليل.",
     unknown: e.message || "حدث خطأ غير متوقع.",
   } as const;
@@ -148,6 +152,8 @@ export function describeFbError(err: unknown, lang: "ar" | "en"): string {
     permission: "Missing permissions in your Facebook token. Re-generate with all required scopes.",
     expired: "Token has expired. Create a new one from Graph Explorer.",
     invalid_token: "Token is invalid or was revoked.",
+    app_rate_limited:
+      "The Facebook app reached its daily request limit. Wait for the limit to reset or increase it in Meta settings.",
     rate_limited: "Facebook rate limit hit. Try again shortly.",
     unknown: e.message || "Something went wrong.",
   } as const;
