@@ -195,7 +195,29 @@ integrity_rollback() {
     --exclude='var/' \
     --exclude='.well-known/' \
     "$src/" "$DEPLOY_PATH/"
-  echo "✓ Snapshot restored — PM2 keeps current in-memory process (no restart)."
+  echo "✓ Snapshot restored to disk."
+
+  # Reload PM2 onto the restored bundle so on-disk files and the running
+  # process match. Without this, PM2 keeps serving the prior in-memory
+  # build while the disk has a different (older) one — any future restart
+  # or crash would suddenly switch versions unexpectedly. Best-effort:
+  # if PM2 isn't available or reload fails, we still report restored.
+  if command -v pm2 >/dev/null 2>&1 && [ -n "${APP_NAME:-}" ]; then
+    echo "→ Reloading PM2 on restored bundle so process matches disk…"
+    if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
+      pm2 reload ecosystem.config.cjs --only "$APP_NAME" --update-env 2>/dev/null \
+        || pm2 restart "$APP_NAME" --update-env 2>/dev/null \
+        || echo "  (warning) PM2 reload failed — previous in-memory process still serving."
+    else
+      pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env 2>/dev/null \
+        || echo "  (warning) PM2 start failed — no process currently serving."
+    fi
+    pm2 save >/dev/null 2>&1 || true
+    echo "✓ PM2 reloaded onto restored snapshot."
+  else
+    echo "  (info) PM2 or APP_NAME unavailable — process not reloaded."
+  fi
+
   echo "INTEGRITY_ROLLBACK_RESULT=restored"
   echo "INTEGRITY_ROLLBACK_KIND=$kind"
   echo "INTEGRITY_ROLLBACK_SRC=$src"
