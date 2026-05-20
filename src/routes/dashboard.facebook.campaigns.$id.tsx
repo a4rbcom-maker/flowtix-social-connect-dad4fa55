@@ -263,14 +263,18 @@ function CampaignDetailPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {results.map((r) => (
-                  <tr key={r.id} className="hover:bg-accent/40">
-                    <td className="px-4 py-2 text-foreground">{(r.target && c.target_names?.[r.target]) ?? r.target ?? "—"}</td>
-                    <td className="px-4 py-2">{statusBadge(r.status)}</td>
-                    <td className="px-4 py-2 text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</td>
-                    <td className="px-4 py-2 text-xs text-destructive truncate max-w-[280px]">{r.error ?? "—"}</td>
-                  </tr>
-                ))}
+                {results.map((r) => {
+                  const ev = getMediaEvent(r);
+                  if (ev) return renderMediaRow(r, ev);
+                  return (
+                    <tr key={r.id} className="hover:bg-accent/40">
+                      <td className="px-4 py-2 text-foreground">{(r.target && c.target_names?.[r.target]) ?? r.target ?? "—"}</td>
+                      <td className="px-4 py-2">{statusBadge(r.status)}</td>
+                      <td className="px-4 py-2 text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</td>
+                      <td className="px-4 py-2 text-xs text-destructive truncate max-w-[280px]">{r.error ?? "—"}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
