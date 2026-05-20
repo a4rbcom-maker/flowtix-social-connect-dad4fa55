@@ -125,6 +125,25 @@ function serializeError(err: unknown) {
   };
 }
 
+function parsePermissions(perms: unknown) {
+  const rows = Array.isArray((perms as { data?: unknown })?.data) ? (perms as { data: unknown[] }).data : [];
+  const granted = rows
+    .filter((p): p is { status: string; permission: string } =>
+      typeof (p as { status?: unknown })?.status === "string"
+      && typeof (p as { permission?: unknown })?.permission === "string"
+      && (p as { status: string }).status === "granted",
+    )
+    .map((p) => p.permission);
+  const declined = rows
+    .filter((p): p is { status: string; permission: string } =>
+      typeof (p as { status?: unknown })?.status === "string"
+      && typeof (p as { permission?: unknown })?.permission === "string"
+      && (p as { status: string }).status !== "granted",
+    )
+    .map((p) => p.permission);
+  return { granted, declined };
+}
+
 /**
  * Verify a Facebook access token, fetch user profile,
  * and persist the connection for the current user.
@@ -182,12 +201,7 @@ export const testFacebookToken = createServerFn({ method: "POST" })
     const token = data.access_token;
     const me = await fbGet("/me?fields=id,name,email", token);
     const perms = await fbGet("/me/permissions", token);
-    const granted = (perms.data ?? [])
-      .filter((p: { status: string }) => p.status === "granted")
-      .map((p: { permission: string }) => p.permission);
-    const declined = (perms.data ?? [])
-      .filter((p: { status: string }) => p.status !== "granted")
-      .map((p: { permission: string }) => p.permission);
+    const { granted, declined } = parsePermissions(perms);
     return {
       success: true,
       profile: { id: me.id, name: me.name, email: me.email ?? null },
