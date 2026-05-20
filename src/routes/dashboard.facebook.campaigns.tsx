@@ -1,6 +1,6 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Plus, Play, Pause, Trash2, Megaphone, Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Plus, Play, Pause, Trash2, Megaphone, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -13,9 +13,31 @@ import {
   pauseCampaign,
 } from "@/lib/fb-campaigns.functions";
 
+function CampaignsErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+  const router = useRouter();
+  return (
+    <DashboardLayout title="حملات النشر">
+      <div className="max-w-xl mx-auto mt-12 rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-center">
+        <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-destructive" />
+        <h2 className="text-lg font-semibold text-foreground mb-2">حدث خطأ في تحميل صفحة الحملات</h2>
+        <pre className="mt-3 max-h-40 overflow-auto rounded-md bg-muted p-3 text-left font-mono text-xs text-destructive whitespace-pre-wrap break-words">
+          {error?.message ?? "Unknown error"}
+        </pre>
+        <button
+          onClick={() => { router.invalidate(); reset(); }}
+          className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+        >
+          إعادة المحاولة
+        </button>
+      </div>
+    </DashboardLayout>
+  );
+}
+
 export const Route = createFileRoute("/dashboard/facebook/campaigns")({
   ssr: false,
   component: CampaignsPage,
+  errorComponent: CampaignsErrorComponent,
 });
 
 type CampaignRow = {
