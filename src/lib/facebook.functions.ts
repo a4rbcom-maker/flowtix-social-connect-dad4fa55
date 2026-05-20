@@ -1004,7 +1004,8 @@ export const fetchPageAudienceFromPosts = createServerFn({ method: "POST" })
  * stored connection. Returns either { ok: true, pageToken } or an error envelope.
  */
 async function getPageAccessToken(
-  supabase: { from: (t: string) => { select: (s: string) => { eq: (k: string, v: string) => { maybeSingle: () => Promise<{ data: { access_token?: string | null } | null; error: { message: string } | null }> } } } },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
   userId: string,
   pageId: string,
   requiredPerms: string[],
