@@ -27,6 +27,7 @@ import { Route as DashboardFacebookMediaRouteImport } from './routes/dashboard.f
 import { Route as DashboardFacebookJobsRouteImport } from './routes/dashboard.facebook.jobs'
 import { Route as DashboardFacebookHistoryRouteImport } from './routes/dashboard.facebook.history'
 import { Route as DashboardFacebookGroupsRouteImport } from './routes/dashboard.facebook.groups'
+import { Route as DashboardFacebookCampaignsRouteImport } from './routes/dashboard.facebook.campaigns'
 import { Route as DashboardFacebookBotRouteImport } from './routes/dashboard.facebook.bot'
 import { Route as ApiPublicHealthRouteImport } from './routes/api/public/health'
 import { Route as ApiPublicHooksProcessBulkJobsRouteImport } from './routes/api/public/hooks/process-bulk-jobs'
@@ -125,6 +126,12 @@ const DashboardFacebookGroupsRoute = DashboardFacebookGroupsRouteImport.update({
   path: '/groups',
   getParentRoute: () => DashboardFacebookRoute,
 } as any)
+const DashboardFacebookCampaignsRoute =
+  DashboardFacebookCampaignsRouteImport.update({
+    id: '/campaigns',
+    path: '/campaigns',
+    getParentRoute: () => DashboardFacebookRoute,
+  } as any)
 const DashboardFacebookBotRoute = DashboardFacebookBotRouteImport.update({
   id: '/bot',
   path: '/bot',
@@ -167,6 +174,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
+  '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/history': typeof DashboardFacebookHistoryRoute
   '/dashboard/facebook/jobs': typeof DashboardFacebookJobsRoute
@@ -192,6 +200,7 @@ export interface FileRoutesByTo {
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
+  '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/history': typeof DashboardFacebookHistoryRoute
   '/dashboard/facebook/jobs': typeof DashboardFacebookJobsRoute
@@ -218,6 +227,7 @@ export interface FileRoutesById {
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
+  '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/history': typeof DashboardFacebookHistoryRoute
   '/dashboard/facebook/jobs': typeof DashboardFacebookJobsRoute
@@ -245,6 +255,7 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp'
     | '/api/public/health'
     | '/dashboard/facebook/bot'
+    | '/dashboard/facebook/campaigns'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/history'
     | '/dashboard/facebook/jobs'
@@ -270,6 +281,7 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp'
     | '/api/public/health'
     | '/dashboard/facebook/bot'
+    | '/dashboard/facebook/campaigns'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/history'
     | '/dashboard/facebook/jobs'
@@ -295,6 +307,7 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp'
     | '/api/public/health'
     | '/dashboard/facebook/bot'
+    | '/dashboard/facebook/campaigns'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/history'
     | '/dashboard/facebook/jobs'
@@ -447,6 +460,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardFacebookGroupsRouteImport
       parentRoute: typeof DashboardFacebookRoute
     }
+    '/dashboard/facebook/campaigns': {
+      id: '/dashboard/facebook/campaigns'
+      path: '/campaigns'
+      fullPath: '/dashboard/facebook/campaigns'
+      preLoaderRoute: typeof DashboardFacebookCampaignsRouteImport
+      parentRoute: typeof DashboardFacebookRoute
+    }
     '/dashboard/facebook/bot': {
       id: '/dashboard/facebook/bot'
       path: '/bot'
@@ -487,6 +507,7 @@ declare module '@tanstack/react-router' {
 
 interface DashboardFacebookRouteChildren {
   DashboardFacebookBotRoute: typeof DashboardFacebookBotRoute
+  DashboardFacebookCampaignsRoute: typeof DashboardFacebookCampaignsRoute
   DashboardFacebookGroupsRoute: typeof DashboardFacebookGroupsRoute
   DashboardFacebookHistoryRoute: typeof DashboardFacebookHistoryRoute
   DashboardFacebookJobsRoute: typeof DashboardFacebookJobsRoute
@@ -497,6 +518,7 @@ interface DashboardFacebookRouteChildren {
 
 const DashboardFacebookRouteChildren: DashboardFacebookRouteChildren = {
   DashboardFacebookBotRoute: DashboardFacebookBotRoute,
+  DashboardFacebookCampaignsRoute: DashboardFacebookCampaignsRoute,
   DashboardFacebookGroupsRoute: DashboardFacebookGroupsRoute,
   DashboardFacebookHistoryRoute: DashboardFacebookHistoryRoute,
   DashboardFacebookJobsRoute: DashboardFacebookJobsRoute,
