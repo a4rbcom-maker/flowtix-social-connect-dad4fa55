@@ -714,8 +714,20 @@ function FacebookPage() {
     setTestResult(null);
     setTestError(null);
     try {
+      const cached = readTokenTestCache(cleaned);
+      if (cached?.result) {
+        setTestResult(cached.result);
+        toast.success(`${t.testSuccess}: ${cached.result.profile.name}`);
+        return;
+      }
+      if (cached?.error) {
+        rememberRateLimitIfNeeded(cached.error.message, cached.error.type);
+        throw new Error(cached.error.message);
+      }
       const res = await fbCall(testFacebookToken, { access_token: cleaned });
       const normalized = normalizeAuthResponse(res);
+      writeTokenTestCache(cleaned, { result: normalized });
+      setAppRateLimitMessage(null);
       setTestResult(normalized);
       const missing = missingRequiredScopes(normalized.granted);
       if (missing.length === 0) {
@@ -725,7 +737,10 @@ function FacebookPage() {
       }
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : t.testFailed;
+      const fbType = (err as Error & { fbType?: string })?.fbType ?? null;
       const msg = friendlyError(raw);
+      writeTokenTestCache(cleaned, { error: { message: raw, type: fbType } });
+      rememberRateLimitIfNeeded(raw, fbType);
       setTestResult(null);
       setTestError(msg);
       toast.error(`${t.testFailed} — ${msg}`);
@@ -745,6 +760,7 @@ function FacebookPage() {
     try {
       const res = await fbCall(connectFacebook, { access_token: cleaned });
       const normalized = normalizeAuthResponse(res);
+      setAppRateLimitMessage(null);
       toast.success(
         lang === "ar"
           ? `تم الربط بنجاح: ${normalized.profile.name}`
@@ -756,7 +772,11 @@ function FacebookPage() {
       setConnection(c.connection);
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : "Connection failed";
-      toast.error(friendlyError(raw));
+      const fbType = (err as Error & { fbType?: string })?.fbType ?? null;
+      const msg = friendlyError(raw);
+      rememberRateLimitIfNeeded(raw, fbType);
+      setTestError(msg);
+      toast.error(msg);
     } finally {
       setConnecting(false);
     }
