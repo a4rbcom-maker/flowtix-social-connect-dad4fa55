@@ -52,10 +52,10 @@ function CampaignDetailPage() {
   const load = async () => {
     try {
       const [camp, res] = await Promise.all([
-        callFn<Campaign>(getCampaign, { id }),
-        callFn<{ results: Result[]; job: unknown }>(getCampaignResults, { id }),
+        callFn<unknown>(getCampaign as unknown as (opts: never) => Promise<unknown>, { id }),
+        callFn<{ results: Result[]; job: unknown }>(getCampaignResults as unknown as (opts: never) => Promise<{ results: Result[]; job: unknown }>, { id }),
       ]);
-      setC(camp);
+      setC(camp as Campaign);
       setResults(res.results);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
   };
