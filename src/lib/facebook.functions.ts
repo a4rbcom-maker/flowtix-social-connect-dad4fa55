@@ -557,11 +557,9 @@ export const inspectFacebookConnection = createServerFn({ method: "GET" })
     let validationErrorType: FacebookApiError["type"] | null = null;
 
     try {
-      const [me, perms] = await Promise.all([
-        fbGet("/me?fields=id,name,email", token),
-        fbGet("/me/permissions", token),
-      ]);
+      const me = await fbGet("/me?fields=id,name,email", token);
       profile = { id: String(me.id), name: me.name, email: me.email ?? null };
+      const perms = await fbGet("/me/permissions", token);
       ({ granted, declined } = parsePermissions(perms));
     } catch (err) {
       validationErrorType = err instanceof FacebookApiError ? err.type : null;
