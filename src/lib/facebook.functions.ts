@@ -309,7 +309,7 @@ export const connectFacebook = createServerFn({ method: "POST" })
           {
             user_id: userId,
             access_token: token,
-            fb_user_id: existing?.fb_user_id ?? `saved-token-${token.length}-${token.slice(-4)}`,
+            fb_user_id: existing?.fb_user_id ?? null,
             fb_user_name: existing?.fb_user_name ?? "Facebook token saved — pending Meta check",
             fb_user_email: existing?.fb_user_email ?? null,
           },
