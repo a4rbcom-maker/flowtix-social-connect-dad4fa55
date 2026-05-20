@@ -182,7 +182,7 @@ integrity_rollback() {
     echo "🧪 DRY-RUN — skipping rsync. Would have restored:"
     echo "   source : $src"
     echo "   target : $DEPLOY_PATH"
-    echo "   excludes: .env .user.ini .htaccess .well-known/"
+    echo "   excludes: .env .user.ini .htaccess var/ .well-known/"
     echo "INTEGRITY_ROLLBACK_RESULT=dry_run"
     echo "INTEGRITY_ROLLBACK_KIND=$kind"
     echo "INTEGRITY_ROLLBACK_SRC=$src"
