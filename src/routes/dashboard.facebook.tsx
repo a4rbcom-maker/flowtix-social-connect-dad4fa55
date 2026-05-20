@@ -640,6 +640,8 @@ function FacebookPage() {
           profile?: { id?: unknown; name?: unknown; email?: unknown } | null;
           granted?: unknown;
           declined?: unknown;
+          savedOnly?: boolean;
+          warning?: { message?: string; type?: string; missingPermission?: string | null } | null;
           error?: { message?: string; type?: string; missingPermission?: string | null } | null;
         }
       | null
@@ -670,11 +672,13 @@ function FacebookPage() {
     return {
       profile: {
         id,
-        name,
+        name: value?.savedOnly && name.startsWith("Facebook token saved") ? t.savedPendingName : name,
         email: typeof profile?.email === "string" ? profile.email : null,
       },
       granted: toStringArray(value?.granted),
       declined: toStringArray(value?.declined),
+      savedOnly: value?.savedOnly === true,
+      warning: value?.warning ?? null,
     };
   };
 
