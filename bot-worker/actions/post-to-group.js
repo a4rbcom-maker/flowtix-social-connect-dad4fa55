@@ -68,9 +68,37 @@ async function runPostToGroups({ page, job, report }) {
   // Pre-download media once for the whole campaign.
   let mediaFiles = [];
   if (mediaUrls.length > 0) {
+    await report({
+      result: {
+        target: "__media__",
+        status: "skipped",
+        data: { event: "media_download_start", count: mediaUrls.length, at: new Date().toISOString() },
+      },
+    });
     try {
+      const t0 = Date.now();
       mediaFiles = await Promise.all(mediaUrls.map((u) => downloadToTmp(u)));
+      await report({
+        result: {
+          target: "__media__",
+          status: "skipped",
+          data: {
+            event: "media_download_done",
+            count: mediaFiles.length,
+            durationMs: Date.now() - t0,
+            at: new Date().toISOString(),
+          },
+        },
+      });
     } catch (e) {
+      await report({
+        result: {
+          target: "__media__",
+          status: "failed",
+          error: `Media download failed: ${e.message}`,
+          data: { event: "media_download_failed", at: new Date().toISOString() },
+        },
+      });
       await report({ status: "failed", errorMessage: `Media download failed: ${e.message}` });
       return;
     }
