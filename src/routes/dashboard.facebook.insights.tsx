@@ -218,11 +218,27 @@ function InsightsPage() {
     }
   };
 
+  const loadAudience = async (id: string) => {
+    if (!id) return;
+    setLoadingAudience(true);
+    setAudience(null);
+    try {
+      const res = await fetchAudienceFn({ data: { pageId: id, postLimit: 25 } });
+      setAudience(res);
+      if (!res.ok) toast.error(res.error?.message ?? "Failed to load audience");
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setLoadingAudience(false);
+    }
+  };
+
   // Auto-load when page changes
   useEffect(() => {
     if (pageId) void loadInsights(pageId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageId]);
+
 
   const genderAgeChart = useMemo(() => {
     if (!insights?.ok) return [];
