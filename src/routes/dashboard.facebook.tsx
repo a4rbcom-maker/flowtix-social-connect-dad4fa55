@@ -651,7 +651,7 @@ function FacebookPage() {
       const res = await fbCall(testFacebookToken, { access_token: cleaned });
       const normalized = normalizeAuthResponse(res);
       setTestResult(normalized);
-      const missing = requiredScopes.filter((s) => !normalized.granted.includes(s));
+      const missing = missingRequiredScopes(normalized.granted);
       if (missing.length === 0) {
         toast.success(`${t.testSuccess}: ${normalized.profile.name}`);
       } else {
@@ -1341,7 +1341,7 @@ function FacebookPage() {
                     </div>
                   </div>
                   {(() => {
-                    const missing = requiredScopes.filter((s) => !testResult.granted.includes(s));
+                    const missing = missingRequiredScopes(testResult.granted);
                     return missing.length === 0 ? (
                       <p className="mt-2 text-xs text-green-700 dark:text-green-400">{t.noMissing}</p>
                     ) : (
