@@ -319,11 +319,22 @@ export const getFacebookConnection = createServerFn({ method: "GET" })
     const { supabase, userId } = context;
     const { data, error } = await supabase
       .from("facebook_connections")
-      .select("fb_user_id, fb_user_name, fb_user_email, last_synced_at, created_at")
+      .select("access_token, fb_user_id, fb_user_name, fb_user_email, last_synced_at, created_at")
       .eq("user_id", userId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    return { connection: data };
+    if (!data) return { connection: null };
+    const token = data.access_token ?? "";
+    return {
+      connection: {
+        fb_user_id: data.fb_user_id,
+        fb_user_name: data.fb_user_name,
+        fb_user_email: data.fb_user_email,
+        last_synced_at: data.last_synced_at,
+        created_at: data.created_at,
+        token_preview: token ? `${token.slice(0, 6)}…${token.slice(-4)}` : null,
+      },
+    };
   });
 
 /**
