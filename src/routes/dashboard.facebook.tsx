@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import {
   Facebook,
   RefreshCw,
@@ -84,6 +84,8 @@ type TokenCheckResult = {
   profile: { id: string; name: string; email: string | null };
   granted: string[];
   declined: string[];
+  savedOnly?: boolean;
+  warning?: { message?: string; type?: string; missingPermission?: string | null } | null;
 };
 
 function FacebookRouteShell() {
@@ -132,6 +134,7 @@ function FacebookPage() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TokenCheckResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
+  const loadedConnectionRef = useRef(false);
 
   const requiredScopes = [
     "public_profile",
@@ -552,6 +555,8 @@ function FacebookPage() {
   // automatic checks were exhausting the quota before the user clicked anything.
   useEffect(() => {
     if (!user) return;
+    if (loadedConnectionRef.current) return;
+    loadedConnectionRef.current = true;
     (async () => {
       try {
         const res = await fbCall(getFacebookConnection);
