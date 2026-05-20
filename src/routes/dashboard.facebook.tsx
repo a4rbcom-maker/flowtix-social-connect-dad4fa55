@@ -565,6 +565,16 @@ function FacebookPage() {
 
   const friendlyError = (raw: string): string => {
     const m = raw.toLowerCase();
+    if (m.includes("application request limit") || m.includes("(#4)") || m.includes("app_rate_limited")) {
+      return lang === "ar"
+        ? "تطبيق فيسبوك وصل حد الاستدعاءات اليومي من Meta (#4). التوكن صحيح غالباً، لكن Meta يرفض الطلبات مؤقتاً. انتظر حتى يُعاد ضبط الحد أو ارفع الحد من Meta App Dashboard → App Rate Limits."
+        : "The Facebook app reached Meta's daily request limit (#4). The token is likely valid, but Meta is temporarily rejecting requests. Wait for the limit to reset or increase it in Meta App Dashboard → App Rate Limits.";
+    }
+    if (m.includes("rate") || m.includes("limit")) {
+      return lang === "ar"
+        ? "تم تجاوز حد طلبات فيسبوك مؤقتاً. انتظر قليلاً ثم أعد المحاولة."
+        : "Facebook rate limit was reached. Wait a bit, then try again.";
+    }
     if (m.includes("cannot read") && m.includes("includes")) {
       return lang === "ar"
         ? "التوكن صحيح، لكن رد الصلاحيات من الخادم غير مكتمل. جرّب الحفظ مباشرة أو أعد تحميل الصفحة."
@@ -588,6 +598,11 @@ function FacebookPage() {
       return t.errNetwork;
     return raw;
   };
+
+  const isAppRateLimitError = (message: string, type?: string | null) =>
+    type === "app_rate_limited" ||
+    message.toLowerCase().includes("application request limit") ||
+    message.includes("(#4)");
 
   const toStringArray = (value: unknown): string[] =>
     Array.isArray(value) ? value.filter((s): s is string => typeof s === "string") : [];
@@ -628,8 +643,8 @@ function FacebookPage() {
     if (!id) {
       throw new Error(
         lang === "ar"
-          ? "رد الخادم غير مكتمل. حدّث الصفحة وجرب مرة أخرى، وإذا حدث هذا على الموقع فقط فأعد النشر."
-          : "The server response was incomplete. Refresh and try again; if this only happens on the live site, redeploy.",
+          ? "لم يرجع فيسبوك بيانات الحساب. إذا ظهرت رسالة حد الاستدعاءات (#4)، فالمشكلة من حد Meta وليست من التوكن."
+          : "Facebook did not return the profile. If you see request limit (#4), this is Meta's app limit, not the token.",
       );
     }
     return {
