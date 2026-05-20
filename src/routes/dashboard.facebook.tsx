@@ -669,9 +669,7 @@ function FacebookPage() {
 
     const profile = value?.profile ?? null;
     const id =
-      typeof profile?.id === "string" || typeof profile?.id === "number"
-        ? String(profile?.id)
-        : "";
+      typeof profile?.id === "string" || typeof profile?.id === "number" ? String(profile?.id) : "";
     const name =
       typeof profile?.name === "string" && profile.name.trim()
         ? profile.name.trim()
