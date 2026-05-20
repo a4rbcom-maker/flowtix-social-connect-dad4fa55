@@ -260,9 +260,27 @@ function InsightsPage() {
     if (!insights?.ok) return [];
     return insights.demographics.country.map((c) => ({
       name: ar ? (COUNTRY_NAMES_AR[c.code] ?? c.code) : c.code,
+      code: c.code,
       count: c.count,
     }));
   }, [insights, ar]);
+
+  const genderTotal = useMemo(() => {
+    const totals = { male: 0, female: 0 };
+    for (const b of genderAgeChart) {
+      totals.male += b.male;
+      totals.female += b.female;
+    }
+    const sum = totals.male + totals.female;
+    if (sum === 0) return [];
+    return [
+      { name: t.male, value: totals.male, pct: Math.round((totals.male / sum) * 100) },
+      { name: t.female, value: totals.female, pct: Math.round((totals.female / sum) * 100) },
+    ];
+  }, [genderAgeChart, t.male, t.female]);
+
+  const demoEmpty = genderAgeChart.length === 0 && countryChart.length === 0;
+
 
   // ── Render ───────────────────────────────────────────────────────────
   if (loadingPages) {
