@@ -344,20 +344,40 @@ function FacebookGroupsPage() {
           })}
         </div>
 
-        {/* Not connected */}
+        {/* Not connected via Graph API */}
         {connected === false && (
           <div className="rounded-2xl border border-border bg-card p-8 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
               <AlertCircle className="h-6 w-6" />
             </div>
-            <h3 className="mt-4 text-lg font-semibold text-foreground">{t.notConnected}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{t.notConnectedDesc}</p>
-            <Link
-              to="/dashboard/facebook"
-              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-            >
-              {t.goConnect}
-            </Link>
+            <h3 className="mt-4 text-lg font-semibold text-foreground">
+              {hasBotAccount
+                ? (lang === "ar" ? "ربط API مطلوب للاستيراد التلقائي" : "API link required for auto-import")
+                : t.notConnected}
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {hasBotAccount
+                ? (lang === "ar"
+                    ? "حساب البوت مربوط بنجاح. لاستيراد قائمة جروباتك تلقائياً تحتاج ربط Facebook API أيضاً، أو يمكنك استخدام الحملات ولصق معرّفات الجروبات يدوياً مع البوت."
+                    : "Your bot account is linked. To auto-import your groups list you also need to link the Facebook API, or use Campaigns and paste group IDs manually with the bot.")
+                : t.notConnectedDesc}
+            </p>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <Link
+                to="/dashboard/facebook"
+                className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+              >
+                {t.goConnect}
+              </Link>
+              {hasBotAccount && (
+                <Link
+                  to="/dashboard/facebook/campaigns/new"
+                  className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-accent"
+                >
+                  {lang === "ar" ? "إنشاء حملة بالبوت" : "Create bot campaign"}
+                </Link>
+              )}
+            </div>
           </div>
         )}
 
