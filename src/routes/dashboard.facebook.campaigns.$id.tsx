@@ -110,11 +110,19 @@ function CampaignDetailPage() {
     ? { back: "العودة", progress: "التقدم", start: "بدء", pause: "إيقاف", delay: "الفاصل الزمني",
         seconds: "ثانية", target: "الوجهة", status: "الحالة", time: "الوقت", error: "خطأ",
         pending: "قيد الانتظار", success: "ناجح", failed: "فشل", skipped: "تجاوز",
-        empty: "لا توجد نتائج بعد. ابدأ الحملة لتظهر النتائج لايف هنا." }
+        empty: "لا توجد نتائج بعد. ابدأ الحملة لتظهر النتائج لايف هنا.",
+        mediaDownloadStart: "بدء تنزيل الوسائط", mediaDownloadDone: "اكتمل تنزيل الوسائط",
+        mediaDownloadFailed: "فشل تنزيل الوسائط", mediaUploadDone: "تم رفع الوسائط للمجموعة",
+        mediaCleanupDone: "تم تنظيف الملفات المؤقتة", mediaEvent: "حدث وسائط",
+        files: "ملف", duration: "المدة", ms: "م.ث" }
     : { back: "Back", progress: "Progress", start: "Start", pause: "Pause", delay: "Interval",
         seconds: "sec", target: "Target", status: "Status", time: "Time", error: "Error",
         pending: "Pending", success: "Success", failed: "Failed", skipped: "Skipped",
-        empty: "No results yet. Start the campaign to see live results here." };
+        empty: "No results yet. Start the campaign to see live results here.",
+        mediaDownloadStart: "Media download started", mediaDownloadDone: "Media download completed",
+        mediaDownloadFailed: "Media download failed", mediaUploadDone: "Media uploaded to group",
+        mediaCleanupDone: "Temp files cleaned up", mediaEvent: "Media event",
+        files: "files", duration: "duration", ms: "ms" };
 
   useEffect(() => { if (!loading && !user) navigate({ to: "/login" }); }, [user, loading, navigate]);
 
