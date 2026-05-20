@@ -80,6 +80,12 @@ interface Page {
   picture?: { data?: { url?: string } };
 }
 
+type TokenCheckResult = {
+  profile: { id: string; name: string; email: string | null };
+  granted: string[];
+  declined: string[];
+};
+
 function FacebookRouteShell() {
   const location = useLocation();
   return location.pathname === "/dashboard/facebook" ? <FacebookPage /> : <Outlet />;
