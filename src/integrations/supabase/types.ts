@@ -238,6 +238,96 @@ export type Database = {
         }
         Relationships: []
       }
+      fb_campaigns: {
+        Row: {
+          account_id: string | null
+          content_type: Database["public"]["Enums"]["fb_campaign_content_type"]
+          created_at: string
+          custom_text: string | null
+          delay_max_seconds: number
+          delay_min_seconds: number
+          done_targets: number
+          failed_count: number
+          id: string
+          last_job_id: string | null
+          last_run_at: string | null
+          media_ids: string[] | null
+          name: string
+          status: Database["public"]["Enums"]["fb_campaign_status"]
+          success_count: number
+          target_ids: string[]
+          target_kind: Database["public"]["Enums"]["fb_campaign_target_kind"]
+          target_names: Json | null
+          template_id: string | null
+          total_targets: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id?: string | null
+          content_type?: Database["public"]["Enums"]["fb_campaign_content_type"]
+          created_at?: string
+          custom_text?: string | null
+          delay_max_seconds?: number
+          delay_min_seconds?: number
+          done_targets?: number
+          failed_count?: number
+          id?: string
+          last_job_id?: string | null
+          last_run_at?: string | null
+          media_ids?: string[] | null
+          name: string
+          status?: Database["public"]["Enums"]["fb_campaign_status"]
+          success_count?: number
+          target_ids?: string[]
+          target_kind?: Database["public"]["Enums"]["fb_campaign_target_kind"]
+          target_names?: Json | null
+          template_id?: string | null
+          total_targets?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string | null
+          content_type?: Database["public"]["Enums"]["fb_campaign_content_type"]
+          created_at?: string
+          custom_text?: string | null
+          delay_max_seconds?: number
+          delay_min_seconds?: number
+          done_targets?: number
+          failed_count?: number
+          id?: string
+          last_job_id?: string | null
+          last_run_at?: string | null
+          media_ids?: string[] | null
+          name?: string
+          status?: Database["public"]["Enums"]["fb_campaign_status"]
+          success_count?: number
+          target_ids?: string[]
+          target_kind?: Database["public"]["Enums"]["fb_campaign_target_kind"]
+          target_names?: Json | null
+          template_id?: string | null
+          total_targets?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fb_campaigns_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "fb_bot_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fb_campaigns_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "fb_text_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fb_job_results: {
         Row: {
           created_at: string
@@ -279,6 +369,7 @@ export type Database = {
       fb_jobs: {
         Row: {
           account_id: string | null
+          campaign_id: string | null
           completed_at: string | null
           created_at: string
           error_message: string | null
@@ -296,6 +387,7 @@ export type Database = {
         }
         Insert: {
           account_id?: string | null
+          campaign_id?: string | null
           completed_at?: string | null
           created_at?: string
           error_message?: string | null
@@ -313,6 +405,7 @@ export type Database = {
         }
         Update: {
           account_id?: string | null
+          campaign_id?: string | null
           completed_at?: string | null
           created_at?: string
           error_message?: string | null
@@ -336,7 +429,80 @@ export type Database = {
             referencedRelation: "fb_bot_accounts"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "fb_jobs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "fb_campaigns"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      fb_media_assets: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          mime_type: string | null
+          name: string
+          public_url: string
+          size_bytes: number
+          storage_path: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          mime_type?: string | null
+          name: string
+          public_url: string
+          size_bytes?: number
+          storage_path: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          mime_type?: string | null
+          name?: string
+          public_url?: string
+          size_bytes?: number
+          storage_path?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      fb_text_templates: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          name: string
+          tags: string[] | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          name: string
+          tags?: string[] | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          name?: string
+          tags?: string[] | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -565,18 +731,28 @@ export type Database = {
         | "disabled"
         | "untested"
       fb_auth_method: "cookies" | "credentials"
+      fb_campaign_content_type: "text" | "media"
+      fb_campaign_status:
+        | "draft"
+        | "queued"
+        | "running"
+        | "paused"
+        | "completed"
+        | "failed"
+      fb_campaign_target_kind: "groups" | "pages"
       fb_job_status:
         | "pending"
         | "running"
         | "completed"
         | "failed"
         | "cancelled"
+        | "paused"
       fb_job_type:
         | "post_to_groups"
         | "extract_pages"
         | "extract_commenters"
         | "test_account"
-      fb_result_status: "success" | "failed" | "skipped"
+      fb_result_status: "success" | "failed" | "skipped" | "pending"
       schedule_status: "scheduled" | "sending" | "sent" | "failed" | "cancelled"
       send_channel: "whatsapp" | "facebook" | "bulk" | "system"
       send_status: "pending" | "processing" | "success" | "failed"
@@ -724,14 +900,31 @@ export const Constants = {
         "untested",
       ],
       fb_auth_method: ["cookies", "credentials"],
-      fb_job_status: ["pending", "running", "completed", "failed", "cancelled"],
+      fb_campaign_content_type: ["text", "media"],
+      fb_campaign_status: [
+        "draft",
+        "queued",
+        "running",
+        "paused",
+        "completed",
+        "failed",
+      ],
+      fb_campaign_target_kind: ["groups", "pages"],
+      fb_job_status: [
+        "pending",
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+        "paused",
+      ],
       fb_job_type: [
         "post_to_groups",
         "extract_pages",
         "extract_commenters",
         "test_account",
       ],
-      fb_result_status: ["success", "failed", "skipped"],
+      fb_result_status: ["success", "failed", "skipped", "pending"],
       schedule_status: ["scheduled", "sending", "sent", "failed", "cancelled"],
       send_channel: ["whatsapp", "facebook", "bulk", "system"],
       send_status: ["pending", "processing", "success", "failed"],

@@ -21,12 +21,17 @@ import { Route as DashboardFacebookRouteImport } from './routes/dashboard.facebo
 import { Route as DashboardControlRouteImport } from './routes/dashboard.control'
 import { Route as DashboardBulkRouteImport } from './routes/dashboard.bulk'
 import { Route as DashboardActivityRouteImport } from './routes/dashboard.activity'
+import { Route as DashboardFacebookTemplatesRouteImport } from './routes/dashboard.facebook.templates'
 import { Route as DashboardFacebookStatusRouteImport } from './routes/dashboard.facebook.status'
+import { Route as DashboardFacebookMediaRouteImport } from './routes/dashboard.facebook.media'
 import { Route as DashboardFacebookJobsRouteImport } from './routes/dashboard.facebook.jobs'
 import { Route as DashboardFacebookHistoryRouteImport } from './routes/dashboard.facebook.history'
 import { Route as DashboardFacebookGroupsRouteImport } from './routes/dashboard.facebook.groups'
+import { Route as DashboardFacebookCampaignsRouteImport } from './routes/dashboard.facebook.campaigns'
 import { Route as DashboardFacebookBotRouteImport } from './routes/dashboard.facebook.bot'
 import { Route as ApiPublicHealthRouteImport } from './routes/api/public/health'
+import { Route as DashboardFacebookCampaignsNewRouteImport } from './routes/dashboard.facebook.campaigns.new'
+import { Route as DashboardFacebookCampaignsIdRouteImport } from './routes/dashboard.facebook.campaigns.$id'
 import { Route as ApiPublicHooksProcessBulkJobsRouteImport } from './routes/api/public/hooks/process-bulk-jobs'
 import { Route as ApiPublicBotNextJobRouteImport } from './routes/api/public/bot/next-job'
 import { Route as ApiPublicBotJobUpdateRouteImport } from './routes/api/public/bot/job-update'
@@ -91,9 +96,20 @@ const DashboardActivityRoute = DashboardActivityRouteImport.update({
   path: '/activity',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardFacebookTemplatesRoute =
+  DashboardFacebookTemplatesRouteImport.update({
+    id: '/templates',
+    path: '/templates',
+    getParentRoute: () => DashboardFacebookRoute,
+  } as any)
 const DashboardFacebookStatusRoute = DashboardFacebookStatusRouteImport.update({
   id: '/status',
   path: '/status',
+  getParentRoute: () => DashboardFacebookRoute,
+} as any)
+const DashboardFacebookMediaRoute = DashboardFacebookMediaRouteImport.update({
+  id: '/media',
+  path: '/media',
   getParentRoute: () => DashboardFacebookRoute,
 } as any)
 const DashboardFacebookJobsRoute = DashboardFacebookJobsRouteImport.update({
@@ -112,6 +128,12 @@ const DashboardFacebookGroupsRoute = DashboardFacebookGroupsRouteImport.update({
   path: '/groups',
   getParentRoute: () => DashboardFacebookRoute,
 } as any)
+const DashboardFacebookCampaignsRoute =
+  DashboardFacebookCampaignsRouteImport.update({
+    id: '/campaigns',
+    path: '/campaigns',
+    getParentRoute: () => DashboardFacebookRoute,
+  } as any)
 const DashboardFacebookBotRoute = DashboardFacebookBotRouteImport.update({
   id: '/bot',
   path: '/bot',
@@ -122,6 +144,18 @@ const ApiPublicHealthRoute = ApiPublicHealthRouteImport.update({
   path: '/api/public/health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DashboardFacebookCampaignsNewRoute =
+  DashboardFacebookCampaignsNewRouteImport.update({
+    id: '/new',
+    path: '/new',
+    getParentRoute: () => DashboardFacebookCampaignsRoute,
+  } as any)
+const DashboardFacebookCampaignsIdRoute =
+  DashboardFacebookCampaignsIdRouteImport.update({
+    id: '/$id',
+    path: '/$id',
+    getParentRoute: () => DashboardFacebookCampaignsRoute,
+  } as any)
 const ApiPublicHooksProcessBulkJobsRoute =
   ApiPublicHooksProcessBulkJobsRouteImport.update({
     id: '/api/public/hooks/process-bulk-jobs',
@@ -154,13 +188,18 @@ export interface FileRoutesByFullPath {
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
+  '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/history': typeof DashboardFacebookHistoryRoute
   '/dashboard/facebook/jobs': typeof DashboardFacebookJobsRoute
+  '/dashboard/facebook/media': typeof DashboardFacebookMediaRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
+  '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
+  '/dashboard/facebook/campaigns/$id': typeof DashboardFacebookCampaignsIdRoute
+  '/dashboard/facebook/campaigns/new': typeof DashboardFacebookCampaignsNewRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -177,13 +216,18 @@ export interface FileRoutesByTo {
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
+  '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/history': typeof DashboardFacebookHistoryRoute
   '/dashboard/facebook/jobs': typeof DashboardFacebookJobsRoute
+  '/dashboard/facebook/media': typeof DashboardFacebookMediaRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
+  '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
+  '/dashboard/facebook/campaigns/$id': typeof DashboardFacebookCampaignsIdRoute
+  '/dashboard/facebook/campaigns/new': typeof DashboardFacebookCampaignsNewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -201,13 +245,18 @@ export interface FileRoutesById {
   '/dashboard/whatsapp': typeof DashboardWhatsappRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
+  '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/history': typeof DashboardFacebookHistoryRoute
   '/dashboard/facebook/jobs': typeof DashboardFacebookJobsRoute
+  '/dashboard/facebook/media': typeof DashboardFacebookMediaRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
+  '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
+  '/dashboard/facebook/campaigns/$id': typeof DashboardFacebookCampaignsIdRoute
+  '/dashboard/facebook/campaigns/new': typeof DashboardFacebookCampaignsNewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -226,13 +275,18 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp'
     | '/api/public/health'
     | '/dashboard/facebook/bot'
+    | '/dashboard/facebook/campaigns'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/history'
     | '/dashboard/facebook/jobs'
+    | '/dashboard/facebook/media'
     | '/dashboard/facebook/status'
+    | '/dashboard/facebook/templates'
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/process-bulk-jobs'
+    | '/dashboard/facebook/campaigns/$id'
+    | '/dashboard/facebook/campaigns/new'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -249,13 +303,18 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp'
     | '/api/public/health'
     | '/dashboard/facebook/bot'
+    | '/dashboard/facebook/campaigns'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/history'
     | '/dashboard/facebook/jobs'
+    | '/dashboard/facebook/media'
     | '/dashboard/facebook/status'
+    | '/dashboard/facebook/templates'
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/process-bulk-jobs'
+    | '/dashboard/facebook/campaigns/$id'
+    | '/dashboard/facebook/campaigns/new'
   id:
     | '__root__'
     | '/'
@@ -272,13 +331,18 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp'
     | '/api/public/health'
     | '/dashboard/facebook/bot'
+    | '/dashboard/facebook/campaigns'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/history'
     | '/dashboard/facebook/jobs'
+    | '/dashboard/facebook/media'
     | '/dashboard/facebook/status'
+    | '/dashboard/facebook/templates'
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/process-bulk-jobs'
+    | '/dashboard/facebook/campaigns/$id'
+    | '/dashboard/facebook/campaigns/new'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -380,11 +444,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardActivityRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/facebook/templates': {
+      id: '/dashboard/facebook/templates'
+      path: '/templates'
+      fullPath: '/dashboard/facebook/templates'
+      preLoaderRoute: typeof DashboardFacebookTemplatesRouteImport
+      parentRoute: typeof DashboardFacebookRoute
+    }
     '/dashboard/facebook/status': {
       id: '/dashboard/facebook/status'
       path: '/status'
       fullPath: '/dashboard/facebook/status'
       preLoaderRoute: typeof DashboardFacebookStatusRouteImport
+      parentRoute: typeof DashboardFacebookRoute
+    }
+    '/dashboard/facebook/media': {
+      id: '/dashboard/facebook/media'
+      path: '/media'
+      fullPath: '/dashboard/facebook/media'
+      preLoaderRoute: typeof DashboardFacebookMediaRouteImport
       parentRoute: typeof DashboardFacebookRoute
     }
     '/dashboard/facebook/jobs': {
@@ -408,6 +486,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardFacebookGroupsRouteImport
       parentRoute: typeof DashboardFacebookRoute
     }
+    '/dashboard/facebook/campaigns': {
+      id: '/dashboard/facebook/campaigns'
+      path: '/campaigns'
+      fullPath: '/dashboard/facebook/campaigns'
+      preLoaderRoute: typeof DashboardFacebookCampaignsRouteImport
+      parentRoute: typeof DashboardFacebookRoute
+    }
     '/dashboard/facebook/bot': {
       id: '/dashboard/facebook/bot'
       path: '/bot'
@@ -421,6 +506,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/public/health'
       preLoaderRoute: typeof ApiPublicHealthRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/dashboard/facebook/campaigns/new': {
+      id: '/dashboard/facebook/campaigns/new'
+      path: '/new'
+      fullPath: '/dashboard/facebook/campaigns/new'
+      preLoaderRoute: typeof DashboardFacebookCampaignsNewRouteImport
+      parentRoute: typeof DashboardFacebookCampaignsRoute
+    }
+    '/dashboard/facebook/campaigns/$id': {
+      id: '/dashboard/facebook/campaigns/$id'
+      path: '/$id'
+      fullPath: '/dashboard/facebook/campaigns/$id'
+      preLoaderRoute: typeof DashboardFacebookCampaignsIdRouteImport
+      parentRoute: typeof DashboardFacebookCampaignsRoute
     }
     '/api/public/hooks/process-bulk-jobs': {
       id: '/api/public/hooks/process-bulk-jobs'
@@ -446,20 +545,42 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface DashboardFacebookCampaignsRouteChildren {
+  DashboardFacebookCampaignsIdRoute: typeof DashboardFacebookCampaignsIdRoute
+  DashboardFacebookCampaignsNewRoute: typeof DashboardFacebookCampaignsNewRoute
+}
+
+const DashboardFacebookCampaignsRouteChildren: DashboardFacebookCampaignsRouteChildren =
+  {
+    DashboardFacebookCampaignsIdRoute: DashboardFacebookCampaignsIdRoute,
+    DashboardFacebookCampaignsNewRoute: DashboardFacebookCampaignsNewRoute,
+  }
+
+const DashboardFacebookCampaignsRouteWithChildren =
+  DashboardFacebookCampaignsRoute._addFileChildren(
+    DashboardFacebookCampaignsRouteChildren,
+  )
+
 interface DashboardFacebookRouteChildren {
   DashboardFacebookBotRoute: typeof DashboardFacebookBotRoute
+  DashboardFacebookCampaignsRoute: typeof DashboardFacebookCampaignsRouteWithChildren
   DashboardFacebookGroupsRoute: typeof DashboardFacebookGroupsRoute
   DashboardFacebookHistoryRoute: typeof DashboardFacebookHistoryRoute
   DashboardFacebookJobsRoute: typeof DashboardFacebookJobsRoute
+  DashboardFacebookMediaRoute: typeof DashboardFacebookMediaRoute
   DashboardFacebookStatusRoute: typeof DashboardFacebookStatusRoute
+  DashboardFacebookTemplatesRoute: typeof DashboardFacebookTemplatesRoute
 }
 
 const DashboardFacebookRouteChildren: DashboardFacebookRouteChildren = {
   DashboardFacebookBotRoute: DashboardFacebookBotRoute,
+  DashboardFacebookCampaignsRoute: DashboardFacebookCampaignsRouteWithChildren,
   DashboardFacebookGroupsRoute: DashboardFacebookGroupsRoute,
   DashboardFacebookHistoryRoute: DashboardFacebookHistoryRoute,
   DashboardFacebookJobsRoute: DashboardFacebookJobsRoute,
+  DashboardFacebookMediaRoute: DashboardFacebookMediaRoute,
   DashboardFacebookStatusRoute: DashboardFacebookStatusRoute,
+  DashboardFacebookTemplatesRoute: DashboardFacebookTemplatesRoute,
 }
 
 const DashboardFacebookRouteWithChildren =
