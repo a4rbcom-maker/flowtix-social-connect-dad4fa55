@@ -950,9 +950,41 @@ function FacebookPage() {
           </div>
         </div>
 
-        {/* Token expiry banner — only when expired or within EXPIRY_WARN_DAYS.
-            Reads silently from inspectFacebookConnection on mount. The user
-            can dismiss for the current view; persists per-token in sessionStorage. */}
+        {appRateLimitMessage && !rateLimitDismissed && (
+          <div className="relative rounded-2xl border border-amber-400/50 bg-amber-50 p-5 shadow-sm dark:bg-amber-950/20">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-card text-amber-600 dark:text-amber-400">
+                <AlertCircle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-bold text-foreground">
+                  {lang === "ar" ? "حد طلبات Meta ممتلئ" : "Meta request limit reached"}
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">{appRateLimitMessage}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => openExternal(e, "https://developers.facebook.com/apps/")}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-90"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    {lang === "ar" ? "فتح Meta App Dashboard" : "Open Meta App Dashboard"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRateLimitDismissed(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent"
+                  >
+                    {lang === "ar" ? "إخفاء مؤقتاً" : "Dismiss"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Token expiry banner — only after a manual status check. This avoids
+            spending Meta quota on every page load. */}
         {(() => {
           if (!connection || !tokenExpiry || expiryDismissed) return null;
           const expired = tokenExpiry.isExpired || tokenExpiry.valid === false;
