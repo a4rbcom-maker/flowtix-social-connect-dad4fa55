@@ -636,17 +636,11 @@ function FacebookPage() {
     setTestError(null);
     try {
       const res = await fbCall(testFacebookToken, { access_token: cleaned });
-      if (!res || !res.profile) {
-        throw new Error(
-          lang === "ar"
-            ? "رد غير متوقع من الخادم. غالباً النسخة المنشورة قديمة — أعد النشر."
-            : "Unexpected server response. The deployed version may be outdated — redeploy.",
-        );
-      }
-      setTestResult({ profile: res.profile, granted: res.granted ?? [], declined: res.declined ?? [] });
-      const missing = requiredScopes.filter((s) => !(res.granted ?? []).includes(s));
+      const normalized = normalizeAuthResponse(res);
+      setTestResult(normalized);
+      const missing = requiredScopes.filter((s) => !normalized.granted.includes(s));
       if (missing.length === 0) {
-        toast.success(`${t.testSuccess}: ${res.profile.name}`);
+        toast.success(`${t.testSuccess}: ${normalized.profile.name}`);
       } else {
         toast.warning(`${t.testSuccess} — ${t.missingScopes}: ${missing.length}`);
       }
@@ -671,17 +665,11 @@ function FacebookPage() {
     setConnecting(true);
     try {
       const res = await fbCall(connectFacebook, { access_token: cleaned });
-      if (!res || !res.profile) {
-        throw new Error(
-          lang === "ar"
-            ? "رد غير متوقع من الخادم. غالباً النسخة المنشورة قديمة — أعد النشر."
-            : "Unexpected server response. The deployed version may be outdated — redeploy.",
-        );
-      }
+      const normalized = normalizeAuthResponse(res);
       toast.success(
         lang === "ar"
-          ? `تم الربط بنجاح: ${res.profile.name}`
-          : `Connected as ${res.profile.name}`,
+          ? `تم الربط بنجاح: ${normalized.profile.name}`
+          : `Connected as ${normalized.profile.name}`,
       );
       setToken("");
       // refresh connection
