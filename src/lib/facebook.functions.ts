@@ -62,7 +62,7 @@ function classifyFbError(
   const rawMsg = errBody?.message || `Facebook API error (${status})`;
 
   // Permission missing — code 10 or 200..299
-  const permMatch = /requires.*permission[s]?\s*[:\-]?\s*([a-z_,\s]+)/i.exec(rawMsg);
+  const permMatch = /requires.*permission[s]?\s*[:-]?\s*([a-z_,\s]+)/i.exec(rawMsg);
   const missingPermission = permMatch
     ? (permMatch[1].split(/[,\s]+/).filter(Boolean)[0] ?? null)
     : null;
