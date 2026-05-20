@@ -689,6 +689,7 @@ function FacebookPage() {
   // whitespace, so this is always safe and prevents "invalid token" errors.
   const cleanToken = (raw: string) => raw.replace(/\s+/g, "");
   const TEST_CACHE_TTL_MS = 30_000;
+  const RATE_LIMIT_CACHE_TTL_MS = 15 * 60_000;
   const tokenCacheKey = (cleaned: string) =>
     `flowtix:fb:test:${cleaned.length}:${cleaned.slice(0, 8)}:${cleaned.slice(-8)}`;
 
@@ -702,7 +703,8 @@ function FacebookPage() {
         result?: TokenCheckResult;
         error?: { message: string; type?: string | null };
       };
-      if (!cached.at || Date.now() - cached.at > TEST_CACHE_TTL_MS) return null;
+      const ttl = cached.error?.type === "app_rate_limited" ? RATE_LIMIT_CACHE_TTL_MS : TEST_CACHE_TTL_MS;
+      if (!cached.at || Date.now() - cached.at > ttl) return null;
       return cached;
     } catch {
       return null;
@@ -729,6 +731,9 @@ function FacebookPage() {
     setAppRateLimitMessage(friendlyError(message));
     setRateLimitDismissed(false);
   };
+
+  const connectionName = (name: string | null | undefined) =>
+    name?.startsWith("Facebook token saved") ? t.savedPendingName : name || t.savedPendingName;
 
   const handleTest = async () => {
     const cleaned = cleanToken(token);
