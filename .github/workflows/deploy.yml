@@ -383,6 +383,7 @@ jobs:
             --exclude='.user.ini' \
             --exclude='.htaccess' \
             --exclude='.well-known/' \
+            --exclude='var/' \
             --exclude='*.log' \
             -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
             ./deploy/ \
