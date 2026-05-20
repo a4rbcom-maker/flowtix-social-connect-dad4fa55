@@ -651,3 +651,69 @@ function sumField(rows: Array<Record<string, number | string>>, field: string): 
   return rows.reduce((acc, r) => acc + (Number(r[field]) || 0), 0);
 }
 
+
+function downloadCsv(filename: string, rows: Array<Record<string, unknown>>) {
+  if (rows.length === 0) return;
+  const headers = Array.from(
+    rows.reduce<Set<string>>((acc, r) => {
+      Object.keys(r).forEach((k) => acc.add(k));
+      return acc;
+    }, new Set<string>()),
+  );
+  const escape = (v: unknown) => {
+    const s = v == null ? "" : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [
+    headers.join(","),
+    ...rows.map((r) => headers.map((h) => escape(r[h])).join(",")),
+  ].join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function AudienceList({
+  title,
+  items,
+  icon,
+  countLabel,
+}: {
+  title: string;
+  items: Array<{ id: string; name: string; count: number }>;
+  icon: React.ReactNode;
+  countLabel: string;
+}) {
+  return (
+    <div className="rounded-lg border bg-muted/20 p-4">
+      <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+        {icon}
+        <span>{title}</span>
+        <span className="text-xs text-muted-foreground">({items.length})</span>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">—</p>
+      ) : (
+        <ul className="max-h-80 space-y-1 overflow-y-auto pe-1 text-sm">
+          {items.map((it, i) => (
+            <li key={it.id} className="flex items-center justify-between gap-3 rounded px-2 py-1.5 hover:bg-background">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="w-5 shrink-0 text-xs text-muted-foreground">{i + 1}</span>
+                <span className="truncate">{it.name}</span>
+              </div>
+              <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary" title={countLabel}>
+                {it.count}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
