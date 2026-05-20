@@ -125,6 +125,25 @@ function serializeError(err: unknown) {
   };
 }
 
+function parsePermissions(perms: unknown) {
+  const rows = Array.isArray((perms as { data?: unknown })?.data) ? (perms as { data: unknown[] }).data : [];
+  const granted = rows
+    .filter((p): p is { status: string; permission: string } =>
+      typeof (p as { status?: unknown })?.status === "string"
+      && typeof (p as { permission?: unknown })?.permission === "string"
+      && (p as { status: string }).status === "granted",
+    )
+    .map((p) => p.permission);
+  const declined = rows
+    .filter((p): p is { status: string; permission: string } =>
+      typeof (p as { status?: unknown })?.status === "string"
+      && typeof (p as { permission?: unknown })?.permission === "string"
+      && (p as { status: string }).status !== "granted",
+    )
+    .map((p) => p.permission);
+  return { granted, declined };
+}
+
 /**
  * Verify a Facebook access token, fetch user profile,
  * and persist the connection for the current user.
@@ -182,12 +201,7 @@ export const testFacebookToken = createServerFn({ method: "POST" })
     const token = data.access_token;
     const me = await fbGet("/me?fields=id,name,email", token);
     const perms = await fbGet("/me/permissions", token);
-    const granted = (perms.data ?? [])
-      .filter((p: { status: string }) => p.status === "granted")
-      .map((p: { permission: string }) => p.permission);
-    const declined = (perms.data ?? [])
-      .filter((p: { status: string }) => p.status !== "granted")
-      .map((p: { permission: string }) => p.permission);
+    const { granted, declined } = parsePermissions(perms);
     return {
       success: true,
       profile: { id: me.id, name: me.name, email: me.email ?? null },
@@ -342,12 +356,7 @@ export const inspectFacebookConnection = createServerFn({ method: "GET" })
         fbGet("/me/permissions", token),
       ]);
       profile = { id: String(me.id), name: me.name, email: me.email ?? null };
-      granted = (perms.data ?? [])
-        .filter((p: { status: string }) => p.status === "granted")
-        .map((p: { permission: string }) => p.permission);
-      declined = (perms.data ?? [])
-        .filter((p: { status: string }) => p.status !== "granted")
-        .map((p: { permission: string }) => p.permission);
+      ({ granted, declined } = parsePermissions(perms));
     } catch (err) {
       valid = false;
       validationError = err instanceof Error ? err.message : "Token validation failed";
@@ -383,7 +392,8 @@ export const inspectFacebookConnection = createServerFn({ method: "GET" })
       "pages_read_engagement",
       "pages_manage_metadata",
     ];
-    const missingScopes = requiredScopes.filter((s) => !granted.includes(s));
+    const grantedSet = new Set(Array.isArray(granted) ? granted : []);
+    const missingScopes = requiredScopes.filter((s) => !grantedSet.has(s));
 
     return {
       connected: true as const,
