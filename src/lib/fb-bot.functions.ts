@@ -357,11 +357,13 @@ export const createPostJob = createServerFn({ method: "POST" })
         user_id: userId,
         account_id: data.accountId,
         job_type: "post_to_groups",
-        payload: {
+        payload: buildPostToGroupsPayload({
           content: data.content,
           groupIds: data.groupIds,
+          targetKind: "groups",
+          mediaUrls: [],
           intervalMinutes: data.intervalMinutes,
-        },
+        }),
         total_items: data.groupIds.length,
         scheduled_at: data.scheduledAt ?? new Date().toISOString(),
         status: "pending",
