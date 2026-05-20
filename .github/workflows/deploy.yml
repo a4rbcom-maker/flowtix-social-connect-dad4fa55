@@ -447,9 +447,9 @@ jobs:
               ROLLBACK_SRC=$(grep '^INTEGRITY_ROLLBACK_SRC=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
               ROLLBACK_KIND=$(grep '^INTEGRITY_ROLLBACK_KIND=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
               echo ""
-              echo "::warning::Bundle integrity check failed — snapshot was auto-restored on disk."
+              echo "::warning::Bundle integrity check failed — snapshot was auto-restored on disk AND PM2 was reloaded onto it."
               echo "::warning::Source kind: ${ROLLBACK_KIND:-unknown} — path: ${ROLLBACK_SRC}"
-              echo "::warning::PM2 was NOT restarted; the previously-running process is still serving traffic."
+              echo "::warning::The site is serving the restored snapshot. The NEW commit was NOT deployed — push a fix to retry."
               echo "FAILURE_REASON=integrity-restored-last-good" >> "$GITHUB_ENV"
             elif grep -qE '^INTEGRITY_ROLLBACK_RESULT=(no_valid_snapshot|no_backups_dir|no_last_good|invalid_last_good)' /tmp/install-restart.log; then
               echo "::error::Bundle integrity check failed AND no valid snapshot was available to auto-restore."
