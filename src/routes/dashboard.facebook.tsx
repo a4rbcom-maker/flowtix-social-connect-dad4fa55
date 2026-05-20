@@ -763,7 +763,8 @@ function FacebookPage() {
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : t.testFailed;
       const fbType = (err as Error & { fbType?: string })?.fbType ?? null;
-      const msg = friendlyError(raw);
+      const rateLimited = isAppRateLimitError(raw, fbType);
+      const msg = rateLimited ? `${friendlyError(raw)} ${t.testLimitedButCanSave}` : friendlyError(raw);
       writeTokenTestCache(cleaned, { error: { message: raw, type: fbType } });
       rememberRateLimitIfNeeded(raw, fbType);
       setTestResult(null);
@@ -785,13 +786,21 @@ function FacebookPage() {
     try {
       const res = await fbCall(connectFacebook, { access_token: cleaned });
       const normalized = normalizeAuthResponse(res);
-      setAppRateLimitMessage(null);
+      if (normalized.warning?.message) {
+        rememberRateLimitIfNeeded(normalized.warning.message, normalized.warning.type);
+      } else {
+        setAppRateLimitMessage(null);
+      }
       toast.success(
-        lang === "ar"
-          ? `تم الربط بنجاح: ${normalized.profile.name}`
-          : `Connected as ${normalized.profile.name}`,
+        normalized.savedOnly
+          ? t.savedDespiteLimit
+          : lang === "ar"
+            ? `تم الربط بنجاح: ${normalized.profile.name}`
+            : `Connected as ${normalized.profile.name}`,
       );
       setToken("");
+      setTestResult(null);
+      setTestError(null);
       // refresh connection
       const c = await fbCall(getFacebookConnection);
       setConnection(c.connection);
