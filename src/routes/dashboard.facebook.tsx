@@ -59,6 +59,7 @@ interface Connection {
   fb_user_email: string | null;
   last_synced_at: string | null;
   created_at: string;
+  token_preview?: string | null;
 }
 
 interface Group {
@@ -99,6 +100,8 @@ function FacebookPage() {
     isExpired: boolean;
     valid: boolean;
   } | null>(null);
+  const [appRateLimitMessage, setAppRateLimitMessage] = useState<string | null>(null);
+  const [rateLimitDismissed, setRateLimitDismissed] = useState(false);
   const [expiryDismissed, setExpiryDismissed] = useState(false);
   const EXPIRY_WARN_DAYS = 7;
   const [token, setToken] = useState("");
