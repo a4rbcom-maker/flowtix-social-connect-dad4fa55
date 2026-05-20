@@ -574,6 +574,11 @@ function FacebookPage() {
 
   const friendlyError = (raw: string): string => {
     const m = raw.toLowerCase();
+    if (m.includes("cannot read") && m.includes("includes")) {
+      return lang === "ar"
+        ? "التوكن صحيح، لكن رد الصلاحيات من الخادم غير مكتمل. جرّب الحفظ مباشرة أو أعد تحميل الصفحة."
+        : "The token is valid, but the permissions response was incomplete. Try saving directly or refresh the page.";
+    }
     if (m.includes("cannot read") && m.includes("profile")) {
       return lang === "ar"
         ? "رد الخادم غير مكتمل. حدّث الصفحة وجرب مرة أخرى، وإذا حدث هذا على الموقع فقط فأعد النشر."
@@ -590,6 +595,14 @@ function FacebookPage() {
     if (m.includes("permission") || m.includes("scope")) return t.errPermission;
     if (m.includes("fetch") || m.includes("network") || m.includes("failed to fetch")) return t.errNetwork;
     return raw;
+  };
+
+  const toStringArray = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((s): s is string => typeof s === "string") : [];
+
+  const missingRequiredScopes = (granted: unknown): string[] => {
+    const grantedSet = new Set(toStringArray(granted));
+    return requiredScopes.filter((scope) => !grantedSet.has(scope));
   };
 
   const normalizeAuthResponse = (res: unknown) => {
@@ -614,8 +627,8 @@ function FacebookPage() {
         name,
         email: typeof profile?.email === "string" ? profile.email : null,
       },
-      granted: Array.isArray(value?.granted) ? value.granted.filter((s): s is string => typeof s === "string") : [],
-      declined: Array.isArray(value?.declined) ? value.declined.filter((s): s is string => typeof s === "string") : [],
+      granted: toStringArray(value?.granted),
+      declined: toStringArray(value?.declined),
     };
   };
 
