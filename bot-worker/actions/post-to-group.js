@@ -170,7 +170,23 @@ async function runPostToGroups({ page, job, report }) {
     await report({ status: "completed" });
   } finally {
     // Cleanup temp media files
-    for (const f of mediaFiles) { fs.unlink(f, () => {}); }
+    const cleanedCount = mediaFiles.length;
+    await Promise.all(
+      mediaFiles.map((f) => new Promise((resolve) => fs.unlink(f, () => resolve()))),
+    );
+    if (cleanedCount > 0) {
+      await report({
+        result: {
+          target: "__media__",
+          status: "skipped",
+          data: {
+            event: "media_cleanup_done",
+            count: cleanedCount,
+            at: new Date().toISOString(),
+          },
+        },
+      });
+    }
   }
 }
 
