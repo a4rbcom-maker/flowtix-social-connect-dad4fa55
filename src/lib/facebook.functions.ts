@@ -565,7 +565,7 @@ export const inspectFacebookConnection = createServerFn({ method: "GET" })
       ({ granted, declined } = parsePermissions(perms));
     } catch (err) {
       validationErrorType = err instanceof FacebookApiError ? err.type : null;
-      valid = validationErrorType === "app_rate_limited";
+      valid = false;
       validationError = err instanceof Error ? err.message : "Token validation failed";
       if (validationError.toLowerCase().includes("expired")) isExpired = true;
       if (validationErrorType === "app_rate_limited" && row.fb_user_id) {
