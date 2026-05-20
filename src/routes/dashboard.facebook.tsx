@@ -599,8 +599,15 @@ function FacebookPage() {
     setTestError(null);
     try {
       const res = await fbCall(testFacebookToken, { access_token: cleaned });
-      setTestResult({ profile: res.profile, granted: res.granted, declined: res.declined });
-      const missing = requiredScopes.filter((s) => !res.granted.includes(s));
+      if (!res || !res.profile) {
+        throw new Error(
+          lang === "ar"
+            ? "رد غير متوقع من الخادم. غالباً النسخة المنشورة قديمة — أعد النشر."
+            : "Unexpected server response. The deployed version may be outdated — redeploy.",
+        );
+      }
+      setTestResult({ profile: res.profile, granted: res.granted ?? [], declined: res.declined ?? [] });
+      const missing = requiredScopes.filter((s) => !(res.granted ?? []).includes(s));
       if (missing.length === 0) {
         toast.success(`${t.testSuccess}: ${res.profile.name}`);
       } else {
