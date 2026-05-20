@@ -1353,7 +1353,7 @@ function FacebookPage() {
                     {t.connected}
                   </div>
                   <p className="text-base font-semibold text-foreground">
-                    {t.connectedAs}: {connection.fb_user_name}
+                    {t.connectedAs}: {connectionName(connection.fb_user_name)}
                   </p>
                   {connection.fb_user_email && (
                     <p className="text-sm text-muted-foreground">{connection.fb_user_email}</p>
@@ -1366,6 +1366,12 @@ function FacebookPage() {
                         )
                       : t.notSynced}
                   </p>
+                  {connection.fb_user_name?.startsWith("Facebook token saved") && (
+                    <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      {t.savedDespiteLimit}
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
