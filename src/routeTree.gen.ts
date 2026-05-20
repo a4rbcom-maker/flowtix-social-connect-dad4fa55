@@ -23,6 +23,7 @@ import { Route as DashboardBulkRouteImport } from './routes/dashboard.bulk'
 import { Route as DashboardActivityRouteImport } from './routes/dashboard.activity'
 import { Route as DashboardFacebookTemplatesRouteImport } from './routes/dashboard.facebook.templates'
 import { Route as DashboardFacebookStatusRouteImport } from './routes/dashboard.facebook.status'
+import { Route as DashboardFacebookMessagesRouteImport } from './routes/dashboard.facebook.messages'
 import { Route as DashboardFacebookMediaRouteImport } from './routes/dashboard.facebook.media'
 import { Route as DashboardFacebookJobsRouteImport } from './routes/dashboard.facebook.jobs'
 import { Route as DashboardFacebookInsightsRouteImport } from './routes/dashboard.facebook.insights'
@@ -108,6 +109,12 @@ const DashboardFacebookStatusRoute = DashboardFacebookStatusRouteImport.update({
   path: '/status',
   getParentRoute: () => DashboardFacebookRoute,
 } as any)
+const DashboardFacebookMessagesRoute =
+  DashboardFacebookMessagesRouteImport.update({
+    id: '/messages',
+    path: '/messages',
+    getParentRoute: () => DashboardFacebookRoute,
+  } as any)
 const DashboardFacebookMediaRoute = DashboardFacebookMediaRouteImport.update({
   id: '/media',
   path: '/media',
@@ -201,6 +208,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/facebook/insights': typeof DashboardFacebookInsightsRoute
   '/dashboard/facebook/jobs': typeof DashboardFacebookJobsRoute
   '/dashboard/facebook/media': typeof DashboardFacebookMediaRoute
+  '/dashboard/facebook/messages': typeof DashboardFacebookMessagesRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
@@ -230,6 +238,7 @@ export interface FileRoutesByTo {
   '/dashboard/facebook/insights': typeof DashboardFacebookInsightsRoute
   '/dashboard/facebook/jobs': typeof DashboardFacebookJobsRoute
   '/dashboard/facebook/media': typeof DashboardFacebookMediaRoute
+  '/dashboard/facebook/messages': typeof DashboardFacebookMessagesRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
@@ -260,6 +269,7 @@ export interface FileRoutesById {
   '/dashboard/facebook/insights': typeof DashboardFacebookInsightsRoute
   '/dashboard/facebook/jobs': typeof DashboardFacebookJobsRoute
   '/dashboard/facebook/media': typeof DashboardFacebookMediaRoute
+  '/dashboard/facebook/messages': typeof DashboardFacebookMessagesRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
@@ -291,6 +301,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/insights'
     | '/dashboard/facebook/jobs'
     | '/dashboard/facebook/media'
+    | '/dashboard/facebook/messages'
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
     | '/api/public/bot/job-update'
@@ -320,6 +331,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/insights'
     | '/dashboard/facebook/jobs'
     | '/dashboard/facebook/media'
+    | '/dashboard/facebook/messages'
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
     | '/api/public/bot/job-update'
@@ -349,6 +361,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/insights'
     | '/dashboard/facebook/jobs'
     | '/dashboard/facebook/media'
+    | '/dashboard/facebook/messages'
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
     | '/api/public/bot/job-update'
@@ -471,6 +484,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardFacebookStatusRouteImport
       parentRoute: typeof DashboardFacebookRoute
     }
+    '/dashboard/facebook/messages': {
+      id: '/dashboard/facebook/messages'
+      path: '/messages'
+      fullPath: '/dashboard/facebook/messages'
+      preLoaderRoute: typeof DashboardFacebookMessagesRouteImport
+      parentRoute: typeof DashboardFacebookRoute
+    }
     '/dashboard/facebook/media': {
       id: '/dashboard/facebook/media'
       path: '/media'
@@ -589,6 +609,7 @@ interface DashboardFacebookRouteChildren {
   DashboardFacebookInsightsRoute: typeof DashboardFacebookInsightsRoute
   DashboardFacebookJobsRoute: typeof DashboardFacebookJobsRoute
   DashboardFacebookMediaRoute: typeof DashboardFacebookMediaRoute
+  DashboardFacebookMessagesRoute: typeof DashboardFacebookMessagesRoute
   DashboardFacebookStatusRoute: typeof DashboardFacebookStatusRoute
   DashboardFacebookTemplatesRoute: typeof DashboardFacebookTemplatesRoute
 }
@@ -601,6 +622,7 @@ const DashboardFacebookRouteChildren: DashboardFacebookRouteChildren = {
   DashboardFacebookInsightsRoute: DashboardFacebookInsightsRoute,
   DashboardFacebookJobsRoute: DashboardFacebookJobsRoute,
   DashboardFacebookMediaRoute: DashboardFacebookMediaRoute,
+  DashboardFacebookMessagesRoute: DashboardFacebookMessagesRoute,
   DashboardFacebookStatusRoute: DashboardFacebookStatusRoute,
   DashboardFacebookTemplatesRoute: DashboardFacebookTemplatesRoute,
 }
