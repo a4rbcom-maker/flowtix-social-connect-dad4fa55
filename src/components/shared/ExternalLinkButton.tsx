@@ -70,7 +70,47 @@ export async function openExternalUrl(
     log("warn", "openExternalUrl:env", e instanceof Error ? e.message : String(e));
   }
 
-  // 1) ALWAYS copy first.
+  // CRITICAL: open the tab SYNCHRONOUSLY first while we still have the user
+  // gesture. Awaiting clipboard.writeText() before this breaks the gesture
+  // chain and the browser blocks the popup.
+  let opened = false;
+  let method: string | null = null;
+  let popupWindow: Window | null = null;
+
+  // 1) Try window.open first — only reliable way to detect popup blockers.
+  try {
+    popupWindow = window.open(url, "_blank", "noopener,noreferrer");
+    if (popupWindow) {
+      opened = true;
+      method = "window.open";
+      log("success", "window.open", "got window");
+    } else {
+      log("warn", "window.open", "returned null (popup blocked)");
+    }
+  } catch (e) {
+    log("error", "window.open", e instanceof Error ? e.message : String(e));
+  }
+
+  // 2) Fallback: synthetic anchor click (for sandboxed iframes).
+  if (!opened) {
+    try {
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener,noreferrer";
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      opened = true;
+      method = "anchor";
+      log("success", "anchor.click", "dispatched");
+    } catch (e) {
+      log("warn", "anchor.click", e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  // 3) NOW copy to clipboard (async is fine — gesture already used).
   let copied = false;
   try {
     await navigator.clipboard.writeText(url);
@@ -80,8 +120,7 @@ export async function openExternalUrl(
     log("error", "clipboard.writeText", e instanceof Error ? e.message : String(e));
   }
 
-  // Helper that emits the right success toast based on whether copy worked.
-  const notifyOpened = (method: string) => {
+  const notifyOpened = (m: string) => {
     if (silent) return;
     const text = copied ? msg("openedAndCopied") : msg("openedOnly");
     toast.success(text, {
@@ -92,39 +131,12 @@ export async function openExternalUrl(
           : "If the tab didn't appear, check your popup blocker.",
       duration: 4500,
     });
-    log("info", "toast", `opened via ${method} (copied=${copied})`);
+    log("info", "toast", `opened via ${m} (copied=${copied})`);
   };
 
-  // 2) Synthetic anchor click — most reliable inside sandboxed iframes.
-  //    NOTE: we cannot programmatically confirm a tab actually opened, so the
-  //    description hint above keeps the wording honest if popups are blocked.
-  try {
-    const a = document.createElement("a");
-    a.href = url;
-    a.target = "_blank";
-    a.rel = "noopener,noreferrer";
-    a.style.display = "none";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    log("success", "anchor.click", "dispatched");
-    notifyOpened("anchor");
-    return { copied, opened: true, method: "anchor" };
-  } catch (e) {
-    log("warn", "anchor.click", e instanceof Error ? e.message : String(e));
-  }
-
-  // 3) window.open — we CAN confirm this one (returns null if blocked).
-  try {
-    const w = window.open(url, "_blank", "noopener,noreferrer");
-    if (w) {
-      log("success", "window.open", "got window");
-      notifyOpened("window.open");
-      return { copied, opened: true, method: "window.open" };
-    }
-    log("warn", "window.open", "returned null (popup blocked)");
-  } catch (e) {
-    log("error", "window.open", e instanceof Error ? e.message : String(e));
+  if (opened && method) {
+    notifyOpened(method);
+    return { copied, opened: true, method };
   }
 
   // 4) Top-frame navigation.
