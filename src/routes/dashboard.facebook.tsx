@@ -113,6 +113,7 @@ function FacebookPage() {
   const [token, setToken] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [inspectingToken, setInspectingToken] = useState(false);
   const [groups, setGroups] = useState<Group[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
@@ -792,6 +793,35 @@ function FacebookPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Disconnect failed";
       toast.error(msg);
+    }
+  };
+
+  const handleInspectToken = async () => {
+    if (!connection) return;
+    setInspectingToken(true);
+    try {
+      const insp = await fbCall(inspectFacebookConnection);
+      if (insp.connected) {
+        setTokenExpiry({
+          expiresAt: insp.expiresAt,
+          dataAccessExpiresAt: insp.dataAccessExpiresAt,
+          isExpired: insp.isExpired,
+          valid: insp.valid,
+        });
+        if (insp.validationError) {
+          rememberRateLimitIfNeeded(insp.validationError);
+          toast.warning(friendlyError(insp.validationError));
+        } else {
+          setAppRateLimitMessage(null);
+          toast.success(lang === "ar" ? "تم فحص حالة التوكن" : "Token status checked");
+        }
+      }
+    } catch (err: unknown) {
+      const raw = err instanceof Error ? err.message : "Token inspection failed";
+      rememberRateLimitIfNeeded(raw);
+      toast.error(friendlyError(raw));
+    } finally {
+      setInspectingToken(false);
     }
   };
 
