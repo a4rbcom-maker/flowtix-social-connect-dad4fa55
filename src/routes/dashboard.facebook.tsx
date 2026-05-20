@@ -1321,6 +1321,19 @@ function FacebookPage() {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleInspectToken}
+                    disabled={inspectingToken}
+                    className="inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {inspectingToken ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    {lang === "ar" ? "فحص التوكن" : "Check token"}
+                  </button>
                   <Link
                     to="/dashboard/facebook/status"
                     className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-primary/20 hover:opacity-95"
