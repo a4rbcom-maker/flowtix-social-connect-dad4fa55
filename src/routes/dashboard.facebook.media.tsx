@@ -1,0 +1,163 @@
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
+import { Upload, Trash2, Image as ImageIcon, Video, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { useAuth } from "@/lib/auth";
+import { useI18n } from "@/lib/i18n";
+import { supabase } from "@/integrations/supabase/client";
+import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
+import { listMediaAssets, recordMediaAsset, deleteMediaAsset } from "@/lib/fb-campaigns.functions";
+import type { Tables } from "@/integrations/supabase/types";
+
+export const Route = createFileRoute("/dashboard/facebook/media")({
+  ssr: false,
+  component: MediaPage,
+});
+
+type Asset = Tables<"fb_media_assets">;
+
+function MediaPage() {
+  const { user, loading } = useAuth();
+  const { lang, dir } = useI18n();
+  const navigate = useNavigate();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [items, setItems] = useState<Asset[]>([]);
+  const [uploading, setUploading] = useState(false);
+
+  const t = lang === "ar"
+    ? {
+        title: "مكتبة الوسائط",
+        subtitle: "صور وفيديوهات تُستخدم في حملات النشر",
+        upload: "رفع ملف",
+        empty: "لا توجد وسائط بعد",
+        delete: "حذف",
+        confirmDelete: "حذف هذا الملف؟",
+        uploaded: "تم الرفع",
+        deleted: "تم الحذف",
+        tooBig: "الملف كبير جداً (الحد الأقصى 50 ميجا)",
+      }
+    : {
+        title: "Media Library",
+        subtitle: "Images and videos used in your campaigns",
+        upload: "Upload file",
+        empty: "No media yet",
+        delete: "Delete",
+        confirmDelete: "Delete this file?",
+        uploaded: "Uploaded",
+        deleted: "Deleted",
+        tooBig: "File too large (max 50 MB)",
+      };
+
+  useEffect(() => { if (!loading && !user) navigate({ to: "/login" }); }, [user, loading, navigate]);
+
+  const callFn = async <T,>(fn: (opts: never) => Promise<T>, body?: unknown): Promise<T> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error("Not authenticated");
+    return fn({ data: body, headers: { Authorization: `Bearer ${session.access_token}` } } as never);
+  };
+
+  const load = async () => {
+    try { setItems(await callFn<Asset[]>(listMediaAssets)); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
+  };
+
+  useEffect(() => { if (user) load(); /* eslint-disable-next-line */ }, [user]);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    if (file.size > 50 * 1024 * 1024) { toast.error(t.tooBig); return; }
+    const kind: "image" | "video" = file.type.startsWith("video/") ? "video" : "image";
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop() || (kind === "video" ? "mp4" : "jpg");
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
+      const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`;
+      const { error: upErr } = await supabase.storage.from("fb-media").upload(path, file, {
+        contentType: file.type,
+        upsert: false,
+      });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("fb-media").getPublicUrl(path);
+      await callFn(recordMediaAsset, {
+        kind,
+        storagePath: path,
+        publicUrl: pub.publicUrl,
+        name: file.name,
+        sizeBytes: file.size,
+        mimeType: file.type,
+      });
+      toast.success(t.uploaded);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const handleDelete = async (a: Asset) => {
+    if (!confirm(t.confirmDelete)) return;
+    try {
+      await callFn(deleteMediaAsset, { id: a.id });
+      toast.success(t.deleted);
+      await load();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
+  };
+
+  if (loading) return null;
+
+  return (
+    <DashboardLayout title={t.title}>
+      <div dir={dir} className="space-y-6">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-2xl font-bold text-foreground">{t.title}</h2>
+            <p className="text-sm text-muted-foreground mt-1">{t.subtitle}</p>
+          </div>
+          <label className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90 cursor-pointer">
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            {t.upload}
+            <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleUpload} disabled={uploading} />
+          </label>
+        </div>
+
+        {items.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border p-10 text-center text-muted-foreground">
+            <ImageIcon className="w-10 h-10 mx-auto mb-3 opacity-40" />
+            {t.empty}
+          </div>
+        ) : (
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+            {items.map((a) => (
+              <div key={a.id} className="group relative rounded-xl border border-border bg-card overflow-hidden hover:shadow-md transition-shadow">
+                <div className="aspect-square bg-muted flex items-center justify-center overflow-hidden">
+                  {a.kind === "image" ? (
+                    <img src={a.public_url} alt={a.name} className="w-full h-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className="flex flex-col items-center text-muted-foreground">
+                      <Video className="w-10 h-10" />
+                      <span className="text-xs mt-1">Video</span>
+                    </div>
+                  )}
+                </div>
+                <div className="p-2">
+                  <p className="text-xs text-foreground line-clamp-1">{a.name}</p>
+                  <p className="text-[10px] text-muted-foreground">{(a.size_bytes / 1024).toFixed(0)} KB</p>
+                </div>
+                <button
+                  onClick={() => handleDelete(a)}
+                  className="absolute top-1.5 right-1.5 p-1.5 rounded-md bg-background/90 border border-border opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:bg-destructive/10"
+                  title={t.delete}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </DashboardLayout>
+  );
+}
