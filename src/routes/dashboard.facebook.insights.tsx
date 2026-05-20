@@ -254,7 +254,7 @@ function InsightsPage() {
   const genderAgeChart = useMemo(() => {
     if (!insights?.ok) return [];
     const buckets = new Map<string, { age: string; male: number; female: number }>();
-    for (const r of insights.demographics.genderAge) {
+    for (const r of safeArray<{ age?: string; gender?: string; count?: number }>(insights.demographics?.genderAge)) {
       if (!r.age) continue;
       let b = buckets.get(r.age);
       if (!b) {
@@ -269,7 +269,7 @@ function InsightsPage() {
 
   const countryChart = useMemo(() => {
     if (!insights?.ok) return [];
-    return insights.demographics.country.map((c) => ({
+    return safeArray<{ code: string; count: number }>(insights.demographics?.country).map((c) => ({
       name: ar ? (COUNTRY_NAMES_AR[c.code] ?? c.code) : c.code,
       code: c.code,
       count: c.count,
@@ -588,12 +588,12 @@ function InsightsPage() {
                 <h3 className="font-semibold">{t.bestHours}</h3>
               </div>
               <p className="mb-4 text-xs text-muted-foreground">{t.bestHoursDesc}</p>
-              {insights.onlineHourly.every((h) => h.avg === 0) ? (
+              {safeArray<{ hour: number; avg: number }>(insights.onlineHourly).every((h) => h.avg === 0) ? (
                 <p className="text-sm text-muted-foreground">—</p>
               ) : (
                 <div className="h-56 w-full">
                   <ResponsiveContainer>
-                    <BarChart data={insights.onlineHourly}>
+                    <BarChart data={safeArray(insights.onlineHourly)}>
                       <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                       <XAxis dataKey="hour" fontSize={11} tickFormatter={(h: number) => `${h}:00`} />
                       <YAxis fontSize={11} />
@@ -605,12 +605,12 @@ function InsightsPage() {
               )}
             </Card>
 
-            {insights.warnings.length > 0 && (
+            {safeArray<string>(insights.warnings).length > 0 && (
               <Card className="border-amber-300/40 bg-amber-50/50 p-4 text-sm dark:bg-amber-950/20">
                 <p className="mb-2 font-medium">{t.warningTitle}</p>
                 <p className="mb-2 text-xs text-muted-foreground">{t.warningDesc}</p>
                 <ul className="list-inside list-disc space-y-1 text-xs text-muted-foreground">
-                  {insights.warnings.map((w, i) => (
+                  {safeArray<string>(insights.warnings).map((w, i) => (
                     <li key={i}>{w}</li>
                   ))}
                 </ul>
