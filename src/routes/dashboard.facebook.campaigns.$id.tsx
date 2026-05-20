@@ -88,7 +88,14 @@ function normalizeCampaign(raw: unknown): Campaign {
     delay_max_seconds: Number(r.delay_max_seconds ?? 0),
   };
 }
-type Result = { id: string; target: string | null; status: string; error: string | null; created_at: string };
+type Result = { id: string; target: string | null; status: string; error: string | null; created_at: string; data: Record<string, unknown> | null };
+
+type MediaEvent = "media_download_start" | "media_download_done" | "media_download_failed" | "media_upload_done" | "media_cleanup_done";
+function getMediaEvent(r: Result): MediaEvent | null {
+  if (r.target !== "__media__") return null;
+  const ev = r.data && typeof r.data === "object" ? (r.data as { event?: unknown }).event : null;
+  return typeof ev === "string" ? (ev as MediaEvent) : null;
+}
 
 function CampaignDetailPage() {
   const { id } = Route.useParams();
