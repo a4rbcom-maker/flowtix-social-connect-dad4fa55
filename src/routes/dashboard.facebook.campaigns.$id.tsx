@@ -54,9 +54,39 @@ type Campaign = {
   id: string; name: string; status: string;
   total_targets: number; done_targets: number;
   success_count: number; failed_count: number;
-  target_ids: string[]; target_names: Record<string, string>;
+  target_ids: string[]; target_names: Record<string, string> | null;
   last_job_id: string | null; delay_min_seconds: number; delay_max_seconds: number;
 };
+
+// The DB stores `target_ids` and `target_names` as `Json | null`. The worker
+// payload and UI both expect `string[]` and `Record<string, string>`. Normalize
+// at the fetch boundary so the rest of the component is fully typed.
+function normalizeCampaign(raw: unknown): Campaign {
+  const r = raw as Record<string, unknown>;
+  const ids = Array.isArray(r.target_ids)
+    ? (r.target_ids as unknown[]).filter((x): x is string => typeof x === "string")
+    : [];
+  const names = r.target_names && typeof r.target_names === "object" && !Array.isArray(r.target_names)
+    ? Object.fromEntries(
+        Object.entries(r.target_names as Record<string, unknown>)
+          .filter(([, v]) => typeof v === "string") as [string, string][],
+      )
+    : null;
+  return {
+    id: String(r.id),
+    name: String(r.name ?? ""),
+    status: String(r.status ?? "draft"),
+    total_targets: Number(r.total_targets ?? 0),
+    done_targets: Number(r.done_targets ?? 0),
+    success_count: Number(r.success_count ?? 0),
+    failed_count: Number(r.failed_count ?? 0),
+    target_ids: ids,
+    target_names: names,
+    last_job_id: (r.last_job_id as string | null) ?? null,
+    delay_min_seconds: Number(r.delay_min_seconds ?? 0),
+    delay_max_seconds: Number(r.delay_max_seconds ?? 0),
+  };
+}
 type Result = { id: string; target: string | null; status: string; error: string | null; created_at: string };
 
 function CampaignDetailPage() {
