@@ -38,6 +38,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Download, MessageCircle, ThumbsUp } from "lucide-react";
 import { fetchFacebookPages, fetchPageInsights, fetchPageAudienceFromPosts } from "@/lib/facebook.functions";
+import { safeArray } from "@/lib/safe-data";
 
 
 export const Route = createFileRoute("/dashboard/facebook/insights")({
@@ -48,6 +49,15 @@ export const Route = createFileRoute("/dashboard/facebook/insights")({
     await supabase.auth.getSession();
   },
   component: InsightsPage,
+  errorComponent: ({ error, reset }) => (
+    <DashboardLayout title="تحليلات الصفحة">
+      <div className="mx-auto mt-12 max-w-xl rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-center">
+        <p className="text-lg font-semibold text-foreground">حدث خطأ في تحميل تحليلات الصفحة</p>
+        <pre className="mt-3 max-h-40 overflow-auto rounded-md bg-muted p-3 text-left font-mono text-xs text-destructive whitespace-pre-wrap break-words">{error?.message ?? "Unknown error"}</pre>
+        <button onClick={reset} className="mt-4 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">إعادة المحاولة</button>
+      </div>
+    </DashboardLayout>
+  ),
 });
 
 type Page = { id: string; name: string; fan_count?: number; picture?: { data?: { url?: string } } };
@@ -189,8 +199,9 @@ function InsightsPage() {
         if (res.error) {
           setPagesError(res.error.message);
         } else {
-          setPages(res.pages as Page[]);
-          if (res.pages.length > 0) setPageId(String((res.pages[0] as Page).id));
+          const list = safeArray<Page>(res.pages);
+          setPages(list);
+          if (list.length > 0) setPageId(String(list[0].id));
         }
       } catch (e) {
         if (!cancelled) setPagesError(String(e));
