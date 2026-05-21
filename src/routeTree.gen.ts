@@ -21,6 +21,7 @@ import { Route as DashboardFacebookRouteImport } from './routes/dashboard.facebo
 import { Route as DashboardControlRouteImport } from './routes/dashboard.control'
 import { Route as DashboardBulkRouteImport } from './routes/dashboard.bulk'
 import { Route as DashboardActivityRouteImport } from './routes/dashboard.activity'
+import { Route as DashboardWhatsappAccountsRouteImport } from './routes/dashboard.whatsapp.accounts'
 import { Route as DashboardFacebookTemplatesRouteImport } from './routes/dashboard.facebook.templates'
 import { Route as DashboardFacebookStatusRouteImport } from './routes/dashboard.facebook.status'
 import { Route as DashboardFacebookMessagesRouteImport } from './routes/dashboard.facebook.messages'
@@ -99,6 +100,12 @@ const DashboardActivityRoute = DashboardActivityRouteImport.update({
   path: '/activity',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardWhatsappAccountsRoute =
+  DashboardWhatsappAccountsRouteImport.update({
+    id: '/accounts',
+    path: '/accounts',
+    getParentRoute: () => DashboardWhatsappRoute,
+  } as any)
 const DashboardFacebookTemplatesRoute =
   DashboardFacebookTemplatesRouteImport.update({
     id: '/templates',
@@ -205,7 +212,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/control': typeof DashboardControlRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/profile': typeof DashboardProfileRoute
-  '/dashboard/whatsapp': typeof DashboardWhatsappRoute
+  '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
   '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
   '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
@@ -217,6 +224,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/facebook/messages': typeof DashboardFacebookMessagesRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
+  '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
@@ -236,7 +244,7 @@ export interface FileRoutesByTo {
   '/dashboard/control': typeof DashboardControlRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/profile': typeof DashboardProfileRoute
-  '/dashboard/whatsapp': typeof DashboardWhatsappRoute
+  '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
   '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
   '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
@@ -248,6 +256,7 @@ export interface FileRoutesByTo {
   '/dashboard/facebook/messages': typeof DashboardFacebookMessagesRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
+  '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
@@ -268,7 +277,7 @@ export interface FileRoutesById {
   '/dashboard/control': typeof DashboardControlRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/profile': typeof DashboardProfileRoute
-  '/dashboard/whatsapp': typeof DashboardWhatsappRoute
+  '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
   '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
   '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
@@ -280,6 +289,7 @@ export interface FileRoutesById {
   '/dashboard/facebook/messages': typeof DashboardFacebookMessagesRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
+  '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
@@ -313,6 +323,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/messages'
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
+    | '/dashboard/whatsapp/accounts'
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/process-bulk-jobs'
@@ -344,6 +355,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/messages'
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
+    | '/dashboard/whatsapp/accounts'
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/process-bulk-jobs'
@@ -375,6 +387,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/messages'
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
+    | '/dashboard/whatsapp/accounts'
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/process-bulk-jobs'
@@ -482,6 +495,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/dashboard/activity'
       preLoaderRoute: typeof DashboardActivityRouteImport
       parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/whatsapp/accounts': {
+      id: '/dashboard/whatsapp/accounts'
+      path: '/accounts'
+      fullPath: '/dashboard/whatsapp/accounts'
+      preLoaderRoute: typeof DashboardWhatsappAccountsRouteImport
+      parentRoute: typeof DashboardWhatsappRoute
     }
     '/dashboard/facebook/templates': {
       id: '/dashboard/facebook/templates'
@@ -650,13 +670,24 @@ const DashboardFacebookRouteChildren: DashboardFacebookRouteChildren = {
 const DashboardFacebookRouteWithChildren =
   DashboardFacebookRoute._addFileChildren(DashboardFacebookRouteChildren)
 
+interface DashboardWhatsappRouteChildren {
+  DashboardWhatsappAccountsRoute: typeof DashboardWhatsappAccountsRoute
+}
+
+const DashboardWhatsappRouteChildren: DashboardWhatsappRouteChildren = {
+  DashboardWhatsappAccountsRoute: DashboardWhatsappAccountsRoute,
+}
+
+const DashboardWhatsappRouteWithChildren =
+  DashboardWhatsappRoute._addFileChildren(DashboardWhatsappRouteChildren)
+
 interface DashboardRouteChildren {
   DashboardActivityRoute: typeof DashboardActivityRoute
   DashboardBulkRoute: typeof DashboardBulkRoute
   DashboardControlRoute: typeof DashboardControlRoute
   DashboardFacebookRoute: typeof DashboardFacebookRouteWithChildren
   DashboardProfileRoute: typeof DashboardProfileRoute
-  DashboardWhatsappRoute: typeof DashboardWhatsappRoute
+  DashboardWhatsappRoute: typeof DashboardWhatsappRouteWithChildren
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
@@ -665,7 +696,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardControlRoute: DashboardControlRoute,
   DashboardFacebookRoute: DashboardFacebookRouteWithChildren,
   DashboardProfileRoute: DashboardProfileRoute,
-  DashboardWhatsappRoute: DashboardWhatsappRoute,
+  DashboardWhatsappRoute: DashboardWhatsappRouteWithChildren,
 }
 
 const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
