@@ -111,7 +111,9 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
           icon: MessageCircle,
           label: labels.whatsapp,
           children: [
-            { kind: "leaf", icon: Bot, label: labels.waBot, to: "/dashboard/whatsapp" },
+            { kind: "leaf", icon: Inbox, label: labels.waInbox, to: "/dashboard/whatsapp/inbox" },
+            { kind: "leaf", icon: Smartphone, label: labels.waAccounts, to: "/dashboard/whatsapp/accounts" },
+            { kind: "leaf", icon: Bot, label: labels.waBot, to: "/dashboard/whatsapp/bot" },
             { kind: "leaf", icon: Send, label: labels.bulk, to: "/dashboard/bulk" },
           ],
         },
