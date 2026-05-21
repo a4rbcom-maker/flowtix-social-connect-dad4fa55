@@ -132,7 +132,7 @@ export const Route = createFileRoute("/api/public/wa/webhook")({
             msg_type: type,
             text_body: text,
             media_url: mediaUrl,
-            raw: data,
+            raw: data as never,
           });
           return new Response("ok");
         }
