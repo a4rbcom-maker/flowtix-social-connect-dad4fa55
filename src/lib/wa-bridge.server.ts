@@ -31,7 +31,9 @@ async function bridgeFetch<T>(path: string, init: RequestInit = {}): Promise<T> 
     const body = text ? safeParse(text) : null;
     if (!res.ok) {
       const msg =
-        (body && typeof body === "object" && "error" in body && String((body as Record<string, unknown>).error)) ||
+        (body && typeof body === "object" && "error" in body
+          ? String((body as Record<string, unknown>).error)
+          : "") ||
         `Bridge ${res.status}`;
       throw new BridgeError(msg, res.status, body);
     }
