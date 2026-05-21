@@ -21,6 +21,8 @@ import { Route as DashboardFacebookRouteImport } from './routes/dashboard.facebo
 import { Route as DashboardControlRouteImport } from './routes/dashboard.control'
 import { Route as DashboardBulkRouteImport } from './routes/dashboard.bulk'
 import { Route as DashboardActivityRouteImport } from './routes/dashboard.activity'
+import { Route as DashboardWhatsappInboxRouteImport } from './routes/dashboard.whatsapp.inbox'
+import { Route as DashboardWhatsappBotRouteImport } from './routes/dashboard.whatsapp.bot'
 import { Route as DashboardWhatsappAccountsRouteImport } from './routes/dashboard.whatsapp.accounts'
 import { Route as DashboardFacebookTemplatesRouteImport } from './routes/dashboard.facebook.templates'
 import { Route as DashboardFacebookStatusRouteImport } from './routes/dashboard.facebook.status'
@@ -99,6 +101,16 @@ const DashboardActivityRoute = DashboardActivityRouteImport.update({
   id: '/activity',
   path: '/activity',
   getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardWhatsappInboxRoute = DashboardWhatsappInboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
+  getParentRoute: () => DashboardWhatsappRoute,
+} as any)
+const DashboardWhatsappBotRoute = DashboardWhatsappBotRouteImport.update({
+  id: '/bot',
+  path: '/bot',
+  getParentRoute: () => DashboardWhatsappRoute,
 } as any)
 const DashboardWhatsappAccountsRoute =
   DashboardWhatsappAccountsRouteImport.update({
@@ -225,6 +237,8 @@ export interface FileRoutesByFullPath {
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
+  '/dashboard/whatsapp/bot': typeof DashboardWhatsappBotRoute
+  '/dashboard/whatsapp/inbox': typeof DashboardWhatsappInboxRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
@@ -257,6 +271,8 @@ export interface FileRoutesByTo {
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
+  '/dashboard/whatsapp/bot': typeof DashboardWhatsappBotRoute
+  '/dashboard/whatsapp/inbox': typeof DashboardWhatsappInboxRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
@@ -290,6 +306,8 @@ export interface FileRoutesById {
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
+  '/dashboard/whatsapp/bot': typeof DashboardWhatsappBotRoute
+  '/dashboard/whatsapp/inbox': typeof DashboardWhatsappInboxRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
@@ -324,6 +342,8 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
     | '/dashboard/whatsapp/accounts'
+    | '/dashboard/whatsapp/bot'
+    | '/dashboard/whatsapp/inbox'
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/process-bulk-jobs'
@@ -356,6 +376,8 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
     | '/dashboard/whatsapp/accounts'
+    | '/dashboard/whatsapp/bot'
+    | '/dashboard/whatsapp/inbox'
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/process-bulk-jobs'
@@ -388,6 +410,8 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
     | '/dashboard/whatsapp/accounts'
+    | '/dashboard/whatsapp/bot'
+    | '/dashboard/whatsapp/inbox'
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/process-bulk-jobs'
@@ -495,6 +519,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/dashboard/activity'
       preLoaderRoute: typeof DashboardActivityRouteImport
       parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/whatsapp/inbox': {
+      id: '/dashboard/whatsapp/inbox'
+      path: '/inbox'
+      fullPath: '/dashboard/whatsapp/inbox'
+      preLoaderRoute: typeof DashboardWhatsappInboxRouteImport
+      parentRoute: typeof DashboardWhatsappRoute
+    }
+    '/dashboard/whatsapp/bot': {
+      id: '/dashboard/whatsapp/bot'
+      path: '/bot'
+      fullPath: '/dashboard/whatsapp/bot'
+      preLoaderRoute: typeof DashboardWhatsappBotRouteImport
+      parentRoute: typeof DashboardWhatsappRoute
     }
     '/dashboard/whatsapp/accounts': {
       id: '/dashboard/whatsapp/accounts'
@@ -672,10 +710,14 @@ const DashboardFacebookRouteWithChildren =
 
 interface DashboardWhatsappRouteChildren {
   DashboardWhatsappAccountsRoute: typeof DashboardWhatsappAccountsRoute
+  DashboardWhatsappBotRoute: typeof DashboardWhatsappBotRoute
+  DashboardWhatsappInboxRoute: typeof DashboardWhatsappInboxRoute
 }
 
 const DashboardWhatsappRouteChildren: DashboardWhatsappRouteChildren = {
   DashboardWhatsappAccountsRoute: DashboardWhatsappAccountsRoute,
+  DashboardWhatsappBotRoute: DashboardWhatsappBotRoute,
+  DashboardWhatsappInboxRoute: DashboardWhatsappInboxRoute,
 }
 
 const DashboardWhatsappRouteWithChildren =
@@ -719,3 +761,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
