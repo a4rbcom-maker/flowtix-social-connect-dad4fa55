@@ -645,6 +645,87 @@ export type Database = {
         }
         Relationships: []
       }
+      wa_messages: {
+        Row: {
+          created_at: string
+          direction: string
+          from_phone: string | null
+          id: string
+          media_url: string | null
+          msg_type: string
+          raw: Json | null
+          remote_jid: string
+          session_id: string
+          text_body: string | null
+          to_phone: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          direction: string
+          from_phone?: string | null
+          id?: string
+          media_url?: string | null
+          msg_type?: string
+          raw?: Json | null
+          remote_jid: string
+          session_id: string
+          text_body?: string | null
+          to_phone?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          direction?: string
+          from_phone?: string | null
+          id?: string
+          media_url?: string | null
+          msg_type?: string
+          raw?: Json | null
+          remote_jid?: string
+          session_id?: string
+          text_body?: string | null
+          to_phone?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      wa_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          last_seen_at: string | null
+          phone_number: string | null
+          qr_data_url: string | null
+          session_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_seen_at?: string | null
+          phone_number?: string | null
+          qr_data_url?: string | null
+          session_id: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_seen_at?: string | null
+          phone_number?: string | null
+          qr_data_url?: string | null
+          session_id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       whatsapp_settings: {
         Row: {
           ai_business_hours_only: boolean | null
