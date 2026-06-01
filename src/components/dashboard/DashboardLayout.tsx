@@ -50,7 +50,14 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isDesktop, setIsDesktop] = useState(true);
   const channelStatus = useChannelStatus(lang);
-  const { isAdmin } = useIsAdmin();
+  const { isAdmin, isLoading: isAdminLoading } = useIsAdmin();
+
+  // Admins must use the admin panel only — never the client dashboard.
+  useEffect(() => {
+    if (!isAdminLoading && isAdmin) {
+      navigate({ to: "/admin", replace: true });
+    }
+  }, [isAdmin, isAdminLoading, navigate]);
 
   // Track viewport size only — do not auto-collapse the sidebar.
   useEffect(() => {
