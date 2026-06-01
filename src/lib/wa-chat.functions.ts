@@ -158,6 +158,9 @@ export const sendChatMessage = createServerFn({ method: "POST" })
 export interface WaAiSettings {
   ai_enabled: boolean;
   ai_model: string;
+  ai_tier_simple: string | null;
+  ai_tier_smart: string | null;
+  ai_tier_negotiation: string | null;
   ai_system_prompt: string;
   ai_welcome_message: string;
   ai_business_hours_only: boolean;
@@ -172,6 +175,9 @@ export interface WaAiSettings {
 const DEFAULTS: WaAiSettings = {
   ai_enabled: false,
   ai_model: "google/gemini-2.5-flash",
+  ai_tier_simple: null,
+  ai_tier_smart: null,
+  ai_tier_negotiation: null,
   ai_system_prompt: "",
   ai_welcome_message: "",
   ai_business_hours_only: false,
@@ -183,6 +189,20 @@ const DEFAULTS: WaAiSettings = {
   ai_reply_delay_seconds: 2,
 };
 
+export const listAvailableModelTiers = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase } = context;
+    const { data, error } = await supabase
+      .from("ai_model_tiers")
+      .select("tier, model_name, display_name_ar, display_name_en, sort_order")
+      .eq("enabled", true)
+      .order("tier")
+      .order("sort_order");
+    if (error) throw new Error(error.message);
+    return { rows: data ?? [] };
+  });
+
 export const getAiSettings = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<WaAiSettings> => {
@@ -190,7 +210,7 @@ export const getAiSettings = createServerFn({ method: "POST" })
     const { data } = await supabase
       .from("whatsapp_settings")
       .select(
-        "ai_enabled, ai_model, ai_system_prompt, ai_welcome_message, ai_business_hours_only, ai_working_hours_start, ai_working_hours_end, ai_blacklist, ai_knowledge_base, ai_max_context_messages, ai_reply_delay_seconds",
+        "ai_enabled, ai_model, ai_tier_simple, ai_tier_smart, ai_tier_negotiation, ai_system_prompt, ai_welcome_message, ai_business_hours_only, ai_working_hours_start, ai_working_hours_end, ai_blacklist, ai_knowledge_base, ai_max_context_messages, ai_reply_delay_seconds",
       )
       .eq("user_id", userId)
       .maybeSingle();
@@ -198,6 +218,9 @@ export const getAiSettings = createServerFn({ method: "POST" })
     return {
       ai_enabled: data.ai_enabled ?? false,
       ai_model: data.ai_model ?? DEFAULTS.ai_model,
+      ai_tier_simple: data.ai_tier_simple ?? null,
+      ai_tier_smart: data.ai_tier_smart ?? null,
+      ai_tier_negotiation: data.ai_tier_negotiation ?? null,
       ai_system_prompt: data.ai_system_prompt ?? "",
       ai_welcome_message: data.ai_welcome_message ?? "",
       ai_business_hours_only: data.ai_business_hours_only ?? false,
@@ -213,6 +236,9 @@ export const getAiSettings = createServerFn({ method: "POST" })
 const aiSettingsSchema = z.object({
   ai_enabled: z.boolean(),
   ai_model: z.string().min(1).max(100),
+  ai_tier_simple: z.string().min(1).max(100).nullable(),
+  ai_tier_smart: z.string().min(1).max(100).nullable(),
+  ai_tier_negotiation: z.string().min(1).max(100).nullable(),
   ai_system_prompt: z.string().max(8000),
   ai_welcome_message: z.string().max(2000),
   ai_business_hours_only: z.boolean(),
