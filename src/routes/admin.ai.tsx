@@ -188,6 +188,7 @@ function AccountsTab() {
                   <TableHead>{lang === "ar" ? "الاسم" : "Label"}</TableHead>
                   <TableHead>{lang === "ar" ? "المفتاح" : "Key"}</TableHead>
                   <TableHead>{lang === "ar" ? "الحالة" : "Status"}</TableHead>
+                  <TableHead className="text-center">{lang === "ar" ? "الرصيد المتبقي" : "Credit"}</TableHead>
                   <TableHead className="text-center">{lang === "ar" ? "الأولوية" : "Priority"}</TableHead>
                   <TableHead className="text-center">{lang === "ar" ? "طلبات" : "Requests"}</TableHead>
                   <TableHead className="text-center">{lang === "ar" ? "فشل" : "Failed"}</TableHead>
@@ -197,7 +198,7 @@ function AccountsTab() {
               </TableHeader>
               <TableBody>
                 {(rows?.rows ?? []).length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                  <TableRow><TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                     {lang === "ar" ? "لا توجد حسابات بعد — أضف أول مفتاح kie.ai" : "No accounts yet — add your first kie.ai key"}
                   </TableCell></TableRow>
                 ) : rows!.rows.map((r) => (
