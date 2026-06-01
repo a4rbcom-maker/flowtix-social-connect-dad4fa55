@@ -5,7 +5,7 @@ import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "./admin-middleware";
 import type { Database } from "@/integrations/supabase/types";
-import { encryptKey, keyHint, pingKieKey } from "./ai-pool.server";
+import { encryptKey, keyHint, pingKieKey, refreshAccountCredit } from "./ai-pool.server";
 
 function admin() {
   return createClient<Database>(
