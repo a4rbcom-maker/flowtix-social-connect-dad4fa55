@@ -998,7 +998,7 @@ export const getAdminSecurityOverview = createServerFn({ method: "GET" })
       db.from("user_roles").select("user_id,role,id"),
       db.from("profiles").select("id,full_name,avatar_url,plan,created_at"),
       db.from("admin_audit_log").select("*").order("created_at", { ascending: false }).limit(100),
-      db.from("profiles").select("id,full_name,avatar_url,last_login_at,login_count").order("last_login_at", { ascending: false, nullsFirst: false }).limit(20),
+      db.from("profiles").select("id,full_name,avatar_url,plan,created_at").order("created_at", { ascending: false }).limit(20),
     ]);
 
     const profMap = new Map((profilesRes.data ?? []).map((p) => [p.id, p]));
