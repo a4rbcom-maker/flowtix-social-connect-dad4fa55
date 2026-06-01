@@ -199,12 +199,7 @@ export async function callKieChat(opts: {
         // 401/402/429/5xx → try next account
         continue;
       }
-        lastStatus = res.status;
-        lastError = `kie ${res.status}: ${(await res.text()).slice(0, 200)}`;
-        await markFailure(account.id, res.status, lastError);
-        // 401/402/429/5xx → try next account
-        continue;
-      }
+
 
       const j = (await res.json()) as {
         choices?: Array<{ message?: { content?: string } }>;
