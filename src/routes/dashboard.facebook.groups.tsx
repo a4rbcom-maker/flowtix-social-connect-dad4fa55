@@ -365,9 +365,16 @@ function FacebookGroupsPage() {
                 : t.notConnectedDesc}
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <button
+                onClick={() => setWizardOpen(true)}
+                className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+              >
+                <Sparkles className="h-4 w-4" />
+                {lang === "ar" ? "ابدأ الربط خطوة بخطوة" : "Start guided setup"}
+              </button>
               <Link
                 to="/dashboard/facebook"
-                className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+                className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-accent"
               >
                 {t.goConnect}
               </Link>
@@ -382,6 +389,9 @@ function FacebookGroupsPage() {
             </div>
           </div>
         )}
+
+        <GraphApiConnectWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
+
 
         {/* Step 1: Browse + select */}
         {connected && step === "browse" && (
