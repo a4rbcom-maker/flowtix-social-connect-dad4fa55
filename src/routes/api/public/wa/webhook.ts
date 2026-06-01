@@ -4,6 +4,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createHmac, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { handleAiAutoReply, upsertConversationFromMessage } from "@/lib/wa-ai.server";
 
 function verifySignature(rawBody: string, header: string | null, secret: string): boolean {
   if (!header || !header.startsWith("sha256=")) return false;
