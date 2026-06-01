@@ -4,6 +4,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createHmac, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { handleAiAutoReply, upsertConversationFromMessage } from "@/lib/wa-ai.server";
 
 function verifySignature(rawBody: string, header: string | null, secret: string): boolean {
   if (!header || !header.startsWith("sha256=")) return false;
@@ -123,17 +124,47 @@ export const Route = createFileRoute("/api/public/wa/webhook")({
           const text = typeof data.text === "string" ? data.text : null;
           const type = (typeof data.type === "string" ? data.type : "text").toLowerCase();
           const mediaUrl = typeof data.mediaUrl === "string" ? data.mediaUrl : null;
+          const remoteJid = from ?? String(data.from ?? "unknown");
+          const contactName =
+            typeof data.pushName === "string"
+              ? data.pushName
+              : typeof data.contactName === "string"
+                ? data.contactName
+                : null;
+
           await supabaseAdmin.from("wa_messages").insert({
             user_id: userId,
             session_id: sessionId,
             direction: "in",
-            remote_jid: from ?? String(data.from ?? "unknown"),
+            remote_jid: remoteJid,
             from_phone: from,
             msg_type: type,
             text_body: text,
             media_url: mediaUrl,
             raw: data as never,
           });
+
+          const conversationId = await upsertConversationFromMessage({
+            userId,
+            sessionId,
+            remoteJid,
+            contactName,
+            contactPhone: from,
+            text: text ?? (type !== "text" ? `[${type}]` : null),
+            direction: "in",
+          });
+
+          if (text) {
+            handleAiAutoReply({
+              userId,
+              sessionId,
+              conversationId,
+              remoteJid,
+              fromPhone: from,
+              inboundText: text,
+            }).catch((err) => console.error("[wa-webhook] AI handler error:", err));
+          }
+
           return new Response("ok");
         }
 

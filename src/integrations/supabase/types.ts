@@ -645,6 +645,116 @@ export type Database = {
         }
         Relationships: []
       }
+      wa_ai_logs: {
+        Row: {
+          conversation_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          latency_ms: number | null
+          model: string
+          prompt_excerpt: string | null
+          rating: number | null
+          remote_jid: string
+          response_text: string | null
+          status: string
+          tokens_in: number | null
+          tokens_out: number | null
+          user_id: string
+        }
+        Insert: {
+          conversation_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          latency_ms?: number | null
+          model: string
+          prompt_excerpt?: string | null
+          rating?: number | null
+          remote_jid: string
+          response_text?: string | null
+          status?: string
+          tokens_in?: number | null
+          tokens_out?: number | null
+          user_id: string
+        }
+        Update: {
+          conversation_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          latency_ms?: number | null
+          model?: string
+          prompt_excerpt?: string | null
+          rating?: number | null
+          remote_jid?: string
+          response_text?: string | null
+          status?: string
+          tokens_in?: number | null
+          tokens_out?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wa_ai_logs_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "wa_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wa_conversations: {
+        Row: {
+          ai_enabled: boolean
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string
+          id: string
+          is_archived: boolean
+          last_direction: string
+          last_message_at: string
+          last_message_text: string | null
+          remote_jid: string
+          session_id: string
+          unread_count: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_enabled?: boolean
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          id?: string
+          is_archived?: boolean
+          last_direction?: string
+          last_message_at?: string
+          last_message_text?: string | null
+          remote_jid: string
+          session_id: string
+          unread_count?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ai_enabled?: boolean
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          id?: string
+          is_archived?: boolean
+          last_direction?: string
+          last_message_at?: string
+          last_message_text?: string | null
+          remote_jid?: string
+          session_id?: string
+          unread_count?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       wa_messages: {
         Row: {
           created_at: string
@@ -728,11 +838,17 @@ export type Database = {
       }
       whatsapp_settings: {
         Row: {
+          ai_blacklist: string[]
           ai_business_hours_only: boolean | null
           ai_enabled: boolean
+          ai_knowledge_base: string | null
+          ai_max_context_messages: number
           ai_model: string | null
+          ai_reply_delay_seconds: number
           ai_system_prompt: string | null
           ai_welcome_message: string | null
+          ai_working_hours_end: string | null
+          ai_working_hours_start: string | null
           connection_type: string
           created_at: string
           id: string
@@ -746,11 +862,17 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          ai_blacklist?: string[]
           ai_business_hours_only?: boolean | null
           ai_enabled?: boolean
+          ai_knowledge_base?: string | null
+          ai_max_context_messages?: number
           ai_model?: string | null
+          ai_reply_delay_seconds?: number
           ai_system_prompt?: string | null
           ai_welcome_message?: string | null
+          ai_working_hours_end?: string | null
+          ai_working_hours_start?: string | null
           connection_type?: string
           created_at?: string
           id?: string
@@ -764,11 +886,17 @@ export type Database = {
           user_id: string
         }
         Update: {
+          ai_blacklist?: string[]
           ai_business_hours_only?: boolean | null
           ai_enabled?: boolean
+          ai_knowledge_base?: string | null
+          ai_max_context_messages?: number
           ai_model?: string | null
+          ai_reply_delay_seconds?: number
           ai_system_prompt?: string | null
           ai_welcome_message?: string | null
+          ai_working_hours_end?: string | null
+          ai_working_hours_start?: string | null
           connection_type?: string
           created_at?: string
           id?: string
