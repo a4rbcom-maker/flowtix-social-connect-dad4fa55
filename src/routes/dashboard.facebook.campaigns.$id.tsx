@@ -148,7 +148,7 @@ function CampaignDetailPage() {
   // Realtime: campaign + results
   useEffect(() => {
     if (!user || !c) return;
-    const ch = supabase.channel(`campaign-${id}`)
+    const ch = supabase.channel(`campaign:${user.id}:${id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "fb_campaigns", filter: `id=eq.${id}` }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "fb_job_results", filter: c.last_job_id ? `job_id=eq.${c.last_job_id}` : "id=eq.00000000-0000-0000-0000-000000000000" }, () => load())
       .subscribe();
