@@ -53,6 +53,161 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_model_tiers: {
+        Row: {
+          created_at: string
+          description: string | null
+          display_name_ar: string
+          display_name_en: string
+          enabled: boolean
+          id: string
+          max_tokens: number
+          model_name: string
+          sort_order: number
+          temperature: number
+          tier: Database["public"]["Enums"]["ai_model_tier"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          display_name_ar: string
+          display_name_en: string
+          enabled?: boolean
+          id?: string
+          max_tokens?: number
+          model_name: string
+          sort_order?: number
+          temperature?: number
+          tier: Database["public"]["Enums"]["ai_model_tier"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          display_name_ar?: string
+          display_name_en?: string
+          enabled?: boolean
+          id?: string
+          max_tokens?: number
+          model_name?: string
+          sort_order?: number
+          temperature?: number
+          tier?: Database["public"]["Enums"]["ai_model_tier"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_provider_accounts: {
+        Row: {
+          api_key_encrypted: string
+          cooldown_until: string | null
+          created_at: string
+          created_by: string | null
+          failed_count: number
+          id: string
+          key_hint: string | null
+          label: string
+          last_error_at: string | null
+          last_error_message: string | null
+          last_used_at: string | null
+          priority: number
+          provider: string
+          requests_count: number
+          status: Database["public"]["Enums"]["ai_account_status"]
+          updated_at: string
+        }
+        Insert: {
+          api_key_encrypted: string
+          cooldown_until?: string | null
+          created_at?: string
+          created_by?: string | null
+          failed_count?: number
+          id?: string
+          key_hint?: string | null
+          label: string
+          last_error_at?: string | null
+          last_error_message?: string | null
+          last_used_at?: string | null
+          priority?: number
+          provider?: string
+          requests_count?: number
+          status?: Database["public"]["Enums"]["ai_account_status"]
+          updated_at?: string
+        }
+        Update: {
+          api_key_encrypted?: string
+          cooldown_until?: string | null
+          created_at?: string
+          created_by?: string | null
+          failed_count?: number
+          id?: string
+          key_hint?: string | null
+          label?: string
+          last_error_at?: string | null
+          last_error_message?: string | null
+          last_used_at?: string | null
+          priority?: number
+          provider?: string
+          requests_count?: number
+          status?: Database["public"]["Enums"]["ai_account_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_usage_logs: {
+        Row: {
+          account_id: string | null
+          created_at: string
+          error_code: string | null
+          error_message: string | null
+          id: string
+          latency_ms: number | null
+          model: string | null
+          status: string
+          tier: Database["public"]["Enums"]["ai_model_tier"] | null
+          tokens_in: number | null
+          tokens_out: number | null
+          user_id: string | null
+        }
+        Insert: {
+          account_id?: string | null
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          latency_ms?: number | null
+          model?: string | null
+          status?: string
+          tier?: Database["public"]["Enums"]["ai_model_tier"] | null
+          tokens_in?: number | null
+          tokens_out?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          account_id?: string | null
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          latency_ms?: number | null
+          model?: string | null
+          status?: string
+          tier?: Database["public"]["Enums"]["ai_model_tier"] | null
+          tokens_in?: number | null
+          tokens_out?: number | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_logs_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "ai_provider_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bulk_job_recipients: {
         Row: {
           contact_id: string | null
@@ -945,12 +1100,17 @@ export type Database = {
         Row: {
           ai_blacklist: string[]
           ai_business_hours_only: boolean | null
+          ai_default_tier: Database["public"]["Enums"]["ai_model_tier"]
           ai_enabled: boolean
           ai_knowledge_base: string | null
           ai_max_context_messages: number
           ai_model: string | null
+          ai_provider: string
           ai_reply_delay_seconds: number
           ai_system_prompt: string | null
+          ai_tier_negotiation: string | null
+          ai_tier_simple: string | null
+          ai_tier_smart: string | null
           ai_welcome_message: string | null
           ai_working_hours_end: string | null
           ai_working_hours_start: string | null
@@ -969,12 +1129,17 @@ export type Database = {
         Insert: {
           ai_blacklist?: string[]
           ai_business_hours_only?: boolean | null
+          ai_default_tier?: Database["public"]["Enums"]["ai_model_tier"]
           ai_enabled?: boolean
           ai_knowledge_base?: string | null
           ai_max_context_messages?: number
           ai_model?: string | null
+          ai_provider?: string
           ai_reply_delay_seconds?: number
           ai_system_prompt?: string | null
+          ai_tier_negotiation?: string | null
+          ai_tier_simple?: string | null
+          ai_tier_smart?: string | null
           ai_welcome_message?: string | null
           ai_working_hours_end?: string | null
           ai_working_hours_start?: string | null
@@ -993,12 +1158,17 @@ export type Database = {
         Update: {
           ai_blacklist?: string[]
           ai_business_hours_only?: boolean | null
+          ai_default_tier?: Database["public"]["Enums"]["ai_model_tier"]
           ai_enabled?: boolean
           ai_knowledge_base?: string | null
           ai_max_context_messages?: number
           ai_model?: string | null
+          ai_provider?: string
           ai_reply_delay_seconds?: number
           ai_system_prompt?: string | null
+          ai_tier_negotiation?: string | null
+          ai_tier_simple?: string | null
+          ai_tier_smart?: string | null
           ai_welcome_message?: string | null
           ai_working_hours_end?: string | null
           ai_working_hours_start?: string | null
@@ -1041,6 +1211,8 @@ export type Database = {
       }
     }
     Enums: {
+      ai_account_status: "active" | "exhausted" | "disabled" | "error"
+      ai_model_tier: "simple" | "smart" | "negotiation"
       app_role: "admin" | "moderator" | "user"
       bulk_job_status:
         | "scheduled"
@@ -1208,6 +1380,8 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      ai_account_status: ["active", "exhausted", "disabled", "error"],
+      ai_model_tier: ["simple", "smart", "negotiation"],
       app_role: ["admin", "moderator", "user"],
       bulk_job_status: [
         "scheduled",
