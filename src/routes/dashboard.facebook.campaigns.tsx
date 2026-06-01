@@ -127,7 +127,7 @@ function CampaignsPage() {
   // Realtime: refresh list on campaign changes
   useEffect(() => {
     if (!user) return;
-    const ch = supabase.channel("campaigns-list")
+    const ch = supabase.channel(`campaigns-list:${user.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "fb_campaigns", filter: `user_id=eq.${user.id}` }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
