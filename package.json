@@ -11,7 +11,8 @@
     "preview": "vite preview --port 3100 --strictPort",
     "start": "PORT=3100 node scripts/tanstack-node-server.mjs",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test": "vitest run"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",
