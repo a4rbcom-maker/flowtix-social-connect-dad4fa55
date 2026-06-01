@@ -164,15 +164,21 @@ function AccountsTab() {
                 : "Central key pool — rotates automatically on failure or quota exhaustion"}
             </CardDescription>
           </div>
-          <Dialog open={openAdd} onOpenChange={setOpenAdd}>
-            <DialogTrigger asChild>
-              <Button className="gap-2"><Plus className="h-4 w-4" />{lang === "ar" ? "إضافة حساب" : "Add account"}</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>{lang === "ar" ? "إضافة حساب kie.ai جديد" : "Add new kie.ai account"}</DialogTitle></DialogHeader>
-              <AddAccountForm onSubmit={(d) => mCreate.mutate(d)} loading={mCreate.isPending} />
-            </DialogContent>
-          </Dialog>
+          <div className="flex gap-2">
+            <Button variant="outline" className="gap-2" onClick={() => mRefreshAll.mutate()} disabled={mRefreshAll.isPending}>
+              <Wallet className="h-4 w-4" />
+              {lang === "ar" ? "تحديث الأرصدة" : "Refresh credits"}
+            </Button>
+            <Dialog open={openAdd} onOpenChange={setOpenAdd}>
+              <DialogTrigger asChild>
+                <Button className="gap-2"><Plus className="h-4 w-4" />{lang === "ar" ? "إضافة حساب" : "Add account"}</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>{lang === "ar" ? "إضافة حساب kie.ai جديد" : "Add new kie.ai account"}</DialogTitle></DialogHeader>
+                <AddAccountForm onSubmit={(d) => mCreate.mutate(d)} loading={mCreate.isPending} />
+              </DialogContent>
+            </Dialog>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border border-border/60 overflow-hidden">
