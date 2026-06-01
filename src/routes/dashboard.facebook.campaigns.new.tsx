@@ -102,6 +102,17 @@ function NewCampaignPage() {
     needContent: "أضف نصاً أو وسائط للمنشور",
     needTargets: "حدد وجهة واحدة على الأقل",
     delayErr: "الحد الأقصى يجب أن يكون ≥ الحد الأدنى",
+    manualToggle: "إدخال Group IDs يدويًا",
+    manualHint: "الصق معرفات الجروبات (رقم لكل سطر، أو افصلها بفاصلة/مسافة). أرقام فقط، 5–25 خانة.",
+    manualPh: "مثلاً:\n123456789012345\n987654321098765, 555555555555",
+    manualAdd: "تحقّق وإضافة",
+    manualClear: "مسح",
+    manualPaste: "لصق من الحافظة",
+    manualNoneValid: "لا توجد معرفات صالحة",
+    manualAdded: (n: number, dup: number, invalid: number) =>
+      `أُضيفت ${n} جروب${dup ? ` • ${dup} مكرر` : ""}${invalid ? ` • ${invalid} غير صالح` : ""}`,
+    manualBadge: "يدوي",
+    remove: "إزالة",
   } : {
     back: "Back to campaigns",
     title: "New campaign", subtitle: "Post one message to many destinations with a safe interval",
