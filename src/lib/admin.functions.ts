@@ -254,3 +254,108 @@ export const updatePlatformSetting = createServerFn({ method: "POST" })
     await logAction(context.adminUserId, "update_setting", null, { key: data.key, value: data.value });
     return { ok: true };
   });
+
+// ---------- Facebook monitoring ----------
+export const getAdminFacebookOverview = createServerFn({ method: "GET" })
+  .middleware([requireAdmin])
+  .handler(async () => {
+    const db = admin();
+    const [conns, bots, camps, jobs, profiles] = await Promise.all([
+      db.from("facebook_connections").select("user_id,fb_user_name,fb_user_email,last_synced_at,created_at"),
+      db.from("fb_bot_accounts").select("user_id,display_name,status,auth_method,last_check_at,last_error,created_at"),
+      db.from("fb_campaigns").select("id,user_id,name,status,total_targets,done_targets,success_count,failed_count,created_at,last_run_at").order("created_at", { ascending: false }).limit(200),
+      db.from("fb_jobs").select("id,user_id,job_type,status,progress,total_items,processed_items,created_at,started_at,error_message").order("created_at", { ascending: false }).limit(200),
+      db.from("profiles").select("id,full_name,avatar_url,plan"),
+    ]);
+
+    const profileMap = new Map<string, { full_name: string | null; avatar_url: string | null; plan: string | null }>();
+    profiles.data?.forEach((p) => profileMap.set(p.id, { full_name: p.full_name, avatar_url: p.avatar_url, plan: p.plan }));
+
+    type PerUser = {
+      user_id: string;
+      full_name: string | null;
+      avatar_url: string | null;
+      plan: string | null;
+      connection: { name: string | null; email: string | null; last_synced_at: string | null } | null;
+      bot_accounts: number;
+      bot_accounts_active: number;
+      campaigns_total: number;
+      campaigns_running: number;
+      jobs_running: number;
+      jobs_failed: number;
+      sent_success: number;
+      sent_failed: number;
+    };
+    const perUser = new Map<string, PerUser>();
+    const ensure = (uid: string): PerUser => {
+      let row = perUser.get(uid);
+      if (!row) {
+        const p = profileMap.get(uid);
+        row = {
+          user_id: uid,
+          full_name: p?.full_name ?? null,
+          avatar_url: p?.avatar_url ?? null,
+          plan: p?.plan ?? null,
+          connection: null,
+          bot_accounts: 0,
+          bot_accounts_active: 0,
+          campaigns_total: 0,
+          campaigns_running: 0,
+          jobs_running: 0,
+          jobs_failed: 0,
+          sent_success: 0,
+          sent_failed: 0,
+        };
+        perUser.set(uid, row);
+      }
+      return row;
+    };
+    conns.data?.forEach((c) => {
+      const r = ensure(c.user_id);
+      r.connection = { name: c.fb_user_name, email: c.fb_user_email, last_synced_at: c.last_synced_at };
+    });
+    bots.data?.forEach((b) => {
+      const r = ensure(b.user_id);
+      r.bot_accounts += 1;
+      if (b.status === "active" || b.status === "ok") r.bot_accounts_active += 1;
+    });
+    camps.data?.forEach((c) => {
+      const r = ensure(c.user_id);
+      r.campaigns_total += 1;
+      if (c.status === "running" || c.status === "scheduled") r.campaigns_running += 1;
+      r.sent_success += c.success_count ?? 0;
+      r.sent_failed += c.failed_count ?? 0;
+    });
+    jobs.data?.forEach((j) => {
+      const r = ensure(j.user_id);
+      if (j.status === "running" || j.status === "pending") r.jobs_running += 1;
+      if (j.status === "failed") r.jobs_failed += 1;
+    });
+
+    const users = Array.from(perUser.values()).sort(
+      (a, b) => (b.campaigns_total + b.bot_accounts) - (a.campaigns_total + a.bot_accounts),
+    );
+
+    const totals = {
+      connections: conns.data?.length ?? 0,
+      bot_accounts: bots.data?.length ?? 0,
+      bot_accounts_active: bots.data?.filter((b) => b.status === "active" || b.status === "ok").length ?? 0,
+      campaigns_total: camps.data?.length ?? 0,
+      campaigns_running: camps.data?.filter((c) => c.status === "running" || c.status === "scheduled").length ?? 0,
+      jobs_running: jobs.data?.filter((j) => j.status === "running" || j.status === "pending").length ?? 0,
+      jobs_failed: jobs.data?.filter((j) => j.status === "failed").length ?? 0,
+      users_with_fb: perUser.size,
+    };
+
+    const recentCampaigns = (camps.data ?? []).slice(0, 25).map((c) => ({
+      ...c,
+      user: profileMap.get(c.user_id) ?? null,
+    }));
+    const recentJobs = (jobs.data ?? []).slice(0, 25).map((j) => ({
+      ...j,
+      user: profileMap.get(j.user_id) ?? null,
+    }));
+
+    return { totals, users, recentCampaigns, recentJobs };
+  });
+
