@@ -721,20 +721,47 @@ export const getAdminJobDetail = createServerFn({ method: "GET" })
         db.from("admin_audit_log").select("id,admin_user_id,action,payload,created_at").like("action", "%job%").order("created_at", { ascending: false }).limit(50),
         job.campaign_id
           ? db.from("fb_jobs").select("id,status,progress,processed_items,total_items,error_message,created_at,started_at,completed_at").eq("campaign_id", job.campaign_id).neq("id", data.id).order("created_at", { ascending: false }).limit(20)
-          : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+          : Promise.resolve({ data: [] as Array<{ id: string; status: string; progress: number; processed_items: number; total_items: number; error_message: string | null; created_at: string; started_at: string | null; completed_at: string | null }> }),
       ]);
 
-      const results = resultsRes.data ?? [];
-      const audit = (auditRes.data ?? []).filter((a) => {
-        const p = a.payload as Record<string, unknown> | null;
-        return p && (p as { id?: string }).id === data.id;
-      });
+      const results = (resultsRes.data ?? []).map((r) => ({
+        id: r.id as string,
+        target: (r.target as string | null) ?? null,
+        status: r.status as string,
+        error: (r.error as string | null) ?? null,
+        data_json: r.data == null ? null : JSON.stringify(r.data),
+        created_at: r.created_at as string,
+      }));
+      const audit = (auditRes.data ?? [])
+        .filter((a) => {
+          const p = a.payload as Record<string, unknown> | null;
+          return p && (p as { id?: string }).id === data.id;
+        })
+        .map((a) => ({
+          id: a.id as string,
+          admin_user_id: a.admin_user_id as string,
+          action: a.action as string,
+          created_at: a.created_at as string,
+          payload_json: JSON.stringify(a.payload ?? {}),
+        }));
 
       const counts = {
-        success: results.filter((r) => (r.status as string) === "success").length,
-        failed: results.filter((r) => (r.status as string) === "failed").length,
-        skipped: results.filter((r) => (r.status as string) === "skipped").length,
+        success: results.filter((r) => r.status === "success").length,
+        failed: results.filter((r) => r.status === "failed").length,
+        skipped: results.filter((r) => r.status === "skipped").length,
       };
+
+      const related_attempts = (relatedRes.data ?? []).map((r) => ({
+        id: r.id as string,
+        status: String(r.status ?? ""),
+        progress: Number(r.progress ?? 0),
+        processed_items: Number(r.processed_items ?? 0),
+        total_items: Number(r.total_items ?? 0),
+        error_message: (r.error_message as string | null) ?? null,
+        created_at: r.created_at as string,
+        started_at: (r.started_at as string | null) ?? null,
+        completed_at: (r.completed_at as string | null) ?? null,
+      }));
 
       return {
         kind: "fb" as const,
@@ -762,8 +789,9 @@ export const getAdminJobDetail = createServerFn({ method: "GET" })
         results,
         counts,
         audit,
-        related_attempts: relatedRes.data ?? [],
+        related_attempts,
       };
+
     }
 
     // bulk
