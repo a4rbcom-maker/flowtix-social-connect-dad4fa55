@@ -180,7 +180,7 @@ function ControlPanel() {
   useEffect(() => {
     if (!user) return;
     const ch = supabase
-      .channel("control-panel")
+      .channel(`control-panel:${user.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "send_log", filter: `user_id=eq.${user.id}` }, loadData)
       .on("postgres_changes", { event: "*", schema: "public", table: "scheduled_messages", filter: `user_id=eq.${user.id}` }, loadData)
       .subscribe();
