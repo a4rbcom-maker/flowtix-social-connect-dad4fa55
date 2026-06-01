@@ -809,11 +809,28 @@ export const getAdminJobDetail = createServerFn({ method: "GET" })
       db.from("admin_audit_log").select("id,admin_user_id,action,payload,created_at").like("action", "%job%").order("created_at", { ascending: false }).limit(50),
     ]);
 
-    const recipients = recipientsRes.data ?? [];
-    const audit = (auditRes.data ?? []).filter((a) => {
-      const p = a.payload as Record<string, unknown> | null;
-      return p && (p as { id?: string }).id === data.id;
-    });
+    const recipients = (recipientsRes.data ?? []).map((r) => ({
+      id: r.id as string,
+      name: r.name as string,
+      phone: r.phone as string,
+      status: r.status as string,
+      sent_at: (r.sent_at as string | null) ?? null,
+      error_message: (r.error_message as string | null) ?? null,
+      created_at: r.created_at as string,
+    }));
+    const audit = (auditRes.data ?? [])
+      .filter((a) => {
+        const p = a.payload as Record<string, unknown> | null;
+        return p && (p as { id?: string }).id === data.id;
+      })
+      .map((a) => ({
+        id: a.id as string,
+        admin_user_id: a.admin_user_id as string,
+        action: a.action as string,
+        created_at: a.created_at as string,
+        payload_json: JSON.stringify(a.payload ?? {}),
+      }));
+
 
     const counts = {
       success: recipients.filter((r) => (r.status as string) === "success").length,
