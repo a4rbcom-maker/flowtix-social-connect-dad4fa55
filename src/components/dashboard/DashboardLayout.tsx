@@ -364,32 +364,6 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
             </div>
           ))}
 
-          {isAdmin && (
-            <div className="mt-5">
-              {sidebarOpen ? (
-                <div className="mb-1.5 px-3">
-                  <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-primary/80">
-                    {lang === "ar" ? "الإدارة" : "Administration"}
-                  </span>
-                </div>
-              ) : (
-                <div className="mx-3 mb-2 h-px bg-border" />
-              )}
-              <Link
-                to="/admin"
-                onClick={closeOnMobile}
-                title={!sidebarOpen ? (lang === "ar" ? "لوحة السوبر أدمن" : "Super Admin") : undefined}
-                className={`group relative flex w-full items-center gap-3 rounded-lg border border-primary/20 bg-gradient-to-r from-primary/10 to-[oklch(0.66_0.26_320)]/10 px-3 py-2 text-[13px] font-semibold text-primary transition-colors hover:from-primary/20 hover:to-[oklch(0.66_0.26_320)]/20 ${!sidebarOpen ? "justify-center" : ""}`}
-              >
-                <Shield className="h-[18px] w-[18px] shrink-0" />
-                {sidebarOpen && (
-                  <span className="truncate">
-                    {lang === "ar" ? "لوحة السوبر أدمن" : "Super Admin"}
-                  </span>
-                )}
-              </Link>
-            </div>
-          )}
         </nav>
 
 
