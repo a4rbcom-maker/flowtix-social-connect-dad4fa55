@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as DashboardWhatsappRouteImport } from './routes/dashboard.whatsapp'
 import { Route as DashboardProfileRouteImport } from './routes/dashboard.profile'
 import { Route as DashboardFacebookRouteImport } from './routes/dashboard.facebook'
@@ -71,6 +72,11 @@ const DashboardRoute = DashboardRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/admin/',
+  path: '/admin/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardWhatsappRoute = DashboardWhatsappRouteImport.update({
@@ -232,6 +238,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
+  '/admin/': typeof AdminIndexRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
   '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
@@ -267,6 +274,7 @@ export interface FileRoutesByTo {
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
+  '/admin': typeof AdminIndexRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
   '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
@@ -303,6 +311,7 @@ export interface FileRoutesById {
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
+  '/admin/': typeof AdminIndexRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
   '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
@@ -340,6 +349,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook'
     | '/dashboard/profile'
     | '/dashboard/whatsapp'
+    | '/admin/'
     | '/api/public/health'
     | '/dashboard/facebook/bot'
     | '/dashboard/facebook/campaigns'
@@ -375,6 +385,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook'
     | '/dashboard/profile'
     | '/dashboard/whatsapp'
+    | '/admin'
     | '/api/public/health'
     | '/dashboard/facebook/bot'
     | '/dashboard/facebook/campaigns'
@@ -410,6 +421,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook'
     | '/dashboard/profile'
     | '/dashboard/whatsapp'
+    | '/admin/'
     | '/api/public/health'
     | '/dashboard/facebook/bot'
     | '/dashboard/facebook/campaigns'
@@ -440,6 +452,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  AdminIndexRoute: typeof AdminIndexRoute
   ApiPublicHealthRoute: typeof ApiPublicHealthRoute
   ApiPublicBotJobUpdateRoute: typeof ApiPublicBotJobUpdateRoute
   ApiPublicBotNextJobRoute: typeof ApiPublicBotNextJobRoute
@@ -489,6 +502,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/': {
+      id: '/admin/'
+      path: '/admin'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard/whatsapp': {
@@ -774,6 +794,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  AdminIndexRoute: AdminIndexRoute,
   ApiPublicHealthRoute: ApiPublicHealthRoute,
   ApiPublicBotJobUpdateRoute: ApiPublicBotJobUpdateRoute,
   ApiPublicBotNextJobRoute: ApiPublicBotNextJobRoute,
