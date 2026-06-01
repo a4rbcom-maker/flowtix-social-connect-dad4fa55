@@ -22,6 +22,7 @@ import { Route as DashboardFacebookRouteImport } from './routes/dashboard.facebo
 import { Route as DashboardControlRouteImport } from './routes/dashboard.control'
 import { Route as DashboardBulkRouteImport } from './routes/dashboard.bulk'
 import { Route as DashboardActivityRouteImport } from './routes/dashboard.activity'
+import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as DashboardWhatsappSettingsRouteImport } from './routes/dashboard.whatsapp.settings'
 import { Route as DashboardWhatsappInboxRouteImport } from './routes/dashboard.whatsapp.inbox'
 import { Route as DashboardWhatsappBotRouteImport } from './routes/dashboard.whatsapp.bot'
@@ -108,6 +109,11 @@ const DashboardActivityRoute = DashboardActivityRouteImport.update({
   id: '/activity',
   path: '/activity',
   getParentRoute: () => DashboardRoute,
+} as any)
+const AdminUsersRoute = AdminUsersRouteImport.update({
+  id: '/admin/users',
+  path: '/admin/users',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardWhatsappSettingsRoute =
   DashboardWhatsappSettingsRouteImport.update({
@@ -232,6 +238,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/admin/users': typeof AdminUsersRoute
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/bulk': typeof DashboardBulkRoute
   '/dashboard/control': typeof DashboardControlRoute
@@ -268,6 +275,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/admin/users': typeof AdminUsersRoute
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/bulk': typeof DashboardBulkRoute
   '/dashboard/control': typeof DashboardControlRoute
@@ -305,6 +313,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/admin/users': typeof AdminUsersRoute
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/bulk': typeof DashboardBulkRoute
   '/dashboard/control': typeof DashboardControlRoute
@@ -343,6 +352,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/signup'
+    | '/admin/users'
     | '/dashboard/activity'
     | '/dashboard/bulk'
     | '/dashboard/control'
@@ -379,6 +389,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/signup'
+    | '/admin/users'
     | '/dashboard/activity'
     | '/dashboard/bulk'
     | '/dashboard/control'
@@ -415,6 +426,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/signup'
+    | '/admin/users'
     | '/dashboard/activity'
     | '/dashboard/bulk'
     | '/dashboard/control'
@@ -452,6 +464,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  AdminUsersRoute: typeof AdminUsersRoute
   AdminIndexRoute: typeof AdminIndexRoute
   ApiPublicHealthRoute: typeof ApiPublicHealthRoute
   ApiPublicBotJobUpdateRoute: typeof ApiPublicBotJobUpdateRoute
@@ -552,6 +565,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/dashboard/activity'
       preLoaderRoute: typeof DashboardActivityRouteImport
       parentRoute: typeof DashboardRoute
+    }
+    '/admin/users': {
+      id: '/admin/users'
+      path: '/admin/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AdminUsersRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/dashboard/whatsapp/settings': {
       id: '/dashboard/whatsapp/settings'
@@ -794,6 +814,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  AdminUsersRoute: AdminUsersRoute,
   AdminIndexRoute: AdminIndexRoute,
   ApiPublicHealthRoute: ApiPublicHealthRoute,
   ApiPublicBotJobUpdateRoute: ApiPublicBotJobUpdateRoute,
@@ -804,3 +825,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
