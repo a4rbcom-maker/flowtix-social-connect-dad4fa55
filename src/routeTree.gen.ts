@@ -24,6 +24,7 @@ import { Route as DashboardBulkRouteImport } from './routes/dashboard.bulk'
 import { Route as DashboardActivityRouteImport } from './routes/dashboard.activity'
 import { Route as AdminWhatsappRouteImport } from './routes/admin.whatsapp'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
+import { Route as AdminNotificationsRouteImport } from './routes/admin.notifications'
 import { Route as AdminLogsRouteImport } from './routes/admin.logs'
 import { Route as AdminJobsRouteImport } from './routes/admin.jobs'
 import { Route as AdminFacebookRouteImport } from './routes/admin.facebook'
@@ -123,6 +124,11 @@ const AdminWhatsappRoute = AdminWhatsappRouteImport.update({
 const AdminUsersRoute = AdminUsersRouteImport.update({
   id: '/admin/users',
   path: '/admin/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminNotificationsRoute = AdminNotificationsRouteImport.update({
+  id: '/admin/notifications',
+  path: '/admin/notifications',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminLogsRoute = AdminLogsRouteImport.update({
@@ -272,6 +278,7 @@ export interface FileRoutesByFullPath {
   '/admin/facebook': typeof AdminFacebookRoute
   '/admin/jobs': typeof AdminJobsRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/notifications': typeof AdminNotificationsRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin/whatsapp': typeof AdminWhatsappRoute
   '/dashboard/activity': typeof DashboardActivityRoute
@@ -314,6 +321,7 @@ export interface FileRoutesByTo {
   '/admin/facebook': typeof AdminFacebookRoute
   '/admin/jobs': typeof AdminJobsRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/notifications': typeof AdminNotificationsRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin/whatsapp': typeof AdminWhatsappRoute
   '/dashboard/activity': typeof DashboardActivityRoute
@@ -357,6 +365,7 @@ export interface FileRoutesById {
   '/admin/facebook': typeof AdminFacebookRoute
   '/admin/jobs': typeof AdminJobsRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/notifications': typeof AdminNotificationsRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin/whatsapp': typeof AdminWhatsappRoute
   '/dashboard/activity': typeof DashboardActivityRoute
@@ -401,6 +410,7 @@ export interface FileRouteTypes {
     | '/admin/facebook'
     | '/admin/jobs'
     | '/admin/logs'
+    | '/admin/notifications'
     | '/admin/users'
     | '/admin/whatsapp'
     | '/dashboard/activity'
@@ -443,6 +453,7 @@ export interface FileRouteTypes {
     | '/admin/facebook'
     | '/admin/jobs'
     | '/admin/logs'
+    | '/admin/notifications'
     | '/admin/users'
     | '/admin/whatsapp'
     | '/dashboard/activity'
@@ -485,6 +496,7 @@ export interface FileRouteTypes {
     | '/admin/facebook'
     | '/admin/jobs'
     | '/admin/logs'
+    | '/admin/notifications'
     | '/admin/users'
     | '/admin/whatsapp'
     | '/dashboard/activity'
@@ -528,6 +540,7 @@ export interface RootRouteChildren {
   AdminFacebookRoute: typeof AdminFacebookRoute
   AdminJobsRoute: typeof AdminJobsRoute
   AdminLogsRoute: typeof AdminLogsRoute
+  AdminNotificationsRoute: typeof AdminNotificationsRoute
   AdminUsersRoute: typeof AdminUsersRoute
   AdminWhatsappRoute: typeof AdminWhatsappRoute
   AdminIndexRoute: typeof AdminIndexRoute
@@ -643,6 +656,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/users'
       fullPath: '/admin/users'
       preLoaderRoute: typeof AdminUsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/notifications': {
+      id: '/admin/notifications'
+      path: '/admin/notifications'
+      fullPath: '/admin/notifications'
+      preLoaderRoute: typeof AdminNotificationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/logs': {
@@ -918,6 +938,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminFacebookRoute: AdminFacebookRoute,
   AdminJobsRoute: AdminJobsRoute,
   AdminLogsRoute: AdminLogsRoute,
+  AdminNotificationsRoute: AdminNotificationsRoute,
   AdminUsersRoute: AdminUsersRoute,
   AdminWhatsappRoute: AdminWhatsappRoute,
   AdminIndexRoute: AdminIndexRoute,
