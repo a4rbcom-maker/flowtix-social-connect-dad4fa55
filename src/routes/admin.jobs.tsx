@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -267,13 +267,20 @@ function AdminJobsPage() {
                       <tr key={`${j.kind}-${j.id}`} className="border-t border-border hover:bg-muted/30">
                         <td className="px-4 py-3"><KindBadge kind={j.kind} lang={lang} /></td>
                         <td className="px-4 py-3">
-                          <div className="font-medium truncate max-w-[240px]">{j.title}</div>
+                          <Link
+                            to="/admin/jobs/$kind/$id"
+                            params={{ kind: j.kind, id: j.id }}
+                            className="font-medium truncate max-w-[240px] block hover:text-primary hover:underline"
+                          >
+                            {j.title}
+                          </Link>
                           {j.error_message && (
                             <div className="text-[11px] text-rose-600 truncate max-w-[240px] mt-0.5" title={j.error_message}>
                               {j.error_message}
                             </div>
                           )}
                         </td>
+
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <div className="h-7 w-7 rounded-full bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center text-xs font-bold text-primary">

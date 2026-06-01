@@ -695,3 +695,178 @@ export const deleteAdminJob = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// ---------- Job detail (full timeline + per-target log) ----------
+export const getAdminJobDetail = createServerFn({ method: "GET" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { id: string; kind: "fb" | "bulk" }) =>
+    z.object({ id: z.string().uuid(), kind: z.enum(["fb", "bulk"]) }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const db = admin();
+
+    if (data.kind === "fb") {
+      const { data: job, error } = await db
+        .from("fb_jobs")
+        .select("*")
+        .eq("id", data.id)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!job) throw new Error("Job not found");
+
+      const [profileRes, resultsRes, campaignRes, accountRes, auditRes, relatedRes] = await Promise.all([
+        db.from("profiles").select("id,full_name,avatar_url,plan").eq("id", job.user_id).maybeSingle(),
+        db.from("fb_job_results").select("id,target,status,data,error,created_at").eq("job_id", data.id).order("created_at", { ascending: true }).limit(1000),
+        job.campaign_id ? db.from("fb_campaigns").select("id,name,status,target_kind,total_targets,done_targets,success_count,failed_count,created_at,last_run_at").eq("id", job.campaign_id).maybeSingle() : Promise.resolve({ data: null }),
+        job.account_id ? db.from("fb_bot_accounts").select("id,display_name,status,auth_method,last_check_at,last_error").eq("id", job.account_id).maybeSingle() : Promise.resolve({ data: null }),
+        db.from("admin_audit_log").select("id,admin_user_id,action,payload,created_at").like("action", "%job%").order("created_at", { ascending: false }).limit(50),
+        job.campaign_id
+          ? db.from("fb_jobs").select("id,status,progress,processed_items,total_items,error_message,created_at,started_at,completed_at").eq("campaign_id", job.campaign_id).neq("id", data.id).order("created_at", { ascending: false }).limit(20)
+          : Promise.resolve({ data: [] as Array<{ id: string; status: string; progress: number; processed_items: number; total_items: number; error_message: string | null; created_at: string; started_at: string | null; completed_at: string | null }> }),
+      ]);
+
+      const results = (resultsRes.data ?? []).map((r) => ({
+        id: r.id as string,
+        target: (r.target as string | null) ?? null,
+        status: r.status as string,
+        error: (r.error as string | null) ?? null,
+        data_json: r.data == null ? null : JSON.stringify(r.data),
+        created_at: r.created_at as string,
+      }));
+      const audit = (auditRes.data ?? [])
+        .filter((a) => {
+          const p = a.payload as Record<string, unknown> | null;
+          return p && (p as { id?: string }).id === data.id;
+        })
+        .map((a) => ({
+          id: a.id as string,
+          admin_user_id: a.admin_user_id as string,
+          action: a.action as string,
+          created_at: a.created_at as string,
+          payload_json: JSON.stringify(a.payload ?? {}),
+        }));
+
+      const counts = {
+        success: results.filter((r) => r.status === "success").length,
+        failed: results.filter((r) => r.status === "failed").length,
+        skipped: results.filter((r) => r.status === "skipped").length,
+      };
+
+      const related_attempts = (relatedRes.data ?? []).map((r) => ({
+        id: r.id as string,
+        status: String(r.status ?? ""),
+        progress: Number(r.progress ?? 0),
+        processed_items: Number(r.processed_items ?? 0),
+        total_items: Number(r.total_items ?? 0),
+        error_message: (r.error_message as string | null) ?? null,
+        created_at: r.created_at as string,
+        started_at: (r.started_at as string | null) ?? null,
+        completed_at: (r.completed_at as string | null) ?? null,
+      }));
+
+      return {
+        kind: "fb" as const,
+        job: {
+          id: job.id,
+          user_id: job.user_id,
+          job_type: job.job_type as string,
+          status: job.status as string,
+          progress: job.progress as number,
+          total_items: job.total_items as number,
+          processed_items: job.processed_items as number,
+          scheduled_at: job.scheduled_at as string | null,
+          started_at: job.started_at as string | null,
+          completed_at: job.completed_at as string | null,
+          error_message: job.error_message as string | null,
+          created_at: job.created_at as string,
+          updated_at: job.updated_at as string,
+          campaign_id: job.campaign_id as string | null,
+          account_id: job.account_id as string | null,
+          payload_json: JSON.stringify(job.payload ?? {}, null, 2),
+        },
+        user: profileRes.data ?? null,
+        campaign: campaignRes.data ?? null,
+        account: accountRes.data ?? null,
+        results,
+        counts,
+        audit,
+        related_attempts,
+      };
+
+    }
+
+    // bulk
+    const { data: job, error } = await db
+      .from("bulk_jobs")
+      .select("*")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!job) throw new Error("Job not found");
+
+    const [profileRes, recipientsRes, auditRes] = await Promise.all([
+      db.from("profiles").select("id,full_name,avatar_url,plan").eq("id", job.user_id).maybeSingle(),
+      db.from("bulk_job_recipients").select("id,name,phone,status,sent_at,error_message,created_at").eq("job_id", data.id).order("created_at", { ascending: true }).limit(2000),
+      db.from("admin_audit_log").select("id,admin_user_id,action,payload,created_at").like("action", "%job%").order("created_at", { ascending: false }).limit(50),
+    ]);
+
+    const recipients = (recipientsRes.data ?? []).map((r) => ({
+      id: r.id as string,
+      name: r.name as string,
+      phone: r.phone as string,
+      status: r.status as string,
+      sent_at: (r.sent_at as string | null) ?? null,
+      error_message: (r.error_message as string | null) ?? null,
+      created_at: r.created_at as string,
+    }));
+    const audit = (auditRes.data ?? [])
+      .filter((a) => {
+        const p = a.payload as Record<string, unknown> | null;
+        return p && (p as { id?: string }).id === data.id;
+      })
+      .map((a) => ({
+        id: a.id as string,
+        admin_user_id: a.admin_user_id as string,
+        action: a.action as string,
+        created_at: a.created_at as string,
+        payload_json: JSON.stringify(a.payload ?? {}),
+      }));
+
+
+    const counts = {
+      success: recipients.filter((r) => (r.status as string) === "success").length,
+      failed: recipients.filter((r) => (r.status as string) === "failed").length,
+      pending: recipients.filter((r) => (r.status as string) === "pending").length,
+      skipped: recipients.filter((r) => (r.status as string) === "skipped").length,
+    };
+
+    return {
+      kind: "bulk" as const,
+      job: {
+        id: job.id,
+        user_id: job.user_id,
+        channel: job.channel as string,
+        title: job.title as string,
+        message: job.message as string,
+        image_url: job.image_url as string | null,
+        status: job.status as string,
+        total_recipients: job.total_recipients as number,
+        sent_count: job.sent_count as number,
+        failed_count: job.failed_count as number,
+        interval_seconds: job.interval_seconds as number,
+        scheduled_at: job.scheduled_at as string,
+        started_at: job.started_at as string | null,
+        completed_at: job.completed_at as string | null,
+        next_send_at: job.next_send_at as string | null,
+        error_message: job.error_message as string | null,
+        created_at: job.created_at as string,
+        updated_at: job.updated_at as string,
+        metadata_json: JSON.stringify(job.metadata ?? {}, null, 2),
+      },
+      user: profileRes.data ?? null,
+      recipients,
+      counts,
+      audit,
+    };
+  });
+
+
