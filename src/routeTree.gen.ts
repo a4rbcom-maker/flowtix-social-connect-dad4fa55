@@ -52,6 +52,7 @@ import { Route as ApiPublicWaWebhookRouteImport } from './routes/api/public/wa/w
 import { Route as ApiPublicHooksProcessBulkJobsRouteImport } from './routes/api/public/hooks/process-bulk-jobs'
 import { Route as ApiPublicBotNextJobRouteImport } from './routes/api/public/bot/next-job'
 import { Route as ApiPublicBotJobUpdateRouteImport } from './routes/api/public/bot/job-update'
+import { Route as AdminJobsKindIdRouteImport } from './routes/admin.jobs.$kind.$id'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -278,6 +279,11 @@ const ApiPublicBotJobUpdateRoute = ApiPublicBotJobUpdateRouteImport.update({
   path: '/api/public/bot/job-update',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminJobsKindIdRoute = AdminJobsKindIdRouteImport.update({
+  id: '/$kind/$id',
+  path: '/$kind/$id',
+  getParentRoute: () => AdminJobsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -288,7 +294,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/admin/ai': typeof AdminAiRoute
   '/admin/facebook': typeof AdminFacebookRoute
-  '/admin/jobs': typeof AdminJobsRoute
+  '/admin/jobs': typeof AdminJobsRouteWithChildren
   '/admin/logs': typeof AdminLogsRoute
   '/admin/notifications': typeof AdminNotificationsRoute
   '/admin/security': typeof AdminSecurityRoute
@@ -317,6 +323,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/whatsapp/bot': typeof DashboardWhatsappBotRoute
   '/dashboard/whatsapp/inbox': typeof DashboardWhatsappInboxRoute
   '/dashboard/whatsapp/settings': typeof DashboardWhatsappSettingsRoute
+  '/admin/jobs/$kind/$id': typeof AdminJobsKindIdRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
@@ -333,7 +340,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/admin/ai': typeof AdminAiRoute
   '/admin/facebook': typeof AdminFacebookRoute
-  '/admin/jobs': typeof AdminJobsRoute
+  '/admin/jobs': typeof AdminJobsRouteWithChildren
   '/admin/logs': typeof AdminLogsRoute
   '/admin/notifications': typeof AdminNotificationsRoute
   '/admin/security': typeof AdminSecurityRoute
@@ -362,6 +369,7 @@ export interface FileRoutesByTo {
   '/dashboard/whatsapp/bot': typeof DashboardWhatsappBotRoute
   '/dashboard/whatsapp/inbox': typeof DashboardWhatsappInboxRoute
   '/dashboard/whatsapp/settings': typeof DashboardWhatsappSettingsRoute
+  '/admin/jobs/$kind/$id': typeof AdminJobsKindIdRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
@@ -379,7 +387,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/admin/ai': typeof AdminAiRoute
   '/admin/facebook': typeof AdminFacebookRoute
-  '/admin/jobs': typeof AdminJobsRoute
+  '/admin/jobs': typeof AdminJobsRouteWithChildren
   '/admin/logs': typeof AdminLogsRoute
   '/admin/notifications': typeof AdminNotificationsRoute
   '/admin/security': typeof AdminSecurityRoute
@@ -408,6 +416,7 @@ export interface FileRoutesById {
   '/dashboard/whatsapp/bot': typeof DashboardWhatsappBotRoute
   '/dashboard/whatsapp/inbox': typeof DashboardWhatsappInboxRoute
   '/dashboard/whatsapp/settings': typeof DashboardWhatsappSettingsRoute
+  '/admin/jobs/$kind/$id': typeof AdminJobsKindIdRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
@@ -455,6 +464,7 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp/bot'
     | '/dashboard/whatsapp/inbox'
     | '/dashboard/whatsapp/settings'
+    | '/admin/jobs/$kind/$id'
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/process-bulk-jobs'
@@ -500,6 +510,7 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp/bot'
     | '/dashboard/whatsapp/inbox'
     | '/dashboard/whatsapp/settings'
+    | '/admin/jobs/$kind/$id'
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/process-bulk-jobs'
@@ -545,6 +556,7 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp/bot'
     | '/dashboard/whatsapp/inbox'
     | '/dashboard/whatsapp/settings'
+    | '/admin/jobs/$kind/$id'
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/process-bulk-jobs'
@@ -562,7 +574,7 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   AdminAiRoute: typeof AdminAiRoute
   AdminFacebookRoute: typeof AdminFacebookRoute
-  AdminJobsRoute: typeof AdminJobsRoute
+  AdminJobsRoute: typeof AdminJobsRouteWithChildren
   AdminLogsRoute: typeof AdminLogsRoute
   AdminNotificationsRoute: typeof AdminNotificationsRoute
   AdminSecurityRoute: typeof AdminSecurityRoute
@@ -880,6 +892,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicBotJobUpdateRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/jobs/$kind/$id': {
+      id: '/admin/jobs/$kind/$id'
+      path: '/$kind/$id'
+      fullPath: '/admin/jobs/$kind/$id'
+      preLoaderRoute: typeof AdminJobsKindIdRouteImport
+      parentRoute: typeof AdminJobsRoute
+    }
   }
 }
 
@@ -967,6 +986,18 @@ const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
   DashboardRouteChildren,
 )
 
+interface AdminJobsRouteChildren {
+  AdminJobsKindIdRoute: typeof AdminJobsKindIdRoute
+}
+
+const AdminJobsRouteChildren: AdminJobsRouteChildren = {
+  AdminJobsKindIdRoute: AdminJobsKindIdRoute,
+}
+
+const AdminJobsRouteWithChildren = AdminJobsRoute._addFileChildren(
+  AdminJobsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRouteWithChildren,
@@ -976,7 +1007,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   AdminAiRoute: AdminAiRoute,
   AdminFacebookRoute: AdminFacebookRoute,
-  AdminJobsRoute: AdminJobsRoute,
+  AdminJobsRoute: AdminJobsRouteWithChildren,
   AdminLogsRoute: AdminLogsRoute,
   AdminNotificationsRoute: AdminNotificationsRoute,
   AdminSecurityRoute: AdminSecurityRoute,
