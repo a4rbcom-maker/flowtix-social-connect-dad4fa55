@@ -24,6 +24,7 @@ import {
   getFacebookConnection,
 } from "@/lib/facebook.functions";
 import { logSendActivity, updateSendStatus } from "@/lib/notifications";
+import { GraphApiConnectWizard } from "@/components/facebook/GraphApiConnectWizard";
 
 export const Route = createFileRoute("/dashboard/facebook/groups")({
   ssr: false,
@@ -56,6 +57,7 @@ function FacebookGroupsPage() {
   const [message, setMessage] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [sending, setSending] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const t = lang === "ar"
     ? {
@@ -363,9 +365,16 @@ function FacebookGroupsPage() {
                 : t.notConnectedDesc}
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <button
+                onClick={() => setWizardOpen(true)}
+                className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+              >
+                <Sparkles className="h-4 w-4" />
+                {lang === "ar" ? "ابدأ الربط خطوة بخطوة" : "Start guided setup"}
+              </button>
               <Link
                 to="/dashboard/facebook"
-                className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+                className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-accent"
               >
                 {t.goConnect}
               </Link>
@@ -380,6 +389,9 @@ function FacebookGroupsPage() {
             </div>
           </div>
         )}
+
+        <GraphApiConnectWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
+
 
         {/* Step 1: Browse + select */}
         {connected && step === "browse" && (
@@ -397,6 +409,15 @@ function FacebookGroupsPage() {
                 />
               </div>
               <button
+                type="button"
+                onClick={() => setWizardOpen(true)}
+                title={lang === "ar" ? "كيف يعمل الربط؟" : "How does the link work?"}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                {lang === "ar" ? "كيف يعمل؟" : "How it works"}
+              </button>
+              <button
                 onClick={handleImport}
                 disabled={loading}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
@@ -405,6 +426,7 @@ function FacebookGroupsPage() {
                 {loading ? t.importing : groups.length > 0 ? t.reimport : t.import}
               </button>
             </div>
+
 
             {/* Selection bar */}
             {groups.length > 0 && (
