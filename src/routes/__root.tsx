@@ -126,23 +126,33 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: { staleTime: 30_000, refetchOnWindowFocus: false, retry: 1 },
+        },
+      }),
+  );
   return (
-    <ThemeProvider>
-      <I18nProvider>
-        <AuthProvider>
-          <NotificationsProvider>
-            <Outlet />
-            <Toaster
-              position="top-center"
-              richColors
-              closeButton
-              toastOptions={{
-                style: { fontFamily: "'Cairo', 'Inter', sans-serif" },
-              }}
-            />
-          </NotificationsProvider>
-        </AuthProvider>
-      </I18nProvider>
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <I18nProvider>
+          <AuthProvider>
+            <NotificationsProvider>
+              <Outlet />
+              <Toaster
+                position="top-center"
+                richColors
+                closeButton
+                toastOptions={{
+                  style: { fontFamily: "'Cairo', 'Inter', sans-serif" },
+                }}
+              />
+            </NotificationsProvider>
+          </AuthProvider>
+        </I18nProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }
