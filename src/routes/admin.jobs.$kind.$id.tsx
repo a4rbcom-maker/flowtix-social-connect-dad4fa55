@@ -337,7 +337,7 @@ function AdminJobDetailPage() {
             </div>
           </Section>
 
-          {isFb && data.campaign && (
+          {data.kind === "fb" && data.campaign && (
             <Section title={lang === "ar" ? "الحملة المرتبطة" : "Linked Campaign"} icon={Activity}>
               <div className="p-4 space-y-1 text-sm">
                 <div className="font-semibold">{data.campaign.name}</div>
@@ -354,7 +354,7 @@ function AdminJobDetailPage() {
             </Section>
           )}
 
-          {isFb && data.account && (
+          {data.kind === "fb" && data.account && (
             <Section title={lang === "ar" ? "حساب البوت" : "Bot Account"} icon={UserIcon}>
               <div className="p-4 space-y-1 text-sm">
                 <div className="font-semibold">{data.account.display_name}</div>
