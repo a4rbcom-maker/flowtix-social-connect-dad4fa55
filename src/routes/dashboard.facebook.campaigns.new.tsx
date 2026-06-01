@@ -75,6 +75,10 @@ function NewCampaignPage() {
   const [saving, setSaving] = useState(false);
   const [savingAndStart, setSavingAndStart] = useState(false);
 
+  // Manual Group IDs entry (bot mode)
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualRaw, setManualRaw] = useState("");
+
   const t = lang === "ar" ? {
     back: "العودة للحملات",
     title: "حملة جديدة", subtitle: "نشر منشور واحد على عدة وجهات بفاصل زمني آمن",
