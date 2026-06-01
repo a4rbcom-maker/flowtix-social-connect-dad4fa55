@@ -41,6 +41,9 @@ function BotPage() {
   const saveFn = useServerFn(saveAiSettings);
   const logsFn = useServerFn(listAiLogs);
   const rateFn = useServerFn(rateAiLog);
+  const tiersFn = useServerFn(listAvailableModelTiers);
+
+  const tiersQ = useQuery({ queryKey: ["wa-ai-tiers"], queryFn: () => tiersFn() });
 
   const settingsQ = useQuery<WaAiSettings>({
     queryKey: ["wa-ai-settings"],
