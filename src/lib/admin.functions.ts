@@ -58,7 +58,7 @@ export const getAdminKpis = createServerFn({ method: "GET" })
     const db = admin();
     const { data, error } = await db.rpc("admin_kpi_snapshot" as never);
     if (error) throw new Error(error.message);
-    return (data ?? {}) as Record<string, unknown>;
+    return { kpis: (data ?? {}) as Record<string, number | Record<string, number>> };
   });
 
 export const getAdminTimeseries = createServerFn({ method: "GET" })
