@@ -3,6 +3,7 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { Navbar } from "@/components/landing/Navbar";
 import { AlertCircle, Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff } from "lucide-react";
 
@@ -13,6 +14,7 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const { lang, dir } = useI18n();
   const { user } = useAuth();
+  const { isAdmin, isLoading: isAdminLoading } = useIsAdmin();
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
@@ -24,9 +26,10 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  if (user) {
-    return <Navigate to="/dashboard" />;
+  if (user && !isAdminLoading) {
+    return <Navigate to={isAdmin ? "/admin" : "/dashboard"} />;
   }
+
 
   const labels = lang === "ar"
     ? {
