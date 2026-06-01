@@ -152,6 +152,10 @@ export const testAiAccount = createServerFn({ method: "POST" })
     }
     if (!key) throw new Error("api key required");
     const res = await pingKieKey(key);
+    // If testing an existing account, refresh its credit balance from the same call
+    if (data.id && res.ok) {
+      try { await refreshAccountCredit(data.id); } catch { /* ignore */ }
+    }
     return res;
   });
 
