@@ -870,3 +870,171 @@ export const getAdminJobDetail = createServerFn({ method: "GET" })
   });
 
 
+
+// ============================================================
+// Logs: send_log + admin_audit_log
+// ============================================================
+export const getAdminLogs = createServerFn({ method: "GET" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { kind?: "send" | "audit"; limit?: number; userId?: string; channel?: string; status?: string; search?: string }) =>
+    z.object({
+      kind: z.enum(["send", "audit"]).default("send"),
+      limit: z.number().min(10).max(500).default(200),
+      userId: z.string().uuid().optional(),
+      channel: z.string().optional(),
+      status: z.string().optional(),
+      search: z.string().max(200).optional(),
+    }).parse(d ?? {}),
+  )
+  .handler(async ({ data }) => {
+    const db = admin();
+    if (data.kind === "audit") {
+      let q = db.from("admin_audit_log").select("*").order("created_at", { ascending: false }).limit(data.limit);
+      if (data.userId) q = q.eq("target_user_id", data.userId);
+      if (data.search) q = q.ilike("action", `%${data.search}%`);
+      const [{ data: rows, error }, profilesRes] = await Promise.all([
+        q,
+        db.from("profiles").select("id,full_name,avatar_url"),
+      ]);
+      if (error) throw new Error(error.message);
+      const profMap = new Map((profilesRes.data ?? []).map((p) => [p.id, p]));
+      return {
+        kind: "audit" as const,
+        rows: (rows ?? []).map((r) => ({
+          ...r,
+          admin: profMap.get(r.admin_user_id) ?? null,
+          target: r.target_user_id ? profMap.get(r.target_user_id) ?? null : null,
+        })),
+      };
+    }
+    let q = db.from("send_log").select("*").order("created_at", { ascending: false }).limit(data.limit);
+    if (data.userId) q = q.eq("user_id", data.userId);
+    if (data.channel) q = q.eq("channel", data.channel as never);
+    if (data.status) q = q.eq("status", data.status as never);
+    if (data.search) q = q.or(`title.ilike.%${data.search}%,description.ilike.%${data.search}%,recipient.ilike.%${data.search}%`);
+    const [{ data: rows, error }, profilesRes] = await Promise.all([
+      q,
+      db.from("profiles").select("id,full_name,avatar_url"),
+    ]);
+    if (error) throw new Error(error.message);
+    const profMap = new Map((profilesRes.data ?? []).map((p) => [p.id, p]));
+    return {
+      kind: "send" as const,
+      rows: (rows ?? []).map((r) => ({ ...r, user: profMap.get(r.user_id) ?? null })),
+    };
+  });
+
+// ============================================================
+// Announcements (platform-wide)
+// ============================================================
+export const listAnnouncements = createServerFn({ method: "GET" })
+  .middleware([requireAdmin])
+  .handler(async () => {
+    const db = admin();
+    const { data, error } = await db
+      .from("platform_announcements")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (error) throw new Error(error.message);
+    return { rows: data ?? [] };
+  });
+
+export const createAnnouncement = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: {
+    title: string; body: string; level: "info" | "success" | "warning" | "error";
+    target_kind: "all" | "plan" | "users"; target_plan?: string | null; target_user_ids?: string[];
+    starts_at?: string | null; ends_at?: string | null;
+  }) =>
+    z.object({
+      title: z.string().min(1).max(200),
+      body: z.string().min(1).max(4000),
+      level: z.enum(["info", "success", "warning", "error"]),
+      target_kind: z.enum(["all", "plan", "users"]),
+      target_plan: z.string().max(40).nullable().optional(),
+      target_user_ids: z.array(z.string().uuid()).max(500).optional(),
+      starts_at: z.string().nullable().optional(),
+      ends_at: z.string().nullable().optional(),
+    }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const db = admin();
+    const { error, data: row } = await db.from("platform_announcements").insert({
+      title: data.title,
+      body: data.body,
+      level: data.level,
+      target_kind: data.target_kind,
+      target_plan: data.target_kind === "plan" ? data.target_plan ?? null : null,
+      target_user_ids: data.target_kind === "users" ? data.target_user_ids ?? [] : [],
+      starts_at: data.starts_at || new Date().toISOString(),
+      ends_at: data.ends_at || null,
+      created_by: context.adminUserId,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    await logAction(context.adminUserId, "create_announcement", null, { id: row.id, title: data.title });
+    return { ok: true, id: row.id };
+  });
+
+export const deleteAnnouncement = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { id: string }) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ context, data }) => {
+    const db = admin();
+    const { error } = await db.from("platform_announcements").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    await logAction(context.adminUserId, "delete_announcement", null, { id: data.id });
+    return { ok: true };
+  });
+
+// ============================================================
+// Security overview
+// ============================================================
+export const getAdminSecurityOverview = createServerFn({ method: "GET" })
+  .middleware([requireAdmin])
+  .handler(async () => {
+    const db = admin();
+    const [rolesRes, profilesRes, recentAuditRes, recentLoginsRes] = await Promise.all([
+      db.from("user_roles").select("user_id,role,id"),
+      db.from("profiles").select("id,full_name,avatar_url,plan,created_at"),
+      db.from("admin_audit_log").select("*").order("created_at", { ascending: false }).limit(100),
+      db.from("profiles").select("id,full_name,avatar_url,last_login_at,login_count").order("last_login_at", { ascending: false, nullsFirst: false }).limit(20),
+    ]);
+
+    const profMap = new Map((profilesRes.data ?? []).map((p) => [p.id, p]));
+    const roleRows = rolesRes.data ?? [];
+    const admins = roleRows.filter((r) => r.role === "admin").map((r) => ({
+      ...r, profile: profMap.get(r.user_id) ?? null,
+    }));
+    const moderators = roleRows.filter((r) => r.role === "moderator").map((r) => ({
+      ...r, profile: profMap.get(r.user_id) ?? null,
+    }));
+
+    const audit = (recentAuditRes.data ?? []).map((r) => ({
+      ...r,
+      admin: profMap.get(r.admin_user_id) ?? null,
+      target: r.target_user_id ? profMap.get(r.target_user_id) ?? null : null,
+    }));
+
+    // Action frequency
+    const actionCounts: Record<string, number> = {};
+    for (const a of audit) actionCounts[a.action] = (actionCounts[a.action] ?? 0) + 1;
+    const topActions = Object.entries(actionCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([action, count]) => ({ action, count }));
+
+    return {
+      admins,
+      moderators,
+      audit,
+      topActions,
+      recentLogins: (recentLoginsRes.data ?? []).filter((p) => p.last_login_at),
+      totals: {
+        admins: admins.length,
+        moderators: moderators.length,
+        totalUsers: profilesRes.data?.length ?? 0,
+        actions24h: audit.filter((a) => new Date(a.created_at).getTime() > Date.now() - 86400_000).length,
+      },
+    };
+  });
