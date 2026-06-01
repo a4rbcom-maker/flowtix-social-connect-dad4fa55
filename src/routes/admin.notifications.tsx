@@ -149,7 +149,7 @@ function NotificationsPage() {
                             setForm({ ...form, target_user_ids: e.target.checked ? [...form.target_user_ids, u.id] : form.target_user_ids.filter((x) => x !== u.id) });
                           }} />
                           <span className="font-medium">{u.full_name ?? "—"}</span>
-                          <span className="text-xs text-muted-foreground">{u.email}</span>
+                          <span className="text-xs text-muted-foreground font-mono">{u.id.slice(0, 8)}</span>
                         </label>
                       ))}
                     </div>
