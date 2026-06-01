@@ -159,9 +159,9 @@ async function readState(
     status = normalizeStatus(s.status ?? s.state ?? (s.connected ? "connected" : ""));
     phoneNumber = s.phoneNumber ?? s.phone ?? null;
   } catch (err) {
-    if (!(err instanceof BridgeError && err.status === 404)) {
-      throw new Error(describeBridgeError(err));
-    }
+    // Bridge not configured / unreachable / 404 → treat as disconnected
+    // so the UI can render instead of crashing the route.
+    console.warn("[wa] readState bridge error:", describeBridgeError(err));
     status = "disconnected";
   }
 
