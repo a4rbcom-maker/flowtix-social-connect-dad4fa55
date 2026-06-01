@@ -24,6 +24,7 @@ import { Route as DashboardBulkRouteImport } from './routes/dashboard.bulk'
 import { Route as DashboardActivityRouteImport } from './routes/dashboard.activity'
 import { Route as AdminWhatsappRouteImport } from './routes/admin.whatsapp'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
+import { Route as AdminJobsRouteImport } from './routes/admin.jobs'
 import { Route as AdminFacebookRouteImport } from './routes/admin.facebook'
 import { Route as AdminAiRouteImport } from './routes/admin.ai'
 import { Route as DashboardWhatsappSettingsRouteImport } from './routes/dashboard.whatsapp.settings'
@@ -121,6 +122,11 @@ const AdminWhatsappRoute = AdminWhatsappRouteImport.update({
 const AdminUsersRoute = AdminUsersRouteImport.update({
   id: '/admin/users',
   path: '/admin/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminJobsRoute = AdminJobsRouteImport.update({
+  id: '/admin/jobs',
+  path: '/admin/jobs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminFacebookRoute = AdminFacebookRouteImport.update({
@@ -258,6 +264,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/admin/ai': typeof AdminAiRoute
   '/admin/facebook': typeof AdminFacebookRoute
+  '/admin/jobs': typeof AdminJobsRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin/whatsapp': typeof AdminWhatsappRoute
   '/dashboard/activity': typeof DashboardActivityRoute
@@ -298,6 +305,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/admin/ai': typeof AdminAiRoute
   '/admin/facebook': typeof AdminFacebookRoute
+  '/admin/jobs': typeof AdminJobsRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin/whatsapp': typeof AdminWhatsappRoute
   '/dashboard/activity': typeof DashboardActivityRoute
@@ -339,6 +347,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/admin/ai': typeof AdminAiRoute
   '/admin/facebook': typeof AdminFacebookRoute
+  '/admin/jobs': typeof AdminJobsRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin/whatsapp': typeof AdminWhatsappRoute
   '/dashboard/activity': typeof DashboardActivityRoute
@@ -381,6 +390,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/admin/ai'
     | '/admin/facebook'
+    | '/admin/jobs'
     | '/admin/users'
     | '/admin/whatsapp'
     | '/dashboard/activity'
@@ -421,6 +431,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/admin/ai'
     | '/admin/facebook'
+    | '/admin/jobs'
     | '/admin/users'
     | '/admin/whatsapp'
     | '/dashboard/activity'
@@ -461,6 +472,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/admin/ai'
     | '/admin/facebook'
+    | '/admin/jobs'
     | '/admin/users'
     | '/admin/whatsapp'
     | '/dashboard/activity'
@@ -502,6 +514,7 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   AdminAiRoute: typeof AdminAiRoute
   AdminFacebookRoute: typeof AdminFacebookRoute
+  AdminJobsRoute: typeof AdminJobsRoute
   AdminUsersRoute: typeof AdminUsersRoute
   AdminWhatsappRoute: typeof AdminWhatsappRoute
   AdminIndexRoute: typeof AdminIndexRoute
@@ -617,6 +630,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/users'
       fullPath: '/admin/users'
       preLoaderRoute: typeof AdminUsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/jobs': {
+      id: '/admin/jobs'
+      path: '/admin/jobs'
+      fullPath: '/admin/jobs'
+      preLoaderRoute: typeof AdminJobsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/facebook': {
@@ -876,6 +896,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   AdminAiRoute: AdminAiRoute,
   AdminFacebookRoute: AdminFacebookRoute,
+  AdminJobsRoute: AdminJobsRoute,
   AdminUsersRoute: AdminUsersRoute,
   AdminWhatsappRoute: AdminWhatsappRoute,
   AdminIndexRoute: AdminIndexRoute,
