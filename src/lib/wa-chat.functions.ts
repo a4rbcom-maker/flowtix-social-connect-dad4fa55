@@ -60,7 +60,16 @@ export const getConversationMessages = createServerFn({ method: "POST" })
       .order("created_at", { ascending: true })
       .limit(300);
     if (error) throw new Error(error.message);
-    return (rows ?? []) as ChatMessageRow[];
+    return (rows ?? []).map((r) => ({
+      id: r.id,
+      remote_jid: r.remote_jid,
+      direction: r.direction as "in" | "out",
+      text_body: r.text_body,
+      msg_type: r.msg_type,
+      media_url: r.media_url,
+      created_at: r.created_at,
+      is_ai: Boolean(r.raw && typeof r.raw === "object" && (r.raw as Record<string, unknown>).ai === true),
+    }));
   });
 
 export const markConversationRead = createServerFn({ method: "POST" })
