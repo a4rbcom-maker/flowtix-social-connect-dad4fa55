@@ -360,3 +360,142 @@ export const getAdminFacebookOverview = createServerFn({ method: "GET" })
     return { totals, users, recentCampaigns, recentJobs };
   });
 
+// ---------- WhatsApp monitoring ----------
+export const getAdminWhatsappOverview = createServerFn({ method: "GET" })
+  .middleware([requireAdmin])
+  .handler(async () => {
+    const db = admin();
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [sessions, convsCount, msgs24h, msgs7d, aiLogs, recentMsgs, recentAi, profiles, allConvs] = await Promise.all([
+      db.from("wa_sessions").select("user_id,session_id,status,phone_number,last_seen_at,qr_data_url,updated_at"),
+      db.from("wa_conversations").select("user_id,unread_count,ai_enabled,is_archived"),
+      db.from("wa_messages").select("user_id,direction,created_at").gte("created_at", since24h),
+      db.from("wa_messages").select("user_id,direction,created_at").gte("created_at", since7d),
+      db.from("wa_ai_logs").select("user_id,model,status,tokens_in,tokens_out,latency_ms,created_at").gte("created_at", since7d),
+      db.from("wa_messages").select("id,user_id,session_id,direction,remote_jid,msg_type,text_body,created_at").order("created_at", { ascending: false }).limit(25),
+      db.from("wa_ai_logs").select("id,user_id,model,status,latency_ms,tokens_in,tokens_out,error_message,created_at,prompt_excerpt").order("created_at", { ascending: false }).limit(25),
+      db.from("profiles").select("id,full_name,avatar_url,plan"),
+      db.from("wa_conversations").select("id,user_id,contact_name,contact_phone,last_message_text,last_message_at,unread_count,ai_enabled").order("last_message_at", { ascending: false }).limit(25),
+    ]);
+
+    const profileMap = new Map<string, { full_name: string | null; avatar_url: string | null; plan: string | null }>();
+    profiles.data?.forEach((p) => profileMap.set(p.id, { full_name: p.full_name, avatar_url: p.avatar_url, plan: p.plan }));
+
+    type PerUser = {
+      user_id: string;
+      full_name: string | null;
+      avatar_url: string | null;
+      plan: string | null;
+      session: { status: string; phone: string | null; last_seen_at: string | null } | null;
+      conversations: number;
+      unread: number;
+      ai_enabled_count: number;
+      msgs_in_24h: number;
+      msgs_out_24h: number;
+      msgs_7d: number;
+      ai_calls_7d: number;
+      ai_errors_7d: number;
+      tokens_7d: number;
+    };
+    const perUser = new Map<string, PerUser>();
+    const ensure = (uid: string): PerUser => {
+      let row = perUser.get(uid);
+      if (!row) {
+        const p = profileMap.get(uid);
+        row = {
+          user_id: uid,
+          full_name: p?.full_name ?? null,
+          avatar_url: p?.avatar_url ?? null,
+          plan: p?.plan ?? null,
+          session: null,
+          conversations: 0,
+          unread: 0,
+          ai_enabled_count: 0,
+          msgs_in_24h: 0,
+          msgs_out_24h: 0,
+          msgs_7d: 0,
+          ai_calls_7d: 0,
+          ai_errors_7d: 0,
+          tokens_7d: 0,
+        };
+        perUser.set(uid, row);
+      }
+      return row;
+    };
+
+    sessions.data?.forEach((s) => {
+      const r = ensure(s.user_id);
+      r.session = { status: s.status, phone: s.phone_number, last_seen_at: s.last_seen_at };
+    });
+    convsCount.data?.forEach((c) => {
+      const r = ensure(c.user_id);
+      r.conversations += 1;
+      r.unread += c.unread_count ?? 0;
+      if (c.ai_enabled) r.ai_enabled_count += 1;
+    });
+    msgs24h.data?.forEach((m) => {
+      const r = ensure(m.user_id);
+      if (m.direction === "in") r.msgs_in_24h += 1;
+      else r.msgs_out_24h += 1;
+    });
+    msgs7d.data?.forEach((m) => {
+      const r = ensure(m.user_id);
+      r.msgs_7d += 1;
+    });
+    aiLogs.data?.forEach((a) => {
+      const r = ensure(a.user_id);
+      r.ai_calls_7d += 1;
+      if ((a.status as string) !== "success") r.ai_errors_7d += 1;
+      r.tokens_7d += (a.tokens_in ?? 0) + (a.tokens_out ?? 0);
+    });
+
+    const users = Array.from(perUser.values()).sort(
+      (a, b) => (b.msgs_7d + b.ai_calls_7d) - (a.msgs_7d + a.ai_calls_7d),
+    );
+
+    const totals = {
+      sessions: sessions.data?.length ?? 0,
+      sessions_connected: sessions.data?.filter((s) => s.status === "connected").length ?? 0,
+      sessions_qr: sessions.data?.filter((s) => s.status === "qr" || s.status === "connecting").length ?? 0,
+      conversations: convsCount.data?.length ?? 0,
+      unread_total: (convsCount.data ?? []).reduce((acc, c) => acc + (c.unread_count ?? 0), 0),
+      msgs_in_24h: msgs24h.data?.filter((m) => m.direction === "in").length ?? 0,
+      msgs_out_24h: msgs24h.data?.filter((m) => m.direction === "out").length ?? 0,
+      msgs_7d: msgs7d.data?.length ?? 0,
+      ai_calls_7d: aiLogs.data?.length ?? 0,
+      ai_errors_7d: aiLogs.data?.filter((a) => (a.status as string) !== "success").length ?? 0,
+      ai_tokens_7d: (aiLogs.data ?? []).reduce((acc, a) => acc + (a.tokens_in ?? 0) + (a.tokens_out ?? 0), 0),
+      users_with_wa: perUser.size,
+    };
+
+    // Compute hourly msg histogram for last 24h
+    const buckets = new Array(24).fill(0).map((_, i) => ({ hour: i, in: 0, out: 0 }));
+    const now = Date.now();
+    msgs24h.data?.forEach((m) => {
+      const h = Math.floor((now - new Date(m.created_at).getTime()) / (60 * 60 * 1000));
+      const idx = 23 - h;
+      if (idx >= 0 && idx < 24) {
+        if (m.direction === "in") buckets[idx].in += 1;
+        else buckets[idx].out += 1;
+      }
+    });
+
+    const recentMessages = (recentMsgs.data ?? []).map((m) => ({
+      ...m,
+      user: profileMap.get(m.user_id) ?? null,
+    }));
+    const recentAiLogs = (recentAi.data ?? []).map((a) => ({
+      ...a,
+      user: profileMap.get(a.user_id) ?? null,
+    }));
+    const recentConversations = (allConvs.data ?? []).map((c) => ({
+      ...c,
+      user: profileMap.get(c.user_id) ?? null,
+    }));
+
+    return { totals, users, hourly: buckets, recentMessages, recentAiLogs, recentConversations };
+  });
+
+
