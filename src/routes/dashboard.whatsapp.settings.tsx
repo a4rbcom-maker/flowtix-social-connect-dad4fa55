@@ -1,0 +1,307 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import {
+  Settings as SettingsIcon,
+  Copy,
+  CheckCircle2,
+  Webhook,
+  Bell,
+  BellOff,
+  Link2,
+  ShieldCheck,
+  Clock,
+  AlertCircle,
+} from "lucide-react";
+import { toast } from "sonner";
+import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
+import { useI18n } from "@/lib/i18n";
+
+export const Route = createFileRoute("/dashboard/whatsapp/settings")({
+  ssr: false,
+  component: WaSettingsPage,
+});
+
+const NOTIF_KEY = "wa_notify_new_messages";
+const SOUND_KEY = "wa_notify_sound";
+
+function WaSettingsPage() {
+  const { lang } = useI18n();
+  const [origin, setOrigin] = useState("");
+  const [copied, setCopied] = useState<string | null>(null);
+  const [notify, setNotify] = useState(true);
+  const [sound, setSound] = useState(true);
+  const [permission, setPermission] = useState<NotificationPermission>("default");
+
+  useEffect(() => {
+    setOrigin(window.location.origin);
+    setNotify(localStorage.getItem(NOTIF_KEY) !== "0");
+    setSound(localStorage.getItem(SOUND_KEY) !== "0");
+    if (typeof Notification !== "undefined") setPermission(Notification.permission);
+  }, []);
+
+  const webhookUrl = origin ? `${origin}/api/public/wa/webhook` : "";
+
+  const t = lang === "ar"
+    ? {
+        title: "إعدادات واتساب",
+        subtitle: "إعدادات الـ Bridge والإشعارات والاتصال.",
+        bridgeTitle: "اتصال الـ Bridge",
+        bridgeStatus: "غير مفعّل بعد",
+        bridgeDesc: "Bot Worker لسة محتاج يترفع على السيرفر. لما يبقى جاهز، الـ Bridge هيوصل تلقائي على الـ Webhook ده.",
+        webhookTitle: "Webhook URL",
+        webhookDesc: "هتحط الرابط ده في إعدادات Bot Worker بتاعك عشان يبعت الرسائل الواردة.",
+        copy: "نسخ",
+        copied: "تم النسخ",
+        notifTitle: "الإشعارات",
+        notifDesc: "إعدادات إشعارات الرسائل الجديدة.",
+        notifEnable: "إشعارات المتصفح",
+        notifEnableDesc: "اعرض إشعار لما توصل رسالة جديدة وأنت بعيد عن الصفحة.",
+        soundEnable: "صوت تنبيه",
+        soundEnableDesc: "شغّل صوت قصير مع كل رسالة جديدة.",
+        permGranted: "الإشعارات مفعّلة",
+        permDenied: "الإشعارات مرفوضة — فعّلها من إعدادات المتصفح.",
+        permRequest: "السماح بالإشعارات",
+        comingTitle: "ميزات قادمة",
+        comingDesc: "هتشتغل بعد ما الـ Bridge يترفع.",
+        feat1: "ربط أكتر من رقم واتساب في نفس الحساب",
+        feat2: "تصدير المحادثات (CSV / JSON)",
+        feat3: "إعداد قوائم بث وتذكيرات",
+        feat4: "تكامل مع متجرك لإرسال طلبات تلقائي",
+      }
+    : {
+        title: "WhatsApp Settings",
+        subtitle: "Bridge, notifications, and connection settings.",
+        bridgeTitle: "Bridge Connection",
+        bridgeStatus: "Not active yet",
+        bridgeDesc: "The Bot Worker still needs to be deployed. Once ready, the Bridge will reach this Webhook automatically.",
+        webhookTitle: "Webhook URL",
+        webhookDesc: "Paste this URL in your Bot Worker config so it can deliver incoming messages.",
+        copy: "Copy",
+        copied: "Copied",
+        notifTitle: "Notifications",
+        notifDesc: "Configure notifications for new messages.",
+        notifEnable: "Browser notifications",
+        notifEnableDesc: "Show a notification when a new message arrives while you're away.",
+        soundEnable: "Sound alert",
+        soundEnableDesc: "Play a short sound for each new message.",
+        permGranted: "Notifications are enabled",
+        permDenied: "Notifications blocked — enable them from your browser settings.",
+        permRequest: "Allow notifications",
+        comingTitle: "Coming soon",
+        comingDesc: "Available once the Bridge is deployed.",
+        feat1: "Link multiple WhatsApp numbers per account",
+        feat2: "Export conversations (CSV / JSON)",
+        feat3: "Broadcast lists and reminders",
+        feat4: "Store integration for automatic order replies",
+      };
+
+  const copyText = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      toast.success(t.copied);
+      setTimeout(() => setCopied(null), 1500);
+    } catch {
+      toast.error(t.copy);
+    }
+  };
+
+  const toggleNotify = (val: boolean) => {
+    setNotify(val);
+    localStorage.setItem(NOTIF_KEY, val ? "1" : "0");
+  };
+  const toggleSound = (val: boolean) => {
+    setSound(val);
+    localStorage.setItem(SOUND_KEY, val ? "1" : "0");
+  };
+
+  const requestPermission = async () => {
+    if (typeof Notification === "undefined") return;
+    const p = await Notification.requestPermission();
+    setPermission(p);
+  };
+
+  return (
+    <DashboardLayout title={t.title}>
+      <div className="mx-auto grid max-w-5xl gap-6">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[oklch(0.66_0.26_320)] text-white shadow-lg">
+            <SettingsIcon className="h-6 w-6" strokeWidth={2.5} />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-foreground">{t.title}</h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">{t.subtitle}</p>
+          </div>
+        </div>
+
+        {/* Bridge status */}
+        <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                <Link2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-foreground">{t.bridgeTitle}</h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">{t.bridgeDesc}</p>
+              </div>
+            </div>
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
+              <AlertCircle className="h-3.5 w-3.5" />
+              {t.bridgeStatus}
+            </span>
+          </div>
+        </div>
+
+        {/* Webhook URL */}
+        <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Webhook className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-foreground">{t.webhookTitle}</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">{t.webhookDesc}</p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-stretch gap-2">
+            <code
+              dir="ltr"
+              className="flex-1 truncate rounded-xl border border-border/60 bg-muted/40 px-3 py-2.5 font-mono text-xs text-foreground"
+            >
+              {webhookUrl || "…"}
+            </code>
+            <button
+              type="button"
+              onClick={() => copyText(webhookUrl, "webhook")}
+              disabled={!webhookUrl}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-95 disabled:opacity-60"
+            >
+              {copied === "webhook" ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+              {copied === "webhook" ? t.copied : t.copy}
+            </button>
+          </div>
+
+          <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            HTTPS · POST · JSON
+          </div>
+        </div>
+
+        {/* Notifications */}
+        <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Bell className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-foreground">{t.notifTitle}</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">{t.notifDesc}</p>
+            </div>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            <ToggleRow
+              icon={notify ? Bell : BellOff}
+              title={t.notifEnable}
+              desc={t.notifEnableDesc}
+              value={notify}
+              onChange={toggleNotify}
+            />
+            <ToggleRow
+              icon={Clock}
+              title={t.soundEnable}
+              desc={t.soundEnableDesc}
+              value={sound}
+              onChange={toggleSound}
+            />
+
+            {permission === "granted" && (
+              <div className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                <CheckCircle2 className="h-3.5 w-3.5" /> {t.permGranted}
+              </div>
+            )}
+            {permission === "denied" && (
+              <div className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {t.permDenied}
+              </div>
+            )}
+            {permission === "default" && (
+              <button
+                type="button"
+                onClick={requestPermission}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted/70"
+              >
+                <Bell className="h-3.5 w-3.5" /> {t.permRequest}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Coming soon */}
+        <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 p-6">
+          <h2 className="text-base font-bold text-foreground">{t.comingTitle}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t.comingDesc}</p>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {[t.feat1, t.feat2, t.feat3, t.feat4].map((f, i) => (
+              <li
+                key={i}
+                className="flex items-start gap-2 rounded-xl bg-background/60 px-3 py-2 text-sm text-foreground"
+              >
+                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+}
+
+function ToggleRow({
+  icon: Icon,
+  title,
+  desc,
+  value,
+  onChange,
+}: {
+  icon: typeof Bell;
+  title: string;
+  desc: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/40 p-3 hover:bg-background/70">
+      <div className="flex items-start gap-3">
+        <Icon className="mt-0.5 h-4 w-4 text-muted-foreground" />
+        <div>
+          <div className="text-sm font-semibold text-foreground">{title}</div>
+          <div className="text-xs text-muted-foreground">{desc}</div>
+        </div>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={value}
+        onClick={() => onChange(!value)}
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+          value ? "bg-primary" : "bg-muted"
+        }`}
+      >
+        <span
+          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+            value ? "translate-x-5 rtl:-translate-x-5" : "translate-x-0.5 rtl:-translate-x-0.5"
+          }`}
+        />
+      </button>
+    </label>
+  );
+}
