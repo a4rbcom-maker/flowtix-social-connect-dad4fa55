@@ -498,4 +498,200 @@ export const getAdminWhatsappOverview = createServerFn({ method: "GET" })
     return { totals, users, hourly: buckets, recentMessages, recentAiLogs, recentConversations };
   });
 
+// ---------- Jobs management (unified fb_jobs + bulk_jobs) ----------
+export const getAdminJobsOverview = createServerFn({ method: "GET" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { status?: string; kind?: string; search?: string; limit?: number } | undefined) =>
+    z.object({
+      status: z.string().max(40).optional().default(""),
+      kind: z.enum(["all", "fb", "bulk"]).optional().default("all"),
+      search: z.string().max(200).optional().default(""),
+      limit: z.number().int().min(10).max(300).optional().default(100),
+    }).parse(d ?? {}),
+  )
+  .handler(async ({ data }) => {
+    const db = admin();
+    const [fbRes, bulkRes, profilesRes] = await Promise.all([
+      data.kind === "bulk"
+        ? Promise.resolve({ data: [] as Array<Record<string, unknown>> })
+        : db.from("fb_jobs").select("id,user_id,job_type,status,progress,total_items,processed_items,scheduled_at,started_at,completed_at,error_message,created_at,campaign_id,account_id").order("created_at", { ascending: false }).limit(data.limit),
+      data.kind === "fb"
+        ? Promise.resolve({ data: [] as Array<Record<string, unknown>> })
+        : db.from("bulk_jobs").select("id,user_id,channel,title,status,total_recipients,sent_count,failed_count,scheduled_at,started_at,completed_at,next_send_at,error_message,created_at").order("created_at", { ascending: false }).limit(data.limit),
+      db.from("profiles").select("id,full_name,avatar_url,plan"),
+    ]);
+
+    const profileMap = new Map<string, { full_name: string | null; avatar_url: string | null; plan: string | null }>();
+    profilesRes.data?.forEach((p) => profileMap.set(p.id, { full_name: p.full_name, avatar_url: p.avatar_url, plan: p.plan }));
+
+    type UnifiedJob = {
+      id: string;
+      kind: "fb" | "bulk";
+      user_id: string;
+      user: { full_name: string | null; avatar_url: string | null; plan: string | null } | null;
+      title: string;
+      job_type: string;
+      status: string;
+      total: number;
+      processed: number;
+      success: number;
+      failed: number;
+      progress: number;
+      scheduled_at: string | null;
+      started_at: string | null;
+      completed_at: string | null;
+      error_message: string | null;
+      created_at: string;
+    };
+
+    const fbJobs: UnifiedJob[] = ((fbRes.data ?? []) as Array<Record<string, unknown>>).map((j) => {
+      const total = (j.total_items as number) ?? 0;
+      const processed = (j.processed_items as number) ?? 0;
+      return {
+        id: j.id as string,
+        kind: "fb",
+        user_id: j.user_id as string,
+        user: profileMap.get(j.user_id as string) ?? null,
+        title: String(j.job_type ?? "fb_job"),
+        job_type: String(j.job_type ?? ""),
+        status: String(j.status ?? ""),
+        total,
+        processed,
+        success: processed,
+        failed: 0,
+        progress: total > 0 ? Math.round((processed / total) * 100) : ((j.progress as number) ?? 0),
+        scheduled_at: (j.scheduled_at as string) ?? null,
+        started_at: (j.started_at as string) ?? null,
+        completed_at: (j.completed_at as string) ?? null,
+        error_message: (j.error_message as string) ?? null,
+        created_at: j.created_at as string,
+      };
+    });
+
+    const bulkJobs: UnifiedJob[] = ((bulkRes.data ?? []) as Array<Record<string, unknown>>).map((j) => {
+      const total = (j.total_recipients as number) ?? 0;
+      const sent = (j.sent_count as number) ?? 0;
+      const failed = (j.failed_count as number) ?? 0;
+      return {
+        id: j.id as string,
+        kind: "bulk",
+        user_id: j.user_id as string,
+        user: profileMap.get(j.user_id as string) ?? null,
+        title: String(j.title ?? "bulk_job"),
+        job_type: `bulk_${String(j.channel ?? "")}`,
+        status: String(j.status ?? ""),
+        total,
+        processed: sent + failed,
+        success: sent,
+        failed,
+        progress: total > 0 ? Math.round(((sent + failed) / total) * 100) : 0,
+        scheduled_at: (j.scheduled_at as string) ?? null,
+        started_at: (j.started_at as string) ?? null,
+        completed_at: (j.completed_at as string) ?? null,
+        error_message: (j.error_message as string) ?? null,
+        created_at: j.created_at as string,
+      };
+    });
+
+    let all = [...fbJobs, ...bulkJobs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    if (data.status) all = all.filter((j) => j.status === data.status);
+    if (data.search) {
+      const s = data.search.toLowerCase();
+      all = all.filter((j) =>
+        j.title.toLowerCase().includes(s) ||
+        (j.user?.full_name?.toLowerCase().includes(s) ?? false) ||
+        j.id.toLowerCase().includes(s),
+      );
+    }
+
+    const totals = {
+      total: all.length,
+      running: all.filter((j) => j.status === "running").length,
+      pending: all.filter((j) => j.status === "pending" || j.status === "scheduled").length,
+      completed: all.filter((j) => j.status === "completed").length,
+      failed: all.filter((j) => j.status === "failed").length,
+      cancelled: all.filter((j) => j.status === "cancelled").length,
+      paused: all.filter((j) => j.status === "paused").length,
+      fb_count: fbJobs.length,
+      bulk_count: bulkJobs.length,
+      total_processed: all.reduce((a, j) => a + j.processed, 0),
+      total_failed: all.reduce((a, j) => a + j.failed, 0),
+    };
+
+    return { jobs: all.slice(0, data.limit), totals };
+  });
+
+export const retryAdminJob = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { id: string; kind: "fb" | "bulk" }) =>
+    z.object({ id: z.string().uuid(), kind: z.enum(["fb", "bulk"]) }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const db = admin();
+    if (data.kind === "fb") {
+      const { error } = await db.from("fb_jobs").update({
+        status: "pending" as never,
+        error_message: null,
+        started_at: null,
+        completed_at: null,
+        scheduled_at: new Date().toISOString(),
+      }).eq("id", data.id);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await db.from("bulk_jobs").update({
+        status: "scheduled" as never,
+        error_message: null,
+        started_at: null,
+        completed_at: null,
+        scheduled_at: new Date().toISOString(),
+        next_send_at: new Date().toISOString(),
+      }).eq("id", data.id);
+      if (error) throw new Error(error.message);
+    }
+    await logAction(context.adminUserId, "retry_job", null, { id: data.id, kind: data.kind });
+    return { ok: true };
+  });
+
+export const cancelAdminJob = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { id: string; kind: "fb" | "bulk" }) =>
+    z.object({ id: z.string().uuid(), kind: z.enum(["fb", "bulk"]) }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const db = admin();
+    if (data.kind === "fb") {
+      const { error } = await db.from("fb_jobs").update({
+        status: "cancelled" as never,
+        completed_at: new Date().toISOString(),
+      }).eq("id", data.id);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await db.from("bulk_jobs").update({
+        status: "cancelled" as never,
+        completed_at: new Date().toISOString(),
+      }).eq("id", data.id);
+      if (error) throw new Error(error.message);
+    }
+    await logAction(context.adminUserId, "cancel_job", null, { id: data.id, kind: data.kind });
+    return { ok: true };
+  });
+
+export const deleteAdminJob = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { id: string; kind: "fb" | "bulk" }) =>
+    z.object({ id: z.string().uuid(), kind: z.enum(["fb", "bulk"]) }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const db = admin();
+    if (data.kind === "fb") {
+      const { error } = await db.from("fb_jobs").delete().eq("id", data.id);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await db.from("bulk_jobs").delete().eq("id", data.id);
+      if (error) throw new Error(error.message);
+    }
+    await logAction(context.adminUserId, "delete_job", null, { id: data.id, kind: data.kind });
+    return { ok: true };
+  });
 
