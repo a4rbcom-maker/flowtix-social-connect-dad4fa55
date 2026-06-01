@@ -136,6 +136,17 @@ function NewCampaignPage() {
     needContent: "Add text or media to the post",
     needTargets: "Select at least one destination",
     delayErr: "Max must be >= Min",
+    manualToggle: "Enter Group IDs manually",
+    manualHint: "Paste Group IDs (one per line, or separated by comma/space). Digits only, 5–25 chars.",
+    manualPh: "e.g.:\n123456789012345\n987654321098765, 555555555555",
+    manualAdd: "Validate & add",
+    manualClear: "Clear",
+    manualPaste: "Paste from clipboard",
+    manualNoneValid: "No valid IDs found",
+    manualAdded: (n: number, dup: number, invalid: number) =>
+      `Added ${n} group${dup ? ` • ${dup} duplicate` : ""}${invalid ? ` • ${invalid} invalid` : ""}`,
+    manualBadge: "manual",
+    remove: "Remove",
   };
 
   useEffect(() => { if (!loading && !user) navigate({ to: "/login" }); }, [user, loading, navigate]);
