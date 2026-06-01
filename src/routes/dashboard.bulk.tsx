@@ -170,7 +170,7 @@ function BulkSendPage() {
   useEffect(() => {
     if (!user) return;
     const ch = supabase
-      .channel("bulk-jobs-watch")
+      .channel(`bulk-jobs-watch:${user.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "bulk_jobs", filter: `user_id=eq.${user.id}` }, loadAll)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
