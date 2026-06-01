@@ -29,11 +29,12 @@ import {
 import { toast } from "sonner";
 import {
   Key, Plus, RefreshCw, Trash2, Zap, Activity, AlertCircle,
-  CheckCircle2, XCircle, PauseCircle, Pencil, Sparkles, FlaskConical,
+  CheckCircle2, XCircle, PauseCircle, Pencil, Sparkles, FlaskConical, Wallet,
 } from "lucide-react";
 import {
   listAiAccounts, createAiAccount, updateAiAccount, deleteAiAccount,
   resetAiAccountCounters, testAiAccount,
+  refreshAiAccountCredit, refreshAllAiAccountCredits,
   listModelTiers, upsertModelTier, deleteModelTier,
   listAiUsageLogs, getAiPoolStats,
 } from "@/lib/admin-ai.functions";
