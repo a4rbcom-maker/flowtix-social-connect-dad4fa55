@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_audit_log: {
+        Row: {
+          action: string
+          admin_user_id: string
+          created_at: string
+          id: string
+          ip_address: string | null
+          payload: Json | null
+          target_id: string | null
+          target_type: string | null
+          target_user_id: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          action: string
+          admin_user_id: string
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          payload?: Json | null
+          target_id?: string | null
+          target_type?: string | null
+          target_user_id?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          action?: string
+          admin_user_id?: string
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          payload?: Json | null
+          target_id?: string | null
+          target_type?: string | null
+          target_user_id?: string | null
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       bulk_job_recipients: {
         Row: {
           contact_id: string | null
@@ -504,6 +543,72 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_announcements: {
+        Row: {
+          body: string
+          created_at: string
+          created_by: string
+          ends_at: string | null
+          id: string
+          level: string
+          starts_at: string
+          target_kind: string
+          target_plan: string | null
+          target_user_ids: string[] | null
+          title: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          created_by: string
+          ends_at?: string | null
+          id?: string
+          level?: string
+          starts_at?: string
+          target_kind?: string
+          target_plan?: string | null
+          target_user_ids?: string[] | null
+          title: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          created_by?: string
+          ends_at?: string | null
+          id?: string
+          level?: string
+          starts_at?: string
+          target_kind?: string
+          target_plan?: string | null
+          target_user_ids?: string[] | null
+          title?: string
+        }
+        Relationships: []
+      }
+      platform_settings: {
+        Row: {
+          description: string | null
+          key: string
+          updated_at: string
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          description?: string | null
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Update: {
+          description?: string | null
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -916,6 +1021,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_daily_timeseries: {
+        Args: { _days?: number }
+        Returns: {
+          day: string
+          new_users: number
+          send_failed: number
+          send_success: number
+          wa_messages: number
+        }[]
+      }
+      admin_kpi_snapshot: { Args: never; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
