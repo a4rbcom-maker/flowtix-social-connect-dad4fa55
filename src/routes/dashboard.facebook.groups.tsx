@@ -409,6 +409,15 @@ function FacebookGroupsPage() {
                 />
               </div>
               <button
+                type="button"
+                onClick={() => setWizardOpen(true)}
+                title={lang === "ar" ? "كيف يعمل الربط؟" : "How does the link work?"}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                {lang === "ar" ? "كيف يعمل؟" : "How it works"}
+              </button>
+              <button
                 onClick={handleImport}
                 disabled={loading}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
@@ -417,6 +426,7 @@ function FacebookGroupsPage() {
                 {loading ? t.importing : groups.length > 0 ? t.reimport : t.import}
               </button>
             </div>
+
 
             {/* Selection bar */}
             {groups.length > 0 && (
