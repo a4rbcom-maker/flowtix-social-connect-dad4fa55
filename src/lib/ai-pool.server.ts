@@ -261,25 +261,52 @@ async function logUsage(opts: {
   }
 }
 
-// ============= Admin-only test ping =============
+// ============= Credit balance =============
 
-export async function pingKieKey(apiKey: string): Promise<{ ok: boolean; message: string }> {
+export async function fetchKieCredit(apiKey: string): Promise<{ ok: boolean; balance: number | null; message: string }> {
   try {
-    const res = await fetch(`${KIE_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: "ping" }],
-        max_tokens: 5,
-      }),
+    const res = await fetch(KIE_CREDIT_URL, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${apiKey}` },
     });
-    if (res.ok) return { ok: true, message: "OK" };
-    return { ok: false, message: `${res.status}: ${(await res.text()).slice(0, 150)}` };
+    const text = await res.text();
+    if (!res.ok) return { ok: false, balance: null, message: `${res.status}: ${text.slice(0, 150)}` };
+    let parsed: { code?: number; msg?: string; data?: number } = {};
+    try { parsed = JSON.parse(text); } catch { /* ignore */ }
+    if (parsed.code === 200 && typeof parsed.data === "number") {
+      return { ok: true, balance: parsed.data, message: parsed.msg ?? "OK" };
+    }
+    return { ok: false, balance: null, message: parsed.msg ?? text.slice(0, 150) };
   } catch (err) {
-    return { ok: false, message: err instanceof Error ? err.message : "network error" };
+    return { ok: false, balance: null, message: err instanceof Error ? err.message : "network error" };
   }
 }
+
+// Admin-only test ping — uses the credit endpoint (no credits consumed).
+export async function pingKieKey(apiKey: string): Promise<{ ok: boolean; message: string; balance: number | null }> {
+  const r = await fetchKieCredit(apiKey);
+  return { ok: r.ok, message: r.ok ? `OK · ${r.balance} credits` : r.message, balance: r.balance };
+}
+
+// Refresh stored credit balance for an account by id. Marks exhausted if 0.
+export async function refreshAccountCredit(accountId: string): Promise<{ ok: boolean; balance: number | null; message: string }> {
+  const { data: row } = await supabaseAdmin
+    .from("ai_provider_accounts")
+    .select("api_key_encrypted")
+    .eq("id", accountId)
+    .maybeSingle();
+  if (!row) return { ok: false, balance: null, message: "account not found" };
+  let apiKey: string;
+  try { apiKey = decryptKey(row.api_key_encrypted); }
+  catch (err) { return { ok: false, balance: null, message: err instanceof Error ? err.message : "decrypt failed" }; }
+  const r = await fetchKieCredit(apiKey);
+  const update: Record<string, unknown> = {
+    credit_balance: r.balance,
+    credit_checked_at: new Date().toISOString(),
+    credit_error: r.ok ? null : r.message,
+  };
+  if (r.ok && (r.balance ?? 0) <= 0) update.status = "exhausted";
+  await supabaseAdmin.from("ai_provider_accounts").update(update as never).eq("id", accountId);
+  return r;
+}
+
