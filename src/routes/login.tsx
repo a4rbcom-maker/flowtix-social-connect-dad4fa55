@@ -14,6 +14,7 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const { lang, dir } = useI18n();
   const { user } = useAuth();
+  const { isAdmin, isLoading: isAdminLoading } = useIsAdmin();
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
@@ -25,9 +26,10 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  if (user) {
-    return <Navigate to="/dashboard" />;
+  if (user && !isAdminLoading) {
+    return <Navigate to={isAdmin ? "/admin" : "/dashboard"} />;
   }
+
 
   const labels = lang === "ar"
     ? {
