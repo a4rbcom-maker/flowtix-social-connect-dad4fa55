@@ -103,16 +103,17 @@ function InboxPage() {
 
   // Realtime subscriptions
   useEffect(() => {
+    if (!user) return;
     const ch = supabase
-      .channel("wa_inbox_realtime")
+      .channel(`wa_inbox_realtime:${user.id}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "wa_conversations" },
+        { event: "*", schema: "public", table: "wa_conversations", filter: `user_id=eq.${user.id}` },
         () => qc.invalidateQueries({ queryKey: ["wa-conversations"] }),
       )
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "wa_messages" },
+        { event: "INSERT", schema: "public", table: "wa_messages", filter: `user_id=eq.${user.id}` },
         (payload) => {
           const row = payload.new as { remote_jid: string };
           if (activeJid && row.remote_jid === activeJid) {
@@ -124,7 +125,8 @@ function InboxPage() {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [qc, activeJid]);
+  }, [qc, activeJid, user]);
+
 
   // Auto-scroll on new messages
   useEffect(() => {
