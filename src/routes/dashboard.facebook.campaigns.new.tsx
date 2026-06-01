@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate, Link, useRouter } from "@tanstack/react-r
 import { useEffect, useMemo, useState } from "react";
 import {
   Save, Loader2, ChevronDown, FileText, Image as ImageIcon, Type, Layers, ArrowLeft,
-  Users, Search, AlertCircle, Check, AlertTriangle,
+  Users, Search, AlertCircle, Check, AlertTriangle, ClipboardPaste, X, Hash,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -75,6 +75,10 @@ function NewCampaignPage() {
   const [saving, setSaving] = useState(false);
   const [savingAndStart, setSavingAndStart] = useState(false);
 
+  // Manual Group IDs entry (bot mode)
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualRaw, setManualRaw] = useState("");
+
   const t = lang === "ar" ? {
     back: "العودة للحملات",
     title: "حملة جديدة", subtitle: "نشر منشور واحد على عدة وجهات بفاصل زمني آمن",
@@ -98,6 +102,17 @@ function NewCampaignPage() {
     needContent: "أضف نصاً أو وسائط للمنشور",
     needTargets: "حدد وجهة واحدة على الأقل",
     delayErr: "الحد الأقصى يجب أن يكون ≥ الحد الأدنى",
+    manualToggle: "إدخال Group IDs يدويًا",
+    manualHint: "الصق معرفات الجروبات (رقم لكل سطر، أو افصلها بفاصلة/مسافة). أرقام فقط، 5–25 خانة.",
+    manualPh: "مثلاً:\n123456789012345\n987654321098765, 555555555555",
+    manualAdd: "تحقّق وإضافة",
+    manualClear: "مسح",
+    manualPaste: "لصق من الحافظة",
+    manualNoneValid: "لا توجد معرفات صالحة",
+    manualAdded: (n: number, dup: number, invalid: number) =>
+      `أُضيفت ${n} جروب${dup ? ` • ${dup} مكرر` : ""}${invalid ? ` • ${invalid} غير صالح` : ""}`,
+    manualBadge: "يدوي",
+    remove: "إزالة",
   } : {
     back: "Back to campaigns",
     title: "New campaign", subtitle: "Post one message to many destinations with a safe interval",
@@ -121,6 +136,17 @@ function NewCampaignPage() {
     needContent: "Add text or media to the post",
     needTargets: "Select at least one destination",
     delayErr: "Max must be >= Min",
+    manualToggle: "Enter Group IDs manually",
+    manualHint: "Paste Group IDs (one per line, or separated by comma/space). Digits only, 5–25 chars.",
+    manualPh: "e.g.:\n123456789012345\n987654321098765, 555555555555",
+    manualAdd: "Validate & add",
+    manualClear: "Clear",
+    manualPaste: "Paste from clipboard",
+    manualNoneValid: "No valid IDs found",
+    manualAdded: (n: number, dup: number, invalid: number) =>
+      `Added ${n} group${dup ? ` • ${dup} duplicate` : ""}${invalid ? ` • ${invalid} invalid` : ""}`,
+    manualBadge: "manual",
+    remove: "Remove",
   };
 
   useEffect(() => { if (!loading && !user) navigate({ to: "/login" }); }, [user, loading, navigate]);
@@ -167,11 +193,56 @@ function NewCampaignPage() {
     }
   };
 
+  const parseManualIds = (raw: string): { valid: string[]; invalid: number } => {
+    const tokens = raw.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
+    const valid: string[] = [];
+    let invalid = 0;
+    const seen = new Set<string>();
+    for (const tok of tokens) {
+      // Accept full URLs too: extract trailing digit run
+      const m = tok.match(/(\d{5,25})/);
+      const id = m?.[1];
+      if (id && !seen.has(id)) { seen.add(id); valid.push(id); }
+      else if (!id) invalid++;
+    }
+    return { valid, invalid };
+  };
+
+  const handleAddManual = () => {
+    const { valid, invalid } = parseManualIds(manualRaw);
+    if (valid.length === 0) { toast.error(t.manualNoneValid); return; }
+    const existing = new Set(groups.map((g) => g.id));
+    let added = 0, dup = 0;
+    const newGroups = [...groups];
+    const nextSelected = new Set(selectedTargets);
+    for (const id of valid) {
+      if (existing.has(id)) { dup++; }
+      else { newGroups.push({ id, name: `Group ${id}` }); added++; }
+      nextSelected.add(id);
+    }
+    setGroups(newGroups);
+    setSelectedTargets(nextSelected);
+    setManualRaw("");
+    toast.success(t.manualAdded(added, dup, invalid));
+  };
+
+  const handlePasteClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setManualRaw((prev) => (prev ? prev + "\n" + text : text));
+    } catch {
+      toast.error(lang === "ar" ? "تعذّر الوصول للحافظة" : "Clipboard unavailable");
+    }
+  };
+
+  const manualPreview = useMemo(() => parseManualIds(manualRaw), [manualRaw]);
+
   const filteredGroups = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return groups;
-    return groups.filter((g) => g.name.toLowerCase().includes(q));
+    return groups.filter((g) => g.name.toLowerCase().includes(q) || g.id.includes(q));
   }, [groups, search]);
+
 
   const validate = (): boolean => {
     if (!name.trim()) { toast.error(t.needName); return false; }
@@ -298,14 +369,90 @@ function NewCampaignPage() {
                       <span className={`w-4 h-4 rounded border flex items-center justify-center ${sel ? "bg-primary border-primary" : "border-border"}`}>
                         {sel && <Check className="w-3 h-3 text-primary-foreground" />}
                       </span>
-                      <span className="flex-1 text-start truncate">{g.name}</span>
+                      <span className="flex-1 text-start truncate flex items-center gap-2">
+                        <span className="truncate">{g.name}</span>
+                        {g.name === `Group ${g.id}` && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/15 text-primary shrink-0">
+                            {t.manualBadge}
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-mono shrink-0">{g.id}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
           )}
+
+          {/* Manual Group IDs entry (always available when an account is selected) */}
+          {accountId && (
+            <div className="mt-3 rounded-xl border border-dashed border-border bg-background/40">
+              <button
+                type="button"
+                onClick={() => setManualOpen((v) => !v)}
+                className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-accent/40 rounded-xl transition"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Hash className="w-4 h-4 text-primary" />
+                  {t.manualToggle}
+                </span>
+                <ChevronDown className={`w-4 h-4 transition-transform ${manualOpen ? "rotate-180" : ""}`} />
+              </button>
+              {manualOpen && (
+                <div className="px-4 pb-4 pt-1 space-y-2">
+                  <p className="text-xs text-muted-foreground">{t.manualHint}</p>
+                  <textarea
+                    value={manualRaw}
+                    onChange={(e) => setManualRaw(e.target.value)}
+                    placeholder={t.manualPh}
+                    rows={4}
+                    maxLength={50000}
+                    spellCheck={false}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="text-xs text-muted-foreground">
+                      {manualRaw.trim() && (
+                        <>
+                          <b className="text-foreground">{manualPreview.valid.length}</b> {lang === "ar" ? "صالح" : "valid"}
+                          {manualPreview.invalid > 0 && <> • <b className="text-destructive">{manualPreview.invalid}</b> {lang === "ar" ? "غير صالح" : "invalid"}</>}
+                        </>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handlePasteClipboard}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs hover:bg-accent"
+                      >
+                        <ClipboardPaste className="w-3.5 h-3.5" /> {t.manualPaste}
+                      </button>
+                      {manualRaw && (
+                        <button
+                          type="button"
+                          onClick={() => setManualRaw("")}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs hover:bg-accent"
+                        >
+                          <X className="w-3.5 h-3.5" /> {t.manualClear}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleAddManual}
+                        disabled={manualPreview.valid.length === 0}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-40"
+                      >
+                        <Check className="w-3.5 h-3.5" /> {t.manualAdd}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </Section>
+
 
         {/* Send type */}
         <Section icon={<FileText className="w-4 h-4" />} label={t.sendType}>
