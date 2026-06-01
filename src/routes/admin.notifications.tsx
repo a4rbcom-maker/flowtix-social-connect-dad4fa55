@@ -65,7 +65,7 @@ function NotificationsPage() {
   });
 
   const filteredUsers = (usersData?.rows ?? []).filter((u: any) =>
-    !userSearch || u.full_name?.toLowerCase().includes(userSearch.toLowerCase()) || u.email?.toLowerCase().includes(userSearch.toLowerCase()),
+    !userSearch || u.full_name?.toLowerCase().includes(userSearch.toLowerCase()),
   ).slice(0, 50);
 
   return (
