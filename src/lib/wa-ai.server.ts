@@ -1,14 +1,17 @@
-// Server-only: AI reply generation for WhatsApp using Lovable AI Gateway.
-// Called from the webhook when an inbound message arrives and AI is enabled.
+// Server-only: AI reply generation for WhatsApp using kie.ai (multi-key pool).
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { waBridge } from "./wa-bridge.server";
-
-const LOVABLE_AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+import { callKieChat, type ChatMessage } from "./ai-pool.server";
 
 interface AiSettings {
   ai_enabled: boolean;
   ai_model: string | null;
+  ai_provider: string | null;
+  ai_tier_simple: string | null;
+  ai_tier_smart: string | null;
+  ai_tier_negotiation: string | null;
+  ai_default_tier: "simple" | "smart" | "negotiation" | null;
   ai_system_prompt: string | null;
   ai_welcome_message: string | null;
   ai_business_hours_only: boolean | null;
@@ -18,6 +21,7 @@ interface AiSettings {
   ai_knowledge_base: string | null;
   ai_max_context_messages: number | null;
 }
+
 
 function isWithinWorkingHours(start?: string | null, end?: string | null): boolean {
   if (!start || !end) return true;
