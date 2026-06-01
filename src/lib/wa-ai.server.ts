@@ -56,7 +56,7 @@ export async function handleAiAutoReply(opts: {
     const { data: settings } = await supabaseAdmin
       .from("whatsapp_settings")
       .select(
-        "ai_enabled, ai_model, ai_system_prompt, ai_welcome_message, ai_business_hours_only, ai_working_hours_start, ai_working_hours_end, ai_blacklist, ai_knowledge_base, ai_max_context_messages",
+        "ai_enabled, ai_model, ai_provider, ai_tier_simple, ai_tier_smart, ai_tier_negotiation, ai_default_tier, ai_system_prompt, ai_welcome_message, ai_business_hours_only, ai_working_hours_start, ai_working_hours_end, ai_blacklist, ai_knowledge_base, ai_max_context_messages",
       )
       .eq("user_id", userId)
       .maybeSingle<AiSettings>();
@@ -80,12 +80,6 @@ export async function handleAiAutoReply(opts: {
     // Working hours
     if (settings.ai_business_hours_only) {
       if (!isWithinWorkingHours(settings.ai_working_hours_start, settings.ai_working_hours_end)) return;
-    }
-
-    const apiKey = process.env.LOVABLE_API_KEY;
-    if (!apiKey) {
-      console.error("[wa-ai] LOVABLE_API_KEY missing");
-      return;
     }
 
     // Build context: last N messages from this conversation
@@ -124,7 +118,7 @@ export async function handleAiAutoReply(opts: {
       "You are a helpful customer support assistant replying via WhatsApp. Keep replies short, friendly, and in the same language as the user.";
 
     const kb = settings.ai_knowledge_base?.trim();
-    const messages: Array<{ role: string; content: string }> = [
+    const messages: ChatMessage[] = [
       {
         role: "system",
         content: kb ? `${systemPrompt}\n\n# Knowledge base\n${kb}` : systemPrompt,
@@ -140,36 +134,36 @@ export async function handleAiAutoReply(opts: {
       });
     }
 
-    const model = settings.ai_model || "google/gemini-2.5-flash";
-    const started = Date.now();
+    // Pick model from tier configuration
+    const tier = settings.ai_default_tier || "smart";
+    const tierModel =
+      tier === "simple"
+        ? settings.ai_tier_simple
+        : tier === "negotiation"
+          ? settings.ai_tier_negotiation
+          : settings.ai_tier_smart;
+    const model = tierModel || settings.ai_model || "gpt-4o-mini";
 
-    let aiText = "";
-    let tokensIn: number | null = null;
-    let tokensOut: number | null = null;
-    let errMsg: string | null = null;
+    // Look up tier defaults for max_tokens/temperature
+    const { data: tierRow } = await supabaseAdmin
+      .from("ai_model_tiers")
+      .select("max_tokens, temperature")
+      .eq("tier", tier)
+      .eq("model_name", model)
+      .eq("enabled", true)
+      .maybeSingle();
 
-    try {
-      const res = await fetch(LOVABLE_AI_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ model, messages }),
-      });
-      if (!res.ok) {
-        errMsg = `AI ${res.status}: ${(await res.text()).slice(0, 200)}`;
-      } else {
-        const j = await res.json();
-        aiText = j.choices?.[0]?.message?.content?.trim() ?? "";
-        tokensIn = j.usage?.prompt_tokens ?? null;
-        tokensOut = j.usage?.completion_tokens ?? null;
-      }
-    } catch (err) {
-      errMsg = err instanceof Error ? err.message : "AI request failed";
-    }
+    const result = await callKieChat({
+      model,
+      messages,
+      maxTokens: tierRow?.max_tokens ?? 1024,
+      temperature: tierRow?.temperature ?? 0.7,
+      userId,
+      tier,
+    });
 
-    const latency = Date.now() - started;
+    let aiText = result.text;
+    let errMsg = result.error;
 
     if (aiText) {
       try {
@@ -182,7 +176,7 @@ export async function handleAiAutoReply(opts: {
           to_phone: phone,
           msg_type: "text",
           text_body: aiText,
-          raw: { ai: true } as never,
+          raw: { ai: true, tier, model } as never,
         });
       } catch (err) {
         errMsg = err instanceof Error ? err.message : "Bridge send failed";
@@ -197,9 +191,9 @@ export async function handleAiAutoReply(opts: {
       model,
       prompt_excerpt: inboundText.slice(0, 500),
       response_text: aiText || null,
-      tokens_in: tokensIn,
-      tokens_out: tokensOut,
-      latency_ms: latency,
+      tokens_in: result.tokensIn,
+      tokens_out: result.tokensOut,
+      latency_ms: result.latencyMs,
       status: aiText ? "success" : "error",
       error_message: errMsg,
     });
@@ -207,6 +201,7 @@ export async function handleAiAutoReply(opts: {
     console.error("[wa-ai] handler crashed:", err);
   }
 }
+
 
 /**
  * Upsert conversation row from a message event. Returns conversation id.
