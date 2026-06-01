@@ -82,6 +82,8 @@ function AccountsTab() {
   const remove = useServerFn(deleteAiAccount);
   const reset = useServerFn(resetAiAccountCounters);
   const test = useServerFn(testAiAccount);
+  const refreshCredit = useServerFn(refreshAiAccountCredit);
+  const refreshAllCredits = useServerFn(refreshAllAiAccountCredits);
   const stats = useServerFn(getAiPoolStats);
 
   const { data: rows } = useQuery({ queryKey: ["ai-accounts"], queryFn: () => list() });
