@@ -35,6 +35,7 @@ export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
 
 function InboxPage() {
   const { lang } = useI18n();
+  const { user } = useAuth();
   const qc = useQueryClient();
   const listFn = useServerFn(listConversations);
   const msgsFn = useServerFn(getConversationMessages);
