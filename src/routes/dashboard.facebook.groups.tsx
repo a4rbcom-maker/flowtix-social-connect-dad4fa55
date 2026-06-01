@@ -57,6 +57,7 @@ function FacebookGroupsPage() {
   const [message, setMessage] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [sending, setSending] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const t = lang === "ar"
     ? {
