@@ -1029,7 +1029,7 @@ export const getAdminSecurityOverview = createServerFn({ method: "GET" })
       moderators,
       audit,
       topActions,
-      recentLogins: (recentLoginsRes.data ?? []).filter((p) => p.last_login_at),
+      recentUsers: recentLoginsRes.data ?? [],
       totals: {
         admins: admins.length,
         moderators: moderators.length,
