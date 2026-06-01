@@ -23,6 +23,7 @@ import { Route as DashboardControlRouteImport } from './routes/dashboard.control
 import { Route as DashboardBulkRouteImport } from './routes/dashboard.bulk'
 import { Route as DashboardActivityRouteImport } from './routes/dashboard.activity'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
+import { Route as AdminFacebookRouteImport } from './routes/admin.facebook'
 import { Route as DashboardWhatsappSettingsRouteImport } from './routes/dashboard.whatsapp.settings'
 import { Route as DashboardWhatsappInboxRouteImport } from './routes/dashboard.whatsapp.inbox'
 import { Route as DashboardWhatsappBotRouteImport } from './routes/dashboard.whatsapp.bot'
@@ -113,6 +114,11 @@ const DashboardActivityRoute = DashboardActivityRouteImport.update({
 const AdminUsersRoute = AdminUsersRouteImport.update({
   id: '/admin/users',
   path: '/admin/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminFacebookRoute = AdminFacebookRouteImport.update({
+  id: '/admin/facebook',
+  path: '/admin/facebook',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardWhatsappSettingsRoute =
@@ -238,6 +244,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/admin/facebook': typeof AdminFacebookRoute
   '/admin/users': typeof AdminUsersRoute
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/bulk': typeof DashboardBulkRoute
@@ -275,6 +282,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/admin/facebook': typeof AdminFacebookRoute
   '/admin/users': typeof AdminUsersRoute
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/bulk': typeof DashboardBulkRoute
@@ -313,6 +321,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/admin/facebook': typeof AdminFacebookRoute
   '/admin/users': typeof AdminUsersRoute
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/bulk': typeof DashboardBulkRoute
@@ -352,6 +361,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/signup'
+    | '/admin/facebook'
     | '/admin/users'
     | '/dashboard/activity'
     | '/dashboard/bulk'
@@ -389,6 +399,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/signup'
+    | '/admin/facebook'
     | '/admin/users'
     | '/dashboard/activity'
     | '/dashboard/bulk'
@@ -426,6 +437,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/signup'
+    | '/admin/facebook'
     | '/admin/users'
     | '/dashboard/activity'
     | '/dashboard/bulk'
@@ -464,6 +476,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  AdminFacebookRoute: typeof AdminFacebookRoute
   AdminUsersRoute: typeof AdminUsersRoute
   AdminIndexRoute: typeof AdminIndexRoute
   ApiPublicHealthRoute: typeof ApiPublicHealthRoute
@@ -571,6 +584,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/users'
       fullPath: '/admin/users'
       preLoaderRoute: typeof AdminUsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/facebook': {
+      id: '/admin/facebook'
+      path: '/admin/facebook'
+      fullPath: '/admin/facebook'
+      preLoaderRoute: typeof AdminFacebookRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard/whatsapp/settings': {
@@ -814,6 +834,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  AdminFacebookRoute: AdminFacebookRoute,
   AdminUsersRoute: AdminUsersRoute,
   AdminIndexRoute: AdminIndexRoute,
   ApiPublicHealthRoute: ApiPublicHealthRoute,
