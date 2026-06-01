@@ -369,14 +369,90 @@ function NewCampaignPage() {
                       <span className={`w-4 h-4 rounded border flex items-center justify-center ${sel ? "bg-primary border-primary" : "border-border"}`}>
                         {sel && <Check className="w-3 h-3 text-primary-foreground" />}
                       </span>
-                      <span className="flex-1 text-start truncate">{g.name}</span>
+                      <span className="flex-1 text-start truncate flex items-center gap-2">
+                        <span className="truncate">{g.name}</span>
+                        {g.name === `Group ${g.id}` && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/15 text-primary shrink-0">
+                            {t.manualBadge}
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-mono shrink-0">{g.id}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
           )}
+
+          {/* Manual Group IDs entry (always available when an account is selected) */}
+          {accountId && (
+            <div className="mt-3 rounded-xl border border-dashed border-border bg-background/40">
+              <button
+                type="button"
+                onClick={() => setManualOpen((v) => !v)}
+                className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-accent/40 rounded-xl transition"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Hash className="w-4 h-4 text-primary" />
+                  {t.manualToggle}
+                </span>
+                <ChevronDown className={`w-4 h-4 transition-transform ${manualOpen ? "rotate-180" : ""}`} />
+              </button>
+              {manualOpen && (
+                <div className="px-4 pb-4 pt-1 space-y-2">
+                  <p className="text-xs text-muted-foreground">{t.manualHint}</p>
+                  <textarea
+                    value={manualRaw}
+                    onChange={(e) => setManualRaw(e.target.value)}
+                    placeholder={t.manualPh}
+                    rows={4}
+                    maxLength={50000}
+                    spellCheck={false}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="text-xs text-muted-foreground">
+                      {manualRaw.trim() && (
+                        <>
+                          <b className="text-foreground">{manualPreview.valid.length}</b> {lang === "ar" ? "صالح" : "valid"}
+                          {manualPreview.invalid > 0 && <> • <b className="text-destructive">{manualPreview.invalid}</b> {lang === "ar" ? "غير صالح" : "invalid"}</>}
+                        </>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handlePasteClipboard}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs hover:bg-accent"
+                      >
+                        <ClipboardPaste className="w-3.5 h-3.5" /> {t.manualPaste}
+                      </button>
+                      {manualRaw && (
+                        <button
+                          type="button"
+                          onClick={() => setManualRaw("")}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs hover:bg-accent"
+                        >
+                          <X className="w-3.5 h-3.5" /> {t.manualClear}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleAddManual}
+                        disabled={manualPreview.valid.length === 0}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-40"
+                      >
+                        <Check className="w-3.5 h-3.5" /> {t.manualAdd}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </Section>
+
 
         {/* Send type */}
         <Section icon={<FileText className="w-4 h-4" />} label={t.sendType}>
