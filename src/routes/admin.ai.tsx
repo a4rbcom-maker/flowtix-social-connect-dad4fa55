@@ -231,6 +231,10 @@ function AccountsTab() {
                           title={lang === "ar" ? "اختبار" : "Test"}>
                           <FlaskConical className="h-4 w-4" />
                         </Button>
+                        <Button size="icon" variant="ghost" onClick={() => mRefreshCredit.mutate(r.id)} disabled={mRefreshCredit.isPending}
+                          title={lang === "ar" ? "تحديث الرصيد" : "Refresh credit"}>
+                          <Wallet className="h-4 w-4" />
+                        </Button>
                         <Button size="icon" variant="ghost" onClick={() => setEditing({ id: r.id, label: r.label, priority: r.priority })}
                           title={lang === "ar" ? "تعديل" : "Edit"}>
                           <Pencil className="h-4 w-4" />
