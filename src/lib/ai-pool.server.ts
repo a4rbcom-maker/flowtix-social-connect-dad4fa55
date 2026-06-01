@@ -92,22 +92,24 @@ async function currentCount(id: string, col: "requests_count" | "failed_count"):
 }
 
 async function markFailure(accountId: string, statusCode: number, message: string) {
-  const updates: Record<string, unknown> = {
+  const failed = (await currentCount(accountId, "failed_count")) + 1;
+  const base = {
     last_error_at: new Date().toISOString(),
     last_error_message: message.slice(0, 500),
-    failed_count: (await currentCount(accountId, "failed_count")) + 1,
+    failed_count: failed,
   };
 
   if (statusCode === 401 || statusCode === 403) {
-    updates.status = "error";
+    await supabaseAdmin.from("ai_provider_accounts").update({ ...base, status: "error" as const }).eq("id", accountId);
   } else if (statusCode === 402) {
-    updates.status = "exhausted";
+    await supabaseAdmin.from("ai_provider_accounts").update({ ...base, status: "exhausted" as const }).eq("id", accountId);
   } else if (statusCode === 429) {
-    updates.cooldown_until = new Date(Date.now() + 5 * 60_000).toISOString();
+    await supabaseAdmin.from("ai_provider_accounts").update({ ...base, cooldown_until: new Date(Date.now() + 5 * 60_000).toISOString() }).eq("id", accountId);
+  } else {
+    await supabaseAdmin.from("ai_provider_accounts").update(base).eq("id", accountId);
   }
-
-  await supabaseAdmin.from("ai_provider_accounts").update(updates).eq("id", accountId);
 }
+
 
 // ============= Public API =============
 
