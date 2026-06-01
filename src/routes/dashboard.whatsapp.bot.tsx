@@ -23,6 +23,7 @@ import {
   saveAiSettings,
   listAiLogs,
   rateAiLog,
+  listAvailableModelTiers,
   type WaAiSettings,
 } from "@/lib/wa-chat.functions";
 
@@ -31,13 +32,7 @@ export const Route = createFileRoute("/dashboard/whatsapp/bot")({
   component: BotPage,
 });
 
-const MODELS = [
-  { id: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash — سريع وذكي" },
-  { id: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite — الأرخص" },
-  { id: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro — أقوى" },
-  { id: "openai/gpt-5-mini", label: "GPT-5 Mini — متوازن" },
-  { id: "openai/gpt-5", label: "GPT-5 — الأعلى دقة" },
-];
+type TierKey = "simple" | "smart" | "negotiation";
 
 function BotPage() {
   const { lang } = useI18n();
