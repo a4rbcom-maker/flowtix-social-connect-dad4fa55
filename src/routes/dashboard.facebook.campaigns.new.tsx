@@ -193,11 +193,56 @@ function NewCampaignPage() {
     }
   };
 
+  const parseManualIds = (raw: string): { valid: string[]; invalid: number } => {
+    const tokens = raw.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
+    const valid: string[] = [];
+    let invalid = 0;
+    const seen = new Set<string>();
+    for (const tok of tokens) {
+      // Accept full URLs too: extract trailing digit run
+      const m = tok.match(/(\d{5,25})/);
+      const id = m?.[1];
+      if (id && !seen.has(id)) { seen.add(id); valid.push(id); }
+      else if (!id) invalid++;
+    }
+    return { valid, invalid };
+  };
+
+  const handleAddManual = () => {
+    const { valid, invalid } = parseManualIds(manualRaw);
+    if (valid.length === 0) { toast.error(t.manualNoneValid); return; }
+    const existing = new Set(groups.map((g) => g.id));
+    let added = 0, dup = 0;
+    const newGroups = [...groups];
+    const nextSelected = new Set(selectedTargets);
+    for (const id of valid) {
+      if (existing.has(id)) { dup++; }
+      else { newGroups.push({ id, name: `Group ${id}` }); added++; }
+      nextSelected.add(id);
+    }
+    setGroups(newGroups);
+    setSelectedTargets(nextSelected);
+    setManualRaw("");
+    toast.success(t.manualAdded(added, dup, invalid));
+  };
+
+  const handlePasteClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setManualRaw((prev) => (prev ? prev + "\n" + text : text));
+    } catch {
+      toast.error(lang === "ar" ? "تعذّر الوصول للحافظة" : "Clipboard unavailable");
+    }
+  };
+
+  const manualPreview = useMemo(() => parseManualIds(manualRaw), [manualRaw]);
+
   const filteredGroups = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return groups;
-    return groups.filter((g) => g.name.toLowerCase().includes(q));
+    return groups.filter((g) => g.name.toLowerCase().includes(q) || g.id.includes(q));
   }, [groups, search]);
+
 
   const validate = (): boolean => {
     if (!name.trim()) { toast.error(t.needName); return false; }
