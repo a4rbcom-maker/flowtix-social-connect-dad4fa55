@@ -58,16 +58,24 @@ export const createAiAccount = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const db = admin();
-    const { error } = await db.from("ai_provider_accounts").insert({
-      label: data.label,
-      provider: "kie",
-      api_key_encrypted: encryptKey(data.apiKey),
-      key_hint: keyHint(data.apiKey),
-      priority: data.priority,
-      created_by: context.adminUserId,
-    });
+    const { data: inserted, error } = await db
+      .from("ai_provider_accounts")
+      .insert({
+        label: data.label,
+        provider: "kie",
+        api_key_encrypted: encryptKey(data.apiKey),
+        key_hint: keyHint(data.apiKey),
+        priority: data.priority,
+        created_by: context.adminUserId,
+      })
+      .select("id")
+      .maybeSingle();
     if (error) throw new Error(error.message);
-    return { ok: true };
+    // Best-effort: fetch credit balance right after creation (don't fail the request if it errors)
+    if (inserted?.id) {
+      try { await refreshAccountCredit(inserted.id); } catch { /* ignore */ }
+    }
+    return { ok: true, id: inserted?.id ?? null };
   });
 
 export const updateAiAccount = createServerFn({ method: "POST" })
@@ -144,6 +152,10 @@ export const testAiAccount = createServerFn({ method: "POST" })
     }
     if (!key) throw new Error("api key required");
     const res = await pingKieKey(key);
+    // If testing an existing account, refresh its credit balance from the same call
+    if (data.id && res.ok) {
+      try { await refreshAccountCredit(data.id); } catch { /* ignore */ }
+    }
     return res;
   });
 

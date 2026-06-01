@@ -29,11 +29,12 @@ import {
 import { toast } from "sonner";
 import {
   Key, Plus, RefreshCw, Trash2, Zap, Activity, AlertCircle,
-  CheckCircle2, XCircle, PauseCircle, Pencil, Sparkles, FlaskConical,
+  CheckCircle2, XCircle, PauseCircle, Pencil, Sparkles, FlaskConical, Wallet,
 } from "lucide-react";
 import {
   listAiAccounts, createAiAccount, updateAiAccount, deleteAiAccount,
   resetAiAccountCounters, testAiAccount,
+  refreshAiAccountCredit, refreshAllAiAccountCredits,
   listModelTiers, upsertModelTier, deleteModelTier,
   listAiUsageLogs, getAiPoolStats,
 } from "@/lib/admin-ai.functions";
@@ -81,6 +82,8 @@ function AccountsTab() {
   const remove = useServerFn(deleteAiAccount);
   const reset = useServerFn(resetAiAccountCounters);
   const test = useServerFn(testAiAccount);
+  const refreshCredit = useServerFn(refreshAiAccountCredit);
+  const refreshAllCredits = useServerFn(refreshAllAiAccountCredits);
   const stats = useServerFn(getAiPoolStats);
 
   const { data: rows } = useQuery({ queryKey: ["ai-accounts"], queryFn: () => list() });
@@ -123,7 +126,20 @@ function AccountsTab() {
     onSuccess: (r) => {
       if (r.ok) toast.success(lang === "ar" ? "المفتاح يعمل ✓" : "Key works ✓");
       else toast.error(`${lang === "ar" ? "فشل" : "Failed"}: ${r.message}`);
+      refresh();
     },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const mRefreshCredit = useMutation({
+    mutationFn: (id: string) => refreshCredit({ data: { id } }),
+    onSuccess: () => { toast.success(lang === "ar" ? "تم تحديث الرصيد" : "Credit refreshed"); refresh(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const mRefreshAll = useMutation({
+    mutationFn: () => refreshAllCredits(),
+    onSuccess: (r) => { toast.success(lang === "ar" ? `تم تحديث ${r.count} حساب` : `Refreshed ${r.count} accounts`); refresh(); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -148,15 +164,21 @@ function AccountsTab() {
                 : "Central key pool — rotates automatically on failure or quota exhaustion"}
             </CardDescription>
           </div>
-          <Dialog open={openAdd} onOpenChange={setOpenAdd}>
-            <DialogTrigger asChild>
-              <Button className="gap-2"><Plus className="h-4 w-4" />{lang === "ar" ? "إضافة حساب" : "Add account"}</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>{lang === "ar" ? "إضافة حساب kie.ai جديد" : "Add new kie.ai account"}</DialogTitle></DialogHeader>
-              <AddAccountForm onSubmit={(d) => mCreate.mutate(d)} loading={mCreate.isPending} />
-            </DialogContent>
-          </Dialog>
+          <div className="flex gap-2">
+            <Button variant="outline" className="gap-2" onClick={() => mRefreshAll.mutate()} disabled={mRefreshAll.isPending}>
+              <Wallet className="h-4 w-4" />
+              {lang === "ar" ? "تحديث الأرصدة" : "Refresh credits"}
+            </Button>
+            <Dialog open={openAdd} onOpenChange={setOpenAdd}>
+              <DialogTrigger asChild>
+                <Button className="gap-2"><Plus className="h-4 w-4" />{lang === "ar" ? "إضافة حساب" : "Add account"}</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>{lang === "ar" ? "إضافة حساب kie.ai جديد" : "Add new kie.ai account"}</DialogTitle></DialogHeader>
+                <AddAccountForm onSubmit={(d) => mCreate.mutate(d)} loading={mCreate.isPending} />
+              </DialogContent>
+            </Dialog>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border border-border/60 overflow-hidden">
@@ -166,6 +188,7 @@ function AccountsTab() {
                   <TableHead>{lang === "ar" ? "الاسم" : "Label"}</TableHead>
                   <TableHead>{lang === "ar" ? "المفتاح" : "Key"}</TableHead>
                   <TableHead>{lang === "ar" ? "الحالة" : "Status"}</TableHead>
+                  <TableHead className="text-center">{lang === "ar" ? "الرصيد المتبقي" : "Credit"}</TableHead>
                   <TableHead className="text-center">{lang === "ar" ? "الأولوية" : "Priority"}</TableHead>
                   <TableHead className="text-center">{lang === "ar" ? "طلبات" : "Requests"}</TableHead>
                   <TableHead className="text-center">{lang === "ar" ? "فشل" : "Failed"}</TableHead>
@@ -175,7 +198,7 @@ function AccountsTab() {
               </TableHeader>
               <TableBody>
                 {(rows?.rows ?? []).length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                  <TableRow><TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                     {lang === "ar" ? "لا توجد حسابات بعد — أضف أول مفتاح kie.ai" : "No accounts yet — add your first kie.ai key"}
                   </TableCell></TableRow>
                 ) : rows!.rows.map((r) => (
@@ -183,6 +206,17 @@ function AccountsTab() {
                     <TableCell className="font-medium">{r.label}</TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">{r.key_hint}</TableCell>
                     <TableCell><StatusBadge status={r.status} /></TableCell>
+                    <TableCell className="text-center">
+                      {r.credit_error ? (
+                        <span className="text-xs text-red-500" title={r.credit_error}>—</span>
+                      ) : r.credit_balance !== null && r.credit_balance !== undefined ? (
+                        <span className={`text-sm font-mono ${Number(r.credit_balance) <= 0 ? "text-red-500" : Number(r.credit_balance) < 5 ? "text-yellow-500" : "text-green-600"}`}>
+                          {Number(r.credit_balance).toFixed(2)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-center">{r.priority}</TableCell>
                     <TableCell className="text-center">{r.requests_count}</TableCell>
                     <TableCell className="text-center">
@@ -196,6 +230,10 @@ function AccountsTab() {
                         <Button size="icon" variant="ghost" onClick={() => mTest.mutate(r.id)} disabled={mTest.isPending}
                           title={lang === "ar" ? "اختبار" : "Test"}>
                           <FlaskConical className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => mRefreshCredit.mutate(r.id)} disabled={mRefreshCredit.isPending}
+                          title={lang === "ar" ? "تحديث الرصيد" : "Refresh credit"}>
+                          <Wallet className="h-4 w-4" />
                         </Button>
                         <Button size="icon" variant="ghost" onClick={() => setEditing({ id: r.id, label: r.label, priority: r.priority })}
                           title={lang === "ar" ? "تعديل" : "Edit"}>

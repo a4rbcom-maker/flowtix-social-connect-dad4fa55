@@ -23,6 +23,7 @@ import {
   saveAiSettings,
   listAiLogs,
   rateAiLog,
+  listAvailableModelTiers,
   type WaAiSettings,
 } from "@/lib/wa-chat.functions";
 
@@ -31,13 +32,7 @@ export const Route = createFileRoute("/dashboard/whatsapp/bot")({
   component: BotPage,
 });
 
-const MODELS = [
-  { id: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash — سريع وذكي" },
-  { id: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite — الأرخص" },
-  { id: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro — أقوى" },
-  { id: "openai/gpt-5-mini", label: "GPT-5 Mini — متوازن" },
-  { id: "openai/gpt-5", label: "GPT-5 — الأعلى دقة" },
-];
+type TierKey = "simple" | "smart" | "negotiation";
 
 function BotPage() {
   const { lang } = useI18n();
@@ -46,6 +41,9 @@ function BotPage() {
   const saveFn = useServerFn(saveAiSettings);
   const logsFn = useServerFn(listAiLogs);
   const rateFn = useServerFn(rateAiLog);
+  const tiersFn = useServerFn(listAvailableModelTiers);
+
+  const tiersQ = useQuery({ queryKey: ["wa-ai-tiers"], queryFn: () => tiersFn() });
 
   const settingsQ = useQuery<WaAiSettings>({
     queryKey: ["wa-ai-settings"],
@@ -184,20 +182,36 @@ function BotPage() {
           <p className="mt-3 text-xs text-muted-foreground">{t.enableDesc}</p>
         </div>
 
-        {/* Model + Personality */}
+        {/* Model tiers + Personality */}
         <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
           <SectionTitle icon={Brain} label={t.model} desc={t.modelDesc} />
-          <select
-            value={form.ai_model}
-            onChange={(e) => update({ ai_model: e.target.value })}
-            className="mt-3 w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
-          >
-            {MODELS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            {(["simple", "smart", "negotiation"] as TierKey[]).map((tier) => {
+              const opts = (tiersQ.data?.rows ?? []).filter((r) => r.tier === tier);
+              const field = `ai_tier_${tier}` as const;
+              const tierLabel = lang === "ar"
+                ? { simple: "بسيط (FAQ)", smart: "ذكي (ردود عامة)", negotiation: "تفاوض (مبيعات)" }[tier]
+                : { simple: "Simple (FAQ)", smart: "Smart (General)", negotiation: "Negotiation (Sales)" }[tier];
+              return (
+                <div key={tier}>
+                  <label className="text-xs font-medium text-muted-foreground">{tierLabel}</label>
+                  <select
+                    value={form[field] ?? ""}
+                    onChange={(e) => update({ [field]: e.target.value || null } as Partial<WaAiSettings>)}
+                    disabled={!tiersQ.data}
+                    className="mt-1 w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm outline-none focus:border-primary disabled:opacity-50"
+                  >
+                    <option value="">{lang === "ar" ? "— اختر موديل —" : "— Select model —"}</option>
+                    {opts.map((m) => (
+                      <option key={`${m.tier}-${m.model_name}`} value={m.model_name}>
+                        {lang === "ar" ? m.display_name_ar : m.display_name_en}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
+          </div>
 
           <div className="mt-5">
             <SectionTitle label={t.systemPrompt} />
