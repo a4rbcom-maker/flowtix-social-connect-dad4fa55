@@ -317,19 +317,19 @@ export const getAdminFacebookOverview = createServerFn({ method: "GET" })
     bots.data?.forEach((b) => {
       const r = ensure(b.user_id);
       r.bot_accounts += 1;
-      if (b.status === "active" || b.status === "ok") r.bot_accounts_active += 1;
+      if ((b.status as string) === "active") r.bot_accounts_active += 1;
     });
     camps.data?.forEach((c) => {
       const r = ensure(c.user_id);
       r.campaigns_total += 1;
-      if (c.status === "running" || c.status === "scheduled") r.campaigns_running += 1;
+      if ((c.status as string) === "running" || (c.status as string) === "queued") r.campaigns_running += 1;
       r.sent_success += c.success_count ?? 0;
       r.sent_failed += c.failed_count ?? 0;
     });
     jobs.data?.forEach((j) => {
       const r = ensure(j.user_id);
-      if (j.status === "running" || j.status === "pending") r.jobs_running += 1;
-      if (j.status === "failed") r.jobs_failed += 1;
+      if ((j.status as string) === "running" || (j.status as string) === "pending") r.jobs_running += 1;
+      if ((j.status as string) === "failed") r.jobs_failed += 1;
     });
 
     const users = Array.from(perUser.values()).sort(
@@ -339,13 +339,14 @@ export const getAdminFacebookOverview = createServerFn({ method: "GET" })
     const totals = {
       connections: conns.data?.length ?? 0,
       bot_accounts: bots.data?.length ?? 0,
-      bot_accounts_active: bots.data?.filter((b) => b.status === "active" || b.status === "ok").length ?? 0,
+      bot_accounts_active: bots.data?.filter((b) => (b.status as string) === "active").length ?? 0,
       campaigns_total: camps.data?.length ?? 0,
-      campaigns_running: camps.data?.filter((c) => c.status === "running" || c.status === "scheduled").length ?? 0,
-      jobs_running: jobs.data?.filter((j) => j.status === "running" || j.status === "pending").length ?? 0,
-      jobs_failed: jobs.data?.filter((j) => j.status === "failed").length ?? 0,
+      campaigns_running: camps.data?.filter((c) => (c.status as string) === "running" || (c.status as string) === "queued").length ?? 0,
+      jobs_running: jobs.data?.filter((j) => (j.status as string) === "running" || (j.status as string) === "pending").length ?? 0,
+      jobs_failed: jobs.data?.filter((j) => (j.status as string) === "failed").length ?? 0,
       users_with_fb: perUser.size,
     };
+
 
     const recentCampaigns = (camps.data ?? []).slice(0, 25).map((c) => ({
       ...c,
