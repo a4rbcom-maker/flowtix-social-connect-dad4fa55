@@ -25,7 +25,7 @@ export interface ChatMessageRow {
   msg_type: string;
   media_url: string | null;
   created_at: string;
-  raw: Record<string, unknown> | null;
+  is_ai: boolean;
 }
 
 export const listConversations = createServerFn({ method: "POST" })
