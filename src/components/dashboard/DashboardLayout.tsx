@@ -21,6 +21,7 @@ import {
   Sparkles,
   Inbox,
   Smartphone,
+  Shield,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -30,7 +31,9 @@ import { NotificationsBell } from "@/components/dashboard/NotificationsBell";
 import { ChannelStatusDot } from "@/components/dashboard/ChannelStatusDot";
 import { ChannelQuickActions } from "@/components/dashboard/ChannelQuickActions";
 import { useChannelStatus } from "@/hooks/useChannelStatus";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 const flowtixLogo = "/flowtix-logo.webp";
+
 
 interface DashboardLayoutProps {
   children: ReactNode;
