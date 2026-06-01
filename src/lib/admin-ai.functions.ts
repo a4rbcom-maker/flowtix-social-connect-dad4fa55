@@ -5,7 +5,7 @@ import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "./admin-middleware";
 import type { Database } from "@/integrations/supabase/types";
-import { encryptKey, keyHint, pingKieKey } from "./ai-pool.server";
+import { encryptKey, keyHint, pingKieKey, refreshAccountCredit } from "./ai-pool.server";
 
 function admin() {
   return createClient<Database>(
@@ -23,11 +23,28 @@ export const listAiAccounts = createServerFn({ method: "GET" })
     const db = admin();
     const { data, error } = await db
       .from("ai_provider_accounts")
-      .select("id,label,provider,key_hint,status,priority,requests_count,failed_count,last_used_at,last_error_at,last_error_message,cooldown_until,created_at")
+      .select("id,label,provider,key_hint,status,priority,requests_count,failed_count,last_used_at,last_error_at,last_error_message,cooldown_until,credit_balance,credit_checked_at,credit_error,created_at")
       .order("priority", { ascending: true })
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return { rows: data ?? [] };
+  });
+
+export const refreshAiAccountCredit = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { id: string }) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    const r = await refreshAccountCredit(data.id);
+    return r;
+  });
+
+export const refreshAllAiAccountCredits = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .handler(async () => {
+    const db = admin();
+    const { data } = await db.from("ai_provider_accounts").select("id");
+    const results = await Promise.all((data ?? []).map((r) => refreshAccountCredit(r.id)));
+    return { ok: true, count: results.length };
   });
 
 export const createAiAccount = createServerFn({ method: "POST" })
