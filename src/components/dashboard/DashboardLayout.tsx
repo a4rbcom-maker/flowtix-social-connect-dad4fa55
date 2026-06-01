@@ -50,6 +50,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isDesktop, setIsDesktop] = useState(true);
   const channelStatus = useChannelStatus(lang);
+  const { isAdmin } = useIsAdmin();
 
   // Track viewport size only — do not auto-collapse the sidebar.
   useEffect(() => {
