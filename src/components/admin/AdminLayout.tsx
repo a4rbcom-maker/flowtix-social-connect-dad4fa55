@@ -177,14 +177,7 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
 
         {/* Footer */}
         <div className="p-2 border-t border-border space-y-1">
-          <Link
-            to="/dashboard"
-            className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-muted/60"
-            title={collapsed ? (lang === "ar" ? "لوحة المستخدم" : "User dashboard") : undefined}
-          >
-            <ArrowLeft className="h-4 w-4 shrink-0" />
-            {!collapsed && <span>{lang === "ar" ? "لوحة المستخدم" : "User Dashboard"}</span>}
-          </Link>
+
           <button
             onClick={async () => {
               await signOut();

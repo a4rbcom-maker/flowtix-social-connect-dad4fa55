@@ -97,9 +97,20 @@ function LoginPage() {
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data: signInData, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        navigate({ to: "/dashboard" });
+        const uid = signInData.user?.id;
+        let dest: "/admin" | "/dashboard" = "/dashboard";
+        if (uid) {
+          const { data: roleRow } = await supabase
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", uid)
+            .eq("role", "admin")
+            .maybeSingle();
+          if (roleRow) dest = "/admin";
+        }
+        navigate({ to: dest });
       } else {
         const { error } = await supabase.auth.signUp({
           email,
