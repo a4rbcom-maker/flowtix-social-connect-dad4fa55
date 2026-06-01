@@ -1,8 +1,9 @@
 // Admin-only server functions for kie.ai pool, model tiers, and usage logs.
+// Guarded centrally by requireAdmin middleware.
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireAdmin } from "./admin-middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { encryptKey, keyHint, pingKieKey } from "./ai-pool.server";
 
@@ -14,23 +15,11 @@ function admin() {
   );
 }
 
-async function assertAdmin(userId: string) {
-  const db = admin();
-  const { data } = await db
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "admin")
-    .maybeSingle();
-  if (!data) throw new Error("forbidden: admin role required");
-}
-
 // ============= Accounts =============
 
 export const listAiAccounts = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    await assertAdmin(context.userId);
+  .middleware([requireAdmin])
+  .handler(async () => {
     const db = admin();
     const { data, error } = await db
       .from("ai_provider_accounts")
@@ -42,7 +31,7 @@ export const listAiAccounts = createServerFn({ method: "GET" })
   });
 
 export const createAiAccount = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAdmin])
   .inputValidator((d: { label: string; apiKey: string; priority?: number }) =>
     z.object({
       label: z.string().trim().min(1).max(80),
@@ -51,7 +40,6 @@ export const createAiAccount = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ context, data }) => {
-    await assertAdmin(context.userId);
     const db = admin();
     const { error } = await db.from("ai_provider_accounts").insert({
       label: data.label,
@@ -59,14 +47,14 @@ export const createAiAccount = createServerFn({ method: "POST" })
       api_key_encrypted: encryptKey(data.apiKey),
       key_hint: keyHint(data.apiKey),
       priority: data.priority,
-      created_by: context.userId,
+      created_by: context.adminUserId,
     });
     if (error) throw new Error(error.message);
     return { ok: true };
   });
 
 export const updateAiAccount = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAdmin])
   .inputValidator((d: {
     id: string;
     label?: string;
@@ -82,8 +70,7 @@ export const updateAiAccount = createServerFn({ method: "POST" })
       apiKey: z.string().trim().min(8).max(500).optional(),
     }).parse(d),
   )
-  .handler(async ({ context, data }) => {
-    await assertAdmin(context.userId);
+  .handler(async ({ data }) => {
     const db = admin();
     const updates: Record<string, unknown> = {};
     if (data.label) updates.label = data.label;
@@ -102,10 +89,9 @@ export const updateAiAccount = createServerFn({ method: "POST" })
   });
 
 export const deleteAiAccount = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAdmin])
   .inputValidator((d: { id: string }) => z.object({ id: z.string().uuid() }).parse(d))
-  .handler(async ({ context, data }) => {
-    await assertAdmin(context.userId);
+  .handler(async ({ data }) => {
     const db = admin();
     const { error } = await db.from("ai_provider_accounts").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
@@ -113,10 +99,9 @@ export const deleteAiAccount = createServerFn({ method: "POST" })
   });
 
 export const resetAiAccountCounters = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAdmin])
   .inputValidator((d: { id: string }) => z.object({ id: z.string().uuid() }).parse(d))
-  .handler(async ({ context, data }) => {
-    await assertAdmin(context.userId);
+  .handler(async ({ data }) => {
     const db = admin();
     const { error } = await db
       .from("ai_provider_accounts")
@@ -127,12 +112,11 @@ export const resetAiAccountCounters = createServerFn({ method: "POST" })
   });
 
 export const testAiAccount = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAdmin])
   .inputValidator((d: { id?: string; apiKey?: string }) =>
     z.object({ id: z.string().uuid().optional(), apiKey: z.string().trim().min(8).max(500).optional() }).parse(d),
   )
-  .handler(async ({ context, data }) => {
-    await assertAdmin(context.userId);
+  .handler(async ({ data }) => {
     let key = data.apiKey;
     if (!key && data.id) {
       const db = admin();
@@ -149,7 +133,7 @@ export const testAiAccount = createServerFn({ method: "POST" })
 // ============= Tiers / Models =============
 
 export const listModelTiers = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAdmin])
   .handler(async () => {
     const db = admin();
     const { data, error } = await db
@@ -162,7 +146,7 @@ export const listModelTiers = createServerFn({ method: "GET" })
   });
 
 export const upsertModelTier = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAdmin])
   .inputValidator((d: {
     id?: string;
     tier: "simple" | "smart" | "negotiation";
@@ -188,8 +172,7 @@ export const upsertModelTier = createServerFn({ method: "POST" })
       sort_order: z.number().int().min(0).max(999).optional().default(0),
     }).parse(d),
   )
-  .handler(async ({ context, data }) => {
-    await assertAdmin(context.userId);
+  .handler(async ({ data }) => {
     const db = admin();
     if (data.id) {
       const { error } = await db
@@ -225,10 +208,9 @@ export const upsertModelTier = createServerFn({ method: "POST" })
   });
 
 export const deleteModelTier = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAdmin])
   .inputValidator((d: { id: string }) => z.object({ id: z.string().uuid() }).parse(d))
-  .handler(async ({ context, data }) => {
-    await assertAdmin(context.userId);
+  .handler(async ({ data }) => {
     const db = admin();
     const { error } = await db.from("ai_model_tiers").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
@@ -238,7 +220,7 @@ export const deleteModelTier = createServerFn({ method: "POST" })
 // ============= Usage logs =============
 
 export const listAiUsageLogs = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAdmin])
   .inputValidator((d: { limit?: number; tier?: string; status?: string }) =>
     z.object({
       limit: z.number().int().min(10).max(500).optional().default(100),
@@ -246,8 +228,7 @@ export const listAiUsageLogs = createServerFn({ method: "GET" })
       status: z.string().max(40).optional().default(""),
     }).parse(d ?? {}),
   )
-  .handler(async ({ context, data }) => {
-    await assertAdmin(context.userId);
+  .handler(async ({ data }) => {
     const db = admin();
     let q = db.from("ai_usage_logs").select("*").order("created_at", { ascending: false }).limit(data.limit);
     if (data.tier) q = q.eq("tier", data.tier as never);
@@ -258,9 +239,8 @@ export const listAiUsageLogs = createServerFn({ method: "GET" })
   });
 
 export const getAiPoolStats = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    await assertAdmin(context.userId);
+  .middleware([requireAdmin])
+  .handler(async () => {
     const db = admin();
     const [accounts, last24h, last7d] = await Promise.all([
       db.from("ai_provider_accounts").select("status"),
@@ -282,7 +262,6 @@ export const getAiPoolStats = createServerFn({ method: "GET" })
       },
       { requests: 0, success: 0, failed: 0, tokens: 0 },
     );
-    // Daily series last 7 days
     const days = new Map<string, { success: number; failed: number }>();
     for (let i = 6; i >= 0; i--) {
       const d = new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10);
