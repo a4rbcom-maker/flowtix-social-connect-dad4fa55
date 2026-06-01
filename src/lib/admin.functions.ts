@@ -1,9 +1,10 @@
-// Admin server functions — all guarded by has_role(uid,'admin') on the server.
-// Uses service-role client to read across all users; never callable without admin role.
+// Admin server functions — all guarded by requireAdmin middleware which validates
+// the bearer token and asserts the 'admin' role before the handler runs.
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireAdmin } from "./admin-middleware";
 import type { Database } from "@/integrations/supabase/types";
 
 function admin() {
@@ -12,18 +13,6 @@ function admin() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
-}
-
-async function assertAdmin(userId: string) {
-  const db = admin();
-  const { data, error } = await db
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "admin")
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("forbidden: admin role required");
 }
 
 async function logAction(adminUserId: string, action: string, targetUserId?: string | null, payload: Record<string, unknown> = {}) {
@@ -37,6 +26,7 @@ async function logAction(adminUserId: string, action: string, targetUserId?: str
 }
 
 // ---------- Guard check (cheap, used by layout) ----------
+// Uses only requireSupabaseAuth so non-admins get a boolean instead of a 403.
 export const checkIsAdmin = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -52,9 +42,8 @@ export const checkIsAdmin = createServerFn({ method: "GET" })
 
 // ---------- KPIs ----------
 export const getAdminKpis = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    await assertAdmin(context.userId);
+  .middleware([requireAdmin])
+  .handler(async () => {
     const db = admin();
     const { data, error } = await db.rpc("admin_kpi_snapshot" as never);
     if (error) throw new Error(error.message);
@@ -62,10 +51,9 @@ export const getAdminKpis = createServerFn({ method: "GET" })
   });
 
 export const getAdminTimeseries = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAdmin])
   .inputValidator((d: { days?: number }) => ({ days: Math.min(Math.max(d?.days ?? 30, 7), 90) }))
-  .handler(async ({ context, data }) => {
-    await assertAdmin(context.userId);
+  .handler(async ({ data }) => {
     const db = admin();
     const { data: rows, error } = await db.rpc("admin_daily_timeseries" as never, { _days: data.days } as never);
     if (error) throw new Error(error.message);
@@ -74,9 +62,8 @@ export const getAdminTimeseries = createServerFn({ method: "GET" })
 
 // ---------- Live activity feed ----------
 export const getRecentActivity = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    await assertAdmin(context.userId);
+  .middleware([requireAdmin])
+  .handler(async () => {
     const db = admin();
     const [profiles, campaigns, jobs, sendLog] = await Promise.all([
       db.from("profiles").select("id,full_name,created_at").order("created_at", { ascending: false }).limit(8),
@@ -103,10 +90,9 @@ const listUsersSchema = z.object({
 });
 
 export const listAdminUsers = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAdmin])
   .inputValidator((d) => listUsersSchema.parse(d ?? {}))
-  .handler(async ({ context, data }) => {
-    await assertAdmin(context.userId);
+  .handler(async ({ data }) => {
     const db = admin();
 
     let q = db.from("profiles").select("id,full_name,avatar_url,plan,created_at", { count: "exact" });
@@ -159,7 +145,6 @@ export const listAdminUsers = createServerFn({ method: "GET" })
       campaigns_count: campaignsByUser.get(p.id) ?? 0,
     }));
 
-    // Optional role filter post-fetch
     const filtered = data.role
       ? rows.filter((r) => r.roles.includes(data.role))
       : rows;
@@ -169,10 +154,9 @@ export const listAdminUsers = createServerFn({ method: "GET" })
 
 // ---------- User detail ----------
 export const getAdminUserDetail = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAdmin])
   .inputValidator((d: { userId: string }) => z.object({ userId: z.string().uuid() }).parse(d))
-  .handler(async ({ context, data }) => {
-    await assertAdmin(context.userId);
+  .handler(async ({ data }) => {
     const db = admin();
     const [profile, roles, fb, wa, contacts, campaigns, jobs, sendLog, audit] = await Promise.all([
       db.from("profiles").select("*").eq("id", data.userId).maybeSingle(),
@@ -200,27 +184,25 @@ export const getAdminUserDetail = createServerFn({ method: "GET" })
 
 // ---------- Mutations ----------
 export const updateUserPlan = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAdmin])
   .inputValidator((d: { userId: string; plan: string }) =>
     z.object({ userId: z.string().uuid(), plan: z.enum(["free", "starter", "pro", "business", "enterprise"]) }).parse(d),
   )
   .handler(async ({ context, data }) => {
-    await assertAdmin(context.userId);
     const db = admin();
     const { error } = await db.from("profiles").update({ plan: data.plan }).eq("id", data.userId);
     if (error) throw new Error(error.message);
-    await logAction(context.userId, "update_plan", data.userId, { plan: data.plan });
+    await logAction(context.adminUserId, "update_plan", data.userId, { plan: data.plan });
     return { ok: true };
   });
 
 export const setUserRole = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAdmin])
   .inputValidator((d: { userId: string; role: "admin" | "moderator" | "user"; grant: boolean }) =>
     z.object({ userId: z.string().uuid(), role: z.enum(["admin", "moderator", "user"]), grant: z.boolean() }).parse(d),
   )
   .handler(async ({ context, data }) => {
-    await assertAdmin(context.userId);
-    if (data.userId === context.userId && data.role === "admin" && !data.grant) {
+    if (data.userId === context.adminUserId && data.role === "admin" && !data.grant) {
       throw new Error("لا يمكنك إزالة صلاحية الأدمن عن نفسك");
     }
     const db = admin();
@@ -231,28 +213,26 @@ export const setUserRole = createServerFn({ method: "POST" })
       const { error } = await db.from("user_roles").delete().eq("user_id", data.userId).eq("role", data.role);
       if (error) throw new Error(error.message);
     }
-    await logAction(context.userId, data.grant ? "grant_role" : "revoke_role", data.userId, { role: data.role });
+    await logAction(context.adminUserId, data.grant ? "grant_role" : "revoke_role", data.userId, { role: data.role });
     return { ok: true };
   });
 
 export const deleteUserAccount = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAdmin])
   .inputValidator((d: { userId: string }) => z.object({ userId: z.string().uuid() }).parse(d))
   .handler(async ({ context, data }) => {
-    await assertAdmin(context.userId);
-    if (data.userId === context.userId) throw new Error("لا يمكنك حذف نفسك");
+    if (data.userId === context.adminUserId) throw new Error("لا يمكنك حذف نفسك");
     const db = admin();
     const { error } = await db.auth.admin.deleteUser(data.userId);
     if (error) throw new Error(error.message);
-    await logAction(context.userId, "delete_user", data.userId);
+    await logAction(context.adminUserId, "delete_user", data.userId);
     return { ok: true };
   });
 
 // ---------- Settings ----------
 export const getPlatformSettings = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    await assertAdmin(context.userId);
+  .middleware([requireAdmin])
+  .handler(async () => {
     const db = admin();
     const { data, error } = await db.from("platform_settings").select("*").order("key");
     if (error) throw new Error(error.message);
@@ -260,18 +240,17 @@ export const getPlatformSettings = createServerFn({ method: "GET" })
   });
 
 export const updatePlatformSetting = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAdmin])
   .inputValidator((d: { key: string; value: unknown }) =>
     z.object({ key: z.string().min(1).max(80), value: z.unknown() }).parse(d),
   )
   .handler(async ({ context, data }) => {
-    await assertAdmin(context.userId);
     const db = admin();
     const { error } = await db
       .from("platform_settings")
-      .update({ value: data.value as never, updated_by: context.userId, updated_at: new Date().toISOString() })
+      .update({ value: data.value as never, updated_by: context.adminUserId, updated_at: new Date().toISOString() })
       .eq("key", data.key);
     if (error) throw new Error(error.message);
-    await logAction(context.userId, "update_setting", null, { key: data.key, value: data.value });
+    await logAction(context.adminUserId, "update_setting", null, { key: data.key, value: data.value });
     return { ok: true };
   });
