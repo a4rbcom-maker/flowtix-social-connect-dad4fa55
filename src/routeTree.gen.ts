@@ -15,12 +15,22 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as DashboardWhatsappRouteImport } from './routes/dashboard.whatsapp'
 import { Route as DashboardProfileRouteImport } from './routes/dashboard.profile'
 import { Route as DashboardFacebookRouteImport } from './routes/dashboard.facebook'
 import { Route as DashboardControlRouteImport } from './routes/dashboard.control'
 import { Route as DashboardBulkRouteImport } from './routes/dashboard.bulk'
 import { Route as DashboardActivityRouteImport } from './routes/dashboard.activity'
+import { Route as AdminWhatsappRouteImport } from './routes/admin.whatsapp'
+import { Route as AdminUsersRouteImport } from './routes/admin.users'
+import { Route as AdminSettingsRouteImport } from './routes/admin.settings'
+import { Route as AdminSecurityRouteImport } from './routes/admin.security'
+import { Route as AdminNotificationsRouteImport } from './routes/admin.notifications'
+import { Route as AdminLogsRouteImport } from './routes/admin.logs'
+import { Route as AdminJobsRouteImport } from './routes/admin.jobs'
+import { Route as AdminFacebookRouteImport } from './routes/admin.facebook'
+import { Route as AdminAiRouteImport } from './routes/admin.ai'
 import { Route as DashboardWhatsappSettingsRouteImport } from './routes/dashboard.whatsapp.settings'
 import { Route as DashboardWhatsappInboxRouteImport } from './routes/dashboard.whatsapp.inbox'
 import { Route as DashboardWhatsappBotRouteImport } from './routes/dashboard.whatsapp.bot'
@@ -73,6 +83,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/admin/',
+  path: '/admin/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardWhatsappRoute = DashboardWhatsappRouteImport.update({
   id: '/whatsapp',
   path: '/whatsapp',
@@ -102,6 +117,51 @@ const DashboardActivityRoute = DashboardActivityRouteImport.update({
   id: '/activity',
   path: '/activity',
   getParentRoute: () => DashboardRoute,
+} as any)
+const AdminWhatsappRoute = AdminWhatsappRouteImport.update({
+  id: '/admin/whatsapp',
+  path: '/admin/whatsapp',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminUsersRoute = AdminUsersRouteImport.update({
+  id: '/admin/users',
+  path: '/admin/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminSettingsRoute = AdminSettingsRouteImport.update({
+  id: '/admin/settings',
+  path: '/admin/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminSecurityRoute = AdminSecurityRouteImport.update({
+  id: '/admin/security',
+  path: '/admin/security',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminNotificationsRoute = AdminNotificationsRouteImport.update({
+  id: '/admin/notifications',
+  path: '/admin/notifications',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminLogsRoute = AdminLogsRouteImport.update({
+  id: '/admin/logs',
+  path: '/admin/logs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminJobsRoute = AdminJobsRouteImport.update({
+  id: '/admin/jobs',
+  path: '/admin/jobs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminFacebookRoute = AdminFacebookRouteImport.update({
+  id: '/admin/facebook',
+  path: '/admin/facebook',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminAiRoute = AdminAiRouteImport.update({
+  id: '/admin/ai',
+  path: '/admin/ai',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardWhatsappSettingsRoute =
   DashboardWhatsappSettingsRouteImport.update({
@@ -226,12 +286,22 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/admin/ai': typeof AdminAiRoute
+  '/admin/facebook': typeof AdminFacebookRoute
+  '/admin/jobs': typeof AdminJobsRoute
+  '/admin/logs': typeof AdminLogsRoute
+  '/admin/notifications': typeof AdminNotificationsRoute
+  '/admin/security': typeof AdminSecurityRoute
+  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/users': typeof AdminUsersRoute
+  '/admin/whatsapp': typeof AdminWhatsappRoute
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/bulk': typeof DashboardBulkRoute
   '/dashboard/control': typeof DashboardControlRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
+  '/admin/': typeof AdminIndexRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
   '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
@@ -261,12 +331,22 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/admin/ai': typeof AdminAiRoute
+  '/admin/facebook': typeof AdminFacebookRoute
+  '/admin/jobs': typeof AdminJobsRoute
+  '/admin/logs': typeof AdminLogsRoute
+  '/admin/notifications': typeof AdminNotificationsRoute
+  '/admin/security': typeof AdminSecurityRoute
+  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/users': typeof AdminUsersRoute
+  '/admin/whatsapp': typeof AdminWhatsappRoute
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/bulk': typeof DashboardBulkRoute
   '/dashboard/control': typeof DashboardControlRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
+  '/admin': typeof AdminIndexRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
   '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
@@ -297,12 +377,22 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/admin/ai': typeof AdminAiRoute
+  '/admin/facebook': typeof AdminFacebookRoute
+  '/admin/jobs': typeof AdminJobsRoute
+  '/admin/logs': typeof AdminLogsRoute
+  '/admin/notifications': typeof AdminNotificationsRoute
+  '/admin/security': typeof AdminSecurityRoute
+  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/users': typeof AdminUsersRoute
+  '/admin/whatsapp': typeof AdminWhatsappRoute
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/bulk': typeof DashboardBulkRoute
   '/dashboard/control': typeof DashboardControlRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
+  '/admin/': typeof AdminIndexRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
   '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
@@ -334,12 +424,22 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/signup'
+    | '/admin/ai'
+    | '/admin/facebook'
+    | '/admin/jobs'
+    | '/admin/logs'
+    | '/admin/notifications'
+    | '/admin/security'
+    | '/admin/settings'
+    | '/admin/users'
+    | '/admin/whatsapp'
     | '/dashboard/activity'
     | '/dashboard/bulk'
     | '/dashboard/control'
     | '/dashboard/facebook'
     | '/dashboard/profile'
     | '/dashboard/whatsapp'
+    | '/admin/'
     | '/api/public/health'
     | '/dashboard/facebook/bot'
     | '/dashboard/facebook/campaigns'
@@ -369,12 +469,22 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/signup'
+    | '/admin/ai'
+    | '/admin/facebook'
+    | '/admin/jobs'
+    | '/admin/logs'
+    | '/admin/notifications'
+    | '/admin/security'
+    | '/admin/settings'
+    | '/admin/users'
+    | '/admin/whatsapp'
     | '/dashboard/activity'
     | '/dashboard/bulk'
     | '/dashboard/control'
     | '/dashboard/facebook'
     | '/dashboard/profile'
     | '/dashboard/whatsapp'
+    | '/admin'
     | '/api/public/health'
     | '/dashboard/facebook/bot'
     | '/dashboard/facebook/campaigns'
@@ -404,12 +514,22 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/signup'
+    | '/admin/ai'
+    | '/admin/facebook'
+    | '/admin/jobs'
+    | '/admin/logs'
+    | '/admin/notifications'
+    | '/admin/security'
+    | '/admin/settings'
+    | '/admin/users'
+    | '/admin/whatsapp'
     | '/dashboard/activity'
     | '/dashboard/bulk'
     | '/dashboard/control'
     | '/dashboard/facebook'
     | '/dashboard/profile'
     | '/dashboard/whatsapp'
+    | '/admin/'
     | '/api/public/health'
     | '/dashboard/facebook/bot'
     | '/dashboard/facebook/campaigns'
@@ -440,6 +560,16 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  AdminAiRoute: typeof AdminAiRoute
+  AdminFacebookRoute: typeof AdminFacebookRoute
+  AdminJobsRoute: typeof AdminJobsRoute
+  AdminLogsRoute: typeof AdminLogsRoute
+  AdminNotificationsRoute: typeof AdminNotificationsRoute
+  AdminSecurityRoute: typeof AdminSecurityRoute
+  AdminSettingsRoute: typeof AdminSettingsRoute
+  AdminUsersRoute: typeof AdminUsersRoute
+  AdminWhatsappRoute: typeof AdminWhatsappRoute
+  AdminIndexRoute: typeof AdminIndexRoute
   ApiPublicHealthRoute: typeof ApiPublicHealthRoute
   ApiPublicBotJobUpdateRoute: typeof ApiPublicBotJobUpdateRoute
   ApiPublicBotNextJobRoute: typeof ApiPublicBotNextJobRoute
@@ -491,6 +621,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/': {
+      id: '/admin/'
+      path: '/admin'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard/whatsapp': {
       id: '/dashboard/whatsapp'
       path: '/whatsapp'
@@ -532,6 +669,69 @@ declare module '@tanstack/react-router' {
       fullPath: '/dashboard/activity'
       preLoaderRoute: typeof DashboardActivityRouteImport
       parentRoute: typeof DashboardRoute
+    }
+    '/admin/whatsapp': {
+      id: '/admin/whatsapp'
+      path: '/admin/whatsapp'
+      fullPath: '/admin/whatsapp'
+      preLoaderRoute: typeof AdminWhatsappRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/users': {
+      id: '/admin/users'
+      path: '/admin/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AdminUsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/settings': {
+      id: '/admin/settings'
+      path: '/admin/settings'
+      fullPath: '/admin/settings'
+      preLoaderRoute: typeof AdminSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/security': {
+      id: '/admin/security'
+      path: '/admin/security'
+      fullPath: '/admin/security'
+      preLoaderRoute: typeof AdminSecurityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/notifications': {
+      id: '/admin/notifications'
+      path: '/admin/notifications'
+      fullPath: '/admin/notifications'
+      preLoaderRoute: typeof AdminNotificationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/logs': {
+      id: '/admin/logs'
+      path: '/admin/logs'
+      fullPath: '/admin/logs'
+      preLoaderRoute: typeof AdminLogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/jobs': {
+      id: '/admin/jobs'
+      path: '/admin/jobs'
+      fullPath: '/admin/jobs'
+      preLoaderRoute: typeof AdminJobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/facebook': {
+      id: '/admin/facebook'
+      path: '/admin/facebook'
+      fullPath: '/admin/facebook'
+      preLoaderRoute: typeof AdminFacebookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/ai': {
+      id: '/admin/ai'
+      path: '/admin/ai'
+      fullPath: '/admin/ai'
+      preLoaderRoute: typeof AdminAiRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/dashboard/whatsapp/settings': {
       id: '/dashboard/whatsapp/settings'
@@ -774,6 +974,16 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  AdminAiRoute: AdminAiRoute,
+  AdminFacebookRoute: AdminFacebookRoute,
+  AdminJobsRoute: AdminJobsRoute,
+  AdminLogsRoute: AdminLogsRoute,
+  AdminNotificationsRoute: AdminNotificationsRoute,
+  AdminSecurityRoute: AdminSecurityRoute,
+  AdminSettingsRoute: AdminSettingsRoute,
+  AdminUsersRoute: AdminUsersRoute,
+  AdminWhatsappRoute: AdminWhatsappRoute,
+  AdminIndexRoute: AdminIndexRoute,
   ApiPublicHealthRoute: ApiPublicHealthRoute,
   ApiPublicBotJobUpdateRoute: ApiPublicBotJobUpdateRoute,
   ApiPublicBotNextJobRoute: ApiPublicBotNextJobRoute,
