@@ -24,6 +24,7 @@ import {
   getFacebookConnection,
 } from "@/lib/facebook.functions";
 import { logSendActivity, updateSendStatus } from "@/lib/notifications";
+import { GraphApiConnectWizard } from "@/components/facebook/GraphApiConnectWizard";
 
 export const Route = createFileRoute("/dashboard/facebook/groups")({
   ssr: false,
