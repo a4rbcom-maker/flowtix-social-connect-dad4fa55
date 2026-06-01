@@ -206,6 +206,17 @@ function AccountsTab() {
                     <TableCell className="font-medium">{r.label}</TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">{r.key_hint}</TableCell>
                     <TableCell><StatusBadge status={r.status} /></TableCell>
+                    <TableCell className="text-center">
+                      {r.credit_error ? (
+                        <span className="text-xs text-red-500" title={r.credit_error}>—</span>
+                      ) : r.credit_balance !== null && r.credit_balance !== undefined ? (
+                        <span className={`text-sm font-mono ${Number(r.credit_balance) <= 0 ? "text-red-500" : Number(r.credit_balance) < 5 ? "text-yellow-500" : "text-green-600"}`}>
+                          {Number(r.credit_balance).toFixed(2)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-center">{r.priority}</TableCell>
                     <TableCell className="text-center">{r.requests_count}</TableCell>
                     <TableCell className="text-center">
