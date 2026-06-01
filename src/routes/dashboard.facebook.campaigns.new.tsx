@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate, Link, useRouter } from "@tanstack/react-r
 import { useEffect, useMemo, useState } from "react";
 import {
   Save, Loader2, ChevronDown, FileText, Image as ImageIcon, Type, Layers, ArrowLeft,
-  Users, Search, AlertCircle, Check, AlertTriangle,
+  Users, Search, AlertCircle, Check, AlertTriangle, ClipboardPaste, X, Hash,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
