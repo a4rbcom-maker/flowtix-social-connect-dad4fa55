@@ -126,7 +126,20 @@ function AccountsTab() {
     onSuccess: (r) => {
       if (r.ok) toast.success(lang === "ar" ? "المفتاح يعمل ✓" : "Key works ✓");
       else toast.error(`${lang === "ar" ? "فشل" : "Failed"}: ${r.message}`);
+      refresh();
     },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const mRefreshCredit = useMutation({
+    mutationFn: (id: string) => refreshCredit({ data: { id } }),
+    onSuccess: () => { toast.success(lang === "ar" ? "تم تحديث الرصيد" : "Credit refreshed"); refresh(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const mRefreshAll = useMutation({
+    mutationFn: () => refreshAllCredits(),
+    onSuccess: (r) => { toast.success(lang === "ar" ? `تم تحديث ${r.count} حساب` : `Refreshed ${r.count} accounts`); refresh(); },
     onError: (e: Error) => toast.error(e.message),
   });
 
