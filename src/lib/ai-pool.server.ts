@@ -4,7 +4,18 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import crypto from "crypto";
 
-const KIE_BASE_URL = "https://api.kie.ai/v1";
+const KIE_BASE_URL = "https://api.kie.ai";
+const KIE_CREDIT_URL = `${KIE_BASE_URL}/api/v1/chat/credit`;
+
+// kie.ai uses model-scoped chat endpoints, e.g. `/gpt-5-2/v1/chat/completions`.
+// Normalize a model id to its URL slug (drop provider prefix, replace dots).
+function modelToSlug(model: string): string {
+  const tail = model.includes("/") ? model.split("/").pop()! : model;
+  return tail.replace(/\./g, "-").toLowerCase();
+}
+function chatUrlFor(model: string): string {
+  return `${KIE_BASE_URL}/${modelToSlug(model)}/v1/chat/completions`;
+}
 
 // ============= Encryption (AES-256-GCM) =============
 
