@@ -104,6 +104,9 @@ export type Database = {
           cooldown_until: string | null
           created_at: string
           created_by: string | null
+          credit_balance: number | null
+          credit_checked_at: string | null
+          credit_error: string | null
           failed_count: number
           id: string
           key_hint: string | null
@@ -122,6 +125,9 @@ export type Database = {
           cooldown_until?: string | null
           created_at?: string
           created_by?: string | null
+          credit_balance?: number | null
+          credit_checked_at?: string | null
+          credit_error?: string | null
           failed_count?: number
           id?: string
           key_hint?: string | null
@@ -140,6 +146,9 @@ export type Database = {
           cooldown_until?: string | null
           created_at?: string
           created_by?: string | null
+          credit_balance?: number | null
+          credit_checked_at?: string | null
+          credit_error?: string | null
           failed_count?: number
           id?: string
           key_hint?: string | null
