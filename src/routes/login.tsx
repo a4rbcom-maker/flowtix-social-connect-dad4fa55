@@ -104,6 +104,13 @@ function LoginPage() {
 
     try {
       if (isLogin) {
+        if (!rememberMe) {
+          localStorage.setItem("flowtix_remember_me", "false");
+          supabase.auth.storage = sessionStorage;
+        } else {
+          localStorage.setItem("flowtix_remember_me", "true");
+          supabase.auth.storage = localStorage;
+        }
         const { data: signInData, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         const uid = signInData.user?.id;
