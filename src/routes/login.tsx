@@ -236,7 +236,17 @@ function LoginPage() {
               </Field>
 
               {isLogin && (
-                <div className="flex justify-end">
+                <div className="flex items-center justify-between">
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <Checkbox
+                      checked={rememberMe}
+                      onCheckedChange={(v) => setRememberMe(v === true)}
+                      id="remember-me"
+                    />
+                    <span className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
+                      {labels.rememberMe}
+                    </span>
+                  </label>
                   <Link
                     to="/forgot-password"
                     className="text-xs font-medium text-primary transition-colors hover:text-primary/80 hover:underline underline-offset-4"
