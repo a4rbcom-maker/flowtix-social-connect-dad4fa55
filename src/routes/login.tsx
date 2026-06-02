@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { Navbar } from "@/components/landing/Navbar";
 import { AlertCircle, Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
