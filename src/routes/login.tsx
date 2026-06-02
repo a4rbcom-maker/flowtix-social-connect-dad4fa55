@@ -26,6 +26,7 @@ function LoginPage() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
 
   if (user && !isAdminLoading) {
     return <Navigate to={isAdmin ? "/admin" : "/dashboard"} />;
