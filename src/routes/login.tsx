@@ -80,6 +80,7 @@ function LoginPage() {
         back: "Back to Home",
         submit: "Continue",
         forgot: "Forgot password?",
+        rememberMe: "Remember me",
         invalidCredentials: "The email or password is incorrect. Check your details or use Forgot password.",
         emailNotConfirmed: "Your account is not confirmed yet. Check your email, then try again.",
         defaultError: "Something went wrong. Please try again in a moment.",
