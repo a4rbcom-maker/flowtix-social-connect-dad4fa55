@@ -17,6 +17,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const rememberMe = localStorage.getItem("flowtix_remember_me") !== "false";
+    if (!rememberMe) {
+      (supabase.auth as any).storage = sessionStorage;
+    }
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);

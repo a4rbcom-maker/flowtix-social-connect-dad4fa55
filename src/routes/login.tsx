@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { Navbar } from "@/components/landing/Navbar";
 import { AlertCircle, Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -25,6 +26,7 @@ function LoginPage() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
 
   if (user && !isAdminLoading) {
     return <Navigate to={isAdmin ? "/admin" : "/dashboard"} />;
@@ -53,6 +55,7 @@ function LoginPage() {
         back: "العودة للرئيسية",
         submit: "متابعة",
         forgot: "نسيت كلمة المرور؟",
+        rememberMe: "تذكرني",
         invalidCredentials: "البريد الإلكتروني أو كلمة المرور غير صحيحة. تأكد من البيانات أو استخدم نسيت كلمة المرور.",
         emailNotConfirmed: "حسابك لم يتم تأكيده بعد. تحقق من بريدك الإلكتروني ثم حاول مرة أخرى.",
         defaultError: "حدث خطأ غير متوقع. حاول مرة أخرى بعد لحظات.",
@@ -78,6 +81,7 @@ function LoginPage() {
         back: "Back to Home",
         submit: "Continue",
         forgot: "Forgot password?",
+        rememberMe: "Remember me",
         invalidCredentials: "The email or password is incorrect. Check your details or use Forgot password.",
         emailNotConfirmed: "Your account is not confirmed yet. Check your email, then try again.",
         defaultError: "Something went wrong. Please try again in a moment.",
@@ -100,6 +104,13 @@ function LoginPage() {
 
     try {
       if (isLogin) {
+        if (!rememberMe) {
+          localStorage.setItem("flowtix_remember_me", "false");
+          (supabase.auth as any).storage = sessionStorage;
+        } else {
+          localStorage.setItem("flowtix_remember_me", "true");
+          (supabase.auth as any).storage = localStorage;
+        }
         const { data: signInData, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         const uid = signInData.user?.id;
@@ -225,7 +236,17 @@ function LoginPage() {
               </Field>
 
               {isLogin && (
-                <div className="flex justify-end">
+                <div className="flex items-center justify-between">
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <Checkbox
+                      checked={rememberMe}
+                      onCheckedChange={(v) => setRememberMe(v === true)}
+                      id="remember-me"
+                    />
+                    <span className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
+                      {labels.rememberMe}
+                    </span>
+                  </label>
                   <Link
                     to="/forgot-password"
                     className="text-xs font-medium text-primary transition-colors hover:text-primary/80 hover:underline underline-offset-4"
