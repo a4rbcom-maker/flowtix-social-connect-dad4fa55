@@ -898,14 +898,9 @@ export const fetchPageAudienceFromPosts = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const { data: row, error } = await supabase
-      .from("facebook_connections")
-      .select("access_token")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!row?.access_token) {
+    const { userId } = context;
+    const userToken = await getStoredAccessToken(userId);
+    if (!userToken) {
       return {
         ok: false as const,
         error: { message: "لا يوجد ربط فيسبوك.", type: "invalid_token" as const },
@@ -916,10 +911,10 @@ export const fetchPageAudienceFromPosts = createServerFn({ method: "POST" })
     }
 
     try {
-      await ensurePermissions(row.access_token, ["pages_show_list", "pages_read_engagement"]);
+      await ensurePermissions(userToken, ["pages_show_list", "pages_read_engagement"]);
 
       // Get page access token
-      const accountsRes = await fbGet(`/me/accounts?fields=id,access_token&limit=200`, row.access_token);
+      const accountsRes = await fbGet(`/me/accounts?fields=id,access_token&limit=200`, userToken);
       const accounts = (accountsRes.data ?? []) as Array<{ id: string; access_token: string }>;
       const acct = accounts.find((a) => String(a.id) === String(data.pageId));
       if (!acct?.access_token) {
