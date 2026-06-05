@@ -999,7 +999,7 @@ export const fetchPageAudienceFromPosts = createServerFn({ method: "POST" })
  */
 async function getPageAccessToken(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
+  _supabase: any,
   userId: string,
   pageId: string,
   requiredPerms: string[],
@@ -1007,18 +1007,18 @@ async function getPageAccessToken(
   | { ok: true; pageToken: string }
   | { ok: false; error: { message: string; type: "invalid_token" | "permission_denied" } }
 > {
-  const { data: row, error } = await supabase
-    .from("facebook_connections")
-    .select("access_token")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) return { ok: false, error: { message: error.message, type: "invalid_token" } };
-  if (!row?.access_token)
+  let token: string | null;
+  try {
+    token = await getStoredAccessToken(userId);
+  } catch (e) {
+    return { ok: false, error: { message: e instanceof Error ? e.message : String(e), type: "invalid_token" } };
+  }
+  if (!token)
     return { ok: false, error: { message: "لا يوجد ربط فيسبوك.", type: "invalid_token" } };
-  await ensurePermissions(row.access_token, requiredPerms);
+  await ensurePermissions(token, requiredPerms);
   const accountsRes = await fbGet(
     `/me/accounts?fields=id,access_token&limit=200`,
-    row.access_token,
+    token,
   );
   const accounts = (accountsRes.data ?? []) as Array<{ id: string; access_token: string }>;
   const acct = accounts.find((a) => String(a.id) === String(pageId));
