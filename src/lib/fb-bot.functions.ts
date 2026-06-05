@@ -253,9 +253,10 @@ export const listBotAccounts = createServerFn({ method: "GET" })
   .handler(async ({ context }): Promise<BotAccountsListResult> => {
     const { supabase, userId } = context;
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from("fb_bot_accounts")
         .select(`${BOT_ACCOUNT_SAFE_SELECT}, encrypted_payload`)
+        .eq("user_id", userId)
         .order("created_at", { ascending: false });
       if (error) {
         console.error("[listBotAccounts] db error", error);
