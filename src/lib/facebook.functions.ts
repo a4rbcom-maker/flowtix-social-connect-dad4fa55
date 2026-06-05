@@ -2,8 +2,22 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const GRAPH_API = "https://graph.facebook.com/v21.0";
+
+// Helper: fetch a user's stored Facebook user-access-token via the admin client.
+// The `access_token` column is intentionally not readable by the `authenticated`
+// Postgres role (column-level GRANT revoked), so we must read it server-side.
+async function getStoredAccessToken(userId: string): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from("facebook_connections")
+    .select("access_token")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.access_token ?? null;
+}
 
 /**
  * Map a Facebook Graph API error to a stable, user-friendly shape.
