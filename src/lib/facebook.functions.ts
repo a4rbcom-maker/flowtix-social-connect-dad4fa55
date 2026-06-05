@@ -460,13 +460,8 @@ export const fetchFacebookGroups = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const { data: row, error } = await supabase
-      .from("facebook_connections")
-      .select("access_token")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!row?.access_token) {
+    const token = await getStoredAccessToken(userId);
+    if (!token) {
       return {
         groups: [],
         error: {
@@ -483,11 +478,11 @@ export const fetchFacebookGroups = createServerFn({ method: "POST" })
     try {
       // Verify required scopes BEFORE the call so we get a precise UI message
       // instead of an opaque "(#10) requires permission..." Graph error.
-      await ensurePermissions(row.access_token, ["user_groups", "groups_access_member_info"]);
+      await ensurePermissions(token, ["user_groups", "groups_access_member_info"]);
 
       const result = await fbGet(
         "/me/groups?fields=id,name,member_count,privacy,cover,description&limit=100",
-        row.access_token,
+        token,
       );
 
       await supabase
