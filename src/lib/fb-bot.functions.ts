@@ -530,7 +530,7 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
     // 1) Read the account row. Never throw — translate to Arabic message.
     let acc: { id: string; auth_method: string; encrypted_payload: string } | null = null;
     try {
-      const { data: row, error } = await supabase
+      const { data: row, error } = await supabaseAdmin
         .from("fb_bot_accounts")
         .select("id, auth_method, encrypted_payload")
         .eq("id", data.id)
