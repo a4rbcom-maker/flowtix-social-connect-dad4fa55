@@ -652,14 +652,9 @@ export const fetchPageInsights = createServerFn({ method: "POST" })
     z.object({ pageId: z.string().trim().min(1).max(100) }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const { data: row, error } = await supabase
-      .from("facebook_connections")
-      .select("access_token")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!row?.access_token) {
+    const { userId } = context;
+    const userToken = await getStoredAccessToken(userId);
+    if (!userToken) {
       return {
         ok: false as const,
         error: {
@@ -673,7 +668,6 @@ export const fetchPageInsights = createServerFn({ method: "POST" })
         warnings: [] as string[],
       };
     }
-    const userToken = row.access_token;
 
     try {
       await ensurePermissions(userToken, ["pages_show_list", "pages_read_engagement"]);
