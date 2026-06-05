@@ -700,11 +700,12 @@ export const testBotAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    const { data: acc, error } = await supabase
+    const { supabase, userId } = context;
+    const { data: acc, error } = await supabaseAdmin
       .from("fb_bot_accounts")
       .select("id, auth_method, encrypted_payload")
       .eq("id", data.id)
+      .eq("user_id", userId)
       .single();
     if (error || !acc) throw new Error(error?.message ?? "Account not found");
 
