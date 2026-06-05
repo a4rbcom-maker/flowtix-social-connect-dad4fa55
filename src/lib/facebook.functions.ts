@@ -500,14 +500,9 @@ export const fetchFacebookGroups = createServerFn({ method: "POST" })
 export const fetchFacebookPages = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase, userId } = context;
-    const { data: row, error } = await supabase
-      .from("facebook_connections")
-      .select("access_token")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!row?.access_token) {
+    const { userId } = context;
+    const token = await getStoredAccessToken(userId);
+    if (!token) {
       return {
         pages: [],
         error: {
@@ -522,10 +517,10 @@ export const fetchFacebookPages = createServerFn({ method: "POST" })
     }
 
     try {
-      await ensurePermissions(row.access_token, ["pages_show_list"]);
+      await ensurePermissions(token, ["pages_show_list"]);
       const result = await fbGet(
         "/me/accounts?fields=id,name,category,fan_count,picture,link&limit=100",
-        row.access_token,
+        token,
       );
       return { pages: result.data ?? [], error: null };
     } catch (err) {
