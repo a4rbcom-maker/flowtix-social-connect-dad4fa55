@@ -535,8 +535,8 @@ export const fetchFacebookPages = createServerFn({ method: "POST" })
 export const inspectFacebookConnection = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase, userId } = context;
-    const { data: row, error } = await supabase
+    const { userId } = context;
+    const { data: row, error } = await supabaseAdmin
       .from("facebook_connections")
       .select("access_token, fb_user_id, fb_user_name, fb_user_email, last_synced_at, created_at")
       .eq("user_id", userId)
@@ -545,6 +545,7 @@ export const inspectFacebookConnection = createServerFn({ method: "GET" })
     if (!row?.access_token) {
       return { connected: false as const };
     }
+
 
     const token = row.access_token;
     const tokenPreview = `${token.slice(0, 6)}…${token.slice(-4)}`;
