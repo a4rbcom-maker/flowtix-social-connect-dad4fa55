@@ -430,8 +430,8 @@ export const disconnectFacebook = createServerFn({ method: "POST" })
 export const getFacebookConnection = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase, userId } = context;
-    const { data, error } = await supabase
+    const { userId } = context;
+    const { data, error } = await supabaseAdmin
       .from("facebook_connections")
       .select("access_token, fb_user_id, fb_user_name, fb_user_email, last_synced_at, created_at")
       .eq("user_id", userId)
