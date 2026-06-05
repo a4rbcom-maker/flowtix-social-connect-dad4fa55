@@ -2,8 +2,22 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const GRAPH_API = "https://graph.facebook.com/v21.0";
+
+// Helper: fetch a user's stored Facebook user-access-token via the admin client.
+// The `access_token` column is intentionally not readable by the `authenticated`
+// Postgres role (column-level GRANT revoked), so we must read it server-side.
+async function getStoredAccessToken(userId: string): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from("facebook_connections")
+    .select("access_token")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.access_token ?? null;
+}
 
 /**
  * Map a Facebook Graph API error to a stable, user-friendly shape.
@@ -416,8 +430,8 @@ export const disconnectFacebook = createServerFn({ method: "POST" })
 export const getFacebookConnection = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase, userId } = context;
-    const { data, error } = await supabase
+    const { userId } = context;
+    const { data, error } = await supabaseAdmin
       .from("facebook_connections")
       .select("access_token, fb_user_id, fb_user_name, fb_user_email, last_synced_at, created_at")
       .eq("user_id", userId)
@@ -446,13 +460,8 @@ export const fetchFacebookGroups = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const { data: row, error } = await supabase
-      .from("facebook_connections")
-      .select("access_token")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!row?.access_token) {
+    const token = await getStoredAccessToken(userId);
+    if (!token) {
       return {
         groups: [],
         error: {
@@ -469,11 +478,11 @@ export const fetchFacebookGroups = createServerFn({ method: "POST" })
     try {
       // Verify required scopes BEFORE the call so we get a precise UI message
       // instead of an opaque "(#10) requires permission..." Graph error.
-      await ensurePermissions(row.access_token, ["user_groups", "groups_access_member_info"]);
+      await ensurePermissions(token, ["user_groups", "groups_access_member_info"]);
 
       const result = await fbGet(
         "/me/groups?fields=id,name,member_count,privacy,cover,description&limit=100",
-        row.access_token,
+        token,
       );
 
       await supabase
@@ -491,14 +500,9 @@ export const fetchFacebookGroups = createServerFn({ method: "POST" })
 export const fetchFacebookPages = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase, userId } = context;
-    const { data: row, error } = await supabase
-      .from("facebook_connections")
-      .select("access_token")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!row?.access_token) {
+    const { userId } = context;
+    const token = await getStoredAccessToken(userId);
+    if (!token) {
       return {
         pages: [],
         error: {
@@ -513,10 +517,10 @@ export const fetchFacebookPages = createServerFn({ method: "POST" })
     }
 
     try {
-      await ensurePermissions(row.access_token, ["pages_show_list"]);
+      await ensurePermissions(token, ["pages_show_list"]);
       const result = await fbGet(
         "/me/accounts?fields=id,name,category,fan_count,picture,link&limit=100",
-        row.access_token,
+        token,
       );
       return { pages: result.data ?? [], error: null };
     } catch (err) {
@@ -531,8 +535,8 @@ export const fetchFacebookPages = createServerFn({ method: "POST" })
 export const inspectFacebookConnection = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase, userId } = context;
-    const { data: row, error } = await supabase
+    const { userId } = context;
+    const { data: row, error } = await supabaseAdmin
       .from("facebook_connections")
       .select("access_token, fb_user_id, fb_user_name, fb_user_email, last_synced_at, created_at")
       .eq("user_id", userId)
@@ -541,6 +545,7 @@ export const inspectFacebookConnection = createServerFn({ method: "GET" })
     if (!row?.access_token) {
       return { connected: false as const };
     }
+
 
     const token = row.access_token;
     const tokenPreview = `${token.slice(0, 6)}…${token.slice(-4)}`;
@@ -647,14 +652,9 @@ export const fetchPageInsights = createServerFn({ method: "POST" })
     z.object({ pageId: z.string().trim().min(1).max(100) }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const { data: row, error } = await supabase
-      .from("facebook_connections")
-      .select("access_token")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!row?.access_token) {
+    const { userId } = context;
+    const userToken = await getStoredAccessToken(userId);
+    if (!userToken) {
       return {
         ok: false as const,
         error: {
@@ -668,7 +668,6 @@ export const fetchPageInsights = createServerFn({ method: "POST" })
         warnings: [] as string[],
       };
     }
-    const userToken = row.access_token;
 
     try {
       await ensurePermissions(userToken, ["pages_show_list", "pages_read_engagement"]);
@@ -899,14 +898,9 @@ export const fetchPageAudienceFromPosts = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const { data: row, error } = await supabase
-      .from("facebook_connections")
-      .select("access_token")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!row?.access_token) {
+    const { userId } = context;
+    const userToken = await getStoredAccessToken(userId);
+    if (!userToken) {
       return {
         ok: false as const,
         error: { message: "لا يوجد ربط فيسبوك.", type: "invalid_token" as const },
@@ -917,10 +911,10 @@ export const fetchPageAudienceFromPosts = createServerFn({ method: "POST" })
     }
 
     try {
-      await ensurePermissions(row.access_token, ["pages_show_list", "pages_read_engagement"]);
+      await ensurePermissions(userToken, ["pages_show_list", "pages_read_engagement"]);
 
       // Get page access token
-      const accountsRes = await fbGet(`/me/accounts?fields=id,access_token&limit=200`, row.access_token);
+      const accountsRes = await fbGet(`/me/accounts?fields=id,access_token&limit=200`, userToken);
       const accounts = (accountsRes.data ?? []) as Array<{ id: string; access_token: string }>;
       const acct = accounts.find((a) => String(a.id) === String(data.pageId));
       if (!acct?.access_token) {
@@ -1005,7 +999,7 @@ export const fetchPageAudienceFromPosts = createServerFn({ method: "POST" })
  */
 async function getPageAccessToken(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
+  _supabase: any,
   userId: string,
   pageId: string,
   requiredPerms: string[],
@@ -1013,18 +1007,18 @@ async function getPageAccessToken(
   | { ok: true; pageToken: string }
   | { ok: false; error: { message: string; type: "invalid_token" | "permission_denied" } }
 > {
-  const { data: row, error } = await supabase
-    .from("facebook_connections")
-    .select("access_token")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) return { ok: false, error: { message: error.message, type: "invalid_token" } };
-  if (!row?.access_token)
+  let token: string | null;
+  try {
+    token = await getStoredAccessToken(userId);
+  } catch (e) {
+    return { ok: false, error: { message: e instanceof Error ? e.message : String(e), type: "invalid_token" } };
+  }
+  if (!token)
     return { ok: false, error: { message: "لا يوجد ربط فيسبوك.", type: "invalid_token" } };
-  await ensurePermissions(row.access_token, requiredPerms);
+  await ensurePermissions(token, requiredPerms);
   const accountsRes = await fbGet(
     `/me/accounts?fields=id,access_token&limit=200`,
-    row.access_token,
+    token,
   );
   const accounts = (accountsRes.data ?? []) as Array<{ id: string; access_token: string }>;
   const acct = accounts.find((a) => String(a.id) === String(pageId));

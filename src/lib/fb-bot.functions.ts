@@ -4,6 +4,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { Database } from "@/integrations/supabase/types";
 import { buildPostToGroupsPayload } from "@/lib/fb-job-payload";
 // NOTE: `@/server/crypto.server` is intentionally NOT imported at the top.
@@ -252,9 +253,10 @@ export const listBotAccounts = createServerFn({ method: "GET" })
   .handler(async ({ context }): Promise<BotAccountsListResult> => {
     const { supabase, userId } = context;
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from("fb_bot_accounts")
         .select(`${BOT_ACCOUNT_SAFE_SELECT}, encrypted_payload`)
+        .eq("user_id", userId)
         .order("created_at", { ascending: false });
       if (error) {
         console.error("[listBotAccounts] db error", error);
@@ -528,7 +530,7 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
     // 1) Read the account row. Never throw — translate to Arabic message.
     let acc: { id: string; auth_method: string; encrypted_payload: string } | null = null;
     try {
-      const { data: row, error } = await supabase
+      const { data: row, error } = await supabaseAdmin
         .from("fb_bot_accounts")
         .select("id, auth_method, encrypted_payload")
         .eq("id", data.id)
@@ -698,11 +700,12 @@ export const testBotAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    const { data: acc, error } = await supabase
+    const { supabase, userId } = context;
+    const { data: acc, error } = await supabaseAdmin
       .from("fb_bot_accounts")
       .select("id, auth_method, encrypted_payload")
       .eq("id", data.id)
+      .eq("user_id", userId)
       .single();
     if (error || !acc) throw new Error(error?.message ?? "Account not found");
 
