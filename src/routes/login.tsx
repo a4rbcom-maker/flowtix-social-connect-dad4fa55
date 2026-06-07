@@ -4,8 +4,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { checkIsAdmin } from "@/lib/admin.functions";
 import { Navbar } from "@/components/landing/Navbar";
-import { AlertCircle, Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { AlertCircle, Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 
 export const Route = createFileRoute("/login")({
