@@ -25,6 +25,7 @@ function LoginPage() {
   const { user } = useAuth();
   const { isAdmin, isLoading: isAdminLoading } = useIsAdmin();
   const navigate = useNavigate();
+  const { redirect: redirectParam } = Route.useSearch();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,7 +38,9 @@ function LoginPage() {
   const [rememberMe, setRememberMe] = useState(true);
 
   if (user && !isAdminLoading) {
-    return <Navigate to={isAdmin ? "/admin" : "/dashboard"} />;
+    const fallback = isAdmin ? "/admin" : "/dashboard";
+    const target = isSafeRedirect(redirectParam) ? redirectParam : fallback;
+    return <Navigate to={target} />;
   }
 
 
