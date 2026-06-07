@@ -99,6 +99,12 @@ export const waBridge = {
     bridgeFetch<BridgeStatusResponse>(`/api/sessions/${encodeURIComponent(id)}/status`),
   getQr: (id: string) =>
     bridgeFetch<BridgeQrResponse>(`/api/sessions/${encodeURIComponent(id)}/qr`),
+  pairingCode: (id: string, phoneNumber: string) =>
+    bridgeFetch<{ code?: string; pairingCode?: string }>(
+      `/api/sessions/${encodeURIComponent(id)}/pairing-code`,
+      { method: "POST", body: JSON.stringify({ phoneNumber }) },
+    ),
+
   deleteSession: (id: string) =>
     bridgeFetch<{ ok?: boolean }>(`/api/sessions/${encodeURIComponent(id)}`, {
       method: "DELETE",
