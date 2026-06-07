@@ -1,3 +1,4 @@
+import * as React from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -8,16 +9,32 @@ import {
   Loader2,
   Send,
   Bot,
-  BotOff,
   Inbox as InboxIcon,
   Sparkles,
   ArrowLeft,
+  RefreshCw,
+  Bell,
+  BellOff,
+  Smile,
+  Paperclip,
+  CheckCheck,
+  Camera,
+  Mic,
+  FileText,
+  Video as VideoIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
+import { Switch } from "@/components/ui/switch";
 import {
   listConversations,
   getConversationMessages,
@@ -33,10 +50,14 @@ export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
   component: InboxPage,
 });
 
+type FilterKey = "all" | "unread" | "ai";
+
 function InboxPage() {
   const { lang } = useI18n();
+  const isAr = lang === "ar";
   const { user } = useAuth();
   const qc = useQueryClient();
+  const isMobile = useIsMobile();
   const listFn = useServerFn(listConversations);
   const msgsFn = useServerFn(getConversationMessages);
   const sendFn = useServerFn(sendChatMessage);
@@ -45,55 +66,95 @@ function InboxPage() {
 
   const [activeJid, setActiveJid] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<FilterKey>("all");
   const [draft, setDraft] = useState("");
+  const [soundOn, setSoundOn] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("flowtix-inbox-sound") !== "false";
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const t = lang === "ar"
+  const t = isAr
     ? {
-        title: "محادثات واتساب",
-        subtitle: "كل المحادثات الواردة والصادرة في مكان واحد.",
+        title: "المحادثات",
+        subtitle: "كل محادثاتك الواردة والصادرة في مكان واحد.",
         search: "ابحث برقم أو اسم…",
         empty: "ما فيش محادثات لسة.",
         emptyHint: "اربط حساب واتساب من «حساباتي» وانتظر أول رسالة.",
         openAccounts: "افتح حساباتي",
         you: "أنت",
         ai: "AI",
-        selectChat: "اختر محادثة من القائمة لعرض الرسائل",
+        selectChat: "اختر محادثة من القائمة",
+        selectChatHint: "اختر محادثة من اليمين لعرض الرسائل وبدء الرد على عملائك.",
+        suggestAccounts: "اربط حساب واتساب",
+        suggestAi: "جرّب الذكاء الاصطناعي",
+        suggestImport: "استيراد جهات اتصال",
         typeMessage: "اكتب رسالة…",
         send: "إرسال",
         loading: "جارٍ التحميل…",
-        aiOn: "AI مفعّل",
-        aiOff: "AI متوقف",
+        aiBadge: "مساعد ذكي",
+        aiOn: "مفعّل",
+        aiOff: "متوقف",
         backToList: "رجوع",
         unread: "غير مقروء",
+        all: "الكل",
+        filterUnread: "غير مقروءة",
+        filterAi: "AI مفعّل",
+        refresh: "تحديث",
+        soundOn: "إشعارات: مشغّلة",
+        soundOff: "إشعارات: متوقفة",
+        soon: "قريباً",
+        photo: "صورة",
+        voice: "رسالة صوتية",
+        doc: "مستند",
+        video: "فيديو",
+        today: "اليوم",
+        yesterday: "أمس",
       }
     : {
-        title: "WhatsApp Chats",
-        subtitle: "All your incoming and outgoing conversations in one place.",
+        title: "Conversations",
+        subtitle: "All your incoming and outgoing messages in one place.",
         search: "Search by number or name…",
         empty: "No conversations yet.",
-        emptyHint: "Link a WhatsApp account from «My Accounts» and wait for the first message.",
+        emptyHint: "Link a WhatsApp account from “My Accounts” and wait for the first message.",
         openAccounts: "Open My Accounts",
         you: "You",
         ai: "AI",
-        selectChat: "Select a conversation to view messages",
+        selectChat: "Select a conversation",
+        selectChatHint: "Pick a chat from the list to view messages and reply to your customers.",
+        suggestAccounts: "Link a WhatsApp account",
+        suggestAi: "Try the AI assistant",
+        suggestImport: "Import contacts",
         typeMessage: "Type a message…",
         send: "Send",
         loading: "Loading…",
-        aiOn: "AI on",
-        aiOff: "AI off",
+        aiBadge: "AI assistant",
+        aiOn: "On",
+        aiOff: "Off",
         backToList: "Back",
         unread: "Unread",
+        all: "All",
+        filterUnread: "Unread",
+        filterAi: "AI on",
+        refresh: "Refresh",
+        soundOn: "Sound: on",
+        soundOff: "Sound: off",
+        soon: "Coming soon",
+        photo: "Photo",
+        voice: "Voice message",
+        doc: "Document",
+        video: "Video",
+        today: "Today",
+        yesterday: "Yesterday",
       };
 
-  // Conversations list (with realtime invalidation)
+  // Data
   const convQuery = useQuery<ConversationRow[]>({
     queryKey: ["wa-conversations"],
     queryFn: () => listFn(),
     refetchInterval: 15000,
   });
-
-  // Active conversation messages
   const msgsQuery = useQuery<ChatMessageRow[]>({
     queryKey: ["wa-messages", activeJid],
     queryFn: () => (activeJid ? msgsFn({ data: { remoteJid: activeJid } }) : Promise.resolve([])),
@@ -101,7 +162,7 @@ function InboxPage() {
     refetchInterval: 5000,
   });
 
-  // Realtime subscriptions
+  // Realtime
   useEffect(() => {
     if (!user) return;
     const ch = supabase
@@ -127,15 +188,14 @@ function InboxPage() {
     };
   }, [qc, activeJid, user]);
 
-
-  // Auto-scroll on new messages
+  // Auto-scroll
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [msgsQuery.data?.length]);
+  }, [msgsQuery.data?.length, activeJid]);
 
-  // Mark active conversation as read
+  // Mark active conversation read
   useEffect(() => {
     if (!activeJid || !convQuery.data) return;
     const c = convQuery.data.find((x) => x.remote_jid === activeJid);
@@ -145,6 +205,14 @@ function InboxPage() {
       });
     }
   }, [activeJid, convQuery.data, markReadFn, qc]);
+
+  // Textarea auto-grow
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+  }, [draft]);
 
   const sendMut = useMutation({
     mutationFn: (text: string) => sendFn({ data: { remoteJid: activeJid!, text } }),
@@ -157,275 +225,563 @@ function InboxPage() {
   });
 
   const aiToggleMut = useMutation({
-    mutationFn: (vars: { id: string; enabled: boolean }) =>
-      toggleAiFn({ data: vars }),
+    mutationFn: (vars: { id: string; enabled: boolean }) => toggleAiFn({ data: vars }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wa-conversations"] }),
     onError: (err: Error) => toast.error(err.message),
   });
 
   const filtered = useMemo(() => {
     const list = convQuery.data ?? [];
-    if (!search.trim()) return list;
-    const q = search.trim().toLowerCase();
-    return list.filter(
-      (c) =>
-        c.remote_jid.toLowerCase().includes(q) ||
-        (c.contact_name ?? "").toLowerCase().includes(q) ||
-        (c.last_message_text ?? "").toLowerCase().includes(q),
-    );
-  }, [convQuery.data, search]);
+    let out = list;
+    if (filter === "unread") out = out.filter((c) => c.unread_count > 0);
+    else if (filter === "ai") out = out.filter((c) => c.ai_enabled);
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      out = out.filter(
+        (c) =>
+          c.remote_jid.toLowerCase().includes(q) ||
+          (c.contact_name ?? "").toLowerCase().includes(q) ||
+          (c.last_message_text ?? "").toLowerCase().includes(q),
+      );
+    }
+    return out;
+  }, [convQuery.data, search, filter]);
+
+  const totalUnread = useMemo(
+    () => (convQuery.data ?? []).reduce((s, c) => s + (c.unread_count || 0), 0),
+    [convQuery.data],
+  );
 
   const activeConv = useMemo(
     () => (convQuery.data ?? []).find((c) => c.remote_jid === activeJid),
     [convQuery.data, activeJid],
   );
 
-  return (
-    <DashboardLayout title={t.title}>
-      <div className="mx-auto max-w-7xl">
-        <div className="grid h-[calc(100vh-10rem)] grid-cols-1 overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm md:grid-cols-[340px_1fr]">
-          {/* Sidebar list */}
-          <aside
-            className={`flex flex-col border-border/60 ltr:border-r rtl:border-l ${activeJid ? "hidden md:flex" : "flex"}`}
-          >
-            <div className="border-b border-border/60 p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[oklch(0.66_0.26_320)] text-white">
-                  <InboxIcon className="h-5 w-5" strokeWidth={2.5} />
-                </div>
-                <div className="min-w-0">
-                  <h1 className="truncate text-base font-bold">{t.title}</h1>
-                  <p className="truncate text-xs text-muted-foreground">{t.subtitle}</p>
-                </div>
-              </div>
-              <div className="relative mt-3">
-                <Search className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground ltr:left-3 rtl:right-3" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={t.search}
-                  className="w-full rounded-xl border border-input bg-background/60 px-10 py-2 text-sm outline-none focus:border-primary"
-                />
-              </div>
-            </div>
+  const toggleSound = () => {
+    setSoundOn((p) => {
+      const next = !p;
+      try {
+        localStorage.setItem("flowtix-inbox-sound", String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
-            <div className="flex-1 overflow-y-auto">
-              {convQuery.isLoading ? (
-                <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {t.loading}
-                </div>
-              ) : filtered.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 py-12 text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
-                    <MessageCircle className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                  <p className="px-6 text-sm font-medium">{t.empty}</p>
-                  <p className="px-6 text-xs text-muted-foreground">{t.emptyHint}</p>
-                  <Link
-                    to="/dashboard/whatsapp/accounts"
-                    className="mt-1 inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90"
-                  >
-                    {t.openAccounts}
-                  </Link>
-                </div>
-              ) : (
-                <ul className="divide-y divide-border/40">
-                  {filtered.map((c) => (
-                    <li key={c.id}>
-                      <button
-                        type="button"
-                        onClick={() => setActiveJid(c.remote_jid)}
-                        className={`flex w-full items-center gap-3 px-3 py-3 text-left transition hover:bg-muted/50 ${
-                          activeJid === c.remote_jid ? "bg-primary/5" : ""
-                        }`}
-                      >
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                          {(c.contact_name ?? c.remote_jid).slice(0, 2).toUpperCase()}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="truncate text-sm font-semibold">
-                              {c.contact_name ?? c.remote_jid.replace(/@.*/, "")}
-                            </span>
-                            <span className="shrink-0 text-[10px] text-muted-foreground" dir="ltr">
-                              {formatTime(c.last_message_at, lang)}
-                            </span>
-                          </div>
-                          <div className="mt-0.5 flex items-center gap-2">
-                            <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                              {c.last_direction === "out" && (
-                                <span className="font-medium text-primary">{t.you}: </span>
-                              )}
-                              {c.last_message_text ?? "—"}
-                            </p>
-                            {c.ai_enabled && (
-                              <Bot className="h-3 w-3 shrink-0 text-primary" aria-label={t.ai} />
-                            )}
-                            {c.unread_count > 0 && (
-                              <span className="shrink-0 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
-                                {c.unread_count}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+  const Sidebar = (
+    <aside className="flex h-full min-h-0 flex-col bg-card/60 backdrop-blur-sm">
+      {/* Header */}
+      <div className="border-b border-border/60 p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-white shadow-lg shadow-primary/20">
+            <InboxIcon className="h-5 w-5" strokeWidth={2.5} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h1 className="truncate text-base font-bold">{t.title}</h1>
+              {totalUnread > 0 && (
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
+                  {totalUnread}
+                </span>
               )}
             </div>
-          </aside>
+            <p className="truncate text-xs text-muted-foreground">{t.subtitle}</p>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => qc.invalidateQueries({ queryKey: ["wa-conversations"] })}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+              aria-label={t.refresh}
+              title={t.refresh}
+            >
+              <RefreshCw className={`h-4 w-4 ${convQuery.isFetching ? "animate-spin" : ""}`} />
+            </button>
+            <button
+              type="button"
+              onClick={toggleSound}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+              aria-label={soundOn ? t.soundOn : t.soundOff}
+              title={soundOn ? t.soundOn : t.soundOff}
+            >
+              {soundOn ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
 
-          {/* Chat pane */}
-          <section className={`flex flex-col bg-muted/20 ${activeJid ? "flex" : "hidden md:flex"}`}>
-            {!activeJid ? (
-              <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-                  <Sparkles className="h-8 w-8 text-primary" />
+        {/* Search */}
+        <div className="relative mt-3">
+          <Search className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground ltr:left-3 rtl:right-3" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t.search}
+            className="w-full rounded-2xl border border-input bg-background/80 px-10 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+
+        {/* Filters */}
+        <div className="mt-3 flex items-center gap-1.5">
+          {([
+            { k: "all" as FilterKey, label: t.all },
+            { k: "unread" as FilterKey, label: t.filterUnread },
+            { k: "ai" as FilterKey, label: t.filterAi },
+          ]).map((f) => {
+            const active = filter === f.k;
+            return (
+              <button
+                key={f.k}
+                type="button"
+                onClick={() => setFilter(f.k)}
+                className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${
+                  active
+                    ? "bg-gradient-to-r from-primary to-[oklch(0.52_0.28_290)] text-primary-foreground shadow-sm"
+                    : "bg-muted/60 text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                {f.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="flex-1 overflow-y-auto">
+        {convQuery.isLoading ? (
+          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {t.loading}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 py-12 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+              <MessageCircle className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <p className="px-6 text-sm font-medium">{t.empty}</p>
+            <p className="px-6 text-xs text-muted-foreground">{t.emptyHint}</p>
+            <Link
+              to="/dashboard/whatsapp/accounts"
+              className="mt-1 inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90"
+            >
+              {t.openAccounts}
+            </Link>
+          </div>
+        ) : (
+          <ul className="divide-y divide-border/30">
+            {filtered.map((c) => (
+              <ConversationRow
+                key={c.id}
+                conv={c}
+                active={activeJid === c.remote_jid}
+                isAr={isAr}
+                youLabel={t.you}
+                mediaLabels={{ photo: t.photo, voice: t.voice, doc: t.doc, video: t.video }}
+                onClick={() => setActiveJid(c.remote_jid)}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+    </aside>
+  );
+
+  const ChatPane = (
+    <section className="relative flex h-full min-h-0 flex-col bg-gradient-to-br from-primary/[0.04] via-background to-primary/[0.06]">
+      {!activeJid ? (
+        <EmptyChat
+          isAr={isAr}
+          title={t.selectChat}
+          hint={t.selectChatHint}
+          suggestions={[t.suggestAccounts, t.suggestAi, t.suggestImport]}
+        />
+      ) : (
+        <>
+          {/* Chat Header */}
+          <div className="flex items-center justify-between gap-3 border-b border-border/60 bg-card/80 px-4 py-3 backdrop-blur">
+            <div className="flex min-w-0 items-center gap-3">
+              {isMobile && (
+                <button
+                  type="button"
+                  onClick={() => setActiveJid(null)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted"
+                  aria-label={t.backToList}
+                >
+                  <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
+                </button>
+              )}
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-sm font-bold text-white shadow-md shadow-primary/20">
+                {initials(activeConv?.contact_name ?? activeJid)}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold">
+                  {activeConv?.contact_name ?? activeJid.replace(/@.*/, "")}
+                </p>
+                <p className="truncate text-xs text-muted-foreground" dir="ltr">
+                  {activeConv?.contact_phone ? `+${activeConv.contact_phone}` : activeJid}
+                </p>
+              </div>
+            </div>
+            {activeConv && (
+              <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-background/60 px-3 py-1.5">
+                <Bot
+                  className={`h-4 w-4 ${activeConv.ai_enabled ? "text-primary" : "text-muted-foreground"}`}
+                />
+                <div className="hidden flex-col sm:flex">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                    {t.aiBadge}
+                  </span>
+                  <span
+                    className={`text-[10px] font-semibold ${
+                      activeConv.ai_enabled ? "text-primary" : "text-muted-foreground"
+                    }`}
+                  >
+                    {activeConv.ai_enabled ? t.aiOn : t.aiOff}
+                  </span>
                 </div>
-                <p className="max-w-sm text-sm text-muted-foreground">{t.selectChat}</p>
+                <Switch
+                  checked={activeConv.ai_enabled}
+                  disabled={aiToggleMut.isPending}
+                  onCheckedChange={(v) =>
+                    aiToggleMut.mutate({ id: activeConv.id, enabled: Boolean(v) })
+                  }
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Messages */}
+          <div
+            ref={scrollRef}
+            className="relative flex-1 space-y-1 overflow-y-auto px-3 py-4 sm:px-6"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle at 20% 0%, oklch(0.62 0.27 295 / 0.06), transparent 40%), radial-gradient(circle at 80% 100%, oklch(0.52 0.28 290 / 0.05), transparent 40%)",
+            }}
+          >
+            {msgsQuery.isLoading ? (
+              <div className="flex justify-center py-6">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              <>
-                {/* Header */}
-                <div className="flex items-center justify-between gap-3 border-b border-border/60 bg-card px-4 py-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setActiveJid(null)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted md:hidden"
-                      aria-label={t.backToList}
-                    >
-                      <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
-                    </button>
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                      {(activeConv?.contact_name ?? activeJid).slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold">
-                        {activeConv?.contact_name ?? activeJid.replace(/@.*/, "")}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground" dir="ltr">
-                        {activeConv?.contact_phone ? `+${activeConv.contact_phone}` : activeJid}
-                      </p>
-                    </div>
-                  </div>
-                  {activeConv && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        aiToggleMut.mutate({ id: activeConv.id, enabled: !activeConv.ai_enabled })
-                      }
-                      disabled={aiToggleMut.isPending}
-                      className={`inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-semibold transition ${
-                        activeConv.ai_enabled
-                          ? "bg-primary/15 text-primary hover:bg-primary/20"
-                          : "bg-muted text-muted-foreground hover:bg-muted/80"
-                      }`}
-                    >
-                      {activeConv.ai_enabled ? <Bot className="h-3.5 w-3.5" /> : <BotOff className="h-3.5 w-3.5" />}
-                      {activeConv.ai_enabled ? t.aiOn : t.aiOff}
-                    </button>
-                  )}
-                </div>
-
-                {/* Messages */}
-                <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto p-4">
-                  {msgsQuery.isLoading ? (
-                    <div className="flex justify-center py-6">
-                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                    </div>
-                  ) : (
-                    (msgsQuery.data ?? []).map((m) => (
-                      <div
-                        key={m.id}
-                        className={`flex ${m.direction === "out" ? "justify-end" : "justify-start"}`}
-                      >
-                        <div
-                          className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
-                            m.direction === "out"
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-card text-foreground"
-                          }`}
-                        >
-                          {m.text_body ? (
-                            <p className="whitespace-pre-wrap break-words leading-relaxed">{m.text_body}</p>
-                          ) : (
-                            <p className="italic opacity-75">[{m.msg_type}]</p>
-                          )}
-                          <div
-                            className={`mt-1 flex items-center gap-1 text-[10px] ${
-                              m.direction === "out" ? "text-primary-foreground/70 justify-end" : "text-muted-foreground"
-                            }`}
-                            dir="ltr"
-                          >
-                            {m.is_ai && <Bot className="h-3 w-3" />}
-                            {formatTime(m.created_at, lang)}
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                {/* Composer */}
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!draft.trim() || sendMut.isPending) return;
-                    sendMut.mutate(draft.trim());
-                  }}
-                  className="flex items-end gap-2 border-t border-border/60 bg-card p-3"
-                >
-                  <textarea
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        if (draft.trim() && !sendMut.isPending) sendMut.mutate(draft.trim());
-                      }
-                    }}
-                    placeholder={t.typeMessage}
-                    rows={1}
-                    className="max-h-32 flex-1 resize-none rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!draft.trim() || sendMut.isPending}
-                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow hover:opacity-90 disabled:opacity-50"
-                    aria-label={t.send}
-                  >
-                    {sendMut.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4 rtl:rotate-180" />
-                    )}
-                  </button>
-                </form>
-              </>
+              renderMessagesWithDays(msgsQuery.data ?? [], isAr, t)
             )}
-          </section>
-        </div>
+          </div>
+
+          {/* Composer */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!draft.trim() || sendMut.isPending) return;
+              sendMut.mutate(draft.trim());
+            }}
+            className="border-t border-border/60 bg-card/80 p-3 backdrop-blur"
+          >
+            <div className="flex items-end gap-2 rounded-2xl border border-input bg-background px-2.5 py-1.5 shadow-sm transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+              <button
+                type="button"
+                onClick={() => toast.info(t.soon)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-primary"
+                aria-label="emoji"
+              >
+                <Smile className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => toast.info(t.soon)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-primary"
+                aria-label="attach"
+              >
+                <Paperclip className="h-5 w-5" />
+              </button>
+              <textarea
+                ref={textareaRef}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (draft.trim() && !sendMut.isPending) sendMut.mutate(draft.trim());
+                  }
+                }}
+                placeholder={t.typeMessage}
+                rows={1}
+                className="max-h-32 flex-1 resize-none bg-transparent px-1 py-2 text-sm outline-none placeholder:text-muted-foreground"
+              />
+              <button
+                type="submit"
+                disabled={!draft.trim() || sendMut.isPending}
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-primary-foreground shadow-md shadow-primary/30 transition hover:opacity-95 disabled:opacity-40"
+                aria-label={t.send}
+              >
+                {sendMut.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4 rtl:rotate-180" />
+                )}
+              </button>
+            </div>
+          </form>
+        </>
+      )}
+    </section>
+  );
+
+  return (
+    <DashboardLayout title={t.title}>
+      <div className="mx-auto h-[calc(100dvh-7rem)] w-full max-w-[1500px] overflow-hidden rounded-3xl border border-border/60 bg-card shadow-xl shadow-primary/5">
+        {isMobile ? (
+          <div className="h-full">
+            {activeJid ? ChatPane : Sidebar}
+          </div>
+        ) : (
+          <ResizablePanelGroup orientation="horizontal" className="h-full">
+            <ResizablePanel defaultSize={28} minSize={22} maxSize={42}>
+              {Sidebar}
+            </ResizablePanel>
+            <ResizableHandle withHandle className="bg-border/40" />
+            <ResizablePanel defaultSize={72} minSize={50}>
+              {ChatPane}
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        )}
       </div>
     </DashboardLayout>
   );
 }
 
-function formatTime(iso: string, lang: "ar" | "en"): string {
+// ──────────────────────────────────────────────────────────────────────────
+// Subcomponents
+// ──────────────────────────────────────────────────────────────────────────
+
+function ConversationRow({
+  conv,
+  active,
+  isAr,
+  youLabel,
+  mediaLabels,
+  onClick,
+}: {
+  conv: ConversationRow;
+  active: boolean;
+  isAr: boolean;
+  youLabel: string;
+  mediaLabels: { photo: string; voice: string; doc: string; video: string };
+  onClick: () => void;
+}) {
+  const media = detectMedia(conv.last_message_text, mediaLabels);
+  return (
+    <li className="relative">
+      <button
+        type="button"
+        onClick={onClick}
+        className={`flex w-full items-center gap-3 px-3 py-3 text-left transition ${
+          active
+            ? "bg-primary/10"
+            : "hover:bg-muted/50"
+        }`}
+      >
+        {active && (
+          <span className="absolute top-2 bottom-2 w-1 rounded-full bg-gradient-to-b from-primary to-[oklch(0.52_0.28_290)] ltr:left-0 rtl:right-0" />
+        )}
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-sm font-bold text-white shadow-sm shadow-primary/20">
+          {initials(conv.contact_name ?? conv.remote_jid)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className={`truncate text-sm ${conv.unread_count > 0 ? "font-bold" : "font-semibold"}`}>
+              {conv.contact_name ?? conv.remote_jid.replace(/@.*/, "")}
+            </span>
+            <span className="shrink-0 text-[10px] text-muted-foreground" dir="ltr">
+              {formatRelative(conv.last_message_at, isAr)}
+            </span>
+          </div>
+          <div className="mt-0.5 flex items-center gap-1.5">
+            <p className={`min-w-0 flex-1 truncate text-xs ${conv.unread_count > 0 ? "text-foreground" : "text-muted-foreground"}`}>
+              {conv.last_direction === "out" && (
+                <span className="font-medium text-primary">{youLabel}: </span>
+              )}
+              {media ? (
+                <span className="inline-flex items-center gap-1 align-middle">
+                  {media.icon}
+                  <span>{media.label}</span>
+                </span>
+              ) : (
+                conv.last_message_text ?? "—"
+              )}
+            </p>
+            {conv.ai_enabled && (
+              <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary" title="AI">
+                <Bot className="h-2.5 w-2.5" />
+              </span>
+            )}
+            {conv.unread_count > 0 && (
+              <span className="shrink-0 rounded-full bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] px-2 py-0.5 text-[10px] font-bold text-primary-foreground shadow-sm">
+                {conv.unread_count}
+              </span>
+            )}
+          </div>
+        </div>
+      </button>
+    </li>
+  );
+}
+
+function EmptyChat({
+  isAr,
+  title,
+  hint,
+  suggestions,
+}: {
+  isAr: boolean;
+  title: string;
+  hint: string;
+  suggestions: string[];
+}) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-5 p-8 text-center">
+      <div className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-primary/15 to-primary/5 ring-1 ring-primary/20">
+        <Sparkles className="h-9 w-9 text-primary" />
+        <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground shadow">
+          ✦
+        </span>
+      </div>
+      <div className="max-w-md">
+        <h3 className="text-base font-bold">{title}</h3>
+        <p className="mt-1 text-sm text-muted-foreground">{hint}</p>
+      </div>
+      <div className="flex flex-wrap justify-center gap-2">
+        {suggestions.map((s, i) => (
+          <span
+            key={s}
+            className={`rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold text-primary ${
+              i === 0 ? "" : "opacity-80"
+            }`}
+          >
+            {s}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────────────────────────────────
+
+function initials(s: string): string {
+  const cleaned = s.replace(/@.*/, "").trim();
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return cleaned.slice(0, 2).toUpperCase();
+}
+
+function detectMedia(
+  msg: string | null | undefined,
+  labels: { photo: string; voice: string; doc: string; video: string },
+): { icon: React.ReactElement; label: string } | null {
+  if (!msg) return null;
+  if (/\[image:/i.test(msg) || /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(msg))
+    return { icon: <Camera className="h-3 w-3" />, label: labels.photo };
+  if (/\[audio:/i.test(msg) || /\.(mp3|wav|ogg|m4a)(\?|$)/i.test(msg))
+    return { icon: <Mic className="h-3 w-3" />, label: labels.voice };
+  if (/\[video:/i.test(msg) || /\.(mp4|webm|mov)(\?|$)/i.test(msg))
+    return { icon: <VideoIcon className="h-3 w-3" />, label: labels.video };
+  if (/\[file:/i.test(msg) || /\.(pdf|docx?|xlsx?|pptx?|zip)(\?|$)/i.test(msg))
+    return { icon: <FileText className="h-3 w-3" />, label: labels.doc };
+  return null;
+}
+
+function formatTime(iso: string, isAr: boolean): string {
+  return new Date(iso).toLocaleTimeString(isAr ? "ar-EG" : "en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatRelative(iso: string, isAr: boolean): string {
   const d = new Date(iso);
-  const today = new Date();
-  const sameDay = d.toDateString() === today.toDateString();
-  if (sameDay) {
-    return d.toLocaleTimeString(lang === "ar" ? "ar-EG" : "en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-  return d.toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US", {
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) return formatTime(iso, isAr);
+  const y = new Date(now);
+  y.setDate(y.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return isAr ? "أمس" : "Yest";
+  return d.toLocaleDateString(isAr ? "ar-EG" : "en-US", { month: "short", day: "numeric" });
+}
+
+function dayKey(iso: string): string {
+  return new Date(iso).toDateString();
+}
+
+function dayLabel(iso: string, isAr: boolean, t: { today: string; yesterday: string }): string {
+  const d = new Date(iso);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return t.today;
+  const y = new Date(now);
+  y.setDate(y.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return t.yesterday;
+  return d.toLocaleDateString(isAr ? "ar-EG" : "en-US", {
+    weekday: "short",
     month: "short",
     day: "numeric",
   });
+}
+
+function renderMessagesWithDays(
+  messages: ChatMessageRow[],
+  isAr: boolean,
+  t: { today: string; yesterday: string },
+): React.ReactElement[] {
+  const out: React.ReactElement[] = [];
+  let lastDay = "";
+  for (const m of messages) {
+    const dk = dayKey(m.created_at);
+    if (dk !== lastDay) {
+      lastDay = dk;
+      out.push(
+        <div key={`day-${dk}-${m.id}`} className="my-3 flex justify-center">
+          <span className="rounded-full border border-border/50 bg-card/80 px-3 py-1 text-[10px] font-semibold text-muted-foreground shadow-sm backdrop-blur">
+            {dayLabel(m.created_at, isAr, t)}
+          </span>
+        </div>,
+      );
+    }
+    out.push(<ChatBubble key={m.id} m={m} isAr={isAr} />);
+  }
+  return out;
+}
+
+function ChatBubble({ m, isAr }: { m: ChatMessageRow; isAr: boolean }) {
+  const isOut = m.direction === "out";
+  return (
+    <div className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`group max-w-[78%] px-3.5 py-2 text-sm shadow-sm sm:max-w-[70%] ${
+          isOut
+            ? "rounded-2xl rounded-br-md bg-gradient-to-br from-primary to-[oklch(0.55_0.28_295)] text-primary-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
+            : "rounded-2xl rounded-bl-md border border-border/60 bg-card text-foreground rtl:rounded-bl-2xl rtl:rounded-br-md"
+        }`}
+      >
+        {m.text_body ? (
+          <p className="whitespace-pre-wrap break-words leading-relaxed">{m.text_body}</p>
+        ) : (
+          <p className="italic opacity-75">[{m.msg_type}]</p>
+        )}
+        <div
+          className={`mt-1 flex items-center gap-1 text-[10px] ${
+            isOut ? "justify-end text-primary-foreground/80" : "text-muted-foreground"
+          }`}
+          dir="ltr"
+        >
+          {m.is_ai && <Bot className="h-3 w-3" />}
+          <span>{formatTime(m.created_at, isAr)}</span>
+          {isOut && <CheckCheck className="h-3.5 w-3.5 opacity-90" />}
+        </div>
+      </div>
+    </div>
+  );
 }
