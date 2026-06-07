@@ -17,7 +17,9 @@ export const Route = createFileRoute("/login")({
 });
 
 function isSafeRedirect(path: string | undefined): path is string {
-  return !!path && path.startsWith("/") && !path.startsWith("//");
+  if (!path || !path.startsWith("/") || path.startsWith("//")) return false;
+  const authPaths = ["/login", "/signup", "/forgot-password", "/reset-password"];
+  return !authPaths.some((authPath) => path === authPath || path.startsWith(`${authPath}?`));
 }
 
 function LoginPage() {

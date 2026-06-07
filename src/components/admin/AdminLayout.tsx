@@ -77,6 +77,12 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
     staleTime: 60_000,
   });
 
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate({ to: "/login", search: { redirect: location.pathname } });
+    }
+  }, [loading, user, navigate, location.pathname]);
+
   if (loading || (user && checkingAdmin)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -84,12 +90,6 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
       </div>
     );
   }
-
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate({ to: "/login", search: { redirect: location.pathname } });
-    }
-  }, [loading, user, navigate, location.pathname]);
 
   if (!user) {
     return (
