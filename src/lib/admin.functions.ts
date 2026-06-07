@@ -158,7 +158,7 @@ export const getAdminUserDetail = createServerFn({ method: "GET" })
   .inputValidator((d: { userId: string }) => z.object({ userId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
     const db = admin();
-    const [profile, roles, fb, wa, contacts, campaigns, jobs, sendLog, audit] = await Promise.all([
+    const [profile, roles, fb, wa, contacts, campaigns, jobs, sendLog, audit, authUser] = await Promise.all([
       db.from("profiles").select("*").eq("id", data.userId).maybeSingle(),
       db.from("user_roles").select("role").eq("user_id", data.userId),
       db.from("facebook_connections").select("*").eq("user_id", data.userId).maybeSingle(),
@@ -168,7 +168,11 @@ export const getAdminUserDetail = createServerFn({ method: "GET" })
       db.from("fb_jobs").select("id,job_type,status,created_at").eq("user_id", data.userId).order("created_at", { ascending: false }).limit(10),
       db.from("send_log").select("id,title,channel,status,created_at").eq("user_id", data.userId).order("created_at", { ascending: false }).limit(20),
       db.from("admin_audit_log").select("*").eq("target_user_id", data.userId).order("created_at", { ascending: false }).limit(20),
+      db.auth.admin.getUserById(data.userId),
     ]);
+    const u = authUser.data?.user;
+    const bannedUntilRaw = (u as unknown as { banned_until?: string | null } | undefined)?.banned_until ?? null;
+    const isBanned = !!bannedUntilRaw && new Date(bannedUntilRaw).getTime() > Date.now();
     return {
       profile: profile.data,
       roles: (roles.data ?? []).map((r) => r.role),
@@ -179,6 +183,14 @@ export const getAdminUserDetail = createServerFn({ method: "GET" })
       jobs: jobs.data ?? [],
       send_log: sendLog.data ?? [],
       audit: audit.data ?? [],
+      auth: {
+        email: u?.email ?? null,
+        phone: u?.phone ?? null,
+        email_confirmed_at: u?.email_confirmed_at ?? null,
+        last_sign_in_at: u?.last_sign_in_at ?? null,
+        banned_until: bannedUntilRaw,
+        is_banned: isBanned,
+      },
     };
   });
 
