@@ -241,6 +241,93 @@ export const deleteUserAccount = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const createUserByAdmin = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { email: string; password: string; fullName?: string; plan?: string; makeAdmin?: boolean }) =>
+    z.object({
+      email: z.string().email().max(200),
+      password: z.string().min(8).max(72),
+      fullName: z.string().trim().max(120).optional().default(""),
+      plan: z.enum(["free", "starter", "pro", "business", "enterprise"]).optional().default("free"),
+      makeAdmin: z.boolean().optional().default(false),
+    }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const db = admin();
+    const { data: created, error } = await db.auth.admin.createUser({
+      email: data.email,
+      password: data.password,
+      email_confirm: true,
+      user_metadata: { full_name: data.fullName },
+    });
+    if (error) throw new Error(error.message);
+    const newUserId = created.user?.id;
+    if (newUserId) {
+      // handle_new_user trigger creates profile row; update plan + name explicitly.
+      await db.from("profiles").update({ plan: data.plan, full_name: data.fullName || null }).eq("id", newUserId);
+      if (data.makeAdmin) {
+        await db.from("user_roles").insert({ user_id: newUserId, role: "admin" as never });
+      }
+      await logAction(context.adminUserId, "create_user", newUserId, { email: data.email, plan: data.plan, makeAdmin: data.makeAdmin });
+    }
+    return { ok: true, userId: newUserId };
+  });
+
+export const updateUserProfileByAdmin = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { userId: string; fullName?: string; email?: string }) =>
+    z.object({
+      userId: z.string().uuid(),
+      fullName: z.string().trim().max(120).optional(),
+      email: z.string().email().max(200).optional(),
+    }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const db = admin();
+    if (data.fullName !== undefined) {
+      const { error } = await db.from("profiles").update({ full_name: data.fullName || null }).eq("id", data.userId);
+      if (error) throw new Error(error.message);
+    }
+    if (data.email) {
+      const { error } = await db.auth.admin.updateUserById(data.userId, { email: data.email, email_confirm: true });
+      if (error) throw new Error(error.message);
+    }
+    await logAction(context.adminUserId, "update_profile", data.userId, { fullName: data.fullName, email: data.email });
+    return { ok: true };
+  });
+
+export const setUserPasswordByAdmin = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { userId: string; password: string }) =>
+    z.object({ userId: z.string().uuid(), password: z.string().min(8).max(72) }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const db = admin();
+    const { error } = await db.auth.admin.updateUserById(data.userId, { password: data.password });
+    if (error) throw new Error(error.message);
+    await logAction(context.adminUserId, "reset_password", data.userId);
+    return { ok: true };
+  });
+
+export const setUserBanned = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { userId: string; banned: boolean; durationHours?: number }) =>
+    z.object({
+      userId: z.string().uuid(),
+      banned: z.boolean(),
+      durationHours: z.number().int().min(1).max(24 * 365 * 10).optional().default(24 * 365),
+    }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    if (data.userId === context.adminUserId) throw new Error("لا يمكنك إيقاف حسابك");
+    const db = admin();
+    const ban_duration = data.banned ? `${data.durationHours}h` : "none";
+    const { error } = await db.auth.admin.updateUserById(data.userId, { ban_duration } as never);
+    if (error) throw new Error(error.message);
+    await logAction(context.adminUserId, data.banned ? "ban_user" : "unban_user", data.userId, { durationHours: data.durationHours });
+    return { ok: true };
+  });
+
 // ---------- Settings ----------
 export const getPlatformSettings = createServerFn({ method: "GET" })
   .middleware([requireAdmin])
