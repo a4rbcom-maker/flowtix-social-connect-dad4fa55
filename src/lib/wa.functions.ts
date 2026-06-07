@@ -3,6 +3,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireAdmin } from "./admin-middleware";
 import {
   waBridge,
   normalizeStatus,
@@ -10,6 +11,51 @@ import {
   BridgeError,
   type BridgeSessionStatus,
 } from "./wa-bridge.server";
+
+export interface WaBridgeHealth {
+  ok: boolean;
+  status: string | null;
+  version: string | null;
+  latencyMs: number;
+  url: string | null;
+  hasApiKey: boolean;
+  hasWebhookSecret: boolean;
+  error: string | null;
+}
+
+export const pingWaBridge = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .handler(async (): Promise<WaBridgeHealth> => {
+    const url = process.env.WA_BRIDGE_URL ?? null;
+    const hasApiKey = !!process.env.WA_BRIDGE_API_KEY;
+    const hasWebhookSecret = !!process.env.WA_BRIDGE_WEBHOOK_SECRET;
+    const started = Date.now();
+    try {
+      const res = await waBridge.health();
+      return {
+        ok: true,
+        status: res.status ?? "ok",
+        version: res.version ?? null,
+        latencyMs: Date.now() - started,
+        url,
+        hasApiKey,
+        hasWebhookSecret,
+        error: null,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        status: null,
+        version: null,
+        latencyMs: Date.now() - started,
+        url,
+        hasApiKey,
+        hasWebhookSecret,
+        error: err instanceof Error ? err.message : "Bridge unreachable",
+      };
+    }
+  });
+
 
 export interface WaConnectionState {
   status: BridgeSessionStatus;
