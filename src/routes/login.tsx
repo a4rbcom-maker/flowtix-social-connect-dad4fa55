@@ -4,8 +4,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { checkIsAdmin } from "@/lib/admin.functions";
 import { Navbar } from "@/components/landing/Navbar";
-import { AlertCircle, Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { AlertCircle, Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 
 export const Route = createFileRoute("/login")({
@@ -104,25 +105,21 @@ function LoginPage() {
 
     try {
       if (isLogin) {
-        if (!rememberMe) {
-          localStorage.setItem("flowtix_remember_me", "false");
-          (supabase.auth as any).storage = sessionStorage;
-        } else {
+        if (rememberMe) {
           localStorage.setItem("flowtix_remember_me", "true");
-          (supabase.auth as any).storage = localStorage;
+        } else {
+          localStorage.setItem("flowtix_remember_me", "false");
         }
-        const { data: signInData, error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        const uid = signInData.user?.id;
+        // Use server function so the role check goes through the trusted server
+        // path (bearer attached automatically). Falls back to /dashboard on failure.
         let dest: "/admin" | "/dashboard" = "/dashboard";
-        if (uid) {
-          const { data: roleRow } = await supabase
-            .from("user_roles")
-            .select("role")
-            .eq("user_id", uid)
-            .eq("role", "admin")
-            .maybeSingle();
-          if (roleRow) dest = "/admin";
+        try {
+          const res = await checkIsAdmin();
+          if (res?.isAdmin) dest = "/admin";
+        } catch {
+          /* ignore – default to /dashboard */
         }
         navigate({ to: dest });
       } else {
@@ -162,6 +159,12 @@ function LoginPage() {
         <div className="w-full max-w-md">
           {/* Header */}
           <div className="mb-8 text-center">
+            {isLogin && (
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                {lang === "ar" ? "دخول موحّد للعملاء والسوبر أدمن" : "Unified sign-in for clients & super admins"}
+              </div>
+            )}
             <h1 className="bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-3xl font-bold tracking-tight text-transparent">
               {isLogin ? labels.login : labels.register}
             </h1>
