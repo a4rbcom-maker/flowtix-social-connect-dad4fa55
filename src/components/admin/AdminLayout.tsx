@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -85,10 +85,20 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
     );
   }
 
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate({ to: "/login", search: { redirect: location.pathname } });
+    }
+  }, [loading, user, navigate, location.pathname]);
+
   if (!user) {
-    navigate({ to: "/login", search: { redirect: location.pathname } });
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
   }
+
 
   if (!adminCheck?.isAdmin) {
     return (
