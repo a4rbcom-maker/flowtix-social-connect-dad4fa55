@@ -10,8 +10,15 @@ import { AlertCircle, Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff,
 import { Checkbox } from "@/components/ui/checkbox";
 
 export const Route = createFileRoute("/login")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+  }),
   component: LoginPage,
 });
+
+function isSafeRedirect(path: string | undefined): path is string {
+  return !!path && path.startsWith("/") && !path.startsWith("//");
+}
 
 function LoginPage() {
   const { lang, dir } = useI18n();
