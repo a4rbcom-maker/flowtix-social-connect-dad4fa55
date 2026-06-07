@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { motion } from "framer-motion";
 import {
   MessageCircle,
@@ -20,15 +21,22 @@ import {
   Crown,
   Sparkles,
   Hash,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  Link2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useI18n } from "@/lib/i18n";
 import { getAdminWhatsappOverview } from "@/lib/admin.functions";
+import { pingWaBridge, type WaBridgeHealth } from "@/lib/wa.functions";
 
 export const Route = createFileRoute("/admin/whatsapp")({
   ssr: false,
   component: AdminWhatsappPage,
 });
+
 
 const REFRESH_MS = 20_000;
 
