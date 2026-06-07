@@ -536,7 +536,7 @@ function InboxPage() {
             {activeJid ? ChatPane : Sidebar}
           </div>
         ) : (
-          <ResizablePanelGroup direction="horizontal" className="h-full">
+          <ResizablePanelGroup orientation="horizontal" className="h-full">
             <ResizablePanel defaultSize={28} minSize={22} maxSize={42}>
               {Sidebar}
             </ResizablePanel>
