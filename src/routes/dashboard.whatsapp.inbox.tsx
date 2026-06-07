@@ -1,3 +1,4 @@
+import * as React from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -681,7 +682,7 @@ function initials(s: string): string {
 function detectMedia(
   msg: string | null | undefined,
   labels: { photo: string; voice: string; doc: string; video: string },
-): { icon: JSX.Element; label: string } | null {
+): { icon: React.ReactElement; label: string } | null {
   if (!msg) return null;
   if (/\[image:/i.test(msg) || /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(msg))
     return { icon: <Camera className="h-3 w-3" />, label: labels.photo };
@@ -734,8 +735,8 @@ function renderMessagesWithDays(
   messages: ChatMessageRow[],
   isAr: boolean,
   t: { today: string; yesterday: string },
-): JSX.Element[] {
-  const out: JSX.Element[] = [];
+): React.ReactElement[] {
+  const out: React.ReactElement[] = [];
   let lastDay = "";
   for (const m of messages) {
     const dk = dayKey(m.created_at);
