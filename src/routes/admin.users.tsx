@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search,
-  Filter,
   X,
   Shield,
   ShieldOff,
@@ -17,6 +16,11 @@ import {
   Mail,
   Calendar,
   Users as UsersIcon,
+  UserPlus,
+  KeyRound,
+  Ban,
+  CheckCircle2,
+  Pencil,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useI18n } from "@/lib/i18n";
@@ -26,6 +30,10 @@ import {
   setUserRole,
   updateUserPlan,
   deleteUserAccount,
+  createUserByAdmin,
+  updateUserProfileByAdmin,
+  setUserPasswordByAdmin,
+  setUserBanned,
 } from "@/lib/admin.functions";
 import { toast } from "sonner";
 
@@ -45,6 +53,7 @@ function AdminUsersPage() {
   const [planFilter, setPlanFilter] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const usersQ = useQuery({
     queryKey: ["admin", "users", search, planFilter, roleFilter],
@@ -87,6 +96,13 @@ function AdminUsersPage() {
           <UsersIcon className="h-4 w-4" />
           <span>{usersQ.data?.total ?? 0}</span>
         </div>
+        <button
+          onClick={() => setCreateOpen(true)}
+          className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition"
+        >
+          <UserPlus className="h-4 w-4" />
+          {t("إضافة مستخدم", "Add User")}
+        </button>
       </div>
 
       {/* Table */}
@@ -176,7 +192,96 @@ function AdminUsersPage() {
           />
         )}
       </AnimatePresence>
+
+      {/* Create user modal */}
+      <AnimatePresence>
+        {createOpen && (
+          <CreateUserModal
+            onClose={() => setCreateOpen(false)}
+            onCreated={() => {
+              setCreateOpen(false);
+              qc.invalidateQueries({ queryKey: ["admin", "users"] });
+            }}
+          />
+        )}
+      </AnimatePresence>
     </AdminLayout>
+  );
+}
+
+function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const { lang, dir } = useI18n();
+  const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [plan, setPlan] = useState("free");
+  const [makeAdmin, setMakeAdmin] = useState(false);
+
+  const mut = useMutation({
+    mutationFn: () => createUserByAdmin({ data: { email, password, fullName, plan, makeAdmin } }),
+    onSuccess: () => { toast.success(t("تم إنشاء المستخدم", "User created")); onCreated(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+        dir={dir}
+      >
+        <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-card border border-border shadow-2xl">
+          <div className="flex items-center justify-between p-4 border-b border-border">
+            <h3 className="font-bold flex items-center gap-2"><UserPlus className="h-4 w-4" /> {t("إضافة مستخدم جديد", "Add new user")}</h3>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted"><X className="h-4 w-4" /></button>
+          </div>
+          <form
+            onSubmit={(e) => { e.preventDefault(); mut.mutate(); }}
+            className="p-5 space-y-3"
+          >
+            <Field label={t("الاسم الكامل", "Full name")}>
+              <input value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-background border border-border focus:border-primary focus:outline-none text-sm" />
+            </Field>
+            <Field label={t("البريد الإلكتروني", "Email")}>
+              <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-background border border-border focus:border-primary focus:outline-none text-sm" />
+            </Field>
+            <Field label={t("كلمة المرور (8 أحرف على الأقل)", "Password (min 8 chars)")}>
+              <input required type="text" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-background border border-border focus:border-primary focus:outline-none text-sm font-mono" />
+            </Field>
+            <Field label={t("الباقة", "Plan")}>
+              <select value={plan} onChange={(e) => setPlan(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-background border border-border focus:border-primary focus:outline-none text-sm">
+                {PLANS.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </Field>
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+              <input type="checkbox" checked={makeAdmin} onChange={(e) => setMakeAdmin(e.target.checked)} className="h-4 w-4 rounded accent-primary" />
+              <Crown className="h-3.5 w-3.5 text-amber-500" />
+              {t("منح صلاحية الأدمن", "Grant Admin role")}
+            </label>
+            <div className="flex gap-2 pt-2">
+              <button type="button" onClick={onClose} className="flex-1 px-3 py-2 rounded-lg border border-border text-sm hover:bg-muted">{t("إلغاء", "Cancel")}</button>
+              <button type="submit" disabled={mut.isPending} className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50">
+                {mut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+                {t("إنشاء", "Create")}
+              </button>
+            </div>
+          </form>
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      {children}
+    </div>
   );
 }
 
@@ -190,16 +295,21 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
     queryFn: () => getAdminUserDetail({ data: { userId } }),
   });
 
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["admin", "user", userId] });
+    onChanged();
+  };
+
   const planMut = useMutation({
     mutationFn: (plan: string) => updateUserPlan({ data: { userId, plan } }),
-    onSuccess: () => { toast.success(t("تم تحديث الباقة", "Plan updated")); qc.invalidateQueries({ queryKey: ["admin", "user", userId] }); onChanged(); },
+    onSuccess: () => { toast.success(t("تم تحديث الباقة", "Plan updated")); invalidate(); },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const roleMut = useMutation({
     mutationFn: ({ role, grant }: { role: "admin" | "moderator"; grant: boolean }) =>
       setUserRole({ data: { userId, role, grant } }),
-    onSuccess: () => { toast.success(t("تم تحديث الدور", "Role updated")); qc.invalidateQueries({ queryKey: ["admin", "user", userId] }); onChanged(); },
+    onSuccess: () => { toast.success(t("تم تحديث الدور", "Role updated")); invalidate(); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -209,8 +319,30 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const profileMut = useMutation({
+    mutationFn: (input: { fullName?: string; email?: string }) => updateUserProfileByAdmin({ data: { userId, ...input } }),
+    onSuccess: () => { toast.success(t("تم الحفظ", "Saved")); invalidate(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const pwMut = useMutation({
+    mutationFn: (password: string) => setUserPasswordByAdmin({ data: { userId, password } }),
+    onSuccess: () => toast.success(t("تم تغيير كلمة المرور", "Password updated")),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const banMut = useMutation({
+    mutationFn: (banned: boolean) => setUserBanned({ data: { userId, banned } }),
+    onSuccess: (_, banned) => { toast.success(banned ? t("تم إيقاف الحساب", "Account suspended") : t("تم تفعيل الحساب", "Account reactivated")); invalidate(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const d = detailQ.data;
   const isAdmin = d?.roles.includes("admin");
+
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const [editingEmail, setEditingEmail] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
 
   return (
     <>
@@ -226,7 +358,7 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
         animate={{ x: 0 }}
         exit={{ x: dir === "rtl" ? "-100%" : "100%" }}
         transition={{ type: "spring", damping: 25, stiffness: 250 }}
-        className={`fixed top-0 ${dir === "rtl" ? "left-0" : "right-0"} h-screen w-full md:w-[520px] bg-card border-${dir === "rtl" ? "r" : "l"} border-border z-50 shadow-2xl overflow-y-auto`}
+        className={`fixed top-0 ${dir === "rtl" ? "left-0" : "right-0"} h-screen w-full md:w-[560px] bg-card border-${dir === "rtl" ? "r" : "l"} border-border z-50 shadow-2xl overflow-y-auto`}
         dir={dir}
       >
         <div className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl border-b border-border p-4 flex items-center justify-between">
@@ -254,6 +386,11 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
                       {r === "admin" && <Crown className="h-2.5 w-2.5" />}{r}
                     </span>
                   ))}
+                  {d.auth.is_banned && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-destructive/15 text-destructive">
+                      <Ban className="h-2.5 w-2.5" /> {t("موقوف", "Suspended")}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
                   <Calendar className="h-3 w-3" />
@@ -267,6 +404,58 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
               <StatBox label={t("جهات", "Contacts")} value={d.contacts_count} />
               <StatBox label={t("حملات", "Campaigns")} value={d.campaigns.length} />
               <StatBox label={t("جلسات WA", "WA Sessions")} value={d.whatsapp_sessions.length} />
+            </div>
+
+            {/* Profile edit */}
+            <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+              <h4 className="text-sm font-semibold flex items-center gap-2"><Pencil className="h-4 w-4" /> {t("بيانات الحساب", "Account Info")}</h4>
+              <EditableRow
+                label={t("الاسم", "Name")}
+                value={d.profile?.full_name ?? ""}
+                editing={editingName}
+                setEditing={setEditingName}
+                onSave={(v) => profileMut.mutate({ fullName: v })}
+                pending={profileMut.isPending}
+              />
+              <EditableRow
+                label={t("البريد", "Email")}
+                value={d.auth.email ?? ""}
+                editing={editingEmail}
+                setEditing={setEditingEmail}
+                onSave={(v) => profileMut.mutate({ email: v })}
+                pending={profileMut.isPending}
+                type="email"
+              />
+              {d.auth.last_sign_in_at && (
+                <div className="text-[11px] text-muted-foreground">
+                  {t("آخر دخول:", "Last sign-in:")} {new Date(d.auth.last_sign_in_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}
+                </div>
+              )}
+            </div>
+
+            {/* Password */}
+            <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+              <h4 className="text-sm font-semibold flex items-center gap-2"><KeyRound className="h-4 w-4" /> {t("كلمة المرور", "Password")}</h4>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder={t("كلمة مرور جديدة (8 أحرف+)", "New password (8+ chars)")}
+                  className="flex-1 px-3 py-2 rounded-lg bg-background border border-border text-sm font-mono focus:outline-none focus:border-primary"
+                />
+                <button
+                  onClick={() => {
+                    if (newPassword.length < 8) { toast.error(t("8 أحرف على الأقل", "At least 8 chars")); return; }
+                    pwMut.mutate(newPassword, { onSuccess: () => setNewPassword("") });
+                  }}
+                  disabled={pwMut.isPending}
+                  className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-1"
+                >
+                  {pwMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5" />}
+                  {t("تغيير", "Update")}
+                </button>
+              </div>
             </div>
 
             {/* Plan controls */}
@@ -290,20 +479,38 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
               </div>
             </div>
 
-            {/* Role controls */}
+            {/* Role + Ban controls */}
             <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
-              <h4 className="text-sm font-semibold flex items-center gap-2"><Shield className="h-4 w-4" /> {t("الصلاحيات", "Roles")}</h4>
-              <div className="flex gap-2">
+              <h4 className="text-sm font-semibold flex items-center gap-2"><Shield className="h-4 w-4" /> {t("الصلاحيات والحالة", "Access & Status")}</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                   onClick={() => roleMut.mutate({ role: "admin", grant: !isAdmin })}
                   disabled={roleMut.isPending}
-                  className={`flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                  className={`inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                     isAdmin
                       ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
                       : "bg-amber-500/15 text-amber-700 dark:text-amber-400 hover:bg-amber-500/25"
                   }`}
                 >
-                  {isAdmin ? <><ShieldOff className="h-3.5 w-3.5" /> {t("إزالة الأدمن", "Revoke Admin")}</> : <><Crown className="h-3.5 w-3.5" /> {t("منح صلاحية الأدمن", "Grant Admin")}</>}
+                  {isAdmin ? <><ShieldOff className="h-3.5 w-3.5" /> {t("إزالة الأدمن", "Revoke Admin")}</> : <><Crown className="h-3.5 w-3.5" /> {t("منح الأدمن", "Grant Admin")}</>}
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm(d.auth.is_banned ? t("تفعيل الحساب؟", "Reactivate this account?") : t("إيقاف الحساب؟ لن يستطيع تسجيل الدخول.", "Suspend this account? They cannot sign in."))) {
+                      banMut.mutate(!d.auth.is_banned);
+                    }
+                  }}
+                  disabled={banMut.isPending}
+                  className={`inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                    d.auth.is_banned
+                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/25"
+                      : "bg-orange-500/15 text-orange-700 dark:text-orange-400 hover:bg-orange-500/25"
+                  }`}
+                >
+                  {d.auth.is_banned
+                    ? <><CheckCircle2 className="h-3.5 w-3.5" /> {t("تفعيل الحساب", "Reactivate")}</>
+                    : <><Ban className="h-3.5 w-3.5" /> {t("إيقاف الحساب", "Suspend")}</>
+                  }
                 </button>
               </div>
             </div>
@@ -364,6 +571,52 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
         )}
       </motion.div>
     </>
+  );
+}
+
+function EditableRow({
+  label, value, editing, setEditing, onSave, pending, type = "text",
+}: {
+  label: string;
+  value: string;
+  editing: string | null;
+  setEditing: (v: string | null) => void;
+  onSave: (v: string) => void;
+  pending: boolean;
+  type?: string;
+}) {
+  const isEditing = editing !== null;
+  return (
+    <div>
+      <div className="text-[11px] text-muted-foreground mb-1">{label}</div>
+      {isEditing ? (
+        <div className="flex gap-2">
+          <input
+            type={type}
+            value={editing}
+            onChange={(e) => setEditing(e.target.value)}
+            className="flex-1 px-3 py-1.5 rounded-lg bg-background border border-border text-sm focus:outline-none focus:border-primary"
+          />
+          <button
+            onClick={() => { onSave(editing!); setEditing(null); }}
+            disabled={pending}
+            className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 disabled:opacity-50"
+          >
+            {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "✓"}
+          </button>
+          <button onClick={() => setEditing(null)} className="px-2 py-1.5 rounded-lg border border-border text-xs hover:bg-muted">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm truncate flex-1">{value || <span className="text-muted-foreground italic">—</span>}</span>
+          <button onClick={() => setEditing(value)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition">
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
