@@ -124,13 +124,14 @@ function LoginPage() {
         if (error) throw error;
         // Use server function so the role check goes through the trusted server
         // path (bearer attached automatically). Falls back to /dashboard on failure.
-        let dest: "/admin" | "/dashboard" = "/dashboard";
+        let dest: string = "/dashboard";
         try {
           const res = await checkIsAdmin();
           if (res?.isAdmin) dest = "/admin";
         } catch {
           /* ignore – default to /dashboard */
         }
+        if (isSafeRedirect(redirectParam)) dest = redirectParam;
         navigate({ to: dest });
       } else {
         const { error } = await supabase.auth.signUp({
