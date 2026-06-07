@@ -21,12 +21,15 @@ async function bridgeFetch<T>(path: string, init: RequestInit = {}): Promise<T> 
       ...init,
       signal: controller.signal,
       headers: {
+        // Per Bot-Xtra spec: Authorization Bearer is primary, X-API-Key kept for compatibility.
+        Authorization: `Bearer ${apiKey}`,
         "X-API-Key": apiKey,
         "Content-Type": "application/json",
         Accept: "application/json",
         ...(init.headers || {}),
       },
     });
+
     const text = await res.text();
     const body = text ? safeParse(text) : null;
     if (!res.ok) {
@@ -96,6 +99,12 @@ export const waBridge = {
     bridgeFetch<BridgeStatusResponse>(`/api/sessions/${encodeURIComponent(id)}/status`),
   getQr: (id: string) =>
     bridgeFetch<BridgeQrResponse>(`/api/sessions/${encodeURIComponent(id)}/qr`),
+  pairingCode: (id: string, phoneNumber: string) =>
+    bridgeFetch<{ code?: string; pairingCode?: string }>(
+      `/api/sessions/${encodeURIComponent(id)}/pairing-code`,
+      { method: "POST", body: JSON.stringify({ phoneNumber }) },
+    ),
+
   deleteSession: (id: string) =>
     bridgeFetch<{ ok?: boolean }>(`/api/sessions/${encodeURIComponent(id)}`, {
       method: "DELETE",

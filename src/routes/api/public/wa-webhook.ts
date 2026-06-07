@@ -27,7 +27,7 @@ function digits(s: unknown): string | null {
   return d || null;
 }
 
-export const Route = createFileRoute("/api/public/wa/webhook")({
+export const Route = createFileRoute("/api/public/wa-webhook")({
   server: {
     handlers: {
       POST: async ({ request }) => {

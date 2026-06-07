@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { motion } from "framer-motion";
 import {
   MessageCircle,
@@ -20,15 +21,22 @@ import {
   Crown,
   Sparkles,
   Hash,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  Link2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useI18n } from "@/lib/i18n";
 import { getAdminWhatsappOverview } from "@/lib/admin.functions";
+import { pingWaBridge, type WaBridgeHealth } from "@/lib/wa.functions";
 
 export const Route = createFileRoute("/admin/whatsapp")({
   ssr: false,
   component: AdminWhatsappPage,
 });
+
 
 const REFRESH_MS = 20_000;
 
@@ -63,6 +71,7 @@ function AdminWhatsappPage() {
         </div>
       ) : (
         <div className="space-y-6">
+          <BridgeHealthCard t={t} lang={lang} />
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard
@@ -72,6 +81,7 @@ function AdminWhatsappPage() {
               tone="primary"
               hint={t("لديهم بيانات واتساب", "with WA data")}
             />
+
             <KpiCard
               icon={Smartphone}
               label={t("جلسات متصلة", "Connected sessions")}
@@ -564,6 +574,186 @@ function RecentMessages({ rows, t }: { rows: MsgRow[]; t: (ar: string, en: strin
             </div>
           ))
         )}
+      </div>
+    </div>
+  );
+}
+
+function BridgeHealthCard({
+  t,
+  lang,
+}: {
+  t: (ar: string, en: string) => string;
+  lang: "ar" | "en";
+}) {
+  const pingFn = useServerFn(pingWaBridge);
+  const q = useQuery<WaBridgeHealth>({
+    queryKey: ["admin", "wa-bridge", "health"],
+    queryFn: () => pingFn(),
+    refetchOnWindowFocus: false,
+    staleTime: 60_000,
+  });
+  const mut = useMutation({
+    mutationFn: () => pingFn(),
+    onSuccess: (data) => {
+      q.refetch();
+      if (data.ok) {
+        toast.success(t("البريدج متصل ✓", "Bridge is online ✓"), {
+          description: `${data.latencyMs}ms${data.version ? ` · v${data.version}` : ""}`,
+        });
+      } else {
+        toast.error(t("تعذّر الوصول للبريدج", "Bridge unreachable"), {
+          description: data.error ?? undefined,
+        });
+      }
+    },
+    onError: (e: Error) =>
+      toast.error(t("فشل الفحص", "Health check failed"), { description: e.message }),
+  });
+
+  const h = q.data;
+  const loading = q.isLoading || mut.isPending;
+  const online = !!h?.ok;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div
+            className={`flex h-11 w-11 items-center justify-center rounded-xl ${
+              online
+                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {online ? <Wifi className="h-5 w-5" /> : <WifiOff className="h-5 w-5" />}
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-foreground">
+              {t("حالة بريدج واتساب — Bot-Xtra", "WhatsApp Bridge — Bot-Xtra")}
+            </h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {t(
+                "اتصال الخادم الذي يستضيف جلسات واتساب.",
+                "Connection to the server hosting WhatsApp sessions.",
+              )}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
+              loading
+                ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                : online
+                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                  : "bg-rose-500/15 text-rose-700 dark:text-rose-300"
+            }`}
+          >
+            {loading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : online ? (
+              <CheckCircle2 className="h-3.5 w-3.5" />
+            ) : (
+              <XCircle className="h-3.5 w-3.5" />
+            )}
+            {loading
+              ? t("جارٍ الفحص…", "Checking…")
+              : online
+                ? t("متصل", "Online")
+                : t("غير متصل", "Offline")}
+          </span>
+          <button
+            type="button"
+            onClick={() => mut.mutate()}
+            disabled={mut.isPending}
+            className="inline-flex h-9 items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-4 text-xs font-semibold text-primary-foreground shadow hover:opacity-95 disabled:opacity-60"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${mut.isPending ? "animate-spin" : ""}`} />
+            {t("فحص الاتصال", "Test connection")}
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <ConfigRow
+          icon={Link2}
+          label={t("رابط البريدج", "Bridge URL")}
+          value={h?.url ?? "—"}
+          monospace
+          ok={!!h?.url}
+        />
+        <ConfigRow
+          icon={QrCode}
+          label={t("مفتاح API", "API Key")}
+          value={h?.hasApiKey ? t("مُهيّأ", "Configured") : t("غير مُهيّأ", "Missing")}
+          ok={!!h?.hasApiKey}
+        />
+        <ConfigRow
+          icon={Activity}
+          label={t("سر الـ Webhook", "Webhook secret")}
+          value={h?.hasWebhookSecret ? t("مُهيّأ", "Configured") : t("غير مُهيّأ", "Missing")}
+          ok={!!h?.hasWebhookSecret}
+        />
+        <ConfigRow
+          icon={Sparkles}
+          label={t("زمن الاستجابة", "Latency")}
+          value={
+            h
+              ? online
+                ? `${h.latencyMs} ms${h.version ? ` · v${h.version}` : ""}`
+                : (h.error ?? t("غير متاح", "Unavailable"))
+              : "—"
+          }
+          ok={online}
+        />
+      </div>
+
+      {!online && h && (
+        <p
+          className="mt-3 text-xs text-rose-600 dark:text-rose-400"
+          dir={lang === "ar" ? "rtl" : "ltr"}
+        >
+          {t(
+            "تأكّد أن قيم WA_BRIDGE_URL / WA_BRIDGE_API_KEY صحيحة في إعدادات الأسرار.",
+            "Verify WA_BRIDGE_URL / WA_BRIDGE_API_KEY are set correctly in project secrets.",
+          )}
+        </p>
+      )}
+    </motion.div>
+  );
+}
+
+function ConfigRow({
+  icon: Icon,
+  label,
+  value,
+  ok,
+  monospace,
+}: {
+  icon: typeof Wifi;
+  label: string;
+  value: string;
+  ok: boolean;
+  monospace?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-border/40 bg-background/60 p-3">
+      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" />
+        {label}
+      </div>
+      <div
+        className={`mt-1.5 truncate text-sm ${ok ? "text-foreground" : "text-muted-foreground"} ${monospace ? "font-mono" : "font-medium"}`}
+        dir="ltr"
+        title={value}
+      >
+        {value}
       </div>
     </div>
   );
