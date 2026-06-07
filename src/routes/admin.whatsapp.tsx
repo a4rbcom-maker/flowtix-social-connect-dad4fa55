@@ -71,6 +71,7 @@ function AdminWhatsappPage() {
         </div>
       ) : (
         <div className="space-y-6">
+          <BridgeHealthCard t={t} lang={lang} />
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard
@@ -80,6 +81,7 @@ function AdminWhatsappPage() {
               tone="primary"
               hint={t("لديهم بيانات واتساب", "with WA data")}
             />
+
             <KpiCard
               icon={Smartphone}
               label={t("جلسات متصلة", "Connected sessions")}
