@@ -21,12 +21,15 @@ async function bridgeFetch<T>(path: string, init: RequestInit = {}): Promise<T> 
       ...init,
       signal: controller.signal,
       headers: {
+        // Per Bot-Xtra spec: Authorization Bearer is primary, X-API-Key kept for compatibility.
+        Authorization: `Bearer ${apiKey}`,
         "X-API-Key": apiKey,
         "Content-Type": "application/json",
         Accept: "application/json",
         ...(init.headers || {}),
       },
     });
+
     const text = await res.text();
     const body = text ? safeParse(text) : null;
     if (!res.ok) {
