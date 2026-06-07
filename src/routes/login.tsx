@@ -105,25 +105,21 @@ function LoginPage() {
 
     try {
       if (isLogin) {
-        if (!rememberMe) {
-          localStorage.setItem("flowtix_remember_me", "false");
-          (supabase.auth as any).storage = sessionStorage;
-        } else {
+        if (rememberMe) {
           localStorage.setItem("flowtix_remember_me", "true");
-          (supabase.auth as any).storage = localStorage;
+        } else {
+          localStorage.setItem("flowtix_remember_me", "false");
         }
-        const { data: signInData, error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        const uid = signInData.user?.id;
+        // Use server function so the role check goes through the trusted server
+        // path (bearer attached automatically). Falls back to /dashboard on failure.
         let dest: "/admin" | "/dashboard" = "/dashboard";
-        if (uid) {
-          const { data: roleRow } = await supabase
-            .from("user_roles")
-            .select("role")
-            .eq("user_id", uid)
-            .eq("role", "admin")
-            .maybeSingle();
-          if (roleRow) dest = "/admin";
+        try {
+          const res = await checkIsAdmin();
+          if (res?.isAdmin) dest = "/admin";
+        } catch {
+          /* ignore – default to /dashboard */
         }
         navigate({ to: dest });
       } else {
