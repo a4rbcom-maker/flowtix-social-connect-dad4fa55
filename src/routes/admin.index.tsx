@@ -33,6 +33,7 @@ import {
 } from "recharts";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useI18n } from "@/lib/i18n";
+import { useAuth } from "@/lib/auth";
 import {
   getAdminKpis,
   getAdminTimeseries,
@@ -48,15 +49,19 @@ const PIE_COLORS = ["hsl(var(--primary))", "#f59e0b", "#10b981", "#ef4444", "#8b
 
 function AdminOverviewPage() {
   const { lang } = useI18n();
+  const { user } = useAuth();
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
 
-  const kpisQ = useQuery({ queryKey: ["admin", "kpis"], queryFn: () => getAdminKpis(), staleTime: 30_000 });
+  const kpisQ = useQuery({ queryKey: ["admin", "kpis"], queryFn: () => getAdminKpis(), staleTime: 30_000, enabled: !!user, retry: false });
   const tsQ = useQuery({
     queryKey: ["admin", "timeseries", 30],
     queryFn: () => getAdminTimeseries({ data: { days: 30 } }),
     staleTime: 60_000,
+    enabled: !!user,
+    retry: false,
   });
-  const actQ = useQuery({ queryKey: ["admin", "activity"], queryFn: () => getRecentActivity(), staleTime: 20_000, refetchInterval: 30_000 });
+  const actQ = useQuery({ queryKey: ["admin", "activity"], queryFn: () => getRecentActivity(), staleTime: 20_000, refetchInterval: 30_000, enabled: !!user, retry: false });
+
 
   const k = (kpisQ.data?.kpis ?? {}) as Record<string, number | Record<string, number>>;
   const num = (key: string) => Number((k[key] as number) ?? 0);
