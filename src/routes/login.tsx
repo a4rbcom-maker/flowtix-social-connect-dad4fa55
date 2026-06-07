@@ -159,6 +159,12 @@ function LoginPage() {
         <div className="w-full max-w-md">
           {/* Header */}
           <div className="mb-8 text-center">
+            {isLogin && (
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                {lang === "ar" ? "دخول موحّد للعملاء والسوبر أدمن" : "Unified sign-in for clients & super admins"}
+              </div>
+            )}
             <h1 className="bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-3xl font-bold tracking-tight text-transparent">
               {isLogin ? labels.login : labels.register}
             </h1>
