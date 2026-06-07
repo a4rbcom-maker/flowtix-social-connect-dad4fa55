@@ -10,14 +10,22 @@ import { AlertCircle, Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff,
 import { Checkbox } from "@/components/ui/checkbox";
 
 export const Route = createFileRoute("/login")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+  }),
   component: LoginPage,
 });
+
+function isSafeRedirect(path: string | undefined): path is string {
+  return !!path && path.startsWith("/") && !path.startsWith("//");
+}
 
 function LoginPage() {
   const { lang, dir } = useI18n();
   const { user } = useAuth();
   const { isAdmin, isLoading: isAdminLoading } = useIsAdmin();
   const navigate = useNavigate();
+  const { redirect: redirectParam } = Route.useSearch();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,7 +38,9 @@ function LoginPage() {
   const [rememberMe, setRememberMe] = useState(true);
 
   if (user && !isAdminLoading) {
-    return <Navigate to={isAdmin ? "/admin" : "/dashboard"} />;
+    const fallback = isAdmin ? "/admin" : "/dashboard";
+    const target = isSafeRedirect(redirectParam) ? redirectParam : fallback;
+    return <Navigate to={target} />;
   }
 
 
@@ -114,13 +124,14 @@ function LoginPage() {
         if (error) throw error;
         // Use server function so the role check goes through the trusted server
         // path (bearer attached automatically). Falls back to /dashboard on failure.
-        let dest: "/admin" | "/dashboard" = "/dashboard";
+        let dest: string = "/dashboard";
         try {
           const res = await checkIsAdmin();
           if (res?.isAdmin) dest = "/admin";
         } catch {
           /* ignore – default to /dashboard */
         }
+        if (isSafeRedirect(redirectParam)) dest = redirectParam;
         navigate({ to: dest });
       } else {
         const { error } = await supabase.auth.signUp({

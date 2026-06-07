@@ -86,7 +86,7 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
   }
 
   if (!user) {
-    navigate({ to: "/login" });
+    navigate({ to: "/login", search: { redirect: location.pathname } });
     return null;
   }
 
