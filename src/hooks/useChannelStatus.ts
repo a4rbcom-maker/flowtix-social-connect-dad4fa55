@@ -1,10 +1,10 @@
 // Polls connection status for Facebook + WhatsApp channels so the sidebar can
-// render a live status dot next to each channel. Keep this lightweight: one
-// FB inspect + one WA settings read, with revalidation on tab focus.
+// render a live status dot next to each channel. Keep this intentionally light:
+// the sidebar must not call heavyweight server functions on every dashboard
+// page mount, because those calls can race Vite's server-function registration
+// after a dev-server restart and blank the preview with "Invalid server function ID".
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useFacebookApi } from "@/features/facebook/api";
-import { inspectFacebookConnection } from "@/lib/facebook.functions";
 
 export type ChannelStatus =
   | "loading"
@@ -41,34 +41,29 @@ function fmtLabel(state: Omit<ChannelState, "label">, lang: "ar" | "en"): string
 }
 
 export function useChannelStatus(lang: "ar" | "en") {
-  const { call } = useFacebookApi();
   const [facebook, setFacebook] = useState<ChannelState>({ status: "loading", label: fmtLabel({ status: "loading" }, lang) });
   const [whatsapp, setWhatsapp] = useState<ChannelState>({ status: "loading", label: fmtLabel({ status: "loading" }, lang) });
   const mounted = useRef(true);
 
   const fetchFacebook = useCallback(async () => {
     try {
-      const res = await call(inspectFacebookConnection);
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess.session) {
+        const s: Omit<ChannelState, "label"> = { status: "disconnected" };
+        if (mounted.current) setFacebook({ ...s, label: fmtLabel(s, lang) });
+        return;
+      }
+      const { data, error } = await supabase
+        .from("facebook_connections")
+        .select("fb_user_id, fb_user_name, last_synced_at")
+        .maybeSingle();
       if (!mounted.current) return;
-      if (!res.connected) {
+      if (error || !data?.fb_user_id) {
         const s: Omit<ChannelState, "label"> = { status: "disconnected" };
         setFacebook({ ...s, label: fmtLabel(s, lang) });
         return;
       }
-      if (res.isExpired || !res.valid) {
-        const s: Omit<ChannelState, "label"> = { status: "expired" };
-        setFacebook({ ...s, label: fmtLabel(s, lang) });
-        return;
-      }
-      let daysLeft: number | undefined;
-      if (res.expiresAt) {
-        const ms = new Date(res.expiresAt).getTime() - Date.now();
-        daysLeft = Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
-      }
-      const s: Omit<ChannelState, "label"> =
-        daysLeft != null && daysLeft <= EXPIRING_THRESHOLD_DAYS
-          ? { status: "expiring", daysLeft }
-          : { status: "connected", daysLeft };
+      const s: Omit<ChannelState, "label"> = { status: "connected" };
       setFacebook({ ...s, label: fmtLabel(s, lang) });
     } catch {
       if (!mounted.current) return;
@@ -77,7 +72,7 @@ export function useChannelStatus(lang: "ar" | "en") {
       const s: Omit<ChannelState, "label"> = { status: "disconnected" };
       setFacebook({ ...s, label: fmtLabel(s, lang) });
     }
-  }, [call, lang]);
+  }, [lang]);
 
   const fetchWhatsapp = useCallback(async () => {
     try {
