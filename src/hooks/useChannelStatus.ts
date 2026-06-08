@@ -20,7 +20,6 @@ export interface ChannelState {
 }
 
 const REFRESH_MS = 5 * 60 * 1000; // 5 min
-const EXPIRING_THRESHOLD_DAYS = 7;
 
 function fmtLabel(state: Omit<ChannelState, "label">, lang: "ar" | "en"): string {
   const ar = {
@@ -56,6 +55,7 @@ export function useChannelStatus(lang: "ar" | "en") {
       const { data, error } = await supabase
         .from("facebook_connections")
         .select("fb_user_id, fb_user_name, last_synced_at")
+        .eq("user_id", sess.session.user.id)
         .maybeSingle();
       if (!mounted.current) return;
       if (error || !data?.fb_user_id) {
