@@ -226,41 +226,41 @@ async function readState(
   sessionId: string,
 ): Promise<WaConnectionState> {
   let status: BridgeSessionStatus = "unknown";
-  let qrDataUrl: string | null = null;
+  let qrRaw: string | null = null;
   let phoneNumber: string | null = null;
+  let error: string | null = null;
 
   try {
     const s = await waBridge.getStatus(sessionId);
     status = inferStatus(s);
     phoneNumber = s.phoneNumber ?? s.phone ?? null;
-    // Bot-Xtra status endpoint already includes the raw QR string — render it directly.
     if ((status === "qr" || status === "connecting") && s.qr) {
-      qrDataUrl = await pickQrDataUrl({ qr: s.qr });
-      if (qrDataUrl && status === "connecting") status = "qr";
+      qrRaw = s.qr;
+      if (status === "connecting") status = "qr";
     }
   } catch (err) {
-    console.warn("[wa] readState bridge error:", describeBridgeError(err));
+    error = describeBridgeError(err);
+    console.warn("[wa] readState bridge error:", error);
     status = "disconnected";
   }
 
   // Fallback: poll dedicated /qr endpoint if status didn't include one.
-  if (!qrDataUrl && (status === "qr" || status === "connecting" || status === "unknown")) {
+  if (!qrRaw && (status === "qr" || status === "connecting" || status === "unknown")) {
     try {
       const q = await waBridge.getQr(sessionId);
-      qrDataUrl = await pickQrDataUrl(q);
-      if (qrDataUrl && status !== "qr") status = "qr";
+      qrRaw = q?.qr ?? q?.qrCode ?? q?.dataUrl ?? null;
+      if (qrRaw && status !== "qr") status = "qr";
     } catch {
       // no QR available yet
     }
   }
-
 
   const now = new Date().toISOString();
   await supabase
     .from("wa_sessions")
     .update({
       status,
-      qr_data_url: status === "qr" ? qrDataUrl : null,
+      qr_data_url: null,
       phone_number: phoneNumber,
       last_seen_at: now,
     })
@@ -269,8 +269,10 @@ async function readState(
   return {
     status,
     sessionId,
-    qrDataUrl: status === "qr" ? qrDataUrl : null,
+    qrDataUrl: null,
+    qrRaw: status === "qr" ? qrRaw : null,
     phoneNumber,
     lastSeenAt: now,
+    error,
   };
 }
