@@ -300,10 +300,15 @@ function EmptyView({ t }: { t: { connect: string; subtitle: string } }) {
 }
 
 function QrView({ qr, polling, t }: { qr: string; polling: boolean; t: { scan: string; scanWaiting: string } }) {
+  const isDataUrl = qr.startsWith("data:image");
   return (
     <div className="flex flex-col items-center gap-3">
       <div className="rounded-2xl border-4 border-primary/20 bg-white p-3 shadow-lg">
-        <img src={qr} alt="WhatsApp QR Code" className="h-56 w-56" />
+        {isDataUrl ? (
+          <img src={qr} alt="WhatsApp QR Code" className="h-56 w-56" />
+        ) : (
+          <QRCodeSVG value={qr} size={224} level="M" includeMargin={false} />
+        )}
       </div>
       <p className="max-w-md text-xs leading-relaxed text-muted-foreground">{t.scan}</p>
       {polling && (
