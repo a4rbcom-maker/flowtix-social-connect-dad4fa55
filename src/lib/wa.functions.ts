@@ -7,7 +7,6 @@ import { requireAdmin } from "./admin-middleware";
 import {
   waBridge,
   inferStatus,
-  pickQrDataUrl,
   BridgeError,
   type BridgeSessionStatus,
 } from "./wa-bridge.server";
