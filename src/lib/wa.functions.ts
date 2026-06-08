@@ -121,7 +121,8 @@ export const connectWaSession = createServerFn({ method: "POST" })
         // already exists — fine
       } else {
         const now = new Date().toISOString();
-        console.warn("[wa] createSession bridge error:", describeBridgeError(err));
+        const errMsg = describeBridgeError(err);
+        console.warn("[wa] createSession bridge error:", errMsg);
         await supabase
           .from("wa_sessions")
           .update({ status: "disconnected", qr_data_url: null, last_seen_at: now })
@@ -130,8 +131,10 @@ export const connectWaSession = createServerFn({ method: "POST" })
           status: "disconnected",
           sessionId,
           qrDataUrl: null,
+          qrRaw: null,
           phoneNumber: existing?.phone_number ?? null,
           lastSeenAt: now,
+          error: errMsg,
         };
       }
     }
