@@ -6,11 +6,12 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requireAdmin } from "./admin-middleware";
 import {
   waBridge,
-  normalizeStatus,
+  inferStatus,
   pickQrDataUrl,
   BridgeError,
   type BridgeSessionStatus,
 } from "./wa-bridge.server";
+
 
 export interface WaBridgeHealth {
   ok: boolean;
