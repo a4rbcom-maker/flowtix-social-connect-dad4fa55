@@ -537,13 +537,18 @@ function InboxPage() {
             {activeJid ? ChatPane : Sidebar}
           </div>
         ) : (
-          <ResizablePanelGroup direction="horizontal" className="h-full">
-            <ResizablePanel defaultSize={28} minSize={22} maxSize={42} order={1}>
-              {Sidebar}
+          <ResizablePanelGroup
+            orientation="horizontal"
+            className="h-full"
+            id="wa-inbox-layout"
+            dir="ltr"
+          >
+            <ResizablePanel defaultSize={72} minSize={50} id="wa-chat">
+              {ChatPane}
             </ResizablePanel>
             <ResizableHandle withHandle className="bg-border/40" />
-            <ResizablePanel defaultSize={72} minSize={50} order={2}>
-              {ChatPane}
+            <ResizablePanel defaultSize={28} minSize={22} maxSize={42} id="wa-list">
+              {Sidebar}
             </ResizablePanel>
           </ResizablePanelGroup>
         )}
