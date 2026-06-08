@@ -6,11 +6,12 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requireAdmin } from "./admin-middleware";
 import {
   waBridge,
-  normalizeStatus,
+  inferStatus,
   pickQrDataUrl,
   BridgeError,
   type BridgeSessionStatus,
 } from "./wa-bridge.server";
+
 
 export interface WaBridgeHealth {
   ok: boolean;
@@ -214,24 +215,29 @@ async function readState(
 
   try {
     const s = await waBridge.getStatus(sessionId);
-    status = normalizeStatus(s.status ?? s.state ?? (s.connected ? "connected" : ""));
+    status = inferStatus(s);
     phoneNumber = s.phoneNumber ?? s.phone ?? null;
+    // Bot-Xtra status endpoint already includes the raw QR string — render it directly.
+    if ((status === "qr" || status === "connecting") && s.qr) {
+      qrDataUrl = await pickQrDataUrl({ qr: s.qr });
+      if (qrDataUrl && status === "connecting") status = "qr";
+    }
   } catch (err) {
-    // Bridge not configured / unreachable / 404 → treat as disconnected
-    // so the UI can render instead of crashing the route.
     console.warn("[wa] readState bridge error:", describeBridgeError(err));
     status = "disconnected";
   }
 
-  if (status === "qr" || status === "connecting" || status === "unknown") {
+  // Fallback: poll dedicated /qr endpoint if status didn't include one.
+  if (!qrDataUrl && (status === "qr" || status === "connecting" || status === "unknown")) {
     try {
       const q = await waBridge.getQr(sessionId);
-      qrDataUrl = pickQrDataUrl(q);
-      if (qrDataUrl && status === "unknown") status = "qr";
+      qrDataUrl = await pickQrDataUrl(q);
+      if (qrDataUrl && status !== "qr") status = "qr";
     } catch {
       // no QR available yet
     }
   }
+
 
   const now = new Date().toISOString();
   await supabase

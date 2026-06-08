@@ -1,48 +1,59 @@
+## المشكلة
 
-# خطة ربط Bot-Xtra WhatsApp Bridge
+عند الضغط على «ربط واتساب» لا يظهر الباركود لأن عميل الـ Bridge في Flowtix لا يتوافق مع عقد API الفعلي لخادم Bot-Xtra (`public/bridge-server/server.js`).
 
-الأسرار الثلاثة (`WA_BRIDGE_URL` / `WA_BRIDGE_API_KEY` / `WA_BRIDGE_WEBHOOK_SECRET`) موجودة فعلاً في Lovable Cloud، والـ wrapper والـ webhook الأساسي مكتوبين. لكن في 3 فروقات بين الكود الحالي والمستند الرسمي لازم نصلّحها، بالإضافة لشاشة السوبر أدمن المطلوبة.
+### الفروقات المكتشفة بين الكودين
 
-## الفروقات اللي هتتصلّح
+| العملية | Flowtix يرسل/يتوقع | Bot-Xtra الفعلي |
+|---|---|---|
+| إنشاء الجلسة `POST /api/sessions` | body: `{ id }` | يتطلب `{ sessionId }` → يرد **400 "sessionId required"** |
+| حالة الجلسة `GET /api/sessions/:id/status` | يقرأ `status / state / phoneNumber` | يرجّع `{ connected, qr, exists, phone, name }` — لا يوجد حقل `status` |
+| كود الـ QR `GET /api/sessions/:id/qr` | يفترض base64 لصورة PNG ويلفّها بـ `data:image/png;base64,...` | يرجّع **نص QR خام** (whatsapp pairing string)، ليس صورة |
+| Pairing code | `POST /api/sessions/:id/pairing-code` | المسار الصحيح `POST /api/sessions/:id/request-pairing-code` |
+| رقم الهاتف | `phoneNumber` | `phone` |
 
-1. **مسار الـ Webhook**
-   - الكود حالياً: `/api/public/wa/webhook`
-   - المستند الرسمي: `/api/public/wa-webhook`
-   - الحل: نقل/إعادة تسمية الملف لـ `src/routes/api/public/wa-webhook.ts` ليطابق المستند بالظبط (لأن Bot-Xtra يستدعي العنوان ده).
+النتيجة: createSession يفشل بـ 400، فالكود الحالي (بعد إصلاح سابق) يعيد `disconnected` بصمت — فلا يظهر QR أبداً.
 
-2. **ترويسة المصادقة**
-   - الكود حالياً: `X-API-Key: <key>` فقط
-   - المستند: `Authorization: Bearer <key>` (أو `x-api-key` كبديل)
-   - الحل: تعديل `src/lib/wa-bridge.server.ts` ليستخدم `Authorization: Bearer` كأساسي مع إبقاء `X-API-Key` معه للتوافق.
+## الخطة
 
-3. **نقص Endpoint كود الإقران (Pairing Code)**
-   - إضافة `pairingCode(id, phoneNumber)` في الـ wrapper مقابل `POST /api/sessions/:id/pairing-code` (لمستقبل دعم الربط بالكود بدل QR).
+### 1) محاذاة عميل الـ Bridge داخل Flowtix
 
-## شاشة السوبر أدمن — WhatsApp Bridge
+تعديل `src/lib/wa-bridge.server.ts`:
+- `createSession(id)` ترسل `{ sessionId: id }` بدل `{ id }`.
+- `BridgeStatusResponse` يضاف له `qr`, `phone`, `name`, `exists`، ويُستنتج `status` كالتالي:
+  - `connected === true` → `"connected"`
+  - `connected === false && qr` → `"qr"`
+  - `exists === false` → `"disconnected"` (نعيد الإنشاء)
+  - غير ذلك → `"connecting"`
+- `BridgeQrResponse` يدعم QR كنص خام: يولّد Data URL باستخدام مكتبة `qrcode` (تثبيت `qrcode` كاعتمادية سيرفر فقط).
+- `pairingCode` → المسار `/request-pairing-code`.
 
-تحديث `src/routes/admin.whatsapp.tsx` بإضافة قسم "حالة البريدج" في أعلى الصفحة يحتوي:
-- عرض `WA_BRIDGE_URL` (مقروء، بدون كشف المفتاح) — مع شارة "مُهيّأ ✓" أو "غير مُهيّأ ✗" لكل سر من الثلاثة.
-- زر **«فحص الاتصال»** يستدعي server function جديدة `pingWaBridge` تنفّذ `GET /api/health` وتعرض الحالة + الإصدار + زمن الاستجابة.
-- توست نجاح/خطأ واضح بالعربي والإنجليزي.
+### 2) تبسيط منطق `readState` في `src/lib/wa.functions.ts`
 
-> لا نضيف حقول إدخال URL/Key في الـ UI — الأسرار تُدار من Lovable Cloud Secrets فقط (أأمن).
+- استخدام الحالة المستنتجة من `getStatus` مباشرة.
+- جلب QR فقط عندما `status === "qr"` أو `"connecting"`.
+- تخزين `qr_data_url` (Data URL مولّد) في `wa_sessions` كما هو حالياً.
 
-## ملفات تتعدّل/تُنشأ
+### 3) معالجة الأخطاء (تبقى UX سليمة)
 
-| ملف | الإجراء |
-|---|---|
-| `src/lib/wa-bridge.server.ts` | تعديل الـ headers + إضافة `pairingCode` |
-| `src/routes/api/public/wa-webhook.ts` | إنشاء جديد (نسخة من `wa/webhook.ts`) |
-| `src/routes/api/public/wa/webhook.ts` | حذف بعد التأكد |
-| `src/lib/wa.functions.ts` | إضافة `pingWaBridge` server fn |
-| `src/routes/admin.whatsapp.tsx` | إضافة قسم "حالة البريدج" + زر فحص |
+- إبقاء السلوك الحالي: عند فشل الـ Bridge نرجع حالة `disconnected` بدل رمي خطأ يكسر الصفحة.
+- إضافة سجل تشخيصي مختصر بالحالة + رمز الاستجابة لتسهيل التتبع.
 
-## ما لن نغيّره
+### 4) رسالة التنسيق مع فريق Bot-Xtra
 
-- ملفات قاعدة البيانات (`wa_sessions`, `wa_messages`) ومنطق الـ AI auto-reply.
-- صفحة `/dashboard/whatsapp/accounts` (تشتغل تمام عبر الـ wrapper الحالي).
-- الأسرار الموجودة (القيم الفعلية يدخلها المستخدم/فريق Bot-Xtra من Project Settings).
+سأضيف في نهاية الرد بعد التنفيذ نصاً جاهزاً للإرسال لفريق Bot-Xtra يلخّص:
+- إصدار الـ Bridge المتوقع (1.8.3 كما في deploy workflow).
+- الحقول الموحّدة في الاستجابات (`status`, `phoneNumber`, `qrCode` بـ data URL) كاقتراح لتحسين التوافق المستقبلي.
+- مفاتيح السيرفر المطلوبة (`WA_BRIDGE_URL`, `WA_BRIDGE_API_KEY`, `WA_BRIDGE_WEBHOOK_SECRET`) المضبوطة بالفعل.
 
-## بعد التنفيذ
+### الملفات التي ستتغير
 
-نتأكّد أن `bun run build:dev` يمرّ، ثم نطلب من المستخدم الضغط على زر **«فحص الاتصال»** في `/admin/whatsapp` للتحقق من أن البريدج فعلاً واصل ويرجع `{"status":"ok"}`.
+- `src/lib/wa-bridge.server.ts` — محاذاة عقد الـ API + توليد QR Data URL.
+- `src/lib/wa.functions.ts` — تبسيط `readState`.
+- `package.json` — إضافة `qrcode` + `@types/qrcode`.
+
+### تحقق بعد التنفيذ
+
+- تسجيل دخول كمستخدم → الذهاب لـ `/dashboard/whatsapp/accounts` → الضغط على «ربط».
+- التأكد من ظهور صورة QR ومن أن استدعاء `connectWaSession` يرجع `status: "qr"` مع `qrDataUrl`.
+- بعد المسح: التحقق أن polling يحوّل الحالة إلى `connected` ويظهر رقم الهاتف.

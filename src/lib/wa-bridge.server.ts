@@ -77,23 +77,28 @@ export interface BridgeStatusResponse {
   status?: BridgeSessionStatus | string;
   state?: string;
   connected?: boolean;
+  exists?: boolean;
+  qr?: string | null;
   phoneNumber?: string;
   phone?: string;
+  name?: string;
 }
 
 export interface BridgeQrResponse {
-  qr?: string;
+  qr?: string | null;
   qrCode?: string;
   dataUrl?: string;
+  connected?: boolean;
   status?: string;
 }
 
 export const waBridge = {
   health: () => bridgeFetch<{ status: string; version?: string }>("/api/health"),
+  // Bot-Xtra bridge requires `sessionId` in the body (not `id`).
   createSession: (id: string) =>
-    bridgeFetch<{ id: string; status?: string }>("/api/sessions", {
+    bridgeFetch<{ id?: string; sessionId?: string; status?: string }>("/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ sessionId: id }),
     }),
   getStatus: (id: string) =>
     bridgeFetch<BridgeStatusResponse>(`/api/sessions/${encodeURIComponent(id)}/status`),
@@ -101,7 +106,7 @@ export const waBridge = {
     bridgeFetch<BridgeQrResponse>(`/api/sessions/${encodeURIComponent(id)}/qr`),
   pairingCode: (id: string, phoneNumber: string) =>
     bridgeFetch<{ code?: string; pairingCode?: string }>(
-      `/api/sessions/${encodeURIComponent(id)}/pairing-code`,
+      `/api/sessions/${encodeURIComponent(id)}/request-pairing-code`,
       { method: "POST", body: JSON.stringify({ phoneNumber }) },
     ),
 
@@ -119,22 +124,57 @@ export const waBridge = {
     ),
 };
 
-/** Normalize various bridge status strings to our canonical set. */
-export function normalizeStatus(raw: unknown): BridgeSessionStatus {
-  const s = String(raw ?? "").toLowerCase();
-  if (s === "connected" || s === "open" || s === "ready") return "connected";
-  if (s === "qr" || s === "scan" || s === "waiting_qr" || s === "qr_required") return "qr";
-  if (s === "connecting" || s === "starting" || s === "pairing") return "connecting";
-  if (s === "disconnected" || s === "closed" || s === "logged_out") return "disconnected";
-  return "unknown";
+/**
+ * Infer canonical status from the Bot-Xtra bridge status payload.
+ * Bot-Xtra returns { connected, qr, exists, phone, name } with no `status` field.
+ */
+export function inferStatus(res: BridgeStatusResponse | null): BridgeSessionStatus {
+  if (!res) return "unknown";
+  // Prefer explicit status/state if a future bridge version provides one.
+  const explicit = String(res.status ?? res.state ?? "").toLowerCase();
+  if (explicit) {
+    if (explicit === "connected" || explicit === "open" || explicit === "ready") return "connected";
+    if (["qr", "scan", "waiting_qr", "qr_required"].includes(explicit)) return "qr";
+    if (["connecting", "starting", "pairing"].includes(explicit)) return "connecting";
+    if (["disconnected", "closed", "logged_out"].includes(explicit)) return "disconnected";
+  }
+  if (res.connected === true) return "connected";
+  if (res.exists === false) return "disconnected";
+  if (res.qr) return "qr";
+  return "connecting";
 }
 
-/** Extract a QR data URL from various possible bridge response shapes. */
-export function pickQrDataUrl(res: BridgeQrResponse | null): string | null {
+// Legacy alias (kept for any external import)
+export const normalizeStatus = (raw: unknown): BridgeSessionStatus => {
+  const s = String(raw ?? "").toLowerCase();
+  if (s === "connected" || s === "open" || s === "ready") return "connected";
+  if (["qr", "scan", "waiting_qr", "qr_required"].includes(s)) return "qr";
+  if (["connecting", "starting", "pairing"].includes(s)) return "connecting";
+  if (["disconnected", "closed", "logged_out"].includes(s)) return "disconnected";
+  return "unknown";
+};
+
+/**
+ * Extract a QR Data URL from a bridge QR response.
+ * Bot-Xtra returns `qr` as the raw WhatsApp pairing string — we render it to
+ * a PNG Data URL using the `qrcode` library so the browser can display it.
+ */
+export async function pickQrDataUrl(res: BridgeQrResponse | null): Promise<string | null> {
   if (!res) return null;
   const raw = res.dataUrl || res.qrCode || res.qr;
   if (!raw) return null;
   if (raw.startsWith("data:image")) return raw;
-  // base64 payload without data URL prefix
+  // Heuristic: WhatsApp QR strings contain commas (e.g. "2@xxx,xxx,xxx,xxx==").
+  // base64 PNG payloads do not. Render raw pairing strings to PNG.
+  if (raw.includes(",") || raw.length < 200) {
+    try {
+      const QRCode = (await import("qrcode")).default;
+      return await QRCode.toDataURL(raw, { errorCorrectionLevel: "M", margin: 1, width: 320 });
+    } catch (err) {
+      console.warn("[wa] QR render failed:", err);
+      return null;
+    }
+  }
   return `data:image/png;base64,${raw}`;
 }
+
