@@ -138,6 +138,25 @@ function WhatsAppPage() {
     onError: (err: Error) => toast.error(t.errorTitle, { description: err.message }),
   });
 
+  const pingMut = useMutation({
+    mutationFn: () => pingFn(),
+    onSuccess: (h) => {
+      if (h.ok) {
+        toast.success(
+          lang === "ar" ? "خادم الربط يعمل ✅" : "Bridge online ✅",
+          { description: `${h.status ?? "ok"} • ${h.latencyMs}ms${h.version ? ` • v${h.version}` : ""}` },
+        );
+      } else {
+        toast.error(
+          lang === "ar" ? "تعذر الوصول إلى خادم الربط" : "Bridge unreachable",
+          { description: h.error ?? "Unknown error" },
+        );
+      }
+    },
+    onError: (err: Error) => toast.error(t.errorTitle, { description: err.message }),
+  });
+
+
   const isLoading = stateQuery.isLoading;
   const status = state?.status ?? "disconnected";
   const qrValue = state?.qrRaw ?? state?.qrDataUrl ?? null;
