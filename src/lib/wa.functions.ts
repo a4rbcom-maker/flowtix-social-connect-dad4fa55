@@ -25,36 +25,43 @@ export interface WaBridgeHealth {
 
 export const pingWaBridge = createServerFn({ method: "POST" })
   .middleware([requireAdmin])
-  .handler(async (): Promise<WaBridgeHealth> => {
-    const url = process.env.WA_BRIDGE_URL ?? null;
-    const hasApiKey = !!process.env.WA_BRIDGE_API_KEY;
-    const hasWebhookSecret = !!process.env.WA_BRIDGE_WEBHOOK_SECRET;
-    const started = Date.now();
-    try {
-      const res = await waBridge.health();
-      return {
-        ok: true,
-        status: res.status ?? "ok",
-        version: res.version ?? null,
-        latencyMs: Date.now() - started,
-        url,
-        hasApiKey,
-        hasWebhookSecret,
-        error: null,
-      };
-    } catch (err) {
-      return {
-        ok: false,
-        status: null,
-        version: null,
-        latencyMs: Date.now() - started,
-        url,
-        hasApiKey,
-        hasWebhookSecret,
-        error: err instanceof Error ? err.message : "Bridge unreachable",
-      };
-    }
-  });
+  .handler(async (): Promise<WaBridgeHealth> => doPing());
+
+/** User-facing health check (no admin role required). */
+export const pingWaBridgeUser = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async (): Promise<WaBridgeHealth> => doPing());
+
+async function doPing(): Promise<WaBridgeHealth> {
+  const url = process.env.WA_BRIDGE_URL ?? null;
+  const hasApiKey = !!process.env.WA_BRIDGE_API_KEY;
+  const hasWebhookSecret = !!process.env.WA_BRIDGE_WEBHOOK_SECRET;
+  const started = Date.now();
+  try {
+    const res = await waBridge.health();
+    return {
+      ok: true,
+      status: res.status ?? "ok",
+      version: res.version ?? null,
+      latencyMs: Date.now() - started,
+      url,
+      hasApiKey,
+      hasWebhookSecret,
+      error: null,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      status: null,
+      version: null,
+      latencyMs: Date.now() - started,
+      url,
+      hasApiKey,
+      hasWebhookSecret,
+      error: describeBridgeError(err),
+    };
+  }
+}
 
 
 export interface WaConnectionState {

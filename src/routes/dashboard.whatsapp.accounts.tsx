@@ -20,6 +20,7 @@ import {
   connectWaSession,
   getWaConnectionState,
   disconnectWaSession,
+  pingWaBridgeUser,
   type WaConnectionState,
 } from "@/lib/wa.functions";
 
@@ -34,6 +35,7 @@ function WhatsAppPage() {
   const connectFn = useServerFn(connectWaSession);
   const statusFn = useServerFn(getWaConnectionState);
   const disconnectFn = useServerFn(disconnectWaSession);
+  const pingFn = useServerFn(pingWaBridgeUser);
   const [polling, setPolling] = useState(false);
   const startedRef = useRef(false);
 
@@ -136,6 +138,25 @@ function WhatsAppPage() {
     onError: (err: Error) => toast.error(t.errorTitle, { description: err.message }),
   });
 
+  const pingMut = useMutation({
+    mutationFn: () => pingFn(),
+    onSuccess: (h) => {
+      if (h.ok) {
+        toast.success(
+          lang === "ar" ? "خادم الربط يعمل ✅" : "Bridge online ✅",
+          { description: `${h.status ?? "ok"} • ${h.latencyMs}ms${h.version ? ` • v${h.version}` : ""}` },
+        );
+      } else {
+        toast.error(
+          lang === "ar" ? "تعذر الوصول إلى خادم الربط" : "Bridge unreachable",
+          { description: h.error ?? "Unknown error" },
+        );
+      }
+    },
+    onError: (err: Error) => toast.error(t.errorTitle, { description: err.message }),
+  });
+
+
   const isLoading = stateQuery.isLoading;
   const status = state?.status ?? "disconnected";
   const qrValue = state?.qrRaw ?? state?.qrDataUrl ?? null;
@@ -193,6 +214,15 @@ function WhatsAppPage() {
           </div>
 
           <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => pingMut.mutate()}
+              disabled={pingMut.isPending}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-sm font-semibold text-foreground hover:bg-muted/60 disabled:opacity-60"
+            >
+              {pingMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {lang === "ar" ? "اختبار الاتصال" : "Test connection"}
+            </button>
             {status === "connected" ? (
               <button
                 type="button"
