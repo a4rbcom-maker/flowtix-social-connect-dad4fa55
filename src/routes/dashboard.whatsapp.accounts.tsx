@@ -115,6 +115,11 @@ function WhatsAppPage() {
     mutationFn: () => connectFn(),
     onSuccess: (data) => {
       qc.setQueryData(["wa-state"], data);
+      if (data.error) {
+        toast.error(t.errorTitle, { description: data.error });
+        setPolling(false);
+        return;
+      }
       if (data.status !== "connected") setPolling(true);
     },
     onError: (err: Error) => toast.error(t.errorTitle, { description: err.message }),
