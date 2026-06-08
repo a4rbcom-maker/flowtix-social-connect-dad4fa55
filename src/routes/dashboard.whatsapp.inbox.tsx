@@ -270,7 +270,7 @@ function InboxPage() {
   };
 
   const Sidebar = (
-    <aside className="flex h-full min-h-0 flex-col bg-card/60 backdrop-blur-sm">
+    <aside dir={isAr ? "rtl" : "ltr"} className="flex h-full min-h-0 flex-col bg-card/60 backdrop-blur-sm">
       {/* Header */}
       <div className="border-b border-border/60 p-4">
         <div className="flex items-center gap-3">
@@ -389,7 +389,7 @@ function InboxPage() {
   );
 
   const ChatPane = (
-    <section className="relative flex h-full min-h-0 flex-col bg-gradient-to-br from-primary/[0.04] via-background to-primary/[0.06]">
+    <section dir={isAr ? "rtl" : "ltr"} className="relative flex h-full min-h-0 flex-col bg-gradient-to-br from-primary/[0.04] via-background to-primary/[0.06]">
       {!activeJid ? (
         <EmptyChat
           isAr={isAr}
@@ -537,13 +537,18 @@ function InboxPage() {
             {activeJid ? ChatPane : Sidebar}
           </div>
         ) : (
-          <ResizablePanelGroup orientation="horizontal" className="h-full">
-            <ResizablePanel defaultSize={28} minSize={22} maxSize={42}>
-              {Sidebar}
+          <ResizablePanelGroup
+            orientation="horizontal"
+            className="h-full"
+            id="wa-inbox-layout"
+            dir="ltr"
+          >
+            <ResizablePanel defaultSize={72} minSize={50} id="wa-chat">
+              {ChatPane}
             </ResizablePanel>
             <ResizableHandle withHandle className="bg-border/40" />
-            <ResizablePanel defaultSize={72} minSize={50}>
-              {ChatPane}
+            <ResizablePanel defaultSize={28} minSize={22} maxSize={42} id="wa-list">
+              {Sidebar}
             </ResizablePanel>
           </ResizablePanelGroup>
         )}
