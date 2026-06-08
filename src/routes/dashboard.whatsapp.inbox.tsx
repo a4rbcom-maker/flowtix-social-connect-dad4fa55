@@ -389,7 +389,7 @@ function InboxPage() {
   );
 
   const ChatPane = (
-    <section className="relative flex h-full min-h-0 flex-col bg-gradient-to-br from-primary/[0.04] via-background to-primary/[0.06]">
+    <section dir={isAr ? "rtl" : "ltr"} className="relative flex h-full min-h-0 flex-col bg-gradient-to-br from-primary/[0.04] via-background to-primary/[0.06]">
       {!activeJid ? (
         <EmptyChat
           isAr={isAr}
