@@ -7,7 +7,6 @@ import { requireAdmin } from "./admin-middleware";
 import {
   waBridge,
   inferStatus,
-  pickQrDataUrl,
   BridgeError,
   type BridgeSessionStatus,
 } from "./wa-bridge.server";
@@ -62,17 +61,30 @@ export interface WaConnectionState {
   status: BridgeSessionStatus;
   sessionId: string;
   qrDataUrl: string | null;
+  qrRaw: string | null;
   phoneNumber: string | null;
   lastSeenAt: string | null;
+  error: string | null;
 }
 
 function describeBridgeError(err: unknown): string {
   if (err instanceof BridgeError) {
-    if (err.status === 404) return "Session not found on bridge";
-    if (err.status === 401 || err.status === 403) return "Bridge auth failed";
+    if (err.status === 404) return "الجلسة غير موجودة على خادم الربط";
+    if (err.status === 401 || err.status === 403)
+      return "مفتاح خادم الربط غير صحيح (WA_BRIDGE_API_KEY)";
+    if (err.status === 502 || err.status === 504)
+      return "تعذر الوصول إلى خادم الربط (Bot-Xtra Bridge). تحقق من WA_BRIDGE_URL أو أن الخادم يعمل.";
     return err.message;
   }
-  return err instanceof Error ? err.message : "Bridge error";
+  if (err instanceof Error) {
+    const m = err.message || "";
+    if (m.includes("ENOTFOUND") || m.includes("EAI_AGAIN"))
+      return "عنوان خادم الربط غير صالح أو غير قابل للوصول (DNS). راجع قيمة WA_BRIDGE_URL.";
+    if (m.includes("ECONNREFUSED")) return "خادم الربط رفض الاتصال. تأكد أنه يعمل.";
+    if (m.includes("timed out")) return "انتهت مهلة الاتصال بخادم الربط.";
+    return m;
+  }
+  return "خطأ غير معروف عند الاتصال بخادم الربط";
 }
 
 /**
@@ -108,7 +120,8 @@ export const connectWaSession = createServerFn({ method: "POST" })
         // already exists — fine
       } else {
         const now = new Date().toISOString();
-        console.warn("[wa] createSession bridge error:", describeBridgeError(err));
+        const errMsg = describeBridgeError(err);
+        console.warn("[wa] createSession bridge error:", errMsg);
         await supabase
           .from("wa_sessions")
           .update({ status: "disconnected", qr_data_url: null, last_seen_at: now })
@@ -117,8 +130,10 @@ export const connectWaSession = createServerFn({ method: "POST" })
           status: "disconnected",
           sessionId,
           qrDataUrl: null,
+          qrRaw: null,
           phoneNumber: existing?.phone_number ?? null,
           lastSeenAt: now,
+          error: errMsg,
         };
       }
     }
@@ -210,41 +225,41 @@ async function readState(
   sessionId: string,
 ): Promise<WaConnectionState> {
   let status: BridgeSessionStatus = "unknown";
-  let qrDataUrl: string | null = null;
+  let qrRaw: string | null = null;
   let phoneNumber: string | null = null;
+  let error: string | null = null;
 
   try {
     const s = await waBridge.getStatus(sessionId);
     status = inferStatus(s);
     phoneNumber = s.phoneNumber ?? s.phone ?? null;
-    // Bot-Xtra status endpoint already includes the raw QR string — render it directly.
     if ((status === "qr" || status === "connecting") && s.qr) {
-      qrDataUrl = await pickQrDataUrl({ qr: s.qr });
-      if (qrDataUrl && status === "connecting") status = "qr";
+      qrRaw = s.qr;
+      if (status === "connecting") status = "qr";
     }
   } catch (err) {
-    console.warn("[wa] readState bridge error:", describeBridgeError(err));
+    error = describeBridgeError(err);
+    console.warn("[wa] readState bridge error:", error);
     status = "disconnected";
   }
 
   // Fallback: poll dedicated /qr endpoint if status didn't include one.
-  if (!qrDataUrl && (status === "qr" || status === "connecting" || status === "unknown")) {
+  if (!qrRaw && (status === "qr" || status === "connecting" || status === "unknown")) {
     try {
       const q = await waBridge.getQr(sessionId);
-      qrDataUrl = await pickQrDataUrl(q);
-      if (qrDataUrl && status !== "qr") status = "qr";
+      qrRaw = q?.qr ?? q?.qrCode ?? q?.dataUrl ?? null;
+      if (qrRaw && status !== "qr") status = "qr";
     } catch {
       // no QR available yet
     }
   }
-
 
   const now = new Date().toISOString();
   await supabase
     .from("wa_sessions")
     .update({
       status,
-      qr_data_url: status === "qr" ? qrDataUrl : null,
+      qr_data_url: null,
       phone_number: phoneNumber,
       last_seen_at: now,
     })
@@ -253,8 +268,10 @@ async function readState(
   return {
     status,
     sessionId,
-    qrDataUrl: status === "qr" ? qrDataUrl : null,
+    qrDataUrl: null,
+    qrRaw: status === "qr" ? qrRaw : null,
     phoneNumber,
     lastSeenAt: now,
+    error,
   };
 }

@@ -13,6 +13,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { QRCodeSVG } from "qrcode.react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -115,6 +116,11 @@ function WhatsAppPage() {
     mutationFn: () => connectFn(),
     onSuccess: (data) => {
       qc.setQueryData(["wa-state"], data);
+      if (data.error) {
+        toast.error(t.errorTitle, { description: data.error });
+        setPolling(false);
+        return;
+      }
       if (data.status !== "connected") setPolling(true);
     },
     onError: (err: Error) => toast.error(t.errorTitle, { description: err.message }),
@@ -132,7 +138,14 @@ function WhatsAppPage() {
 
   const isLoading = stateQuery.isLoading;
   const status = state?.status ?? "disconnected";
-  const showQr = status === "qr" && state?.qrDataUrl;
+  const qrValue = state?.qrRaw ?? state?.qrDataUrl ?? null;
+  const showQr = status === "qr" && !!qrValue;
+  const errorMsg = state?.error ?? null;
+
+  // Stop polling if bridge is unreachable — no point hammering it.
+  useEffect(() => {
+    if (errorMsg && polling) setPolling(false);
+  }, [errorMsg, polling]);
 
   return (
     <DashboardLayout title={t.title}>
@@ -152,13 +165,23 @@ function WhatsAppPage() {
             <StatusBadge status={status} lang={lang} t={t} />
           </div>
 
+          {errorMsg && (
+            <div className="mt-5 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div className="leading-relaxed">
+                <div className="font-semibold">{t.errorTitle}</div>
+                <div className="mt-0.5 text-xs opacity-90">{errorMsg}</div>
+              </div>
+            </div>
+          )}
+
           <div className="mt-6 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border/60 bg-muted/30 p-6 text-center">
             {isLoading ? (
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             ) : status === "connected" ? (
               <ConnectedView state={state!} t={t} />
             ) : showQr ? (
-              <QrView qr={state!.qrDataUrl!} polling={polling} t={t} />
+              <QrView qr={qrValue!} polling={polling} t={t} />
             ) : status === "connecting" ? (
               <div className="flex flex-col items-center gap-3">
                 <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -278,10 +301,15 @@ function EmptyView({ t }: { t: { connect: string; subtitle: string } }) {
 }
 
 function QrView({ qr, polling, t }: { qr: string; polling: boolean; t: { scan: string; scanWaiting: string } }) {
+  const isDataUrl = qr.startsWith("data:image");
   return (
     <div className="flex flex-col items-center gap-3">
       <div className="rounded-2xl border-4 border-primary/20 bg-white p-3 shadow-lg">
-        <img src={qr} alt="WhatsApp QR Code" className="h-56 w-56" />
+        {isDataUrl ? (
+          <img src={qr} alt="WhatsApp QR Code" className="h-56 w-56" />
+        ) : (
+          <QRCodeSVG value={qr} size={224} level="M" includeMargin={false} />
+        )}
       </div>
       <p className="max-w-md text-xs leading-relaxed text-muted-foreground">{t.scan}</p>
       {polling && (
