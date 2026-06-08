@@ -531,7 +531,7 @@ function InboxPage() {
 
   return (
     <DashboardLayout title={t.title}>
-      <div className="mx-auto h-[calc(100dvh-7rem)] w-full max-w-[1500px] overflow-hidden rounded-3xl border border-border/60 bg-card shadow-xl shadow-primary/5">
+      <div className="-m-4 md:-m-6 h-[calc(100dvh-4rem)] overflow-hidden border-t border-border/60 bg-card">
         {isMobile ? (
           <div className="h-full">
             {activeJid ? ChatPane : Sidebar}
@@ -539,15 +539,15 @@ function InboxPage() {
         ) : (
           <ResizablePanelGroup
             orientation="horizontal"
-            className="h-full"
+            className="h-full w-full"
             id="wa-inbox-layout"
             dir="ltr"
           >
-            <ResizablePanel defaultSize={72} minSize={50} id="wa-chat">
+            <ResizablePanel defaultSize="72%" minSize="40%" id="wa-chat" order={1}>
               {ChatPane}
             </ResizablePanel>
             <ResizableHandle withHandle className="bg-border/40" />
-            <ResizablePanel defaultSize={28} minSize={22} maxSize={42} id="wa-list">
+            <ResizablePanel defaultSize="28%" minSize="20%" maxSize="45%" id="wa-list" order={2}>
               {Sidebar}
             </ResizablePanel>
           </ResizablePanelGroup>
