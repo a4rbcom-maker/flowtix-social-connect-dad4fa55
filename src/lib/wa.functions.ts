@@ -62,17 +62,30 @@ export interface WaConnectionState {
   status: BridgeSessionStatus;
   sessionId: string;
   qrDataUrl: string | null;
+  qrRaw: string | null;
   phoneNumber: string | null;
   lastSeenAt: string | null;
+  error: string | null;
 }
 
 function describeBridgeError(err: unknown): string {
   if (err instanceof BridgeError) {
-    if (err.status === 404) return "Session not found on bridge";
-    if (err.status === 401 || err.status === 403) return "Bridge auth failed";
+    if (err.status === 404) return "الجلسة غير موجودة على خادم الربط";
+    if (err.status === 401 || err.status === 403)
+      return "مفتاح خادم الربط غير صحيح (WA_BRIDGE_API_KEY)";
+    if (err.status === 502 || err.status === 504)
+      return "تعذر الوصول إلى خادم الربط (Bot-Xtra Bridge). تحقق من WA_BRIDGE_URL أو أن الخادم يعمل.";
     return err.message;
   }
-  return err instanceof Error ? err.message : "Bridge error";
+  if (err instanceof Error) {
+    const m = err.message || "";
+    if (m.includes("ENOTFOUND") || m.includes("EAI_AGAIN"))
+      return "عنوان خادم الربط غير صالح أو غير قابل للوصول (DNS). راجع قيمة WA_BRIDGE_URL.";
+    if (m.includes("ECONNREFUSED")) return "خادم الربط رفض الاتصال. تأكد أنه يعمل.";
+    if (m.includes("timed out")) return "انتهت مهلة الاتصال بخادم الربط.";
+    return m;
+  }
+  return "خطأ غير معروف عند الاتصال بخادم الربط";
 }
 
 /**
