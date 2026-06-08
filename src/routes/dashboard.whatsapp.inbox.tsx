@@ -543,11 +543,11 @@ function InboxPage() {
             id="wa-inbox-layout"
             dir="ltr"
           >
-            <ResizablePanel defaultSize="72%" minSize="40%" id="wa-chat" order={1}>
+            <ResizablePanel defaultSize="72%" minSize="40%" id="wa-chat">
               {ChatPane}
             </ResizablePanel>
             <ResizableHandle withHandle className="bg-border/40" />
-            <ResizablePanel defaultSize="28%" minSize="20%" maxSize="45%" id="wa-list" order={2}>
+            <ResizablePanel defaultSize="28%" minSize="20%" maxSize="45%" id="wa-list">
               {Sidebar}
             </ResizablePanel>
           </ResizablePanelGroup>
