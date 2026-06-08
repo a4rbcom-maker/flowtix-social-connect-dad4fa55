@@ -299,7 +299,7 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
           <button
             onClick={async () => {
               await signOut();
-              navigate({ to: "/login" });
+              navigate({ to: "/admin" });
             }}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10"
             title={collapsed ? (lang === "ar" ? "خروج" : "Sign out") : undefined}
