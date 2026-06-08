@@ -270,7 +270,7 @@ function InboxPage() {
   };
 
   const Sidebar = (
-    <aside className="flex h-full min-h-0 flex-col bg-card/60 backdrop-blur-sm">
+    <aside dir={isAr ? "rtl" : "ltr"} className="flex h-full min-h-0 flex-col bg-card/60 backdrop-blur-sm">
       {/* Header */}
       <div className="border-b border-border/60 p-4">
         <div className="flex items-center gap-3">
