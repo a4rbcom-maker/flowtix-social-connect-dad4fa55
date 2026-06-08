@@ -214,6 +214,15 @@ function WhatsAppPage() {
           </div>
 
           <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => pingMut.mutate()}
+              disabled={pingMut.isPending}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-sm font-semibold text-foreground hover:bg-muted/60 disabled:opacity-60"
+            >
+              {pingMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {lang === "ar" ? "اختبار الاتصال" : "Test connection"}
+            </button>
             {status === "connected" ? (
               <button
                 type="button"
