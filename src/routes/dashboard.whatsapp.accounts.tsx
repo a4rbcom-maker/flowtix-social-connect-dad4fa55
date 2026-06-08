@@ -35,6 +35,7 @@ function WhatsAppPage() {
   const connectFn = useServerFn(connectWaSession);
   const statusFn = useServerFn(getWaConnectionState);
   const disconnectFn = useServerFn(disconnectWaSession);
+  const pingFn = useServerFn(pingWaBridgeUser);
   const [polling, setPolling] = useState(false);
   const startedRef = useRef(false);
 
