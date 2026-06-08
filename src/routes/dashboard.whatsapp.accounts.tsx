@@ -20,6 +20,7 @@ import {
   connectWaSession,
   getWaConnectionState,
   disconnectWaSession,
+  pingWaBridgeUser,
   type WaConnectionState,
 } from "@/lib/wa.functions";
 
