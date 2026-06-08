@@ -106,7 +106,19 @@ export const connectWaSession = createServerFn({ method: "POST" })
       if (err instanceof BridgeError && (err.status === 409 || err.status === 400)) {
         // already exists — fine
       } else {
-        throw new Error(describeBridgeError(err));
+        const now = new Date().toISOString();
+        console.warn("[wa] createSession bridge error:", describeBridgeError(err));
+        await supabase
+          .from("wa_sessions")
+          .update({ status: "disconnected", qr_data_url: null, last_seen_at: now })
+          .eq("user_id", userId);
+        return {
+          status: "disconnected",
+          sessionId,
+          qrDataUrl: null,
+          phoneNumber: existing?.phone_number ?? null,
+          lastSeenAt: now,
+        };
       }
     }
 
