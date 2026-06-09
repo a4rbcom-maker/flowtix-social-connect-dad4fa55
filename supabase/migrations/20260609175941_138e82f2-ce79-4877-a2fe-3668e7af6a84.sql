@@ -1,0 +1,1 @@
+ALTER TABLE public.bulk_jobs ADD COLUMN IF NOT EXISTS batch_size integer NOT NULL DEFAULT 10 CHECK (batch_size BETWEEN 1 AND 100);

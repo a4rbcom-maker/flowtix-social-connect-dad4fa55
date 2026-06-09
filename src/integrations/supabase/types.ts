@@ -266,6 +266,7 @@ export type Database = {
       }
       bulk_jobs: {
         Row: {
+          batch_size: number
           channel: Database["public"]["Enums"]["send_channel"]
           completed_at: string | null
           created_at: string
@@ -287,6 +288,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          batch_size?: number
           channel?: Database["public"]["Enums"]["send_channel"]
           completed_at?: string | null
           created_at?: string
@@ -308,6 +310,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          batch_size?: number
           channel?: Database["public"]["Enums"]["send_channel"]
           completed_at?: string | null
           created_at?: string
