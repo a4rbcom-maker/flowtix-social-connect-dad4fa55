@@ -241,6 +241,35 @@ function JobsHistoryPage() {
             <div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
           ) : results.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">{t.none}</p>
+          ) : isCommenters ? (
+            <div className="max-h-[60vh] overflow-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-muted/40 text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "الاسم" : "Name"}</th>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "موبايل" : "Phone"}</th>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "المدينة" : "City"}</th>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "المحافظة" : "Governorate"}</th>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "البروفايل" : "Profile"}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {enrichedRows.map((e) => (
+                    <tr key={e.row.id} className={e.gov ? "bg-primary/[0.04]" : ""}>
+                      <td className="px-3 py-2 font-medium">{e.name}</td>
+                      <td className="px-3 py-2 font-mono">{e.phone ?? "—"}</td>
+                      <td className="px-3 py-2">{e.city ?? "—"}</td>
+                      <td className="px-3 py-2">
+                        {e.gov ? <Badge variant="outline" className="border-primary/30 text-primary">{e.gov}</Badge> : "—"}
+                      </td>
+                      <td className="px-3 py-2">
+                        {e.profile ? <a href={e.profile} target="_blank" rel="noreferrer" className="text-primary hover:underline">↗</a> : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <div className="max-h-[60vh] overflow-auto">
               <table className="w-full text-xs">
