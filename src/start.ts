@@ -43,7 +43,13 @@ function rewriteStaleServerFnUrl(url: string) {
   }
 }
 
-const serverFnFetch = (url: string, requestInit: RequestInit) => fetch(rewriteStaleServerFnUrl(url), requestInit);
+const serverFnFetch = (input: string | Request | URL, init?: RequestInit) => {
+  if (typeof input === "string") return fetch(rewriteStaleServerFnUrl(input), init);
+  if (input instanceof URL) return fetch(rewriteStaleServerFnUrl(input.href), init);
+
+  const nextUrl = rewriteStaleServerFnUrl(input.url);
+  return fetch(nextUrl === input.url ? input : new Request(nextUrl, input), init);
+};
 
 export const startInstance = createStart(() => ({
   requestMiddleware: [csrfMiddleware],
