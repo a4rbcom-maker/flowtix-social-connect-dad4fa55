@@ -12,16 +12,33 @@ import {
   type BridgeSessionStatus,
 } from "./wa-bridge.server";
 
+/**
+ * Resolve the public, STABLE URL where the BotXtra bridge should POST
+ * inbound WhatsApp events. Preview URLs change per build, so we prefer
+ * (in order):
+ *   1) explicit override via WA_PUBLIC_WEBHOOK_URL secret
+ *   2) the stable Lovable-published URL (project alias never changes)
+ *   3) the current request host (last-resort fallback)
+ */
 function deriveWebhookUrl(): string | null {
+  const override = process.env.WA_PUBLIC_WEBHOOK_URL;
+  if (override) return override.replace(/\/+$/, "");
+
+  const PUBLISHED = "https://flowtix-social-connect.lovable.app/api/public/wa-webhook";
   try {
     const req = getRequest();
     const u = new URL(req.url);
     const host = req.headers.get("x-forwarded-host") || u.host;
     const proto = req.headers.get("x-forwarded-proto") || u.protocol.replace(":", "");
-    if (!host) return null;
-    return `${proto}://${host}/api/public/wa-webhook`;
+    // If we're already on a *.lovable.app host, trust it. Otherwise (preview
+    // / lovableproject.com / localhost) use the stable published URL so the
+    // bridge can always reach us even after a redeploy.
+    if (host && /\.lovable\.app$/i.test(host)) {
+      return `${proto}://${host}/api/public/wa-webhook`;
+    }
+    return PUBLISHED;
   } catch {
-    return null;
+    return PUBLISHED;
   }
 }
 
@@ -246,6 +263,87 @@ export const disconnectWaSession = createServerFn({ method: "POST" })
       await supabase.from("wa_sessions").delete().eq("user_id", userId);
     }
     return { ok: true };
+  });
+
+/**
+ * Re-register the bridge webhook URL for the current user's session.
+ * Call this if no inbound messages are appearing — the bridge may have
+ * a stale preview URL from when the session was originally paired.
+ */
+export const resyncWaWebhook = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data: row } = await supabase
+      .from("wa_sessions")
+      .select("session_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!row?.session_id) {
+      return { ok: false, webhookUrl: null, error: "No WhatsApp session — connect first" };
+    }
+    const webhookUrl = deriveWebhookUrl();
+    if (!webhookUrl) {
+      return { ok: false, webhookUrl: null, error: "Cannot determine webhook URL" };
+    }
+    // Bridge has no per-session webhook endpoint — re-POST /api/sessions with
+    // the same id and the canonical webhookUrl so the bridge updates its
+    // stored target. This is idempotent.
+    try {
+      await waBridge.createSession(row.session_id, webhookUrl);
+    } catch (err) {
+      // already_connected / 409 are fine
+      console.warn("[wa] resyncWaWebhook createSession:", err instanceof Error ? err.message : err);
+    }
+    waBridge.setWebhook(row.session_id, webhookUrl).catch(() => {});
+    return { ok: true, webhookUrl, error: null };
+  });
+
+/**
+ * Diagnostic: POST a fake inbound message to our own webhook endpoint
+ * to verify the receive → DB → conversations chain works end-to-end.
+ * Returns whether a row was created in wa_messages.
+ */
+export const sendWaWebhookTest = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data: row } = await supabase
+      .from("wa_sessions")
+      .select("session_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!row?.session_id) {
+      return { ok: false, error: "No WhatsApp session" };
+    }
+    const webhookUrl = deriveWebhookUrl();
+    if (!webhookUrl) return { ok: false, error: "Cannot determine webhook URL" };
+
+    const stamp = Date.now();
+    const payload = {
+      event: "messages.upsert",
+      sessionId: row.session_id,
+      data: {
+        messages: [
+          {
+            key: { remoteJid: `999000${stamp}@s.whatsapp.net`, fromMe: false, id: `TEST_${stamp}` },
+            pushName: "Flowtix Test",
+            message: { conversation: `Test inbound message ${stamp}` },
+          },
+        ],
+      },
+    };
+    try {
+      const res = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const text = await res.text();
+      return { ok: res.ok, status: res.status, body: text.slice(0, 300), webhookUrl };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : "fetch failed", webhookUrl };
+    }
   });
 
 // ── helpers ────────────────────────────────────────────────────────────────

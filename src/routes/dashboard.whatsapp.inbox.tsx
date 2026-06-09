@@ -52,6 +52,7 @@ import {
   type ConversationRow,
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
+import { resyncWaWebhook, sendWaWebhookTest } from "@/lib/wa.functions";
 
 export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
   ssr: false,
@@ -210,6 +211,8 @@ function InboxPage() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "wa_messages", filter: `user_id=eq.${user.id}` },
         (payload) => {
+          // Always refresh the conversation list so the new chat appears
+          qc.invalidateQueries({ queryKey: ["wa-conversations"] });
           const row = payload.new as { remote_jid: string };
           if (activeJid && row.remote_jid === activeJid) {
             qc.invalidateQueries({ queryKey: ["wa-messages", activeJid] });
@@ -261,6 +264,40 @@ function InboxPage() {
   const aiToggleMut = useMutation({
     mutationFn: (vars: { id: string; enabled: boolean }) => toggleAiFn({ data: vars }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wa-conversations"] }),
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const resyncFn = useServerFn(resyncWaWebhook);
+  const testFn = useServerFn(sendWaWebhookTest);
+  const resyncMut = useMutation({
+    mutationFn: () => resyncFn(),
+    onSuccess: (r) => {
+      if (r.ok) {
+        toast.success(isAr ? "تم إعادة الربط بنجاح" : "Webhook resynced", {
+          description: r.webhookUrl ?? undefined,
+        });
+      } else {
+        toast.error(isAr ? "تعذر إعادة الربط" : "Resync failed", {
+          description: r.error ?? undefined,
+        });
+      }
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+  const testMut = useMutation({
+    mutationFn: () => testFn(),
+    onSuccess: (r) => {
+      if (r.ok) {
+        toast.success(isAr ? "تم إرسال رسالة اختبار" : "Test message sent", {
+          description: isAr ? "ستظهر خلال ثوانٍ إن كانت السلسلة سليمة" : "Should appear in seconds if the chain works",
+        });
+        setTimeout(() => qc.invalidateQueries({ queryKey: ["wa-conversations"] }), 1500);
+      } else {
+        toast.error(isAr ? "فشل الاختبار" : "Test failed", {
+          description: r.error ?? `HTTP ${(r as any).status ?? "?"}`,
+        });
+      }
+    },
     onError: (err: Error) => toast.error(err.message),
   });
 
@@ -396,12 +433,34 @@ function InboxPage() {
             </div>
             <p className="px-6 text-sm font-medium">{t.empty}</p>
             <p className="px-6 text-xs text-muted-foreground">{t.emptyHint}</p>
-            <Link
-              to="/dashboard/whatsapp/accounts"
-              className="mt-1 inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90"
-            >
-              {t.openAccounts}
-            </Link>
+            <div className="mt-1 flex flex-wrap items-center justify-center gap-2 px-4">
+              <Link
+                to="/dashboard/whatsapp/accounts"
+                className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90"
+              >
+                {t.openAccounts}
+              </Link>
+              <button
+                type="button"
+                onClick={() => resyncMut.mutate()}
+                disabled={resyncMut.isPending}
+                className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-muted/60 disabled:opacity-60"
+                title={isAr ? "إعادة ربط الـ webhook بالخادم" : "Resync webhook with bridge"}
+              >
+                {resyncMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                {isAr ? "إعادة ربط الاستقبال" : "Resync receiver"}
+              </button>
+              <button
+                type="button"
+                onClick={() => testMut.mutate()}
+                disabled={testMut.isPending}
+                className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-muted/60 disabled:opacity-60"
+                title={isAr ? "اختبار وصول رسالة تجريبية" : "Send a test inbound message"}
+              >
+                {testMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                {isAr ? "اختبار استقبال" : "Test inbound"}
+              </button>
+            </div>
           </div>
         ) : (
           <ul className="divide-y divide-border/30">
