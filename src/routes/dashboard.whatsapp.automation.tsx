@@ -66,12 +66,12 @@ function AutomationPage() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            {isAr ? "أتمتة الواتساب" : "WhatsApp Automation"}
+            {isAr ? "البوت (ردود الكلمات)" : "Bot (Keyword Replies)"}
           </h1>
           <p className="text-sm text-muted-foreground">
             {isAr
-              ? "ردود تلقائية للكلمات المفتاحية وردود جاهزة لصندوق الدردشة"
-              : "Keyword auto-replies and quick replies for the chat composer"}
+              ? "البوت يرد تلقائياً على كلمات مفتاحية محددة. للرد الذكي عبر AI استخدم وكيل الذكاء الاصطناعي."
+              : "The bot auto-replies to specific keywords. For AI-powered replies use the AI Agent."}
           </p>
         </div>
       </div>
