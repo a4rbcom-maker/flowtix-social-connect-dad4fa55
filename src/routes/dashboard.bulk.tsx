@@ -355,32 +355,61 @@ function BulkSendPage() {
   return (
     <DashboardLayout title={t.title}>
       <div dir={dir} className="mx-auto max-w-6xl space-y-6">
-        {/* Header */}
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">{t.title}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t.subtitle}</p>
-        </div>
+        {/* Premium hero header */}
+        <section className="relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-l from-primary via-primary/70 to-primary/20" />
+          <div className="absolute -end-12 -top-12 h-44 w-44 rounded-full bg-primary/15 blur-3xl" />
+          <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-4">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-primary-foreground shadow-lg shadow-primary/25">
+                <Megaphone className="h-6 w-6" />
+              </span>
+              <div className="max-w-3xl">
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+                  {lang === "ar" ? "حملات الإرسال" : "Bulk Campaigns"}
+                </p>
+                <h1 className="text-2xl font-bold text-foreground sm:text-3xl">{t.title}</h1>
+                <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">{t.subtitle}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 self-start">
+              <div className="rounded-xl border border-border bg-background/60 px-3 py-2 text-center">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t.contactsCount}</p>
+                <p className="text-lg font-bold text-foreground">{contacts.length}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-background/60 px-3 py-2 text-center">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{lang === "ar" ? "حملات" : "Campaigns"}</p>
+                <p className="text-lg font-bold text-foreground">{jobs.length}</p>
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* Background notice */}
-        <div className="flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm">
+        <div className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3 text-sm">
           <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <p className="text-foreground">{t.bgInfo}</p>
         </div>
 
-        {/* Tabs */}
-        <div className="flex flex-wrap gap-2 border-b border-border">
-          {(["compose", "contacts", "jobs"] as const).map((k) => (
-            <button
-              key={k}
-              onClick={() => setTab(k)}
-              className={`relative px-4 py-2 text-sm font-medium transition-colors ${
-                tab === k ? "text-primary" : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {t.tabs[k]}
-              {tab === k && <span className="absolute -bottom-px left-0 right-0 h-0.5 bg-primary" />}
-            </button>
-          ))}
+        {/* Tabs — pill style */}
+        <div className="inline-flex w-full max-w-xl rounded-2xl border border-border bg-muted/60 p-1.5 shadow-sm">
+          {(["compose", "contacts", "jobs"] as const).map((k) => {
+            const Icon = k === "compose" ? Send : k === "contacts" ? Users : ListChecks;
+            return (
+              <button
+                key={k}
+                onClick={() => setTab(k)}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${
+                  tab === k
+                    ? "bg-primary text-primary-foreground shadow-md"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {t.tabs[k]}
+              </button>
+            );
+          })}
         </div>
 
         {/* Compose tab */}
