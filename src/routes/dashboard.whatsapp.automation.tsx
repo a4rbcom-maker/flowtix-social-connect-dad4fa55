@@ -158,41 +158,48 @@ function KeywordRulesPanel({ isAr }: { isAr: boolean }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <span className="inline-block h-2 w-2 rounded-full bg-primary" />
-          {isAr ? "قواعد الردود التلقائية" : "Auto-reply rules"}
-          <span className="text-xs font-normal text-muted-foreground">
-            ({(data ?? []).length})
-          </span>
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-bold text-foreground">
+              <span className="inline-block h-2.5 w-2.5 rounded-full bg-primary shadow-sm shadow-primary/40" />
+              {isAr ? "قواعد الردود التلقائية" : "Auto-reply rules"}
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                {(data ?? []).length}
+              </span>
+            </div>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              {isAr ? "رتّب الكلمات والردود التي يستخدمها البوت بدون خلطها مع وكيل الذكاء الاصطناعي." : "Manage keyword replies separately from the AI Agent."}
+            </p>
+          </div>
+          <Button
+            onClick={() => {
+              setEditing(null);
+              setOpen(true);
+            }}
+            className="gap-2 self-start shadow-sm"
+          >
+            <Plus className="h-4 w-4" />
+            {isAr ? "قاعدة جديدة" : "New rule"}
+          </Button>
         </div>
-        <Button
-          onClick={() => {
-            setEditing(null);
-            setOpen(true);
-          }}
-          className="gap-2 shadow-sm"
-        >
-          <Plus className="h-4 w-4" />
-          {isAr ? "قاعدة جديدة" : "New rule"}
-        </Button>
       </div>
 
-      <div className="rounded-2xl border border-border bg-card shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         {isLoading ? (
           <div className="flex items-center justify-center py-16 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
         ) : (data ?? []).length === 0 ? (
-          <div className="px-6 py-16 text-center">
-            <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-primary/10">
+          <div className="bg-muted/20 px-6 py-16 text-center">
+            <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl border border-primary/15 bg-primary/10">
               <Zap className="h-7 w-7 text-primary" />
             </div>
-            <p className="text-sm font-semibold text-foreground">
+            <p className="text-base font-bold text-foreground">
               {isAr ? "ما فيش قواعد لسة" : "No rules yet"}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
               {isAr
                 ? "ابدأ بإضافة أول كلمة مفتاحية ليرد عليها البوت تلقائياً."
                 : "Add your first keyword for the bot to auto-reply to."}
@@ -212,36 +219,36 @@ function KeywordRulesPanel({ isAr }: { isAr: boolean }) {
         ) : (
           <ul className="divide-y divide-border">
             {(data ?? []).map((rule) => (
-              <li key={rule.id} className="flex flex-wrap items-start gap-3 p-4">
+              <li key={rule.id} className="flex flex-wrap items-start gap-4 p-4 transition-colors hover:bg-muted/30 sm:p-5">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate text-sm font-semibold">{rule.label}</p>
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-base font-bold text-foreground">{rule.label}</p>
+                    <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary">
                       {rule.match_mode === "exact"
                         ? isAr ? "تطابق تام" : "Exact"
                         : isAr ? "احتواء" : "Contains"}
                     </span>
                     {rule.hit_count > 0 && (
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="rounded-full bg-muted px-2 py-1 text-[11px] font-medium text-muted-foreground">
                         {isAr ? `استُخدمت ${rule.hit_count} مرة` : `${rule.hit_count} hits`}
                       </span>
                     )}
                   </div>
-                  <div className="mt-1 flex flex-wrap gap-1">
+                  <div className="mt-3 flex flex-wrap gap-1.5">
                     {rule.keywords.map((k, i) => (
                       <span
                         key={i}
-                        className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-foreground"
+                        className="rounded-lg border border-border bg-muted/60 px-2 py-1 text-xs font-medium text-foreground"
                       >
                         {k}
                       </span>
                     ))}
                   </div>
-                  <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">
+                  <p className="mt-3 line-clamp-2 rounded-xl bg-muted/40 px-3 py-2 text-sm leading-6 text-muted-foreground">
                     ↳ {rule.reply_text}
                   </p>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 rounded-xl border border-border bg-background p-1 shadow-sm">
                   <Switch
                     checked={rule.enabled}
                     onCheckedChange={(checked) =>
