@@ -485,7 +485,7 @@ function InboxPage() {
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              renderMessagesWithDays(msgsQuery.data ?? [], isAr, t)
+              renderMessagesWithDays(messages, isAr, t)
             )}
           </div>
 
