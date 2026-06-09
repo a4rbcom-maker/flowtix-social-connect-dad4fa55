@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
 import { listJobs, getJob, cancelJob } from "@/lib/fb-bot.functions";
+import { loadEgyptData, extractEgyptPhone, detectLocation } from "@/lib/egypt-enrich";
 
 export const Route = createFileRoute("/dashboard/facebook/history")({
   ssr: false,
