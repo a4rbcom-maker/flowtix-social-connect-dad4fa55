@@ -20,6 +20,7 @@ import {
   Bot,
   Sparkles,
   Inbox,
+  Search,
   Smartphone,
   Shield,
   UserPlus,
