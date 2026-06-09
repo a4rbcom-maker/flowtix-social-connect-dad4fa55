@@ -53,7 +53,8 @@ function BulkSendPage() {
   // Compose form
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
-  const [intervalSec, setIntervalSec] = useState(5);
+  const [intervalSec, setIntervalSec] = useState(30);
+  const [batchSize, setBatchSize] = useState(10);
   const [scheduleNow, setScheduleNow] = useState(true);
   const [scheduleAt, setScheduleAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -82,8 +83,10 @@ function BulkSendPage() {
         delete: "حذف",
         compose: "نص الرسالة",
         msgPlaceholder: "اكتب الرسالة التي ستُرسل لكل جهة...",
-        intervalLabel: "الفاصل الزمني بين كل إرسالين (ثوانٍ)",
-        intervalHelp: "كلما زاد الفاصل قلّ احتمال حظر رقمك",
+        intervalLabel: "الفاصل الزمني بين كل دفعتين (ثوانٍ)",
+        intervalHelp: "كلما زاد الفاصل قلّ احتمال حظر رقمك وقلّ الضغط على الخادم",
+        batchLabel: "عدد الأرقام في كل دفعة",
+        batchHelp: "موصى به: 10 أرقام كل 30 ثانية للخوادم الضعيفة",
         scheduling: "وقت التشغيل",
         runNow: "تشغيل فوري",
         runLater: "جدولة لاحقاً",
@@ -135,8 +138,10 @@ function BulkSendPage() {
         delete: "Delete",
         compose: "Message text",
         msgPlaceholder: "Type the message that will be sent to every contact...",
-        intervalLabel: "Delay between sends (seconds)",
-        intervalHelp: "A larger delay reduces the risk of your number getting banned",
+        intervalLabel: "Delay between batches (seconds)",
+        intervalHelp: "A larger delay reduces ban risk and load on your server",
+        batchLabel: "Numbers per batch",
+        batchHelp: "Recommended: 10 numbers every 30s for weaker servers",
         scheduling: "Run time",
         runNow: "Run immediately",
         runLater: "Schedule for later",
@@ -310,6 +315,7 @@ function BulkSendPage() {
           title: title.trim(),
           message: message.trim(),
           interval_seconds: Math.max(1, Math.min(intervalSec, 3600)),
+          batch_size: Math.max(1, Math.min(batchSize, 100)),
           scheduled_at: scheduledAt,
           status: "scheduled",
           total_recipients: recipients.length,
@@ -497,29 +503,55 @@ function BulkSendPage() {
                 <p className="mt-1 text-end text-xs text-muted-foreground">{message.length} {t.characters}</p>
               </div>
 
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">{t.intervalLabel}</label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="range"
-                    min={1}
-                    max={120}
-                    value={intervalSec}
-                    onChange={(e) => setIntervalSec(Number(e.target.value))}
-                    className="flex-1 accent-primary"
-                  />
-                  <input
-                    type="number"
-                    min={1}
-                    max={3600}
-                    value={intervalSec}
-                    onChange={(e) => setIntervalSec(Number(e.target.value) || 1)}
-                    className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-center text-sm focus:border-primary focus:outline-none"
-                  />
-                  <span className="text-xs text-muted-foreground">s</span>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-foreground">{t.batchLabel}</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min={1}
+                      max={50}
+                      value={batchSize}
+                      onChange={(e) => setBatchSize(Number(e.target.value))}
+                      className="flex-1 accent-primary"
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={batchSize}
+                      onChange={(e) => setBatchSize(Number(e.target.value) || 1)}
+                      className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-center text-sm focus:border-primary focus:outline-none"
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{t.batchHelp}</p>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">{t.intervalHelp}</p>
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-foreground">{t.intervalLabel}</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min={5}
+                      max={300}
+                      value={intervalSec}
+                      onChange={(e) => setIntervalSec(Number(e.target.value))}
+                      className="flex-1 accent-primary"
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      max={3600}
+                      value={intervalSec}
+                      onChange={(e) => setIntervalSec(Number(e.target.value) || 1)}
+                      className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-center text-sm focus:border-primary focus:outline-none"
+                    />
+                    <span className="text-xs text-muted-foreground">s</span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{t.intervalHelp}</p>
+                </div>
               </div>
+
 
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-foreground">{t.scheduling}</label>
