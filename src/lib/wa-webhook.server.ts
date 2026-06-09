@@ -4,6 +4,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { handleAiAutoReply, upsertConversationFromMessage } from "./wa-ai.server";
+import { cleanMessageText, mediaTypeFromRaw, mediaUrlFromRaw } from "./wa-chat-helpers.server";
 import { tryKeywordAutoReply } from "./wa-keyword.server";
 
 function verifySignature(rawBody: string, header: string | null, secret: string): boolean {
@@ -316,6 +317,9 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   for (const entry of entries) {
     const m = parseMessageEntry(entry);
     if (!m) continue;
+    const msgType = mediaTypeFromRaw(entry, m.msgType);
+    const mediaUrl = m.mediaUrl ?? mediaUrlFromRaw(entry, msgType);
+    const text = cleanMessageText(m.text, entry, msgType);
 
     const { error: insErr } = await supabaseAdmin.from("wa_messages").insert({
       user_id: userId,
@@ -324,9 +328,9 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       remote_jid: m.remoteJid,
       from_phone: m.fromMe ? null : m.fromPhone,
       to_phone: m.fromMe ? m.fromPhone : null,
-      msg_type: m.msgType,
-      text_body: m.text,
-      media_url: m.mediaUrl,
+      msg_type: msgType,
+      text_body: text,
+      media_url: mediaUrl,
       raw: { ...entry, normalizedRemoteJid: m.remoteJid, normalizedContactPhone: m.fromPhone } as never,
     });
     if (insErr) {
@@ -341,18 +345,18 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       remoteJid: m.remoteJid,
       contactName: m.contactName,
       contactPhone: m.isGroup ? null : m.fromPhone,
-      text: m.text ?? (m.msgType !== "text" ? `[${m.msgType}]` : null),
+      text: text ?? (msgType !== "text" ? `[${msgType}]` : null),
       direction: m.fromMe ? "out" : "in",
     });
 
-    if (m.text && !m.fromMe) {
+    if (text && !m.fromMe) {
       // Try keyword auto-reply FIRST. If it matches, skip AI entirely.
       const matched = await tryKeywordAutoReply({
         userId,
         sessionId,
         remoteJid: m.remoteJid,
         fromPhone: m.fromPhone,
-        inboundText: m.text,
+        inboundText: text,
       }).catch((err: unknown) => {
         console.error("[wa-webhook] keyword handler error:", err);
         return false;
@@ -365,7 +369,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
           conversationId,
           remoteJid: m.remoteJid,
           fromPhone: m.fromPhone,
-          inboundText: m.text,
+          inboundText: text,
         }).catch((err) => console.error("[wa-webhook] AI handler error:", err));
       }
     }
