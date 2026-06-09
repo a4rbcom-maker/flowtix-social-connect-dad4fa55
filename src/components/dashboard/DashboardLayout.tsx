@@ -182,6 +182,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(initialOpen);
   const toggleGroup = (key: string) =>
     setOpenGroups((p) => ({ ...p, [key]: !p[key] }));
+  const [groupQuery, setGroupQuery] = useState<Record<string, string>>({});
 
   const [profilePlan, setProfilePlan] = useState<string | null>(null);
   useEffect(() => {
