@@ -615,6 +615,12 @@ function FacebookPage() {
       try {
         const res = await fbCall(getFacebookConnection);
         setConnection(res.connection);
+        const { data: savedBots, error: botsError } = await supabase
+          .from("fb_bot_accounts")
+          .select("id, display_name, auth_method, status")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+        if (!botsError) setBotAccounts((savedBots ?? []) as BotAccountSummary[]);
       } catch (err) {
         console.error("Load connection failed", err);
         toast.error(describeFbError(err, lang === "ar" ? "ar" : "en"));
