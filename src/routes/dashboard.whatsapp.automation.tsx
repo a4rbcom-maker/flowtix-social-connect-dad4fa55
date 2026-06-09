@@ -44,6 +44,7 @@ import {
   type KeywordRule,
   type QuickReply,
 } from "@/lib/wa-automation.functions";
+import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 
 export const Route = createFileRoute("/dashboard/whatsapp/automation")({
   ssr: false,
