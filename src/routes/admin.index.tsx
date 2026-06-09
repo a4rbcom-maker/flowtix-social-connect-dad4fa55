@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -35,6 +36,7 @@ import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import {
+  checkIsAdmin,
   getAdminKpis,
   getAdminTimeseries,
   getRecentActivity,
@@ -51,16 +53,29 @@ function AdminOverviewPage() {
   const { lang } = useI18n();
   const { user } = useAuth();
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
+  const checkAdmin = useServerFn(checkIsAdmin);
+  const fetchKpis = useServerFn(getAdminKpis);
+  const fetchTimeseries = useServerFn(getAdminTimeseries);
+  const fetchActivity = useServerFn(getRecentActivity);
 
-  const kpisQ = useQuery({ queryKey: ["admin", "kpis"], queryFn: () => getAdminKpis(), staleTime: 30_000, enabled: !!user, retry: false });
-  const tsQ = useQuery({
-    queryKey: ["admin", "timeseries", 30],
-    queryFn: () => getAdminTimeseries({ data: { days: 30 } }),
-    staleTime: 60_000,
+  const adminCheckQ = useQuery({
+    queryKey: ["admin", "check", user?.id],
+    queryFn: () => checkAdmin(),
     enabled: !!user,
+    staleTime: 60_000,
     retry: false,
   });
-  const actQ = useQuery({ queryKey: ["admin", "activity"], queryFn: () => getRecentActivity(), staleTime: 20_000, refetchInterval: 30_000, enabled: !!user, retry: false });
+  const canLoadAdminData = !!user && !!adminCheckQ.data?.isAdmin;
+
+  const kpisQ = useQuery({ queryKey: ["admin", "kpis"], queryFn: () => fetchKpis(), staleTime: 30_000, enabled: canLoadAdminData, retry: false });
+  const tsQ = useQuery({
+    queryKey: ["admin", "timeseries", 30],
+    queryFn: () => fetchTimeseries({ data: { days: 30 } }),
+    staleTime: 60_000,
+    enabled: canLoadAdminData,
+    retry: false,
+  });
+  const actQ = useQuery({ queryKey: ["admin", "activity"], queryFn: () => fetchActivity(), staleTime: 20_000, refetchInterval: 30_000, enabled: canLoadAdminData, retry: false });
 
 
   const k = (kpisQ.data?.kpis ?? {}) as Record<string, number | Record<string, number>>;
