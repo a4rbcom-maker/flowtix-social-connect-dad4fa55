@@ -119,14 +119,25 @@ export const waBridge = {
     bridgeFetch<{ ok?: boolean }>(`/api/sessions/${encodeURIComponent(id)}`, {
       method: "DELETE",
     }),
-  sendText: (id: string, to: string, text: string) =>
-    bridgeFetch<{ id?: string; ok?: boolean }>(
+  sendText: (id: string, to: string, text: string) => {
+    const phone = to.replace(/[^0-9]/g, "");
+    const jid = to.includes("@") ? to : `${phone}@s.whatsapp.net`;
+    return bridgeFetch<{ id?: string; ok?: boolean; error?: string; message?: string }>(
       `/api/sessions/${encodeURIComponent(id)}/send`,
       {
         method: "POST",
-        body: JSON.stringify({ to, type: "text", text }),
+        body: JSON.stringify({
+          to: jid,
+          jid,
+          phone,
+          type: "text",
+          text,
+          message: text,
+          body: text,
+        }),
       },
-    ),
+    );
+  },
 };
 
 /**

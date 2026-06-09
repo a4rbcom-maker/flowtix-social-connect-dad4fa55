@@ -195,10 +195,15 @@ export const sendChatMessage = createServerFn({ method: "POST" })
           ? `${phoneDigits}@s.whatsapp.net`
           : data.remoteJid;
     try {
-      await waBridge.sendText(sess.session_id, to, data.text);
+      const res = await waBridge.sendText(sess.session_id, to, data.text);
+      // Bridge may return 200 with ok:false / error message — surface it.
+      if (res && (res.ok === false || res.error)) {
+        throw new Error(res.error || res.message || "Bridge refused to deliver");
+      }
     } catch (err) {
       const msg =
         err instanceof BridgeError ? err.message : err instanceof Error ? err.message : "Bridge error";
+      console.error("[wa-chat] sendText failed:", msg, "to=", to);
       throw new Error(msg);
     }
 

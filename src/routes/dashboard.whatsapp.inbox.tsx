@@ -1105,11 +1105,35 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
             {m.sender_name || (m.sender_phone ? `+${m.sender_phone}` : "")}
           </p>
         )}
+        {m.media_url && m.msg_type === "image" && (
+          <a href={m.media_url} target="_blank" rel="noreferrer" className="mb-1.5 block overflow-hidden rounded-lg">
+            <img src={m.media_url} alt="" className="max-h-72 w-full object-cover" loading="lazy" />
+          </a>
+        )}
+        {m.media_url && m.msg_type === "video" && (
+          <video src={m.media_url} controls className="mb-1.5 max-h-72 w-full rounded-lg" />
+        )}
+        {m.media_url && m.msg_type === "audio" && (
+          <audio src={m.media_url} controls className="mb-1.5 w-full" />
+        )}
+        {m.media_url && m.msg_type === "document" && (
+          <a
+            href={m.media_url}
+            target="_blank"
+            rel="noreferrer"
+            className={`mb-1.5 block rounded-lg px-2 py-1.5 text-xs underline ${isOut ? "bg-white/15" : "bg-muted"}`}
+          >
+            📎 {m.text_body || "Document"}
+          </a>
+        )}
+        {m.media_url && m.msg_type === "sticker" && (
+          <img src={m.media_url} alt="sticker" className="mb-1.5 max-h-32" />
+        )}
         {m.text_body ? (
           <p className="whitespace-pre-wrap break-words leading-relaxed">{m.text_body}</p>
-        ) : (
+        ) : !m.media_url ? (
           <p className="italic opacity-75">[{m.msg_type}]</p>
-        )}
+        ) : null}
         <div
           className={`mt-1 flex items-center gap-1 text-[10px] ${
             isOut ? "justify-end text-primary-foreground/80" : "text-muted-foreground"
