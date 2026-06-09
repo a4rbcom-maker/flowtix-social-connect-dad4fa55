@@ -564,58 +564,86 @@ function BulkSendPage() {
 
         {/* Contacts tab */}
         {tab === "contacts" && (
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="space-y-4 rounded-2xl border border-border bg-card p-5 lg:col-span-1">
-              <h3 className="font-semibold text-foreground">{t.addContact}</h3>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-foreground">{t.name}</label>
-                <input value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-foreground">{t.phone}</label>
-                <input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder={t.phonePlaceholder} dir="ltr" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
-              </div>
-              <button onClick={addContact} disabled={adding || !newName || !newPhone} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60">
-                {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                {t.add}
-              </button>
+          <div className="space-y-6">
+            {/* Hero: bulk upload — primary action */}
+            <FileDropzone
+              isAr={isAr}
+              uploading={uploading}
+              onFile={importFromFile}
+              onSample={downloadSample}
+              labels={{
+                title: t.uploadTitle,
+                desc: t.uploadDesc,
+                btn: t.uploadBtn,
+                processing: t.uploadProcessing,
+                format: t.uploadFormat,
+                sample: t.downloadSample,
+              }}
+            />
 
-              <div className="border-t border-border pt-4">
-                <p className="mb-1 text-xs text-muted-foreground">{t.importHint}</p>
-                <p className="mb-2 text-xs text-muted-foreground">{t.importPaste}</p>
-                <BulkPaste onImport={importFromText} label={t.importBtn} />
-              </div>
-            </div>
+            <div className="grid gap-6 lg:grid-cols-3">
+              {/* Manual + paste */}
+              <div className="space-y-5 rounded-2xl border border-border bg-card p-5 lg:col-span-1">
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-bold text-foreground">
+                    <Plus className="h-4 w-4 text-primary" />
+                    {t.addContact}
+                  </h3>
+                  <p className="mt-1 text-xs text-muted-foreground">{t.importHint}</p>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-muted-foreground">{t.name}</label>
+                    <input value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-muted-foreground">{t.phone}</label>
+                    <input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder={t.phonePlaceholder} dir="ltr" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+                  </div>
+                  <button onClick={addContact} disabled={adding || !newName || !newPhone} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-60">
+                    {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    {t.add}
+                  </button>
+                </div>
 
-            <div className="rounded-2xl border border-border bg-card p-5 lg:col-span-2">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="font-semibold text-foreground">
-                  <Users className="me-2 inline h-4 w-4" />
-                  {contacts.length} {t.contactsCount}
-                </h3>
+                <div className="border-t border-border pt-4">
+                  <p className="mb-2 text-xs font-semibold text-foreground">{t.importPaste}</p>
+                  <BulkPaste onImport={importFromText} label={t.importBtn} />
+                </div>
               </div>
-              {contacts.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-border bg-background/40 p-8 text-center text-sm text-muted-foreground">
-                  {t.noContacts}
+
+              {/* Contacts list */}
+              <div className="rounded-2xl border border-border bg-card p-5 lg:col-span-2">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="flex items-center gap-2 text-sm font-bold text-foreground">
+                    <Users className="h-4 w-4 text-primary" />
+                    {contacts.length} {t.contactsCount}
+                  </h3>
                 </div>
-              ) : (
-                <div className="max-h-[500px] space-y-1.5 overflow-y-auto">
-                  {contacts.map((c) => (
-                    <div key={c.id} className="flex items-center gap-3 rounded-lg border border-border bg-background/50 p-2.5">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                        {c.name.charAt(0).toUpperCase()}
+                {contacts.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border bg-background/40 p-10 text-center">
+                    <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground/60" />
+                    <p className="text-sm text-muted-foreground">{t.noContacts}</p>
+                  </div>
+                ) : (
+                  <div className="max-h-[500px] space-y-1.5 overflow-y-auto pe-1">
+                    {contacts.map((c) => (
+                      <div key={c.id} className="flex items-center gap-3 rounded-xl border border-border bg-background/50 p-2.5 transition-colors hover:border-primary/40">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-primary/5 text-sm font-bold text-primary">
+                          {c.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-foreground">{c.name}</p>
+                          <p className="text-xs text-muted-foreground" dir="ltr">{c.phone}</p>
+                        </div>
+                        <button onClick={() => deleteContact(c.id)} className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-foreground">{c.name}</p>
-                        <p className="text-xs text-muted-foreground" dir="ltr">{c.phone}</p>
-                      </div>
-                      <button onClick={() => deleteContact(c.id)} className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
