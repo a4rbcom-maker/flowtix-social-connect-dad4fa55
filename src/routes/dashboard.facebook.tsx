@@ -149,6 +149,12 @@ function FacebookPage() {
   const [testResult, setTestResult] = useState<TokenCheckResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
   const [testErrorType, setTestErrorType] = useState<string | null>(null);
+  const [dryRun, setDryRun] = useState<{
+    status: "idle" | "running" | "ok" | "fail";
+    reasons: string[];
+    okPoints: string[];
+    target?: string;
+  }>({ status: "idle", reasons: [], okPoints: [] });
   const loadedConnectionForRef = useRef<string | null>(null);
 
   const requiredScopes = [
