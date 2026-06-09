@@ -115,13 +115,14 @@ export const getConversationMessages = createServerFn({ method: "POST" })
       const raw = asRecord(r.raw);
       const msgType = mediaTypeFromRaw(raw, r.msg_type);
       const storedMediaUrl = typeof r.media_url === "string" && r.media_url.trim() ? r.media_url.trim() : null;
+      const rawMediaUrl = mediaUrlFromRaw(raw, msgType);
       return {
         id: r.id,
         remote_jid: r.remote_jid,
         direction: r.direction as "in" | "out",
         text_body: cleanMessageText(r.text_body, raw, msgType),
         msg_type: msgType,
-        media_url: storedMediaUrl ?? mediaUrlFromRaw(raw, msgType),
+        media_url: preferChatMediaUrl(storedMediaUrl, rawMediaUrl),
         created_at: r.created_at,
         is_ai: raw.ai === true,
         sender_name: pickString(raw, "pushName", "senderName", "notifyName", "contactName"),
@@ -129,6 +130,18 @@ export const getConversationMessages = createServerFn({ method: "POST" })
       };
     });
   });
+
+function isWaStorageUrl(url: string | null | undefined): boolean {
+  const value = url?.trim() ?? "";
+  return value.startsWith("wa-media:") || value.startsWith("storage://wa-media/");
+}
+
+function preferChatMediaUrl(storedUrl: string | null, rawUrl: string | null): string | null {
+  if (isWaStorageUrl(storedUrl)) return storedUrl;
+  if (rawUrl?.startsWith("data:") || isWaStorageUrl(rawUrl)) return rawUrl;
+  if (storedUrl && /^(https?:)?\/\//i.test(storedUrl)) return storedUrl;
+  return rawUrl ?? storedUrl;
+}
 
 export const markConversationRead = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
