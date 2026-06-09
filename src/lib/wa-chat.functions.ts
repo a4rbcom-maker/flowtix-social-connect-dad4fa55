@@ -6,9 +6,13 @@ import { waBridge, BridgeError } from "./wa-bridge.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
 import {
   asRecord,
+  cleanMessageText,
   digits,
+  mediaTypeFromRaw,
+  mediaUrlFromRaw,
   phoneFromRaw,
   pickString,
+  previewTextFromRaw,
   profilePicFromRaw,
 } from "./wa-chat-helpers.server";
 
@@ -60,21 +64,22 @@ export const listConversations = createServerFn({ method: "POST" })
     const remoteJids = rows.map((row) => row.remote_jid);
     const { data: rawMessages } = await supabase
       .from("wa_messages")
-      .select("remote_jid, raw, created_at")
+      .select("remote_jid, text_body, msg_type, raw, created_at")
       .eq("user_id", userId)
       .in("remote_jid", remoteJids)
       .not("raw", "is", null)
       .order("created_at", { ascending: false })
       .limit(1000);
 
-    const metaByJid = new Map<string, { phone: string | null; profile: string | null }>();
+    const metaByJid = new Map<string, { phone: string | null; profile: string | null; preview: string | null }>();
     for (const msg of rawMessages ?? []) {
       const jid = String(msg.remote_jid ?? "");
       if (!jid) continue;
-      const current = metaByJid.get(jid) ?? { phone: null, profile: null };
+      const current = metaByJid.get(jid) ?? { phone: null, profile: null, preview: null };
       const next = {
         phone: current.phone ?? phoneFromRaw(msg.raw),
         profile: current.profile ?? profilePicFromRaw(msg.raw),
+        preview: current.preview ?? previewTextFromRaw(msg.raw, msg.text_body, msg.msg_type),
       };
       metaByJid.set(jid, next);
     }
@@ -85,6 +90,7 @@ export const listConversations = createServerFn({ method: "POST" })
       return {
         ...row,
         contact_phone: isGroup ? null : (meta?.phone ?? row.contact_phone),
+        last_message_text: meta?.preview ?? row.last_message_text,
         profile_pic_url: meta?.profile ?? null,
       };
     });
@@ -107,13 +113,14 @@ export const getConversationMessages = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return (rows ?? []).map((r) => {
       const raw = asRecord(r.raw);
+      const msgType = mediaTypeFromRaw(raw, r.msg_type);
       return {
         id: r.id,
         remote_jid: r.remote_jid,
         direction: r.direction as "in" | "out",
-        text_body: r.text_body,
-        msg_type: r.msg_type,
-        media_url: r.media_url,
+        text_body: cleanMessageText(r.text_body, raw, msgType),
+        msg_type: msgType,
+        media_url: r.media_url ?? mediaUrlFromRaw(raw, msgType),
         created_at: r.created_at,
         is_ai: raw.ai === true,
         sender_name: pickString(raw, "pushName", "senderName", "notifyName", "contactName"),
