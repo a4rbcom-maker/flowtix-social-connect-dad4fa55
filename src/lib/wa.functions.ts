@@ -242,8 +242,6 @@ export const getWaConnectionState = createServerFn({ method: "POST" })
       .eq("user_id", userId)
       .maybeSingle();
     if (!row?.session_id) return null;
-    const webhookUrl = await deriveWebhookUrl();
-    if (webhookUrl) await ensureBridgeWebhook(row.session_id, webhookUrl);
     return readState(supabase, userId, row.session_id);
   });
 
