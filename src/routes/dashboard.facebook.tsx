@@ -1056,7 +1056,7 @@ function FacebookPage() {
   const journeySteps = (() => {
     const s1Done = !!connection || botAccounts.length > 0;
     const s2Done = !!(tokenExpiry?.valid) || botAccounts.length > 0;
-    const s3Done = !!(testResult?.ok) || groups.length > 0 || pages.length > 0;
+    const s3Done = !!(testResult?.profile?.id) || groups.length > 0 || pages.length > 0;
     const s4Done = false; // "Run" is always the next CTA
     const steps = lang === "ar"
       ? [
