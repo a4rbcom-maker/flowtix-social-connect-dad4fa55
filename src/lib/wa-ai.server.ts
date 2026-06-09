@@ -221,7 +221,7 @@ export async function upsertConversationFromMessage(opts: {
   // Try update first
   const { data: existing } = await supabaseAdmin
     .from("wa_conversations")
-    .select("id, unread_count, contact_name")
+    .select("id, unread_count, contact_name, contact_phone")
     .eq("user_id", userId)
     .eq("remote_jid", remoteJid)
     .maybeSingle();
@@ -235,6 +235,7 @@ export async function upsertConversationFromMessage(opts: {
         last_direction: direction,
         unread_count: direction === "in" ? (existing.unread_count || 0) + 1 : existing.unread_count,
         contact_name: existing.contact_name || contactName,
+        contact_phone: contactPhone || existing.contact_phone,
       })
       .eq("id", existing.id);
     return existing.id;
