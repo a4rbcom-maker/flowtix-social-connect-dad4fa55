@@ -14,12 +14,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { listBotAccounts, createPostJob, createExtractPagesJob, createExtractCommentersJob } from "@/lib/fb-bot.functions";
+import { listBotAccounts, createPostJob, createExtractPagesJob, createExtractCommentersJob, createExtractGroupMembersJob, createExtractPageAudienceJob } from "@/lib/fb-bot.functions";
 import { z } from "zod";
 
 export const Route = createFileRoute("/dashboard/facebook/jobs")({
   ssr: false,
-  validateSearch: z.object({ tab: z.enum(["post", "pages", "commenters"]).optional() }),
+  validateSearch: z.object({ tab: z.enum(["post", "pages", "commenters", "groupmembers", "pageaudience"]).optional() }),
   beforeLoad: async () => {
     if (typeof window === "undefined") return;
     const { supabase } = await import("@/integrations/supabase/client");
@@ -40,6 +40,8 @@ function JobsHubPage() {
   const createPostJobFn = useServerFn(createPostJob);
   const createExtractPagesJobFn = useServerFn(createExtractPagesJob);
   const createExtractCommentersJobFn = useServerFn(createExtractCommentersJob);
+  const createExtractGroupMembersJobFn = useServerFn(createExtractGroupMembersJob);
+  const createExtractPageAudienceJobFn = useServerFn(createExtractPageAudienceJob);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountId, setAccountId] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -52,6 +54,16 @@ function JobsHubPage() {
   const [scheduledAt, setScheduledAt] = useState("");
   // Extract commenters
   const [postUrl, setPostUrl] = useState("");
+  // Extract group members
+  const [groupMembersId, setGroupMembersId] = useState("");
+  const [groupMaxMembers, setGroupMaxMembers] = useState(1500);
+  const [groupFilterKeywords, setGroupFilterKeywords] = useState("");
+  // Extract page audience
+  const [pageAudienceId, setPageAudienceId] = useState("");
+  const [pageMaxItems, setPageMaxItems] = useState(1000);
+  const [paFollowers, setPaFollowers] = useState(true);
+  const [paLikers, setPaLikers] = useState(true);
+  const [paEngagers, setPaEngagers] = useState(false);
 
   const t = lang === "ar" ? {
     title: "مهام البوت",
@@ -60,8 +72,10 @@ function JobsHubPage() {
     noAccounts: "لا توجد حسابات. اربط حساب أولاً.",
     addAccount: "ربط حساب",
     tabPost: "نشر على جروبات",
-    tabExtractPages: "استخراج صفحاتي",
-    tabExtractCommenters: "استخراج معلقي بوست",
+    tabExtractPages: "صفحاتي",
+    tabExtractCommenters: "معلقي بوست",
+    tabGroupMembers: "أعضاء جروب",
+    tabPageAudience: "جمهور صفحة",
     content: "محتوى المنشور",
     contentPh: "اكتب نص المنشور… يدعم {{spin:نص1|نص2}} للمحتوى المتغير",
     groupIds: "Group IDs (واحد في كل سطر)",
@@ -75,15 +89,31 @@ function JobsHubPage() {
     created: "تم إنشاء المهمة",
     viewJobs: "→ عرض كل المهام",
     intervalHint: "نوصي بحد أدنى 5 دقايق لتفادي الحظر",
+    gmGroup: "ID الجروب أو رابطه",
+    gmGroupPh: "1234567890 أو https://facebook.com/groups/...",
+    gmMax: "الحد الأقصى للأعضاء",
+    gmKeywords: "كلمات فلترة (اختياري، مفصولة بفاصلة)",
+    gmKeywordsPh: "مصر, قاهرة, ملابس",
+    gmHint: "بيسحب الأعضاء الظاهرين فعلياً (حد أقصى 5000). يتطلب أن تكون عضو في الجروب.",
+    paPage: "ID الصفحة أو رابطها",
+    paPagePh: "pageusername أو 100012345",
+    paMax: "الحد الأقصى",
+    paSources: "المصادر",
+    paFollowersLabel: "المتابعون",
+    paLikersLabel: "الإعجابات",
+    paEngagersLabel: "المتفاعلون مع البوستات",
+    paHint: "بيسحب الجمهور المرئي علنياً فقط (حد أقصى 3000).",
   } : {
     title: "Bot Jobs",
     subtitle: "Create automation jobs",
     accountLabel: "Select account",
     noAccounts: "No accounts yet. Link one first.",
     addAccount: "Link account",
-    tabPost: "Post to groups",
-    tabExtractPages: "Extract my pages",
-    tabExtractCommenters: "Extract post commenters",
+    tabPost: "Post",
+    tabExtractPages: "My Pages",
+    tabExtractCommenters: "Commenters",
+    tabGroupMembers: "Group Members",
+    tabPageAudience: "Page Audience",
     content: "Post content",
     contentPh: "Write the post… supports {{spin:option1|option2}} for variations",
     groupIds: "Group IDs (one per line)",
@@ -97,6 +127,20 @@ function JobsHubPage() {
     created: "Job created",
     viewJobs: "→ View all jobs",
     intervalHint: "Minimum 5 min recommended to avoid bans",
+    gmGroup: "Group ID or URL",
+    gmGroupPh: "1234567890 or https://facebook.com/groups/...",
+    gmMax: "Max members",
+    gmKeywords: "Filter keywords (optional, comma-separated)",
+    gmKeywordsPh: "egypt, cairo, fashion",
+    gmHint: "Extracts visible members only (max 5000). You must be a group member.",
+    paPage: "Page ID or URL",
+    paPagePh: "pageusername or 100012345",
+    paMax: "Max items",
+    paSources: "Sources",
+    paFollowersLabel: "Followers",
+    paLikersLabel: "Likers",
+    paEngagersLabel: "Post engagers",
+    paHint: "Only publicly visible audience can be extracted (max 3000).",
   };
 
   useEffect(() => {
@@ -170,6 +214,42 @@ function JobsHubPage() {
     } catch (e) { toast.error(String(e)); } finally { setBusy(false); }
   };
 
+  const submitGroupMembers = async () => {
+    if (!accountId || !groupMembersId.trim()) return;
+    setBusy(true);
+    try {
+      const filterKeywords = groupFilterKeywords.split(",").map((s) => s.trim()).filter(Boolean);
+      await createExtractGroupMembersJobFn({ data: {
+        accountId,
+        groupId: groupMembersId.trim(),
+        maxMembers: groupMaxMembers,
+        filterKeywords,
+      } });
+      toast.success(t.created);
+      setGroupMembersId(""); setGroupFilterKeywords("");
+    } catch (e) { toast.error(String(e)); } finally { setBusy(false); }
+  };
+
+  const submitPageAudience = async () => {
+    if (!accountId || !pageAudienceId.trim()) return;
+    const sources: ("followers" | "likers" | "engagers")[] = [];
+    if (paFollowers) sources.push("followers");
+    if (paLikers) sources.push("likers");
+    if (paEngagers) sources.push("engagers");
+    if (sources.length === 0) { toast.error(t.paSources); return; }
+    setBusy(true);
+    try {
+      await createExtractPageAudienceJobFn({ data: {
+        accountId,
+        pageId: pageAudienceId.trim(),
+        sources,
+        maxItems: pageMaxItems,
+      } });
+      toast.success(t.created);
+      setPageAudienceId("");
+    } catch (e) { toast.error(String(e)); } finally { setBusy(false); }
+  };
+
   if (loading) return (
     <DashboardLayout title={t.title}>
       <div className="flex items-center justify-center p-20"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
@@ -210,10 +290,12 @@ function JobsHubPage() {
         </Card>
 
         <Tabs defaultValue={defaultTab} key={defaultTab}>
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="post">{t.tabPost}</TabsTrigger>
-            <TabsTrigger value="pages">{t.tabExtractPages}</TabsTrigger>
+            <TabsTrigger value="groupmembers">{t.tabGroupMembers}</TabsTrigger>
+            <TabsTrigger value="pageaudience">{t.tabPageAudience}</TabsTrigger>
             <TabsTrigger value="commenters">{t.tabExtractCommenters}</TabsTrigger>
+            <TabsTrigger value="pages">{t.tabExtractPages}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="post">
@@ -244,10 +326,58 @@ function JobsHubPage() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="pages">
+          <TabsContent value="groupmembers">
             <Card className="space-y-4 p-5">
-              <p className="text-sm text-muted-foreground">{t.extractPagesDesc}</p>
-              <Button onClick={submitExtractPages} disabled={busy} className="w-full">
+              <p className="text-sm text-muted-foreground">{t.gmHint}</p>
+              <div className="space-y-2">
+                <Label>{t.gmGroup}</Label>
+                <Input placeholder={t.gmGroupPh} value={groupMembersId} onChange={(e) => setGroupMembersId(e.target.value)} />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>{t.gmMax}</Label>
+                  <Input type="number" min={50} max={5000} step={50} value={groupMaxMembers} onChange={(e) => setGroupMaxMembers(Number(e.target.value))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t.gmKeywords}</Label>
+                  <Input placeholder={t.gmKeywordsPh} value={groupFilterKeywords} onChange={(e) => setGroupFilterKeywords(e.target.value)} />
+                </div>
+              </div>
+              <Button onClick={submitGroupMembers} disabled={busy || !groupMembersId.trim()} className="w-full">
+                {busy && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{t.create}
+              </Button>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="pageaudience">
+            <Card className="space-y-4 p-5">
+              <p className="text-sm text-muted-foreground">{t.paHint}</p>
+              <div className="space-y-2">
+                <Label>{t.paPage}</Label>
+                <Input placeholder={t.paPagePh} value={pageAudienceId} onChange={(e) => setPageAudienceId(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>{t.paSources}</Label>
+                <div className="flex flex-wrap gap-4 pt-1">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={paFollowers} onChange={(e) => setPaFollowers(e.target.checked)} />
+                    {t.paFollowersLabel}
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={paLikers} onChange={(e) => setPaLikers(e.target.checked)} />
+                    {t.paLikersLabel}
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={paEngagers} onChange={(e) => setPaEngagers(e.target.checked)} />
+                    {t.paEngagersLabel}
+                  </label>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>{t.paMax}</Label>
+                <Input type="number" min={50} max={3000} step={50} value={pageMaxItems} onChange={(e) => setPageMaxItems(Number(e.target.value))} />
+              </div>
+              <Button onClick={submitPageAudience} disabled={busy || !pageAudienceId.trim()} className="w-full">
                 {busy && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{t.create}
               </Button>
             </Card>
@@ -260,6 +390,15 @@ function JobsHubPage() {
                 <Input placeholder={t.postUrlPh} value={postUrl} onChange={(e) => setPostUrl(e.target.value)} />
               </div>
               <Button onClick={submitExtractCommenters} disabled={busy || !postUrl} className="w-full">
+                {busy && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{t.create}
+              </Button>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="pages">
+            <Card className="space-y-4 p-5">
+              <p className="text-sm text-muted-foreground">{t.extractPagesDesc}</p>
+              <Button onClick={submitExtractPages} disabled={busy} className="w-full">
                 {busy && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{t.create}
               </Button>
             </Card>

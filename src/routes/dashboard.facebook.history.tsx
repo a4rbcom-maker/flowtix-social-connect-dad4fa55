@@ -27,7 +27,7 @@ export const Route = createFileRoute("/dashboard/facebook/history")({
 
 type JobRow = {
   id: string;
-  job_type: "post_to_groups" | "extract_pages" | "extract_commenters";
+  job_type: "post_to_groups" | "extract_pages" | "extract_commenters" | "extract_group_members" | "extract_page_audience";
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
   progress: number;
   total_items: number;
@@ -62,7 +62,7 @@ function JobsHistoryPage() {
     cancel: "إلغاء",
     results: "النتائج",
     download: "تنزيل CSV",
-    types: { post_to_groups: "نشر", extract_pages: "صفحات", extract_commenters: "معلقين" },
+    types: { post_to_groups: "نشر", extract_pages: "صفحات", extract_commenters: "معلقين", extract_group_members: "أعضاء جروب", extract_page_audience: "جمهور صفحة" },
     statuses: { pending: "معلّقة", running: "جارية", completed: "مكتملة", failed: "فشلت", cancelled: "ملغاة" },
   } : {
     title: "Jobs History",
@@ -77,7 +77,7 @@ function JobsHistoryPage() {
     cancel: "Cancel",
     results: "Results",
     download: "Download CSV",
-    types: { post_to_groups: "Post", extract_pages: "Pages", extract_commenters: "Commenters" },
+    types: { post_to_groups: "Post", extract_pages: "Pages", extract_commenters: "Commenters", extract_group_members: "Group Members", extract_page_audience: "Page Audience" },
     statuses: { pending: "Pending", running: "Running", completed: "Completed", failed: "Failed", cancelled: "Cancelled" },
   };
 
@@ -108,7 +108,8 @@ function JobsHistoryPage() {
     setSelected(j);
     setResultsLoading(true);
     try {
-      if (j.job_type === "extract_commenters") await loadEgyptData();
+      const peopleTypes = ["extract_commenters", "extract_group_members", "extract_page_audience"];
+      if (peopleTypes.includes(j.job_type)) await loadEgyptData();
       const { results } = await call(getJob, { id: j.id });
       setResults(results as JobResult[]);
     } catch (e) { toast.error(String(e)); }
@@ -120,19 +121,22 @@ function JobsHistoryPage() {
     catch (e) { toast.error(String(e)); }
   };
 
-  const isCommenters = selected?.job_type === "extract_commenters";
-  const enrichedRows = isCommenters
+  const isPeople = selected?.job_type === "extract_commenters"
+    || selected?.job_type === "extract_group_members"
+    || selected?.job_type === "extract_page_audience";
+  const enrichedRows = isPeople
     ? results.map((r) => {
-        const d = (r.data ?? {}) as { name?: string; id?: string; profile?: string };
-        const blob = `${d.name ?? ""} ${r.target ?? ""}`;
+        const d = (r.data ?? {}) as { name?: string; id?: string; fb_user_id?: string; profile?: string; profile_url?: string; bio_snippet?: string; source?: string };
+        const blob = `${d.name ?? ""} ${d.bio_snippet ?? ""} ${r.target ?? ""}`;
         const loc = detectLocation(blob);
         return {
           row: r,
           name: d.name ?? r.target ?? "—",
-          profile: d.profile ?? "",
-          phone: extractEgyptPhone(d.name ?? "") ?? null,
+          profile: d.profile_url ?? d.profile ?? "",
+          phone: extractEgyptPhone(blob) ?? null,
           city: loc?.city ?? null,
           gov: loc?.gov ?? null,
+          source: d.source ?? "",
         };
       })
     : [];
@@ -140,10 +144,10 @@ function JobsHistoryPage() {
   const downloadCsv = () => {
     if (results.length === 0) return;
     let rows: (string | number)[][];
-    if (isCommenters) {
+    if (isPeople) {
       rows = [
-        ["name", "facebook_id", "profile", "phone", "city", "governorate"],
-        ...enrichedRows.map((e) => [e.name, e.row.target ?? "", e.profile, e.phone ?? "", e.city ?? "", e.gov ?? ""]),
+        ["name", "facebook_id", "profile", "phone", "city", "governorate", "source"],
+        ...enrichedRows.map((e) => [e.name, e.row.target ?? "", e.profile, e.phone ?? "", e.city ?? "", e.gov ?? "", e.source]),
       ];
     } else {
       rows = [
@@ -241,7 +245,7 @@ function JobsHistoryPage() {
             <div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
           ) : results.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">{t.none}</p>
-          ) : isCommenters ? (
+          ) : isPeople ? (
             <div className="max-h-[60vh] overflow-auto">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-muted/40 text-muted-foreground">
