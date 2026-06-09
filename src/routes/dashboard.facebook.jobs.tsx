@@ -54,6 +54,16 @@ function JobsHubPage() {
   const [scheduledAt, setScheduledAt] = useState("");
   // Extract commenters
   const [postUrl, setPostUrl] = useState("");
+  // Extract group members
+  const [groupMembersId, setGroupMembersId] = useState("");
+  const [groupMaxMembers, setGroupMaxMembers] = useState(1500);
+  const [groupFilterKeywords, setGroupFilterKeywords] = useState("");
+  // Extract page audience
+  const [pageAudienceId, setPageAudienceId] = useState("");
+  const [pageMaxItems, setPageMaxItems] = useState(1000);
+  const [paFollowers, setPaFollowers] = useState(true);
+  const [paLikers, setPaLikers] = useState(true);
+  const [paEngagers, setPaEngagers] = useState(false);
 
   const t = lang === "ar" ? {
     title: "مهام البوت",
@@ -62,8 +72,10 @@ function JobsHubPage() {
     noAccounts: "لا توجد حسابات. اربط حساب أولاً.",
     addAccount: "ربط حساب",
     tabPost: "نشر على جروبات",
-    tabExtractPages: "استخراج صفحاتي",
-    tabExtractCommenters: "استخراج معلقي بوست",
+    tabExtractPages: "صفحاتي",
+    tabExtractCommenters: "معلقي بوست",
+    tabGroupMembers: "أعضاء جروب",
+    tabPageAudience: "جمهور صفحة",
     content: "محتوى المنشور",
     contentPh: "اكتب نص المنشور… يدعم {{spin:نص1|نص2}} للمحتوى المتغير",
     groupIds: "Group IDs (واحد في كل سطر)",
@@ -77,15 +89,31 @@ function JobsHubPage() {
     created: "تم إنشاء المهمة",
     viewJobs: "→ عرض كل المهام",
     intervalHint: "نوصي بحد أدنى 5 دقايق لتفادي الحظر",
+    gmGroup: "ID الجروب أو رابطه",
+    gmGroupPh: "1234567890 أو https://facebook.com/groups/...",
+    gmMax: "الحد الأقصى للأعضاء",
+    gmKeywords: "كلمات فلترة (اختياري، مفصولة بفاصلة)",
+    gmKeywordsPh: "مصر, قاهرة, ملابس",
+    gmHint: "بيسحب الأعضاء الظاهرين فعلياً (حد أقصى 5000). يتطلب أن تكون عضو في الجروب.",
+    paPage: "ID الصفحة أو رابطها",
+    paPagePh: "pageusername أو 100012345",
+    paMax: "الحد الأقصى",
+    paSources: "المصادر",
+    paFollowersLabel: "المتابعون",
+    paLikersLabel: "الإعجابات",
+    paEngagersLabel: "المتفاعلون مع البوستات",
+    paHint: "بيسحب الجمهور المرئي علنياً فقط (حد أقصى 3000).",
   } : {
     title: "Bot Jobs",
     subtitle: "Create automation jobs",
     accountLabel: "Select account",
     noAccounts: "No accounts yet. Link one first.",
     addAccount: "Link account",
-    tabPost: "Post to groups",
-    tabExtractPages: "Extract my pages",
-    tabExtractCommenters: "Extract post commenters",
+    tabPost: "Post",
+    tabExtractPages: "My Pages",
+    tabExtractCommenters: "Commenters",
+    tabGroupMembers: "Group Members",
+    tabPageAudience: "Page Audience",
     content: "Post content",
     contentPh: "Write the post… supports {{spin:option1|option2}} for variations",
     groupIds: "Group IDs (one per line)",
@@ -99,6 +127,20 @@ function JobsHubPage() {
     created: "Job created",
     viewJobs: "→ View all jobs",
     intervalHint: "Minimum 5 min recommended to avoid bans",
+    gmGroup: "Group ID or URL",
+    gmGroupPh: "1234567890 or https://facebook.com/groups/...",
+    gmMax: "Max members",
+    gmKeywords: "Filter keywords (optional, comma-separated)",
+    gmKeywordsPh: "egypt, cairo, fashion",
+    gmHint: "Extracts visible members only (max 5000). You must be a group member.",
+    paPage: "Page ID or URL",
+    paPagePh: "pageusername or 100012345",
+    paMax: "Max items",
+    paSources: "Sources",
+    paFollowersLabel: "Followers",
+    paLikersLabel: "Likers",
+    paEngagersLabel: "Post engagers",
+    paHint: "Only publicly visible audience can be extracted (max 3000).",
   };
 
   useEffect(() => {
