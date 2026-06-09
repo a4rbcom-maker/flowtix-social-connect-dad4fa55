@@ -56,9 +56,10 @@ function AutomationPage() {
   const isAr = lang === "ar";
 
   return (
+    <DashboardLayout title={isAr ? "البوت" : "Bot"}>
     <div
       dir={isAr ? "rtl" : "ltr"}
-      className={`container mx-auto max-w-6xl px-4 py-6 sm:py-8 ${isAr ? "text-right" : "text-left"}`}
+      className={`mx-auto w-full max-w-6xl ${isAr ? "text-right" : "text-left"}`}
     >
       <section className="relative mb-6 overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-l from-primary via-primary/70 to-primary/20" />
