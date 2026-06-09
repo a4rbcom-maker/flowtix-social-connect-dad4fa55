@@ -97,6 +97,118 @@ type BotAccountSummary = {
   status: string;
 };
 
+function DemoPreview({ stepKey, lang }: { stepKey: string; lang: "ar" | "en" }) {
+  const isAr = lang === "ar";
+  if (stepKey === "connect") {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-3 rounded-md bg-card p-2.5 ring-1 ring-border">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[oklch(0.66_0.26_320)] text-[12px] font-bold text-white">
+            AM
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[12.5px] font-semibold text-foreground">
+              {isAr ? "أحمد محمد (حساب تجريبي)" : "Ahmed Mohamed (sample)"}
+            </div>
+            <div className="truncate text-[11px] text-muted-foreground">ahmed@demo.flowtix.app</div>
+          </div>
+          <span className="rounded-md bg-green-500/10 px-2 py-0.5 text-[10.5px] font-semibold text-green-700 dark:text-green-400">
+            {isAr ? "متصل" : "Connected"}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-[11.5px]">
+          <div className="rounded-md bg-card p-2 ring-1 ring-border">
+            <div className="text-muted-foreground">{isAr ? "صفحات" : "Pages"}</div>
+            <div className="font-bold text-foreground">12</div>
+          </div>
+          <div className="rounded-md bg-card p-2 ring-1 ring-border">
+            <div className="text-muted-foreground">{isAr ? "جروبات" : "Groups"}</div>
+            <div className="font-bold text-foreground">38</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (stepKey === "configure") {
+    const scopes = ["pages_show_list", "pages_manage_posts", "publish_to_groups", "groups_access_member_info"];
+    return (
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-1.5">
+          {scopes.map((s) => (
+            <span key={s} className="inline-flex items-center gap-1 rounded-md bg-card px-2 py-0.5 font-mono text-[10.5px] ring-1 ring-border">
+              <CheckCircle2 className="h-3 w-3 text-green-500" /> {s}
+            </span>
+          ))}
+        </div>
+        <div className="rounded-md bg-card p-2 text-[11.5px] ring-1 ring-border">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">{isAr ? "فاصل النشر الافتراضي" : "Default post interval"}</span>
+            <span className="font-semibold text-foreground">5 {isAr ? "دقائق" : "min"}</span>
+          </div>
+          <div className="mt-1 flex items-center justify-between">
+            <span className="text-muted-foreground">{isAr ? "الرد التلقائي" : "Auto-reply"}</span>
+            <span className="font-semibold text-foreground">{isAr ? "مفعّل" : "Enabled"}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (stepKey === "test") {
+    return (
+      <div className="space-y-2">
+        <div className="rounded-md border border-green-500/30 bg-green-500/5 p-2 text-[11.5px]">
+          <div className="flex items-center gap-1.5 font-semibold text-green-700 dark:text-green-400">
+            <CheckCircle2 className="h-3.5 w-3.5" /> {isAr ? "اختبار الإرسال نجح" : "Dry-run send passed"}
+          </div>
+          <div className="mt-1 text-muted-foreground">
+            {isAr ? "هدف مقترح: " : "Suggested target: "}
+            <span className="font-mono text-foreground">{isAr ? "جروب: تسوّق القاهرة" : "Group: Cairo Shoppers"}</span>
+          </div>
+        </div>
+        <ul className="space-y-0.5 text-[11px] text-foreground/80">
+          <li>✓ {isAr ? "التوكن صالح" : "Token valid"}</li>
+          <li>✓ {isAr ? "3 جروبات و 2 صفحات قابلة للنشر" : "3 groups & 2 pages reachable"}</li>
+          <li>✓ {isAr ? "صلاحيات النشر مكتملة" : "All publish scopes granted"}</li>
+        </ul>
+      </div>
+    );
+  }
+  if (stepKey === "run") {
+    return (
+      <div className="space-y-2">
+        <div className="rounded-md bg-card p-2.5 ring-1 ring-border">
+          <div className="flex items-center justify-between">
+            <span className="text-[12px] font-semibold text-foreground">
+              {isAr ? "حملة: عرض الجمعة 🔥" : "Campaign: Friday Deal 🔥"}
+            </span>
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+              {isAr ? "مجدولة" : "Scheduled"}
+            </span>
+          </div>
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            {isAr ? "5 جروبات · كل 5 دقائق · تبدأ 8 مساءً" : "5 groups · every 5 min · starts 8 PM"}
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center text-[11px]">
+          <div className="rounded-md bg-card p-1.5 ring-1 ring-border">
+            <div className="text-muted-foreground">{isAr ? "أُرسل" : "Sent"}</div>
+            <div className="font-bold text-foreground">3/5</div>
+          </div>
+          <div className="rounded-md bg-card p-1.5 ring-1 ring-border">
+            <div className="text-muted-foreground">{isAr ? "تفاعل" : "Reach"}</div>
+            <div className="font-bold text-foreground">412</div>
+          </div>
+          <div className="rounded-md bg-card p-1.5 ring-1 ring-border">
+            <div className="text-muted-foreground">{isAr ? "تعليق" : "Comments"}</div>
+            <div className="font-bold text-foreground">28</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
 function FacebookRouteShell() {
   const location = useLocation();
   return location.pathname === "/dashboard/facebook" ? <FacebookPage /> : <Outlet />;
