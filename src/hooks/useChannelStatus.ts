@@ -54,11 +54,23 @@ export function useChannelStatus(lang: "ar" | "en") {
       }
       const { data, error } = await supabase
         .from("facebook_connections")
-        .select("fb_user_id, fb_user_name, last_synced_at")
+        .select("id, fb_user_id, fb_user_name, last_synced_at")
         .eq("user_id", sess.session.user.id)
         .maybeSingle();
       if (!mounted.current) return;
-      if (error || !data?.fb_user_id) {
+      if (error || !data?.id) {
+        const { data: botAccounts, error: botError } = await supabase
+          .from("fb_bot_accounts")
+          .select("id, status")
+          .eq("user_id", sess.session.user.id)
+          .in("status", ["active", "untested"])
+          .limit(1);
+        if (!mounted.current) return;
+        if (!botError && botAccounts && botAccounts.length > 0) {
+          const s: Omit<ChannelState, "label"> = { status: "connected" };
+          setFacebook({ ...s, label: fmtLabel(s, lang) });
+          return;
+        }
         const s: Omit<ChannelState, "label"> = { status: "disconnected" };
         setFacebook({ ...s, label: fmtLabel(s, lang) });
         return;
