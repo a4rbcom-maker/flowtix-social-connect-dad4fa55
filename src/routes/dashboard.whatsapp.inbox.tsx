@@ -848,6 +848,42 @@ function InfoRow({ label, value, ltr }: { label: string; value: string; ltr?: bo
   );
 }
 
+function ContactAvatar({
+  name,
+  src,
+  size,
+}: {
+  name: string;
+  src: string | null;
+  size: "sm" | "md" | "lg";
+}) {
+  const [failed, setFailed] = useState(false);
+  const sizeClass =
+    size === "lg"
+      ? "h-20 w-20 text-2xl shadow-lg shadow-primary/30"
+      : size === "md"
+        ? "h-11 w-11 text-sm shadow-md shadow-primary/20"
+        : "h-11 w-11 text-sm shadow-sm shadow-primary/20";
+
+  if (src && !failed) {
+    return (
+      <img
+        src={src}
+        alt={name}
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+        className={`${sizeClass} shrink-0 rounded-full object-cover ring-1 ring-border/50`}
+      />
+    );
+  }
+
+  return (
+    <div className={`${sizeClass} flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] font-bold text-white`}>
+      {initials(name)}
+    </div>
+  );
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // Subcomponents
 // ──────────────────────────────────────────────────────────────────────────
