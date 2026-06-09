@@ -165,7 +165,8 @@ function InboxPage() {
   // Data
   const safeCall = async <T,>(fn: () => Promise<T>, fallback: T): Promise<T> => {
     try {
-      return await fn();
+      const result = await fn();
+      return result ?? fallback;
     } catch (err) {
       if (err instanceof Response) {
         console.warn("[inbox] server fn returned Response", err.status);
