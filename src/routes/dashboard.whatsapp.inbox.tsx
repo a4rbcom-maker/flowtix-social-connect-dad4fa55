@@ -592,6 +592,53 @@ function InboxPage() {
               >
                 <Paperclip className="h-5 w-5" />
               </button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-primary"
+                    aria-label={isAr ? "ردود جاهزة" : "Quick replies"}
+                    title={isAr ? "ردود جاهزة" : "Quick replies"}
+                  >
+                    <Zap className="h-5 w-5" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-80 p-0" sideOffset={8}>
+                  <div className="flex items-center justify-between border-b px-3 py-2">
+                    <p className="text-sm font-semibold">{isAr ? "ردود جاهزة" : "Quick replies"}</p>
+                    <Link
+                      to="/dashboard/whatsapp/automation"
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      {isAr ? "إدارة" : "Manage"}
+                    </Link>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto p-1">
+                    {(quickRepliesQuery.data ?? []).length === 0 ? (
+                      <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                        {isAr
+                          ? "لا توجد ردود جاهزة بعد. اضغط (إدارة) لإضافة."
+                          : "No quick replies yet. Click Manage to add."}
+                      </div>
+                    ) : (
+                      (quickRepliesQuery.data ?? []).map((q) => (
+                        <button
+                          key={q.id}
+                          type="button"
+                          onClick={() => {
+                            setDraft((d) => (d ? `${d} ${q.body}` : q.body));
+                            textareaRef.current?.focus();
+                          }}
+                          className="block w-full rounded-md px-3 py-2 text-start transition hover:bg-muted"
+                        >
+                          <div className="text-xs font-semibold text-primary">/{q.shortcut}</div>
+                          <div className="line-clamp-2 text-sm text-foreground">{q.body}</div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
               <textarea
                 ref={textareaRef}
                 value={draft}
