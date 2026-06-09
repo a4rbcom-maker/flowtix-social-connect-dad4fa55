@@ -209,7 +209,7 @@ function JobsHubPage() {
           </Select>
         </Card>
 
-        <Tabs defaultValue="post">
+        <Tabs defaultValue={defaultTab} key={defaultTab}>
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="post">{t.tabPost}</TabsTrigger>
             <TabsTrigger value="pages">{t.tabExtractPages}</TabsTrigger>
