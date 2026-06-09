@@ -156,20 +156,27 @@ function collectMessageEntries(payload: Record<string, unknown>): Record<string,
 
 export async function handleWaWebhook(request: Request): Promise<Response> {
   const secret = process.env.WA_BRIDGE_WEBHOOK_SECRET;
-  if (!secret) {
-    console.error("[wa-webhook] WA_BRIDGE_WEBHOOK_SECRET is not configured");
-    return new Response("Webhook secret not configured", { status: 500 });
-  }
-
   const raw = await request.text();
   const sig =
     request.headers.get("x-bridge-signature") ||
     request.headers.get("x-hub-signature-256") ||
     request.headers.get("x-signature") ||
     request.headers.get("x-webhook-signature");
-  if (!verifySignature(raw, sig, secret)) {
-    console.warn("[wa-webhook] Invalid signature (header present:", !!sig, ")");
-    return new Response("Invalid signature", { status: 401 });
+
+  // BotXtra bridge v1.8.x has webhook HMAC DISABLED by default, so most
+  // production deliveries arrive unsigned. We therefore accept unsigned
+  // requests, but ALWAYS verify when the bridge does include a signature.
+  if (sig) {
+    if (!secret) {
+      console.error("[wa-webhook] signature present but WA_BRIDGE_WEBHOOK_SECRET is not configured");
+      return new Response("Webhook secret not configured", { status: 500 });
+    }
+    if (!verifySignature(raw, sig, secret)) {
+      console.warn("[wa-webhook] Invalid signature, rejecting");
+      return new Response("Invalid signature", { status: 401 });
+    }
+  } else {
+    console.info("[wa-webhook] unsigned delivery accepted (bridge HMAC disabled)");
   }
 
   let payload: Record<string, unknown>;
