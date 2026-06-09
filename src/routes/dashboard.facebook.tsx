@@ -1052,10 +1052,106 @@ function FacebookPage() {
     );
   }
 
+  // ── Journey stepper state ──────────────────────────────────────────────
+  const journeySteps = (() => {
+    const s1Done = !!connection || botAccounts.length > 0;
+    const s2Done = !!(tokenExpiry?.valid) || botAccounts.length > 0;
+    const s3Done = !!(testResult?.ok) || groups.length > 0 || pages.length > 0;
+    const s4Done = false; // "Run" is always the next CTA
+    const steps = lang === "ar"
+      ? [
+          { key: "connect", title: "الربط", desc: "اربط حسابك أو أضف بوت", anchor: "fb-step-connect", done: s1Done },
+          { key: "configure", title: "الإعدادات", desc: "تفعيل الصلاحيات", anchor: "fb-step-configure", done: s2Done },
+          { key: "test", title: "الاختبار", desc: "تحقق من التوكن والوصول", anchor: "fb-step-test", done: s3Done },
+          { key: "run", title: "التشغيل", desc: "ابدأ النشر والمهام", anchor: "fb-step-run", done: s4Done, action: "/dashboard/facebook/jobs" as const },
+        ]
+      : [
+          { key: "connect", title: "Connect", desc: "Link account or add a bot", anchor: "fb-step-connect", done: s1Done },
+          { key: "configure", title: "Configure", desc: "Enable required scopes", anchor: "fb-step-configure", done: s2Done },
+          { key: "test", title: "Test", desc: "Verify token & access", anchor: "fb-step-test", done: s3Done },
+          { key: "run", title: "Run", desc: "Start posting & jobs", anchor: "fb-step-run", done: s4Done, action: "/dashboard/facebook/jobs" as const },
+        ];
+    const activeIdx = steps.findIndex((s) => !s.done);
+    return { steps, activeIdx: activeIdx === -1 ? steps.length - 1 : activeIdx };
+  })();
+
+  const goToStep = (anchor: string, action?: "/dashboard/facebook/jobs") => {
+    if (action) {
+      navigate({ to: action });
+      return;
+    }
+    const el = typeof document !== "undefined" ? document.getElementById(anchor) : null;
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      el.classList.add("ring-2", "ring-primary/40");
+      setTimeout(() => el.classList.remove("ring-2", "ring-primary/40"), 1400);
+    }
+  };
+
   return (
     <DashboardLayout title={t.title}>
       <div className="mx-auto max-w-5xl space-y-6">
-        <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm">
+        {/* Journey stepper — Connect → Configure → Test → Run */}
+        <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-foreground">
+                {lang === "ar" ? "رحلة إعداد فيسبوك" : "Facebook setup journey"}
+              </h3>
+              <p className="text-[12px] text-muted-foreground">
+                {lang === "ar" ? "تابع الخطوات بالترتيب — اضغط أي خطوة للانتقال إليها" : "Follow the steps in order — click any step to jump"}
+              </p>
+            </div>
+            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
+              {journeySteps.steps.filter((s) => s.done).length}/{journeySteps.steps.length}
+            </span>
+          </div>
+          <ol className="flex flex-col gap-2 sm:flex-row sm:items-stretch sm:gap-0">
+            {journeySteps.steps.map((step, idx) => {
+              const isActive = idx === journeySteps.activeIdx;
+              const isDone = step.done;
+              return (
+                <li key={step.key} className="flex flex-1 items-stretch">
+                  <button
+                    type="button"
+                    onClick={() => goToStep(step.anchor, step.action)}
+                    className={`group relative flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-start transition-all ${
+                      isDone
+                        ? "border-green-500/30 bg-green-500/5 hover:bg-green-500/10"
+                        : isActive
+                          ? "border-primary/40 bg-primary/5 ring-1 ring-primary/20 hover:bg-primary/10"
+                          : "border-border/60 bg-muted/30 hover:bg-muted/60"
+                    }`}
+                  >
+                    <span
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-bold ${
+                        isDone
+                          ? "bg-green-500 text-white"
+                          : isActive
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {isDone ? <CheckCircle2 className="h-4 w-4" /> : idx + 1}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-semibold text-foreground">{step.title}</span>
+                      <span className="block truncate text-[11px] text-muted-foreground">{step.desc}</span>
+                    </span>
+                  </button>
+                  {idx < journeySteps.steps.length - 1 && (
+                    <span className="hidden w-3 shrink-0 items-center justify-center text-muted-foreground/40 sm:flex">
+                      <ChevronDown className="h-4 w-4 -rotate-90 rtl:rotate-90" />
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+
+        <div id="fb-step-connect" className="scroll-mt-24 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm transition-shadow">
+
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-start gap-3">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
