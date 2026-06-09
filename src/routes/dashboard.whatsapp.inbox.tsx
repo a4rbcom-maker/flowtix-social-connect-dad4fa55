@@ -1124,7 +1124,8 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     const raw = asRecord(row.raw);
     const msgType = mediaTypeFromRaw(raw, row.msg_type);
     const storedMediaUrl = typeof row.media_url === "string" && row.media_url.trim() ? row.media_url.trim() : null;
-    const mediaUrl = await resolveInboxMediaUrl(storedMediaUrl ?? mediaUrlFromRaw(raw, msgType));
+    const rawMediaUrl = mediaUrlFromRaw(raw, msgType);
+    const mediaUrl = await resolveInboxMediaUrl(preferInboxMediaUrl(storedMediaUrl, rawMediaUrl));
     return {
       id: row.id,
       remote_jid: row.remote_jid,
@@ -1248,6 +1249,13 @@ function waStoragePathFromUrl(url: string | null | undefined): string | null {
   if (value.startsWith("wa-media:")) return value.slice("wa-media:".length).replace(/^\/+/, "");
   if (value.startsWith("storage://wa-media/")) return value.slice("storage://wa-media/".length).replace(/^\/+/, "");
   return null;
+}
+
+function preferInboxMediaUrl(storedUrl: string | null, rawUrl: string | null): string | null {
+  if (waStoragePathFromUrl(storedUrl)) return storedUrl;
+  if (rawUrl?.startsWith("data:") || waStoragePathFromUrl(rawUrl)) return rawUrl;
+  if (storedUrl && /^(https?:)?\/\//i.test(storedUrl)) return storedUrl;
+  return rawUrl ?? storedUrl;
 }
 
 async function resolveInboxMediaUrl(url: string | null): Promise<string | null> {
