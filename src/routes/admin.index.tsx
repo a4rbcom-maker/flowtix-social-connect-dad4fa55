@@ -291,7 +291,7 @@ function AdminOverviewPage() {
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
             )}
-            {actQ.data?.events.map((e) => {
+            {(actQ.data?.events ?? []).map((e) => {
               const kindMap: Record<string, { label: string; color: string; icon: typeof Users }> = {
                 signup: { label: t("تسجيل جديد", "New signup"), color: "text-blue-500", icon: UserPlus },
                 campaign: { label: t("حملة", "Campaign"), color: "text-purple-500", icon: Send },
@@ -316,7 +316,7 @@ function AdminOverviewPage() {
                 </div>
               );
             })}
-            {actQ.data && actQ.data.events.length === 0 && (
+            {!actQ.isLoading && (actQ.data?.events?.length ?? 0) === 0 && (
               <div className="text-xs text-muted-foreground text-center py-6">{t("لا نشاط حديث", "No recent activity")}</div>
             )}
           </div>
