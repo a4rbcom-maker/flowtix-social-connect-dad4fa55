@@ -1883,6 +1883,99 @@ function FacebookPage() {
                   </button>
                 </div>
               </div>
+              {/* Dry-run send test — never actually publishes */}
+              <div className="mt-5 rounded-xl border border-primary/20 bg-background/60 p-4">
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-foreground">
+                      {lang === "ar" ? "اختبار إرسال (تجريبي)" : "Send test (dry-run)"}
+                    </h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {lang === "ar"
+                        ? "نتحقق من التوكن، الصلاحيات، ووجود وجهات للنشر بدون إرسال أي منشور حقيقي."
+                        : "Checks token, scopes, and reachable targets without actually publishing."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleDryRunSend}
+                    disabled={dryRun.status === "running"}
+                    className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-4 py-2 text-sm font-semibold text-white shadow-md shadow-primary/20 hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {dryRun.status === "running" ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {lang === "ar" ? "جاري الاختبار..." : "Testing..."}
+                      </>
+                    ) : (
+                      <>
+                        <FlaskConical className="h-4 w-4" />
+                        {lang === "ar" ? "شغّل اختبار إرسال" : "Run send test"}
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {dryRun.status === "ok" && (
+                  <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-green-700 dark:text-green-400">
+                      <CheckCircle2 className="h-4 w-4" />
+                      {lang === "ar"
+                        ? "نجح الاختبار — جاهز للإرسال الحقيقي"
+                        : "Test passed — ready to send for real"}
+                    </div>
+                    {dryRun.target && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {lang === "ar" ? "هدف مقترح: " : "Suggested target: "}
+                        <span className="font-mono">{dryRun.target}</span>
+                      </p>
+                    )}
+                    {dryRun.okPoints.length > 0 && (
+                      <ul className="mt-2 space-y-1 text-xs text-foreground/80">
+                        {dryRun.okPoints.map((p) => (
+                          <li key={p}>{p}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {dryRun.reasons.length > 0 && (
+                      <div className="mt-2 space-y-1 text-xs text-amber-700 dark:text-amber-400">
+                        {dryRun.reasons.map((r) => (
+                          <p key={r}>⚠ {r}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {dryRun.status === "fail" && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-destructive">
+                      <XCircle className="h-4 w-4" />
+                      {lang === "ar" ? "فشل الاختبار" : "Test failed"}
+                    </div>
+                    <ul className="mt-2 space-y-1 text-xs text-foreground/80">
+                      {dryRun.reasons.map((r) => (
+                        <li key={r}>• {r}</li>
+                      ))}
+                    </ul>
+                    {dryRun.okPoints.length > 0 && (
+                      <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                        {dryRun.okPoints.map((p) => (
+                          <li key={p}>{p}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                {dryRun.status === "idle" && (
+                  <p className="text-xs text-muted-foreground">
+                    {lang === "ar"
+                      ? "اضغط الزر لتشغيل فحص جاهزية الإرسال."
+                      : "Click the button to run a send-readiness check."}
+                  </p>
+                )}
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
