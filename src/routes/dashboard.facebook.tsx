@@ -1344,6 +1344,19 @@ function FacebookPage() {
                         ))}
                       </ul>
                     </div>
+
+                    {/* Live demo preview — mock data only, no real action */}
+                    <div className="mt-3 rounded-lg border border-dashed border-primary/30 bg-background/70 p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <div className="text-[10.5px] font-semibold uppercase tracking-wider text-primary/80">
+                          {lang === "ar" ? "مثال حي (بيانات تجريبية)" : "Live demo (sample data)"}
+                        </div>
+                        <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                          {lang === "ar" ? "تجريبي — لن يُنفّذ شيء" : "Demo — nothing executes"}
+                        </span>
+                      </div>
+                      <DemoPreview stepKey={active.key} lang={lang} />
+                    </div>
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-primary/15 pt-2.5">
                       <span className="text-[11.5px] text-muted-foreground">
                         <span className="font-semibold text-foreground/80">{lang === "ar" ? "التالي: " : "Next: "}</span>
