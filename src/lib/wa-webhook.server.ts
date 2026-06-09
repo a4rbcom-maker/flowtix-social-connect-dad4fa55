@@ -151,9 +151,10 @@ function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null
     msgType: type,
     mediaUrl,
     contactName: isGroup
-      ? pickStr(entry, "groupSubject", "groupName") || pickStr(entry, "pushName", "contactName", "senderName", "name", "notify")
+      ? pickStr(entry, "groupSubject", "groupName")
       : pickStr(entry, "pushName", "contactName", "senderName", "name", "notifyName", "notify"),
     fromMe,
+    isGroup,
   };
 }
 
