@@ -14,12 +14,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { listBotAccounts, createPostJob, createExtractPagesJob, createExtractCommentersJob } from "@/lib/fb-bot.functions";
+import { listBotAccounts, createPostJob, createExtractPagesJob, createExtractCommentersJob, createExtractGroupMembersJob, createExtractPageAudienceJob } from "@/lib/fb-bot.functions";
 import { z } from "zod";
 
 export const Route = createFileRoute("/dashboard/facebook/jobs")({
   ssr: false,
-  validateSearch: z.object({ tab: z.enum(["post", "pages", "commenters"]).optional() }),
+  validateSearch: z.object({ tab: z.enum(["post", "pages", "commenters", "groupmembers", "pageaudience"]).optional() }),
   beforeLoad: async () => {
     if (typeof window === "undefined") return;
     const { supabase } = await import("@/integrations/supabase/client");
@@ -40,6 +40,8 @@ function JobsHubPage() {
   const createPostJobFn = useServerFn(createPostJob);
   const createExtractPagesJobFn = useServerFn(createExtractPagesJob);
   const createExtractCommentersJobFn = useServerFn(createExtractCommentersJob);
+  const createExtractGroupMembersJobFn = useServerFn(createExtractGroupMembersJob);
+  const createExtractPageAudienceJobFn = useServerFn(createExtractPageAudienceJob);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountId, setAccountId] = useState<string>("");
   const [loading, setLoading] = useState(true);
