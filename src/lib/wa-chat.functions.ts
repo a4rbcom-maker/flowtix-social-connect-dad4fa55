@@ -27,6 +27,8 @@ export interface ChatMessageRow {
   media_url: string | null;
   created_at: string;
   is_ai: boolean;
+  sender_name: string | null;
+  sender_phone: string | null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
