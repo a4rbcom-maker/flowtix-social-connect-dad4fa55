@@ -40,11 +40,15 @@ function asObj(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
 }
 
-function normalizeRemoteJid(remoteJid: string | null, phone: string | null): string {
+function normalizeRemoteJid(remoteJid: string | null, phone: string | null, isGroup = false): string {
   const jid = remoteJid || "";
   if (jid.includes("@")) return jid;
   const d = digits(jid) || phone;
-  return d ? `${d}@s.whatsapp.net` : "unknown";
+  return d ? `${d}@${isGroup ? "g.us" : "s.whatsapp.net"}` : "unknown";
+}
+
+function isTruthy(v: unknown): boolean {
+  return v === true || String(v ?? "").toLowerCase() === "true";
 }
 
 function findSessionId(payload: Record<string, unknown>, headers: Headers): string | null {
@@ -105,16 +109,24 @@ function extractTextFromMessage(m: Record<string, unknown>): { text: string | nu
 
 function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null {
   const key = asObj(entry.key);
+  const isGroup =
+    isTruthy(entry.isGroup) ||
+    Boolean(pickStr(entry, "groupJid", "groupId")) ||
+    Boolean(pickStr(key, "remoteJid")?.endsWith("@g.us"));
+  const realPhone =
+    digits(pickStr(entry, "senderPn", "participantPn", "phoneNumber", "phone")) ||
+    digits(pickStr(asObj(entry.participant), "id", "phone", "jid"));
+  const groupJid = pickStr(entry, "groupJid", "groupId") || (pickStr(key, "remoteJid")?.endsWith("@g.us") ? pickStr(key, "remoteJid") : null);
   const remoteJid =
-    pickStr(entry, "remoteJid", "remote_jid", "jid", "from", "sender") ||
+    (isGroup ? groupJid : realPhone) ||
+    pickStr(entry, "remoteJid", "remote_jid", "jid", "chatId", "from", "sender") ||
     pickStr(key, "remoteJid") ||
     null;
 
   const fromPhone =
-    digits(entry.from) ||
-    digits(entry.sender) ||
-    digits(entry.phoneNumber) ||
-    digits(entry.phone) ||
+    realPhone ||
+    (isGroup ? null : digits(entry.from)) ||
+    (isGroup ? null : digits(entry.sender)) ||
     digits(pickStr(key, "remoteJid")) ||
     digits(remoteJid);
 
@@ -132,12 +144,14 @@ function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null
   if (!remoteJid && !fromPhone) return null;
 
   return {
-    remoteJid: normalizeRemoteJid(remoteJid, fromPhone),
+    remoteJid: normalizeRemoteJid(remoteJid, isGroup ? digits(groupJid) : fromPhone, isGroup),
     fromPhone,
     text,
     msgType: type,
     mediaUrl,
-    contactName: pickStr(entry, "pushName", "contactName", "name", "notify"),
+    contactName: isGroup
+      ? pickStr(entry, "groupSubject", "groupName") || pickStr(entry, "pushName", "contactName", "senderName", "name", "notify")
+      : pickStr(entry, "pushName", "contactName", "senderName", "name", "notifyName", "notify"),
     fromMe,
   };
 }
@@ -286,7 +300,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       msg_type: m.msgType,
       text_body: m.text,
       media_url: m.mediaUrl,
-      raw: entry as never,
+      raw: { ...entry, normalizedRemoteJid: m.remoteJid, normalizedContactPhone: m.fromPhone } as never,
     });
     if (insErr) {
       console.error("[wa-webhook] insert wa_messages failed:", insErr.message);

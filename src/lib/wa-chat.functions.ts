@@ -10,6 +10,7 @@ export interface ConversationRow {
   remote_jid: string;
   contact_name: string | null;
   contact_phone: string | null;
+  profile_pic_url: string | null;
   last_message_text: string | null;
   last_message_at: string;
   last_direction: string;
@@ -28,6 +29,33 @@ export interface ChatMessageRow {
   is_ai: boolean;
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function pickString(obj: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function digits(value: string | null): string | null {
+  const cleaned = value?.replace(/[^0-9]/g, "") ?? "";
+  return cleaned || null;
+}
+
+function phoneFromRaw(raw: unknown): string | null {
+  const obj = asRecord(raw);
+  return digits(pickString(obj, "normalizedContactPhone", "senderPn", "participantPn", "phoneNumber", "phone"));
+}
+
+function profilePicFromRaw(raw: unknown): string | null {
+  const obj = asRecord(raw);
+  return pickString(obj, "profilePicUrl", "groupProfilePicUrl", "avatarUrl", "picture", "photoUrl");
+}
+
 export const listConversations = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<ConversationRow[]> => {
@@ -42,7 +70,39 @@ export const listConversations = createServerFn({ method: "POST" })
       .order("last_message_at", { ascending: false })
       .limit(200);
     if (error) throw new Error(error.message);
-    return (data ?? []) as ConversationRow[];
+    const rows = (data ?? []) as Omit<ConversationRow, "profile_pic_url">[];
+    if (!rows.length) return [];
+
+    const remoteJids = rows.map((row) => row.remote_jid);
+    const { data: rawMessages } = await supabase
+      .from("wa_messages")
+      .select("remote_jid, raw, created_at")
+      .eq("user_id", userId)
+      .in("remote_jid", remoteJids)
+      .not("raw", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1000);
+
+    const metaByJid = new Map<string, { phone: string | null; profile: string | null }>();
+    for (const msg of rawMessages ?? []) {
+      const jid = String(msg.remote_jid ?? "");
+      if (!jid) continue;
+      const current = metaByJid.get(jid) ?? { phone: null, profile: null };
+      const next = {
+        phone: current.phone ?? phoneFromRaw(msg.raw),
+        profile: current.profile ?? profilePicFromRaw(msg.raw),
+      };
+      metaByJid.set(jid, next);
+    }
+
+    return rows.map((row) => {
+      const meta = metaByJid.get(row.remote_jid);
+      return {
+        ...row,
+        contact_phone: meta?.phone ?? row.contact_phone,
+        profile_pic_url: meta?.profile ?? null,
+      };
+    });
   });
 
 export const getConversationMessages = createServerFn({ method: "POST" })
@@ -121,9 +181,26 @@ export const sendChatMessage = createServerFn({ method: "POST" })
     if (!sess?.session_id) throw new Error("WhatsApp is not connected");
     if (sess.status !== "connected") throw new Error("WhatsApp is not connected");
 
-    const phone = data.remoteJid.replace(/[^0-9]/g, "");
+    const { data: conv } = await supabase
+      .from("wa_conversations")
+      .select("contact_phone")
+      .eq("user_id", userId)
+      .eq("remote_jid", data.remoteJid)
+      .maybeSingle();
+    const { data: recentRaw } = await supabase
+      .from("wa_messages")
+      .select("raw")
+      .eq("user_id", userId)
+      .eq("remote_jid", data.remoteJid)
+      .not("raw", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    const rawPhone = (recentRaw ?? []).map((msg) => phoneFromRaw(msg.raw)).find(Boolean) ?? null;
+    const to = data.remoteJid.endsWith("@g.us")
+      ? data.remoteJid
+      : rawPhone || conv?.contact_phone || data.remoteJid.replace(/[^0-9]/g, "");
     try {
-      await waBridge.sendText(sess.session_id, phone, data.text);
+      await waBridge.sendText(sess.session_id, to, data.text);
     } catch (err) {
       const msg =
         err instanceof BridgeError ? err.message : err instanceof Error ? err.message : "Bridge error";
@@ -135,7 +212,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       session_id: sess.session_id,
       direction: "out",
       remote_jid: data.remoteJid,
-      to_phone: phone,
+      to_phone: to.replace(/[^0-9]/g, "") || to,
       msg_type: "text",
       text_body: data.text,
     });
@@ -145,7 +222,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       sessionId: sess.session_id,
       remoteJid: data.remoteJid,
       contactName: null,
-      contactPhone: phone,
+      contactPhone: to.replace(/[^0-9]/g, "") || to,
       text: data.text,
       direction: "out",
     });

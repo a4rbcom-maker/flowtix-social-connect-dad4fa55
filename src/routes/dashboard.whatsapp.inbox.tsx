@@ -165,7 +165,8 @@ function InboxPage() {
   // Data
   const safeCall = async <T,>(fn: () => Promise<T>, fallback: T): Promise<T> => {
     try {
-      return await fn();
+      const result = await fn();
+      return result ?? fallback;
     } catch (err) {
       if (err instanceof Response) {
         console.warn("[inbox] server fn returned Response", err.status);
@@ -298,6 +299,7 @@ function InboxPage() {
       out = out.filter(
         (c) =>
           c.remote_jid.toLowerCase().includes(q) ||
+          (c.contact_phone ?? "").toLowerCase().includes(q) ||
           (c.contact_name ?? "").toLowerCase().includes(q) ||
           (c.last_message_text ?? "").toLowerCase().includes(q),
       );
@@ -494,9 +496,11 @@ function InboxPage() {
                   <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
                 </button>
               )}
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-sm font-bold text-white shadow-md shadow-primary/20">
-                {initials(activeConv?.contact_name ?? activeJid)}
-              </div>
+              <ContactAvatar
+                name={activeConv?.contact_name ?? activeJid}
+                src={activeConv?.profile_pic_url ?? null}
+                size="md"
+              />
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold">
                   {activeConv?.contact_name ?? activeJid.replace(/@.*/, "")}
@@ -738,9 +742,7 @@ function ContactInfoPanel({
       {/* Contact header */}
       <div className="flex flex-col items-center gap-3 border-b border-border/60 p-5 text-center">
         <div className="relative">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-2xl font-bold text-white shadow-lg shadow-primary/30">
-            {initials(name)}
-          </div>
+          <ContactAvatar name={name} src={conv.profile_pic_url ?? null} size="lg" />
           <span className="absolute bottom-1 right-1 h-4 w-4 rounded-full border-2 border-card bg-emerald-500" />
         </div>
         <div className="min-w-0">
@@ -848,6 +850,42 @@ function InfoRow({ label, value, ltr }: { label: string; value: string; ltr?: bo
   );
 }
 
+function ContactAvatar({
+  name,
+  src,
+  size,
+}: {
+  name: string;
+  src: string | null;
+  size: "sm" | "md" | "lg";
+}) {
+  const [failed, setFailed] = useState(false);
+  const sizeClass =
+    size === "lg"
+      ? "h-20 w-20 text-2xl shadow-lg shadow-primary/30"
+      : size === "md"
+        ? "h-11 w-11 text-sm shadow-md shadow-primary/20"
+        : "h-11 w-11 text-sm shadow-sm shadow-primary/20";
+
+  if (src && !failed) {
+    return (
+      <img
+        src={src}
+        alt={name}
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+        className={`${sizeClass} shrink-0 rounded-full object-cover ring-1 ring-border/50`}
+      />
+    );
+  }
+
+  return (
+    <div className={`${sizeClass} flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] font-bold text-white`}>
+      {initials(name)}
+    </div>
+  );
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // Subcomponents
 // ──────────────────────────────────────────────────────────────────────────
@@ -882,9 +920,7 @@ function ConversationRow({
         {active && (
           <span className="absolute top-2 bottom-2 w-1 rounded-full bg-gradient-to-b from-primary to-[oklch(0.52_0.28_290)] ltr:left-0 rtl:right-0" />
         )}
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-sm font-bold text-white shadow-sm shadow-primary/20">
-          {initials(conv.contact_name ?? conv.remote_jid)}
-        </div>
+        <ContactAvatar name={conv.contact_name ?? conv.remote_jid} src={conv.profile_pic_url ?? null} size="sm" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <span className={`truncate text-sm ${conv.unread_count > 0 ? "font-bold" : "font-semibold"}`}>
