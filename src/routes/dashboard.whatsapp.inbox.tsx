@@ -53,6 +53,7 @@ import {
 import { resetWaReceiver } from "@/lib/wa.functions";
 import type { QuickReply } from "@/lib/wa-automation.functions";
 import { useNavigate } from "@tanstack/react-router";
+import { MediaLightbox, openMedia } from "@/components/whatsapp/MediaLightbox";
 
 export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
   ssr: false,
@@ -711,6 +712,7 @@ function InboxPage() {
           </ResizablePanelGroup>
         )}
       </div>
+      <MediaLightbox />
     </FullscreenInbox>
   );
 }
@@ -1404,28 +1406,44 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
           </p>
         )}
         {m.media_url && m.msg_type === "image" && (
-          <a href={m.media_url} target="_blank" rel="noreferrer" className="mb-1.5 block overflow-hidden rounded-lg">
+          <button
+            type="button"
+            onClick={() => openMedia({ url: m.media_url!, type: "image" })}
+            className="mb-1.5 block overflow-hidden rounded-lg transition hover:opacity-90"
+          >
             <img src={m.media_url} alt="" className="max-h-72 w-full object-cover" loading="lazy" />
-          </a>
+          </button>
         )}
         {m.media_url && m.msg_type === "video" && (
-          <video src={m.media_url} controls className="mb-1.5 max-h-72 w-full rounded-lg" />
+          <button
+            type="button"
+            onClick={() => openMedia({ url: m.media_url!, type: "video" })}
+            className="mb-1.5 block w-full overflow-hidden rounded-lg"
+          >
+            <video src={m.media_url} className="pointer-events-none max-h-72 w-full rounded-lg" />
+          </button>
         )}
         {m.media_url && m.msg_type === "audio" && (
           <audio src={m.media_url} controls className="mb-1.5 w-full" />
         )}
         {m.media_url && m.msg_type === "document" && (
-          <a
-            href={m.media_url}
-            target="_blank"
-            rel="noreferrer"
-            className={`mb-1.5 block rounded-lg px-2 py-1.5 text-xs underline ${isOut ? "bg-white/15" : "bg-muted"}`}
+          <button
+            type="button"
+            onClick={() => openMedia({ url: m.media_url!, type: "document", name: m.text_body || undefined })}
+            className={`mb-1.5 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs ${isOut ? "bg-white/15 hover:bg-white/25" : "bg-muted hover:bg-muted/70"}`}
           >
-            📎 {m.text_body || "Document"}
-          </a>
+            <FileText className="h-4 w-4 shrink-0" />
+            <span className="truncate text-start">{m.text_body || "Document"}</span>
+          </button>
         )}
         {m.media_url && m.msg_type === "sticker" && (
-          <img src={m.media_url} alt="sticker" className="mb-1.5 max-h-32" />
+          <button
+            type="button"
+            onClick={() => openMedia({ url: m.media_url!, type: "sticker" })}
+            className="mb-1.5 block"
+          >
+            <img src={m.media_url} alt="sticker" className="max-h-32" />
+          </button>
         )}
         {m.text_body ? (
           <p className="whitespace-pre-wrap break-words leading-relaxed">{m.text_body}</p>
