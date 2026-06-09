@@ -241,7 +241,6 @@ function WaSettingsPage() {
         {/* Coming soon */}
         <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 p-6">
           <h2 className="text-base font-bold text-foreground">{t.comingTitle}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t.comingDesc}</p>
           <ul className="mt-3 grid gap-2 sm:grid-cols-2">
             {[t.feat1, t.feat2, t.feat3, t.feat4].map((f, i) => (
               <li
