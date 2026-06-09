@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { useI18n } from "@/lib/i18n";
-import { pingWaBridge } from "@/lib/wa.functions";
+import { pingWaBridgeUser } from "@/lib/wa.functions";
 
 
 export const Route = createFileRoute("/dashboard/whatsapp/settings")({
@@ -35,7 +35,7 @@ function WaSettingsPage() {
   const [sound, setSound] = useState(true);
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const [bridgeOk, setBridgeOk] = useState<boolean | null>(null);
-  const ping = useServerFn(pingWaBridge);
+  const ping = useServerFn(pingWaBridgeUser);
 
   useEffect(() => {
     setOrigin(typeof window !== "undefined" ? window.location.origin : "");
