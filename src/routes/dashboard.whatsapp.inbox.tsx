@@ -210,6 +210,8 @@ function InboxPage() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "wa_messages", filter: `user_id=eq.${user.id}` },
         (payload) => {
+          // Always refresh the conversation list so the new chat appears
+          qc.invalidateQueries({ queryKey: ["wa-conversations"] });
           const row = payload.new as { remote_jid: string };
           if (activeJid && row.remote_jid === activeJid) {
             qc.invalidateQueries({ queryKey: ["wa-messages", activeJid] });
