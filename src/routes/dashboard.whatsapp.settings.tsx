@@ -153,23 +153,37 @@ function WaSettingsPage() {
         </div>
 
         {/* Bridge status */}
-        <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                <Link2 className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-foreground">{t.bridgeTitle}</h2>
-                <p className="mt-0.5 text-sm text-muted-foreground">{t.bridgeDesc}</p>
+        {(() => {
+          const isOk = bridgeOk === true;
+          const isDown = bridgeOk === false;
+          const tone = isOk
+            ? { iconBg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", chip: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", Icon: CheckCircle2 }
+            : isDown
+              ? { iconBg: "bg-rose-500/10 text-rose-600 dark:text-rose-400", chip: "bg-rose-500/15 text-rose-700 dark:text-rose-300", Icon: AlertCircle }
+              : { iconBg: "bg-amber-500/10 text-amber-600 dark:text-amber-400", chip: "bg-amber-500/15 text-amber-700 dark:text-amber-300", Icon: Clock };
+          const desc = isOk ? t.bridgeDescOk : isDown ? t.bridgeDescDown : t.bridgeDescChecking;
+          const status = isOk ? t.bridgeStatusOk : isDown ? t.bridgeStatusDown : t.bridgeStatusChecking;
+          return (
+            <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${tone.iconBg}`}>
+                    <Link2 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-foreground">{t.bridgeTitle}</h2>
+                    <p className="mt-0.5 text-sm text-muted-foreground">{desc}</p>
+                  </div>
+                </div>
+                <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${tone.chip}`}>
+                  <tone.Icon className="h-3.5 w-3.5" />
+                  {status}
+                </span>
               </div>
             </div>
-            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
-              <AlertCircle className="h-3.5 w-3.5" />
-              {t.bridgeStatus}
-            </span>
-          </div>
-        </div>
+          );
+        })()}
+
 
         {/* Webhook URL */}
         <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
