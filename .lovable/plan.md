@@ -1,38 +1,86 @@
-# مشكلة: محادثتان لنفس الشخص
+# خطة: استخراج أعضاء الجروبات وأعضاء/متابعي الصفحات
 
-## السبب الجذري
-واتساب بقى يستخدم **LID** (Linked ID) بجانب رقم الموبايل. الـ WA Bridge بيخزّن بعض الرسائل بالـ JID العادي (`201223320405@s.whatsapp.net`) وبعضها بالـ LID (`280242488893495@s.whatsapp.net`). النتيجة: صفّان في `wa_conversations` لنفس جهة الاتصال، فتظهر محادثتان في الـ Inbox.
+## الوضع الحالي (تحليل)
+البوت يدعم حالياً 3 مهام فقط:
+- `post_to_groups` — نشر تلقائي
+- `extract_pages` — جلب صفحاتي
+- `extract_commenters` — معلقي بوست
 
-العيّنة الحالية: 5 صفوف فيها `contact_name = "."` و JID مكوّن من 14–15 رقم (LID) — دول لأشخاص فعلاً عندهم محادثة بالرقم الحقيقي.
+**سحب أعضاء الجروبات / أعضاء الصفحات غير موجود**. لازم نضيف نوعين جديدين من المهام مع منطق scraping مختلف لكل واحد.
 
-## الحل المقترح (مرحلتان)
+## القيود الواقعية (مهم تعرفيها)
+- **الجروبات**: فيسبوك بيخفي قائمة الأعضاء الكاملة. الـ scraper بيقدر يجيب اللي ظاهرين فعلاً في `/groups/{id}/members` (عادة 1000–5000 من الأكتر تفاعلاً، مش كل الأعضاء).
+- **الصفحات**: مفيش "قائمة أعضاء". اللي ينفع سحبه هو **المتابعين الظاهرين علناً** + **اللي عملوا Like للصفحة** (من تبويب People) + **اللي تفاعلوا مع آخر البوستات**.
+- لازم خمول/ديلاي طويل بين الـ scrolls لتفادي الحظر.
 
-### المرحلة 1 — معالجة فورية (Bridge ingestion)
-تعديل دالة استقبال الرسائل في Bridge / Webhook بحيث:
-- لو الـ payload فيه `remoteJidAlt` أو `senderPn` أو `participantPn` يحتوي على JID رقم موبايل → نخزّن دايماً تحت رقم الموبايل (نتجاهل الـ LID).
-- لو وصلت رسالة بـ LID فقط (مفيش رقم) → نحاول استعلام `whatsappLidToPn` من الـ Bridge للحصول على الرقم قبل الإدراج.
+## المعمارية المقترحة
 
-### المرحلة 2 — دمج المحادثات الموجودة
-سكريبت/Migration لدمج الصفوف:
-1. تكوين جدول مؤقت يربط كل LID JID بالـ Phone JID المقابل (من خلال:
-   - مطابقة `pushName`/`contact_name` المتطابقة + قرب توقيت الرسائل، أو
-   - استدعاء Bridge endpoint للحصول على mapping LID→PN لكل JID مشبوه).
-2. تحديث `wa_messages.remote_jid` من LID إلى Phone JID.
-3. دمج صفّي `wa_conversations`:
-   - الاحتفاظ بصف الرقم (Phone)، تحديث `last_message_at` و `unread_count` بأحدث/مجموع القيمتين.
-   - حذف صف الـ LID.
-4. إضافة قيد `UNIQUE (user_id, remote_jid)` للتأكد من عدم تكرار مستقبلاً (لو مش موجود).
+### 1) نوعان جديدان من المهام (`fb_jobs.job_type`)
+```
+extract_group_members   →  payload: { groupId, maxMembers, filterKeywords? }
+extract_page_audience   →  payload: { pageId, sources: ["followers"|"likers"|"engagers"], maxItems }
+```
 
-### المرحلة 3 — حماية مستقبلية في الواجهة
-في `dashboard.whatsapp.inbox.tsx` نضيف فلتر يخفي أي صف JID > 13 رقم لمّا يكون فيه صف آخر بنفس `contact_name` (احتياط لو الـ Bridge فشل).
+### 2) Worker Actions (bot-worker/actions/)
+```
+extract-group-members.js   ← يفتح /groups/{id}/members، scroll + parse
+extract-page-audience.js   ← يفتح People tab + يستخرج reactors من البوستات
+```
 
-## الملفات المتأثرة
-- (Bridge code — خارج المشروع) منطق normalize JID قبل الإدراج
-- `supabase/migrations/` — سكريبت دمج وحذف الصفوف القديمة + UNIQUE constraint
-- `src/routes/dashboard.whatsapp.inbox.tsx` — فلترة احترازية اختيارية
+كل action يبعث Results عبر `report({ result: { target, data } })` (نفس النمط الحالي).
 
-## السؤال قبل التنفيذ
-هل تفضّلين أبدأ بـ:
-- **(أ)** الـ migration للدمج فقط (يحلّ المشكلة الحالية فوراً للسجلات الموجودة)، أو
-- **(ب)** أعمل (أ) + الفلتر الاحترازي في الواجهة، أو
-- **(ج)** أحتاج وصول لكود الـ Bridge عشان أعمل الحل الجذري الكامل (المرحلة 1)؟
+### 3) شكل الـ Result (موحّد للاثنين)
+```ts
+{
+  fb_user_id: string,
+  name: string,
+  profile_url: string,
+  avatar_url?: string,
+  bio_snippet?: string,        // أول سطر من البايو لو ظاهر
+  source: "group" | "page_followers" | "page_likers" | "page_engagers",
+  source_id: string             // group/page id
+}
+```
+
+### 4) الإثراء التلقائي (إعادة استخدام موجود)
+بعد ما النتائج تترفع في `fb_job_results`، تشغّل `enrichLines()` من `src/lib/egypt-enrich.ts` على `name + bio_snippet` لاستخراج:
+- موبايل مصري (لو حد كاتبه في الاسم/البايو)
+- المحافظة والمدينة
+
+### 5) واجهة المستخدم
+في `src/routes/dashboard.facebook.jobs.tsx` أضيف تابين جداد للـ Tabs:
+- **سحب أعضاء جروب** — input: Group ID/URL + max + كلمات فلترة اختيارية
+- **سحب جمهور صفحة** — Page picker (من اللي اتسحبوا قبل كده) + Checkboxes للمصادر + max
+
+في `dashboard.facebook.history.tsx` (موجود فعلاً نمط جاهز):
+- عرض النتائج بأعمدة: الاسم، رابط البروفايل، الموبايل، المحافظة، المدينة، المصدر
+- زر CSV (مع BOM للعربي — موجود بالفعل)
+
+### 6) Storage & Dedup
+- Index فريد على `(user_id, fb_user_id, source_id)` في `fb_job_results` (لو مش موجود) لتفادي التكرار عند تكرار السحب.
+- زر "دمج كل نتائج هذا المصدر في ملف واحد" في History.
+
+### 7) تدابير الأمان من الحظر
+- ديلاي عشوائي 2–5 ثوان بين الـ scrolls
+- توقف نهائي بعد `maxMembers` أو لما يلاقي 3 scrolls بدون عناصر جديدة
+- حد أقصى صارم: 5000/مهمة للجروب، 3000/مهمة للصفحة
+- مهمة واحدة فعّالة لكل حساب في نفس الوقت
+
+## ملفات هتتعدّل/تتعمل
+**جديد:**
+- `bot-worker/actions/extract-group-members.js`
+- `bot-worker/actions/extract-page-audience.js`
+
+**تعديل:**
+- `bot-worker/index.js` — route للنوعين الجداد
+- `src/lib/fb-bot.functions.ts` — `createExtractGroupMembersJob`, `createExtractPageAudienceJob`
+- `src/routes/dashboard.facebook.jobs.tsx` — تابين جداد في الـ Tabs
+- `src/routes/dashboard.facebook.history.tsx` — أعمدة نتائج للنوع الجديد + إثراء تلقائي
+- `src/routes/api/public/bot/next-job.ts` — يمرر النوعين الجداد للـ payload (لو محتاج تعديل)
+- Migration: index فريد على `fb_job_results` (اختياري لكن مُستحسن)
+
+## سؤال قبل التنفيذ
+عايزة أبدأ بأي طريقة؟
+- **(أ)** الاتنين مع بعض (جروبات + صفحات) — أطول لكن متكامل
+- **(ب)** أبدأ بسحب أعضاء الجروبات الأول (الأكثر طلباً)، وبعدين الصفحات
+- **(ج)** أبدأ بسحب جمهور الصفحات الأول
