@@ -34,13 +34,19 @@ function WaSettingsPage() {
   const [notify, setNotify] = useState(true);
   const [sound, setSound] = useState(true);
   const [permission, setPermission] = useState<NotificationPermission>("default");
+  const [bridgeOk, setBridgeOk] = useState<boolean | null>(null);
+  const ping = useServerFn(pingWaBridge);
 
   useEffect(() => {
     setOrigin(typeof window !== "undefined" ? window.location.origin : "");
     setNotify(localStorage.getItem(NOTIF_KEY) !== "0");
     setSound(localStorage.getItem(SOUND_KEY) !== "0");
     if (typeof Notification !== "undefined") setPermission(Notification.permission);
+    ping({ data: {} as any })
+      .then((r: any) => setBridgeOk(Boolean(r?.ok)))
+      .catch(() => setBridgeOk(false));
   }, []);
+
 
   const webhookUrl = origin ? `${origin}/api/public/wa-webhook` : "";
 
