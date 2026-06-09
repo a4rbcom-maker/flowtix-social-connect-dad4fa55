@@ -43,6 +43,8 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { Switch } from "@/components/ui/switch";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Zap } from "lucide-react";
 import {
   listConversations,
   getConversationMessages,
@@ -53,6 +55,7 @@ import {
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
 import { getWaConnectionState, resetWaReceiver } from "@/lib/wa.functions";
+import { listQuickReplies, type QuickReply } from "@/lib/wa-automation.functions";
 import { useNavigate } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
