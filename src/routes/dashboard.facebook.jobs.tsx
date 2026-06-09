@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
-import { Loader2, Send, Eye, AlertCircle } from "lucide-react";
+import { Loader2, Send, Eye, AlertCircle, Users, UserPlus, MessageSquare, FileText } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
@@ -288,6 +288,24 @@ function JobsHubPage() {
               ))}
             </SelectContent>
           </Select>
+        </Card>
+
+        <Card className="p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground me-1">{lang === "ar" ? "وصول سريع:" : "Quick access:"}</span>
+            <Button size="sm" variant={activeTab === "groupmembers" ? "default" : "outline"} onClick={() => navigate({ search: { tab: "groupmembers" }, replace: true })} className="gap-2">
+              <Users className="h-4 w-4" />{t.tabGroupMembers}
+            </Button>
+            <Button size="sm" variant={activeTab === "pageaudience" ? "default" : "outline"} onClick={() => navigate({ search: { tab: "pageaudience" }, replace: true })} className="gap-2">
+              <UserPlus className="h-4 w-4" />{t.tabPageAudience}
+            </Button>
+            <Button size="sm" variant={activeTab === "commenters" ? "default" : "outline"} onClick={() => navigate({ search: { tab: "commenters" }, replace: true })} className="gap-2">
+              <MessageSquare className="h-4 w-4" />{t.tabExtractCommenters}
+            </Button>
+            <Button size="sm" variant={activeTab === "post" ? "default" : "outline"} onClick={() => navigate({ search: { tab: "post" }, replace: true })} className="gap-2">
+              <FileText className="h-4 w-4" />{t.tabPost}
+            </Button>
+          </div>
         </Card>
 
         <Tabs value={activeTab} onValueChange={(v) => navigate({ search: { tab: v as typeof activeTab }, replace: true })}>
