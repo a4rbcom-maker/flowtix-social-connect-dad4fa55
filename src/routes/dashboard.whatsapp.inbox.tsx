@@ -46,16 +46,12 @@ import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Zap } from "lucide-react";
 import {
-  listConversations,
-  getConversationMessages,
   sendChatMessage,
-  toggleConversationAi,
-  markConversationRead,
   type ConversationRow,
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
-import { getWaConnectionState, resetWaReceiver } from "@/lib/wa.functions";
-import { listQuickReplies, type QuickReply } from "@/lib/wa-automation.functions";
+import { resetWaReceiver } from "@/lib/wa.functions";
+import type { QuickReply } from "@/lib/wa-automation.functions";
 import { useNavigate } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
@@ -71,14 +67,8 @@ function InboxPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const isMobile = useIsMobile();
-  const listFn = useServerFn(listConversations);
-  const msgsFn = useServerFn(getConversationMessages);
   const sendFn = useServerFn(sendChatMessage);
-  const toggleAiFn = useServerFn(toggleConversationAi);
-  const markReadFn = useServerFn(markConversationRead);
-  const refreshConnectionFn = useServerFn(getWaConnectionState);
   const resetReceiverFn = useServerFn(resetWaReceiver);
-  const quickRepliesFn = useServerFn(listQuickReplies);
   const navigate = useNavigate();
 
   const [activeJid, setActiveJid] = useState<string | null>(null);
