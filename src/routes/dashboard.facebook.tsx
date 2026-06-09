@@ -149,6 +149,12 @@ function FacebookPage() {
   const [testResult, setTestResult] = useState<TokenCheckResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
   const [testErrorType, setTestErrorType] = useState<string | null>(null);
+  const [dryRun, setDryRun] = useState<{
+    status: "idle" | "running" | "ok" | "fail";
+    reasons: string[];
+    okPoints: string[];
+    target?: string;
+  }>({ status: "idle", reasons: [], okPoints: [] });
   const loadedConnectionForRef = useRef<string | null>(null);
 
   const requiredScopes = [
@@ -947,6 +953,94 @@ function FacebookPage() {
       toast.error(friendlyError(raw));
     } finally {
       setInspectingToken(false);
+    }
+  };
+
+  // Dry-run send test: validates token + scopes + at least one reachable target
+  // WITHOUT actually publishing anything. Pure read-only checks.
+  const handleDryRunSend = async () => {
+    if (!connection) return;
+    setDryRun({ status: "running", reasons: [], okPoints: [] });
+    const reasons: string[] = [];
+    const okPoints: string[] = [];
+    let target: string | undefined;
+    try {
+      const insp = await fbCall(inspectFacebookConnection);
+      const isAr = lang === "ar";
+      if (!insp.connected || insp.valid === false || insp.isExpired) {
+        reasons.push(
+          isAr
+            ? "التوكن غير صالح أو منتهي الصلاحية — أعد الربط."
+            : "Token invalid or expired — reconnect required.",
+        );
+        setDryRun({ status: "fail", reasons, okPoints });
+        return;
+      }
+      okPoints.push(isAr ? "✓ التوكن صالح" : "✓ Token is valid");
+
+      const granted: string[] = Array.isArray(insp.granted) ? insp.granted : [];
+      const canGroups = granted.includes("publish_to_groups");
+      const canPages = granted.includes("pages_manage_posts");
+
+      const hasGroups = groups.length > 0;
+      const hasPages = pages.length > 0;
+
+      if (!hasGroups && !hasPages) {
+        reasons.push(
+          isAr
+            ? 'لا توجد جروبات أو صفحات محمّلة. اضغط "تحميل الجروبات" أو "تحميل الصفحات" أولاً.'
+            : 'No groups or pages loaded yet. Click "Load Groups" or "Load Pages" first.',
+        );
+      }
+
+      let canSendAnywhere = false;
+      if (hasGroups && canGroups) {
+        canSendAnywhere = true;
+        target = isAr
+          ? `جروب: ${groups[0].name}`
+          : `Group: ${groups[0].name}`;
+        okPoints.push(
+          isAr
+            ? `✓ صلاحية النشر بالجروبات متاحة (${groups.length} جروب)`
+            : `✓ Group posting permission OK (${groups.length} groups)`,
+        );
+      } else if (hasGroups && !canGroups) {
+        reasons.push(
+          isAr
+            ? "صلاحية publish_to_groups ناقصة — لن تستطيع النشر بالجروبات."
+            : "Missing publish_to_groups scope — cannot post to groups.",
+        );
+      }
+
+      if (hasPages && canPages) {
+        canSendAnywhere = true;
+        if (!target) {
+          target = isAr ? `صفحة: ${pages[0].name}` : `Page: ${pages[0].name}`;
+        }
+        okPoints.push(
+          isAr
+            ? `✓ صلاحية النشر بالصفحات متاحة (${pages.length} صفحة)`
+            : `✓ Page posting permission OK (${pages.length} pages)`,
+        );
+      } else if (hasPages && !canPages) {
+        reasons.push(
+          isAr
+            ? "صلاحية pages_manage_posts ناقصة — لن تستطيع النشر بالصفحات."
+            : "Missing pages_manage_posts scope — cannot post to pages.",
+        );
+      }
+
+      if (canSendAnywhere && reasons.length === 0) {
+        setDryRun({ status: "ok", reasons, okPoints, target });
+      } else if (canSendAnywhere) {
+        setDryRun({ status: "ok", reasons, okPoints, target });
+      } else {
+        setDryRun({ status: "fail", reasons, okPoints, target });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      reasons.push(friendlyError(msg));
+      setDryRun({ status: "fail", reasons, okPoints });
     }
   };
 
@@ -1788,6 +1882,99 @@ function FacebookPage() {
                     {t.disconnect}
                   </button>
                 </div>
+              </div>
+              {/* Dry-run send test — never actually publishes */}
+              <div className="mt-5 rounded-xl border border-primary/20 bg-background/60 p-4">
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-foreground">
+                      {lang === "ar" ? "اختبار إرسال (تجريبي)" : "Send test (dry-run)"}
+                    </h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {lang === "ar"
+                        ? "نتحقق من التوكن، الصلاحيات، ووجود وجهات للنشر بدون إرسال أي منشور حقيقي."
+                        : "Checks token, scopes, and reachable targets without actually publishing."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleDryRunSend}
+                    disabled={dryRun.status === "running"}
+                    className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-4 py-2 text-sm font-semibold text-white shadow-md shadow-primary/20 hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {dryRun.status === "running" ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {lang === "ar" ? "جاري الاختبار..." : "Testing..."}
+                      </>
+                    ) : (
+                      <>
+                        <FlaskConical className="h-4 w-4" />
+                        {lang === "ar" ? "شغّل اختبار إرسال" : "Run send test"}
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {dryRun.status === "ok" && (
+                  <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-green-700 dark:text-green-400">
+                      <CheckCircle2 className="h-4 w-4" />
+                      {lang === "ar"
+                        ? "نجح الاختبار — جاهز للإرسال الحقيقي"
+                        : "Test passed — ready to send for real"}
+                    </div>
+                    {dryRun.target && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {lang === "ar" ? "هدف مقترح: " : "Suggested target: "}
+                        <span className="font-mono">{dryRun.target}</span>
+                      </p>
+                    )}
+                    {dryRun.okPoints.length > 0 && (
+                      <ul className="mt-2 space-y-1 text-xs text-foreground/80">
+                        {dryRun.okPoints.map((p) => (
+                          <li key={p}>{p}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {dryRun.reasons.length > 0 && (
+                      <div className="mt-2 space-y-1 text-xs text-amber-700 dark:text-amber-400">
+                        {dryRun.reasons.map((r) => (
+                          <p key={r}>⚠ {r}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {dryRun.status === "fail" && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-destructive">
+                      <XCircle className="h-4 w-4" />
+                      {lang === "ar" ? "فشل الاختبار" : "Test failed"}
+                    </div>
+                    <ul className="mt-2 space-y-1 text-xs text-foreground/80">
+                      {dryRun.reasons.map((r) => (
+                        <li key={r}>• {r}</li>
+                      ))}
+                    </ul>
+                    {dryRun.okPoints.length > 0 && (
+                      <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                        {dryRun.okPoints.map((p) => (
+                          <li key={p}>{p}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                {dryRun.status === "idle" && (
+                  <p className="text-xs text-muted-foreground">
+                    {lang === "ar"
+                      ? "اضغط الزر لتشغيل فحص جاهزية الإرسال."
+                      : "Click the button to run a send-readiness check."}
+                  </p>
+                )}
               </div>
             </div>
           ) : (
