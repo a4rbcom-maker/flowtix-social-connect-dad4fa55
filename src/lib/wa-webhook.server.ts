@@ -4,6 +4,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { handleAiAutoReply, upsertConversationFromMessage } from "./wa-ai.server";
+import { tryKeywordAutoReply } from "./wa-keyword.server";
 
 function verifySignature(rawBody: string, header: string | null, secret: string): boolean {
   if (!header) return false;
