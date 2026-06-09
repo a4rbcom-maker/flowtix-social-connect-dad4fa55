@@ -277,15 +277,19 @@ async function readState(
   }
 
   const now = new Date().toISOString();
+  // Preserve last-known phone_number when bridge transiently reports null
+  // (e.g. session re-paired). Only overwrite when we actually got a number.
+  const update: Record<string, unknown> = {
+    status,
+    qr_data_url: null,
+    last_seen_at: now,
+  };
+  if (phoneNumber) update.phone_number = phoneNumber;
   await supabase
     .from("wa_sessions")
-    .update({
-      status,
-      qr_data_url: null,
-      phone_number: phoneNumber,
-      last_seen_at: now,
-    })
+    .update(update)
     .eq("user_id", userId);
+
 
   return {
     status,
