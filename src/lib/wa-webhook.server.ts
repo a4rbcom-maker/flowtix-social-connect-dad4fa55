@@ -71,6 +71,7 @@ interface ParsedMessage {
   mediaUrl: string | null;
   contactName: string | null;
   fromMe: boolean;
+  isGroup: boolean;
 }
 
 function extractTextFromMessage(m: Record<string, unknown>): { text: string | null; type: string; mediaUrl: string | null } {
@@ -150,9 +151,10 @@ function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null
     msgType: type,
     mediaUrl,
     contactName: isGroup
-      ? pickStr(entry, "groupSubject", "groupName") || pickStr(entry, "pushName", "contactName", "senderName", "name", "notify")
+      ? pickStr(entry, "groupSubject", "groupName")
       : pickStr(entry, "pushName", "contactName", "senderName", "name", "notifyName", "notify"),
     fromMe,
+    isGroup,
   };
 }
 
@@ -313,7 +315,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       sessionId,
       remoteJid: m.remoteJid,
       contactName: m.contactName,
-      contactPhone: m.fromPhone,
+      contactPhone: m.isGroup ? null : m.fromPhone,
       text: m.text ?? (m.msgType !== "text" ? `[${m.msgType}]` : null),
       direction: m.fromMe ? "out" : "in",
     });

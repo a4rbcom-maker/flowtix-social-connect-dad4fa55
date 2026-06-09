@@ -99,9 +99,10 @@ export const listConversations = createServerFn({ method: "POST" })
 
     return rows.map((row) => {
       const meta = metaByJid.get(row.remote_jid);
+      const isGroup = row.remote_jid.endsWith("@g.us");
       return {
         ...row,
-        contact_phone: meta?.phone ?? row.contact_phone,
+        contact_phone: isGroup ? null : (meta?.phone ?? row.contact_phone),
         profile_pic_url: meta?.profile ?? null,
       };
     });
