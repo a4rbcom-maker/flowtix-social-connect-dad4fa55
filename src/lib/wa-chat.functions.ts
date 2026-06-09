@@ -86,11 +86,13 @@ export const listConversations = createServerFn({ method: "POST" })
     const metaByJid = new Map<string, { phone: string | null; profile: string | null }>();
     for (const msg of rawMessages ?? []) {
       const jid = String(msg.remote_jid ?? "");
-      if (!jid || metaByJid.has(jid)) continue;
-      metaByJid.set(jid, {
-        phone: phoneFromRaw(msg.raw),
-        profile: profilePicFromRaw(msg.raw),
-      });
+      if (!jid) continue;
+      const current = metaByJid.get(jid) ?? { phone: null, profile: null };
+      const next = {
+        phone: current.phone ?? phoneFromRaw(msg.raw),
+        profile: current.profile ?? profilePicFromRaw(msg.raw),
+      };
+      metaByJid.set(jid, next);
     }
 
     return rows.map((row) => {
