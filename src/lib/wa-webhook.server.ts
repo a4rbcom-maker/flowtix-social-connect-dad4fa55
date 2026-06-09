@@ -40,6 +40,13 @@ function asObj(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
 }
 
+function normalizeRemoteJid(remoteJid: string | null, phone: string | null): string {
+  const jid = remoteJid || "";
+  if (jid.includes("@")) return jid;
+  const d = digits(jid) || phone;
+  return d ? `${d}@s.whatsapp.net` : "unknown";
+}
+
 function findSessionId(payload: Record<string, unknown>, headers: Headers): string | null {
   return (
     pickStr(payload, "sessionId", "session_id", "session", "instanceId", "instance_id") ||
@@ -125,7 +132,7 @@ function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null
   if (!remoteJid && !fromPhone) return null;
 
   return {
-    remoteJid: remoteJid || (fromPhone ? `${fromPhone}@s.whatsapp.net` : "unknown"),
+    remoteJid: normalizeRemoteJid(remoteJid, fromPhone),
     fromPhone,
     text,
     msgType: type,

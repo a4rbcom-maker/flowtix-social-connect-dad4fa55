@@ -12,33 +12,91 @@ import {
   type BridgeSessionStatus,
 } from "./wa-bridge.server";
 
-/**
- * Resolve the public, STABLE URL where the BotXtra bridge should POST
- * inbound WhatsApp events. Preview URLs change per build, so we prefer
- * (in order):
- *   1) explicit override via WA_PUBLIC_WEBHOOK_URL secret
- *   2) the stable Lovable-published URL (project alias never changes)
- *   3) the current request host (last-resort fallback)
- */
-function deriveWebhookUrl(): string | null {
-  const override = process.env.WA_PUBLIC_WEBHOOK_URL;
-  if (override) return override.replace(/\/+$/, "");
+const PROJECT_ID = "60cc135f-fba6-4c85-a3db-3604a51301ae";
+const STABLE_PROD_WEBHOOK_URL = `https://project--${PROJECT_ID}.lovable.app/api/public/wa-webhook`;
+const STABLE_PREVIEW_WEBHOOK_URL = `https://project--${PROJECT_ID}-dev.lovable.app/api/public/wa-webhook`;
 
-  const PUBLISHED = "https://flowtix-social-connect.lovable.app/api/public/wa-webhook";
+function uniqueUrls(urls: Array<string | null | undefined>): string[] {
+  return [...new Set(urls.filter((url): url is string => Boolean(url)))];
+}
+
+function isPreviewHost(host: string | null): boolean {
+  if (!host) return false;
+  return (
+    host === "localhost:8080" ||
+    host.includes("lovableproject.com") ||
+    host.includes("id-preview--") ||
+    host === `project--${PROJECT_ID}-dev.lovable.app`
+  );
+}
+
+async function isValidWebhookUrl(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!res.ok || !contentType.includes("application/json")) return false;
+    const body = (await res.json()) as { endpoint?: string } | null;
+    return body?.endpoint === "wa-webhook";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve the externally reachable webhook URL.
+ * We validate every candidate because some friendly/custom domains can serve
+ * the app shell for `/api/public/wa-webhook` instead of the actual JSON route.
+ */
+async function deriveWebhookUrl(): Promise<string | null> {
+  const override = process.env.WA_PUBLIC_WEBHOOK_URL?.replace(/\/+$/, "");
+
   try {
     const req = getRequest();
     const u = new URL(req.url);
     const host = req.headers.get("x-forwarded-host") || u.host;
     const proto = req.headers.get("x-forwarded-proto") || u.protocol.replace(":", "");
-    // If we're already on a *.lovable.app host, trust it. Otherwise (preview
-    // / lovableproject.com / localhost) use the stable published URL so the
-    // bridge can always reach us even after a redeploy.
-    if (host && /\.lovable\.app$/i.test(host)) {
-      return `${proto}://${host}/api/public/wa-webhook`;
+    const currentHostCandidate = host && /\.lovable\.app$/i.test(host)
+      ? `${proto}://${host}/api/public/wa-webhook`
+      : null;
+
+    const preferredStable = isPreviewHost(host) ? STABLE_PREVIEW_WEBHOOK_URL : STABLE_PROD_WEBHOOK_URL;
+    const fallbackStable = isPreviewHost(host) ? STABLE_PROD_WEBHOOK_URL : STABLE_PREVIEW_WEBHOOK_URL;
+
+    for (const candidate of uniqueUrls([override, currentHostCandidate, preferredStable, fallbackStable])) {
+      if (await isValidWebhookUrl(candidate)) {
+        return candidate;
+      }
+      console.warn("[wa] webhook candidate rejected:", candidate);
     }
-    return PUBLISHED;
   } catch {
-    return PUBLISHED;
+    // fall through to stable defaults below
+  }
+
+  for (const fallback of uniqueUrls([override, STABLE_PREVIEW_WEBHOOK_URL, STABLE_PROD_WEBHOOK_URL])) {
+    if (await isValidWebhookUrl(fallback)) {
+      return fallback;
+    }
+  }
+
+  return null;
+}
+
+async function ensureBridgeWebhook(sessionId: string, webhookUrl: string): Promise<void> {
+  try {
+    await waBridge.createSession(sessionId, webhookUrl);
+  } catch (err) {
+    if (!(err instanceof BridgeError && (err.status === 409 || err.status === 400))) {
+      console.warn("[wa] ensure webhook createSession failed:", err instanceof Error ? err.message : err);
+    }
+  }
+  try {
+    const ok = await waBridge.setWebhook(sessionId, webhookUrl);
+    if (!ok) console.warn("[wa] ensure webhook setWebhook returned false");
+  } catch (err) {
+    console.warn("[wa] ensure webhook setWebhook failed:", err instanceof Error ? err.message : err);
   }
 }
 
@@ -152,7 +210,7 @@ export const connectWaSession = createServerFn({ method: "POST" })
     }
 
     // 2) Try to create the session on the bridge (idempotent: 409/duplicate is ok)
-    const webhookUrl = deriveWebhookUrl();
+    const webhookUrl = await deriveWebhookUrl();
     try {
       await waBridge.createSession(sessionId, webhookUrl ?? undefined);
     } catch (err) {
@@ -180,11 +238,7 @@ export const connectWaSession = createServerFn({ method: "POST" })
 
     // 2b) Always (re)register the webhook URL — covers existing sessions whose
     // bridge config was never updated. Best-effort, never blocks connection.
-    if (webhookUrl) {
-      waBridge.setWebhook(sessionId, webhookUrl).catch((err) =>
-        console.warn("[wa] setWebhook failed:", err instanceof Error ? err.message : err),
-      );
-    }
+    if (webhookUrl) await ensureBridgeWebhook(sessionId, webhookUrl);
 
     // 3) Pull current status + QR
     return readState(supabase, userId, sessionId);
@@ -201,6 +255,8 @@ export const getWaConnectionState = createServerFn({ method: "POST" })
       .eq("user_id", userId)
       .maybeSingle();
     if (!row?.session_id) return null;
+    const webhookUrl = await deriveWebhookUrl();
+    if (webhookUrl) await ensureBridgeWebhook(row.session_id, webhookUrl);
     return readState(supabase, userId, row.session_id);
   });
 
@@ -282,20 +338,11 @@ export const resyncWaWebhook = createServerFn({ method: "POST" })
     if (!row?.session_id) {
       return { ok: false, webhookUrl: null, error: "No WhatsApp session — connect first" };
     }
-    const webhookUrl = deriveWebhookUrl();
+    const webhookUrl = await deriveWebhookUrl();
     if (!webhookUrl) {
       return { ok: false, webhookUrl: null, error: "Cannot determine webhook URL" };
     }
-    // Bridge has no per-session webhook endpoint — re-POST /api/sessions with
-    // the same id and the canonical webhookUrl so the bridge updates its
-    // stored target. This is idempotent.
-    try {
-      await waBridge.createSession(row.session_id, webhookUrl);
-    } catch (err) {
-      // already_connected / 409 are fine
-      console.warn("[wa] resyncWaWebhook createSession:", err instanceof Error ? err.message : err);
-    }
-    waBridge.setWebhook(row.session_id, webhookUrl).catch(() => {});
+    await ensureBridgeWebhook(row.session_id, webhookUrl);
     return { ok: true, webhookUrl, error: null };
   });
 
@@ -316,7 +363,7 @@ export const sendWaWebhookTest = createServerFn({ method: "POST" })
     if (!row?.session_id) {
       return { ok: false, error: "No WhatsApp session" };
     }
-    const webhookUrl = deriveWebhookUrl();
+    const webhookUrl = await deriveWebhookUrl();
     if (!webhookUrl) return { ok: false, error: "Cannot determine webhook URL" };
 
     const stamp = Date.now();
