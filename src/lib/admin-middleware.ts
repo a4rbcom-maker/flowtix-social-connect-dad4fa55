@@ -3,6 +3,7 @@
 // userId/supabase in context), then verifies the user has the 'admin' role
 // via the service-role client. Use this on every admin server function.
 import { createMiddleware } from "@tanstack/react-start";
+import { setResponseStatus } from "@tanstack/react-start/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
@@ -21,7 +22,8 @@ export const requireAdmin = createMiddleware({ type: "function" })
   .server(async ({ next, context }) => {
     const userId = context.userId;
     if (!userId) {
-      throw new Response("Unauthorized", { status: 401 });
+      setResponseStatus(401);
+      throw new Error("Unauthorized");
     }
     const db = adminClient();
     const { data, error } = await db
@@ -32,10 +34,12 @@ export const requireAdmin = createMiddleware({ type: "function" })
       .maybeSingle();
     if (error) {
       console.error("[requireAdmin] role lookup failed", error);
-      throw new Response("forbidden", { status: 403 });
+      setResponseStatus(403);
+      throw new Error("forbidden");
     }
     if (!data) {
-      throw new Response("forbidden: admin role required", { status: 403 });
+      setResponseStatus(403);
+      throw new Error("forbidden: admin role required");
     }
     return next({
       context: {
