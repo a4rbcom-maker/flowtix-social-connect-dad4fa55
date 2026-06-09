@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate, Link, Outlet, useLocation } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import {
   Facebook,
@@ -35,6 +36,7 @@ import {
   inspectFacebookConnection,
   testFacebookToken,
 } from "@/lib/facebook.functions";
+import { addBotAccount } from "@/lib/fb-bot.functions";
 import { openExternalUrl } from "@/components/shared/ExternalLinkButton";
 
 import { useFacebookApi, describeFbError } from "@/features/facebook/api";
@@ -88,6 +90,13 @@ type TokenCheckResult = {
   warning?: { message?: string; type?: string; missingPermission?: string | null } | null;
 };
 
+type BotAccountSummary = {
+  id: string;
+  display_name: string;
+  auth_method: "cookies" | "credentials";
+  status: string;
+};
+
 function FacebookRouteShell() {
   const location = useLocation();
   return location.pathname === "/dashboard/facebook" ? <FacebookPage /> : <Outlet />;
@@ -101,6 +110,11 @@ function FacebookPage() {
   // Token expiry awareness — populated only when the user manually checks the
   // token, so opening the page does not spend Meta Graph API quota.
   const { call: fbCall } = useFacebookApi();
+  const addBotAccountFn = useServerFn(addBotAccount);
+  const [botAccounts, setBotAccounts] = useState<BotAccountSummary[]>([]);
+  const [cookieName, setCookieName] = useState("");
+  const [cookiePayload, setCookiePayload] = useState("");
+  const [savingCookieAccount, setSavingCookieAccount] = useState(false);
   const [tokenExpiry, setTokenExpiry] = useState<{
     expiresAt: string | null;
     dataAccessExpiresAt: string | null;
@@ -339,6 +353,21 @@ function FacebookPage() {
           botCookiesDesc:
             "ده مكان مختلف عن Access Token. افتح صفحة حسابات البوت والصق Cookies JSON مباشرة.",
           openBotCookies: "فتح إعداد Cookies للبوت",
+          fallbackTitle: "حل بديل عملي: ربط بالـ Cookies",
+          fallbackDesc:
+            "لو توكن Meta لا يعمل معك، الصق Cookies JSON من المتصفح هنا وسيتم حفظ الحساب لاستخدامه في مهام البوت والـ VPS Worker.",
+          cookieNameLabel: "اسم الحساب",
+          cookieNamePh: "مثال: حساب فيسبوك الرئيسي",
+          cookieJsonLabel: "Cookies JSON",
+          cookieJsonPh: '[{"name":"c_user","value":"..."}]',
+          saveCookieAccount: "حفظ ربط Cookies",
+          savingCookieAccount: "جاري الحفظ...",
+          cookieRequired: "الصق Cookies JSON أولاً",
+          cookieSaved: "تم حفظ ربط فيسبوك بالـ Cookies",
+          cookieSavedDesc: "اذهب إلى حسابات البوت لاختبار الكوكيز وتشغيل مهام النشر.",
+          savedBotAccounts: (n: number) => `حسابات Cookies محفوظة: ${n}`,
+          openFacebook: "فتح facebook.com",
+          openCookieEditor: "إضافة Cookie Editor",
           connect: "ربط الحساب",
           connecting: "جاري الربط...",
           disconnect: "إلغاء الربط",
@@ -451,6 +480,21 @@ function FacebookPage() {
           botCookiesDesc:
             "This is separate from Access Token. Open Bot accounts and paste the Cookies JSON directly.",
           openBotCookies: "Open bot Cookies setup",
+          fallbackTitle: "Practical fallback: connect with Cookies",
+          fallbackDesc:
+            "If the Meta token flow keeps failing, paste Cookie Editor JSON here and we will save it for bot/VPS Worker jobs.",
+          cookieNameLabel: "Account name",
+          cookieNamePh: "e.g. Main Facebook account",
+          cookieJsonLabel: "Cookies JSON",
+          cookieJsonPh: '[{"name":"c_user","value":"..."}]',
+          saveCookieAccount: "Save Cookies connection",
+          savingCookieAccount: "Saving...",
+          cookieRequired: "Paste Cookies JSON first",
+          cookieSaved: "Facebook Cookies connection saved",
+          cookieSavedDesc: "Open Bot accounts to test the cookies and run posting jobs.",
+          savedBotAccounts: (n: number) => `${n} Cookies account${n === 1 ? "" : "s"} saved`,
+          openFacebook: "Open facebook.com",
+          openCookieEditor: "Cookie Editor extension",
           connect: "Connect Account",
           connecting: "Connecting...",
           disconnect: "Disconnect",
@@ -571,6 +615,12 @@ function FacebookPage() {
       try {
         const res = await fbCall(getFacebookConnection);
         setConnection(res.connection);
+        const { data: savedBots, error: botsError } = await supabase
+          .from("fb_bot_accounts")
+          .select("id, display_name, auth_method, status")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+        if (!botsError) setBotAccounts((savedBots ?? []) as BotAccountSummary[]);
       } catch (err) {
         console.error("Load connection failed", err);
         toast.error(describeFbError(err, lang === "ar" ? "ar" : "en"));
@@ -735,6 +785,33 @@ function FacebookPage() {
 
   const connectionName = (name: string | null | undefined) =>
     name?.startsWith("Facebook token saved") ? t.savedPendingName : name || t.savedPendingName;
+
+  const handleSaveCookieAccount = async () => {
+    if (!cookiePayload.trim()) {
+      toast.error(t.cookieRequired);
+      return;
+    }
+    setSavingCookieAccount(true);
+    try {
+      const displayName = cookieName.trim() || (lang === "ar" ? "حساب فيسبوك Cookies" : "Facebook Cookies account");
+      const raw = await addBotAccountFn({
+        data: { method: "cookies", displayName, cookies: cookiePayload },
+      });
+      const unwrapped = (raw as { data?: unknown })?.data ?? raw;
+      const account = unwrapped as BotAccountSummary | null;
+      if (account?.id) {
+        setBotAccounts((prev) => [account, ...prev.filter((a) => a.id !== account.id)]);
+      }
+      setCookieName("");
+      setCookiePayload("");
+      toast.success(t.cookieSaved, { description: t.cookieSavedDesc });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : lang === "ar" ? "فشل حفظ الكوكيز" : "Failed to save cookies";
+      toast.error(msg);
+    } finally {
+      setSavingCookieAccount(false);
+    }
+  };
 
   const handleTest = async () => {
     const cleaned = cleanToken(token);
@@ -985,17 +1062,101 @@ function FacebookPage() {
                 <Cookie className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-foreground">{t.botCookiesTitle}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">{t.botCookiesDesc}</p>
+                <h2 className="text-lg font-bold text-foreground">{t.fallbackTitle}</h2>
+                <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{t.fallbackDesc}</p>
+                {botAccounts.length > 0 && (
+                  <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2.5 py-1 text-xs font-semibold text-green-700 ring-1 ring-green-500/20 dark:text-green-300">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    {t.savedBotAccounts(botAccounts.length)}
+                  </span>
+                )}
               </div>
             </div>
-            <Link to="/dashboard/facebook/bot">
-              <button className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:opacity-90">
-                <Cookie className="h-4 w-4" />
-                {t.openBotCookies}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={(e) => openExternal(e, "https://www.facebook.com/")}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-accent"
+              >
+                <ExternalLink className="h-4 w-4" />
+                {t.openFacebook}
               </button>
-            </Link>
+              <Link to="/dashboard/facebook/bot">
+                <button className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:opacity-90">
+                  <Cookie className="h-4 w-4" />
+                  {t.openBotCookies}
+                </button>
+              </Link>
+            </div>
           </div>
+
+          {!connection && (
+            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                    {t.cookieNameLabel}
+                  </label>
+                  <input
+                    value={cookieName}
+                    onChange={(e) => setCookieName(e.target.value)}
+                    placeholder={t.cookieNamePh}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                    {t.cookieJsonLabel}
+                  </label>
+                  <textarea
+                    value={cookiePayload}
+                    onChange={(e) => setCookiePayload(e.target.value)}
+                    placeholder={t.cookieJsonPh}
+                    rows={4}
+                    dir="ltr"
+                    className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 font-mono text-xs text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveCookieAccount}
+                    disabled={savingCookieAccount || !cookiePayload.trim()}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {savingCookieAccount ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Cookie className="h-4 w-4" />
+                    )}
+                    {savingCookieAccount ? t.savingCookieAccount : t.saveCookieAccount}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) =>
+                      openExternal(
+                        e,
+                        "https://chromewebstore.google.com/detail/cookie-editor/ookdjilphngeeeghgngjabigmpepanpl",
+                      )
+                    }
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground hover:bg-accent"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    {t.openCookieEditor}
+                  </button>
+                </div>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
+                <p className="font-semibold text-foreground">{t.botCookiesTitle}</p>
+                <p className="mt-2 text-xs leading-relaxed">{t.botCookiesDesc}</p>
+                <ol className="mt-3 list-inside list-decimal space-y-1.5 text-xs leading-relaxed">
+                  <li>{lang === "ar" ? "افتح facebook.com وأنت مسجل دخول." : "Open facebook.com while signed in."}</li>
+                  <li>{lang === "ar" ? "من Cookie Editor اختر Export as JSON." : "From Cookie Editor choose Export as JSON."}</li>
+                  <li>{lang === "ar" ? "الصق الناتج هنا واحفظ الحساب." : "Paste the result here and save."}</li>
+                </ol>
+              </div>
+            </div>
+          )}
         </div>
 
         {appRateLimitMessage && !rateLimitDismissed && (
