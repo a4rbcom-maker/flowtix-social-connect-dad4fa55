@@ -956,6 +956,93 @@ function FacebookPage() {
     }
   };
 
+  // Dry-run send test: validates token + scopes + at least one reachable target
+  // WITHOUT actually publishing anything. Pure read-only checks.
+  const handleDryRunSend = async () => {
+    if (!connection) return;
+    setDryRun({ status: "running", reasons: [], okPoints: [] });
+    const reasons: string[] = [];
+    const okPoints: string[] = [];
+    let target: string | undefined;
+    try {
+      const insp = await fbCall(inspectFacebookConnection);
+      const isAr = lang === "ar";
+      if (!insp.connected || insp.valid === false || insp.isExpired) {
+        reasons.push(
+          isAr
+            ? "التوكن غير صالح أو منتهي الصلاحية — أعد الربط."
+            : "Token invalid or expired — reconnect required.",
+        );
+        setDryRun({ status: "fail", reasons, okPoints });
+        return;
+      }
+      okPoints.push(isAr ? "✓ التوكن صالح" : "✓ Token is valid");
+
+      const granted: string[] = Array.isArray(insp.granted) ? insp.granted : [];
+      const canGroups = granted.includes("publish_to_groups");
+      const canPages = granted.includes("pages_manage_posts");
+
+      const hasGroups = groups.length > 0;
+      const hasPages = pages.length > 0;
+
+      if (!hasGroups && !hasPages) {
+        reasons.push(
+          isAr
+            ? 'لا توجد جروبات أو صفحات محمّلة. اضغط "تحميل الجروبات" أو "تحميل الصفحات" أولاً.'
+            : 'No groups or pages loaded yet. Click "Load Groups" or "Load Pages" first.',
+        );
+      }
+
+      let canSendAnywhere = false;
+      if (hasGroups && canGroups) {
+        canSendAnywhere = true;
+        target = isAr
+          ? `جروب: ${groups[0].name}`
+          : `Group: ${groups[0].name}`;
+        okPoints.push(
+          isAr
+            ? `✓ صلاحية النشر بالجروبات متاحة (${groups.length} جروب)`
+            : `✓ Group posting permission OK (${groups.length} groups)`,
+        );
+      } else if (hasGroups && !canGroups) {
+        reasons.push(
+          isAr
+            ? "صلاحية publish_to_groups ناقصة — لن تستطيع النشر بالجروبات."
+            : "Missing publish_to_groups scope — cannot post to groups.",
+        );
+      }
+
+      if (hasPages && canPages) {
+        canSendAnywhere = true;
+        if (!target) {
+          target = isAr ? `صفحة: ${pages[0].name}` : `Page: ${pages[0].name}`;
+        }
+        okPoints.push(
+          isAr
+            ? `✓ صلاحية النشر بالصفحات متاحة (${pages.length} صفحة)`
+            : `✓ Page posting permission OK (${pages.length} pages)`,
+        );
+      } else if (hasPages && !canPages) {
+        reasons.push(
+          isAr
+            ? "صلاحية pages_manage_posts ناقصة — لن تستطيع النشر بالصفحات."
+            : "Missing pages_manage_posts scope — cannot post to pages.",
+        );
+      }
+
+      if (canSendAnywhere && reasons.length === 0) {
+        setDryRun({ status: "ok", reasons, okPoints, target });
+      } else if (canSendAnywhere) {
+        setDryRun({ status: "ok", reasons, okPoints, target });
+      } else {
+        setDryRun({ status: "fail", reasons, okPoints, target });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      reasons.push(friendlyError(msg));
+      setDryRun({ status: "fail", reasons, okPoints });
+    }
+
   const friendlyFbError = (e: {
     type: string;
     message: string;
