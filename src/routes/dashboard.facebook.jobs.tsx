@@ -290,7 +290,7 @@ function JobsHubPage() {
           </Select>
         </Card>
 
-        <Tabs defaultValue={defaultTab} key={defaultTab}>
+        <Tabs value={activeTab} onValueChange={(v) => navigate({ search: { tab: v as typeof activeTab }, replace: true })}>
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="post">{t.tabPost}</TabsTrigger>
             <TabsTrigger value="groupmembers">{t.tabGroupMembers}</TabsTrigger>
