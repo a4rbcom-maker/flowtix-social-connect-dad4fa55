@@ -52,6 +52,7 @@ import {
   type ConversationRow,
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
+import { resyncWaWebhook, sendWaWebhookTest } from "@/lib/wa.functions";
 
 export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
   ssr: false,
