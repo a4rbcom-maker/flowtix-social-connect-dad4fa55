@@ -54,6 +54,7 @@ import { resetWaReceiver } from "@/lib/wa.functions";
 import type { QuickReply } from "@/lib/wa-automation.functions";
 import { useNavigate } from "@tanstack/react-router";
 import { MediaLightbox, openMedia } from "@/components/whatsapp/MediaLightbox";
+import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 
 export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
   ssr: false,
