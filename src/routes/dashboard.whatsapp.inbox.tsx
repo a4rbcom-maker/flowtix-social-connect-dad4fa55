@@ -22,9 +22,17 @@ import {
   Mic,
   FileText,
   Video as VideoIcon,
+  X,
+  Phone,
+  UserPlus,
+  StickyNote,
+  Image as ImageIcon,
+  Info,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
+import { useTheme } from "@/lib/theme";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { useIsMobile } from "@/hooks/use-mobile";
