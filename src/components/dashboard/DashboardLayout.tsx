@@ -116,6 +116,8 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
             { kind: "leaf", icon: Activity, label: lang === "ar" ? "مكتبة الوسائط" : "Media library", to: "/dashboard/facebook/media" },
             { kind: "leaf", icon: Send, label: lang === "ar" ? "إنشاء مهمة" : "Create job", to: "/dashboard/facebook/jobs" },
             { kind: "leaf", icon: UserPlus, label: lang === "ar" ? "سحب المعلقين" : "Extract commenters", to: "/dashboard/facebook/jobs", search: { tab: "commenters" } },
+            { kind: "leaf", icon: Users, label: lang === "ar" ? "أعضاء جروب" : "Group members", to: "/dashboard/facebook/jobs", search: { tab: "groupmembers" } },
+            { kind: "leaf", icon: Users, label: lang === "ar" ? "جمهور صفحة" : "Page audience", to: "/dashboard/facebook/jobs", search: { tab: "pageaudience" } },
             { kind: "leaf", icon: Activity, label: lang === "ar" ? "سجل المهام" : "Jobs history", to: "/dashboard/facebook/history" },
           ],
         },
