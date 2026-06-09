@@ -315,6 +315,7 @@ function BulkSendPage() {
           title: title.trim(),
           message: message.trim(),
           interval_seconds: Math.max(1, Math.min(intervalSec, 3600)),
+          batch_size: Math.max(1, Math.min(batchSize, 100)),
           scheduled_at: scheduledAt,
           status: "scheduled",
           total_recipients: recipients.length,
