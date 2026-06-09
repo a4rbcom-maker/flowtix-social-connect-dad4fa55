@@ -142,7 +142,7 @@ async function persistWaMedia(params: {
   if (params.mediaUrl?.startsWith("wa-media:")) return params.mediaUrl;
   const media = mediaDataFromEntry(params.entry);
   const payload = mediaBytesFromEntry(params.entry, params.msgType, params.mediaUrl);
-  if (!payload) return params.mediaUrl || null;
+  if (!payload) return null;
 
   const fallbackName = `${Date.now()}_${randomUUID()}.${extensionFromMime(payload.mimeType, params.msgType)}`;
   const fileName = safeBaseName(pickStr(media, "fileName", "filename", "name"), fallbackName);
