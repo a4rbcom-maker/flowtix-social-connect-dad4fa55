@@ -84,21 +84,9 @@ async function deriveWebhookUrl(): Promise<string | null> {
   return null;
 }
 
-async function ensureBridgeWebhook(sessionId: string, webhookUrl: string): Promise<void> {
-  try {
-    await waBridge.createSession(sessionId, webhookUrl);
-  } catch (err) {
-    if (!(err instanceof BridgeError && (err.status === 409 || err.status === 400))) {
-      console.warn("[wa] ensure webhook createSession failed:", err instanceof Error ? err.message : err);
-    }
-  }
-  try {
-    const ok = await waBridge.setWebhook(sessionId, webhookUrl);
-    if (!ok) console.warn("[wa] ensure webhook setWebhook returned false");
-  } catch (err) {
-    console.warn("[wa] ensure webhook setWebhook failed:", err instanceof Error ? err.message : err);
-  }
-}
+// NOTE: BotXtra v1.8.x has NO endpoint to update webhook on an existing session.
+// POST /api/sessions returns "already_connected" and ignores webhookUrl.
+// The only way to (re)bind a webhook is DELETE + recreate — see resetWaReceiver.
 
 
 
