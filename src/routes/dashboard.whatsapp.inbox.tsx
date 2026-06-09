@@ -1082,7 +1082,7 @@ function renderMessagesWithDays(
         </div>,
       );
     }
-    out.push(<ChatBubble key={m.id} m={m} isAr={isAr} />);
+    out.push(<ChatBubble key={m.id} m={m} isAr={isAr} isGroup={isGroup} />);
   }
   return out;
 }
