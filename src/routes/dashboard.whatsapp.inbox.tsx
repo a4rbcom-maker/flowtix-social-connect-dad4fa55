@@ -300,10 +300,6 @@ function InboxPage() {
     },
     onError: (err: Error) => toast.error(err.message),
   });
-    mutationFn: (vars: { id: string; enabled: boolean }) => toggleAiFn({ data: vars }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["wa-conversations"] }),
-    onError: (err: Error) => toast.error(err.message),
-  });
 
   const filtered = useMemo(() => {
     const list = conversations;
