@@ -712,6 +712,7 @@ function InboxPage() {
           </ResizablePanelGroup>
         )}
       </div>
+      <MediaLightbox />
     </FullscreenInbox>
   );
 }
