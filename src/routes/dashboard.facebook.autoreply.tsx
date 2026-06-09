@@ -136,7 +136,7 @@ function PagesTab({ ar }: { ar: boolean }) {
   );
 }
 
-function AddPageDialog({ ar, onDone, addFn }: { ar: boolean; onDone: () => void; addFn: ReturnType<typeof useServerFn<typeof addPage>> }) {
+function AddPageDialog({ ar, onDone, addFn }: { ar: boolean; onDone: () => void; addFn: (args: { data: any }) => Promise<any> }) {
   const [form, setForm] = useState({
     page_id: "", page_name: "", access_token: "",
     connection_type: "official" as "official" | "bot",
