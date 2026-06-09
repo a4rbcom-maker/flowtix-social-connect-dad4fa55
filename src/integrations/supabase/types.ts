@@ -1024,6 +1024,51 @@ export type Database = {
         }
         Relationships: []
       }
+      wa_keyword_rules: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          hit_count: number
+          id: string
+          keywords: string[]
+          label: string
+          last_hit_at: string | null
+          match_mode: Database["public"]["Enums"]["wa_keyword_match_mode"]
+          priority: number
+          reply_text: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          hit_count?: number
+          id?: string
+          keywords?: string[]
+          label: string
+          last_hit_at?: string | null
+          match_mode?: Database["public"]["Enums"]["wa_keyword_match_mode"]
+          priority?: number
+          reply_text: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          hit_count?: number
+          id?: string
+          keywords?: string[]
+          label?: string
+          last_hit_at?: string | null
+          match_mode?: Database["public"]["Enums"]["wa_keyword_match_mode"]
+          priority?: number
+          reply_text?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       wa_messages: {
         Row: {
           created_at: string
@@ -1065,6 +1110,36 @@ export type Database = {
           session_id?: string
           text_body?: string | null
           to_phone?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      wa_quick_replies: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          shortcut: string
+          sort_order: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          shortcut: string
+          sort_order?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          shortcut?: string
+          sort_order?: number
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -1262,6 +1337,7 @@ export type Database = {
       schedule_status: "scheduled" | "sending" | "sent" | "failed" | "cancelled"
       send_channel: "whatsapp" | "facebook" | "bulk" | "system"
       send_status: "pending" | "processing" | "success" | "failed"
+      wa_keyword_match_mode: "exact" | "contains"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1436,6 +1512,7 @@ export const Constants = {
       schedule_status: ["scheduled", "sending", "sent", "failed", "cancelled"],
       send_channel: ["whatsapp", "facebook", "bulk", "system"],
       send_status: ["pending", "processing", "success", "failed"],
+      wa_keyword_match_mode: ["exact", "contains"],
     },
   },
 } as const
