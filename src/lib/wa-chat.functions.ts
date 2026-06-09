@@ -181,9 +181,26 @@ export const sendChatMessage = createServerFn({ method: "POST" })
     if (!sess?.session_id) throw new Error("WhatsApp is not connected");
     if (sess.status !== "connected") throw new Error("WhatsApp is not connected");
 
-    const phone = data.remoteJid.replace(/[^0-9]/g, "");
+    const { data: conv } = await supabase
+      .from("wa_conversations")
+      .select("contact_phone")
+      .eq("user_id", userId)
+      .eq("remote_jid", data.remoteJid)
+      .maybeSingle();
+    const { data: recentRaw } = await supabase
+      .from("wa_messages")
+      .select("raw")
+      .eq("user_id", userId)
+      .eq("remote_jid", data.remoteJid)
+      .not("raw", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    const rawPhone = (recentRaw ?? []).map((msg) => phoneFromRaw(msg.raw)).find(Boolean) ?? null;
+    const to = data.remoteJid.endsWith("@g.us")
+      ? data.remoteJid
+      : rawPhone || conv?.contact_phone || data.remoteJid.replace(/[^0-9]/g, "");
     try {
-      await waBridge.sendText(sess.session_id, phone, data.text);
+      await waBridge.sendText(sess.session_id, to, data.text);
     } catch (err) {
       const msg =
         err instanceof BridgeError ? err.message : err instanceof Error ? err.message : "Bridge error";
@@ -195,7 +212,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       session_id: sess.session_id,
       direction: "out",
       remote_jid: data.remoteJid,
-      to_phone: phone,
+      to_phone: to.replace(/[^0-9]/g, "") || to,
       msg_type: "text",
       text_body: data.text,
     });
@@ -205,7 +222,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       sessionId: sess.session_id,
       remoteJid: data.remoteJid,
       contactName: null,
-      contactPhone: phone,
+      contactPhone: to.replace(/[^0-9]/g, "") || to,
       text: data.text,
       direction: "out",
     });
