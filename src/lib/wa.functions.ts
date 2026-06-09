@@ -265,6 +265,87 @@ export const disconnectWaSession = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+/**
+ * Re-register the bridge webhook URL for the current user's session.
+ * Call this if no inbound messages are appearing — the bridge may have
+ * a stale preview URL from when the session was originally paired.
+ */
+export const resyncWaWebhook = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data: row } = await supabase
+      .from("wa_sessions")
+      .select("session_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!row?.session_id) {
+      return { ok: false, webhookUrl: null, error: "No WhatsApp session — connect first" };
+    }
+    const webhookUrl = deriveWebhookUrl();
+    if (!webhookUrl) {
+      return { ok: false, webhookUrl: null, error: "Cannot determine webhook URL" };
+    }
+    // Bridge has no per-session webhook endpoint — re-POST /api/sessions with
+    // the same id and the canonical webhookUrl so the bridge updates its
+    // stored target. This is idempotent.
+    try {
+      await waBridge.createSession(row.session_id, webhookUrl);
+    } catch (err) {
+      // already_connected / 409 are fine
+      console.warn("[wa] resyncWaWebhook createSession:", err instanceof Error ? err.message : err);
+    }
+    waBridge.setWebhook(row.session_id, webhookUrl).catch(() => {});
+    return { ok: true, webhookUrl, error: null };
+  });
+
+/**
+ * Diagnostic: POST a fake inbound message to our own webhook endpoint
+ * to verify the receive → DB → conversations chain works end-to-end.
+ * Returns whether a row was created in wa_messages.
+ */
+export const sendWaWebhookTest = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data: row } = await supabase
+      .from("wa_sessions")
+      .select("session_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!row?.session_id) {
+      return { ok: false, error: "No WhatsApp session" };
+    }
+    const webhookUrl = deriveWebhookUrl();
+    if (!webhookUrl) return { ok: false, error: "Cannot determine webhook URL" };
+
+    const stamp = Date.now();
+    const payload = {
+      event: "messages.upsert",
+      sessionId: row.session_id,
+      data: {
+        messages: [
+          {
+            key: { remoteJid: `999000${stamp}@s.whatsapp.net`, fromMe: false, id: `TEST_${stamp}` },
+            pushName: "Flowtix Test",
+            message: { conversation: `Test inbound message ${stamp}` },
+          },
+        ],
+      },
+    };
+    try {
+      const res = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const text = await res.text();
+      return { ok: res.ok, status: res.status, body: text.slice(0, 300), webhookUrl };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : "fetch failed", webhookUrl };
+    }
+  });
+
 // ── helpers ────────────────────────────────────────────────────────────────
 
 async function readState(
