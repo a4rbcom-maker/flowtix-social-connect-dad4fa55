@@ -75,7 +75,7 @@ function WaSettingsPage() {
         permDenied: "الإشعارات مرفوضة — فعّلها من إعدادات المتصفح.",
         permRequest: "السماح بالإشعارات",
         comingTitle: "ميزات قادمة",
-        comingDesc: "هتشتغل بعد ما الـ Bridge يترفع.",
+        comingDesc: "ميزات هنضيفها قريبًا للـ Bridge.",
         feat1: "ربط أكتر من رقم واتساب في نفس الحساب",
         feat2: "تصدير المحادثات (CSV / JSON)",
         feat3: "إعداد قوائم بث وتذكيرات",
