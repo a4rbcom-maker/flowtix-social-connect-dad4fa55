@@ -135,8 +135,9 @@ export const connectWaSession = createServerFn({ method: "POST" })
     }
 
     // 2) Try to create the session on the bridge (idempotent: 409/duplicate is ok)
+    const webhookUrl = deriveWebhookUrl();
     try {
-      await waBridge.createSession(sessionId);
+      await waBridge.createSession(sessionId, webhookUrl ?? undefined);
     } catch (err) {
       if (err instanceof BridgeError && (err.status === 409 || err.status === 400)) {
         // already exists — fine
@@ -158,6 +159,14 @@ export const connectWaSession = createServerFn({ method: "POST" })
           error: errMsg,
         };
       }
+    }
+
+    // 2b) Always (re)register the webhook URL — covers existing sessions whose
+    // bridge config was never updated. Best-effort, never blocks connection.
+    if (webhookUrl) {
+      waBridge.setWebhook(sessionId, webhookUrl).catch((err) =>
+        console.warn("[wa] setWebhook failed:", err instanceof Error ? err.message : err),
+      );
     }
 
     // 3) Pull current status + QR
