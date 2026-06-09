@@ -1591,7 +1591,7 @@ function FacebookPage() {
         )}
 
         {/* Connection card */}
-        <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
+        <div id="fb-step-test" className="scroll-mt-24 rounded-2xl border border-border/50 bg-card p-6 shadow-sm transition-shadow">
           <div className="mb-4 flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[oklch(0.66_0.26_320)] text-white shadow-lg">
               <Facebook className="h-6 w-6" strokeWidth={2.5} />
