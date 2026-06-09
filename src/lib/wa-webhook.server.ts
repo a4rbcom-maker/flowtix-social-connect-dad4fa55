@@ -400,7 +400,8 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     const m = parseMessageEntry(entry);
     if (!m) continue;
     const msgType = mediaTypeFromRaw(entry, m.msgType);
-    const mediaUrl = m.mediaUrl ?? mediaUrlFromRaw(entry, msgType);
+    const rawMediaUrl = m.mediaUrl ?? mediaUrlFromRaw(entry, msgType);
+    const mediaUrl = await persistWaMedia({ userId, sessionId, entry, msgType, mediaUrl: rawMediaUrl });
     const text = cleanMessageText(m.text, entry, msgType);
 
     const { error: insErr } = await supabaseAdmin.from("wa_messages").insert({
@@ -413,7 +414,12 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       msg_type: msgType,
       text_body: text,
       media_url: mediaUrl,
-      raw: { ...entry, normalizedRemoteJid: m.remoteJid, normalizedContactPhone: m.fromPhone } as never,
+      raw: {
+        ...entry,
+        normalizedRemoteJid: m.remoteJid,
+        normalizedContactPhone: m.fromPhone,
+        storedMediaUrl: mediaUrl?.startsWith("wa-media:") ? mediaUrl : null,
+      } as never,
     });
     if (insErr) {
       console.error("[wa-webhook] insert wa_messages failed:", insErr.message);
