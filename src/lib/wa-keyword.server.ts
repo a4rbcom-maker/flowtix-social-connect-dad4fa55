@@ -88,15 +88,10 @@ export async function tryKeywordAutoReply(opts: {
       raw: { keywordRuleId: matched.id, keywordRuleLabel: matched.label } as never,
     });
 
+    const currentCount = await currentHits(matched.id);
     await supabaseAdmin
       .from("wa_keyword_rules")
-      .update({ hit_count: undefined, last_hit_at: new Date().toISOString() })
-      .eq("id", matched.id);
-    // increment hit_count separately (Supabase JS doesn't have atomic +1 inline)
-    await supabaseAdmin.rpc as never; // no-op placeholder; use raw fetch below
-    await supabaseAdmin
-      .from("wa_keyword_rules")
-      .update({ hit_count: (await currentHits(matched.id)) + 1 })
+      .update({ hit_count: currentCount + 1, last_hit_at: new Date().toISOString() })
       .eq("id", matched.id);
 
     return true;
