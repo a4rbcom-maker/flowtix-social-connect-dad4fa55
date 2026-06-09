@@ -1042,6 +1042,7 @@ function FacebookPage() {
       reasons.push(friendlyError(msg));
       setDryRun({ status: "fail", reasons, okPoints });
     }
+  };
 
   const friendlyFbError = (e: {
     type: string;
