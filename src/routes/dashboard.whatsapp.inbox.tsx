@@ -418,14 +418,38 @@ function InboxPage() {
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
               <MessageCircle className="h-6 w-6 text-muted-foreground" />
             </div>
-            <p className="px-6 text-sm font-medium">{t.empty}</p>
-            <p className="px-6 text-xs text-muted-foreground">{t.emptyHint}</p>
-            <Link
-              to="/dashboard/whatsapp/accounts"
-              className="mt-1 inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90"
-            >
-              {t.openAccounts}
-            </Link>
+            {connQuery.data?.status === "connected" ? (
+              <>
+                <p className="px-6 text-sm font-medium">
+                  {isAr ? "الجلسة متصلة لكن لم تُسجَّل لاستقبال الرسائل بعد." : "Connected, but the receiver isn't wired up yet."}
+                </p>
+                <p className="px-6 text-xs text-muted-foreground">
+                  {isAr
+                    ? "اضغط الزر للحصول على رمز QR جديد. الرسائل القديمة لن تظهر، لكن أي رسالة بعد إعادة الربط ستصلك فورًا هنا."
+                    : "Get a fresh QR to bind the inbox to this app. Old messages won't appear, but every new message will land here in real time."}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => resetMut.mutate()}
+                  disabled={resetMut.isPending}
+                  className="mt-1 inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
+                >
+                  {resetMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {isAr ? "إعادة تأسيس الاستقبال" : "Re-bind receiver"}
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="px-6 text-sm font-medium">{t.empty}</p>
+                <p className="px-6 text-xs text-muted-foreground">{t.emptyHint}</p>
+                <Link
+                  to="/dashboard/whatsapp/accounts"
+                  className="mt-1 inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                >
+                  {t.openAccounts}
+                </Link>
+              </>
+            )}
           </div>
         ) : (
           <ul className="divide-y divide-border/30">
