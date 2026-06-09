@@ -13,8 +13,11 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { useI18n } from "@/lib/i18n";
+import { pingWaBridgeUser } from "@/lib/wa.functions";
+
 
 export const Route = createFileRoute("/dashboard/whatsapp/settings")({
   ssr: false,
@@ -31,13 +34,19 @@ function WaSettingsPage() {
   const [notify, setNotify] = useState(true);
   const [sound, setSound] = useState(true);
   const [permission, setPermission] = useState<NotificationPermission>("default");
+  const [bridgeOk, setBridgeOk] = useState<boolean | null>(null);
+  const ping = useServerFn(pingWaBridgeUser);
 
   useEffect(() => {
     setOrigin(typeof window !== "undefined" ? window.location.origin : "");
     setNotify(localStorage.getItem(NOTIF_KEY) !== "0");
     setSound(localStorage.getItem(SOUND_KEY) !== "0");
     if (typeof Notification !== "undefined") setPermission(Notification.permission);
+    ping({ data: {} as any })
+      .then((r: any) => setBridgeOk(Boolean(r?.ok)))
+      .catch(() => setBridgeOk(false));
   }, []);
+
 
   const webhookUrl = origin ? `${origin}/api/public/wa-webhook` : "";
 
@@ -46,8 +55,12 @@ function WaSettingsPage() {
         title: "إعدادات واتساب",
         subtitle: "إعدادات الـ Bridge والإشعارات والاتصال.",
         bridgeTitle: "اتصال الـ Bridge",
-        bridgeStatus: "غير مفعّل بعد",
-        bridgeDesc: "Bot Worker لسة محتاج يترفع على السيرفر. لما يبقى جاهز، الـ Bridge هيوصل تلقائي على الـ Webhook ده.",
+        bridgeStatusOk: "متصل وشغّال",
+        bridgeStatusDown: "مش متصل دلوقتي",
+        bridgeStatusChecking: "بنفحص الاتصال…",
+        bridgeDescOk: "الـ Bridge Worker متصل والـ Webhook بتاعك جاهز يستقبل الرسائل الواردة من واتساب.",
+        bridgeDescDown: "مش قادرين نوصل للـ Bridge Worker حاليًا. اتأكد إن السيرفر شغّال أو حاول تاني بعد شوية.",
+        bridgeDescChecking: "بنتأكد من حالة الـ Bridge Worker…",
         webhookTitle: "Webhook URL",
         webhookDesc: "هتحط الرابط ده في إعدادات Bot Worker بتاعك عشان يبعت الرسائل الواردة.",
         copy: "نسخ",
@@ -62,7 +75,7 @@ function WaSettingsPage() {
         permDenied: "الإشعارات مرفوضة — فعّلها من إعدادات المتصفح.",
         permRequest: "السماح بالإشعارات",
         comingTitle: "ميزات قادمة",
-        comingDesc: "هتشتغل بعد ما الـ Bridge يترفع.",
+        comingDesc: "ميزات هنضيفها قريبًا للـ Bridge.",
         feat1: "ربط أكتر من رقم واتساب في نفس الحساب",
         feat2: "تصدير المحادثات (CSV / JSON)",
         feat3: "إعداد قوائم بث وتذكيرات",
@@ -72,8 +85,12 @@ function WaSettingsPage() {
         title: "WhatsApp Settings",
         subtitle: "Bridge, notifications, and connection settings.",
         bridgeTitle: "Bridge Connection",
-        bridgeStatus: "Not active yet",
-        bridgeDesc: "The Bot Worker still needs to be deployed. Once ready, the Bridge will reach this Webhook automatically.",
+        bridgeStatusOk: "Connected & live",
+        bridgeStatusDown: "Currently unreachable",
+        bridgeStatusChecking: "Checking connection…",
+        bridgeDescOk: "The Bridge Worker is connected and your Webhook is ready to receive incoming WhatsApp messages.",
+        bridgeDescDown: "We can't reach the Bridge Worker right now. Make sure the server is running and try again shortly.",
+        bridgeDescChecking: "Verifying the Bridge Worker status…",
         webhookTitle: "Webhook URL",
         webhookDesc: "Paste this URL in your Bot Worker config so it can deliver incoming messages.",
         copy: "Copy",
@@ -136,23 +153,37 @@ function WaSettingsPage() {
         </div>
 
         {/* Bridge status */}
-        <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                <Link2 className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-foreground">{t.bridgeTitle}</h2>
-                <p className="mt-0.5 text-sm text-muted-foreground">{t.bridgeDesc}</p>
+        {(() => {
+          const isOk = bridgeOk === true;
+          const isDown = bridgeOk === false;
+          const tone = isOk
+            ? { iconBg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", chip: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", Icon: CheckCircle2 }
+            : isDown
+              ? { iconBg: "bg-rose-500/10 text-rose-600 dark:text-rose-400", chip: "bg-rose-500/15 text-rose-700 dark:text-rose-300", Icon: AlertCircle }
+              : { iconBg: "bg-amber-500/10 text-amber-600 dark:text-amber-400", chip: "bg-amber-500/15 text-amber-700 dark:text-amber-300", Icon: Clock };
+          const desc = isOk ? t.bridgeDescOk : isDown ? t.bridgeDescDown : t.bridgeDescChecking;
+          const status = isOk ? t.bridgeStatusOk : isDown ? t.bridgeStatusDown : t.bridgeStatusChecking;
+          return (
+            <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${tone.iconBg}`}>
+                    <Link2 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-foreground">{t.bridgeTitle}</h2>
+                    <p className="mt-0.5 text-sm text-muted-foreground">{desc}</p>
+                  </div>
+                </div>
+                <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${tone.chip}`}>
+                  <tone.Icon className="h-3.5 w-3.5" />
+                  {status}
+                </span>
               </div>
             </div>
-            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
-              <AlertCircle className="h-3.5 w-3.5" />
-              {t.bridgeStatus}
-            </span>
-          </div>
-        </div>
+          );
+        })()}
+
 
         {/* Webhook URL */}
         <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
