@@ -1060,16 +1060,88 @@ function FacebookPage() {
     const s4Done = false; // "Run" is always the next CTA
     const steps = lang === "ar"
       ? [
-          { key: "connect", title: "الربط", desc: "اربط حسابك أو أضف بوت", anchor: "fb-step-connect", done: s1Done },
-          { key: "configure", title: "الإعدادات", desc: "تفعيل الصلاحيات", anchor: "fb-step-configure", done: s2Done },
-          { key: "test", title: "الاختبار", desc: "تحقق من التوكن والوصول", anchor: "fb-step-test", done: s3Done },
-          { key: "run", title: "التشغيل", desc: "ابدأ النشر والمهام", anchor: "fb-step-run", done: s4Done, action: "/dashboard/facebook/jobs" as const },
+          {
+            key: "connect", title: "الربط", desc: "اربط حسابك أو أضف بوت", anchor: "fb-step-connect", done: s1Done,
+            intro: "ابدأ بإضافة حساب فيسبوك رسمي عبر Graph API أو سجّل دخول حساب بوت احتياطي. هذه الخطوة تربط Flowtix بفيسبوك وتسمح للنظام بالتصرّف بالنيابة عنك.",
+            examples: [
+              "ربط حساب رسمي بـ Long-Lived Token من Graph API",
+              "إضافة حساب بوت احتياطي بإيميل/كلمة سر للنشر في الجروبات",
+              "اختيار الصفحات والجروبات التي ستعمل عليها",
+            ],
+            next: "بعد الربط: نتأكد أن الصلاحيات مفعّلة بشكل صحيح.",
+          },
+          {
+            key: "configure", title: "الإعدادات", desc: "تفعيل الصلاحيات", anchor: "fb-step-configure", done: s2Done,
+            intro: "نراجع الـ Scopes المطلوبة (pages, groups, messaging) ونضبط التفضيلات الافتراضية للحملات والردود التلقائية.",
+            examples: [
+              "تفعيل صلاحيات pages_manage_posts و pages_messaging",
+              "ضبط الردود الافتراضية للتعليقات والرسائل",
+              "اختيار طريقة الربط المفضّلة (رسمي / بوت / كلاهما)",
+            ],
+            next: "بعد الإعدادات: نختبر التوكن والوصول للصفحات والجروبات.",
+          },
+          {
+            key: "test", title: "الاختبار", desc: "تحقق من التوكن والوصول", anchor: "fb-step-test", done: s3Done,
+            intro: "نشغّل فحصًا حيًا للتأكد أن التوكن صالح، وأن الصفحات والجروبات تظهر بشكل صحيح، وأن النظام قادر على القراءة والكتابة.",
+            examples: [
+              "فحص صلاحية Access Token وتاريخ انتهائه",
+              "جلب قائمة الصفحات والجروبات المرتبطة",
+              "اختبار نشر تجريبي + قراءة آخر تعليق",
+            ],
+            next: "بعد الاختبار: جاهز لإنشاء حملات نشر ومهام تلقائية.",
+          },
+          {
+            key: "run", title: "التشغيل", desc: "ابدأ النشر والمهام", anchor: "fb-step-run", done: s4Done, action: "/dashboard/facebook/jobs" as const,
+            intro: "أنشئ حملاتك التلقائية: نشر دفعات، استخراج معلّقين، رسائل جماعية، وردود فورية على التعليقات.",
+            examples: [
+              "حملة نشر منتج على 50 جروب بفواصل زمنية",
+              "مهمة سحب معلّقين من بوست وإرسالهم لواتساب",
+              "تشغيل الرد التلقائي على التعليقات بكلمة مفتاحية",
+            ],
+            next: "تابع التقدّم من سجل المهام وتحليلات الصفحة.",
+          },
         ]
       : [
-          { key: "connect", title: "Connect", desc: "Link account or add a bot", anchor: "fb-step-connect", done: s1Done },
-          { key: "configure", title: "Configure", desc: "Enable required scopes", anchor: "fb-step-configure", done: s2Done },
-          { key: "test", title: "Test", desc: "Verify token & access", anchor: "fb-step-test", done: s3Done },
-          { key: "run", title: "Run", desc: "Start posting & jobs", anchor: "fb-step-run", done: s4Done, action: "/dashboard/facebook/jobs" as const },
+          {
+            key: "connect", title: "Connect", desc: "Link account or add a bot", anchor: "fb-step-connect", done: s1Done,
+            intro: "Start by linking an official Facebook account via Graph API, or sign in a backup bot account. This authorizes Flowtix to act on your behalf.",
+            examples: [
+              "Link an official account with a Long-Lived Graph API token",
+              "Add a backup bot account (email/password) for group posting",
+              "Pick the pages and groups you'll operate on",
+            ],
+            next: "Next: we verify required permissions are enabled.",
+          },
+          {
+            key: "configure", title: "Configure", desc: "Enable required scopes", anchor: "fb-step-configure", done: s2Done,
+            intro: "Review the required scopes (pages, groups, messaging) and set defaults for campaigns and auto-replies.",
+            examples: [
+              "Enable pages_manage_posts and pages_messaging",
+              "Set default replies for comments and DMs",
+              "Choose preferred connect mode (Official / Bot / Both)",
+            ],
+            next: "Next: we test the token and access to your pages/groups.",
+          },
+          {
+            key: "test", title: "Test", desc: "Verify token & access", anchor: "fb-step-test", done: s3Done,
+            intro: "We run a live check to confirm the token is valid, your pages and groups load, and the system can read & write.",
+            examples: [
+              "Validate Access Token and expiry date",
+              "Fetch the list of connected pages and groups",
+              "Test posting + reading the latest comment",
+            ],
+            next: "Next: ready to create campaigns and automated jobs.",
+          },
+          {
+            key: "run", title: "Run", desc: "Start posting & jobs", anchor: "fb-step-run", done: s4Done, action: "/dashboard/facebook/jobs" as const,
+            intro: "Launch your automations: bulk posting, commenter extraction, mass messaging, and instant comment replies.",
+            examples: [
+              "Bulk-post a product to 50 groups with delay intervals",
+              "Extract commenters from a post and push them to WhatsApp",
+              "Enable auto-reply on comments matching a keyword",
+            ],
+            next: "Track progress from Jobs history and Page insights.",
+          },
         ];
     const activeIdx = steps.findIndex((s) => !s.done);
     return { steps, activeIdx: activeIdx === -1 ? steps.length - 1 : activeIdx };
@@ -1148,7 +1220,63 @@ function FacebookPage() {
               );
             })}
           </ol>
+
+          {/* Active-step explainer: short description + examples + what's next */}
+          {(() => {
+            const active = journeySteps.steps[journeySteps.activeIdx];
+            if (!active) return null;
+            return (
+              <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-[12px] font-bold text-primary-foreground">
+                    {journeySteps.activeIdx + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <h4 className="text-[14px] font-bold text-foreground">{active.title}</h4>
+                      <span className="text-[11.5px] text-muted-foreground">— {active.desc}</span>
+                    </div>
+                    <p className="mt-1.5 text-[12.5px] leading-relaxed text-foreground/80">{active.intro}</p>
+                    <div className="mt-3">
+                      <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                        {lang === "ar" ? "أمثلة على ما سيحدث" : "Examples of what happens"}
+                      </div>
+                      <ul className="space-y-1">
+                        {active.examples.map((ex, i) => (
+                          <li key={i} className="flex items-start gap-2 text-[12px] text-foreground/80">
+                            <CheckCircle2 className="mt-[2px] h-3.5 w-3.5 shrink-0 text-primary/70" />
+                            <span>{ex}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-primary/15 pt-2.5">
+                      <span className="text-[11.5px] text-muted-foreground">
+                        <span className="font-semibold text-foreground/80">{lang === "ar" ? "التالي: " : "Next: "}</span>
+                        {active.next}
+                      </span>
+                      {journeySteps.activeIdx < journeySteps.steps.length - 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nxt = journeySteps.steps[journeySteps.activeIdx + 1];
+                            if (nxt) goToStep(nxt.anchor, nxt.action);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-[11.5px] font-semibold text-primary-foreground hover:bg-primary/90"
+                        >
+                          {lang === "ar" ? "انتقل للخطوة التالية" : "Go to next step"}
+                          <ChevronDown className="h-3.5 w-3.5 -rotate-90 rtl:rotate-90" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
+
+
 
         <div id="fb-step-connect" className="scroll-mt-24 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm transition-shadow">
 
