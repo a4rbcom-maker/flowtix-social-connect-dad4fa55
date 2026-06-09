@@ -696,8 +696,11 @@ function InboxPage() {
   );
 
   return (
-    <FullscreenInbox isAr={isAr} title={t.title} totalUnread={totalUnread}>
-      <div className="h-full w-full overflow-hidden bg-card">
+    <DashboardLayout title={t.title}>
+      <div
+        dir={isAr ? "rtl" : "ltr"}
+        className="-m-4 md:-m-6 h-[calc(100vh-65px)] overflow-hidden bg-card"
+      >
         {isMobile ? (
           <div className="h-full">
             {activeJid ? ChatPane : Sidebar}
@@ -722,9 +725,9 @@ function InboxPage() {
             </ResizablePanel>
           </ResizablePanelGroup>
         )}
+        <MediaLightbox />
       </div>
-      <MediaLightbox />
-    </FullscreenInbox>
+    </DashboardLayout>
   );
 }
 
