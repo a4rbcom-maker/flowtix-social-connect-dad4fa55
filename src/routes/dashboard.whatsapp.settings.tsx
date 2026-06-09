@@ -13,8 +13,11 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { useI18n } from "@/lib/i18n";
+import { pingWaBridge } from "@/lib/wa.functions";
+
 
 export const Route = createFileRoute("/dashboard/whatsapp/settings")({
   ssr: false,
