@@ -161,14 +161,25 @@ function InboxPage() {
   const convQuery = useQuery<ConversationRow[]>({
     queryKey: ["wa-conversations"],
     queryFn: () => listFn(),
+    enabled: !!user,
+    placeholderData: [],
     refetchInterval: 15000,
   });
   const msgsQuery = useQuery<ChatMessageRow[]>({
     queryKey: ["wa-messages", activeJid],
     queryFn: () => (activeJid ? msgsFn({ data: { remoteJid: activeJid } }) : Promise.resolve([])),
-    enabled: !!activeJid,
+    enabled: !!activeJid && !!user,
+    placeholderData: [],
     refetchInterval: 5000,
   });
+  const conversations = useMemo<ConversationRow[]>(
+    () => (Array.isArray(convQuery.data) ? convQuery.data : []),
+    [convQuery.data],
+  );
+  const messages = useMemo<ChatMessageRow[]>(
+    () => (Array.isArray(msgsQuery.data) ? msgsQuery.data : []),
+    [msgsQuery.data],
+  );
 
   // Realtime
   useEffect(() => {
@@ -201,18 +212,18 @@ function InboxPage() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [msgsQuery.data?.length, activeJid]);
+  }, [messages.length, activeJid]);
 
   // Mark active conversation read
   useEffect(() => {
-    if (!activeJid || !convQuery.data) return;
-    const c = convQuery.data.find((x) => x.remote_jid === activeJid);
+    if (!activeJid) return;
+    const c = conversations.find((x) => x.remote_jid === activeJid);
     if (c && c.unread_count > 0) {
       markReadFn({ data: { id: c.id } }).then(() => {
         qc.invalidateQueries({ queryKey: ["wa-conversations"] });
       });
     }
-  }, [activeJid, convQuery.data, markReadFn, qc]);
+  }, [activeJid, conversations, markReadFn, qc]);
 
   // Textarea auto-grow
   useEffect(() => {
@@ -239,7 +250,7 @@ function InboxPage() {
   });
 
   const filtered = useMemo(() => {
-    const list = convQuery.data ?? [];
+    const list = conversations;
     let out = list;
     if (filter === "unread") out = out.filter((c) => c.unread_count > 0);
     else if (filter === "ai") out = out.filter((c) => c.ai_enabled);
@@ -253,16 +264,16 @@ function InboxPage() {
       );
     }
     return out;
-  }, [convQuery.data, search, filter]);
+  }, [conversations, search, filter]);
 
   const totalUnread = useMemo(
-    () => (convQuery.data ?? []).reduce((s, c) => s + (c.unread_count || 0), 0),
-    [convQuery.data],
+    () => conversations.reduce((s, c) => s + (c.unread_count || 0), 0),
+    [conversations],
   );
 
   const activeConv = useMemo(
-    () => (convQuery.data ?? []).find((c) => c.remote_jid === activeJid),
-    [convQuery.data, activeJid],
+    () => conversations.find((c) => c.remote_jid === activeJid),
+    [conversations, activeJid],
   );
 
   const toggleSound = () => {
@@ -474,7 +485,7 @@ function InboxPage() {
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              renderMessagesWithDays(msgsQuery.data ?? [], isAr, t)
+              renderMessagesWithDays(messages, isAr, t)
             )}
           </div>
 
