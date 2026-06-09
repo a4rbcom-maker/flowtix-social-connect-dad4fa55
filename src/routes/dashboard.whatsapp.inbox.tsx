@@ -537,9 +537,17 @@ function InboxPage() {
     </section>
   );
 
+  const ContactPanel = activeConv ? (
+    <ContactInfoPanel conv={activeConv} jid={activeJid!} isAr={isAr} />
+  ) : (
+    <div className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
+      {isAr ? "اختر محادثة لعرض بيانات الجهة" : "Select a conversation to view contact info"}
+    </div>
+  );
+
   return (
-    <DashboardLayout title={t.title}>
-      <div className="-m-4 md:-m-6 h-[calc(100dvh-4rem)] overflow-hidden border-t border-border/60 bg-card">
+    <FullscreenInbox isAr={isAr} title={t.title} totalUnread={totalUnread}>
+      <div className="h-full w-full overflow-hidden bg-card">
         {isMobile ? (
           <div className="h-full">
             {activeJid ? ChatPane : Sidebar}
@@ -548,20 +556,221 @@ function InboxPage() {
           <ResizablePanelGroup
             orientation="horizontal"
             className="h-full w-full"
-            id="wa-inbox-layout"
+            id="wa-inbox-layout-v2"
             dir="ltr"
           >
-            <ResizablePanel defaultSize="72%" minSize="40%" id="wa-chat">
+            <ResizablePanel defaultSize="22%" minSize="16%" maxSize="32%" id="wa-contact">
+              {ContactPanel}
+            </ResizablePanel>
+            <ResizableHandle withHandle className="bg-border/40" />
+            <ResizablePanel defaultSize="52%" minSize="35%" id="wa-chat">
               {ChatPane}
             </ResizablePanel>
             <ResizableHandle withHandle className="bg-border/40" />
-            <ResizablePanel defaultSize="28%" minSize="20%" maxSize="45%" id="wa-list">
+            <ResizablePanel defaultSize="26%" minSize="18%" maxSize="40%" id="wa-list">
               {Sidebar}
             </ResizablePanel>
           </ResizablePanelGroup>
         )}
       </div>
-    </DashboardLayout>
+    </FullscreenInbox>
+  );
+}
+
+// Fullscreen wrapper with top bar + back button
+function FullscreenInbox({
+  isAr,
+  title,
+  totalUnread,
+  children,
+}: {
+  isAr: boolean;
+  title: string;
+  totalUnread: number;
+  children: React.ReactNode;
+}) {
+  const { theme, toggleTheme } = useTheme();
+  return (
+    <div
+      dir={isAr ? "rtl" : "ltr"}
+      className="fixed inset-0 z-50 flex flex-col bg-gradient-to-br from-background via-background to-primary/5"
+    >
+      <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-card/90 px-4 backdrop-blur-xl">
+        <div className="flex min-w-0 items-center gap-3">
+          <Link
+            to="/dashboard"
+            className="inline-flex h-9 items-center gap-2 rounded-xl bg-muted/60 px-3 text-sm font-semibold text-foreground transition hover:bg-primary/10 hover:text-primary"
+          >
+            <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
+            <span>{isAr ? "رجوع" : "Back"}</span>
+          </Link>
+          <div className="hidden h-6 w-px bg-border md:block" />
+          <div className="flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-white shadow-md shadow-primary/20">
+              <InboxIcon className="h-4 w-4" strokeWidth={2.5} />
+            </div>
+            <div className="min-w-0">
+              <h1 className="truncate text-sm font-bold leading-tight">{title}</h1>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {isAr ? "صندوق الوارد" : "Unified Inbox"}
+              </p>
+            </div>
+            {totalUnread > 0 && (
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
+                {totalUnread}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="theme"
+          >
+            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
+          <Link
+            to="/dashboard"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            aria-label={isAr ? "إغلاق" : "Close"}
+            title={isAr ? "خروج من المحادثة" : "Exit inbox"}
+          >
+            <X className="h-4 w-4" />
+          </Link>
+        </div>
+      </header>
+      <div className="flex-1 min-h-0">{children}</div>
+    </div>
+  );
+}
+
+// Contact info side panel (Bot-Xtra style)
+function ContactInfoPanel({
+  conv,
+  jid,
+  isAr,
+}: {
+  conv: ConversationRow;
+  jid: string;
+  isAr: boolean;
+}) {
+  const [tab, setTab] = useState<"info" | "notes" | "media">("info");
+  const name = conv.contact_name ?? jid.replace(/@.*/, "");
+  const phone = conv.contact_phone ? `+${conv.contact_phone}` : jid;
+  return (
+    <aside dir={isAr ? "rtl" : "ltr"} className="flex h-full min-h-0 flex-col bg-card/40 backdrop-blur-sm">
+      {/* Contact header */}
+      <div className="flex flex-col items-center gap-3 border-b border-border/60 p-5 text-center">
+        <div className="relative">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-2xl font-bold text-white shadow-lg shadow-primary/30">
+            {initials(name)}
+          </div>
+          <span className="absolute bottom-1 right-1 h-4 w-4 rounded-full border-2 border-card bg-emerald-500" />
+        </div>
+        <div className="min-w-0">
+          <h2 className="truncate text-base font-bold">{name}</h2>
+          <p className="mt-0.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground" dir="ltr">
+            <Phone className="h-3 w-3" />
+            {phone}
+          </p>
+          <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            {isAr ? "متصل الآن" : "Online"}
+          </div>
+        </div>
+        <div className="grid w-full grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => toast.info(isAr ? "قريباً" : "Soon")}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-border bg-background/60 px-2 py-2 text-[11px] font-semibold transition hover:border-primary/40 hover:bg-primary/5"
+          >
+            <UserPlus className="h-3.5 w-3.5 text-primary" />
+            {isAr ? "حفظ" : "Save"}
+          </button>
+          <button
+            type="button"
+            onClick={() => toast.info(isAr ? "قريباً" : "Soon")}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-border bg-background/60 px-2 py-2 text-[11px] font-semibold transition hover:border-primary/40 hover:bg-primary/5"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            {isAr ? "تلخيص" : "Summary"}
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex shrink-0 items-center justify-around border-b border-border/60 bg-background/30">
+        {([
+          { k: "info" as const, label: isAr ? "معلومات" : "Info", icon: Info },
+          { k: "notes" as const, label: isAr ? "ملاحظات" : "Notes", icon: StickyNote },
+          { k: "media" as const, label: isAr ? "وسائط" : "Media", icon: ImageIcon },
+        ]).map((tb) => {
+          const Icon = tb.icon;
+          const active = tab === tb.k;
+          return (
+            <button
+              key={tb.k}
+              type="button"
+              onClick={() => setTab(tb.k)}
+              className={`relative flex flex-1 items-center justify-center gap-1.5 py-3 text-xs font-semibold transition ${
+                active ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {tb.label}
+              {active && (
+                <span className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full bg-gradient-to-r from-primary to-[oklch(0.52_0.28_290)]" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Tab content */}
+      <div className="flex-1 overflow-y-auto p-4 text-sm">
+        {tab === "info" && (
+          <div className="space-y-3">
+            <InfoRow label={isAr ? "الاسم" : "Name"} value={name} />
+            <InfoRow label={isAr ? "الهاتف" : "Phone"} value={phone} ltr />
+            <InfoRow
+              label={isAr ? "حالة المساعد" : "AI Assistant"}
+              value={conv.ai_enabled ? (isAr ? "مفعّل" : "Enabled") : (isAr ? "متوقف" : "Off")}
+            />
+            <InfoRow
+              label={isAr ? "غير مقروء" : "Unread"}
+              value={String(conv.unread_count ?? 0)}
+            />
+            <InfoRow
+              label={isAr ? "آخر نشاط" : "Last activity"}
+              value={new Date(conv.last_message_at).toLocaleString(isAr ? "ar-EG" : "en-US")}
+            />
+          </div>
+        )}
+        {tab === "notes" && (
+          <div className="flex flex-col items-center gap-2 py-10 text-center text-xs text-muted-foreground">
+            <StickyNote className="h-8 w-8 opacity-40" />
+            <p>{isAr ? "لا توجد ملاحظات بعد" : "No notes yet"}</p>
+          </div>
+        )}
+        {tab === "media" && (
+          <div className="flex flex-col items-center gap-2 py-10 text-center text-xs text-muted-foreground">
+            <ImageIcon className="h-8 w-8 opacity-40" />
+            <p>{isAr ? "لا توجد وسائط مشاركة" : "No shared media"}</p>
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function InfoRow({ label, value, ltr }: { label: string; value: string; ltr?: boolean }) {
+  return (
+    <div className="rounded-xl border border-border/60 bg-background/40 px-3 py-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="mt-1 truncate text-sm font-medium" dir={ltr ? "ltr" : undefined}>{value}</p>
+    </div>
   );
 }
 
