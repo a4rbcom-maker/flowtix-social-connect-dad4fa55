@@ -33,13 +33,13 @@ function WaSettingsPage() {
   const [permission, setPermission] = useState<NotificationPermission>("default");
 
   useEffect(() => {
-    setOrigin("https://flowtixtools.com");
+    setOrigin(typeof window !== "undefined" ? window.location.origin : "");
     setNotify(localStorage.getItem(NOTIF_KEY) !== "0");
     setSound(localStorage.getItem(SOUND_KEY) !== "0");
     if (typeof Notification !== "undefined") setPermission(Notification.permission);
   }, []);
 
-  const webhookUrl = origin ? `${origin}/api/public/wa/webhook` : "";
+  const webhookUrl = origin ? `${origin}/api/public/wa-webhook` : "";
 
   const t = lang === "ar"
     ? {

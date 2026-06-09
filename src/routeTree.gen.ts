@@ -49,6 +49,7 @@ import { Route as ApiPublicWaWebhookRouteImport } from './routes/api/public/wa-w
 import { Route as ApiPublicHealthRouteImport } from './routes/api/public/health'
 import { Route as DashboardFacebookCampaignsNewRouteImport } from './routes/dashboard.facebook.campaigns.new'
 import { Route as DashboardFacebookCampaignsIdRouteImport } from './routes/dashboard.facebook.campaigns.$id'
+import { Route as ApiPublicWaWebhookRouteImport } from './routes/api/public/wa/webhook'
 import { Route as ApiPublicHooksProcessBulkJobsRouteImport } from './routes/api/public/hooks/process-bulk-jobs'
 import { Route as ApiPublicBotNextJobRouteImport } from './routes/api/public/bot/next-job'
 import { Route as ApiPublicBotJobUpdateRouteImport } from './routes/api/public/bot/job-update'
@@ -263,6 +264,11 @@ const DashboardFacebookCampaignsIdRoute =
     path: '/$id',
     getParentRoute: () => DashboardFacebookCampaignsRoute,
   } as any)
+const ApiPublicWaWebhookRoute = ApiPublicWaWebhookRouteImport.update({
+  id: '/api/public/wa/webhook',
+  path: '/api/public/wa/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHooksProcessBulkJobsRoute =
   ApiPublicHooksProcessBulkJobsRouteImport.update({
     id: '/api/public/hooks/process-bulk-jobs',
@@ -328,6 +334,7 @@ export interface FileRoutesByFullPath {
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
+  '/api/public/wa/webhook': typeof ApiPublicWaWebhookRoute
   '/dashboard/facebook/campaigns/$id': typeof DashboardFacebookCampaignsIdRoute
   '/dashboard/facebook/campaigns/new': typeof DashboardFacebookCampaignsNewRoute
 }
@@ -374,6 +381,7 @@ export interface FileRoutesByTo {
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
+  '/api/public/wa/webhook': typeof ApiPublicWaWebhookRoute
   '/dashboard/facebook/campaigns/$id': typeof DashboardFacebookCampaignsIdRoute
   '/dashboard/facebook/campaigns/new': typeof DashboardFacebookCampaignsNewRoute
 }
@@ -421,6 +429,7 @@ export interface FileRoutesById {
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
+  '/api/public/wa/webhook': typeof ApiPublicWaWebhookRoute
   '/dashboard/facebook/campaigns/$id': typeof DashboardFacebookCampaignsIdRoute
   '/dashboard/facebook/campaigns/new': typeof DashboardFacebookCampaignsNewRoute
 }
@@ -469,6 +478,7 @@ export interface FileRouteTypes {
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/process-bulk-jobs'
+    | '/api/public/wa/webhook'
     | '/dashboard/facebook/campaigns/$id'
     | '/dashboard/facebook/campaigns/new'
   fileRoutesByTo: FileRoutesByTo
@@ -515,6 +525,7 @@ export interface FileRouteTypes {
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/process-bulk-jobs'
+    | '/api/public/wa/webhook'
     | '/dashboard/facebook/campaigns/$id'
     | '/dashboard/facebook/campaigns/new'
   id:
@@ -561,6 +572,7 @@ export interface FileRouteTypes {
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/process-bulk-jobs'
+    | '/api/public/wa/webhook'
     | '/dashboard/facebook/campaigns/$id'
     | '/dashboard/facebook/campaigns/new'
   fileRoutesById: FileRoutesById
@@ -587,6 +599,7 @@ export interface RootRouteChildren {
   ApiPublicBotJobUpdateRoute: typeof ApiPublicBotJobUpdateRoute
   ApiPublicBotNextJobRoute: typeof ApiPublicBotNextJobRoute
   ApiPublicHooksProcessBulkJobsRoute: typeof ApiPublicHooksProcessBulkJobsRoute
+  ApiPublicWaWebhookRoute: typeof ApiPublicWaWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -871,6 +884,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardFacebookCampaignsIdRouteImport
       parentRoute: typeof DashboardFacebookCampaignsRoute
     }
+    '/api/public/wa/webhook': {
+      id: '/api/public/wa/webhook'
+      path: '/api/public/wa/webhook'
+      fullPath: '/api/public/wa/webhook'
+      preLoaderRoute: typeof ApiPublicWaWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/process-bulk-jobs': {
       id: '/api/public/hooks/process-bulk-jobs'
       path: '/api/public/hooks/process-bulk-jobs'
@@ -1020,6 +1040,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicBotJobUpdateRoute: ApiPublicBotJobUpdateRoute,
   ApiPublicBotNextJobRoute: ApiPublicBotNextJobRoute,
   ApiPublicHooksProcessBulkJobsRoute: ApiPublicHooksProcessBulkJobsRoute,
+  ApiPublicWaWebhookRoute: ApiPublicWaWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
