@@ -35,7 +35,8 @@ function JobsHubPage() {
   const { user, loading: authLoading } = useAuth();
   const { lang } = useI18n();
   const search = Route.useSearch();
-  const defaultTab = search.tab ?? "post";
+  const navigate = useNavigate({ from: "/dashboard/facebook/jobs" });
+  const activeTab = search.tab ?? "post";
   const listAccountsFn = useServerFn(listBotAccounts);
   const createPostJobFn = useServerFn(createPostJob);
   const createExtractPagesJobFn = useServerFn(createExtractPagesJob);
