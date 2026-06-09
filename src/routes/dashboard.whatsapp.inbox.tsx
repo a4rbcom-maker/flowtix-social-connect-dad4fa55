@@ -52,7 +52,8 @@ import {
   type ConversationRow,
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
-import { getWaConnectionState } from "@/lib/wa.functions";
+import { getWaConnectionState, resetWaReceiver } from "@/lib/wa.functions";
+import { useNavigate } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
   ssr: false,
@@ -73,6 +74,8 @@ function InboxPage() {
   const toggleAiFn = useServerFn(toggleConversationAi);
   const markReadFn = useServerFn(markConversationRead);
   const refreshConnectionFn = useServerFn(getWaConnectionState);
+  const resetReceiverFn = useServerFn(resetWaReceiver);
+  const navigate = useNavigate();
 
   const [activeJid, setActiveJid] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -198,12 +201,22 @@ function InboxPage() {
     [msgsQuery.data],
   );
 
-  useEffect(() => {
-    if (!user) return;
-    refreshConnectionFn()
-      .then(() => qc.invalidateQueries({ queryKey: ["wa-conversations"] }))
-      .catch((err) => console.warn("[inbox] connection refresh failed", err));
-  }, [qc, user?.id]);
+  // Track connection so we can show the right empty-state CTA.
+  const connQuery = useQuery({
+    queryKey: ["wa-connection-state"],
+    queryFn: () => safeCall(() => refreshConnectionFn(), null),
+    enabled: !!user,
+    refetchInterval: 30000,
+  });
+
+  const resetMut = useMutation({
+    mutationFn: () => resetReceiverFn(),
+    onSuccess: () => {
+      toast.success(isAr ? "تم تجهيز جلسة جديدة. امسح رمز QR لإكمال الربط." : "New session prepared. Scan QR to finish pairing.");
+      navigate({ to: "/dashboard/whatsapp/accounts" });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
 
   // Realtime
   useEffect(() => {
@@ -405,14 +418,38 @@ function InboxPage() {
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
               <MessageCircle className="h-6 w-6 text-muted-foreground" />
             </div>
-            <p className="px-6 text-sm font-medium">{t.empty}</p>
-            <p className="px-6 text-xs text-muted-foreground">{t.emptyHint}</p>
-            <Link
-              to="/dashboard/whatsapp/accounts"
-              className="mt-1 inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90"
-            >
-              {t.openAccounts}
-            </Link>
+            {connQuery.data?.status === "connected" ? (
+              <>
+                <p className="px-6 text-sm font-medium">
+                  {isAr ? "الجلسة متصلة لكن لم تُسجَّل لاستقبال الرسائل بعد." : "Connected, but the receiver isn't wired up yet."}
+                </p>
+                <p className="px-6 text-xs text-muted-foreground">
+                  {isAr
+                    ? "اضغط الزر للحصول على رمز QR جديد. الرسائل القديمة لن تظهر، لكن أي رسالة بعد إعادة الربط ستصلك فورًا هنا."
+                    : "Get a fresh QR to bind the inbox to this app. Old messages won't appear, but every new message will land here in real time."}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => resetMut.mutate()}
+                  disabled={resetMut.isPending}
+                  className="mt-1 inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
+                >
+                  {resetMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {isAr ? "إعادة تأسيس الاستقبال" : "Re-bind receiver"}
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="px-6 text-sm font-medium">{t.empty}</p>
+                <p className="px-6 text-xs text-muted-foreground">{t.emptyHint}</p>
+                <Link
+                  to="/dashboard/whatsapp/accounts"
+                  className="mt-1 inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                >
+                  {t.openAccounts}
+                </Link>
+              </>
+            )}
           </div>
         ) : (
           <ul className="divide-y divide-border/30">

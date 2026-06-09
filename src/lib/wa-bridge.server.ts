@@ -1,4 +1,4 @@
-// Server-only HTTP client for the BotXtra WhatsApp Bridge (v1.7.7+).
+// Server-only HTTP client for the BotXtra WhatsApp Bridge (v1.8.x).
 // Wraps the bridge REST API with X-API-Key auth + typed helpers.
 // Never import from client code.
 
@@ -21,8 +21,7 @@ async function bridgeFetch<T>(path: string, init: RequestInit = {}): Promise<T> 
       ...init,
       signal: controller.signal,
       headers: {
-        // Per Bot-Xtra spec: Authorization Bearer is primary, X-API-Key kept for compatibility.
-        Authorization: `Bearer ${apiKey}`,
+        // Bot-Xtra v1.8.x rejects "Authorization: Bearer" with 401 — only X-API-Key is honored.
         "X-API-Key": apiKey,
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -94,15 +93,17 @@ export interface BridgeQrResponse {
 
 export const waBridge = {
   health: () => bridgeFetch<{ status: string; version?: string }>("/api/health"),
-  // Bot-Xtra bridge requires `sessionId` in the body (not `id`).
-  createSession: (id: string, webhookUrl?: string) =>
+  // Bot-Xtra: POST /api/sessions creates a session bound to a tenantId+webhookUrl.
+  // For an existing session it returns { status: "already_connected" } and does NOT
+  // update webhook/tenant — you must DELETE then recreate to change them.
+  createSession: (id: string, opts: { webhookUrl?: string; tenantId?: string } = {}) =>
     bridgeFetch<{ id?: string; sessionId?: string; status?: string }>("/api/sessions", {
       method: "POST",
-      body: JSON.stringify(
-        webhookUrl
-          ? { sessionId: id, webhookUrl, webhook: webhookUrl }
-          : { sessionId: id },
-      ),
+      body: JSON.stringify({
+        sessionId: id,
+        ...(opts.webhookUrl ? { webhookUrl: opts.webhookUrl, webhook: opts.webhookUrl } : {}),
+        ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
+      }),
     }),
   getStatus: (id: string) =>
     bridgeFetch<BridgeStatusResponse>(`/api/sessions/${encodeURIComponent(id)}/status`),
@@ -126,48 +127,13 @@ export const waBridge = {
         body: JSON.stringify({ to, type: "text", text }),
       },
     ),
-
-  /**
-   * Best-effort: register/update the webhook URL for a session.
-   * Different bridge versions expose different endpoints — we try the
-   * common ones and silently succeed on the first one that works.
-   */
-  setWebhook: async (id: string, webhookUrl: string): Promise<boolean> => {
-    const attempts: Array<{ path: string; method: string; body: unknown }> = [
-      { path: "/api/sessions", method: "POST", body: { sessionId: id, webhookUrl, webhook: webhookUrl } },
-      { path: `/api/sessions/${encodeURIComponent(id)}/webhook`, method: "POST", body: { url: webhookUrl, webhookUrl } },
-      { path: `/api/sessions/${encodeURIComponent(id)}/webhook`, method: "PUT", body: { url: webhookUrl, webhookUrl } },
-      { path: `/api/webhooks/set`, method: "POST", body: { sessionId: id, webhookUrl, events: ["message", "messages.upsert", "status", "qr"] } },
-      { path: `/api/sessions/${encodeURIComponent(id)}`, method: "PATCH", body: { webhookUrl, webhook: webhookUrl } },
-    ];
-    let lastError: unknown = null;
-    for (const a of attempts) {
-      try {
-        await bridgeFetch<unknown>(a.path, { method: a.method, body: JSON.stringify(a.body) });
-        return true;
-      } catch (err) {
-        lastError = err;
-        if (err instanceof BridgeError && (err.status === 401 || err.status === 403)) {
-          console.warn("[wa-bridge] setWebhook auth failed:", err.message);
-          return false;
-        }
-        continue;
-      }
-    }
-    if (lastError) {
-      console.warn("[wa-bridge] all setWebhook attempts failed:", lastError instanceof Error ? lastError.message : lastError);
-    }
-    return false;
-  },
 };
 
 /**
  * Infer canonical status from the Bot-Xtra bridge status payload.
- * Bot-Xtra returns { connected, qr, exists, phone, name } with no `status` field.
  */
 export function inferStatus(res: BridgeStatusResponse | null): BridgeSessionStatus {
   if (!res) return "unknown";
-  // Prefer explicit status/state if a future bridge version provides one.
   const explicit = String(res.status ?? res.state ?? "").toLowerCase();
   if (explicit) {
     if (explicit === "connected" || explicit === "open" || explicit === "ready") return "connected";
@@ -181,7 +147,6 @@ export function inferStatus(res: BridgeStatusResponse | null): BridgeSessionStat
   return "connecting";
 }
 
-// Legacy alias (kept for any external import)
 export const normalizeStatus = (raw: unknown): BridgeSessionStatus => {
   const s = String(raw ?? "").toLowerCase();
   if (s === "connected" || s === "open" || s === "ready") return "connected";
@@ -193,16 +158,12 @@ export const normalizeStatus = (raw: unknown): BridgeSessionStatus => {
 
 /**
  * Extract a QR Data URL from a bridge QR response.
- * Bot-Xtra returns `qr` as the raw WhatsApp pairing string — we render it to
- * a PNG Data URL using the `qrcode` library so the browser can display it.
  */
 export async function pickQrDataUrl(res: BridgeQrResponse | null): Promise<string | null> {
   if (!res) return null;
   const raw = res.dataUrl || res.qrCode || res.qr;
   if (!raw) return null;
   if (raw.startsWith("data:image")) return raw;
-  // Heuristic: WhatsApp QR strings contain commas (e.g. "2@xxx,xxx,xxx,xxx==").
-  // base64 PNG payloads do not. Render raw pairing strings to PNG.
   if (raw.includes(",") || raw.length < 200) {
     try {
       const QRCode = (await import("qrcode")).default;
@@ -214,4 +175,3 @@ export async function pickQrDataUrl(res: BridgeQrResponse | null): Promise<strin
   }
   return `data:image/png;base64,${raw}`;
 }
-
