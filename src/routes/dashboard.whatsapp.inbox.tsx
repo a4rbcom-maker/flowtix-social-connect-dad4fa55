@@ -171,19 +171,19 @@ function InboxPage() {
     }
   };
   const convQuery = useQuery<ConversationRow[]>({
-    queryKey: ["wa-conversations"],
-    queryFn: () => safeCall<ConversationRow[]>(() => listFn(), []),
-    enabled: !!user,
+    queryKey: ["wa-conversations", user?.id],
+    queryFn: () => safeCall<ConversationRow[]>(() => fetchInboxConversations(user!.id), []),
+    enabled: !!user?.id,
     placeholderData: [],
     refetchInterval: 15000,
   });
   const msgsQuery = useQuery<ChatMessageRow[]>({
-    queryKey: ["wa-messages", activeJid],
+    queryKey: ["wa-messages", user?.id, activeJid],
     queryFn: () =>
       activeJid
-        ? safeCall<ChatMessageRow[]>(() => msgsFn({ data: { remoteJid: activeJid } }), [])
+        ? safeCall<ChatMessageRow[]>(() => fetchInboxMessages(user!.id, activeJid), [])
         : Promise.resolve([]),
-    enabled: !!activeJid && !!user,
+    enabled: !!activeJid && !!user?.id,
     placeholderData: [],
     refetchInterval: 5000,
   });
@@ -197,17 +197,17 @@ function InboxPage() {
   );
 
   // Track connection so we can show the right empty-state CTA.
-  const connQuery = useQuery({
-    queryKey: ["wa-connection-state"],
-    queryFn: () => safeCall(() => refreshConnectionFn(), null),
-    enabled: !!user,
+  const connQuery = useQuery<{ status: string } | null>({
+    queryKey: ["wa-connection-state", user?.id],
+    queryFn: () => safeCall(() => fetchInboxConnectionState(user!.id), null),
+    enabled: !!user?.id,
     refetchInterval: 30000,
   });
 
-  const quickRepliesQuery = useQuery({
-    queryKey: ["wa-quick-replies"],
-    queryFn: () => quickRepliesFn().catch(() => [] as QuickReply[]),
-    enabled: !!user,
+  const quickRepliesQuery = useQuery<QuickReply[]>({
+    queryKey: ["wa-quick-replies", user?.id],
+    queryFn: () => safeCall<QuickReply[]>(() => fetchInboxQuickReplies(user!.id), []),
+    enabled: !!user?.id,
   });
 
   const resetMut = useMutation({
@@ -256,14 +256,19 @@ function InboxPage() {
 
   // Mark active conversation read
   useEffect(() => {
-    if (!activeJid) return;
+    if (!activeJid || !user?.id) return;
     const c = conversations.find((x) => x.remote_jid === activeJid);
     if (c && c.unread_count > 0) {
-      markReadFn({ data: { id: c.id } }).then(() => {
+      supabase
+        .from("wa_conversations")
+        .update({ unread_count: 0 })
+        .eq("id", c.id)
+        .eq("user_id", user.id)
+        .then(() => {
         qc.invalidateQueries({ queryKey: ["wa-conversations"] });
       });
     }
-  }, [activeJid, conversations, markReadFn, qc]);
+  }, [activeJid, conversations, qc, user?.id]);
 
   // Textarea auto-grow
   useEffect(() => {
@@ -284,7 +289,15 @@ function InboxPage() {
   });
 
   const aiToggleMut = useMutation({
-    mutationFn: (vars: { id: string; enabled: boolean }) => toggleAiFn({ data: vars }),
+    mutationFn: async (vars: { id: string; enabled: boolean }) => {
+      const { error } = await supabase
+        .from("wa_conversations")
+        .update({ ai_enabled: vars.enabled })
+        .eq("id", vars.id)
+        .eq("user_id", user!.id);
+      if (error) throw new Error(error.message);
+      return { ok: true };
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wa-conversations"] }),
     onError: (err: Error) => toast.error(err.message),
   });
