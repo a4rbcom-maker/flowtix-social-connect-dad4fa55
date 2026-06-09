@@ -251,6 +251,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                     <Link
                       key={i}
                       to={item.to}
+                      search={item.search as never}
                       onClick={closeOnMobile}
                       title={!sidebarOpen ? item.label : undefined}
                       className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors ${
