@@ -142,38 +142,56 @@ function KeywordRulesPanel({ isAr }: { isAr: boolean }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            {isAr
-              ? "لما تتطابق كلمة مفتاحية، البوت يبعت الرد فوراً ويوقف الـ AI لهذه الرسالة."
-              : "When a keyword matches, the bot sends the reply instantly and skips AI for that message."}
-          </p>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <span className="inline-block h-2 w-2 rounded-full bg-primary" />
+          {isAr ? "قواعد الردود التلقائية" : "Auto-reply rules"}
+          <span className="text-xs font-normal text-muted-foreground">
+            ({(data ?? []).length})
+          </span>
         </div>
         <Button
           onClick={() => {
             setEditing(null);
             setOpen(true);
           }}
-          className="gap-2"
+          className="gap-2 shadow-sm"
         >
           <Plus className="h-4 w-4" />
           {isAr ? "قاعدة جديدة" : "New rule"}
         </Button>
       </div>
 
-      <div className="rounded-xl border border-border bg-card">
+      <div className="rounded-2xl border border-border bg-card shadow-sm">
         {isLoading ? (
-          <div className="flex items-center justify-center py-10 text-muted-foreground">
+          <div className="flex items-center justify-center py-16 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
         ) : (data ?? []).length === 0 ? (
-          <div className="px-6 py-12 text-center text-muted-foreground">
-            <Zap className="mx-auto mb-3 h-10 w-10 opacity-40" />
-            <p className="text-sm">
-              {isAr ? "لا توجد قواعد بعد. اضغط (قاعدة جديدة)." : "No rules yet. Click New rule."}
+          <div className="px-6 py-16 text-center">
+            <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-primary/10">
+              <Zap className="h-7 w-7 text-primary" />
+            </div>
+            <p className="text-sm font-semibold text-foreground">
+              {isAr ? "ما فيش قواعد لسة" : "No rules yet"}
             </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {isAr
+                ? "ابدأ بإضافة أول كلمة مفتاحية ليرد عليها البوت تلقائياً."
+                : "Add your first keyword for the bot to auto-reply to."}
+            </p>
+            <Button
+              variant="outline"
+              className="mt-5 gap-2"
+              onClick={() => {
+                setEditing(null);
+                setOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              {isAr ? "إضافة قاعدة" : "Add a rule"}
+            </Button>
           </div>
         ) : (
           <ul className="divide-y divide-border">
