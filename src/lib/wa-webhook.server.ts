@@ -138,11 +138,10 @@ async function persistWaMedia(params: {
   msgType: string;
   mediaUrl: string | null;
 }): Promise<string | null> {
-  if (params.mediaUrl && /^(https?:)?\/\//i.test(params.mediaUrl)) return params.mediaUrl;
   if (params.mediaUrl?.startsWith("wa-media:")) return params.mediaUrl;
   const media = mediaDataFromEntry(params.entry);
   const payload = mediaBytesFromEntry(params.entry, params.msgType, params.mediaUrl);
-  if (!payload) return null;
+  if (!payload) return params.mediaUrl && /^(https?:)?\/\//i.test(params.mediaUrl) ? params.mediaUrl : null;
 
   const fallbackName = `${Date.now()}_${randomUUID()}.${extensionFromMime(payload.mimeType, params.msgType)}`;
   const fileName = safeBaseName(pickStr(media, "fileName", "filename", "name"), fallbackName);
