@@ -1070,6 +1070,7 @@ function renderMessagesWithDays(
 ): React.ReactElement[] {
   const out: React.ReactElement[] = [];
   let lastDay = "";
+  const isGroup = messages[0]?.remote_jid.endsWith("@g.us") ?? false;
   for (const m of messages) {
     const dk = dayKey(m.created_at);
     if (dk !== lastDay) {
