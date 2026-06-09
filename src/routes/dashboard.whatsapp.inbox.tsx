@@ -158,16 +158,31 @@ function InboxPage() {
       };
 
   // Data
+  const safeCall = async <T,>(fn: () => Promise<T>, fallback: T): Promise<T> => {
+    try {
+      return await fn();
+    } catch (err) {
+      if (err instanceof Response) {
+        console.warn("[inbox] server fn returned Response", err.status);
+        return fallback;
+      }
+      console.warn("[inbox] server fn error", err);
+      return fallback;
+    }
+  };
   const convQuery = useQuery<ConversationRow[]>({
     queryKey: ["wa-conversations"],
-    queryFn: () => listFn(),
+    queryFn: () => safeCall<ConversationRow[]>(() => listFn(), []),
     enabled: !!user,
     placeholderData: [],
     refetchInterval: 15000,
   });
   const msgsQuery = useQuery<ChatMessageRow[]>({
     queryKey: ["wa-messages", activeJid],
-    queryFn: () => (activeJid ? msgsFn({ data: { remoteJid: activeJid } }) : Promise.resolve([])),
+    queryFn: () =>
+      activeJid
+        ? safeCall<ChatMessageRow[]>(() => msgsFn({ data: { remoteJid: activeJid } }), [])
+        : Promise.resolve([]),
     enabled: !!activeJid && !!user,
     placeholderData: [],
     refetchInterval: 5000,
