@@ -75,7 +75,30 @@ interface ParsedMessage {
 }
 
 function extractTextFromMessage(m: Record<string, unknown>): { text: string | null; type: string; mediaUrl: string | null } {
-  // Direct fields
+  // ── BotXtra flat shape: entry.type + entry.mediaData ──
+  const flatType = String(m.type ?? "").toLowerCase();
+  const mediaData = asObj(m.mediaData);
+  const hasMediaData = Object.keys(mediaData).length > 0;
+  const flatMediaUrl =
+    pickStr(mediaData, "url", "directPath", "fileUrl", "downloadUrl", "mediaUrl") ||
+    pickStr(m, "mediaUrl", "fileUrl", "url");
+  const flatCaption = pickStr(m, "caption", "body", "text") || pickStr(mediaData, "caption", "fileName");
+
+  if (["image", "video", "audio", "document", "sticker", "voice", "ptt"].includes(flatType) || hasMediaData) {
+    const norm =
+      flatType === "voice" || flatType === "ptt"
+        ? "audio"
+        : flatType && flatType !== "text"
+          ? flatType
+          : "document";
+    return {
+      text: norm === "audio" || norm === "sticker" ? null : flatCaption,
+      type: norm,
+      mediaUrl: flatMediaUrl,
+    };
+  }
+
+  // Direct text fields
   const direct = pickStr(m, "text", "body", "message", "caption");
   if (direct) return { text: direct, type: "text", mediaUrl: null };
 
@@ -90,23 +113,24 @@ function extractTextFromMessage(m: Record<string, unknown>): { text: string | nu
 
   const img = asObj(msg.imageMessage);
   if (Object.keys(img).length) {
-    return { text: pickStr(img, "caption"), type: "image", mediaUrl: pickStr(img, "url") };
+    return { text: pickStr(img, "caption"), type: "image", mediaUrl: pickStr(img, "url", "directPath") };
   }
   const vid = asObj(msg.videoMessage);
   if (Object.keys(vid).length) {
-    return { text: pickStr(vid, "caption"), type: "video", mediaUrl: pickStr(vid, "url") };
+    return { text: pickStr(vid, "caption"), type: "video", mediaUrl: pickStr(vid, "url", "directPath") };
   }
   const aud = asObj(msg.audioMessage);
-  if (Object.keys(aud).length) return { text: null, type: "audio", mediaUrl: pickStr(aud, "url") };
+  if (Object.keys(aud).length) return { text: null, type: "audio", mediaUrl: pickStr(aud, "url", "directPath") };
   const doc = asObj(msg.documentMessage);
   if (Object.keys(doc).length) {
-    return { text: pickStr(doc, "fileName", "caption"), type: "document", mediaUrl: pickStr(doc, "url") };
+    return { text: pickStr(doc, "fileName", "caption"), type: "document", mediaUrl: pickStr(doc, "url", "directPath") };
   }
   const sticker = asObj(msg.stickerMessage);
-  if (Object.keys(sticker).length) return { text: null, type: "sticker", mediaUrl: pickStr(sticker, "url") };
+  if (Object.keys(sticker).length) return { text: null, type: "sticker", mediaUrl: pickStr(sticker, "url", "directPath") };
 
   return { text: null, type: "unknown", mediaUrl: null };
 }
+
 
 function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null {
   const key = asObj(entry.key);
