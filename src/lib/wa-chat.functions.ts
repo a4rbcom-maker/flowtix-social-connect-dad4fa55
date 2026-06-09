@@ -10,6 +10,7 @@ export interface ConversationRow {
   remote_jid: string;
   contact_name: string | null;
   contact_phone: string | null;
+  profile_pic_url: string | null;
   last_message_text: string | null;
   last_message_at: string;
   last_direction: string;
@@ -26,6 +27,33 @@ export interface ChatMessageRow {
   media_url: string | null;
   created_at: string;
   is_ai: boolean;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function pickString(obj: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function digits(value: string | null): string | null {
+  const cleaned = value?.replace(/[^0-9]/g, "") ?? "";
+  return cleaned || null;
+}
+
+function phoneFromRaw(raw: unknown): string | null {
+  const obj = asRecord(raw);
+  return digits(pickString(obj, "normalizedContactPhone", "senderPn", "participantPn", "phoneNumber", "phone"));
+}
+
+function profilePicFromRaw(raw: unknown): string | null {
+  const obj = asRecord(raw);
+  return pickString(obj, "profilePicUrl", "groupProfilePicUrl", "avatarUrl", "picture", "photoUrl");
 }
 
 export const listConversations = createServerFn({ method: "POST" })
