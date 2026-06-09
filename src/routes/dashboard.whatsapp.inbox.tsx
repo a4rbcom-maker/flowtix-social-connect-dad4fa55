@@ -398,12 +398,34 @@ function InboxPage() {
             </div>
             <p className="px-6 text-sm font-medium">{t.empty}</p>
             <p className="px-6 text-xs text-muted-foreground">{t.emptyHint}</p>
-            <Link
-              to="/dashboard/whatsapp/accounts"
-              className="mt-1 inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90"
-            >
-              {t.openAccounts}
-            </Link>
+            <div className="mt-1 flex flex-wrap items-center justify-center gap-2 px-4">
+              <Link
+                to="/dashboard/whatsapp/accounts"
+                className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90"
+              >
+                {t.openAccounts}
+              </Link>
+              <button
+                type="button"
+                onClick={() => resyncMut.mutate()}
+                disabled={resyncMut.isPending}
+                className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-muted/60 disabled:opacity-60"
+                title={isAr ? "إعادة ربط الـ webhook بالخادم" : "Resync webhook with bridge"}
+              >
+                {resyncMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                {isAr ? "إعادة ربط الاستقبال" : "Resync receiver"}
+              </button>
+              <button
+                type="button"
+                onClick={() => testMut.mutate()}
+                disabled={testMut.isPending}
+                className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-muted/60 disabled:opacity-60"
+                title={isAr ? "اختبار وصول رسالة تجريبية" : "Send a test inbound message"}
+              >
+                {testMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                {isAr ? "اختبار استقبال" : "Test inbound"}
+              </button>
+            </div>
           </div>
         ) : (
           <ul className="divide-y divide-border/30">
