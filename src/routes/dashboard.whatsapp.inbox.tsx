@@ -267,6 +267,44 @@ function InboxPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const resyncFn = useServerFn(resyncWaWebhook);
+  const testFn = useServerFn(sendWaWebhookTest);
+  const resyncMut = useMutation({
+    mutationFn: () => resyncFn(),
+    onSuccess: (r) => {
+      if (r.ok) {
+        toast.success(isAr ? "تم إعادة الربط بنجاح" : "Webhook resynced", {
+          description: r.webhookUrl ?? undefined,
+        });
+      } else {
+        toast.error(isAr ? "تعذر إعادة الربط" : "Resync failed", {
+          description: r.error ?? undefined,
+        });
+      }
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+  const testMut = useMutation({
+    mutationFn: () => testFn(),
+    onSuccess: (r) => {
+      if (r.ok) {
+        toast.success(isAr ? "تم إرسال رسالة اختبار" : "Test message sent", {
+          description: isAr ? "ستظهر خلال ثوانٍ إن كانت السلسلة سليمة" : "Should appear in seconds if the chain works",
+        });
+        setTimeout(() => qc.invalidateQueries({ queryKey: ["wa-conversations"] }), 1500);
+      } else {
+        toast.error(isAr ? "فشل الاختبار" : "Test failed", {
+          description: r.error ?? `HTTP ${(r as any).status ?? "?"}`,
+        });
+      }
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+    mutationFn: (vars: { id: string; enabled: boolean }) => toggleAiFn({ data: vars }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["wa-conversations"] }),
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const filtered = useMemo(() => {
     const list = conversations;
     let out = list;
