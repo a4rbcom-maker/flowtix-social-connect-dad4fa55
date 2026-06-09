@@ -479,45 +479,60 @@ function QuickRepliesPanel({ isAr }: { isAr: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {isAr
-            ? "ردود تظهر بجانب صندوق الدردشة لاختيارها بسرعة وإرسالها."
-            : "Reusable snippets that appear next to the chat composer."}
-        </p>
-        <Button
-          onClick={() => {
-            setEditing(null);
-            setOpen(true);
-          }}
-          className="gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          {isAr ? "رد جديد" : "New snippet"}
-        </Button>
+      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-bold text-foreground">
+              <span className="grid h-7 w-7 place-items-center rounded-xl bg-primary/10 text-primary">
+                <MessageSquareText className="h-4 w-4" />
+              </span>
+              {isAr ? "الردود الجاهزة" : "Quick replies"}
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                {(data ?? []).length}
+              </span>
+            </div>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              {isAr
+                ? "قوالب مختصرة يختارها الموظف سريعاً أثناء المحادثة."
+                : "Reusable snippets that appear next to the chat composer."}
+            </p>
+          </div>
+          <Button
+            onClick={() => {
+              setEditing(null);
+              setOpen(true);
+            }}
+            className="gap-2 self-start shadow-sm"
+          >
+            <Plus className="h-4 w-4" />
+            {isAr ? "رد جديد" : "New snippet"}
+          </Button>
+        </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-card">
+      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         {isLoading ? (
           <div className="flex items-center justify-center py-10 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
         ) : (data ?? []).length === 0 ? (
-          <div className="px-6 py-12 text-center text-muted-foreground">
-            <MessageSquareText className="mx-auto mb-3 h-10 w-10 opacity-40" />
-            <p className="text-sm">
+          <div className="bg-muted/20 px-6 py-16 text-center text-muted-foreground">
+            <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl border border-primary/15 bg-primary/10">
+              <MessageSquareText className="h-7 w-7 text-primary" />
+            </div>
+            <p className="text-base font-bold text-foreground">
               {isAr ? "لا توجد ردود جاهزة بعد." : "No quick replies yet."}
             </p>
           </div>
         ) : (
           <ul className="divide-y divide-border">
             {(data ?? []).map((q) => (
-              <li key={q.id} className="flex items-start gap-3 p-4">
+              <li key={q.id} className="flex items-start gap-4 p-4 transition-colors hover:bg-muted/30 sm:p-5">
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-primary">/{q.shortcut}</p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm">{q.body}</p>
+                  <p className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">/{q.shortcut}</p>
+                  <p className="mt-3 whitespace-pre-wrap rounded-xl bg-muted/40 px-3 py-2 text-sm leading-6 text-foreground">{q.body}</p>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 rounded-xl border border-border bg-background p-1 shadow-sm">
                   <Button
                     size="sm"
                     variant="ghost"
