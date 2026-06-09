@@ -163,7 +163,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const initialOpen: Record<string, boolean> = {};
   menu.forEach((m) => {
     if (m.kind === "group") {
-      initialOpen[m.key] = m.children.some((c) => c.to === location.pathname);
+      initialOpen[m.key] = m.children.some((c) => c.kind === "leaf" && c.to === location.pathname);
     }
   });
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(initialOpen);
