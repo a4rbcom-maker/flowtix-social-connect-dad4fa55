@@ -134,21 +134,28 @@ export const waBridge = {
    */
   setWebhook: async (id: string, webhookUrl: string): Promise<boolean> => {
     const attempts: Array<{ path: string; method: string; body: unknown }> = [
+      { path: "/api/sessions", method: "POST", body: { sessionId: id, webhookUrl, webhook: webhookUrl } },
       { path: `/api/sessions/${encodeURIComponent(id)}/webhook`, method: "POST", body: { url: webhookUrl, webhookUrl } },
       { path: `/api/sessions/${encodeURIComponent(id)}/webhook`, method: "PUT", body: { url: webhookUrl, webhookUrl } },
       { path: `/api/webhooks/set`, method: "POST", body: { sessionId: id, webhookUrl, events: ["message", "messages.upsert", "status", "qr"] } },
       { path: `/api/sessions/${encodeURIComponent(id)}`, method: "PATCH", body: { webhookUrl, webhook: webhookUrl } },
     ];
+    let lastError: unknown = null;
     for (const a of attempts) {
       try {
         await bridgeFetch<unknown>(a.path, { method: a.method, body: JSON.stringify(a.body) });
         return true;
       } catch (err) {
-        if (err instanceof BridgeError && (err.status === 404 || err.status === 405)) continue;
-        // any other error → don't keep hammering
-        console.warn("[wa-bridge] setWebhook attempt failed:", a.path, err instanceof Error ? err.message : err);
-        return false;
+        lastError = err;
+        if (err instanceof BridgeError && (err.status === 401 || err.status === 403)) {
+          console.warn("[wa-bridge] setWebhook auth failed:", err.message);
+          return false;
+        }
+        continue;
       }
+    }
+    if (lastError) {
+      console.warn("[wa-bridge] all setWebhook attempts failed:", lastError instanceof Error ? lastError.message : lastError);
     }
     return false;
   },
