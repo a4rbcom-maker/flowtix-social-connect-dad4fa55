@@ -427,6 +427,73 @@ export const createExtractCommentersJob = createServerFn({ method: "POST" })
     return row;
   });
 
+// ---------- createExtractGroupMembersJob ----------
+export const createExtractGroupMembersJob = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        accountId: z.string().uuid(),
+        groupId: z.string().trim().min(3).max(64),
+        maxMembers: z.number().int().min(50).max(5000).default(1500),
+        filterKeywords: z.array(z.string().trim().min(1).max(40)).max(20).optional().default([]),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    // Accept either raw ID or URL — extract the ID from URLs
+    const idMatch = data.groupId.match(/groups\/([^/?]+)/);
+    const groupId = idMatch ? idMatch[1] : data.groupId;
+    const { data: row, error } = await supabase
+      .from("fb_jobs")
+      .insert({
+        user_id: userId,
+        account_id: data.accountId,
+        job_type: "extract_group_members",
+        payload: { groupId, maxMembers: data.maxMembers, filterKeywords: data.filterKeywords },
+        scheduled_at: new Date().toISOString(),
+        status: "pending",
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    return row;
+  });
+
+// ---------- createExtractPageAudienceJob ----------
+export const createExtractPageAudienceJob = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        accountId: z.string().uuid(),
+        pageId: z.string().trim().min(3).max(64),
+        sources: z.array(z.enum(["followers", "likers", "engagers"])).min(1).default(["followers", "likers"]),
+        maxItems: z.number().int().min(50).max(3000).default(1000),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const idMatch = data.pageId.match(/facebook\.com\/([^/?]+)/);
+    const pageId = idMatch ? idMatch[1] : data.pageId;
+    const { data: row, error } = await supabase
+      .from("fb_jobs")
+      .insert({
+        user_id: userId,
+        account_id: data.accountId,
+        job_type: "extract_page_audience",
+        payload: { pageId, sources: data.sources, maxItems: data.maxItems },
+        scheduled_at: new Date().toISOString(),
+        status: "pending",
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    return row;
+  });
+
 // ---------- listJobs ----------
 export const listJobs = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
