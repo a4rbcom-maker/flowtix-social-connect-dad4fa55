@@ -357,38 +357,85 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                                 : "ml-[22px] border-l border-border/60 pl-2"
                             }`}
                           >
-                            {item.children.map((child, j) => {
-                              if (child.kind === "subheader") {
-                                return (
-                                  <div
-                                    key={j}
-                                    className={`mt-2 mb-0.5 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 ${j === 0 ? "mt-0" : ""}`}
-                                  >
-                                    {child.label}
-                                  </div>
-                                );
+                            {(() => {
+                              const leafCount = item.children.filter((c) => c.kind === "leaf").length;
+                              const showSearch = leafCount >= 6;
+                              const rawQ = groupQuery[item.key] ?? "";
+                              const q = rawQ.trim().toLowerCase();
+                              // Group children into (subheader, leaves[]) buckets
+                              type Bucket = { header: SubheaderItem | null; leaves: LeafItem[] };
+                              const buckets: Bucket[] = [];
+                              let current: Bucket = { header: null, leaves: [] };
+                              buckets.push(current);
+                              for (const c of item.children) {
+                                if (c.kind === "subheader") {
+                                  current = { header: c, leaves: [] };
+                                  buckets.push(current);
+                                } else {
+                                  current.leaves.push(c);
+                                }
                               }
-                              const ChildIcon = child.icon;
-                              const childActive =
-                                location.pathname === child.to &&
-                                (!child.search || Object.entries(child.search).every(([k, v]) => (location.search as Record<string, unknown>)?.[k] === v));
+                              const filtered = buckets
+                                .map((b) => ({
+                                  header: b.header,
+                                  leaves: q
+                                    ? b.leaves.filter((l) => l.label.toLowerCase().includes(q))
+                                    : b.leaves,
+                                }))
+                                .filter((b) => b.leaves.length > 0);
+
                               return (
-                                <Link
-                                  key={j}
-                                  to={child.to}
-                                  search={child.search as never}
-                                  onClick={closeOnMobile}
-                                  className={`flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[12.5px] transition-colors ${
-                                    childActive
-                                      ? "bg-primary/10 font-medium text-primary"
-                                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                                  }`}
-                                >
-                                  <ChildIcon className="h-[14px] w-[14px] shrink-0 opacity-80" />
-                                  <span className="truncate">{child.label}</span>
-                                </Link>
+                                <>
+                                  {showSearch && (
+                                    <div className="relative mb-1.5 px-0.5">
+                                      <Search className={`pointer-events-none absolute top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground/60 ${dir === "rtl" ? "right-2" : "left-2"}`} />
+                                      <input
+                                        value={rawQ}
+                                        onChange={(e) => setGroupQuery((p) => ({ ...p, [item.key]: e.target.value }))}
+                                        placeholder={lang === "ar" ? "بحث داخل القائمة..." : "Search menu..."}
+                                        className={`h-7 w-full rounded-md border border-border/60 bg-background/60 text-[11.5px] text-foreground placeholder:text-muted-foreground/50 focus:border-primary/40 focus:outline-none focus:ring-1 focus:ring-primary/20 ${dir === "rtl" ? "pr-6 pl-2 text-right" : "pl-6 pr-2"}`}
+                                      />
+                                    </div>
+                                  )}
+                                  {filtered.length === 0 && (
+                                    <div className="px-2.5 py-2 text-[11.5px] text-muted-foreground/60">
+                                      {lang === "ar" ? "لا توجد نتائج" : "No results"}
+                                    </div>
+                                  )}
+                                  {filtered.map((b, bi) => (
+                                    <div key={bi}>
+                                      {b.header && (
+                                        <div className={`mt-2 mb-0.5 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 ${bi === 0 ? "mt-0" : ""}`}>
+                                          {b.header.label}
+                                        </div>
+                                      )}
+                                      {b.leaves.map((child, j) => {
+                                        const ChildIcon = child.icon;
+                                        const childActive =
+                                          location.pathname === child.to &&
+                                          (!child.search || Object.entries(child.search).every(([k, v]) => (location.search as Record<string, unknown>)?.[k] === v));
+                                        return (
+                                          <Link
+                                            key={j}
+                                            to={child.to}
+                                            search={child.search as never}
+                                            onClick={closeOnMobile}
+                                            className={`flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[12.5px] transition-colors ${
+                                              childActive
+                                                ? "bg-primary/10 font-medium text-primary"
+                                                : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                                            }`}
+                                          >
+                                            <ChildIcon className="h-[14px] w-[14px] shrink-0 opacity-80" />
+                                            <span className="truncate">{child.label}</span>
+                                          </Link>
+                                        );
+                                      })}
+                                    </div>
+                                  ))}
+                                </>
                               );
-                            })}
+                            })()}
                             {channelState && (
                               <ChannelQuickActions
                                 channel={item.key as "facebook" | "whatsapp"}
@@ -400,6 +447,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                             )}
                           </div>
                         </div>
+
                       </div>
                     )}
                   </div>
