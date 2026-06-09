@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
 import { listJobs, getJob, cancelJob } from "@/lib/fb-bot.functions";
+import { loadEgyptData, extractEgyptPhone, detectLocation } from "@/lib/egypt-enrich";
 
 export const Route = createFileRoute("/dashboard/facebook/history")({
   ssr: false,
@@ -107,6 +108,7 @@ function JobsHistoryPage() {
     setSelected(j);
     setResultsLoading(true);
     try {
+      if (j.job_type === "extract_commenters") await loadEgyptData();
       const { results } = await call(getJob, { id: j.id });
       setResults(results as JobResult[]);
     } catch (e) { toast.error(String(e)); }
@@ -118,14 +120,39 @@ function JobsHistoryPage() {
     catch (e) { toast.error(String(e)); }
   };
 
+  const isCommenters = selected?.job_type === "extract_commenters";
+  const enrichedRows = isCommenters
+    ? results.map((r) => {
+        const d = (r.data ?? {}) as { name?: string; id?: string; profile?: string };
+        const blob = `${d.name ?? ""} ${r.target ?? ""}`;
+        const loc = detectLocation(blob);
+        return {
+          row: r,
+          name: d.name ?? r.target ?? "—",
+          profile: d.profile ?? "",
+          phone: extractEgyptPhone(d.name ?? "") ?? null,
+          city: loc?.city ?? null,
+          gov: loc?.gov ?? null,
+        };
+      })
+    : [];
+
   const downloadCsv = () => {
     if (results.length === 0) return;
-    const rows = [
-      ["target", "status", "data", "error", "created_at"],
-      ...results.map((r) => [r.target ?? "", r.status, JSON.stringify(r.data ?? ""), r.error ?? "", r.created_at]),
-    ];
+    let rows: (string | number)[][];
+    if (isCommenters) {
+      rows = [
+        ["name", "facebook_id", "profile", "phone", "city", "governorate"],
+        ...enrichedRows.map((e) => [e.name, e.row.target ?? "", e.profile, e.phone ?? "", e.city ?? "", e.gov ?? ""]),
+      ];
+    } else {
+      rows = [
+        ["target", "status", "data", "error", "created_at"],
+        ...results.map((r) => [r.target ?? "", r.status, JSON.stringify(r.data ?? ""), r.error ?? "", r.created_at]),
+      ];
+    }
     const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `job-${selected?.id}.csv`; a.click();
     URL.revokeObjectURL(url);
@@ -214,6 +241,35 @@ function JobsHistoryPage() {
             <div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
           ) : results.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">{t.none}</p>
+          ) : isCommenters ? (
+            <div className="max-h-[60vh] overflow-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-muted/40 text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "الاسم" : "Name"}</th>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "موبايل" : "Phone"}</th>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "المدينة" : "City"}</th>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "المحافظة" : "Governorate"}</th>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "البروفايل" : "Profile"}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {enrichedRows.map((e) => (
+                    <tr key={e.row.id} className={e.gov ? "bg-primary/[0.04]" : ""}>
+                      <td className="px-3 py-2 font-medium">{e.name}</td>
+                      <td className="px-3 py-2 font-mono">{e.phone ?? "—"}</td>
+                      <td className="px-3 py-2">{e.city ?? "—"}</td>
+                      <td className="px-3 py-2">
+                        {e.gov ? <Badge variant="outline" className="border-primary/30 text-primary">{e.gov}</Badge> : "—"}
+                      </td>
+                      <td className="px-3 py-2">
+                        {e.profile ? <a href={e.profile} target="_blank" rel="noreferrer" className="text-primary hover:underline">↗</a> : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <div className="max-h-[60vh] overflow-auto">
               <table className="w-full text-xs">
