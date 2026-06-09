@@ -24,6 +24,18 @@ import {
   Shield,
   UserPlus,
   MapPin,
+  PlugZap,
+  Users2,
+  UsersRound,
+  Megaphone,
+  PlusCircle,
+  FileText,
+  Image as ImageIcon,
+  MessageSquareQuote,
+  Target,
+  Reply,
+  BarChart3,
+  History,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
