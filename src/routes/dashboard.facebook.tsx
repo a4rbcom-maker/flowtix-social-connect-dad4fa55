@@ -1964,7 +1964,7 @@ function FacebookPage() {
 
         {/* Groups & Pages — only shown when connected */}
         {connection && (
-          <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
+          <div id="fb-step-run" className="scroll-mt-24 rounded-2xl border border-border/50 bg-card p-6 shadow-sm transition-shadow">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div className="flex gap-1 rounded-xl bg-muted p-1">
                 <button
