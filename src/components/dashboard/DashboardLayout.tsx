@@ -85,7 +85,9 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     : { overview: "Overview", control: "Control Panel", facebook: "Facebook", fbConnect: "Connect & Status", fbGroups: "Groups", whatsapp: "WhatsApp", waInbox: "Chats", waAccounts: "My Accounts", waBot: "Bot (Keyword Replies)", waAgent: "AI Agent", waSettings: "WhatsApp Settings", bulk: "Bulk Send", activity: "Activity", settings: "Profile", logout: "Sign Out", sectionMain: "Main", sectionChannels: "Channels", sectionInsights: "Insights" };
 
   type LeafItem = { kind: "leaf"; icon: typeof LayoutDashboard; label: string; to: "/dashboard" | "/dashboard/control" | "/dashboard/facebook" | "/dashboard/facebook/groups" | "/dashboard/facebook/insights" | "/dashboard/facebook/messages" | "/dashboard/facebook/bot" | "/dashboard/facebook/jobs" | "/dashboard/facebook/history" | "/dashboard/facebook/campaigns" | "/dashboard/facebook/templates" | "/dashboard/facebook/media" | "/dashboard/facebook/autoreply" | "/dashboard/whatsapp" | "/dashboard/whatsapp/inbox" | "/dashboard/whatsapp/accounts" | "/dashboard/whatsapp/bot" | "/dashboard/whatsapp/automation" | "/dashboard/whatsapp/settings" | "/dashboard/bulk" | "/dashboard/enrich" | "/dashboard/activity" | "/dashboard/profile"; search?: Record<string, string> };
-  type GroupItem = { kind: "group"; key: string; icon: typeof LayoutDashboard; label: string; children: LeafItem[] };
+  type SubheaderItem = { kind: "subheader"; label: string };
+  type GroupChild = LeafItem | SubheaderItem;
+  type GroupItem = { kind: "group"; key: string; icon: typeof LayoutDashboard; label: string; children: GroupChild[] };
   type MenuItem = LeafItem | GroupItem;
   type Section = { title: string; items: MenuItem[] };
 
@@ -106,19 +108,26 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
           icon: Facebook,
           label: labels.facebook,
           children: [
+            { kind: "subheader", label: lang === "ar" ? "الإعداد والربط" : "Setup & Connect" },
             { kind: "leaf", icon: LinkIcon, label: labels.fbConnect, to: "/dashboard/facebook" },
-            { kind: "leaf", icon: Users, label: labels.fbGroups, to: "/dashboard/facebook/groups" },
-            { kind: "leaf", icon: Activity, label: lang === "ar" ? "تحليلات الصفحة" : "Page insights", to: "/dashboard/facebook/insights" },
-            { kind: "leaf", icon: MessageCircle, label: lang === "ar" ? "رسائل Inbox" : "Messenger Inbox", to: "/dashboard/facebook/messages" },
             { kind: "leaf", icon: Bot, label: lang === "ar" ? "حسابات البوت" : "Bot accounts", to: "/dashboard/facebook/bot" },
+            { kind: "leaf", icon: Users, label: labels.fbGroups, to: "/dashboard/facebook/groups" },
+
+            { kind: "subheader", label: lang === "ar" ? "النشر والحملات" : "Publishing & Campaigns" },
             { kind: "leaf", icon: Sparkles, label: lang === "ar" ? "حملات النشر" : "Campaigns", to: "/dashboard/facebook/campaigns" },
+            { kind: "leaf", icon: Send, label: lang === "ar" ? "إنشاء مهمة" : "Create job", to: "/dashboard/facebook/jobs" },
             { kind: "leaf", icon: Send, label: lang === "ar" ? "القوالب النصية" : "Templates", to: "/dashboard/facebook/templates" },
             { kind: "leaf", icon: Activity, label: lang === "ar" ? "مكتبة الوسائط" : "Media library", to: "/dashboard/facebook/media" },
-            { kind: "leaf", icon: Send, label: lang === "ar" ? "إنشاء مهمة" : "Create job", to: "/dashboard/facebook/jobs" },
+
+            { kind: "subheader", label: lang === "ar" ? "استخراج البيانات" : "Data Extraction" },
             { kind: "leaf", icon: UserPlus, label: lang === "ar" ? "سحب المعلقين" : "Extract commenters", to: "/dashboard/facebook/jobs", search: { tab: "commenters" } },
             { kind: "leaf", icon: Users, label: lang === "ar" ? "أعضاء جروب" : "Group members", to: "/dashboard/facebook/jobs", search: { tab: "groupmembers" } },
             { kind: "leaf", icon: Users, label: lang === "ar" ? "جمهور صفحة" : "Page audience", to: "/dashboard/facebook/jobs", search: { tab: "pageaudience" } },
+
+            { kind: "subheader", label: lang === "ar" ? "التفاعل والتحليل" : "Engage & Analyze" },
+            { kind: "leaf", icon: MessageCircle, label: lang === "ar" ? "رسائل Inbox" : "Messenger Inbox", to: "/dashboard/facebook/messages" },
             { kind: "leaf", icon: Sparkles, label: lang === "ar" ? "الرد التلقائي" : "Auto-reply", to: "/dashboard/facebook/autoreply" },
+            { kind: "leaf", icon: Activity, label: lang === "ar" ? "تحليلات الصفحة" : "Page insights", to: "/dashboard/facebook/insights" },
             { kind: "leaf", icon: Activity, label: lang === "ar" ? "سجل المهام" : "Jobs history", to: "/dashboard/facebook/history" },
           ],
         },
