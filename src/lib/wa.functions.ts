@@ -1,6 +1,7 @@
 // WhatsApp Bridge — TanStack server functions.
 // All bridge calls happen here so secrets stay on the server.
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requireAdmin } from "./admin-middleware";
@@ -10,6 +11,20 @@ import {
   BridgeError,
   type BridgeSessionStatus,
 } from "./wa-bridge.server";
+
+function deriveWebhookUrl(): string | null {
+  try {
+    const req = getRequest();
+    const u = new URL(req.url);
+    const host = req.headers.get("x-forwarded-host") || u.host;
+    const proto = req.headers.get("x-forwarded-proto") || u.protocol.replace(":", "");
+    if (!host) return null;
+    return `${proto}://${host}/api/public/wa-webhook`;
+  } catch {
+    return null;
+  }
+}
+
 
 
 export interface WaBridgeHealth {
