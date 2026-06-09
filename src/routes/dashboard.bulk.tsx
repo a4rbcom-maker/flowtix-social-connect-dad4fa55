@@ -41,6 +41,7 @@ type Tab = "compose" | "contacts" | "jobs";
 function BulkSendPage() {
   const { user, loading: authLoading } = useAuth();
   const { lang, dir } = useI18n();
+  const isAr = lang === "ar";
   const navigate = useNavigate();
 
   const [tab, setTab] = useState<Tab>("compose");
