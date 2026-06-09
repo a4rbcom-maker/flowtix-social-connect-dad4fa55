@@ -287,7 +287,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                   );
                 }
 
-                const groupActive = item.children.some((c) => c.to === location.pathname);
+                const groupActive = item.children.some((c) => c.kind === "leaf" && c.to === location.pathname);
                 const isOpen = sidebarOpen ? (openGroups[item.key] ?? groupActive) : false;
                 const channelState =
                   item.key === "facebook" ? channelStatus.facebook
