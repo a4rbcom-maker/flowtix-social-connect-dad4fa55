@@ -3,8 +3,8 @@
 // userId/supabase in context), then verifies the user has the 'admin' role
 // via the service-role client. Use this on every admin server function.
 import { createMiddleware } from "@tanstack/react-start";
+import { getRequest, setResponseStatus } from "@tanstack/react-start/server";
 import { createClient } from "@supabase/supabase-js";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 
 function adminClient() {
@@ -17,12 +17,33 @@ function adminClient() {
 }
 
 export const requireAdmin = createMiddleware({ type: "function" })
-  .middleware([requireSupabaseAuth])
   .server(async ({ next, context }) => {
-    const userId = context.userId;
-    if (!userId) {
-      throw new Response("Unauthorized", { status: 401 });
+    const request = getRequest();
+    const authHeader = request?.headers?.get("authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      setResponseStatus(401);
+      throw new Error("Unauthorized: missing bearer token");
     }
+
+    const token = authHeader.replace("Bearer ", "");
+    const url = process.env.SUPABASE_URL;
+    const publicKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+    if (!url || !publicKey) {
+      setResponseStatus(500);
+      throw new Error("Missing backend environment variables");
+    }
+
+    const authClient = createClient<Database>(url, publicKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
+    });
+    const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(token);
+    const userId = claimsData?.claims?.sub;
+    if (claimsError || !userId) {
+      setResponseStatus(401);
+      throw new Error("Unauthorized: invalid token");
+    }
+
     const db = adminClient();
     const { data, error } = await db
       .from("user_roles")
@@ -32,10 +53,12 @@ export const requireAdmin = createMiddleware({ type: "function" })
       .maybeSingle();
     if (error) {
       console.error("[requireAdmin] role lookup failed", error);
-      throw new Response("forbidden", { status: 403 });
+      setResponseStatus(403);
+      throw new Error("forbidden");
     }
     if (!data) {
-      throw new Response("forbidden: admin role required", { status: 403 });
+      setResponseStatus(403);
+      throw new Error("forbidden: admin role required");
     }
     return next({
       context: {
