@@ -402,6 +402,164 @@ export type Database = {
         }
         Relationships: []
       }
+      fb_autoreply_log: {
+        Row: {
+          action_taken: Database["public"]["Enums"]["fb_autoreply_action"]
+          comment_id: string
+          comment_text: string | null
+          commenter_id: string | null
+          commenter_name: string | null
+          created_at: string
+          error_message: string | null
+          fb_response: Json | null
+          id: string
+          page_id: string
+          post_id: string | null
+          rule_id: string | null
+          skip_reason: string | null
+          status: Database["public"]["Enums"]["fb_autoreply_status"]
+          user_id: string
+        }
+        Insert: {
+          action_taken?: Database["public"]["Enums"]["fb_autoreply_action"]
+          comment_id: string
+          comment_text?: string | null
+          commenter_id?: string | null
+          commenter_name?: string | null
+          created_at?: string
+          error_message?: string | null
+          fb_response?: Json | null
+          id?: string
+          page_id: string
+          post_id?: string | null
+          rule_id?: string | null
+          skip_reason?: string | null
+          status?: Database["public"]["Enums"]["fb_autoreply_status"]
+          user_id: string
+        }
+        Update: {
+          action_taken?: Database["public"]["Enums"]["fb_autoreply_action"]
+          comment_id?: string
+          comment_text?: string | null
+          commenter_id?: string | null
+          commenter_name?: string | null
+          created_at?: string
+          error_message?: string | null
+          fb_response?: Json | null
+          id?: string
+          page_id?: string
+          post_id?: string | null
+          rule_id?: string | null
+          skip_reason?: string | null
+          status?: Database["public"]["Enums"]["fb_autoreply_status"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fb_autoreply_log_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "fb_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fb_autoreply_log_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "fb_autoreply_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fb_autoreply_rules: {
+        Row: {
+          cooldown_seconds: number
+          created_at: string
+          dedupe_per_user: boolean
+          detect_spam: boolean
+          enabled: boolean
+          id: string
+          ignore_admin_comments: boolean
+          keywords: string[]
+          last_matched_at: string | null
+          match_count: number
+          match_mode: Database["public"]["Enums"]["fb_autoreply_match_mode"]
+          name: string
+          page_id: string
+          post_id: string | null
+          priority: number
+          reply_comment_enabled: boolean
+          reply_comment_text: string | null
+          reply_dm_buttons: Json | null
+          reply_dm_enabled: boolean
+          reply_dm_text: string | null
+          scope: Database["public"]["Enums"]["fb_autoreply_scope"]
+          trigger_type: Database["public"]["Enums"]["fb_autoreply_trigger"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cooldown_seconds?: number
+          created_at?: string
+          dedupe_per_user?: boolean
+          detect_spam?: boolean
+          enabled?: boolean
+          id?: string
+          ignore_admin_comments?: boolean
+          keywords?: string[]
+          last_matched_at?: string | null
+          match_count?: number
+          match_mode?: Database["public"]["Enums"]["fb_autoreply_match_mode"]
+          name: string
+          page_id: string
+          post_id?: string | null
+          priority?: number
+          reply_comment_enabled?: boolean
+          reply_comment_text?: string | null
+          reply_dm_buttons?: Json | null
+          reply_dm_enabled?: boolean
+          reply_dm_text?: string | null
+          scope?: Database["public"]["Enums"]["fb_autoreply_scope"]
+          trigger_type?: Database["public"]["Enums"]["fb_autoreply_trigger"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cooldown_seconds?: number
+          created_at?: string
+          dedupe_per_user?: boolean
+          detect_spam?: boolean
+          enabled?: boolean
+          id?: string
+          ignore_admin_comments?: boolean
+          keywords?: string[]
+          last_matched_at?: string | null
+          match_count?: number
+          match_mode?: Database["public"]["Enums"]["fb_autoreply_match_mode"]
+          name?: string
+          page_id?: string
+          post_id?: string | null
+          priority?: number
+          reply_comment_enabled?: boolean
+          reply_comment_text?: string | null
+          reply_dm_buttons?: Json | null
+          reply_dm_enabled?: boolean
+          reply_dm_text?: string | null
+          scope?: Database["public"]["Enums"]["fb_autoreply_scope"]
+          trigger_type?: Database["public"]["Enums"]["fb_autoreply_trigger"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fb_autoreply_rules_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "fb_pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fb_bot_accounts: {
         Row: {
           auth_method: Database["public"]["Enums"]["fb_auth_method"]
@@ -679,6 +837,62 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      fb_pages: {
+        Row: {
+          access_token_encrypted: string | null
+          avatar_url: string | null
+          bot_account_id: string | null
+          connection_type: Database["public"]["Enums"]["fb_page_connection_type"]
+          created_at: string
+          id: string
+          last_error: string | null
+          page_id: string
+          page_name: string
+          status: Database["public"]["Enums"]["fb_page_status"]
+          updated_at: string
+          user_id: string
+          webhook_subscribed: boolean
+        }
+        Insert: {
+          access_token_encrypted?: string | null
+          avatar_url?: string | null
+          bot_account_id?: string | null
+          connection_type: Database["public"]["Enums"]["fb_page_connection_type"]
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          page_id: string
+          page_name: string
+          status?: Database["public"]["Enums"]["fb_page_status"]
+          updated_at?: string
+          user_id: string
+          webhook_subscribed?: boolean
+        }
+        Update: {
+          access_token_encrypted?: string | null
+          avatar_url?: string | null
+          bot_account_id?: string | null
+          connection_type?: Database["public"]["Enums"]["fb_page_connection_type"]
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          page_id?: string
+          page_name?: string
+          status?: Database["public"]["Enums"]["fb_page_status"]
+          updated_at?: string
+          user_id?: string
+          webhook_subscribed?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fb_pages_bot_account_id_fkey"
+            columns: ["bot_account_id"]
+            isOneToOne: false
+            referencedRelation: "fb_bot_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       fb_text_templates: {
         Row: {
@@ -1315,6 +1529,11 @@ export type Database = {
         | "disabled"
         | "untested"
       fb_auth_method: "cookies" | "credentials"
+      fb_autoreply_action: "comment" | "dm" | "both" | "skipped"
+      fb_autoreply_match_mode: "any" | "all" | "exact"
+      fb_autoreply_scope: "specific_post" | "all_posts"
+      fb_autoreply_status: "success" | "failed" | "skipped"
+      fb_autoreply_trigger: "keywords" | "any_comment"
       fb_campaign_content_type: "text" | "media"
       fb_campaign_status:
         | "draft"
@@ -1338,6 +1557,8 @@ export type Database = {
         | "test_account"
         | "extract_group_members"
         | "extract_page_audience"
+      fb_page_connection_type: "official" | "bot"
+      fb_page_status: "active" | "expired" | "disconnected"
       fb_result_status: "success" | "failed" | "skipped" | "pending"
       schedule_status: "scheduled" | "sending" | "sent" | "failed" | "cancelled"
       send_channel: "whatsapp" | "facebook" | "bulk" | "system"
@@ -1489,6 +1710,11 @@ export const Constants = {
         "untested",
       ],
       fb_auth_method: ["cookies", "credentials"],
+      fb_autoreply_action: ["comment", "dm", "both", "skipped"],
+      fb_autoreply_match_mode: ["any", "all", "exact"],
+      fb_autoreply_scope: ["specific_post", "all_posts"],
+      fb_autoreply_status: ["success", "failed", "skipped"],
+      fb_autoreply_trigger: ["keywords", "any_comment"],
       fb_campaign_content_type: ["text", "media"],
       fb_campaign_status: [
         "draft",
@@ -1515,6 +1741,8 @@ export const Constants = {
         "extract_group_members",
         "extract_page_audience",
       ],
+      fb_page_connection_type: ["official", "bot"],
+      fb_page_status: ["active", "expired", "disconnected"],
       fb_result_status: ["success", "failed", "skipped", "pending"],
       schedule_status: ["scheduled", "sending", "sent", "failed", "cancelled"],
       send_channel: ["whatsapp", "facebook", "bulk", "system"],
