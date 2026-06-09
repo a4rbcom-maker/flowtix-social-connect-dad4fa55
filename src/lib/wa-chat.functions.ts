@@ -196,9 +196,14 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       .order("created_at", { ascending: false })
       .limit(20);
     const rawPhone = (recentRaw ?? []).map((msg) => phoneFromRaw(msg.raw)).find(Boolean) ?? null;
+    const phoneDigits = (rawPhone || conv?.contact_phone || data.remoteJid.replace(/[^0-9]/g, "")).replace(/[^0-9]/g, "");
     const to = data.remoteJid.endsWith("@g.us")
       ? data.remoteJid
-      : rawPhone || conv?.contact_phone || data.remoteJid.replace(/[^0-9]/g, "");
+      : data.remoteJid.includes("@")
+        ? data.remoteJid
+        : phoneDigits
+          ? `${phoneDigits}@s.whatsapp.net`
+          : data.remoteJid;
     try {
       await waBridge.sendText(sess.session_id, to, data.text);
     } catch (err) {
@@ -212,7 +217,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       session_id: sess.session_id,
       direction: "out",
       remote_jid: data.remoteJid,
-      to_phone: to.replace(/[^0-9]/g, "") || to,
+      to_phone: phoneDigits || to,
       msg_type: "text",
       text_body: data.text,
     });
