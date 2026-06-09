@@ -331,11 +331,14 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                           >
                             {item.children.map((child, j) => {
                               const ChildIcon = child.icon;
-                              const childActive = location.pathname === child.to;
+                              const childActive =
+                                location.pathname === child.to &&
+                                (!child.search || Object.entries(child.search).every(([k, v]) => (location.search as Record<string, unknown>)?.[k] === v));
                               return (
                                 <Link
                                   key={j}
                                   to={child.to}
+                                  search={child.search as never}
                                   onClick={closeOnMobile}
                                   className={`flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[12.5px] transition-colors ${
                                     childActive
