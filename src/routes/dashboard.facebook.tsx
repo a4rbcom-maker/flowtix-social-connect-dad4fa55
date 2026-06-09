@@ -1407,7 +1407,7 @@ function FacebookPage() {
             ready-to-paste lists for Graph API Explorer's "Add a Permission"
             field, plus a one-per-line variant for manual entry. */}
         {!connection && (
-          <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm">
+          <div id="fb-step-configure" className="scroll-mt-24 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm transition-shadow">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
