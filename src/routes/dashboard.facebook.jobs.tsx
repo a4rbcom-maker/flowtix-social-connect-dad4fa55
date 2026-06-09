@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { Loader2, Send, Eye, AlertCircle } from "lucide-react";
@@ -35,7 +35,8 @@ function JobsHubPage() {
   const { user, loading: authLoading } = useAuth();
   const { lang } = useI18n();
   const search = Route.useSearch();
-  const defaultTab = search.tab ?? "post";
+  const navigate = useNavigate({ from: "/dashboard/facebook/jobs" });
+  const activeTab = search.tab ?? "post";
   const listAccountsFn = useServerFn(listBotAccounts);
   const createPostJobFn = useServerFn(createPostJob);
   const createExtractPagesJobFn = useServerFn(createExtractPagesJob);
@@ -289,7 +290,7 @@ function JobsHubPage() {
           </Select>
         </Card>
 
-        <Tabs defaultValue={defaultTab} key={defaultTab}>
+        <Tabs value={activeTab} onValueChange={(v) => navigate({ search: { tab: v as typeof activeTab }, replace: true })}>
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="post">{t.tabPost}</TabsTrigger>
             <TabsTrigger value="groupmembers">{t.tabGroupMembers}</TabsTrigger>
