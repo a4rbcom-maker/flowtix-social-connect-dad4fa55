@@ -291,13 +291,25 @@ async function readState(
     .eq("user_id", userId);
 
 
+  // If bridge didn't give us a number, surface the last-known one from DB.
+  let surfacedPhone = phoneNumber;
+  if (!surfacedPhone) {
+    const { data: row } = await supabase
+      .from("wa_sessions")
+      .select("phone_number")
+      .eq("user_id", userId)
+      .maybeSingle();
+    surfacedPhone = row?.phone_number ?? null;
+  }
+
   return {
     status,
     sessionId,
     qrDataUrl: null,
     qrRaw: status === "qr" ? qrRaw : null,
-    phoneNumber,
+    phoneNumber: surfacedPhone,
     lastSeenAt: now,
     error,
   };
 }
+
