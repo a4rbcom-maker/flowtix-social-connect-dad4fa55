@@ -1336,6 +1336,8 @@ export type Database = {
         | "extract_pages"
         | "extract_commenters"
         | "test_account"
+        | "extract_group_members"
+        | "extract_page_audience"
       fb_result_status: "success" | "failed" | "skipped" | "pending"
       schedule_status: "scheduled" | "sending" | "sent" | "failed" | "cancelled"
       send_channel: "whatsapp" | "facebook" | "bulk" | "system"
@@ -1510,6 +1512,8 @@ export const Constants = {
         "extract_pages",
         "extract_commenters",
         "test_account",
+        "extract_group_members",
+        "extract_page_audience",
       ],
       fb_result_status: ["success", "failed", "skipped", "pending"],
       schedule_status: ["scheduled", "sending", "sent", "failed", "cancelled"],
