@@ -189,7 +189,17 @@ function InboxPage() {
     refetchInterval: 5000,
   });
   const conversations = useMemo<ConversationRow[]>(
-    () => (Array.isArray(convQuery.data) ? convQuery.data : []),
+    () => {
+      const raw = Array.isArray(convQuery.data) ? convQuery.data : [];
+      // Hide WhatsApp LID duplicates: same person appears twice — once with phone JID,
+      // once with a long numeric LID JID (14+ digits) and a placeholder name like "."
+      return raw.filter((c) => {
+        const local = c.remote_jid.split("@")[0] ?? "";
+        const isLidLike = /^\d{14,}$/.test(local);
+        const placeholderName = !c.contact_name || c.contact_name.trim() === "" || c.contact_name.trim() === ".";
+        return !(isLidLike && placeholderName);
+      });
+    },
     [convQuery.data],
   );
   const messages = useMemo<ChatMessageRow[]>(
