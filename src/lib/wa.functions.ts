@@ -12,16 +12,33 @@ import {
   type BridgeSessionStatus,
 } from "./wa-bridge.server";
 
+/**
+ * Resolve the public, STABLE URL where the BotXtra bridge should POST
+ * inbound WhatsApp events. Preview URLs change per build, so we prefer
+ * (in order):
+ *   1) explicit override via WA_PUBLIC_WEBHOOK_URL secret
+ *   2) the stable Lovable-published URL (project alias never changes)
+ *   3) the current request host (last-resort fallback)
+ */
 function deriveWebhookUrl(): string | null {
+  const override = process.env.WA_PUBLIC_WEBHOOK_URL;
+  if (override) return override.replace(/\/+$/, "");
+
+  const PUBLISHED = "https://flowtix-social-connect.lovable.app/api/public/wa-webhook";
   try {
     const req = getRequest();
     const u = new URL(req.url);
     const host = req.headers.get("x-forwarded-host") || u.host;
     const proto = req.headers.get("x-forwarded-proto") || u.protocol.replace(":", "");
-    if (!host) return null;
-    return `${proto}://${host}/api/public/wa-webhook`;
+    // If we're already on a *.lovable.app host, trust it. Otherwise (preview
+    // / lovableproject.com / localhost) use the stable published URL so the
+    // bridge can always reach us even after a redeploy.
+    if (host && /\.lovable\.app$/i.test(host)) {
+      return `${proto}://${host}/api/public/wa-webhook`;
+    }
+    return PUBLISHED;
   } catch {
-    return null;
+    return PUBLISHED;
   }
 }
 
