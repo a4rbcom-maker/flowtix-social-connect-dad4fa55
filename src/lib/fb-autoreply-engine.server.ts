@@ -252,15 +252,19 @@ export async function logExecution(
     fb_response: (result.fb_response ?? null) as never,
   });
   if (result.status === "success") {
-    await supabaseAdmin.rpc;
+    // Bump counters; fetch then increment because PostgREST has no atomic increment.
+    const { data: cur } = await supabaseAdmin
+      .from("fb_autoreply_rules")
+      .select("match_count")
+      .eq("id", rule.id)
+      .maybeSingle();
     await supabaseAdmin
       .from("fb_autoreply_rules")
       .update({
-        match_count: undefined as never, // bumped below
+        match_count: (cur?.match_count ?? 0) + 1,
         last_matched_at: new Date().toISOString(),
       })
       .eq("id", rule.id);
-    // Use raw SQL increment via update with select+update workaround:
-    await supabaseAdmin.rpc;
   }
 }
+
