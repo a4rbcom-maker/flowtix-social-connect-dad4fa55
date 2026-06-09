@@ -201,12 +201,22 @@ function InboxPage() {
     [msgsQuery.data],
   );
 
-  useEffect(() => {
-    if (!user) return;
-    refreshConnectionFn()
-      .then(() => qc.invalidateQueries({ queryKey: ["wa-conversations"] }))
-      .catch((err) => console.warn("[inbox] connection refresh failed", err));
-  }, [qc, user?.id]);
+  // Track connection so we can show the right empty-state CTA.
+  const connQuery = useQuery({
+    queryKey: ["wa-connection-state"],
+    queryFn: () => safeCall(() => refreshConnectionFn(), null),
+    enabled: !!user,
+    refetchInterval: 30000,
+  });
+
+  const resetMut = useMutation({
+    mutationFn: () => resetReceiverFn(),
+    onSuccess: () => {
+      toast.success(isAr ? "تم تجهيز جلسة جديدة. امسح رمز QR لإكمال الربط." : "New session prepared. Scan QR to finish pairing.");
+      navigate({ to: "/dashboard/whatsapp/accounts" });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
 
   // Realtime
   useEffect(() => {
