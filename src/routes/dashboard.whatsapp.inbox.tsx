@@ -214,6 +214,12 @@ function InboxPage() {
     refetchInterval: 30000,
   });
 
+  const quickRepliesQuery = useQuery({
+    queryKey: ["wa-quick-replies"],
+    queryFn: () => quickRepliesFn().catch(() => [] as QuickReply[]),
+    enabled: !!user,
+  });
+
   const resetMut = useMutation({
     mutationFn: () => resetReceiverFn(),
     onSuccess: () => {
