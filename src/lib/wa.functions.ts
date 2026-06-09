@@ -307,76 +307,69 @@ export const disconnectWaSession = createServerFn({ method: "POST" })
   });
 
 /**
- * Re-register the bridge webhook URL for the current user's session.
- * Call this if no inbound messages are appearing — the bridge may have
- * a stale preview URL from when the session was originally paired.
+ * Hard-reset the receiver: deletes the bridge session and creates a fresh
+ * one bound to this user's tenantId + our stable webhook URL. The session
+ * comes back in QR state — the user must re-scan to finish pairing.
+ *
+ * This is the ONLY way to (re)bind a webhook on Bot-Xtra v1.8.x, because
+ * the bridge has no API to update webhook/tenant on an existing session.
  */
-export const resyncWaWebhook = createServerFn({ method: "POST" })
+export const resetWaReceiver = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }): Promise<WaConnectionState> => {
     const { supabase, userId } = context;
-    const { data: row } = await supabase
+
+    const { data: existing } = await supabase
       .from("wa_sessions")
       .select("session_id")
       .eq("user_id", userId)
       .maybeSingle();
-    if (!row?.session_id) {
-      return { ok: false, webhookUrl: null, error: "No WhatsApp session — connect first" };
-    }
-    const webhookUrl = await deriveWebhookUrl();
-    if (!webhookUrl) {
-      return { ok: false, webhookUrl: null, error: "Cannot determine webhook URL" };
-    }
-    await ensureBridgeWebhook(row.session_id, webhookUrl);
-    return { ok: true, webhookUrl, error: null };
-  });
 
-/**
- * Diagnostic: POST a fake inbound message to our own webhook endpoint
- * to verify the receive → DB → conversations chain works end-to-end.
- * Returns whether a row was created in wa_messages.
- */
-export const sendWaWebhookTest = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { supabase, userId } = context;
-    const { data: row } = await supabase
-      .from("wa_sessions")
-      .select("session_id")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!row?.session_id) {
-      return { ok: false, error: "No WhatsApp session" };
+    // 1) Delete the old bridge session (best-effort)
+    if (existing?.session_id) {
+      try {
+        await waBridge.deleteSession(existing.session_id);
+      } catch (err) {
+        console.warn("[wa] resetWaReceiver: deleteSession failed:", err instanceof Error ? err.message : err);
+      }
     }
-    const webhookUrl = await deriveWebhookUrl();
-    if (!webhookUrl) return { ok: false, error: "Cannot determine webhook URL" };
 
-    const stamp = Date.now();
-    const payload = {
-      event: "messages.upsert",
-      sessionId: row.session_id,
-      data: {
-        messages: [
-          {
-            key: { remoteJid: `999000${stamp}@s.whatsapp.net`, fromMe: false, id: `TEST_${stamp}` },
-            pushName: "Flowtix Test",
-            message: { conversation: `Test inbound message ${stamp}` },
-          },
-        ],
-      },
-    };
+    // 2) Mint a new session id and recreate with tenantId + webhookUrl
+    const newSessionId = `flowtix-${userId.replace(/-/g, "").slice(0, 16)}-${Date.now().toString(36)}`;
+    const webhookUrl = await deriveWebhookUrl();
     try {
-      const res = await fetch(webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      await waBridge.createSession(newSessionId, {
+        webhookUrl: webhookUrl ?? undefined,
+        tenantId: userId,
       });
-      const text = await res.text();
-      return { ok: res.ok, status: res.status, body: text.slice(0, 300), webhookUrl };
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : "fetch failed", webhookUrl };
+      const msg = describeBridgeError(err);
+      console.error("[wa] resetWaReceiver: createSession failed:", msg);
+      throw new Error(msg);
     }
+
+    // 3) Persist new session id and reset row to QR state
+    const now = new Date().toISOString();
+    if (existing) {
+      await supabase
+        .from("wa_sessions")
+        .update({
+          session_id: newSessionId,
+          status: "qr",
+          qr_data_url: null,
+          phone_number: null,
+          last_seen_at: now,
+        })
+        .eq("user_id", userId);
+    } else {
+      await supabase
+        .from("wa_sessions")
+        .insert({ user_id: userId, session_id: newSessionId, status: "qr" });
+    }
+
+    return readState(supabase, userId, newSessionId);
   });
+
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
