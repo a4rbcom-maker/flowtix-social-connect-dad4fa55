@@ -34,6 +34,7 @@ import { Route as AdminAiRouteImport } from './routes/admin.ai'
 import { Route as DashboardWhatsappSettingsRouteImport } from './routes/dashboard.whatsapp.settings'
 import { Route as DashboardWhatsappInboxRouteImport } from './routes/dashboard.whatsapp.inbox'
 import { Route as DashboardWhatsappBotRouteImport } from './routes/dashboard.whatsapp.bot'
+import { Route as DashboardWhatsappAutomationRouteImport } from './routes/dashboard.whatsapp.automation'
 import { Route as DashboardWhatsappAccountsRouteImport } from './routes/dashboard.whatsapp.accounts'
 import { Route as DashboardFacebookTemplatesRouteImport } from './routes/dashboard.facebook.templates'
 import { Route as DashboardFacebookStatusRouteImport } from './routes/dashboard.facebook.status'
@@ -180,6 +181,12 @@ const DashboardWhatsappBotRoute = DashboardWhatsappBotRouteImport.update({
   path: '/bot',
   getParentRoute: () => DashboardWhatsappRoute,
 } as any)
+const DashboardWhatsappAutomationRoute =
+  DashboardWhatsappAutomationRouteImport.update({
+    id: '/automation',
+    path: '/automation',
+    getParentRoute: () => DashboardWhatsappRoute,
+  } as any)
 const DashboardWhatsappAccountsRoute =
   DashboardWhatsappAccountsRouteImport.update({
     id: '/accounts',
@@ -321,6 +328,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
+  '/dashboard/whatsapp/automation': typeof DashboardWhatsappAutomationRoute
   '/dashboard/whatsapp/bot': typeof DashboardWhatsappBotRoute
   '/dashboard/whatsapp/inbox': typeof DashboardWhatsappInboxRoute
   '/dashboard/whatsapp/settings': typeof DashboardWhatsappSettingsRoute
@@ -367,6 +375,7 @@ export interface FileRoutesByTo {
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
+  '/dashboard/whatsapp/automation': typeof DashboardWhatsappAutomationRoute
   '/dashboard/whatsapp/bot': typeof DashboardWhatsappBotRoute
   '/dashboard/whatsapp/inbox': typeof DashboardWhatsappInboxRoute
   '/dashboard/whatsapp/settings': typeof DashboardWhatsappSettingsRoute
@@ -414,6 +423,7 @@ export interface FileRoutesById {
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
+  '/dashboard/whatsapp/automation': typeof DashboardWhatsappAutomationRoute
   '/dashboard/whatsapp/bot': typeof DashboardWhatsappBotRoute
   '/dashboard/whatsapp/inbox': typeof DashboardWhatsappInboxRoute
   '/dashboard/whatsapp/settings': typeof DashboardWhatsappSettingsRoute
@@ -462,6 +472,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
     | '/dashboard/whatsapp/accounts'
+    | '/dashboard/whatsapp/automation'
     | '/dashboard/whatsapp/bot'
     | '/dashboard/whatsapp/inbox'
     | '/dashboard/whatsapp/settings'
@@ -508,6 +519,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
     | '/dashboard/whatsapp/accounts'
+    | '/dashboard/whatsapp/automation'
     | '/dashboard/whatsapp/bot'
     | '/dashboard/whatsapp/inbox'
     | '/dashboard/whatsapp/settings'
@@ -554,6 +566,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
     | '/dashboard/whatsapp/accounts'
+    | '/dashboard/whatsapp/automation'
     | '/dashboard/whatsapp/bot'
     | '/dashboard/whatsapp/inbox'
     | '/dashboard/whatsapp/settings'
@@ -766,6 +779,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardWhatsappBotRouteImport
       parentRoute: typeof DashboardWhatsappRoute
     }
+    '/dashboard/whatsapp/automation': {
+      id: '/dashboard/whatsapp/automation'
+      path: '/automation'
+      fullPath: '/dashboard/whatsapp/automation'
+      preLoaderRoute: typeof DashboardWhatsappAutomationRouteImport
+      parentRoute: typeof DashboardWhatsappRoute
+    }
     '/dashboard/whatsapp/accounts': {
       id: '/dashboard/whatsapp/accounts'
       path: '/accounts'
@@ -949,6 +969,7 @@ const DashboardFacebookRouteWithChildren =
 
 interface DashboardWhatsappRouteChildren {
   DashboardWhatsappAccountsRoute: typeof DashboardWhatsappAccountsRoute
+  DashboardWhatsappAutomationRoute: typeof DashboardWhatsappAutomationRoute
   DashboardWhatsappBotRoute: typeof DashboardWhatsappBotRoute
   DashboardWhatsappInboxRoute: typeof DashboardWhatsappInboxRoute
   DashboardWhatsappSettingsRoute: typeof DashboardWhatsappSettingsRoute
@@ -956,6 +977,7 @@ interface DashboardWhatsappRouteChildren {
 
 const DashboardWhatsappRouteChildren: DashboardWhatsappRouteChildren = {
   DashboardWhatsappAccountsRoute: DashboardWhatsappAccountsRoute,
+  DashboardWhatsappAutomationRoute: DashboardWhatsappAutomationRoute,
   DashboardWhatsappBotRoute: DashboardWhatsappBotRoute,
   DashboardWhatsappInboxRoute: DashboardWhatsappInboxRoute,
   DashboardWhatsappSettingsRoute: DashboardWhatsappSettingsRoute,
