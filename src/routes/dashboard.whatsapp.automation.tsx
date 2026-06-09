@@ -373,13 +373,16 @@ function KeywordRuleDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
+      <DialogContent
+        dir={isAr ? "rtl" : "ltr"}
+        className={`max-w-lg ${isAr ? "text-right [&>button]:left-4 [&>button]:right-auto" : "text-left"}`}
+      >
+        <DialogHeader className={isAr ? "text-right sm:text-right" : undefined}>
           <DialogTitle>
             {rule ? (isAr ? "تعديل القاعدة" : "Edit rule") : isAr ? "قاعدة جديدة" : "New rule"}
           </DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div>
             <Label>{isAr ? "اسم القاعدة" : "Label"}</Label>
             <Input
@@ -428,12 +431,12 @@ function KeywordRuleDialog({
               placeholder={isAr ? "اكتب الرد..." : "Reply..."}
             />
           </div>
-          <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2">
+          <div className="flex items-center justify-between rounded-xl border border-border bg-muted/40 px-3 py-3">
             <span className="text-sm">{isAr ? "مفعّلة" : "Enabled"}</span>
             <Switch checked={enabled} onCheckedChange={setEnabled} />
           </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:space-x-0">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             {isAr ? "إلغاء" : "Cancel"}
           </Button>
@@ -627,13 +630,16 @@ function QuickReplyDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
+      <DialogContent
+        dir={isAr ? "rtl" : "ltr"}
+        className={`max-w-lg ${isAr ? "text-right [&>button]:left-4 [&>button]:right-auto" : "text-left"}`}
+      >
+        <DialogHeader className={isAr ? "text-right sm:text-right" : undefined}>
           <DialogTitle>
             {snippet ? (isAr ? "تعديل الرد" : "Edit snippet") : isAr ? "رد جديد" : "New snippet"}
           </DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div>
             <Label>{isAr ? "اختصار" : "Shortcut"}</Label>
             <Input
@@ -660,7 +666,7 @@ function QuickReplyDialog({
             />
           </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:space-x-0">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             {isAr ? "إلغاء" : "Cancel"}
           </Button>
