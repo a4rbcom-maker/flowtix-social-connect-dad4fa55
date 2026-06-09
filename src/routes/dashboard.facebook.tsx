@@ -786,6 +786,33 @@ function FacebookPage() {
   const connectionName = (name: string | null | undefined) =>
     name?.startsWith("Facebook token saved") ? t.savedPendingName : name || t.savedPendingName;
 
+  const handleSaveCookieAccount = async () => {
+    if (!cookiePayload.trim()) {
+      toast.error(t.cookieRequired);
+      return;
+    }
+    setSavingCookieAccount(true);
+    try {
+      const displayName = cookieName.trim() || (lang === "ar" ? "حساب فيسبوك Cookies" : "Facebook Cookies account");
+      const raw = await addBotAccountFn({
+        data: { method: "cookies", displayName, cookies: cookiePayload },
+      });
+      const unwrapped = (raw as { data?: unknown })?.data ?? raw;
+      const account = unwrapped as BotAccountSummary | null;
+      if (account?.id) {
+        setBotAccounts((prev) => [account, ...prev.filter((a) => a.id !== account.id)]);
+      }
+      setCookieName("");
+      setCookiePayload("");
+      toast.success(t.cookieSaved, { description: t.cookieSavedDesc });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : lang === "ar" ? "فشل حفظ الكوكيز" : "Failed to save cookies";
+      toast.error(msg);
+    } finally {
+      setSavingCookieAccount(false);
+    }
+  };
+
   const handleTest = async () => {
     const cleaned = cleanToken(token);
     if (cleaned.length < 20) {
