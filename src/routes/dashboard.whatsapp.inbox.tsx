@@ -52,7 +52,8 @@ import {
   type ConversationRow,
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
-import { getWaConnectionState } from "@/lib/wa.functions";
+import { getWaConnectionState, resetWaReceiver } from "@/lib/wa.functions";
+import { useNavigate } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
   ssr: false,
