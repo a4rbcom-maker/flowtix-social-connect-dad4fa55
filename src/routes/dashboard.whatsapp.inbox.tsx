@@ -1088,8 +1088,9 @@ function renderMessagesWithDays(
   return out;
 }
 
-function ChatBubble({ m, isAr }: { m: ChatMessageRow; isAr: boolean }) {
+function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; isGroup: boolean }) {
   const isOut = m.direction === "out";
+  const showSender = isGroup && !isOut && (m.sender_name || m.sender_phone);
   return (
     <div className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
       <div
@@ -1099,6 +1100,11 @@ function ChatBubble({ m, isAr }: { m: ChatMessageRow; isAr: boolean }) {
             : "rounded-2xl rounded-bl-md border border-border/60 bg-card text-foreground rtl:rounded-bl-2xl rtl:rounded-br-md"
         }`}
       >
+        {showSender && (
+          <p className="mb-1 text-[11px] font-semibold text-primary">
+            {m.sender_name || (m.sender_phone ? `+${m.sender_phone}` : "")}
+          </p>
+        )}
         {m.text_body ? (
           <p className="whitespace-pre-wrap break-words leading-relaxed">{m.text_body}</p>
         ) : (
