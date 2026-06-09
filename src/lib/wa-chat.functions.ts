@@ -70,7 +70,37 @@ export const listConversations = createServerFn({ method: "POST" })
       .order("last_message_at", { ascending: false })
       .limit(200);
     if (error) throw new Error(error.message);
-    return (data ?? []) as ConversationRow[];
+    const rows = (data ?? []) as Omit<ConversationRow, "profile_pic_url">[];
+    if (!rows.length) return [];
+
+    const remoteJids = rows.map((row) => row.remote_jid);
+    const { data: rawMessages } = await supabase
+      .from("wa_messages")
+      .select("remote_jid, raw, created_at")
+      .eq("user_id", userId)
+      .in("remote_jid", remoteJids)
+      .not("raw", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1000);
+
+    const metaByJid = new Map<string, { phone: string | null; profile: string | null }>();
+    for (const msg of rawMessages ?? []) {
+      const jid = String(msg.remote_jid ?? "");
+      if (!jid || metaByJid.has(jid)) continue;
+      metaByJid.set(jid, {
+        phone: phoneFromRaw(msg.raw),
+        profile: profilePicFromRaw(msg.raw),
+      });
+    }
+
+    return rows.map((row) => {
+      const meta = metaByJid.get(row.remote_jid);
+      return {
+        ...row,
+        contact_phone: meta?.phone ?? row.contact_phone,
+        profile_pic_url: meta?.profile ?? null,
+      };
+    });
   });
 
 export const getConversationMessages = createServerFn({ method: "POST" })
