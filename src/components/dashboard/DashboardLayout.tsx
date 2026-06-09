@@ -344,6 +344,16 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                             }`}
                           >
                             {item.children.map((child, j) => {
+                              if (child.kind === "subheader") {
+                                return (
+                                  <div
+                                    key={j}
+                                    className={`mt-2 mb-0.5 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 ${j === 0 ? "mt-0" : ""}`}
+                                  >
+                                    {child.label}
+                                  </div>
+                                );
+                              }
                               const ChildIcon = child.icon;
                               const childActive =
                                 location.pathname === child.to &&
