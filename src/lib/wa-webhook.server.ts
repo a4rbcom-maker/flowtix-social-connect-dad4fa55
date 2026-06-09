@@ -71,6 +71,7 @@ interface ParsedMessage {
   mediaUrl: string | null;
   contactName: string | null;
   fromMe: boolean;
+  isGroup: boolean;
 }
 
 function extractTextFromMessage(m: Record<string, unknown>): { text: string | null; type: string; mediaUrl: string | null } {
