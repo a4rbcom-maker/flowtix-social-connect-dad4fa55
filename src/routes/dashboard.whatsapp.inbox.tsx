@@ -74,6 +74,8 @@ function InboxPage() {
   const toggleAiFn = useServerFn(toggleConversationAi);
   const markReadFn = useServerFn(markConversationRead);
   const refreshConnectionFn = useServerFn(getWaConnectionState);
+  const resetReceiverFn = useServerFn(resetWaReceiver);
+  const navigate = useNavigate();
 
   const [activeJid, setActiveJid] = useState<string | null>(null);
   const [search, setSearch] = useState("");
