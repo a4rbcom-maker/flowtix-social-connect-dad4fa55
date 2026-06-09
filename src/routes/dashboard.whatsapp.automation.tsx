@@ -122,6 +122,7 @@ function AutomationPage() {
         </TabsContent>
       </Tabs>
     </div>
+    </DashboardLayout>
   );
 }
 
