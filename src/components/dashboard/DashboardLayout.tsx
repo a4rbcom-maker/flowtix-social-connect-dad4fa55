@@ -22,6 +22,7 @@ import {
   Inbox,
   Smartphone,
   Shield,
+  UserPlus,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -82,7 +83,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     ? { overview: "نظرة عامة", control: "لوحة التحكم", facebook: "فيسبوك", fbConnect: "الربط والحالة", fbGroups: "الجروبات", whatsapp: "واتساب", waInbox: "الدردشة", waAccounts: "حساباتي", waBot: "البوت (ردود الكلمات)", waAgent: "وكيل الذكاء الاصطناعي", waSettings: "إعدادات واتساب", bulk: "إرسال جماعي", activity: "سجل النشاط", settings: "الملف الشخصي", logout: "تسجيل الخروج", sectionMain: "الرئيسية", sectionChannels: "القنوات", sectionInsights: "التحليلات" }
     : { overview: "Overview", control: "Control Panel", facebook: "Facebook", fbConnect: "Connect & Status", fbGroups: "Groups", whatsapp: "WhatsApp", waInbox: "Chats", waAccounts: "My Accounts", waBot: "Bot (Keyword Replies)", waAgent: "AI Agent", waSettings: "WhatsApp Settings", bulk: "Bulk Send", activity: "Activity", settings: "Profile", logout: "Sign Out", sectionMain: "Main", sectionChannels: "Channels", sectionInsights: "Insights" };
 
-  type LeafItem = { kind: "leaf"; icon: typeof LayoutDashboard; label: string; to: "/dashboard" | "/dashboard/control" | "/dashboard/facebook" | "/dashboard/facebook/groups" | "/dashboard/facebook/insights" | "/dashboard/facebook/messages" | "/dashboard/facebook/bot" | "/dashboard/facebook/jobs" | "/dashboard/facebook/history" | "/dashboard/facebook/campaigns" | "/dashboard/facebook/templates" | "/dashboard/facebook/media" | "/dashboard/whatsapp" | "/dashboard/whatsapp/inbox" | "/dashboard/whatsapp/accounts" | "/dashboard/whatsapp/bot" | "/dashboard/whatsapp/automation" | "/dashboard/whatsapp/settings" | "/dashboard/bulk" | "/dashboard/activity" | "/dashboard/profile" };
+  type LeafItem = { kind: "leaf"; icon: typeof LayoutDashboard; label: string; to: "/dashboard" | "/dashboard/control" | "/dashboard/facebook" | "/dashboard/facebook/groups" | "/dashboard/facebook/insights" | "/dashboard/facebook/messages" | "/dashboard/facebook/bot" | "/dashboard/facebook/jobs" | "/dashboard/facebook/history" | "/dashboard/facebook/campaigns" | "/dashboard/facebook/templates" | "/dashboard/facebook/media" | "/dashboard/whatsapp" | "/dashboard/whatsapp/inbox" | "/dashboard/whatsapp/accounts" | "/dashboard/whatsapp/bot" | "/dashboard/whatsapp/automation" | "/dashboard/whatsapp/settings" | "/dashboard/bulk" | "/dashboard/activity" | "/dashboard/profile"; search?: Record<string, string> };
   type GroupItem = { kind: "group"; key: string; icon: typeof LayoutDashboard; label: string; children: LeafItem[] };
   type MenuItem = LeafItem | GroupItem;
   type Section = { title: string; items: MenuItem[] };
@@ -113,6 +114,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
             { kind: "leaf", icon: Send, label: lang === "ar" ? "القوالب النصية" : "Templates", to: "/dashboard/facebook/templates" },
             { kind: "leaf", icon: Activity, label: lang === "ar" ? "مكتبة الوسائط" : "Media library", to: "/dashboard/facebook/media" },
             { kind: "leaf", icon: Send, label: lang === "ar" ? "إنشاء مهمة" : "Create job", to: "/dashboard/facebook/jobs" },
+            { kind: "leaf", icon: UserPlus, label: lang === "ar" ? "سحب المعلقين" : "Extract commenters", to: "/dashboard/facebook/jobs", search: { tab: "commenters" } },
             { kind: "leaf", icon: Activity, label: lang === "ar" ? "سجل المهام" : "Jobs history", to: "/dashboard/facebook/history" },
           ],
         },
@@ -249,6 +251,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                     <Link
                       key={i}
                       to={item.to}
+                      search={item.search as never}
                       onClick={closeOnMobile}
                       title={!sidebarOpen ? item.label : undefined}
                       className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors ${
@@ -328,11 +331,14 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                           >
                             {item.children.map((child, j) => {
                               const ChildIcon = child.icon;
-                              const childActive = location.pathname === child.to;
+                              const childActive =
+                                location.pathname === child.to &&
+                                (!child.search || Object.entries(child.search).every(([k, v]) => (location.search as Record<string, unknown>)?.[k] === v));
                               return (
                                 <Link
                                   key={j}
                                   to={child.to}
+                                  search={child.search as never}
                                   onClick={closeOnMobile}
                                   className={`flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[12.5px] transition-colors ${
                                     childActive

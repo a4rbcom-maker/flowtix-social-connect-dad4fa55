@@ -15,9 +15,11 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { listBotAccounts, createPostJob, createExtractPagesJob, createExtractCommentersJob } from "@/lib/fb-bot.functions";
+import { z } from "zod";
 
 export const Route = createFileRoute("/dashboard/facebook/jobs")({
   ssr: false,
+  validateSearch: z.object({ tab: z.enum(["post", "pages", "commenters"]).optional() }),
   beforeLoad: async () => {
     if (typeof window === "undefined") return;
     const { supabase } = await import("@/integrations/supabase/client");
@@ -32,6 +34,8 @@ const SAFE_ACCOUNT_SELECT = "id, display_name, status";
 function JobsHubPage() {
   const { user, loading: authLoading } = useAuth();
   const { lang } = useI18n();
+  const search = Route.useSearch();
+  const defaultTab = search.tab ?? "post";
   const listAccountsFn = useServerFn(listBotAccounts);
   const createPostJobFn = useServerFn(createPostJob);
   const createExtractPagesJobFn = useServerFn(createExtractPagesJob);
@@ -205,7 +209,7 @@ function JobsHubPage() {
           </Select>
         </Card>
 
-        <Tabs defaultValue="post">
+        <Tabs defaultValue={defaultTab} key={defaultTab}>
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="post">{t.tabPost}</TabsTrigger>
             <TabsTrigger value="pages">{t.tabExtractPages}</TabsTrigger>
