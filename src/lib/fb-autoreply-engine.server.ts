@@ -162,14 +162,15 @@ export async function executeRule(
     };
   }
 
-  // Decrypt the page access token
-  const { decryptString } = await import("@/server/crypto.server");
+  // Decrypt the page access token (stored via encryptJson(string))
+  const { decryptJson } = await import("@/server/crypto.server");
   let pageToken: string;
   try {
-    pageToken = await decryptString(rule.page_token_encrypted);
-  } catch (e) {
+    pageToken = decryptJson<string>(rule.page_token_encrypted);
+  } catch {
     return { action_taken: "skipped", status: "failed", error_message: "Token decrypt failed" };
   }
+
 
   const vars = {
     name: event.commenterName ?? "",
