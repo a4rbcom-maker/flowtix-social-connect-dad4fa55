@@ -15,9 +15,11 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { listBotAccounts, createPostJob, createExtractPagesJob, createExtractCommentersJob } from "@/lib/fb-bot.functions";
+import { z } from "zod";
 
 export const Route = createFileRoute("/dashboard/facebook/jobs")({
   ssr: false,
+  validateSearch: z.object({ tab: z.enum(["post", "pages", "commenters"]).optional() }),
   beforeLoad: async () => {
     if (typeof window === "undefined") return;
     const { supabase } = await import("@/integrations/supabase/client");
