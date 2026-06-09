@@ -5,7 +5,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const MAX_JOBS_PER_TICK = 25;
-const MAX_SENDS_PER_JOB_PER_TICK = 20;
+const DEFAULT_BATCH_SIZE = 10;
+const HARD_CAP_SENDS_PER_JOB_PER_TICK = 100;
 
 export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
   server: {
