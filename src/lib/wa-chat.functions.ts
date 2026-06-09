@@ -227,7 +227,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       sessionId: sess.session_id,
       remoteJid: data.remoteJid,
       contactName: null,
-      contactPhone: to.replace(/[^0-9]/g, "") || to,
+      contactPhone: phoneDigits || null,
       text: data.text,
       direction: "out",
     });
