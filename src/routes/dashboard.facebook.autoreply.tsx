@@ -45,7 +45,7 @@ function AutoReplyPage() {
   const ar = lang === "ar";
 
   return (
-    <DashboardLayout>
+    <DashboardLayout title={ar ? "الرد التلقائي" : "Auto-Reply"}>
       <div className="container mx-auto p-6 space-y-6" dir={ar ? "rtl" : "ltr"}>
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-3">
