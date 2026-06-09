@@ -108,6 +108,7 @@ function JobsHistoryPage() {
     setSelected(j);
     setResultsLoading(true);
     try {
+      if (j.job_type === "extract_commenters") await loadEgyptData();
       const { results } = await call(getJob, { id: j.id });
       setResults(results as JobResult[]);
     } catch (e) { toast.error(String(e)); }
@@ -119,14 +120,39 @@ function JobsHistoryPage() {
     catch (e) { toast.error(String(e)); }
   };
 
+  const isCommenters = selected?.job_type === "extract_commenters";
+  const enrichedRows = isCommenters
+    ? results.map((r) => {
+        const d = (r.data ?? {}) as { name?: string; id?: string; profile?: string };
+        const blob = `${d.name ?? ""} ${r.target ?? ""}`;
+        const loc = detectLocation(blob);
+        return {
+          row: r,
+          name: d.name ?? r.target ?? "—",
+          profile: d.profile ?? "",
+          phone: extractEgyptPhone(d.name ?? "") ?? null,
+          city: loc?.city ?? null,
+          gov: loc?.gov ?? null,
+        };
+      })
+    : [];
+
   const downloadCsv = () => {
     if (results.length === 0) return;
-    const rows = [
-      ["target", "status", "data", "error", "created_at"],
-      ...results.map((r) => [r.target ?? "", r.status, JSON.stringify(r.data ?? ""), r.error ?? "", r.created_at]),
-    ];
+    let rows: (string | number)[][];
+    if (isCommenters) {
+      rows = [
+        ["name", "facebook_id", "profile", "phone", "city", "governorate"],
+        ...enrichedRows.map((e) => [e.name, e.row.target ?? "", e.profile, e.phone ?? "", e.city ?? "", e.gov ?? ""]),
+      ];
+    } else {
+      rows = [
+        ["target", "status", "data", "error", "created_at"],
+        ...results.map((r) => [r.target ?? "", r.status, JSON.stringify(r.data ?? ""), r.error ?? "", r.created_at]),
+      ];
+    }
     const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `job-${selected?.id}.csv`; a.click();
     URL.revokeObjectURL(url);
