@@ -53,7 +53,8 @@ function BulkSendPage() {
   // Compose form
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
-  const [intervalSec, setIntervalSec] = useState(5);
+  const [intervalSec, setIntervalSec] = useState(30);
+  const [batchSize, setBatchSize] = useState(10);
   const [scheduleNow, setScheduleNow] = useState(true);
   const [scheduleAt, setScheduleAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
