@@ -78,6 +78,7 @@ function InboxPage() {
   const markReadFn = useServerFn(markConversationRead);
   const refreshConnectionFn = useServerFn(getWaConnectionState);
   const resetReceiverFn = useServerFn(resetWaReceiver);
+  const quickRepliesFn = useServerFn(listQuickReplies);
   const navigate = useNavigate();
 
   const [activeJid, setActiveJid] = useState<string | null>(null);
