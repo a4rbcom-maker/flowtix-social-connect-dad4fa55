@@ -1120,22 +1120,25 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     .limit(300);
   if (error) throw new Error(error.message);
 
-  return (data ?? []).map((row) => {
+  return Promise.all((data ?? []).map(async (row) => {
     const raw = asRecord(row.raw);
     const msgType = mediaTypeFromRaw(raw, row.msg_type);
+    const storedMediaUrl = typeof row.media_url === "string" && row.media_url.trim() ? row.media_url.trim() : null;
+    const rawMediaUrl = mediaUrlFromRaw(raw, msgType);
+    const mediaUrl = await resolveInboxMediaUrl(preferInboxMediaUrl(storedMediaUrl, rawMediaUrl));
     return {
       id: row.id,
       remote_jid: row.remote_jid,
       direction: row.direction as "in" | "out",
       text_body: cleanMessageText(row.text_body, raw, msgType),
       msg_type: msgType,
-      media_url: row.media_url ?? mediaUrlFromRaw(raw, msgType),
+      media_url: mediaUrl,
       created_at: row.created_at,
       is_ai: raw.ai === true,
       sender_name: pickString(raw, "pushName", "senderName", "notifyName", "contactName"),
       sender_phone: digits(pickString(raw, "participantPn", "senderPn", "phoneNumber")),
     };
-  });
+  }));
 }
 
 async function fetchInboxConnectionState(userId: string): Promise<{ status: string } | null> {
@@ -1238,6 +1241,32 @@ function mediaUrlFromRaw(raw: unknown, fallbackType?: string | null): string | n
   if (!base64) return null;
   const cleanBase64 = base64.replace(/^data:[^;]+;base64,/, "").replace(/\s+/g, "");
   return `data:${pickString(media, "mimeType", "mimetype", "fileMimeType", "contentType") ?? fallbackMimeType(mediaTypeFromRaw(raw, fallbackType))};base64,${cleanBase64}`;
+}
+
+function waStoragePathFromUrl(url: string | null | undefined): string | null {
+  const value = url?.trim() ?? "";
+  if (!value) return null;
+  if (value.startsWith("wa-media:")) return value.slice("wa-media:".length).replace(/^\/+/, "");
+  if (value.startsWith("storage://wa-media/")) return value.slice("storage://wa-media/".length).replace(/^\/+/, "");
+  return null;
+}
+
+function preferInboxMediaUrl(storedUrl: string | null, rawUrl: string | null): string | null {
+  if (waStoragePathFromUrl(storedUrl)) return storedUrl;
+  if (rawUrl?.startsWith("data:") || waStoragePathFromUrl(rawUrl)) return rawUrl;
+  if (storedUrl && /^(https?:)?\/\//i.test(storedUrl)) return storedUrl;
+  return rawUrl ?? storedUrl;
+}
+
+async function resolveInboxMediaUrl(url: string | null): Promise<string | null> {
+  const storagePath = waStoragePathFromUrl(url);
+  if (!storagePath) return url;
+  const { data, error } = await supabase.storage.from("wa-media").createSignedUrl(storagePath, 60 * 60);
+  if (error) {
+    console.warn("[inbox] failed to sign WhatsApp media", error.message);
+    return null;
+  }
+  return data.signedUrl;
 }
 
 function looksLikeInternalMediaPath(value: string | null | undefined): boolean {

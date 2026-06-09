@@ -1,7 +1,7 @@
 // Shared inbound webhook handler for the BotXtra/Baileys WhatsApp bridge.
 // Mounted at /api/public/wa-webhook (canonical) and /api/public/wa/webhook (alias).
 // Designed to be tolerant of different bridge payload shapes.
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { handleAiAutoReply, upsertConversationFromMessage } from "./wa-ai.server";
 import { cleanMessageText, mediaTypeFromRaw, mediaUrlFromRaw } from "./wa-chat-helpers.server";
@@ -74,6 +74,87 @@ interface ParsedMessage {
   contactName: string | null;
   fromMe: boolean;
   isGroup: boolean;
+}
+
+const WA_MEDIA_BUCKET = "wa-media";
+
+function mediaDataFromEntry(entry: Record<string, unknown>): Record<string, unknown> {
+  return asObj(entry.mediaData);
+}
+
+function fallbackMimeType(msgType: string): string {
+  if (msgType === "image") return "image/jpeg";
+  if (msgType === "video") return "video/mp4";
+  if (msgType === "audio") return "audio/ogg";
+  if (msgType === "sticker") return "image/webp";
+  return "application/octet-stream";
+}
+
+function extensionFromMime(mimeType: string, msgType: string): string {
+  const clean = mimeType.split(";")[0]?.trim().toLowerCase();
+  if (clean === "image/jpeg") return "jpg";
+  if (clean === "image/png") return "png";
+  if (clean === "image/webp") return "webp";
+  if (clean === "image/gif") return "gif";
+  if (clean === "video/mp4") return "mp4";
+  if (clean === "video/webm") return "webm";
+  if (clean === "audio/mpeg") return "mp3";
+  if (clean === "audio/mp4") return "m4a";
+  if (clean === "audio/ogg" || clean === "audio/opus") return "ogg";
+  if (clean === "application/pdf") return "pdf";
+  if (msgType === "image") return "jpg";
+  if (msgType === "video") return "mp4";
+  if (msgType === "audio") return "ogg";
+  if (msgType === "sticker") return "webp";
+  return "bin";
+}
+
+function safeBaseName(value: string | null, fallback: string): string {
+  const last = (value ?? "").split(/[\\/]/).filter(Boolean).at(-1) ?? "";
+  return (last || fallback).replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 140) || fallback;
+}
+
+function mediaBytesFromEntry(
+  entry: Record<string, unknown>,
+  msgType: string,
+  mediaUrl: string | null,
+): { bytes: Buffer; mimeType: string } | null {
+  const media = mediaDataFromEntry(entry);
+  const dataUrl = mediaUrl?.startsWith("data:") ? mediaUrl : pickStr(media, "dataUrl");
+  const mimeType =
+    (dataUrl?.match(/^data:([^;]+(?:;[^,]+)?);base64,/)?.[1] ||
+      pickStr(media, "mimeType", "mimetype", "fileMimeType", "contentType") ||
+      fallbackMimeType(msgType)).trim();
+  const base64 =
+    dataUrl?.replace(/^data:[^,]+,/, "") || pickStr(media, "base64", "fileData", "data");
+  if (!base64) return null;
+  return { bytes: Buffer.from(base64.replace(/\s+/g, ""), "base64"), mimeType };
+}
+
+async function persistWaMedia(params: {
+  userId: string;
+  sessionId: string;
+  entry: Record<string, unknown>;
+  msgType: string;
+  mediaUrl: string | null;
+}): Promise<string | null> {
+  if (params.mediaUrl?.startsWith("wa-media:")) return params.mediaUrl;
+  const media = mediaDataFromEntry(params.entry);
+  const payload = mediaBytesFromEntry(params.entry, params.msgType, params.mediaUrl);
+  if (!payload) return params.mediaUrl && /^(https?:)?\/\//i.test(params.mediaUrl) ? params.mediaUrl : null;
+
+  const fallbackName = `${Date.now()}_${randomUUID()}.${extensionFromMime(payload.mimeType, params.msgType)}`;
+  const fileName = safeBaseName(pickStr(media, "fileName", "filename", "name"), fallbackName);
+  const path = `${params.userId}/${params.sessionId}/${Date.now()}_${fileName}`;
+  const { error } = await supabaseAdmin.storage.from(WA_MEDIA_BUCKET).upload(path, payload.bytes, {
+    contentType: payload.mimeType,
+    upsert: true,
+  });
+  if (error) {
+    console.error("[wa-webhook] media upload failed:", error.message);
+    return params.mediaUrl || null;
+  }
+  return `wa-media:${path}`;
 }
 
 function extractTextFromMessage(m: Record<string, unknown>): { text: string | null; type: string; mediaUrl: string | null } {
@@ -318,7 +399,8 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     const m = parseMessageEntry(entry);
     if (!m) continue;
     const msgType = mediaTypeFromRaw(entry, m.msgType);
-    const mediaUrl = m.mediaUrl ?? mediaUrlFromRaw(entry, msgType);
+    const rawMediaUrl = m.mediaUrl ?? mediaUrlFromRaw(entry, msgType);
+    const mediaUrl = await persistWaMedia({ userId, sessionId, entry, msgType, mediaUrl: rawMediaUrl });
     const text = cleanMessageText(m.text, entry, msgType);
 
     const { error: insErr } = await supabaseAdmin.from("wa_messages").insert({
@@ -331,7 +413,12 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       msg_type: msgType,
       text_body: text,
       media_url: mediaUrl,
-      raw: { ...entry, normalizedRemoteJid: m.remoteJid, normalizedContactPhone: m.fromPhone } as never,
+      raw: {
+        ...entry,
+        normalizedRemoteJid: m.remoteJid,
+        normalizedContactPhone: m.fromPhone,
+        storedMediaUrl: mediaUrl?.startsWith("wa-media:") ? mediaUrl : null,
+      } as never,
     });
     if (insErr) {
       console.error("[wa-webhook] insert wa_messages failed:", insErr.message);
