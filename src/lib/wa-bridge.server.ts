@@ -95,10 +95,14 @@ export interface BridgeQrResponse {
 export const waBridge = {
   health: () => bridgeFetch<{ status: string; version?: string }>("/api/health"),
   // Bot-Xtra bridge requires `sessionId` in the body (not `id`).
-  createSession: (id: string) =>
+  createSession: (id: string, webhookUrl?: string) =>
     bridgeFetch<{ id?: string; sessionId?: string; status?: string }>("/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ sessionId: id }),
+      body: JSON.stringify(
+        webhookUrl
+          ? { sessionId: id, webhookUrl, webhook: webhookUrl }
+          : { sessionId: id },
+      ),
     }),
   getStatus: (id: string) =>
     bridgeFetch<BridgeStatusResponse>(`/api/sessions/${encodeURIComponent(id)}/status`),
@@ -122,6 +126,32 @@ export const waBridge = {
         body: JSON.stringify({ to, type: "text", text }),
       },
     ),
+
+  /**
+   * Best-effort: register/update the webhook URL for a session.
+   * Different bridge versions expose different endpoints — we try the
+   * common ones and silently succeed on the first one that works.
+   */
+  setWebhook: async (id: string, webhookUrl: string): Promise<boolean> => {
+    const attempts: Array<{ path: string; method: string; body: unknown }> = [
+      { path: `/api/sessions/${encodeURIComponent(id)}/webhook`, method: "POST", body: { url: webhookUrl, webhookUrl } },
+      { path: `/api/sessions/${encodeURIComponent(id)}/webhook`, method: "PUT", body: { url: webhookUrl, webhookUrl } },
+      { path: `/api/webhooks/set`, method: "POST", body: { sessionId: id, webhookUrl, events: ["message", "messages.upsert", "status", "qr"] } },
+      { path: `/api/sessions/${encodeURIComponent(id)}`, method: "PATCH", body: { webhookUrl, webhook: webhookUrl } },
+    ];
+    for (const a of attempts) {
+      try {
+        await bridgeFetch<unknown>(a.path, { method: a.method, body: JSON.stringify(a.body) });
+        return true;
+      } catch (err) {
+        if (err instanceof BridgeError && (err.status === 404 || err.status === 405)) continue;
+        // any other error → don't keep hammering
+        console.warn("[wa-bridge] setWebhook attempt failed:", a.path, err instanceof Error ? err.message : err);
+        return false;
+      }
+    }
+    return false;
+  },
 };
 
 /**
