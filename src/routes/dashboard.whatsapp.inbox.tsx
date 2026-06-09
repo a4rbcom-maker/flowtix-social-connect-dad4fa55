@@ -1064,6 +1064,215 @@ function EmptyChat({
 // Helpers
 // ──────────────────────────────────────────────────────────────────────────
 
+async function fetchInboxConversations(userId: string): Promise<ConversationRow[]> {
+  const { data, error } = await supabase
+    .from("wa_conversations")
+    .select("id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
+    .eq("user_id", userId)
+    .eq("is_archived", false)
+    .order("last_message_at", { ascending: false })
+    .limit(200);
+  if (error) throw new Error(error.message);
+
+  const rows = (data ?? []) as Omit<ConversationRow, "profile_pic_url">[];
+  if (!rows.length) return [];
+
+  const { data: rawMessages } = await supabase
+    .from("wa_messages")
+    .select("remote_jid, text_body, msg_type, raw, created_at")
+    .eq("user_id", userId)
+    .in("remote_jid", rows.map((row) => row.remote_jid))
+    .not("raw", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1000);
+
+  const metaByJid = new Map<string, { phone: string | null; profile: string | null; preview: string | null }>();
+  for (const msg of rawMessages ?? []) {
+    const jid = String(msg.remote_jid ?? "");
+    if (!jid) continue;
+    const current = metaByJid.get(jid) ?? { phone: null, profile: null, preview: null };
+    metaByJid.set(jid, {
+      phone: current.phone ?? phoneFromRaw(msg.raw),
+      profile: current.profile ?? profilePicFromRaw(msg.raw),
+      preview: current.preview ?? previewTextFromRaw(msg.raw, msg.text_body, msg.msg_type),
+    });
+  }
+
+  return rows.map((row) => {
+    const meta = metaByJid.get(row.remote_jid);
+    const isGroup = row.remote_jid.endsWith("@g.us");
+    return {
+      ...row,
+      contact_phone: isGroup ? null : (meta?.phone ?? row.contact_phone),
+      last_message_text: meta?.preview ?? row.last_message_text,
+      profile_pic_url: meta?.profile ?? null,
+    };
+  });
+}
+
+async function fetchInboxMessages(userId: string, remoteJid: string): Promise<ChatMessageRow[]> {
+  const { data, error } = await supabase
+    .from("wa_messages")
+    .select("id, remote_jid, direction, text_body, msg_type, media_url, created_at, raw")
+    .eq("user_id", userId)
+    .eq("remote_jid", remoteJid)
+    .order("created_at", { ascending: true })
+    .limit(300);
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map((row) => {
+    const raw = asRecord(row.raw);
+    const msgType = mediaTypeFromRaw(raw, row.msg_type);
+    return {
+      id: row.id,
+      remote_jid: row.remote_jid,
+      direction: row.direction as "in" | "out",
+      text_body: cleanMessageText(row.text_body, raw, msgType),
+      msg_type: msgType,
+      media_url: row.media_url ?? mediaUrlFromRaw(raw, msgType),
+      created_at: row.created_at,
+      is_ai: raw.ai === true,
+      sender_name: pickString(raw, "pushName", "senderName", "notifyName", "contactName"),
+      sender_phone: digits(pickString(raw, "participantPn", "senderPn", "phoneNumber")),
+    };
+  });
+}
+
+async function fetchInboxConnectionState(userId: string): Promise<{ status: string } | null> {
+  const { data, error } = await supabase
+    .from("wa_sessions")
+    .select("status")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.status ? { status: data.status } : null;
+}
+
+async function fetchInboxQuickReplies(userId: string): Promise<QuickReply[]> {
+  const { data, error } = await supabase
+    .from("wa_quick_replies")
+    .select("id, shortcut, body, sort_order, created_at")
+    .eq("user_id", userId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as QuickReply[];
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function pickString(obj: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function digits(value: string | null): string | null {
+  const cleaned = value?.replace(/[^0-9]/g, "") ?? "";
+  return cleaned || null;
+}
+
+function phoneFromRaw(raw: unknown): string | null {
+  const obj = asRecord(raw);
+  return digits(pickString(obj, "normalizedContactPhone", "senderPn", "participantPn", "phoneNumber", "phone"));
+}
+
+function profilePicFromRaw(raw: unknown): string | null {
+  const obj = asRecord(raw);
+  return pickString(obj, "profilePicUrl", "groupProfilePicUrl", "avatarUrl", "picture", "photoUrl");
+}
+
+const MEDIA_TYPE_ALIASES: Record<string, string> = {
+  image: "image",
+  video: "video",
+  audio: "audio",
+  voice: "audio",
+  ptt: "audio",
+  document: "document",
+  file: "document",
+  doc: "document",
+  sticker: "sticker",
+  text: "text",
+};
+
+function mediaDataFromRaw(raw: unknown): Record<string, unknown> {
+  return asRecord(asRecord(raw).mediaData);
+}
+
+function normalizeWaMessageType(value: string | null | undefined): string {
+  const key = String(value ?? "").trim().toLowerCase();
+  return MEDIA_TYPE_ALIASES[key] ?? (key || "text");
+}
+
+function mediaTypeFromRaw(raw: unknown, fallback?: string | null): string {
+  const obj = asRecord(raw);
+  const nested = asRecord(obj.message);
+  const nestedKey = Object.keys(nested).find((key) => key.endsWith("Message"));
+  const nestedType = nestedKey ? nestedKey.replace(/Message$/, "") : null;
+  return normalizeWaMessageType(pickString(obj, "type", "messageType", "mediaType") ?? nestedType ?? fallback ?? "text");
+}
+
+function fallbackMimeType(msgType: string): string {
+  if (msgType === "image") return "image/jpeg";
+  if (msgType === "video") return "video/mp4";
+  if (msgType === "audio") return "audio/ogg";
+  if (msgType === "sticker") return "image/webp";
+  if (msgType === "document") return "application/octet-stream";
+  return "application/octet-stream";
+}
+
+function mediaUrlFromRaw(raw: unknown, fallbackType?: string | null): string | null {
+  const obj = asRecord(raw);
+  const media = mediaDataFromRaw(raw);
+  const directUrl =
+    pickString(media, "dataUrl", "url", "fileUrl", "downloadUrl", "mediaUrl") ??
+    pickString(obj, "mediaUrl", "fileUrl", "url");
+  if (directUrl?.startsWith("data:")) return directUrl;
+  if (directUrl && /^(https?:)?\/\//i.test(directUrl)) return directUrl;
+
+  const base64 = pickString(media, "base64", "fileData", "data");
+  if (!base64) return null;
+  const cleanBase64 = base64.replace(/^data:[^;]+;base64,/, "").replace(/\s+/g, "");
+  return `data:${pickString(media, "mimeType", "mimetype", "fileMimeType", "contentType") ?? fallbackMimeType(mediaTypeFromRaw(raw, fallbackType))};base64,${cleanBase64}`;
+}
+
+function looksLikeInternalMediaPath(value: string | null | undefined): boolean {
+  const text = value?.trim() ?? "";
+  return Boolean(text) && /^(bridge|media|uploads?|files?)\//i.test(text);
+}
+
+function fileLabel(raw: unknown): string | null {
+  const fileName = pickString(mediaDataFromRaw(raw), "fileName", "filename", "name");
+  if (!fileName) return null;
+  const parts = fileName.split(/[\\/]/).filter(Boolean);
+  return parts.at(-1) ?? fileName;
+}
+
+function cleanMessageText(text: string | null | undefined, raw: unknown, msgType: string): string | null {
+  const media = mediaDataFromRaw(raw);
+  const caption = pickString(media, "caption") ?? pickString(asRecord(raw), "caption");
+  if (caption && !looksLikeInternalMediaPath(caption)) return caption;
+  const trimmed = text?.trim() ?? "";
+  if (trimmed && !looksLikeInternalMediaPath(trimmed)) return trimmed;
+  return normalizeWaMessageType(msgType) === "document" ? fileLabel(raw) : null;
+}
+
+function previewTextFromRaw(raw: unknown, currentText: string | null | undefined, fallbackType?: string | null): string | null {
+  const msgType = mediaTypeFromRaw(raw, fallbackType);
+  const cleaned = cleanMessageText(currentText, raw, msgType);
+  if (cleaned) return cleaned;
+  if (msgType === "image") return "[image]";
+  if (msgType === "video") return "[video]";
+  if (msgType === "audio") return "[audio]";
+  if (msgType === "document") return "[file]";
+  if (msgType === "sticker") return "[sticker]";
+  return currentText?.trim() || null;
+}
+
 function initials(s: string): string {
   const cleaned = s.replace(/@.*/, "").trim();
   const parts = cleaned.split(/\s+/).filter(Boolean);
