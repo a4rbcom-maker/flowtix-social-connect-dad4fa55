@@ -114,13 +114,14 @@ export const getConversationMessages = createServerFn({ method: "POST" })
     return (rows ?? []).map((r) => {
       const raw = asRecord(r.raw);
       const msgType = mediaTypeFromRaw(raw, r.msg_type);
+      const storedMediaUrl = typeof r.media_url === "string" && r.media_url.trim() ? r.media_url.trim() : null;
       return {
         id: r.id,
         remote_jid: r.remote_jid,
         direction: r.direction as "in" | "out",
         text_body: cleanMessageText(r.text_body, raw, msgType),
         msg_type: msgType,
-        media_url: r.media_url ?? mediaUrlFromRaw(raw, msgType),
+        media_url: storedMediaUrl ?? mediaUrlFromRaw(raw, msgType),
         created_at: r.created_at,
         is_ai: raw.ai === true,
         sender_name: pickString(raw, "pushName", "senderName", "notifyName", "contactName"),
