@@ -55,24 +55,32 @@ function AutomationPage() {
   const isAr = lang === "ar";
 
   return (
-    <div className="container mx-auto max-w-5xl px-4 py-6">
-      <div className="mb-6 flex items-center gap-3">
-        <Link
-          to="/dashboard/whatsapp/inbox"
-          className="rounded-lg p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
-          aria-label="back"
-        >
-          <ArrowLeft className="h-5 w-5 rtl:rotate-180" />
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            {isAr ? "البوت (ردود الكلمات)" : "Bot (Keyword Replies)"}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {isAr
-              ? "البوت يرد تلقائياً على كلمات مفتاحية محددة. للرد الذكي عبر AI استخدم وكيل الذكاء الاصطناعي."
-              : "The bot auto-replies to specific keywords. For AI-powered replies use the AI Agent."}
-          </p>
+    <div dir={isAr ? "rtl" : "ltr"} className="container mx-auto max-w-5xl px-4 py-8">
+      {/* Header */}
+      <div className="mb-8 overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-primary/10 via-card to-card p-6 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <span className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-md">
+              <Zap className="h-5 w-5" />
+            </span>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                {isAr ? "البوت — ردود الكلمات المفتاحية" : "Bot — Keyword Replies"}
+              </h1>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                {isAr
+                  ? "ردود تلقائية فورية لما الرسالة تطابق كلمة محددة. للردود الذكية المعتمدة على الذكاء الاصطناعي، استخدم «وكيل الذكاء الاصطناعي»."
+                  : "Instant auto-replies when a message matches a keyword. For AI-powered conversational replies use the AI Agent."}
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/dashboard/whatsapp/inbox"
+            className="shrink-0 rounded-lg p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            aria-label="back"
+          >
+            <ArrowLeft className="h-5 w-5 rtl:rotate-180" />
+          </Link>
         </div>
       </div>
 
@@ -88,10 +96,10 @@ function AutomationPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="rules" className="mt-4">
+        <TabsContent value="rules" className="mt-6">
           <KeywordRulesPanel isAr={isAr} />
         </TabsContent>
-        <TabsContent value="snippets" className="mt-4">
+        <TabsContent value="snippets" className="mt-6">
           <QuickRepliesPanel isAr={isAr} />
         </TabsContent>
       </Tabs>
