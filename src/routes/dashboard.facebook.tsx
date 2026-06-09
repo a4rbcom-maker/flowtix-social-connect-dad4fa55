@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate, Link, Outlet, useLocation } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import {
   Facebook,
@@ -35,6 +36,7 @@ import {
   inspectFacebookConnection,
   testFacebookToken,
 } from "@/lib/facebook.functions";
+import { addBotAccount } from "@/lib/fb-bot.functions";
 import { openExternalUrl } from "@/components/shared/ExternalLinkButton";
 
 import { useFacebookApi, describeFbError } from "@/features/facebook/api";
@@ -88,6 +90,13 @@ type TokenCheckResult = {
   warning?: { message?: string; type?: string; missingPermission?: string | null } | null;
 };
 
+type BotAccountSummary = {
+  id: string;
+  display_name: string;
+  auth_method: "cookies" | "credentials";
+  status: string;
+};
+
 function FacebookRouteShell() {
   const location = useLocation();
   return location.pathname === "/dashboard/facebook" ? <FacebookPage /> : <Outlet />;
@@ -101,6 +110,11 @@ function FacebookPage() {
   // Token expiry awareness — populated only when the user manually checks the
   // token, so opening the page does not spend Meta Graph API quota.
   const { call: fbCall } = useFacebookApi();
+  const addBotAccountFn = useServerFn(addBotAccount);
+  const [botAccounts, setBotAccounts] = useState<BotAccountSummary[]>([]);
+  const [cookieName, setCookieName] = useState("");
+  const [cookiePayload, setCookiePayload] = useState("");
+  const [savingCookieAccount, setSavingCookieAccount] = useState(false);
   const [tokenExpiry, setTokenExpiry] = useState<{
     expiresAt: string | null;
     dataAccessExpiresAt: string | null;
