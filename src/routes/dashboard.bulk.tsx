@@ -233,20 +233,61 @@ function BulkSendPage() {
     loadAll();
   };
 
-  const importFromText = (text: string) => {
-    if (!user) return;
-    const rows = text.split("\n").map((l) => l.trim()).filter(Boolean);
-    const parsed = rows
-      .map((r) => {
-        const [name, phone] = r.split(",").map((s) => s?.trim());
-        return name && phone ? { user_id: user.id, name, phone } : null;
+  // Parse CSV/TXT line: handles "name","phone" with quotes, commas, tabs, semicolons.
+  const parseRows = (text: string) => {
+    if (!user) return [];
+    const rows = text
+      .replace(/^\uFEFF/, "") // strip BOM
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    return rows
+      .map((r, idx) => {
+        // Strip quotes, split by , ; or tab
+        const parts = r
+          .split(/[,;\t]/)
+          .map((s) => s.replace(/^["']|["']$/g, "").trim());
+        let [name, phone] = parts;
+        if (!name || !phone) return null;
+        // Skip header row
+        if (idx === 0 && /^(name|الاسم)$/i.test(name) && /^(phone|number|mobile|الرقم|الهاتف)$/i.test(phone)) {
+          return null;
+        }
+        // Keep only digits + leading + in phone
+        phone = phone.replace(/[^\d+]/g, "");
+        if (phone.length < 6) return null;
+        return { user_id: user.id, name, phone };
       })
       .filter(Boolean) as { user_id: string; name: string; phone: string }[];
-    if (parsed.length === 0) { toast.error("No valid rows"); return; }
-    supabase.from("contacts").insert(parsed).then(({ error }) => {
-      if (error) toast.error(error.message);
-      else { toast.success(`+${parsed.length}`); loadAll(); }
-    });
+  };
+
+  const importFromText = async (text: string) => {
+    const parsed = parseRows(text);
+    if (parsed.length === 0) { toast.error(t.importInvalid); return; }
+    const { error } = await supabase.from("contacts").insert(parsed);
+    if (error) toast.error(error.message);
+    else { toast.success(t.importSuccess(parsed.length)); loadAll(); }
+  };
+
+  const [uploading, setUploading] = useState(false);
+  const importFromFile = async (file: File) => {
+    setUploading(true);
+    try {
+      const text = await file.text();
+      await importFromText(text);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const downloadSample = () => {
+    const csv = "name,phone\nAhmed,201001234567\nMona,201112345678\n";
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = "contacts-sample.csv"; a.click();
+    URL.revokeObjectURL(url);
   };
 
   const launchCampaign = async () => {
