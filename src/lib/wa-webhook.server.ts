@@ -315,7 +315,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       sessionId,
       remoteJid: m.remoteJid,
       contactName: m.contactName,
-      contactPhone: m.fromPhone,
+      contactPhone: m.isGroup ? null : m.fromPhone,
       text: m.text ?? (m.msgType !== "text" ? `[${m.msgType}]` : null),
       direction: m.fromMe ? "out" : "in",
     });
