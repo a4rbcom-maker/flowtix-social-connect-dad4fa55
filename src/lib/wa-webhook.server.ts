@@ -345,14 +345,28 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     });
 
     if (m.text && !m.fromMe) {
-      handleAiAutoReply({
+      // Try keyword auto-reply FIRST. If it matches, skip AI entirely.
+      const matched = await tryKeywordAutoReply({
         userId,
         sessionId,
-        conversationId,
         remoteJid: m.remoteJid,
         fromPhone: m.fromPhone,
         inboundText: m.text,
-      }).catch((err) => console.error("[wa-webhook] AI handler error:", err));
+      }).catch((err) => {
+        console.error("[wa-webhook] keyword handler error:", err);
+        return false;
+      });
+
+      if (!matched) {
+        handleAiAutoReply({
+          userId,
+          sessionId,
+          conversationId,
+          remoteJid: m.remoteJid,
+          fromPhone: m.fromPhone,
+          inboundText: m.text,
+        }).catch((err) => console.error("[wa-webhook] AI handler error:", err));
+      }
     }
   }
 
