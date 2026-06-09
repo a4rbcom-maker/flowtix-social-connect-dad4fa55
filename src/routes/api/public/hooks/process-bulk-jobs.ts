@@ -46,6 +46,11 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
         for (const job of running ?? []) {
           summary.processed++;
 
+          const batchSize = Math.max(
+            1,
+            Math.min(job.batch_size ?? DEFAULT_BATCH_SIZE, HARD_CAP_SENDS_PER_JOB_PER_TICK),
+          );
+
           // Pull pending recipients for this job
           const { data: pending } = await supabaseAdmin
             .from("bulk_job_recipients")
@@ -53,7 +58,7 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
             .eq("job_id", job.id)
             .eq("status", "pending")
             .order("created_at", { ascending: true })
-            .limit(MAX_SENDS_PER_JOB_PER_TICK);
+            .limit(batchSize);
 
           if (!pending || pending.length === 0) {
             // No pending → mark complete
