@@ -1220,7 +1220,63 @@ function FacebookPage() {
               );
             })}
           </ol>
+
+          {/* Active-step explainer: short description + examples + what's next */}
+          {(() => {
+            const active = journeySteps.steps[journeySteps.activeIdx];
+            if (!active) return null;
+            return (
+              <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-[12px] font-bold text-primary-foreground">
+                    {journeySteps.activeIdx + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <h4 className="text-[14px] font-bold text-foreground">{active.title}</h4>
+                      <span className="text-[11.5px] text-muted-foreground">— {active.desc}</span>
+                    </div>
+                    <p className="mt-1.5 text-[12.5px] leading-relaxed text-foreground/80">{active.intro}</p>
+                    <div className="mt-3">
+                      <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                        {lang === "ar" ? "أمثلة على ما سيحدث" : "Examples of what happens"}
+                      </div>
+                      <ul className="space-y-1">
+                        {active.examples.map((ex, i) => (
+                          <li key={i} className="flex items-start gap-2 text-[12px] text-foreground/80">
+                            <CheckCircle2 className="mt-[2px] h-3.5 w-3.5 shrink-0 text-primary/70" />
+                            <span>{ex}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-primary/15 pt-2.5">
+                      <span className="text-[11.5px] text-muted-foreground">
+                        <span className="font-semibold text-foreground/80">{lang === "ar" ? "التالي: " : "Next: "}</span>
+                        {active.next}
+                      </span>
+                      {journeySteps.activeIdx < journeySteps.steps.length - 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nxt = journeySteps.steps[journeySteps.activeIdx + 1];
+                            if (nxt) goToStep(nxt.anchor, nxt.action);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-[11.5px] font-semibold text-primary-foreground hover:bg-primary/90"
+                        >
+                          {lang === "ar" ? "انتقل للخطوة التالية" : "Go to next step"}
+                          <ChevronDown className="h-3.5 w-3.5 -rotate-90 rtl:rotate-90" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
+
+
 
         <div id="fb-step-connect" className="scroll-mt-24 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm transition-shadow">
 
