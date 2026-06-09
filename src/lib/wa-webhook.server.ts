@@ -353,7 +353,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         remoteJid: m.remoteJid,
         fromPhone: m.fromPhone,
         inboundText: m.text,
-      }).catch((err) => {
+      }).catch((err: unknown) => {
         console.error("[wa-webhook] keyword handler error:", err);
         return false;
       });
