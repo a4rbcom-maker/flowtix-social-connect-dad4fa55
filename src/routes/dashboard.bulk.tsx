@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Send,
   Search,
@@ -16,6 +16,10 @@ import {
   CalendarClock,
   ListChecks,
   AlertCircle,
+  FileSpreadsheet,
+  Download,
+  Sparkles,
+  Megaphone,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -37,6 +41,7 @@ type Tab = "compose" | "contacts" | "jobs";
 function BulkSendPage() {
   const { user, loading: authLoading } = useAuth();
   const { lang, dir } = useI18n();
+  const isAr = lang === "ar";
   const navigate = useNavigate();
 
   const [tab, setTab] = useState<Tab>("compose");
@@ -97,9 +102,17 @@ function BulkSendPage() {
         cancel: "إلغاء الحملة",
         confirmCancel: "هل تريد إلغاء هذه الحملة؟ لن يكتمل الإرسال للمتبقّين.",
         cancelled: "تم الإلغاء",
-        importHint: "تستطيع إضافة الأرقام يدوياً الآن — استيراد CSV قريباً.",
-        importPaste: "أو الصق أرقاماً (سطر لكل رقم بصيغة: الاسم,الرقم)",
+        importHint: "أضف الأرقام يدوياً، أو ارفع ملف CSV / Excel، أو الصق قائمة جاهزة.",
+        importPaste: "الصق أرقاماً (سطر لكل رقم بصيغة: الاسم,الرقم)",
         importBtn: "استيراد من النص",
+        uploadTitle: "رفع ملف جهات اتصال",
+        uploadDesc: "اسحب ملف CSV هنا أو اضغط للاختيار — يدعم Excel/CSV/TXT.",
+        uploadBtn: "اختر ملف",
+        uploadProcessing: "جاري المعالجة...",
+        uploadFormat: "الصيغة المطلوبة: عمودان — الاسم في الأول والرقم في الثاني",
+        downloadSample: "تحميل ملف نموذجي",
+        importSuccess: (n: number) => `تم استيراد ${n} جهة اتصال`,
+        importInvalid: "الملف فارغ أو غير صالح",
         of: "من",
         contactsCount: "جهات اتصال",
         bgInfo: "تعمل المهمة في الخلفية: المعالج يدور كل دقيقة ويرسل دفعات بحسب الفاصل الزمني الذي اخترته.",
@@ -142,9 +155,17 @@ function BulkSendPage() {
         cancel: "Cancel campaign",
         confirmCancel: "Cancel this campaign? Remaining sends will not be processed.",
         cancelled: "Cancelled",
-        importHint: "Add numbers manually for now — CSV import coming soon.",
-        importPaste: "Or paste lines (one per row, format: name,phone)",
+        importHint: "Add numbers manually, upload a CSV/Excel file, or paste a list.",
+        importPaste: "Paste lines (one per row, format: name,phone)",
         importBtn: "Import from text",
+        uploadTitle: "Upload contacts file",
+        uploadDesc: "Drag a CSV file here or click to choose — supports Excel/CSV/TXT.",
+        uploadBtn: "Choose file",
+        uploadProcessing: "Processing...",
+        uploadFormat: "Required format: two columns — name in the first, phone in the second",
+        downloadSample: "Download sample file",
+        importSuccess: (n: number) => `Imported ${n} contacts`,
+        importInvalid: "File is empty or invalid",
         of: "of",
         contactsCount: "contacts",
         bgInfo: "Jobs run in the background: the worker ticks every minute and sends batches respecting your interval.",
@@ -213,20 +234,61 @@ function BulkSendPage() {
     loadAll();
   };
 
-  const importFromText = (text: string) => {
-    if (!user) return;
-    const rows = text.split("\n").map((l) => l.trim()).filter(Boolean);
-    const parsed = rows
-      .map((r) => {
-        const [name, phone] = r.split(",").map((s) => s?.trim());
-        return name && phone ? { user_id: user.id, name, phone } : null;
+  // Parse CSV/TXT line: handles "name","phone" with quotes, commas, tabs, semicolons.
+  const parseRows = (text: string) => {
+    if (!user) return [];
+    const rows = text
+      .replace(/^\uFEFF/, "") // strip BOM
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    return rows
+      .map((r, idx) => {
+        // Strip quotes, split by , ; or tab
+        const parts = r
+          .split(/[,;\t]/)
+          .map((s) => s.replace(/^["']|["']$/g, "").trim());
+        let [name, phone] = parts;
+        if (!name || !phone) return null;
+        // Skip header row
+        if (idx === 0 && /^(name|الاسم)$/i.test(name) && /^(phone|number|mobile|الرقم|الهاتف)$/i.test(phone)) {
+          return null;
+        }
+        // Keep only digits + leading + in phone
+        phone = phone.replace(/[^\d+]/g, "");
+        if (phone.length < 6) return null;
+        return { user_id: user.id, name, phone };
       })
       .filter(Boolean) as { user_id: string; name: string; phone: string }[];
-    if (parsed.length === 0) { toast.error("No valid rows"); return; }
-    supabase.from("contacts").insert(parsed).then(({ error }) => {
-      if (error) toast.error(error.message);
-      else { toast.success(`+${parsed.length}`); loadAll(); }
-    });
+  };
+
+  const importFromText = async (text: string) => {
+    const parsed = parseRows(text);
+    if (parsed.length === 0) { toast.error(t.importInvalid); return; }
+    const { error } = await supabase.from("contacts").insert(parsed);
+    if (error) toast.error(error.message);
+    else { toast.success(t.importSuccess(parsed.length)); loadAll(); }
+  };
+
+  const [uploading, setUploading] = useState(false);
+  const importFromFile = async (file: File) => {
+    setUploading(true);
+    try {
+      const text = await file.text();
+      await importFromText(text);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const downloadSample = () => {
+    const csv = "name,phone\nAhmed,201001234567\nMona,201112345678\n";
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = "contacts-sample.csv"; a.click();
+    URL.revokeObjectURL(url);
   };
 
   const launchCampaign = async () => {
@@ -294,32 +356,61 @@ function BulkSendPage() {
   return (
     <DashboardLayout title={t.title}>
       <div dir={dir} className="mx-auto max-w-6xl space-y-6">
-        {/* Header */}
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">{t.title}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t.subtitle}</p>
-        </div>
+        {/* Premium hero header */}
+        <section className="relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-l from-primary via-primary/70 to-primary/20" />
+          <div className="absolute -end-12 -top-12 h-44 w-44 rounded-full bg-primary/15 blur-3xl" />
+          <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-4">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-primary-foreground shadow-lg shadow-primary/25">
+                <Megaphone className="h-6 w-6" />
+              </span>
+              <div className="max-w-3xl">
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+                  {lang === "ar" ? "حملات الإرسال" : "Bulk Campaigns"}
+                </p>
+                <h1 className="text-2xl font-bold text-foreground sm:text-3xl">{t.title}</h1>
+                <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">{t.subtitle}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 self-start">
+              <div className="rounded-xl border border-border bg-background/60 px-3 py-2 text-center">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t.contactsCount}</p>
+                <p className="text-lg font-bold text-foreground">{contacts.length}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-background/60 px-3 py-2 text-center">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{lang === "ar" ? "حملات" : "Campaigns"}</p>
+                <p className="text-lg font-bold text-foreground">{jobs.length}</p>
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* Background notice */}
-        <div className="flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm">
+        <div className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3 text-sm">
           <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <p className="text-foreground">{t.bgInfo}</p>
         </div>
 
-        {/* Tabs */}
-        <div className="flex flex-wrap gap-2 border-b border-border">
-          {(["compose", "contacts", "jobs"] as const).map((k) => (
-            <button
-              key={k}
-              onClick={() => setTab(k)}
-              className={`relative px-4 py-2 text-sm font-medium transition-colors ${
-                tab === k ? "text-primary" : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {t.tabs[k]}
-              {tab === k && <span className="absolute -bottom-px left-0 right-0 h-0.5 bg-primary" />}
-            </button>
-          ))}
+        {/* Tabs — pill style */}
+        <div className="inline-flex w-full max-w-xl rounded-2xl border border-border bg-muted/60 p-1.5 shadow-sm">
+          {(["compose", "contacts", "jobs"] as const).map((k) => {
+            const Icon = k === "compose" ? Send : k === "contacts" ? Users : ListChecks;
+            return (
+              <button
+                key={k}
+                onClick={() => setTab(k)}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${
+                  tab === k
+                    ? "bg-primary text-primary-foreground shadow-md"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {t.tabs[k]}
+              </button>
+            );
+          })}
         </div>
 
         {/* Compose tab */}
@@ -474,58 +565,86 @@ function BulkSendPage() {
 
         {/* Contacts tab */}
         {tab === "contacts" && (
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="space-y-4 rounded-2xl border border-border bg-card p-5 lg:col-span-1">
-              <h3 className="font-semibold text-foreground">{t.addContact}</h3>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-foreground">{t.name}</label>
-                <input value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-foreground">{t.phone}</label>
-                <input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder={t.phonePlaceholder} dir="ltr" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
-              </div>
-              <button onClick={addContact} disabled={adding || !newName || !newPhone} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60">
-                {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                {t.add}
-              </button>
+          <div className="space-y-6">
+            {/* Hero: bulk upload — primary action */}
+            <FileDropzone
+              isAr={isAr}
+              uploading={uploading}
+              onFile={importFromFile}
+              onSample={downloadSample}
+              labels={{
+                title: t.uploadTitle,
+                desc: t.uploadDesc,
+                btn: t.uploadBtn,
+                processing: t.uploadProcessing,
+                format: t.uploadFormat,
+                sample: t.downloadSample,
+              }}
+            />
 
-              <div className="border-t border-border pt-4">
-                <p className="mb-1 text-xs text-muted-foreground">{t.importHint}</p>
-                <p className="mb-2 text-xs text-muted-foreground">{t.importPaste}</p>
-                <BulkPaste onImport={importFromText} label={t.importBtn} />
-              </div>
-            </div>
+            <div className="grid gap-6 lg:grid-cols-3">
+              {/* Manual + paste */}
+              <div className="space-y-5 rounded-2xl border border-border bg-card p-5 lg:col-span-1">
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-bold text-foreground">
+                    <Plus className="h-4 w-4 text-primary" />
+                    {t.addContact}
+                  </h3>
+                  <p className="mt-1 text-xs text-muted-foreground">{t.importHint}</p>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-muted-foreground">{t.name}</label>
+                    <input value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-muted-foreground">{t.phone}</label>
+                    <input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder={t.phonePlaceholder} dir="ltr" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+                  </div>
+                  <button onClick={addContact} disabled={adding || !newName || !newPhone} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-60">
+                    {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    {t.add}
+                  </button>
+                </div>
 
-            <div className="rounded-2xl border border-border bg-card p-5 lg:col-span-2">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="font-semibold text-foreground">
-                  <Users className="me-2 inline h-4 w-4" />
-                  {contacts.length} {t.contactsCount}
-                </h3>
+                <div className="border-t border-border pt-4">
+                  <p className="mb-2 text-xs font-semibold text-foreground">{t.importPaste}</p>
+                  <BulkPaste onImport={importFromText} label={t.importBtn} />
+                </div>
               </div>
-              {contacts.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-border bg-background/40 p-8 text-center text-sm text-muted-foreground">
-                  {t.noContacts}
+
+              {/* Contacts list */}
+              <div className="rounded-2xl border border-border bg-card p-5 lg:col-span-2">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="flex items-center gap-2 text-sm font-bold text-foreground">
+                    <Users className="h-4 w-4 text-primary" />
+                    {contacts.length} {t.contactsCount}
+                  </h3>
                 </div>
-              ) : (
-                <div className="max-h-[500px] space-y-1.5 overflow-y-auto">
-                  {contacts.map((c) => (
-                    <div key={c.id} className="flex items-center gap-3 rounded-lg border border-border bg-background/50 p-2.5">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                        {c.name.charAt(0).toUpperCase()}
+                {contacts.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border bg-background/40 p-10 text-center">
+                    <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground/60" />
+                    <p className="text-sm text-muted-foreground">{t.noContacts}</p>
+                  </div>
+                ) : (
+                  <div className="max-h-[500px] space-y-1.5 overflow-y-auto pe-1">
+                    {contacts.map((c) => (
+                      <div key={c.id} className="flex items-center gap-3 rounded-xl border border-border bg-background/50 p-2.5 transition-colors hover:border-primary/40">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-primary/5 text-sm font-bold text-primary">
+                          {c.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-foreground">{c.name}</p>
+                          <p className="text-xs text-muted-foreground" dir="ltr">{c.phone}</p>
+                        </div>
+                        <button onClick={() => deleteContact(c.id)} className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-foreground">{c.name}</p>
-                        <p className="text-xs text-muted-foreground" dir="ltr">{c.phone}</p>
-                      </div>
-                      <button onClick={() => deleteContact(c.id)} className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -619,3 +738,81 @@ function BulkPaste({ onImport, label }: { onImport: (t: string) => void; label: 
 
 // Suppress unused-icon warnings for icons used conditionally
 void AlertCircle;
+void Sparkles;
+
+function FileDropzone({
+  isAr,
+  uploading,
+  onFile,
+  onSample,
+  labels,
+}: {
+  isAr: boolean;
+  uploading: boolean;
+  onFile: (f: File) => void;
+  onSample: () => void;
+  labels: { title: string; desc: string; btn: string; processing: string; format: string; sample: string };
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const f = e.dataTransfer.files?.[0];
+        if (f) onFile(f);
+      }}
+      className={`relative overflow-hidden rounded-2xl border-2 border-dashed p-6 transition-all sm:p-8 ${
+        dragOver
+          ? "border-primary bg-primary/10"
+          : "border-border bg-gradient-to-br from-primary/5 via-card to-card hover:border-primary/40"
+      }`}
+    >
+      <div className="absolute -end-10 -top-10 h-32 w-32 rounded-full bg-primary/10 blur-3xl" />
+      <div className="relative flex flex-col items-center gap-4 text-center sm:flex-row sm:items-center sm:gap-6 sm:text-start">
+        <div className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-primary-foreground shadow-lg shadow-primary/25">
+          {uploading ? <Loader2 className="h-7 w-7 animate-spin" /> : <FileSpreadsheet className="h-7 w-7" />}
+        </div>
+        <div className="flex-1">
+          <h3 className="text-base font-bold text-foreground sm:text-lg">{labels.title}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{labels.desc}</p>
+          <p className="mt-1 text-xs text-muted-foreground/80">{labels.format}</p>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".csv,.txt,.tsv,text/csv,text/plain"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onFile(f);
+              e.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => inputRef.current?.click()}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-md shadow-primary/20 transition hover:opacity-90 disabled:opacity-60"
+          >
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            {uploading ? labels.processing : labels.btn}
+          </button>
+          <button
+            type="button"
+            onClick={onSample}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-background/60 px-4 py-2.5 text-xs font-semibold text-foreground transition hover:bg-accent"
+          >
+            <Download className="h-3.5 w-3.5" />
+            {labels.sample}
+          </button>
+        </div>
+      </div>
+      {isAr ? null : null}
+    </div>
+  );
+}
