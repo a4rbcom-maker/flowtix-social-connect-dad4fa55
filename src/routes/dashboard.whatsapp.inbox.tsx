@@ -298,6 +298,7 @@ function InboxPage() {
       out = out.filter(
         (c) =>
           c.remote_jid.toLowerCase().includes(q) ||
+          (c.contact_phone ?? "").toLowerCase().includes(q) ||
           (c.contact_name ?? "").toLowerCase().includes(q) ||
           (c.last_message_text ?? "").toLowerCase().includes(q),
       );
