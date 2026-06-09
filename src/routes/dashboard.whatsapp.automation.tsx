@@ -55,24 +55,32 @@ function AutomationPage() {
   const isAr = lang === "ar";
 
   return (
-    <div className="container mx-auto max-w-5xl px-4 py-6">
-      <div className="mb-6 flex items-center gap-3">
-        <Link
-          to="/dashboard/whatsapp/inbox"
-          className="rounded-lg p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
-          aria-label="back"
-        >
-          <ArrowLeft className="h-5 w-5 rtl:rotate-180" />
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            {isAr ? "البوت (ردود الكلمات)" : "Bot (Keyword Replies)"}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {isAr
-              ? "البوت يرد تلقائياً على كلمات مفتاحية محددة. للرد الذكي عبر AI استخدم وكيل الذكاء الاصطناعي."
-              : "The bot auto-replies to specific keywords. For AI-powered replies use the AI Agent."}
-          </p>
+    <div dir={isAr ? "rtl" : "ltr"} className="container mx-auto max-w-5xl px-4 py-8">
+      {/* Header */}
+      <div className="mb-8 overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-primary/10 via-card to-card p-6 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <span className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-md">
+              <Zap className="h-5 w-5" />
+            </span>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                {isAr ? "البوت — ردود الكلمات المفتاحية" : "Bot — Keyword Replies"}
+              </h1>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                {isAr
+                  ? "ردود تلقائية فورية لما الرسالة تطابق كلمة محددة. للردود الذكية المعتمدة على الذكاء الاصطناعي، استخدم «وكيل الذكاء الاصطناعي»."
+                  : "Instant auto-replies when a message matches a keyword. For AI-powered conversational replies use the AI Agent."}
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/dashboard/whatsapp/inbox"
+            className="shrink-0 rounded-lg p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            aria-label="back"
+          >
+            <ArrowLeft className="h-5 w-5 rtl:rotate-180" />
+          </Link>
         </div>
       </div>
 
@@ -88,10 +96,10 @@ function AutomationPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="rules" className="mt-4">
+        <TabsContent value="rules" className="mt-6">
           <KeywordRulesPanel isAr={isAr} />
         </TabsContent>
-        <TabsContent value="snippets" className="mt-4">
+        <TabsContent value="snippets" className="mt-6">
           <QuickRepliesPanel isAr={isAr} />
         </TabsContent>
       </Tabs>
@@ -134,38 +142,56 @@ function KeywordRulesPanel({ isAr }: { isAr: boolean }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            {isAr
-              ? "لما تتطابق كلمة مفتاحية، البوت يبعت الرد فوراً ويوقف الـ AI لهذه الرسالة."
-              : "When a keyword matches, the bot sends the reply instantly and skips AI for that message."}
-          </p>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <span className="inline-block h-2 w-2 rounded-full bg-primary" />
+          {isAr ? "قواعد الردود التلقائية" : "Auto-reply rules"}
+          <span className="text-xs font-normal text-muted-foreground">
+            ({(data ?? []).length})
+          </span>
         </div>
         <Button
           onClick={() => {
             setEditing(null);
             setOpen(true);
           }}
-          className="gap-2"
+          className="gap-2 shadow-sm"
         >
           <Plus className="h-4 w-4" />
           {isAr ? "قاعدة جديدة" : "New rule"}
         </Button>
       </div>
 
-      <div className="rounded-xl border border-border bg-card">
+      <div className="rounded-2xl border border-border bg-card shadow-sm">
         {isLoading ? (
-          <div className="flex items-center justify-center py-10 text-muted-foreground">
+          <div className="flex items-center justify-center py-16 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
         ) : (data ?? []).length === 0 ? (
-          <div className="px-6 py-12 text-center text-muted-foreground">
-            <Zap className="mx-auto mb-3 h-10 w-10 opacity-40" />
-            <p className="text-sm">
-              {isAr ? "لا توجد قواعد بعد. اضغط (قاعدة جديدة)." : "No rules yet. Click New rule."}
+          <div className="px-6 py-16 text-center">
+            <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-primary/10">
+              <Zap className="h-7 w-7 text-primary" />
+            </div>
+            <p className="text-sm font-semibold text-foreground">
+              {isAr ? "ما فيش قواعد لسة" : "No rules yet"}
             </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {isAr
+                ? "ابدأ بإضافة أول كلمة مفتاحية ليرد عليها البوت تلقائياً."
+                : "Add your first keyword for the bot to auto-reply to."}
+            </p>
+            <Button
+              variant="outline"
+              className="mt-5 gap-2"
+              onClick={() => {
+                setEditing(null);
+                setOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              {isAr ? "إضافة قاعدة" : "Add a rule"}
+            </Button>
           </div>
         ) : (
           <ul className="divide-y divide-border">
