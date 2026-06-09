@@ -4,6 +4,13 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { waBridge, BridgeError } from "./wa-bridge.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
+import {
+  asRecord,
+  digits,
+  phoneFromRaw,
+  pickString,
+  profilePicFromRaw,
+} from "./wa-chat-helpers.server";
 
 export interface ConversationRow {
   id: string;
@@ -31,32 +38,7 @@ export interface ChatMessageRow {
   sender_phone: string | null;
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-}
 
-function pickString(obj: Record<string, unknown>, ...keys: string[]): string | null {
-  for (const key of keys) {
-    const value = obj[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return null;
-}
-
-function digits(value: string | null): string | null {
-  const cleaned = value?.replace(/[^0-9]/g, "") ?? "";
-  return cleaned || null;
-}
-
-function phoneFromRaw(raw: unknown): string | null {
-  const obj = asRecord(raw);
-  return digits(pickString(obj, "normalizedContactPhone", "senderPn", "participantPn", "phoneNumber", "phone"));
-}
-
-function profilePicFromRaw(raw: unknown): string | null {
-  const obj = asRecord(raw);
-  return pickString(obj, "profilePicUrl", "groupProfilePicUrl", "avatarUrl", "picture", "photoUrl");
-}
 
 export const listConversations = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
