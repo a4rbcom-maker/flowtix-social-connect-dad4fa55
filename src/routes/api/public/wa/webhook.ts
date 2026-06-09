@@ -1,13 +1,14 @@
+// Alias route for bridges that POST to /api/public/wa/webhook.
 import { createFileRoute } from "@tanstack/react-router";
 import { handleWaWebhook } from "@/lib/wa-webhook.server";
 
-export const Route = createFileRoute("/api/public/wa-webhook")({
+export const Route = createFileRoute("/api/public/wa/webhook")({
   server: {
     handlers: {
       POST: async ({ request }) => handleWaWebhook(request),
       GET: async () =>
         new Response(
-          JSON.stringify({ ok: true, endpoint: "wa-webhook", method: "POST", expects: "signed JSON" }),
+          JSON.stringify({ ok: true, endpoint: "wa/webhook", method: "POST", expects: "signed JSON" }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         ),
       OPTIONS: async () =>
