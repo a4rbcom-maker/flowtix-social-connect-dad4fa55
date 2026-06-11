@@ -608,9 +608,10 @@ function QuickReplyDialog({
   onOpenChange: (v: boolean) => void;
   snippet: QuickReply | null;
   isAr: boolean;
-  onSave: (form: { shortcut: string; body: string; sort_order: number }) => Promise<void>;
+  onSave: (form: { shortcut: string; category: string; body: string; sort_order: number }) => Promise<void>;
 }) {
   const [shortcut, setShortcut] = useState("");
+  const [category, setCategory] = useState(isAr ? "عام" : "General");
   const [body, setBody] = useState("");
   const [order, setOrder] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -618,10 +619,11 @@ function QuickReplyDialog({
   React.useEffect(() => {
     if (open) {
       setShortcut(snippet?.shortcut ?? "");
+      setCategory(snippet?.category ?? (isAr ? "عام" : "General"));
       setBody(snippet?.body ?? "");
       setOrder(snippet?.sort_order ?? 0);
     }
-  }, [open, snippet]);
+  }, [isAr, open, snippet]);
 
   const submit = async () => {
     if (!shortcut.trim() || !body.trim()) {
@@ -630,7 +632,7 @@ function QuickReplyDialog({
     }
     setSaving(true);
     try {
-      await onSave({ shortcut: shortcut.trim(), body: body.trim(), sort_order: order });
+      await onSave({ shortcut: shortcut.trim(), category: category.trim() || (isAr ? "عام" : "General"), body: body.trim(), sort_order: order });
     } finally {
       setSaving(false);
     }
