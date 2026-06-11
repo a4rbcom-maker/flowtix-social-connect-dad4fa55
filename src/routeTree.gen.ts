@@ -34,6 +34,7 @@ import { Route as AdminFacebookRouteImport } from './routes/admin.facebook'
 import { Route as AdminAiRouteImport } from './routes/admin.ai'
 import { Route as DashboardWhatsappSettingsRouteImport } from './routes/dashboard.whatsapp.settings'
 import { Route as DashboardWhatsappInboxRouteImport } from './routes/dashboard.whatsapp.inbox'
+import { Route as DashboardWhatsappContactsRouteImport } from './routes/dashboard.whatsapp.contacts'
 import { Route as DashboardWhatsappBotRouteImport } from './routes/dashboard.whatsapp.bot'
 import { Route as DashboardWhatsappAutomationRouteImport } from './routes/dashboard.whatsapp.automation'
 import { Route as DashboardWhatsappAccountsRouteImport } from './routes/dashboard.whatsapp.accounts'
@@ -184,6 +185,12 @@ const DashboardWhatsappInboxRoute = DashboardWhatsappInboxRouteImport.update({
   path: '/inbox',
   getParentRoute: () => DashboardWhatsappRoute,
 } as any)
+const DashboardWhatsappContactsRoute =
+  DashboardWhatsappContactsRouteImport.update({
+    id: '/contacts',
+    path: '/contacts',
+    getParentRoute: () => DashboardWhatsappRoute,
+  } as any)
 const DashboardWhatsappBotRoute = DashboardWhatsappBotRouteImport.update({
   id: '/bot',
   path: '/bot',
@@ -352,6 +359,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
   '/dashboard/whatsapp/automation': typeof DashboardWhatsappAutomationRoute
   '/dashboard/whatsapp/bot': typeof DashboardWhatsappBotRoute
+  '/dashboard/whatsapp/contacts': typeof DashboardWhatsappContactsRoute
   '/dashboard/whatsapp/inbox': typeof DashboardWhatsappInboxRoute
   '/dashboard/whatsapp/settings': typeof DashboardWhatsappSettingsRoute
   '/admin/jobs/$kind/$id': typeof AdminJobsKindIdRoute
@@ -402,6 +410,7 @@ export interface FileRoutesByTo {
   '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
   '/dashboard/whatsapp/automation': typeof DashboardWhatsappAutomationRoute
   '/dashboard/whatsapp/bot': typeof DashboardWhatsappBotRoute
+  '/dashboard/whatsapp/contacts': typeof DashboardWhatsappContactsRoute
   '/dashboard/whatsapp/inbox': typeof DashboardWhatsappInboxRoute
   '/dashboard/whatsapp/settings': typeof DashboardWhatsappSettingsRoute
   '/admin/jobs/$kind/$id': typeof AdminJobsKindIdRoute
@@ -453,6 +462,7 @@ export interface FileRoutesById {
   '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
   '/dashboard/whatsapp/automation': typeof DashboardWhatsappAutomationRoute
   '/dashboard/whatsapp/bot': typeof DashboardWhatsappBotRoute
+  '/dashboard/whatsapp/contacts': typeof DashboardWhatsappContactsRoute
   '/dashboard/whatsapp/inbox': typeof DashboardWhatsappInboxRoute
   '/dashboard/whatsapp/settings': typeof DashboardWhatsappSettingsRoute
   '/admin/jobs/$kind/$id': typeof AdminJobsKindIdRoute
@@ -505,6 +515,7 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp/accounts'
     | '/dashboard/whatsapp/automation'
     | '/dashboard/whatsapp/bot'
+    | '/dashboard/whatsapp/contacts'
     | '/dashboard/whatsapp/inbox'
     | '/dashboard/whatsapp/settings'
     | '/admin/jobs/$kind/$id'
@@ -555,6 +566,7 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp/accounts'
     | '/dashboard/whatsapp/automation'
     | '/dashboard/whatsapp/bot'
+    | '/dashboard/whatsapp/contacts'
     | '/dashboard/whatsapp/inbox'
     | '/dashboard/whatsapp/settings'
     | '/admin/jobs/$kind/$id'
@@ -605,6 +617,7 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp/accounts'
     | '/dashboard/whatsapp/automation'
     | '/dashboard/whatsapp/bot'
+    | '/dashboard/whatsapp/contacts'
     | '/dashboard/whatsapp/inbox'
     | '/dashboard/whatsapp/settings'
     | '/admin/jobs/$kind/$id'
@@ -816,6 +829,13 @@ declare module '@tanstack/react-router' {
       path: '/inbox'
       fullPath: '/dashboard/whatsapp/inbox'
       preLoaderRoute: typeof DashboardWhatsappInboxRouteImport
+      parentRoute: typeof DashboardWhatsappRoute
+    }
+    '/dashboard/whatsapp/contacts': {
+      id: '/dashboard/whatsapp/contacts'
+      path: '/contacts'
+      fullPath: '/dashboard/whatsapp/contacts'
+      preLoaderRoute: typeof DashboardWhatsappContactsRouteImport
       parentRoute: typeof DashboardWhatsappRoute
     }
     '/dashboard/whatsapp/bot': {
@@ -1033,6 +1053,7 @@ interface DashboardWhatsappRouteChildren {
   DashboardWhatsappAccountsRoute: typeof DashboardWhatsappAccountsRoute
   DashboardWhatsappAutomationRoute: typeof DashboardWhatsappAutomationRoute
   DashboardWhatsappBotRoute: typeof DashboardWhatsappBotRoute
+  DashboardWhatsappContactsRoute: typeof DashboardWhatsappContactsRoute
   DashboardWhatsappInboxRoute: typeof DashboardWhatsappInboxRoute
   DashboardWhatsappSettingsRoute: typeof DashboardWhatsappSettingsRoute
 }
@@ -1041,6 +1062,7 @@ const DashboardWhatsappRouteChildren: DashboardWhatsappRouteChildren = {
   DashboardWhatsappAccountsRoute: DashboardWhatsappAccountsRoute,
   DashboardWhatsappAutomationRoute: DashboardWhatsappAutomationRoute,
   DashboardWhatsappBotRoute: DashboardWhatsappBotRoute,
+  DashboardWhatsappContactsRoute: DashboardWhatsappContactsRoute,
   DashboardWhatsappInboxRoute: DashboardWhatsappInboxRoute,
   DashboardWhatsappSettingsRoute: DashboardWhatsappSettingsRoute,
 }
@@ -1111,13 +1133,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
