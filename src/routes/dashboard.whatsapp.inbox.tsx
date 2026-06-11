@@ -1638,7 +1638,9 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
         >
           {m.is_ai && <Bot className="h-3 w-3" />}
           <span>{formatTime(m.created_at, isAr)}</span>
-          {isOut && <CheckCheck className="h-3.5 w-3.5 opacity-90" />}
+          {isOut && (
+            <CheckCheck className={`h-3.5 w-3.5 ${m.status === "read" ? "text-emerald-200" : "opacity-90"}`} />
+          )}
         </div>
       </div>
     </div>
