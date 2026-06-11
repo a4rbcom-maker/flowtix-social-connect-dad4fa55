@@ -53,6 +53,23 @@ function isTruthy(v: unknown): boolean {
   return v === true || String(v ?? "").toLowerCase() === "true";
 }
 
+function normalizeMessageStatus(value: unknown, fromMe: boolean): string {
+  const raw = String(value ?? "").toLowerCase();
+  if (["read", "played"].includes(raw)) return "read";
+  if (["delivered", "delivery", "server_ack", "device_ack"].includes(raw)) return "delivered";
+  if (["sent", "pending", "queued"].includes(raw)) return raw;
+  if (["failed", "error", "undelivered"].includes(raw)) return "failed";
+  return fromMe ? "sent" : "received";
+}
+
+function messageIdFrom(entry: Record<string, unknown>): string | null {
+  return (
+    pickStr(entry, "messageId", "message_id", "msgId", "msg_id", "id", "wamid") ||
+    pickStr(asObj(entry.key), "id") ||
+    pickStr(asObj(entry.message), "id")
+  );
+}
+
 function findSessionId(payload: Record<string, unknown>, headers: Headers): string | null {
   return (
     pickStr(payload, "sessionId", "session_id", "session", "instanceId", "instance_id") ||
@@ -74,6 +91,8 @@ interface ParsedMessage {
   contactName: string | null;
   fromMe: boolean;
   isGroup: boolean;
+  providerMessageId: string | null;
+  status: string;
 }
 
 const WA_MEDIA_BUCKET = "wa-media";
