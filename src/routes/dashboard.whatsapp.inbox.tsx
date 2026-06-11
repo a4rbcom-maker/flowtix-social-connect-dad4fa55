@@ -791,6 +791,179 @@ function FullscreenInbox({
   );
 }
 
+function QuickRepliesMenu({
+  isAr,
+  replies,
+  loading,
+  onInsert,
+}: {
+  isAr: boolean;
+  replies: QuickReply[];
+  loading: boolean;
+  onInsert: (body: string) => void;
+}) {
+  const qc = useQueryClient();
+  const createFn = useServerFn(createQuickReply);
+  const updateFn = useServerFn(updateQuickReply);
+  const deleteFn = useServerFn(deleteQuickReply);
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("all");
+  const [editing, setEditing] = useState<QuickReply | null>(null);
+  const [form, setForm] = useState({ shortcut: "", category: isAr ? "عام" : "General", body: "", sort_order: 0 });
+
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    for (const reply of replies) set.add(reply.category?.trim() || (isAr ? "عام" : "General"));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [isAr, replies]);
+
+  const filteredReplies = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return replies.filter((reply) => {
+      const replyCategory = reply.category?.trim() || (isAr ? "عام" : "General");
+      const matchesCategory = category === "all" || replyCategory === category;
+      const matchesSearch =
+        !q ||
+        reply.shortcut.toLowerCase().includes(q) ||
+        reply.body.toLowerCase().includes(q) ||
+        replyCategory.toLowerCase().includes(q);
+      return matchesCategory && matchesSearch;
+    });
+  }, [category, isAr, replies, search]);
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["wa-quick-replies"] });
+    qc.invalidateQueries({ queryKey: ["wa-quick-replies-mgmt"] });
+  };
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        shortcut: form.shortcut.trim(),
+        category: form.category.trim() || (isAr ? "عام" : "General"),
+        body: form.body.trim(),
+        sort_order: Number(form.sort_order) || 0,
+      };
+      if (!payload.shortcut || !payload.body) throw new Error(isAr ? "اكتب الاختصار والنص" : "Shortcut and body are required");
+      if (editing) return updateFn({ data: { id: editing.id, ...payload } });
+      return createFn({ data: payload });
+    },
+    onSuccess: () => {
+      toast.success(editing ? (isAr ? "تم تعديل الرد" : "Reply updated") : isAr ? "تم إضافة الرد" : "Reply added");
+      setEditing(null);
+      setForm({ shortcut: "", category: form.category || (isAr ? "عام" : "General"), body: "", sort_order: 0 });
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteFn({ data: { id } }),
+    onSuccess: () => {
+      toast.success(isAr ? "تم حذف الرد" : "Reply deleted");
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const startEdit = (reply: QuickReply) => {
+    setEditing(reply);
+    setForm({
+      shortcut: reply.shortcut,
+      category: reply.category || (isAr ? "عام" : "General"),
+      body: reply.body,
+      sort_order: reply.sort_order ?? 0,
+    });
+  };
+
+  return (
+    <div dir={isAr ? "rtl" : "ltr"} className={isAr ? "text-right" : "text-left"}>
+      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+        <p className="text-sm font-semibold">{isAr ? "الرسائل الجاهزة" : "Quick replies"}</p>
+        {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+      </div>
+
+      <div className="space-y-2 border-b border-border p-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground ltr:left-3 rtl:right-3" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={isAr ? "بحث في الرسائل الجاهزة…" : "Search quick replies…"}
+            className="h-9 w-full rounded-lg border border-input bg-background px-9 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+        <div className="flex gap-1 overflow-x-auto pb-1">
+          <button
+            type="button"
+            onClick={() => setCategory("all")}
+            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${category === "all" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+          >
+            {isAr ? "الكل" : "All"}
+          </button>
+          {categories.map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setCategory(item)}
+              className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${category === item ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="max-h-64 overflow-y-auto p-1.5">
+        {filteredReplies.length === 0 ? (
+          <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+            {isAr ? "لا توجد رسائل مطابقة." : "No matching replies."}
+          </div>
+        ) : (
+          filteredReplies.map((reply) => (
+            <div key={reply.id} className="group rounded-lg px-2 py-2 hover:bg-muted/70">
+              <button type="button" onClick={() => onInsert(reply.body)} className="w-full text-start">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-primary">/{reply.shortcut}</span>
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                    {reply.category || (isAr ? "عام" : "General")}
+                  </span>
+                </div>
+                <p className="mt-1 line-clamp-2 text-sm leading-5 text-foreground">{reply.body}</p>
+              </button>
+              <div className="mt-1 flex justify-end gap-1 opacity-100 sm:opacity-0 sm:transition sm:group-hover:opacity-100">
+                <button type="button" onClick={() => startEdit(reply)} className="rounded-md p-1.5 text-muted-foreground hover:bg-background hover:text-primary" aria-label={isAr ? "تعديل" : "Edit"}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+                <button type="button" onClick={() => deleteMut.mutate(reply.id)} className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label={isAr ? "حذف" : "Delete"}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="space-y-2 border-t border-border bg-muted/20 p-3">
+        <div className="grid grid-cols-2 gap-2">
+          <input value={form.shortcut} onChange={(e) => setForm((f) => ({ ...f, shortcut: e.target.value }))} placeholder={isAr ? "اختصار" : "Shortcut"} className="h-9 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-primary" />
+          <input value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} placeholder={isAr ? "تصنيف" : "Category"} className="h-9 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-primary" />
+        </div>
+        <textarea value={form.body} onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))} rows={2} placeholder={isAr ? "نص الرسالة الجاهزة" : "Reply body"} className="w-full resize-none rounded-lg border border-input bg-background px-2 py-2 text-sm outline-none focus:border-primary" />
+        <div className="flex items-center justify-between gap-2">
+          <button type="button" onClick={() => { setEditing(null); setForm({ shortcut: "", category: isAr ? "عام" : "General", body: "", sort_order: 0 }); }} className="text-xs font-medium text-muted-foreground hover:text-foreground">
+            {editing ? (isAr ? "إلغاء التعديل" : "Cancel edit") : isAr ? "تفريغ" : "Clear"}
+          </button>
+          <button type="button" onClick={() => saveMut.mutate()} disabled={saveMut.isPending} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50">
+            {saveMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            {editing ? (isAr ? "حفظ التعديل" : "Save edit") : isAr ? "إضافة" : "Add"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Contact info side panel (Bot-Xtra style)
 function ContactInfoPanel({
   conv,
