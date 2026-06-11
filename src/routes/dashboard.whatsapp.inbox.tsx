@@ -257,7 +257,7 @@ function InboxPage() {
           qc.invalidateQueries({ queryKey: ["wa-conversations"] });
           const row = payload.new as { remote_jid: string };
           if (activeJid && row.remote_jid === activeJid) {
-            qc.invalidateQueries({ queryKey: ["wa-messages", activeJid] });
+            qc.invalidateQueries({ queryKey: ["wa-messages", user.id, activeJid] });
           }
         },
       )
@@ -1144,11 +1144,11 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
 async function fetchInboxMessages(userId: string, remoteJid: string): Promise<ChatMessageRow[]> {
   const { data, error } = await supabase
     .from("wa_messages")
-    .select("id, remote_jid, direction, text_body, msg_type, media_url, created_at, raw")
+    .select("id, remote_jid, direction, status, text_body, msg_type, media_url, created_at, raw")
     .eq("user_id", userId)
     .eq("remote_jid", remoteJid)
     .order("created_at", { ascending: true })
-    .limit(300);
+    .limit(1000);
   if (error) throw new Error(error.message);
 
   return Promise.all((data ?? []).map(async (row) => {
@@ -1161,6 +1161,7 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
       id: row.id,
       remote_jid: row.remote_jid,
       direction: row.direction as "in" | "out",
+      status: row.status ?? (row.direction === "out" ? "sent" : "received"),
       text_body: cleanMessageText(row.text_body, raw, msgType),
       msg_type: msgType,
       media_url: mediaUrl,
@@ -1185,8 +1186,9 @@ async function fetchInboxConnectionState(userId: string): Promise<{ status: stri
 async function fetchInboxQuickReplies(userId: string): Promise<QuickReply[]> {
   const { data, error } = await supabase
     .from("wa_quick_replies")
-    .select("id, shortcut, body, sort_order, created_at")
+    .select("id, shortcut, category, body, sort_order, created_at")
     .eq("user_id", userId)
+    .order("category", { ascending: true })
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
