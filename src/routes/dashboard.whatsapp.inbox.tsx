@@ -50,6 +50,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Zap } from "lucide-react";
 import {
   sendChatMessage,
+  markConversationRead,
   type ConversationRow,
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
@@ -78,6 +79,7 @@ function InboxPage() {
   const qc = useQueryClient();
   const isMobile = useIsMobile();
   const sendFn = useServerFn(sendChatMessage);
+  const markReadFn = useServerFn(markConversationRead);
   const resetReceiverFn = useServerFn(resetWaReceiver);
   const navigate = useNavigate();
 
@@ -251,11 +253,11 @@ function InboxPage() {
       )
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "wa_messages", filter: `user_id=eq.${user.id}` },
+        { event: "*", schema: "public", table: "wa_messages", filter: `user_id=eq.${user.id}` },
         (payload) => {
           // Always refresh the conversation list so the new chat appears
           qc.invalidateQueries({ queryKey: ["wa-conversations"] });
-          const row = payload.new as { remote_jid: string };
+          const row = payload.new as { remote_jid?: string };
           if (activeJid && row.remote_jid === activeJid) {
             qc.invalidateQueries({ queryKey: ["wa-messages", user.id, activeJid] });
           }
@@ -279,16 +281,11 @@ function InboxPage() {
     if (!activeJid || !user?.id) return;
     const c = conversations.find((x) => x.remote_jid === activeJid);
     if (c && c.unread_count > 0) {
-      supabase
-        .from("wa_conversations")
-        .update({ unread_count: 0 })
-        .eq("id", c.id)
-        .eq("user_id", user.id)
-        .then(() => {
+      markReadFn({ data: { id: c.id } }).then(() => {
         qc.invalidateQueries({ queryKey: ["wa-conversations"] });
-      });
+      }).catch((err: unknown) => console.warn("[inbox] mark read failed", err));
     }
-  }, [activeJid, conversations, qc, user?.id]);
+  }, [activeJid, conversations, markReadFn, qc, user?.id]);
 
   // Textarea auto-grow
   useEffect(() => {
