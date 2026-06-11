@@ -258,12 +258,11 @@ function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null
       ? (recipientJid || directChatJid || keyRemote)
       : (realPhone || directChatJid || keyRemote || senderJid);
 
-  const fromPhone =
-    realPhone ||
-    (isGroup ? null : digits(entry.from)) ||
-    (isGroup ? null : digits(entry.sender)) ||
-    digits(pickStr(key, "remoteJid")) ||
-    digits(remoteJid);
+  const fromPhone = isGroup
+    ? realPhone || digits(senderJid)
+    : fromMe
+      ? digits(recipientJid || directChatJid || keyRemote || remoteJid) || realPhone
+      : realPhone || digits(senderJid) || digits(remoteJid);
 
   const { text, type, mediaUrl } = extractTextFromMessage(entry);
 
