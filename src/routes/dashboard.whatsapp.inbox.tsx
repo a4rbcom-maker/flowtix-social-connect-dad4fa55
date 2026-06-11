@@ -23,6 +23,9 @@ import {
   FileText,
   Video as VideoIcon,
   X,
+  Plus,
+  Pencil,
+  Trash2,
   Phone,
   UserPlus,
   StickyNote,
@@ -51,7 +54,12 @@ import {
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
 import { resetWaReceiver } from "@/lib/wa.functions";
-import type { QuickReply } from "@/lib/wa-automation.functions";
+import {
+  createQuickReply,
+  updateQuickReply,
+  deleteQuickReply,
+  type QuickReply,
+} from "@/lib/wa-automation.functions";
 import { useNavigate } from "@tanstack/react-router";
 import { MediaLightbox, openMedia } from "@/components/whatsapp/MediaLightbox";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
