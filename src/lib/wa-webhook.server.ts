@@ -53,6 +53,23 @@ function isTruthy(v: unknown): boolean {
   return v === true || String(v ?? "").toLowerCase() === "true";
 }
 
+function normalizeMessageStatus(value: unknown, fromMe: boolean): string {
+  const raw = String(value ?? "").toLowerCase();
+  if (["read", "played"].includes(raw)) return "read";
+  if (["delivered", "delivery", "server_ack", "device_ack"].includes(raw)) return "delivered";
+  if (["sent", "pending", "queued"].includes(raw)) return raw;
+  if (["failed", "error", "undelivered"].includes(raw)) return "failed";
+  return fromMe ? "sent" : "received";
+}
+
+function messageIdFrom(entry: Record<string, unknown>): string | null {
+  return (
+    pickStr(entry, "messageId", "message_id", "msgId", "msg_id", "id", "wamid") ||
+    pickStr(asObj(entry.key), "id") ||
+    pickStr(asObj(entry.message), "id")
+  );
+}
+
 function findSessionId(payload: Record<string, unknown>, headers: Headers): string | null {
   return (
     pickStr(payload, "sessionId", "session_id", "session", "instanceId", "instance_id") ||
@@ -74,6 +91,8 @@ interface ParsedMessage {
   contactName: string | null;
   fromMe: boolean;
   isGroup: boolean;
+  providerMessageId: string | null;
+  status: string;
 }
 
 const WA_MEDIA_BUCKET = "wa-media";
@@ -217,6 +236,10 @@ function extractTextFromMessage(m: Record<string, unknown>): { text: string | nu
 
 function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null {
   const key = asObj(entry.key);
+  const fromMe =
+    entry.fromMe === true ||
+    entry.fromme === true ||
+    (key.fromMe as boolean | undefined) === true;
   const isGroup =
     isTruthy(entry.isGroup) ||
     Boolean(pickStr(entry, "groupJid", "groupId")) ||
@@ -224,26 +247,24 @@ function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null
   const realPhone =
     digits(pickStr(entry, "senderPn", "participantPn", "phoneNumber", "phone")) ||
     digits(pickStr(asObj(entry.participant), "id", "phone", "jid"));
-  const groupJid = pickStr(entry, "groupJid", "groupId") || (pickStr(key, "remoteJid")?.endsWith("@g.us") ? pickStr(key, "remoteJid") : null);
-  const remoteJid =
-    (isGroup ? groupJid : realPhone) ||
-    pickStr(entry, "remoteJid", "remote_jid", "jid", "chatId", "from", "sender") ||
-    pickStr(key, "remoteJid") ||
-    null;
+  const keyRemote = pickStr(key, "remoteJid");
+  const groupJid = pickStr(entry, "groupJid", "groupId") || (keyRemote?.endsWith("@g.us") ? keyRemote : null);
+  const directChatJid = pickStr(entry, "remoteJid", "remote_jid", "jid", "chatId");
+  const recipientJid = pickStr(entry, "to", "recipient", "recipientJid", "targetJid", "toJid");
+  const senderJid = pickStr(entry, "from", "sender", "senderJid", "participantJid");
+  const remoteJid = isGroup
+    ? groupJid
+    : fromMe
+      ? (recipientJid || directChatJid || keyRemote)
+      : (realPhone || directChatJid || keyRemote || senderJid);
 
-  const fromPhone =
-    realPhone ||
-    (isGroup ? null : digits(entry.from)) ||
-    (isGroup ? null : digits(entry.sender)) ||
-    digits(pickStr(key, "remoteJid")) ||
-    digits(remoteJid);
+  const fromPhone = isGroup
+    ? realPhone || digits(senderJid)
+    : fromMe
+      ? digits(recipientJid || directChatJid || keyRemote || remoteJid) || realPhone
+      : realPhone || digits(senderJid) || digits(remoteJid);
 
   const { text, type, mediaUrl } = extractTextFromMessage(entry);
-
-  const fromMe =
-    entry.fromMe === true ||
-    entry.fromme === true ||
-    (key.fromMe as boolean | undefined) === true;
 
   // Skip status broadcast and pure system events
   const jid = remoteJid || fromPhone || "";
@@ -258,10 +279,7 @@ function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null
   // user's reply from the real chat. Outbound messages sent through our UI
   // are stored directly by sendChatMessage with the correct remote_jid.
   if (!isGroup && fromMe) {
-    const hasRealRecipient =
-      Boolean(pickStr(entry, "remoteJid", "remote_jid", "jid", "chatId", "to", "recipient")) ||
-      Boolean(pickStr(key, "remoteJid")) ||
-      Boolean(realPhone);
+    const hasRealRecipient = Boolean(recipientJid || directChatJid || keyRemote);
     if (!hasRealRecipient) return null;
   }
 
@@ -277,6 +295,8 @@ function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null
       : pickStr(entry, "pushName", "contactName", "senderName", "name", "notifyName", "notify"),
     fromMe,
     isGroup,
+    providerMessageId: messageIdFrom(entry),
+    status: normalizeMessageStatus(pickStr(entry, "status", "ack", "messageStatus"), fromMe),
   };
 }
 
@@ -297,6 +317,25 @@ function collectMessageEntries(payload: Record<string, unknown>): Record<string,
     out.push(payload);
   }
   return out;
+}
+
+async function updateMessageStatuses(userId: string, payload: Record<string, unknown>): Promise<number> {
+  const entries = collectMessageEntries(payload);
+  let updated = 0;
+  for (const entry of entries) {
+    const providerMessageId = messageIdFrom(entry);
+    const rawStatus = pickStr(entry, "status", "ack", "messageStatus", "deliveryStatus");
+    if (!providerMessageId || !rawStatus) continue;
+    const status = normalizeMessageStatus(rawStatus, true);
+    const { error } = await supabaseAdmin
+      .from("wa_messages")
+      .update({ status })
+      .eq("user_id", userId)
+      .eq("provider_message_id", providerMessageId);
+    if (error) console.error("[wa-webhook] status update failed:", error.message);
+    else updated++;
+  }
+  return updated;
 }
 
 export async function handleWaWebhook(request: Request): Promise<Response> {
@@ -402,6 +441,8 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     return new Response("ok");
   }
 
+  const statusUpdates = await updateMessageStatuses(userId, payload);
+
   // ── inbound/outbound messages ──
   const entries = collectMessageEntries(payload);
   if (entries.length === 0) {
@@ -418,6 +459,19 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     const mediaUrl = await persistWaMedia({ userId, sessionId, entry, msgType, mediaUrl: rawMediaUrl });
     const text = cleanMessageText(m.text, entry, msgType);
 
+    if (m.providerMessageId) {
+      const { data: existing } = await supabaseAdmin
+        .from("wa_messages")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("provider_message_id", m.providerMessageId)
+        .maybeSingle();
+      if (existing?.id) {
+        await supabaseAdmin.from("wa_messages").update({ status: m.status }).eq("id", existing.id);
+        continue;
+      }
+    }
+
     const { error: insErr } = await supabaseAdmin.from("wa_messages").insert({
       user_id: userId,
       session_id: sessionId,
@@ -428,10 +482,14 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       msg_type: msgType,
       text_body: text,
       media_url: mediaUrl,
+      status: m.status,
+      provider_message_id: m.providerMessageId,
       raw: {
         ...entry,
         normalizedRemoteJid: m.remoteJid,
         normalizedContactPhone: m.fromPhone,
+        normalizedStatus: m.status,
+        providerMessageId: m.providerMessageId,
         storedMediaUrl: mediaUrl?.startsWith("wa-media:") ? mediaUrl : null,
       } as never,
     });
@@ -477,7 +535,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     }
   }
 
-  return new Response(JSON.stringify({ ok: true, saved }), {
+  return new Response(JSON.stringify({ ok: true, saved, statusUpdates }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });

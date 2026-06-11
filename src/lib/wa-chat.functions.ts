@@ -33,6 +33,7 @@ export interface ChatMessageRow {
   id: string;
   remote_jid: string;
   direction: "in" | "out";
+  status: string;
   text_body: string | null;
   msg_type: string;
   media_url: string | null;
@@ -105,11 +106,11 @@ export const getConversationMessages = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data: rows, error } = await supabase
       .from("wa_messages")
-      .select("id, remote_jid, direction, text_body, msg_type, media_url, created_at, raw")
+      .select("id, remote_jid, direction, status, text_body, msg_type, media_url, created_at, raw")
       .eq("user_id", userId)
       .eq("remote_jid", data.remoteJid)
       .order("created_at", { ascending: true })
-      .limit(300);
+      .limit(1000);
     if (error) throw new Error(error.message);
     return (rows ?? []).map((r) => {
       const raw = asRecord(r.raw);
@@ -120,6 +121,7 @@ export const getConversationMessages = createServerFn({ method: "POST" })
         id: r.id,
         remote_jid: r.remote_jid,
         direction: r.direction as "in" | "out",
+        status: r.status ?? (r.direction === "out" ? "sent" : "received"),
         text_body: cleanMessageText(r.text_body, raw, msgType),
         msg_type: msgType,
         media_url: preferChatMediaUrl(storedMediaUrl, rawMediaUrl),
@@ -221,22 +223,25 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       if (res && (res.ok === false || res.error)) {
         throw new Error(res.error || res.message || "Bridge refused to deliver");
       }
+      const providerMessageId = typeof res?.id === "string" ? res.id : null;
+      await supabase.from("wa_messages").insert({
+        user_id: userId,
+        session_id: sess.session_id,
+        direction: "out",
+        remote_jid: data.remoteJid,
+        to_phone: phoneDigits || to,
+        msg_type: "text",
+        text_body: data.text,
+        status: "sent",
+        provider_message_id: providerMessageId,
+        raw: providerMessageId ? ({ bridgeMessageId: providerMessageId } as never) : null,
+      });
     } catch (err) {
       const msg =
         err instanceof BridgeError ? err.message : err instanceof Error ? err.message : "Bridge error";
       console.error("[wa-chat] sendText failed:", msg, "to=", to);
       throw new Error(msg);
     }
-
-    await supabase.from("wa_messages").insert({
-      user_id: userId,
-      session_id: sess.session_id,
-      direction: "out",
-      remote_jid: data.remoteJid,
-      to_phone: phoneDigits || to,
-      msg_type: "text",
-      text_body: data.text,
-    });
 
     await upsertConversationFromMessage({
       userId,

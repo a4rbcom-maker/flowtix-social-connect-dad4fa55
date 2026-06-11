@@ -1294,9 +1294,11 @@ export type Database = {
           id: string
           media_url: string | null
           msg_type: string
+          provider_message_id: string | null
           raw: Json | null
           remote_jid: string
           session_id: string
+          status: string
           text_body: string | null
           to_phone: string | null
           user_id: string
@@ -1308,9 +1310,11 @@ export type Database = {
           id?: string
           media_url?: string | null
           msg_type?: string
+          provider_message_id?: string | null
           raw?: Json | null
           remote_jid: string
           session_id: string
+          status?: string
           text_body?: string | null
           to_phone?: string | null
           user_id: string
@@ -1322,9 +1326,11 @@ export type Database = {
           id?: string
           media_url?: string | null
           msg_type?: string
+          provider_message_id?: string | null
           raw?: Json | null
           remote_jid?: string
           session_id?: string
+          status?: string
           text_body?: string | null
           to_phone?: string | null
           user_id?: string
@@ -1334,6 +1340,7 @@ export type Database = {
       wa_quick_replies: {
         Row: {
           body: string
+          category: string
           created_at: string
           id: string
           shortcut: string
@@ -1343,6 +1350,7 @@ export type Database = {
         }
         Insert: {
           body: string
+          category?: string
           created_at?: string
           id?: string
           shortcut: string
@@ -1352,6 +1360,7 @@ export type Database = {
         }
         Update: {
           body?: string
+          category?: string
           created_at?: string
           id?: string
           shortcut?: string

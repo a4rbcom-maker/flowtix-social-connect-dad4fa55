@@ -535,7 +535,12 @@ function QuickRepliesPanel({ isAr }: { isAr: boolean }) {
             {(data ?? []).map((q) => (
               <li key={q.id} className="flex items-start gap-4 p-4 transition-colors hover:bg-muted/30 sm:p-5">
                 <div className="flex-1 min-w-0">
-                  <p className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">/{q.shortcut}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">/{q.shortcut}</p>
+                    <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
+                      {q.category || (isAr ? "عام" : "General")}
+                    </span>
+                  </div>
                   <p className="mt-3 whitespace-pre-wrap rounded-xl bg-muted/40 px-3 py-2 text-sm leading-6 text-foreground">{q.body}</p>
                 </div>
                 <div className="flex items-center gap-1 rounded-xl border border-border bg-background p-1 shadow-sm">
@@ -603,9 +608,10 @@ function QuickReplyDialog({
   onOpenChange: (v: boolean) => void;
   snippet: QuickReply | null;
   isAr: boolean;
-  onSave: (form: { shortcut: string; body: string; sort_order: number }) => Promise<void>;
+  onSave: (form: { shortcut: string; category: string; body: string; sort_order: number }) => Promise<void>;
 }) {
   const [shortcut, setShortcut] = useState("");
+  const [category, setCategory] = useState(isAr ? "عام" : "General");
   const [body, setBody] = useState("");
   const [order, setOrder] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -613,10 +619,11 @@ function QuickReplyDialog({
   React.useEffect(() => {
     if (open) {
       setShortcut(snippet?.shortcut ?? "");
+      setCategory(snippet?.category ?? (isAr ? "عام" : "General"));
       setBody(snippet?.body ?? "");
       setOrder(snippet?.sort_order ?? 0);
     }
-  }, [open, snippet]);
+  }, [isAr, open, snippet]);
 
   const submit = async () => {
     if (!shortcut.trim() || !body.trim()) {
@@ -625,7 +632,7 @@ function QuickReplyDialog({
     }
     setSaving(true);
     try {
-      await onSave({ shortcut: shortcut.trim(), body: body.trim(), sort_order: order });
+      await onSave({ shortcut: shortcut.trim(), category: category.trim() || (isAr ? "عام" : "General"), body: body.trim(), sort_order: order });
     } finally {
       setSaving(false);
     }
@@ -649,6 +656,14 @@ function QuickReplyDialog({
               value={shortcut}
               onChange={(e) => setShortcut(e.target.value)}
               placeholder={isAr ? "مثال: ترحيب" : "e.g. greet"}
+            />
+          </div>
+          <div>
+            <Label>{isAr ? "التصنيف" : "Category"}</Label>
+            <Input
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder={isAr ? "مثال: مبيعات" : "e.g. Sales"}
             />
           </div>
           <div>

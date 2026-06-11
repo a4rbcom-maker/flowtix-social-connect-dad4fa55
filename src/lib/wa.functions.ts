@@ -16,6 +16,7 @@ import {
   doPing,
   type WaBridgeHealth,
 } from "./wa-helpers.server";
+import { upsertConversationFromMessage } from "./wa-ai.server";
 
 export type { WaBridgeHealth };
 
@@ -135,20 +136,37 @@ export const sendWaMessage = createServerFn({ method: "POST" })
     if (row.status !== "connected") throw new Error("WhatsApp is not connected");
 
     const phone = data.to.replace(/[^0-9]/g, "");
+    let providerMessageId: string | null = null;
     try {
-      await waBridge.sendText(row.session_id, phone, data.text);
+      const res = await waBridge.sendText(row.session_id, phone, data.text);
+      providerMessageId = typeof res?.id === "string" ? res.id : null;
     } catch (err) {
       throw new Error(describeBridgeError(err));
     }
+
+    const remoteJid = `${phone}@s.whatsapp.net`;
 
     await supabase.from("wa_messages").insert({
       user_id: userId,
       session_id: row.session_id,
       direction: "out",
-      remote_jid: phone,
+      remote_jid: remoteJid,
       to_phone: phone,
       msg_type: "text",
       text_body: data.text,
+      status: "sent",
+      provider_message_id: providerMessageId,
+      raw: providerMessageId ? ({ bridgeMessageId: providerMessageId } as never) : null,
+    });
+
+    await upsertConversationFromMessage({
+      userId,
+      sessionId: row.session_id,
+      remoteJid,
+      contactName: null,
+      contactPhone: phone,
+      text: data.text,
+      direction: "out",
     });
 
     return { ok: true };

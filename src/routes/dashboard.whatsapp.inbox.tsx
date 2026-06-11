@@ -23,6 +23,9 @@ import {
   FileText,
   Video as VideoIcon,
   X,
+  Plus,
+  Pencil,
+  Trash2,
   Phone,
   UserPlus,
   StickyNote,
@@ -47,11 +50,17 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Zap } from "lucide-react";
 import {
   sendChatMessage,
+  markConversationRead,
   type ConversationRow,
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
 import { resetWaReceiver } from "@/lib/wa.functions";
-import type { QuickReply } from "@/lib/wa-automation.functions";
+import {
+  createQuickReply,
+  updateQuickReply,
+  deleteQuickReply,
+  type QuickReply,
+} from "@/lib/wa-automation.functions";
 import { useNavigate } from "@tanstack/react-router";
 import { MediaLightbox, openMedia } from "@/components/whatsapp/MediaLightbox";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
@@ -70,6 +79,7 @@ function InboxPage() {
   const qc = useQueryClient();
   const isMobile = useIsMobile();
   const sendFn = useServerFn(sendChatMessage);
+  const markReadFn = useServerFn(markConversationRead);
   const resetReceiverFn = useServerFn(resetWaReceiver);
   const navigate = useNavigate();
 
@@ -243,13 +253,13 @@ function InboxPage() {
       )
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "wa_messages", filter: `user_id=eq.${user.id}` },
+        { event: "*", schema: "public", table: "wa_messages", filter: `user_id=eq.${user.id}` },
         (payload) => {
           // Always refresh the conversation list so the new chat appears
           qc.invalidateQueries({ queryKey: ["wa-conversations"] });
-          const row = payload.new as { remote_jid: string };
+          const row = payload.new as { remote_jid?: string };
           if (activeJid && row.remote_jid === activeJid) {
-            qc.invalidateQueries({ queryKey: ["wa-messages", activeJid] });
+            qc.invalidateQueries({ queryKey: ["wa-messages", user.id, activeJid] });
           }
         },
       )
@@ -271,16 +281,11 @@ function InboxPage() {
     if (!activeJid || !user?.id) return;
     const c = conversations.find((x) => x.remote_jid === activeJid);
     if (c && c.unread_count > 0) {
-      supabase
-        .from("wa_conversations")
-        .update({ unread_count: 0 })
-        .eq("id", c.id)
-        .eq("user_id", user.id)
-        .then(() => {
+      markReadFn({ data: { id: c.id } }).then(() => {
         qc.invalidateQueries({ queryKey: ["wa-conversations"] });
-      });
+      }).catch((err: unknown) => console.warn("[inbox] mark read failed", err));
     }
-  }, [activeJid, conversations, qc, user?.id]);
+  }, [activeJid, conversations, markReadFn, qc, user?.id]);
 
   // Textarea auto-grow
   useEffect(() => {
@@ -625,40 +630,16 @@ function InboxPage() {
                   </button>
                 </PopoverTrigger>
 
-                <PopoverContent align="start" className="w-80 p-0" sideOffset={8}>
-                  <div className="flex items-center justify-between border-b px-3 py-2">
-                    <p className="text-sm font-semibold">{isAr ? "ردود جاهزة" : "Quick replies"}</p>
-                    <Link
-                      to="/dashboard/whatsapp/automation"
-                      className="text-xs font-medium text-primary hover:underline"
-                    >
-                      {isAr ? "إدارة" : "Manage"}
-                    </Link>
-                  </div>
-                  <div className="max-h-72 overflow-y-auto p-1">
-                    {(quickRepliesQuery.data ?? []).length === 0 ? (
-                      <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                        {isAr
-                          ? "لا توجد ردود جاهزة بعد. اضغط (إدارة) لإضافة."
-                          : "No quick replies yet. Click Manage to add."}
-                      </div>
-                    ) : (
-                      (quickRepliesQuery.data ?? []).map((q) => (
-                        <button
-                          key={q.id}
-                          type="button"
-                          onClick={() => {
-                            setDraft((d) => (d ? `${d} ${q.body}` : q.body));
-                            textareaRef.current?.focus();
-                          }}
-                          className="block w-full rounded-md px-3 py-2 text-start transition hover:bg-muted"
-                        >
-                          <div className="text-xs font-semibold text-primary">/{q.shortcut}</div>
-                          <div className="line-clamp-2 text-sm text-foreground">{q.body}</div>
-                        </button>
-                      ))
-                    )}
-                  </div>
+                <PopoverContent align="start" className="w-[min(92vw,420px)] p-0" sideOffset={8}>
+                  <QuickRepliesMenu
+                    isAr={isAr}
+                    replies={quickRepliesQuery.data ?? []}
+                    loading={quickRepliesQuery.isLoading || quickRepliesQuery.isFetching}
+                    onInsert={(body: string) => {
+                      setDraft((d) => (d ? `${d} ${body}` : body));
+                      textareaRef.current?.focus();
+                    }}
+                  />
                 </PopoverContent>
               </Popover>
               <textarea
@@ -803,6 +784,179 @@ function FullscreenInbox({
         </div>
       </header>
       <div className="flex-1 min-h-0">{children}</div>
+    </div>
+  );
+}
+
+function QuickRepliesMenu({
+  isAr,
+  replies,
+  loading,
+  onInsert,
+}: {
+  isAr: boolean;
+  replies: QuickReply[];
+  loading: boolean;
+  onInsert: (body: string) => void;
+}) {
+  const qc = useQueryClient();
+  const createFn = useServerFn(createQuickReply);
+  const updateFn = useServerFn(updateQuickReply);
+  const deleteFn = useServerFn(deleteQuickReply);
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("all");
+  const [editing, setEditing] = useState<QuickReply | null>(null);
+  const [form, setForm] = useState({ shortcut: "", category: isAr ? "عام" : "General", body: "", sort_order: 0 });
+
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    for (const reply of replies) set.add(reply.category?.trim() || (isAr ? "عام" : "General"));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [isAr, replies]);
+
+  const filteredReplies = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return replies.filter((reply) => {
+      const replyCategory = reply.category?.trim() || (isAr ? "عام" : "General");
+      const matchesCategory = category === "all" || replyCategory === category;
+      const matchesSearch =
+        !q ||
+        reply.shortcut.toLowerCase().includes(q) ||
+        reply.body.toLowerCase().includes(q) ||
+        replyCategory.toLowerCase().includes(q);
+      return matchesCategory && matchesSearch;
+    });
+  }, [category, isAr, replies, search]);
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["wa-quick-replies"] });
+    qc.invalidateQueries({ queryKey: ["wa-quick-replies-mgmt"] });
+  };
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        shortcut: form.shortcut.trim(),
+        category: form.category.trim() || (isAr ? "عام" : "General"),
+        body: form.body.trim(),
+        sort_order: Number(form.sort_order) || 0,
+      };
+      if (!payload.shortcut || !payload.body) throw new Error(isAr ? "اكتب الاختصار والنص" : "Shortcut and body are required");
+      if (editing) return updateFn({ data: { id: editing.id, ...payload } });
+      return createFn({ data: payload });
+    },
+    onSuccess: () => {
+      toast.success(editing ? (isAr ? "تم تعديل الرد" : "Reply updated") : isAr ? "تم إضافة الرد" : "Reply added");
+      setEditing(null);
+      setForm({ shortcut: "", category: form.category || (isAr ? "عام" : "General"), body: "", sort_order: 0 });
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteFn({ data: { id } }),
+    onSuccess: () => {
+      toast.success(isAr ? "تم حذف الرد" : "Reply deleted");
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const startEdit = (reply: QuickReply) => {
+    setEditing(reply);
+    setForm({
+      shortcut: reply.shortcut,
+      category: reply.category || (isAr ? "عام" : "General"),
+      body: reply.body,
+      sort_order: reply.sort_order ?? 0,
+    });
+  };
+
+  return (
+    <div dir={isAr ? "rtl" : "ltr"} className={isAr ? "text-right" : "text-left"}>
+      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+        <p className="text-sm font-semibold">{isAr ? "الرسائل الجاهزة" : "Quick replies"}</p>
+        {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+      </div>
+
+      <div className="space-y-2 border-b border-border p-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground ltr:left-3 rtl:right-3" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={isAr ? "بحث في الرسائل الجاهزة…" : "Search quick replies…"}
+            className="h-9 w-full rounded-lg border border-input bg-background px-9 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+        <div className="flex gap-1 overflow-x-auto pb-1">
+          <button
+            type="button"
+            onClick={() => setCategory("all")}
+            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${category === "all" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+          >
+            {isAr ? "الكل" : "All"}
+          </button>
+          {categories.map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setCategory(item)}
+              className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${category === item ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="max-h-64 overflow-y-auto p-1.5">
+        {filteredReplies.length === 0 ? (
+          <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+            {isAr ? "لا توجد رسائل مطابقة." : "No matching replies."}
+          </div>
+        ) : (
+          filteredReplies.map((reply) => (
+            <div key={reply.id} className="group rounded-lg px-2 py-2 hover:bg-muted/70">
+              <button type="button" onClick={() => onInsert(reply.body)} className="w-full text-start">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-primary">/{reply.shortcut}</span>
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                    {reply.category || (isAr ? "عام" : "General")}
+                  </span>
+                </div>
+                <p className="mt-1 line-clamp-2 text-sm leading-5 text-foreground">{reply.body}</p>
+              </button>
+              <div className="mt-1 flex justify-end gap-1 opacity-100 sm:opacity-0 sm:transition sm:group-hover:opacity-100">
+                <button type="button" onClick={() => startEdit(reply)} className="rounded-md p-1.5 text-muted-foreground hover:bg-background hover:text-primary" aria-label={isAr ? "تعديل" : "Edit"}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+                <button type="button" onClick={() => deleteMut.mutate(reply.id)} className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label={isAr ? "حذف" : "Delete"}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="space-y-2 border-t border-border bg-muted/20 p-3">
+        <div className="grid grid-cols-2 gap-2">
+          <input value={form.shortcut} onChange={(e) => setForm((f) => ({ ...f, shortcut: e.target.value }))} placeholder={isAr ? "اختصار" : "Shortcut"} className="h-9 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-primary" />
+          <input value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} placeholder={isAr ? "تصنيف" : "Category"} className="h-9 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-primary" />
+        </div>
+        <textarea value={form.body} onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))} rows={2} placeholder={isAr ? "نص الرسالة الجاهزة" : "Reply body"} className="w-full resize-none rounded-lg border border-input bg-background px-2 py-2 text-sm outline-none focus:border-primary" />
+        <div className="flex items-center justify-between gap-2">
+          <button type="button" onClick={() => { setEditing(null); setForm({ shortcut: "", category: isAr ? "عام" : "General", body: "", sort_order: 0 }); }} className="text-xs font-medium text-muted-foreground hover:text-foreground">
+            {editing ? (isAr ? "إلغاء التعديل" : "Cancel edit") : isAr ? "تفريغ" : "Clear"}
+          </button>
+          <button type="button" onClick={() => saveMut.mutate()} disabled={saveMut.isPending} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50">
+            {saveMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            {editing ? (isAr ? "حفظ التعديل" : "Save edit") : isAr ? "إضافة" : "Add"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1136,11 +1290,11 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
 async function fetchInboxMessages(userId: string, remoteJid: string): Promise<ChatMessageRow[]> {
   const { data, error } = await supabase
     .from("wa_messages")
-    .select("id, remote_jid, direction, text_body, msg_type, media_url, created_at, raw")
+    .select("id, remote_jid, direction, status, text_body, msg_type, media_url, created_at, raw")
     .eq("user_id", userId)
     .eq("remote_jid", remoteJid)
     .order("created_at", { ascending: true })
-    .limit(300);
+    .limit(1000);
   if (error) throw new Error(error.message);
 
   return Promise.all((data ?? []).map(async (row) => {
@@ -1153,6 +1307,7 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
       id: row.id,
       remote_jid: row.remote_jid,
       direction: row.direction as "in" | "out",
+      status: row.status ?? (row.direction === "out" ? "sent" : "received"),
       text_body: cleanMessageText(row.text_body, raw, msgType),
       msg_type: msgType,
       media_url: mediaUrl,
@@ -1177,8 +1332,9 @@ async function fetchInboxConnectionState(userId: string): Promise<{ status: stri
 async function fetchInboxQuickReplies(userId: string): Promise<QuickReply[]> {
   const { data, error } = await supabase
     .from("wa_quick_replies")
-    .select("id, shortcut, body, sort_order, created_at")
+    .select("id, shortcut, category, body, sort_order, created_at")
     .eq("user_id", userId)
+    .order("category", { ascending: true })
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
@@ -1479,7 +1635,9 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
         >
           {m.is_ai && <Bot className="h-3 w-3" />}
           <span>{formatTime(m.created_at, isAr)}</span>
-          {isOut && <CheckCheck className="h-3.5 w-3.5 opacity-90" />}
+          {isOut && (
+            <CheckCheck className={`h-3.5 w-3.5 ${m.status === "read" ? "text-emerald-200" : "opacity-90"}`} />
+          )}
         </div>
       </div>
     </div>
