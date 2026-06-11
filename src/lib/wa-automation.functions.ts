@@ -20,6 +20,7 @@ export interface KeywordRule {
 export interface QuickReply {
   id: string;
   shortcut: string;
+  category: string;
   body: string;
   sort_order: number;
   created_at: string;
@@ -36,6 +37,7 @@ const ruleInput = z.object({
 
 const snippetInput = z.object({
   shortcut: z.string().trim().min(1).max(40),
+  category: z.string().trim().min(1).max(60).default("عام"),
   body: z.string().trim().min(1).max(2000),
   sort_order: z.number().int().min(0).max(10000).default(0),
 });
@@ -121,8 +123,9 @@ export const listQuickReplies = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data, error } = await supabase
       .from("wa_quick_replies")
-      .select("id, shortcut, body, sort_order, created_at")
+      .select("id, shortcut, category, body, sort_order, created_at")
       .eq("user_id", userId)
+      .order("category", { ascending: true })
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
