@@ -398,3 +398,79 @@ export const rateAiLog = createServerFn({ method: "POST" })
     await supabase.from("wa_ai_logs").update({ rating: data.rating }).eq("id", data.id).eq("user_id", userId);
     return { ok: true };
   });
+
+export interface ExtractedContact {
+  phone: string;
+  name: string | null;
+  remote_jid: string;
+  message_count: number;
+  first_at: string;
+  last_at: string;
+}
+
+export const extractInboundContacts = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        from: z.string().datetime(),
+        to: z.string().datetime(),
+        includeGroups: z.boolean().optional().default(false),
+      })
+      .parse(input),
+  )
+  .handler(async ({ context, data }): Promise<ExtractedContact[]> => {
+    const { supabase, userId } = context;
+    let query = supabase
+      .from("wa_messages")
+      .select("remote_jid, from_phone, raw, created_at")
+      .eq("user_id", userId)
+      .eq("direction", "in")
+      .gte("created_at", data.from)
+      .lte("created_at", data.to)
+      .order("created_at", { ascending: true })
+      .limit(20000);
+    if (!data.includeGroups) {
+      query = query.not("remote_jid", "like", "%@g.us");
+    }
+    const { data: rows, error } = await query;
+    if (error) throw new Error(error.message);
+
+    // Get names from conversations
+    const { data: convos } = await supabase
+      .from("wa_conversations")
+      .select("remote_jid, contact_name, contact_phone")
+      .eq("user_id", userId);
+    const nameByJid = new Map<string, { name: string | null; phone: string | null }>();
+    for (const c of convos ?? []) {
+      nameByJid.set(c.remote_jid, { name: c.contact_name, phone: c.contact_phone });
+    }
+
+    const byPhone = new Map<string, ExtractedContact>();
+    for (const row of rows ?? []) {
+      const jid = String(row.remote_jid ?? "");
+      const rawPhone = phoneFromRaw(row.raw);
+      const fromPhone = digits(row.from_phone);
+      const convoPhone = digits(nameByJid.get(jid)?.phone ?? null);
+      const jidPhone = digits(jid.split("@")[0] ?? "");
+      const phone = rawPhone ?? fromPhone ?? convoPhone ?? jidPhone;
+      if (!phone) continue;
+      const existing = byPhone.get(phone);
+      const ts = String(row.created_at);
+      if (existing) {
+        existing.message_count += 1;
+        if (ts > existing.last_at) existing.last_at = ts;
+        if (ts < existing.first_at) existing.first_at = ts;
+      } else {
+        byPhone.set(phone, {
+          phone,
+          name: nameByJid.get(jid)?.name ?? null,
+          remote_jid: jid,
+          message_count: 1,
+          first_at: ts,
+          last_at: ts,
+        });
+      }
+    }
+    return Array.from(byPhone.values()).sort((a, b) => b.message_count - a.message_count);
+  });
