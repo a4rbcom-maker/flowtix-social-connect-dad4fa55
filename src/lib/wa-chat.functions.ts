@@ -49,12 +49,20 @@ export const listConversations = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<ConversationRow[]> => {
     const { supabase, userId } = context;
+    const { data: sess } = await supabase
+      .from("wa_sessions")
+      .select("session_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!sess?.session_id) return [];
+
     const { data, error } = await supabase
       .from("wa_conversations")
       .select(
         "id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled",
       )
       .eq("user_id", userId)
+      .eq("session_id", sess.session_id)
       .eq("is_archived", false)
       .order("last_message_at", { ascending: false })
       .limit(200);
@@ -67,6 +75,7 @@ export const listConversations = createServerFn({ method: "POST" })
       .from("wa_messages")
       .select("remote_jid, text_body, msg_type, raw, created_at")
       .eq("user_id", userId)
+      .eq("session_id", sess.session_id)
       .in("remote_jid", remoteJids)
       .not("raw", "is", null)
       .order("created_at", { ascending: false })
@@ -104,10 +113,18 @@ export const getConversationMessages = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }): Promise<ChatMessageRow[]> => {
     const { supabase, userId } = context;
+    const { data: sess } = await supabase
+      .from("wa_sessions")
+      .select("session_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!sess?.session_id) return [];
+
     const { data: rows, error } = await supabase
       .from("wa_messages")
       .select("id, remote_jid, direction, status, text_body, msg_type, media_url, created_at, raw")
       .eq("user_id", userId)
+      .eq("session_id", sess.session_id)
       .eq("remote_jid", data.remoteJid)
       .order("created_at", { ascending: true })
       .limit(1000);
