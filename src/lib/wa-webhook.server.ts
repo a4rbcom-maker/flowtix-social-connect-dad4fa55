@@ -251,6 +251,21 @@ function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null
   if (!text && type === "unknown" && !mediaUrl) return null;
   if (!remoteJid && !fromPhone) return null;
 
+  // Skip orphan outbound echoes from the bridge: when fromMe is true but the
+  // payload doesn't include a real recipient (only the user's own LID in
+  // `from`/`sender`), we can't attribute the message to its conversation.
+  // Storing it would create a fake conversation under the LID and hide the
+  // user's reply from the real chat. Outbound messages sent through our UI
+  // are stored directly by sendChatMessage with the correct remote_jid.
+  if (!isGroup && fromMe) {
+    const hasRealRecipient =
+      Boolean(pickStr(entry, "remoteJid", "remote_jid", "jid", "chatId", "to", "recipient")) ||
+      Boolean(pickStr(key, "remoteJid")) ||
+      Boolean(realPhone);
+    if (!hasRealRecipient) return null;
+  }
+
+
   return {
     remoteJid: normalizeRemoteJid(remoteJid, isGroup ? digits(groupJid) : fromPhone, isGroup),
     fromPhone,
