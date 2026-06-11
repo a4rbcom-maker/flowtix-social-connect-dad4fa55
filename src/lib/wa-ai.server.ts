@@ -98,7 +98,8 @@ export async function handleAiAutoReply(opts: {
     // Welcome message for first-ever inbound
     if (isFirstMessage && settings.ai_welcome_message?.trim()) {
       try {
-        await waBridge.sendText(sessionId, phone, settings.ai_welcome_message);
+        const welcomeRes = await waBridge.sendText(sessionId, phone, settings.ai_welcome_message);
+        const providerMessageId = typeof welcomeRes?.id === "string" ? welcomeRes.id : null;
         await supabaseAdmin.from("wa_messages").insert({
           user_id: userId,
           session_id: sessionId,
@@ -107,6 +108,18 @@ export async function handleAiAutoReply(opts: {
           to_phone: phone,
           msg_type: "text",
           text_body: settings.ai_welcome_message,
+          status: "sent",
+          provider_message_id: providerMessageId,
+          raw: { ai: true, kind: "welcome", providerMessageId } as never,
+        });
+        await upsertConversationFromMessage({
+          userId,
+          sessionId,
+          remoteJid,
+          contactName: null,
+          contactPhone: fromPhone,
+          text: settings.ai_welcome_message,
+          direction: "out",
         });
       } catch (err) {
         console.error("[wa-ai] welcome send failed:", err);
@@ -167,7 +180,8 @@ export async function handleAiAutoReply(opts: {
 
     if (aiText) {
       try {
-        await waBridge.sendText(sessionId, phone, aiText);
+        const sendRes = await waBridge.sendText(sessionId, phone, aiText);
+        const providerMessageId = typeof sendRes?.id === "string" ? sendRes.id : null;
         await supabaseAdmin.from("wa_messages").insert({
           user_id: userId,
           session_id: sessionId,
@@ -176,7 +190,18 @@ export async function handleAiAutoReply(opts: {
           to_phone: phone,
           msg_type: "text",
           text_body: aiText,
-          raw: { ai: true, tier, model } as never,
+          status: "sent",
+          provider_message_id: providerMessageId,
+          raw: { ai: true, tier, model, providerMessageId } as never,
+        });
+        await upsertConversationFromMessage({
+          userId,
+          sessionId,
+          remoteJid,
+          contactName: null,
+          contactPhone: fromPhone,
+          text: aiText,
+          direction: "out",
         });
       } catch (err) {
         errMsg = err instanceof Error ? err.message : "Bridge send failed";
