@@ -327,14 +327,13 @@ async function updateMessageStatuses(userId: string, payload: Record<string, unk
     const rawStatus = pickStr(entry, "status", "ack", "messageStatus", "deliveryStatus");
     if (!providerMessageId || !rawStatus) continue;
     const status = normalizeMessageStatus(rawStatus, true);
-    const { count, error } = await supabaseAdmin
+    const { error } = await supabaseAdmin
       .from("wa_messages")
       .update({ status })
       .eq("user_id", userId)
-      .eq("provider_message_id", providerMessageId)
-      .select("id", { count: "exact", head: true });
+      .eq("provider_message_id", providerMessageId);
     if (error) console.error("[wa-webhook] status update failed:", error.message);
-    updated += count ?? 0;
+    else updated++;
   }
   return updated;
 }
