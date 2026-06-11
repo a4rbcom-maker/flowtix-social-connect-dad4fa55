@@ -448,10 +448,14 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       msg_type: msgType,
       text_body: text,
       media_url: mediaUrl,
+      status: m.status,
+      provider_message_id: m.providerMessageId,
       raw: {
         ...entry,
         normalizedRemoteJid: m.remoteJid,
         normalizedContactPhone: m.fromPhone,
+        normalizedStatus: m.status,
+        providerMessageId: m.providerMessageId,
         storedMediaUrl: mediaUrl?.startsWith("wa-media:") ? mediaUrl : null,
       } as never,
     });
