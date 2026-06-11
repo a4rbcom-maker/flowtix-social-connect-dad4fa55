@@ -255,6 +255,7 @@ export async function upsertConversationFromMessage(opts: {
     await supabaseAdmin
       .from("wa_conversations")
       .update({
+        session_id: sessionId,
         last_message_text: text ?? null,
         last_message_at: now,
         last_direction: direction,
