@@ -156,7 +156,7 @@ export const sendWaMessage = createServerFn({ method: "POST" })
       text_body: data.text,
       status: "sent",
       provider_message_id: providerMessageId,
-      raw: providerMessageId ? ({ bridgeMessageId: providerMessageId } as never) : undefined,
+      raw: providerMessageId ? ({ bridgeMessageId: providerMessageId } as never) : null,
     });
 
     await upsertConversationFromMessage({
