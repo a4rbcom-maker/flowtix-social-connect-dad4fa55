@@ -659,6 +659,14 @@ function QuickReplyDialog({
             />
           </div>
           <div>
+            <Label>{isAr ? "التصنيف" : "Category"}</Label>
+            <Input
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder={isAr ? "مثال: مبيعات" : "e.g. Sales"}
+            />
+          </div>
+          <div>
             <Label>{isAr ? "النص" : "Body"}</Label>
             <Textarea
               value={body}
