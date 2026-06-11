@@ -152,6 +152,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
           children: [
             { kind: "leaf", icon: Inbox, label: labels.waInbox, to: "/dashboard/whatsapp/inbox" },
             { kind: "leaf", icon: Smartphone, label: labels.waAccounts, to: "/dashboard/whatsapp/accounts" },
+            { kind: "leaf", icon: UsersRound, label: lang === "ar" ? "استخراج الأرقام" : "Extract numbers", to: "/dashboard/whatsapp/contacts" },
             { kind: "leaf", icon: MessageCircle, label: labels.waBot, to: "/dashboard/whatsapp/automation" },
             { kind: "leaf", icon: Sparkles, label: labels.waAgent, to: "/dashboard/whatsapp/bot" },
             { kind: "leaf", icon: Settings, label: labels.waSettings, to: "/dashboard/whatsapp/settings" },
