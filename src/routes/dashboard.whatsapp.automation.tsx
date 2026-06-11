@@ -535,7 +535,12 @@ function QuickRepliesPanel({ isAr }: { isAr: boolean }) {
             {(data ?? []).map((q) => (
               <li key={q.id} className="flex items-start gap-4 p-4 transition-colors hover:bg-muted/30 sm:p-5">
                 <div className="flex-1 min-w-0">
-                  <p className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">/{q.shortcut}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">/{q.shortcut}</p>
+                    <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
+                      {q.category || (isAr ? "عام" : "General")}
+                    </span>
+                  </div>
                   <p className="mt-3 whitespace-pre-wrap rounded-xl bg-muted/40 px-3 py-2 text-sm leading-6 text-foreground">{q.body}</p>
                 </div>
                 <div className="flex items-center gap-1 rounded-xl border border-border bg-background p-1 shadow-sm">
