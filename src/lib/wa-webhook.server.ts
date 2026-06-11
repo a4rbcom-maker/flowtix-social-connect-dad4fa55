@@ -459,6 +459,19 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     const mediaUrl = await persistWaMedia({ userId, sessionId, entry, msgType, mediaUrl: rawMediaUrl });
     const text = cleanMessageText(m.text, entry, msgType);
 
+    if (m.providerMessageId) {
+      const { data: existing } = await supabaseAdmin
+        .from("wa_messages")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("provider_message_id", m.providerMessageId)
+        .maybeSingle();
+      if (existing?.id) {
+        await supabaseAdmin.from("wa_messages").update({ status: m.status }).eq("id", existing.id);
+        continue;
+      }
+    }
+
     const { error: insErr } = await supabaseAdmin.from("wa_messages").insert({
       user_id: userId,
       session_id: sessionId,
