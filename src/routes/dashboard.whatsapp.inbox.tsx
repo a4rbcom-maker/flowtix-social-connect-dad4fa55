@@ -299,7 +299,7 @@ function InboxPage() {
     mutationFn: (text: string) => sendFn({ data: { remoteJid: activeJid!, text } }),
     onSuccess: () => {
       setDraft("");
-      qc.invalidateQueries({ queryKey: ["wa-messages", activeJid] });
+      qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
       qc.invalidateQueries({ queryKey: ["wa-conversations"] });
     },
     onError: (err: Error) => toast.error(err.message),
@@ -1242,10 +1242,18 @@ function EmptyChat({
 // ──────────────────────────────────────────────────────────────────────────
 
 async function fetchInboxConversations(userId: string): Promise<ConversationRow[]> {
+  const { data: sess } = await supabase
+    .from("wa_sessions")
+    .select("session_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!sess?.session_id) return [];
+
   const { data, error } = await supabase
     .from("wa_conversations")
     .select("id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
     .eq("user_id", userId)
+    .eq("session_id", sess.session_id)
     .eq("is_archived", false)
     .order("last_message_at", { ascending: false })
     .limit(200);
@@ -1258,6 +1266,7 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
     .from("wa_messages")
     .select("remote_jid, text_body, msg_type, raw, created_at")
     .eq("user_id", userId)
+    .eq("session_id", sess.session_id)
     .in("remote_jid", rows.map((row) => row.remote_jid))
     .not("raw", "is", null)
     .order("created_at", { ascending: false })
@@ -1288,10 +1297,18 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
 }
 
 async function fetchInboxMessages(userId: string, remoteJid: string): Promise<ChatMessageRow[]> {
+  const { data: sess } = await supabase
+    .from("wa_sessions")
+    .select("session_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!sess?.session_id) return [];
+
   const { data, error } = await supabase
     .from("wa_messages")
     .select("id, remote_jid, direction, status, text_body, msg_type, media_url, created_at, raw")
     .eq("user_id", userId)
+    .eq("session_id", sess.session_id)
     .eq("remote_jid", remoteJid)
     .order("created_at", { ascending: true })
     .limit(1000);
