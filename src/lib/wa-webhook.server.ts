@@ -236,6 +236,10 @@ function extractTextFromMessage(m: Record<string, unknown>): { text: string | nu
 
 function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null {
   const key = asObj(entry.key);
+  const fromMe =
+    entry.fromMe === true ||
+    entry.fromme === true ||
+    (key.fromMe as boolean | undefined) === true;
   const isGroup =
     isTruthy(entry.isGroup) ||
     Boolean(pickStr(entry, "groupJid", "groupId")) ||
@@ -243,12 +247,16 @@ function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null
   const realPhone =
     digits(pickStr(entry, "senderPn", "participantPn", "phoneNumber", "phone")) ||
     digits(pickStr(asObj(entry.participant), "id", "phone", "jid"));
-  const groupJid = pickStr(entry, "groupJid", "groupId") || (pickStr(key, "remoteJid")?.endsWith("@g.us") ? pickStr(key, "remoteJid") : null);
-  const remoteJid =
-    (isGroup ? groupJid : realPhone) ||
-    pickStr(entry, "remoteJid", "remote_jid", "jid", "chatId", "from", "sender") ||
-    pickStr(key, "remoteJid") ||
-    null;
+  const keyRemote = pickStr(key, "remoteJid");
+  const groupJid = pickStr(entry, "groupJid", "groupId") || (keyRemote?.endsWith("@g.us") ? keyRemote : null);
+  const directChatJid = pickStr(entry, "remoteJid", "remote_jid", "jid", "chatId");
+  const recipientJid = pickStr(entry, "to", "recipient", "recipientJid", "targetJid", "toJid");
+  const senderJid = pickStr(entry, "from", "sender", "senderJid", "participantJid");
+  const remoteJid = isGroup
+    ? groupJid
+    : fromMe
+      ? (recipientJid || directChatJid || keyRemote)
+      : (realPhone || directChatJid || keyRemote || senderJid);
 
   const fromPhone =
     realPhone ||
@@ -258,11 +266,6 @@ function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null
     digits(remoteJid);
 
   const { text, type, mediaUrl } = extractTextFromMessage(entry);
-
-  const fromMe =
-    entry.fromMe === true ||
-    entry.fromme === true ||
-    (key.fromMe as boolean | undefined) === true;
 
   // Skip status broadcast and pure system events
   const jid = remoteJid || fromPhone || "";
@@ -277,10 +280,7 @@ function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null
   // user's reply from the real chat. Outbound messages sent through our UI
   // are stored directly by sendChatMessage with the correct remote_jid.
   if (!isGroup && fromMe) {
-    const hasRealRecipient =
-      Boolean(pickStr(entry, "remoteJid", "remote_jid", "jid", "chatId", "to", "recipient")) ||
-      Boolean(pickStr(key, "remoteJid")) ||
-      Boolean(realPhone);
+    const hasRealRecipient = Boolean(recipientJid || directChatJid || keyRemote);
     if (!hasRealRecipient) return null;
   }
 
@@ -296,6 +296,8 @@ function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null
       : pickStr(entry, "pushName", "contactName", "senderName", "name", "notifyName", "notify"),
     fromMe,
     isGroup,
+    providerMessageId: messageIdFrom(entry),
+    status: normalizeMessageStatus(pickStr(entry, "status", "ack", "messageStatus"), fromMe),
   };
 }
 
