@@ -441,6 +441,8 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     return new Response("ok");
   }
 
+  const statusUpdates = await updateMessageStatuses(userId, payload);
+
   // ── inbound/outbound messages ──
   const entries = collectMessageEntries(payload);
   if (entries.length === 0) {
@@ -520,7 +522,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     }
   }
 
-  return new Response(JSON.stringify({ ok: true, saved }), {
+  return new Response(JSON.stringify({ ok: true, saved, statusUpdates }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
