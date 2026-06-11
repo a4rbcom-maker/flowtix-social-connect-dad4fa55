@@ -638,7 +638,7 @@ function InboxPage() {
                     isAr={isAr}
                     replies={quickRepliesQuery.data ?? []}
                     loading={quickRepliesQuery.isLoading || quickRepliesQuery.isFetching}
-                    onInsert={(body) => {
+                    onInsert={(body: string) => {
                       setDraft((d) => (d ? `${d} ${body}` : body));
                       textareaRef.current?.focus();
                     }}
