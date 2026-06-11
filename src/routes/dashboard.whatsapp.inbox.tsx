@@ -611,13 +611,20 @@ function InboxPage() {
                 <PopoverTrigger asChild>
                   <button
                     type="button"
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-primary"
+                    className="relative flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-2.5 text-xs font-semibold text-primary transition hover:bg-primary/10"
                     aria-label={isAr ? "ردود جاهزة" : "Quick replies"}
                     title={isAr ? "ردود جاهزة" : "Quick replies"}
                   >
-                    <Zap className="h-5 w-5" />
+                    <Zap className="h-4 w-4" />
+                    <span className="hidden sm:inline">{isAr ? "ردود جاهزة" : "Quick replies"}</span>
+                    {(quickRepliesQuery.data?.length ?? 0) > 0 && (
+                      <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                        {quickRepliesQuery.data?.length}
+                      </span>
+                    )}
                   </button>
                 </PopoverTrigger>
+
                 <PopoverContent align="start" className="w-80 p-0" sideOffset={8}>
                   <div className="flex items-center justify-between border-b px-3 py-2">
                     <p className="text-sm font-semibold">{isAr ? "ردود جاهزة" : "Quick replies"}</p>
