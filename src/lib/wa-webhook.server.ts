@@ -319,6 +319,26 @@ function collectMessageEntries(payload: Record<string, unknown>): Record<string,
   return out;
 }
 
+async function updateMessageStatuses(userId: string, payload: Record<string, unknown>): Promise<number> {
+  const entries = collectMessageEntries(payload);
+  let updated = 0;
+  for (const entry of entries) {
+    const providerMessageId = messageIdFrom(entry);
+    const rawStatus = pickStr(entry, "status", "ack", "messageStatus", "deliveryStatus");
+    if (!providerMessageId || !rawStatus) continue;
+    const status = normalizeMessageStatus(rawStatus, true);
+    const { count, error } = await supabaseAdmin
+      .from("wa_messages")
+      .update({ status })
+      .eq("user_id", userId)
+      .eq("provider_message_id", providerMessageId)
+      .select("id", { count: "exact", head: true });
+    if (error) console.error("[wa-webhook] status update failed:", error.message);
+    updated += count ?? 0;
+  }
+  return updated;
+}
+
 export async function handleWaWebhook(request: Request): Promise<Response> {
   const secret = process.env.WA_BRIDGE_WEBHOOK_SECRET;
   const raw = await request.text();
