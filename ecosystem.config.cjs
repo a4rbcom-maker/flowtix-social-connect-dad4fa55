@@ -21,6 +21,13 @@ module.exports = {
       interpreter: "node",
       instances: 2,
       exec_mode: "cluster",
+      // PM2 APM/tracing wraps Node's HTTP parser through @pm2/io. It can
+      // throw ERR_INVALID_URL for malformed public requests such as `GET //`,
+      // which made deploy restarts fail even when the bundle itself was valid.
+      pmx: false,
+      automation: false,
+      trace: false,
+      disable_trace: true,
       autorestart: true,
       max_restarts: 10,
       min_uptime: "10s",
