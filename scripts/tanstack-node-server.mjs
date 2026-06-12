@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { createReadStream, existsSync, statSync, readFileSync } from "node:fs";
 import { extname, normalize, resolve } from "node:path";
 import { Readable } from "node:stream";
+import { pathToFileURL } from "node:url";
 import { createAlertManager } from "./server-alerts.mjs";
 
 const port = Number(process.env.PORT || process.env.APP_PORT || 3100);
@@ -50,10 +51,21 @@ process.on("uncaughtException", (error) => {
 
 async function getSsrHandler() {
   if (!ssrHandlerPromise) {
-    const entry = existsSync(resolve(root, "dist/server/index.js"))
-      ? "../dist/server/index.js"
-      : "../dist/server/index.mjs";
-    ssrHandlerPromise = import(entry).then((module) => module.default ?? module);
+    const candidates = [
+      process.env.SERVER_ENTRY,
+      "dist/server/server.js",
+      "dist/server/server.mjs",
+      "dist/server/index.js",
+      "dist/server/index.mjs",
+    ].filter(Boolean);
+    const entry = candidates.find((candidate) => existsSync(resolve(root, candidate)));
+    if (!entry) {
+      throw new Error(
+        `SSR entry missing. Checked: ${candidates.join(", ")}`,
+      );
+    }
+    ssrHandlerPromise = import(pathToFileURL(resolve(root, entry)).toString())
+      .then((module) => module.default ?? module);
   }
   return ssrHandlerPromise;
 }

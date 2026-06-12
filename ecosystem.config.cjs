@@ -30,6 +30,7 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: process.env.APP_PORT || "3100",
+        SERVER_ENTRY: process.env.SERVER_ENTRY || "",
         DEPLOY_SHA: process.env.DEPLOY_SHA || "",
         DEPLOY_RUN_ID: process.env.DEPLOY_RUN_ID || "",
         DEPLOY_REPOSITORY: process.env.DEPLOY_REPOSITORY || "",

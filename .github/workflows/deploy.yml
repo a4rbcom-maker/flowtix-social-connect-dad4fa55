@@ -69,10 +69,15 @@ jobs:
         run: |
           set -eu
           SERVER_ENTRY=""
-          for c in dist/server/index.js dist/server/index.mjs; do
+          for c in dist/server/server.js dist/server/server.mjs dist/server/index.js dist/server/index.mjs; do
             [ -f "$c" ] && { SERVER_ENTRY="$c"; break; }
           done
-          [ -n "$SERVER_ENTRY" ] || { echo "::error::SSR entry missing (dist/server/index.{js,mjs})"; exit 1; }
+          if [ -z "$SERVER_ENTRY" ]; then
+            echo "::error::SSR entry missing. Expected one of: dist/server/server.js, dist/server/server.mjs, dist/server/index.js, dist/server/index.mjs"
+            echo "Build output snapshot:"
+            find dist -maxdepth 3 -type f | LC_ALL=C sort | sed -n '1,120p' || true
+            exit 1
+          fi
 
           DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
