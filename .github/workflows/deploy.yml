@@ -843,13 +843,19 @@ jobs:
       - name: Smoke test — dashboard routes must not 5xx
         env:
           PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
+          PUBLIC_URL_VAR: ${{ vars.PUBLIC_URL }}
         run: |
           set -euo pipefail
           # Dashboard routes are user-scoped (ssr: false) — they should return
           # an HTML shell (200) or a redirect to /login (3xx). They must NEVER
           # return 5xx. This catches origin SSR regressions like the previous
           # 502 on /dashboard/facebook/bot before users hit them.
-          BASE_URL="${PUBLIC_URL_SECRET:-https://www.flowtixtools.com}"
+          PUBLIC_URL_CONFIG="${PUBLIC_URL_SECRET:-${PUBLIC_URL_VAR:-}}"
+          if [ -z "${PUBLIC_URL_CONFIG:-}" ]; then
+            echo "::error::PUBLIC_URL is required as a repository secret or variable for dashboard smoke tests."
+            exit 1
+          fi
+          BASE_URL="$PUBLIC_URL_CONFIG"
           BASE_URL="${BASE_URL%/}"
           ROUTES=(
             "/dashboard"
@@ -904,6 +910,7 @@ jobs:
       - name: Final SHA equality gate (no false success)
         env:
           PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
+          PUBLIC_URL_VAR: ${{ vars.PUBLIC_URL }}
         run: |
           set -euo pipefail
           # Strict gate: the live site's deploy-version.json MUST contain the
@@ -911,10 +918,12 @@ jobs:
           # This blocks any "fake success" where earlier steps passed but the
           # public site is actually serving an older commit (CDN cache, proxy
           # misroute, stale PM2 process, partial rsync, etc.).
-          if [ -n "${PUBLIC_URL_SECRET:-}" ]; then
-            PUBLIC_URLS="${PUBLIC_URL_SECRET%/}"
+          PUBLIC_URL_CONFIG="${PUBLIC_URL_SECRET:-${PUBLIC_URL_VAR:-}}"
+          if [ -n "${PUBLIC_URL_CONFIG:-}" ]; then
+            PUBLIC_URLS="${PUBLIC_URL_CONFIG%/}"
           else
-            PUBLIC_URLS="https://www.flowtixtools.com https://flowtixtools.com"
+            echo "::error::PUBLIC_URL is required as a repository secret or variable for the final SHA gate."
+            exit 1
           fi
 
           EXPECTED_SHA="${GITHUB_SHA}"
