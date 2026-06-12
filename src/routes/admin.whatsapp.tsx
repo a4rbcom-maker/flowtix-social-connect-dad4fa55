@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { motion } from "framer-motion";
@@ -12,19 +11,14 @@ import {
   Activity,
   CheckCircle2,
   XCircle,
-  Loader2,
-  Search,
   ArrowDownLeft,
   ArrowUpRight,
-  AlertTriangle,
   QrCode,
-  Crown,
   Sparkles,
-  Hash,
   Wifi,
   WifiOff,
   RefreshCw,
-  Link2,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AdminLayout } from "@/components/admin/AdminLayout";
