@@ -5,10 +5,11 @@ on:
     paths:
       - '.github/workflows/**'
       - 'scripts/ci/check-expression-length.py'
-  pull_request:
-    paths:
-      - '.github/workflows/**'
-      - 'scripts/ci/check-expression-length.py'
+
+concurrency:
+  group: lint-workflows-${{ github.ref }}
+  cancel-in-progress: true
+
 
 jobs:
   expression-length:
