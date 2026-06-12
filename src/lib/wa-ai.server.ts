@@ -101,6 +101,7 @@ export async function handleAiAutoReply(opts: {
       try {
         const welcomeRes = await waBridge.sendText(sessionId, phone, settings.ai_welcome_message);
         const providerMessageId = typeof welcomeRes?.id === "string" ? welcomeRes.id : null;
+        const welcomeAt = new Date().toISOString();
         await supabaseAdmin.from("wa_messages").insert({
           user_id: userId,
           session_id: sessionId,
@@ -111,6 +112,7 @@ export async function handleAiAutoReply(opts: {
           text_body: settings.ai_welcome_message,
           status: "sent",
           provider_message_id: providerMessageId,
+          wa_timestamp: welcomeAt,
           raw: { ai: true, kind: "welcome", providerMessageId } as never,
         });
         await upsertConversationFromMessage({
@@ -121,11 +123,13 @@ export async function handleAiAutoReply(opts: {
           contactPhone: fromPhone,
           text: settings.ai_welcome_message,
           direction: "out",
+          messageAt: welcomeAt,
         });
       } catch (err) {
         console.error("[wa-ai] welcome send failed:", err);
       }
     }
+
 
     const systemPrompt =
       settings.ai_system_prompt?.trim() ||
