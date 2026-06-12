@@ -694,8 +694,9 @@ if [ "$HEALTH_OK" -ne 1 ]; then
   exit 1
 fi
 
-MALFORMED_CODE=$(curl --path-as-is -fsS -o /tmp/malformed-path.out -w '%{http_code}' --max-time 5 \
+MALFORMED_CODE=$(curl --path-as-is -sS -o /tmp/malformed-path.out -w '%{http_code}' --max-time 5 \
   "http://127.0.0.1:${APP_PORT}//" || echo "000")
+MALFORMED_CODE="${MALFORMED_CODE: -3}"
 case "$MALFORMED_CODE" in
   2??|3??|4??)
     echo "✓ Malformed-path guard passed — GET // returned HTTP ${MALFORMED_CODE}, not a server crash." ;;
