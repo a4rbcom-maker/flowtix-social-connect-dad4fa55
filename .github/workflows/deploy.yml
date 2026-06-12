@@ -124,14 +124,14 @@ jobs:
           # Simple manifest + checksums for on-server integrity check.
           (
             cd deploy
-            TOTAL_FILES=$(find . -type f ! -name 'manifest.json' | wc -l | tr -d ' ')
+            TOTAL_FILES=$(find . -type f ! -name 'manifest.json' ! -name '*.log' | wc -l | tr -d ' ')
             {
               printf '{\n  "sha":"%s",\n  "total_files":%s,\n  "files":[\n' "$GITHUB_SHA" "$TOTAL_FILES"
-              find . -type f ! -name 'manifest.json' -printf '%P\n' | LC_ALL=C sort | \
+              find . -type f ! -name 'manifest.json' ! -name '*.log' -printf '%P\n' | LC_ALL=C sort | \
                 awk 'BEGIN{f=1}{if(!f)printf",\n";f=0;printf"    {\"path\":\"%s\"}",$0}'
               printf '\n  ]\n}\n'
             } > manifest.json
-            find . -type f ! -name 'manifest.json' ! -name 'SHA256SUMS' -print0 \
+            find . -type f ! -name 'manifest.json' ! -name 'SHA256SUMS' ! -name '*.log' -print0 \
               | LC_ALL=C sort -z | xargs -0 sha256sum > SHA256SUMS
           )
 
