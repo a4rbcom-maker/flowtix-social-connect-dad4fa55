@@ -396,7 +396,7 @@ export const saveAiSettings = createServerFn({ method: "POST" })
     } else {
       const { error } = await supabase
         .from("whatsapp_settings")
-        .insert({ ...data, user_id: userId, connection_type: "bridge" });
+        .insert({ ...data, user_id: userId, connection_type: "qr_code" });
       if (error) throw new Error(error.message);
     }
     return { ok: true };
