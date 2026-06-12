@@ -21,7 +21,20 @@ import {
   Ban,
   CheckCircle2,
   Pencil,
+  ArrowRight,
+  ArrowLeft,
+  Sparkles,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -343,6 +356,7 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
   const [editingName, setEditingName] = useState<string | null>(null);
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
+  const [pendingPlan, setPendingPlan] = useState<string | null>(null);
 
   return (
     <>
@@ -467,12 +481,7 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
                     key={p}
                     onClick={() => {
                       if (d.profile?.plan === p) return;
-                      const name = d.profile?.full_name || t("هذا المستخدم", "this user");
-                      const msg = t(
-                        `هل أنت متأكد من تغيير باقة ${name} إلى ${p}؟`,
-                        `Are you sure you want to change ${name}'s plan to ${p}?`
-                      );
-                      if (window.confirm(msg)) planMut.mutate(p);
+                      setPendingPlan(p);
                     }}
                     disabled={planMut.isPending}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-all ${
@@ -487,6 +496,22 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
                 ))}
               </div>
             </div>
+
+            {/* Plan change confirmation */}
+            <PlanChangeDialog
+              open={!!pendingPlan}
+              currentPlan={d.profile?.plan ?? "free"}
+              nextPlan={pendingPlan ?? ""}
+              userName={d.profile?.full_name || (d.auth.email ?? t("هذا المستخدم", "this user"))}
+              isPending={planMut.isPending}
+              onCancel={() => setPendingPlan(null)}
+              onConfirm={() => {
+                if (!pendingPlan) return;
+                planMut.mutate(pendingPlan, { onSettled: () => setPendingPlan(null) });
+              }}
+              t={t}
+              dir={dir}
+            />
 
             {/* Role + Ban controls */}
             <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
@@ -634,6 +659,132 @@ function StatBox({ label, value }: { label: string; value: number }) {
     <div className="rounded-xl bg-muted/40 border border-border p-3 text-center">
       <div className="text-lg font-bold">{value}</div>
       <div className="text-[10px] text-muted-foreground truncate">{label}</div>
+    </div>
+  );
+}
+
+const PLAN_RANK: Record<string, number> = { free: 0, starter: 1, pro: 2, business: 3, enterprise: 4 };
+
+function PlanChangeDialog({
+  open,
+  currentPlan,
+  nextPlan,
+  userName,
+  isPending,
+  onCancel,
+  onConfirm,
+  t,
+  dir,
+}: {
+  open: boolean;
+  currentPlan: string;
+  nextPlan: string;
+  userName: string;
+  isPending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  t: (ar: string, en: string) => string;
+  dir: "rtl" | "ltr";
+}) {
+  const from = PLAN_RANK[currentPlan] ?? 0;
+  const to = PLAN_RANK[nextPlan] ?? 0;
+  const kind: "upgrade" | "downgrade" | "switch" =
+    nextPlan && currentPlan && to > from ? "upgrade" : to < from ? "downgrade" : "switch";
+
+  const Arrow = dir === "rtl" ? ArrowLeft : ArrowRight;
+
+  const accent =
+    kind === "upgrade"
+      ? { ring: "from-emerald-500/30 to-emerald-500/0", chip: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20", icon: "text-emerald-500", btn: "bg-emerald-600 hover:bg-emerald-600/90 text-white", label: t("ترقية الباقة", "Plan Upgrade") }
+      : kind === "downgrade"
+      ? { ring: "from-amber-500/30 to-amber-500/0", chip: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20", icon: "text-amber-500", btn: "bg-amber-600 hover:bg-amber-600/90 text-white", label: t("تخفيض الباقة", "Plan Downgrade") }
+      : { ring: "from-primary/30 to-primary/0", chip: "bg-primary/10 text-primary border-primary/20", icon: "text-primary", btn: "bg-primary hover:bg-primary/90 text-primary-foreground", label: t("تغيير الباقة", "Plan Change") };
+
+  return (
+    <AlertDialog open={open} onOpenChange={(o) => { if (!o && !isPending) onCancel(); }}>
+      <AlertDialogContent dir={dir} className="max-w-md overflow-hidden p-0 gap-0 border-border">
+        <div className={`relative h-24 bg-gradient-to-br ${accent.ring} flex items-center justify-center`}>
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,hsl(var(--primary)/0.06),transparent_60%)]" />
+          <div className={`relative h-14 w-14 rounded-2xl bg-card border border-border shadow-lg flex items-center justify-center ${accent.icon}`}>
+            <Sparkles className="h-7 w-7" />
+          </div>
+        </div>
+
+        <div className="px-6 pt-4 pb-2">
+          <AlertDialogHeader>
+            <div className={`mb-2 inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${accent.chip}`}>
+              <Sparkles className="h-3 w-3" />
+              {accent.label}
+            </div>
+            <AlertDialogTitle className="text-lg leading-tight">
+              {t("تأكيد تغيير الباقة", "Confirm plan change")}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="text-sm text-muted-foreground leading-relaxed">
+                {dir === "rtl" ? (
+                  <>سيتم تغيير باقة <span className="font-semibold text-foreground">{userName}</span> فوراً، وستُطبَّق حدود الباقة الجديدة على هذا الحساب.</>
+                ) : (
+                  <>The plan for <span className="font-semibold text-foreground">{userName}</span> will change immediately, and the new plan limits will apply to this account.</>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+        </div>
+
+        <div className="mx-6 mb-4 rounded-xl border border-border bg-muted/40 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <PlanPill label={t("الحالية", "Current")} plan={currentPlan} muted />
+            <Arrow className={`h-4 w-4 shrink-0 ${accent.icon}`} />
+            <PlanPill label={t("الجديدة", "New")} plan={nextPlan} accent={kind} />
+          </div>
+        </div>
+
+        <AlertDialogFooter className="px-6 pb-5 pt-1 gap-2 sm:gap-2">
+          <AlertDialogCancel disabled={isPending} className="mt-0">
+            {t("إلغاء", "Cancel")}
+          </AlertDialogCancel>
+          <AlertDialogAction
+            disabled={isPending}
+            onClick={(e) => { e.preventDefault(); onConfirm(); }}
+            className={`inline-flex items-center justify-center gap-2 ${accent.btn}`}
+          >
+            {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {kind === "upgrade"
+              ? t("تأكيد الترقية", "Confirm upgrade")
+              : kind === "downgrade"
+              ? t("تأكيد التخفيض", "Confirm downgrade")
+              : t("تأكيد التغيير", "Confirm change")}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function PlanPill({
+  label,
+  plan,
+  muted,
+  accent,
+}: {
+  label: string;
+  plan: string;
+  muted?: boolean;
+  accent?: "upgrade" | "downgrade" | "switch";
+}) {
+  const tone = muted
+    ? "bg-background border-border text-muted-foreground"
+    : accent === "upgrade"
+    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+    : accent === "downgrade"
+    ? "bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-300"
+    : "bg-primary/10 border-primary/30 text-primary";
+  return (
+    <div className="flex-1 min-w-0 text-center">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
+      <div className={`inline-flex max-w-full items-center justify-center rounded-lg border px-3 py-1.5 text-sm font-bold capitalize truncate ${tone}`}>
+        {plan || "—"}
+      </div>
     </div>
   );
 }
