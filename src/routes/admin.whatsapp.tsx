@@ -229,64 +229,6 @@ function HourlyChart({ data, t }: { data: Array<{ hour: number; in: number; out:
   );
 }
 
-type ConvRow = {
-  id: string;
-  contact_name: string | null;
-  contact_phone: string | null;
-  last_message_text: string | null;
-  last_message_at: string;
-  unread_count: number;
-  ai_enabled: boolean;
-  user: { full_name: string | null; avatar_url: string | null; plan: string | null } | null;
-};
-
-function RecentConversations({ rows, t }: { rows: ConvRow[]; t: (ar: string, en: string) => string }) {
-  return (
-    <div className="rounded-2xl border border-border bg-card overflow-hidden">
-      <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-        <h2 className="font-bold text-base flex items-center gap-2">
-          <MessageCircle className="h-4 w-4 text-primary" />
-          {t("أحدث المحادثات", "Recent conversations")}
-        </h2>
-        <span className="text-xs text-muted-foreground">{rows.length}</span>
-      </div>
-      <div className="divide-y divide-border max-h-[420px] overflow-y-auto">
-        {rows.length === 0 ? (
-          <div className="py-10 text-center text-sm text-muted-foreground">{t("لا توجد محادثات", "No conversations yet")}</div>
-        ) : (
-          rows.map((c) => (
-            <div key={c.id} className="px-5 py-3 hover:bg-muted/30 transition-colors">
-              <div className="flex items-center justify-between gap-3 mb-1">
-                <div className="min-w-0 flex items-center gap-2 flex-1">
-                  <Avatar name={c.contact_name ?? c.contact_phone} url={null} />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium text-sm truncate flex items-center gap-1.5">
-                      {c.contact_name || c.contact_phone || t("غير معروف", "Unknown")}
-                      {c.ai_enabled && <Bot className="h-3 w-3 text-violet-500" />}
-                    </div>
-                    <div className="text-[11px] text-muted-foreground truncate">
-                      {c.user?.full_name ?? t("غير معروف", "Unknown")}
-                    </div>
-                  </div>
-                </div>
-                {c.unread_count > 0 && (
-                  <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold">
-                    {c.unread_count}
-                  </span>
-                )}
-              </div>
-              {c.last_message_text && (
-                <div className="text-xs text-muted-foreground line-clamp-1 ps-11">
-                  {c.last_message_text}
-                </div>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
 
 
 type MsgRow = {
