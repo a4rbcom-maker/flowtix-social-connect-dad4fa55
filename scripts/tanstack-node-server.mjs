@@ -12,6 +12,38 @@ const versionFilePath = resolve(root, "deploy-version.json");
 const alerts = createAlertManager({ root });
 let ssrHandlerPromise;
 
+function firstHeaderValue(value) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return String(raw || "").split(",")[0].trim();
+}
+
+function requestTarget(req) {
+  const raw = typeof req.url === "string" && req.url ? req.url : "/";
+  if (raw === "*") return "/";
+  let target = raw;
+  if (/^https?:\/\//i.test(target)) {
+    try {
+      const parsed = new URL(target);
+      target = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    } catch {
+      return "/";
+    }
+  }
+  if (!target.startsWith("/")) target = `/${target}`;
+  return target.replace(/^\/{2,}/, "/") || "/";
+}
+
+function requestOrigin(req) {
+  const proto = firstHeaderValue(req.headers["x-forwarded-proto"]) || "http";
+  const safeProto = proto === "https" ? "https" : "http";
+  const host = firstHeaderValue(req.headers["x-forwarded-host"]) || firstHeaderValue(req.headers.host) || `127.0.0.1:${port}`;
+  return `${safeProto}://${host}`;
+}
+
+function absoluteRequestUrl(req) {
+  return `${requestOrigin(req)}${requestTarget(req)}`;
+}
+
 // Source of truth = deploy-version.json on disk. We re-read it each request
 // (it's tiny and only written on deploy) so PM2 doesn't have to be restarted
 // for the version endpoint to reflect the freshly-rsynced bundle. Env vars
@@ -120,9 +152,7 @@ function serveStatic(req, res, pathname) {
 }
 
 function toFetchRequest(req) {
-  const proto = req.headers["x-forwarded-proto"] || "http";
-  const host = req.headers["x-forwarded-host"] || req.headers.host || `127.0.0.1:${port}`;
-  const url = `${proto}://${host}${req.url || "/"}`;
+  const url = absoluteRequestUrl(req);
   const headers = new Headers();
   for (const [key, value] of Object.entries(req.headers)) {
     if (Array.isArray(value)) {
@@ -182,7 +212,7 @@ async function alertOnServerError(fetchResponse, request) {
 
 const server = createServer(async (req, res) => {
   try {
-    const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+    const url = new URL(absoluteRequestUrl(req));
     if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/deploy-version.json") {
       const body = JSON.stringify(readDeployVersion());
       res.statusCode = 200;
@@ -204,7 +234,7 @@ const server = createServer(async (req, res) => {
     console.error(error);
     const pathname = (() => {
       try {
-        return new URL(req.url || "/", `http://${req.headers.host || "localhost"}`).pathname;
+        return new URL(absoluteRequestUrl(req)).pathname;
       } catch {
         return req.url || "/";
       }
