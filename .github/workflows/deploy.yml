@@ -671,6 +671,7 @@ jobs:
       - name: Verify public domain shows this commit
         env:
           PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
+          PUBLIC_URL_VAR: ${{ vars.PUBLIC_URL }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SERVER_IP: ${{ secrets.SERVER_IP }}
@@ -691,12 +692,13 @@ jobs:
             if [ "$n" -le 8 ]; then printf '%slen=%s\n' "$scheme" "$n"; return; fi
             printf '%s%s…%s (len=%s)\n' "$scheme" "${rest:0:3}" "${rest: -4}" "$n"
           }
-          if [ -n "${PUBLIC_URL_SECRET:-}" ]; then
-            PUBLIC_URLS="${PUBLIC_URL_SECRET%/}"
-            echo "→ PUBLIC_URL (from secret, no fallback): $(mask_url "$PUBLIC_URLS")"
+          PUBLIC_URL_CONFIG="${PUBLIC_URL_SECRET:-${PUBLIC_URL_VAR:-}}"
+          if [ -n "${PUBLIC_URL_CONFIG:-}" ]; then
+            PUBLIC_URLS="${PUBLIC_URL_CONFIG%/}"
+            echo "→ PUBLIC_URL (configured, no hard-coded fallback): $(mask_url "$PUBLIC_URLS")"
           else
-            PUBLIC_URLS="https://www.flowtixtools.com https://flowtixtools.com"
-            echo "→ PUBLIC_URL secret unset — using fallbacks: $(for u in $PUBLIC_URLS; do mask_url "$u"; done | tr '\n' ' ')"
+            echo "::error::PUBLIC_URL is required as a repository secret or variable for public-domain verification."
+            exit 1
           fi
 
           # Cache-buster + no-cache header so Cloudflare/edge caches never
@@ -751,6 +753,7 @@ jobs:
       - name: Smoke test — homepage + /api/public/health/
         env:
           PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
+          PUBLIC_URL_VAR: ${{ vars.PUBLIC_URL }}
         run: |
           set -euo pipefail
           mask_url() {
@@ -764,12 +767,13 @@ jobs:
             if [ "$n" -le 8 ]; then printf '%slen=%s\n' "$scheme" "$n"; return; fi
             printf '%s%s…%s (len=%s)\n' "$scheme" "${rest:0:3}" "${rest: -4}" "$n"
           }
-          if [ -n "${PUBLIC_URL_SECRET:-}" ]; then
-            BASE_URL="${PUBLIC_URL_SECRET%/}"
-            echo "→ BASE_URL (from PUBLIC_URL secret, no fallback): $(mask_url "$BASE_URL")"
+          PUBLIC_URL_CONFIG="${PUBLIC_URL_SECRET:-${PUBLIC_URL_VAR:-}}"
+          if [ -n "${PUBLIC_URL_CONFIG:-}" ]; then
+            BASE_URL="${PUBLIC_URL_CONFIG%/}"
+            echo "→ BASE_URL (configured, no hard-coded fallback): $(mask_url "$BASE_URL")"
           else
-            BASE_URL="https://www.flowtixtools.com"
-            echo "→ PUBLIC_URL secret unset — BASE_URL fallback: $(mask_url "$BASE_URL")"
+            echo "::error::PUBLIC_URL is required as a repository secret or variable for smoke tests."
+            exit 1
           fi
 
           echo "=== Smoke test against ${BASE_URL} ==="
