@@ -1,9 +1,12 @@
 name: CI
 
 on:
-  push:
-    branches-ignore:
-      - "lovable-backup-*"
+  # Deploy already builds on push. Keep CI for PRs/manual runs so GitHub
+  # doesn't show the same install/build sequence multiple times per push.
+  pull_request:
+    paths-ignore:
+      - '.github/workflows/**'
+      - 'scripts/ci/check-expression-length.py'
   workflow_dispatch:
 
 # Cancel older CI runs on the same branch when a new commit arrives —
