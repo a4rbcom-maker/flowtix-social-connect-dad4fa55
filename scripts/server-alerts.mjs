@@ -47,7 +47,7 @@ function stableFingerprint(parts) {
 }
 
 export function createAlertManager(options = {}) {
-  const appName = options.appName || process.env.APP_NAME || "flowtixtools-web";
+  const appName = options.appName || process.env.APP_NAME || "tanstack-start-app";
   const root = options.root || process.cwd();
   const webhookUrl = firstConfiguredEnv([
     "FLOWTIX_ALERT_WEBHOOK_URL",
