@@ -540,7 +540,7 @@ command -v pm2 >/dev/null 2>&1 || fail_deploy "pm2-not-installed"
 command -v node >/dev/null 2>&1 || fail_deploy "node-not-installed"
 [ -f scripts/tanstack-node-server.mjs ] || fail_deploy "node-ssr-runner-missing"
 [ -f ecosystem.config.cjs ] || fail_deploy "pm2-ecosystem-missing"
-node - <<'NODE'
+if ! node - <<'NODE'
 const config = require('./ecosystem.config.cjs');
 const app = config?.apps?.[0] || {};
 const failures = [];
@@ -555,6 +555,9 @@ if (failures.length) {
 }
 console.log('✓ PM2 APM/tracing disabled — @pm2/io will not wrap HTTP requests.');
 NODE
+then
+  fail_deploy "pm2-tracing-guard-failed"
+fi
 echo "Node version on server: $(node --version)"
 
 # Helper: check if port is bound. Returns 0 if bound, 1 if free.
