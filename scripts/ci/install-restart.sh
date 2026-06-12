@@ -281,7 +281,7 @@ integrity_rollback() {
     echo "🧪 DRY-RUN — skipping rsync. Would have restored:"
     echo "   source : $src"
     echo "   target : $DEPLOY_PATH"
-    echo "   excludes: .env .user.ini .htaccess var/ .well-known/"
+    echo "   excludes: .env .user.ini .htaccess var/ .well-known/ .deploy/"
     echo "INTEGRITY_ROLLBACK_RESULT=dry_run"
     echo "INTEGRITY_ROLLBACK_KIND=$kind"
     echo "INTEGRITY_ROLLBACK_SRC=$src"
@@ -293,6 +293,7 @@ integrity_rollback() {
     --exclude='.htaccess' \
     --exclude='var/' \
     --exclude='.well-known/' \
+    --exclude='.deploy/' \
     "$src/" "$DEPLOY_PATH/"
   echo "✓ Snapshot restored to disk."
 
@@ -321,6 +322,44 @@ integrity_rollback() {
   echo "INTEGRITY_ROLLBACK_KIND=$kind"
   echo "INTEGRITY_ROLLBACK_SRC=$src"
   return 0
+}
+
+publish_good_snapshot() {
+  if [ -z "${BACKUPS_DIR:-}" ]; then
+    echo "::warning::BACKUPS_DIR unset — cannot mark a trusted rollback snapshot."
+    return 0
+  fi
+
+  mkdir -p "$BACKUPS_DIR"
+  local stamp short snapshot tmp
+  stamp=$(date -u +%Y%m%d%H%M%S)
+  short="${DEPLOY_SHA:-unknown}"
+  short="${short:0:7}"
+  [ -n "$short" ] || short="unknown"
+  snapshot="$BACKUPS_DIR/good-${stamp}-${short}"
+  tmp="${snapshot}.tmp"
+
+  rm -rf "$tmp"
+  mkdir -p "$tmp"
+  rsync -a --delete \
+    --exclude='.env' \
+    --exclude='.user.ini' \
+    --exclude='.htaccess' \
+    --exclude='var/' \
+    --exclude='.well-known/' \
+    --exclude='.deploy/' \
+    "$DEPLOY_PATH/" "$tmp/"
+
+  if is_valid_ssr_snapshot "$tmp"; then
+    mv "$tmp" "$snapshot"
+    printf '%s' "$snapshot" > "$BACKUPS_DIR/LAST_GOOD"
+    ls -1dt "$BACKUPS_DIR"/good-* 2>/dev/null | tail -n +6 | xargs -r rm -rf
+    echo "✓ Trusted SSR snapshot recorded: $snapshot"
+  else
+    echo "::warning::Healthy deploy is live, but trusted snapshot creation failed."
+    diagnose_snapshot "$tmp" "new-good-snapshot"
+    rm -rf "$tmp"
+  fi
 }
 
 # Dry-run hook: force integrity_rollback to run without breaking the
