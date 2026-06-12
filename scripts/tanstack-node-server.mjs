@@ -50,7 +50,10 @@ process.on("uncaughtException", (error) => {
 
 async function getSsrHandler() {
   if (!ssrHandlerPromise) {
-    ssrHandlerPromise = import("../dist/server/index.js").then((module) => module.default ?? module);
+    const entry = existsSync(resolve(root, "dist/server/index.js"))
+      ? "../dist/server/index.js"
+      : "../dist/server/index.mjs";
+    ssrHandlerPromise = import(entry).then((module) => module.default ?? module);
   }
   return ssrHandlerPromise;
 }
