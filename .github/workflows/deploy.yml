@@ -17,9 +17,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APP_NAME: ${{ vars.APP_NAME || github.event.repository.name }}
-  APP_PORT: ${{ vars.APP_PORT || '3100' }}
-  LEGACY_PM2_APPS: ${{ vars.LEGACY_PM2_APPS || '' }}
+  APP_NAME: ${{ vars.APP_NAME || 'flowtix' }}
+  APP_PORT: ${{ vars.APP_PORT || '3001' }}
+  LEGACY_PM2_APPS: ${{ vars.LEGACY_PM2_APPS || 'flowtixtools-web flowtix-social-connect' }}
 
 jobs:
   deploy:
