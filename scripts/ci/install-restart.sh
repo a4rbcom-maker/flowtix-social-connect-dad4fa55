@@ -406,7 +406,7 @@ if [ "${INTEGRITY_ROLLBACK_DRY_RUN:-0}" = "1" ]; then
   echo "🧪 INTEGRITY_ROLLBACK_DRY_RUN=1 — forcing integrity_rollback path"
   integrity_rollback "dry-run-forced" || true
   echo "🧪 Dry-run finished. Exiting install step before PM2 is touched."
-  exit 1
+  fail_deploy "integrity-rollback-dry-run-forced"
 fi
 
 echo "=== Verifying bundle against manifest ==="
