@@ -975,17 +975,21 @@ jobs:
             "${DEPLOY_USER}@${SERVER_HOST}" \
             "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' bash -s" <<'EOSSH'
           set -euo pipefail
+          has_ssr_entry() {
+            local candidate="$1"
+            [ -f "$candidate/dist/server/index.js" ] || [ -f "$candidate/dist/server/index.mjs" ]
+          }
           is_valid_ssr_snapshot() {
             local candidate="$1"
             [ -d "$candidate" ] \
-              && [ -f "$candidate/dist/server/index.js" ] \
+              && has_ssr_entry "$candidate" \
               && [ -f "$candidate/scripts/tanstack-node-server.mjs" ] \
               && [ -f "$candidate/ecosystem.config.cjs" ]
           }
           is_runnable_prev_snapshot() {
             local candidate="$1"
             [ -d "$candidate" ] \
-              && [ -f "$candidate/dist/server/index.js" ] \
+              && has_ssr_entry "$candidate" \
               && [ -f "$candidate/ecosystem.config.cjs" ] \
               && [ -d "$candidate/node_modules" ]
           }
@@ -1031,8 +1035,11 @@ jobs:
             "$SRC/" "$DEPLOY_PATH/"
 
           cd "$DEPLOY_PATH"
-          ENTRY="dist/server/index.js"
-          [ -f "$ENTRY" ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
+          ENTRY=""
+          for candidate in dist/server/index.js dist/server/index.mjs; do
+            if [ -f "$candidate" ]; then ENTRY="$candidate"; break; fi
+          done
+          [ -n "$ENTRY" ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
           [ -f scripts/tanstack-node-server.mjs ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
           [ -f ecosystem.config.cjs ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
           [ -d node_modules ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
