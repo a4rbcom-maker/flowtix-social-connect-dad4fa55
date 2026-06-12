@@ -503,6 +503,21 @@ command -v pm2 >/dev/null 2>&1 || { echo "ERROR: pm2 is not installed on the ser
 command -v node >/dev/null 2>&1 || { echo "ERROR: node is not installed on the server"; exit 1; }
 [ -f scripts/tanstack-node-server.mjs ] || { echo "ERROR: Node SSR runner missing: scripts/tanstack-node-server.mjs"; exit 1; }
 [ -f ecosystem.config.cjs ] || { echo "ERROR: PM2 ecosystem missing: ecosystem.config.cjs"; exit 1; }
+node - <<'NODE'
+const config = require('./ecosystem.config.cjs');
+const app = config?.apps?.[0] || {};
+const failures = [];
+if (app.pmx !== false) failures.push('pmx must be false');
+if (app.automation !== false) failures.push('automation must be false');
+if (app.disable_trace !== true) failures.push('disable_trace must be true');
+if (app.trace === true) failures.push('trace must not be true');
+if (failures.length) {
+  console.error(`ERROR: PM2 APM/tracing guard failed: ${failures.join('; ')}`);
+  console.error('PM2 @pm2/io HTTP tracing can crash on malformed request targets like //, so deploy is blocked before restart.');
+  process.exit(1);
+}
+console.log('✓ PM2 APM/tracing disabled — @pm2/io will not wrap HTTP requests.');
+NODE
 echo "Node version on server: $(node --version)"
 
 # Helper: check if port is bound. Returns 0 if bound, 1 if free.
@@ -656,5 +671,18 @@ if [ "$HEALTH_OK" -ne 1 ]; then
   fi
   exit 1
 fi
+
+MALFORMED_CODE=$(curl --path-as-is -fsS -o /tmp/malformed-path.out -w '%{http_code}' --max-time 5 \
+  "http://127.0.0.1:${APP_PORT}//" || echo "000")
+case "$MALFORMED_CODE" in
+  2??|3??|4??)
+    echo "✓ Malformed-path guard passed — GET // returned HTTP ${MALFORMED_CODE}, not a server crash." ;;
+  *)
+    echo "ERROR: Malformed-path guard failed — GET // returned HTTP ${MALFORMED_CODE}."
+    cat /tmp/malformed-path.out 2>/dev/null || true
+    pm2 logs "$APP_NAME" --lines 120 --nostream || true
+    integrity_rollback "malformed-path-guard-failed" || true
+    exit 1 ;;
+esac
 publish_good_snapshot
 echo "✓ Health gate passed — new build is live for all clients."
