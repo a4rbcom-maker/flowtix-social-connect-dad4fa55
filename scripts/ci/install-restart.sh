@@ -675,13 +675,13 @@ if [ "$APP_IS_RUNNING" = "1" ] && [ "$APP_IS_CLUSTER" = "1" ]; then
     echo "::warning::pm2 reload failed — falling back to delete+start."
     pm2 delete "$APP_NAME" || true
     wait_for_port_free "${APP_PORT}" || {
-      echo "ERROR: Port ${APP_PORT} still bound after failed reload fallback."; print_port_diagnostics; exit 1;
+      echo "ERROR: Port ${APP_PORT} still bound after failed reload fallback."; print_port_diagnostics; fail_deploy "port-still-bound-after-reload-fallback";
     }
     pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env || {
       echo "ERROR: pm2 start failed after reload fallback."
       print_port_diagnostics
       pm2 logs "$APP_NAME" --lines 120 --nostream || true
-      exit 1
+      fail_deploy "pm2-start-failed-after-reload-fallback"
     }
   fi
 else
@@ -689,7 +689,7 @@ else
     echo "→ Existing PM2 app is ${APP_STATUS}/${APP_MODE} — recreating in cluster mode."
     pm2 delete "$APP_NAME" || true
     wait_for_port_free "${APP_PORT}" || {
-      echo "ERROR: Port ${APP_PORT} still bound after delete."; print_port_diagnostics; exit 1;
+      echo "ERROR: Port ${APP_PORT} still bound after delete."; print_port_diagnostics; fail_deploy "port-still-bound-after-delete"
     }
   fi
   echo "→ Fresh start in cluster mode…"
@@ -697,7 +697,7 @@ else
     echo "ERROR: pm2 start failed."
     print_port_diagnostics
     pm2 logs "$APP_NAME" --lines 120 --nostream || true
-    exit 1
+    fail_deploy "pm2-start-failed"
   }
 fi
 pm2 save || echo "::warning::pm2 save failed (non-fatal — process list may not survive reboot)."
@@ -717,7 +717,7 @@ if [ "$BOUND" -ne 1 ]; then
   pm2 describe "$APP_NAME" || true
   pm2 logs "$APP_NAME" --lines 120 --nostream || true
   integrity_rollback "port-not-bound" || true
-  exit 1
+  fail_deploy "port-not-bound"
 fi
 echo "✓ App is listening on ${APP_PORT}."
 
