@@ -149,7 +149,6 @@ jobs:
           SERVER_IP: ${{ secrets.SERVER_IP }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
-          DEBUG_INSTALL: ${{ vars.DEBUG_INSTALL || '0' }}
         run: |
           set -eu
           HOST="${SERVER_IP:-${SSH_HOST:-}}"
@@ -247,7 +246,6 @@ jobs:
           SERVER_IP: ${{ secrets.SERVER_IP }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
-          DEBUG_INSTALL: ${{ vars.DEBUG_INSTALL || '0' }}
         run: |
           set -eu
           USER="${SERVER_USER:-${SSH_USER:-}}"
@@ -288,6 +286,7 @@ jobs:
           SERVER_IP: ${{ secrets.SERVER_IP }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
+          DEBUG_INSTALL: ${{ vars.DEBUG_INSTALL || '0' }}
         run: |
           set -eu
           USER="${SERVER_USER:-${SSH_USER:-}}"
