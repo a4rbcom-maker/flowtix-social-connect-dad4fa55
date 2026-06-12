@@ -86,11 +86,12 @@ export async function handleAiAutoReply(opts: {
     const ctxLimit = Math.min(Math.max(settings.ai_max_context_messages || 10, 2), 30);
     const { data: history } = await supabaseAdmin
       .from("wa_messages")
-      .select("direction, text_body, msg_type, created_at")
+      .select("direction, text_body, msg_type, wa_timestamp, created_at")
       .eq("user_id", userId)
       .eq("remote_jid", remoteJid)
-      .order("created_at", { ascending: false })
+      .order("wa_timestamp", { ascending: false })
       .limit(ctxLimit);
+
 
     const ordered = (history ?? []).reverse();
     const isFirstMessage = ordered.length <= 1;
