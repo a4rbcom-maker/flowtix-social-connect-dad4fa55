@@ -462,25 +462,13 @@ function BridgeHealthCard({
         <div className="flex items-center gap-2">
           <span
             className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
-              loading
-                ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
-                : online
-                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                  : "bg-rose-500/15 text-rose-700 dark:text-rose-300"
+              online
+                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                : "bg-rose-500/15 text-rose-700 dark:text-rose-300"
             }`}
           >
-            {loading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : online ? (
-              <CheckCircle2 className="h-3.5 w-3.5" />
-            ) : (
-              <XCircle className="h-3.5 w-3.5" />
-            )}
-            {loading
-              ? t("جارٍ الفحص…", "Checking…")
-              : online
-                ? t("متصل", "Online")
-                : t("غير متصل", "Offline")}
+            {online ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+            {online ? t("متصل", "Online") : t("غير متصل", "Offline")}
           </span>
           <button
             type="button"
@@ -494,14 +482,7 @@ function BridgeHealthCard({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <ConfigRow
-          icon={Link2}
-          label={t("رابط البريدج", "Bridge URL")}
-          value={h?.url ?? "—"}
-          monospace
-          ok={!!h?.url}
-        />
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <ConfigRow
           icon={QrCode}
           label={t("مفتاح API", "API Key")}
