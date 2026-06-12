@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+
+# Verbose tracing: set DEBUG_INSTALL=1 (repo var/secret) to stream every
+# command to the log with file:line:function context. PS4 is set for both
+# manual `set -x` and any future `bash -x` invocation.
+export PS4='+ [${BASH_SOURCE##*/}:${LINENO}:${FUNCNAME[0]:-main}] '
+if [ "${DEBUG_INSTALL:-0}" = "1" ]; then
+  set -x
+fi
 
 # Self-cleanup: delete this script when the process exits (success or failure).
 # Also sweep stale install-restart-*.sh leftovers from previous deploys that
@@ -10,6 +18,82 @@ cleanup_self() {
   find /tmp -maxdepth 1 -type f -name 'install-restart-*.sh' -mtime +1 \
     -delete 2>/dev/null || true
 }
+
+# ===== Failure diagnostic dump =====
+# Fires on ANY uncaught failure (set -e). Prints:
+#   • where it died (file:line + the failed command)
+#   • last 50 lines of PM2 logs for $APP_NAME (out + err)
+#   • PM2 process table + describe for $APP_NAME
+#   • port + process diagnostics for $APP_PORT
+#   • last health response body, disk + memory snapshot, bundle markers
+# Output is bounded so logs stay readable.
+__DIAG_DUMPED=0
+dump_failure_diagnostics() {
+  local exit_code=$1 line=$2 cmd=$3
+  [ "$__DIAG_DUMPED" = "1" ] && return 0
+  __DIAG_DUMPED=1
+  {
+    echo ""
+    echo "════════════════════════════════════════════════════════════════"
+    echo "  DEPLOY FAILED — diagnostic dump"
+    echo "════════════════════════════════════════════════════════════════"
+    echo "  exit code  : ${exit_code}"
+    echo "  at         : ${BASH_SOURCE[0]##*/}:${line}"
+    echo "  command    : ${cmd}"
+    echo "  pwd        : $(pwd 2>/dev/null || echo '<unknown>')"
+    echo "  user       : $(id -un 2>/dev/null || echo '<unknown>')"
+    echo "  date       : $(date -u +%FT%TZ)"
+    echo "  APP_NAME   : ${APP_NAME:-<unset>}"
+    echo "  APP_PORT   : ${APP_PORT:-<unset>}"
+    echo "  DEPLOY_PATH: ${DEPLOY_PATH:-<unset>}"
+    echo "  DEPLOY_SHA : ${DEPLOY_SHA:-<unset>}"
+    echo "  DEBUG_INSTALL=${DEBUG_INSTALL:-0} (set repo var to 1 for full set -x trace)"
+    echo ""
+
+    if command -v pm2 >/dev/null 2>&1 && [ -n "${APP_NAME:-}" ]; then
+      echo "── PM2 logs (last 50 lines, ${APP_NAME}) ──"
+      pm2 logs "$APP_NAME" --lines 50 --nostream 2>&1 || echo "(pm2 logs failed)"
+      echo ""
+      echo "── PM2 process list ──"
+      pm2 list 2>&1 || true
+      echo ""
+      echo "── PM2 describe ${APP_NAME} ──"
+      pm2 describe "$APP_NAME" 2>&1 || echo "(no such app)"
+      echo ""
+    else
+      echo "── PM2 not available or APP_NAME unset — skipping pm2 dump ──"
+      echo ""
+    fi
+
+    if [ -n "${APP_PORT:-}" ]; then
+      echo "── Port ${APP_PORT} listeners ──"
+      (command -v ss   >/dev/null 2>&1 && ss -ltnp "sport = :${APP_PORT}" 2>&1) || true
+      (command -v lsof >/dev/null 2>&1 && lsof -iTCP:"${APP_PORT}" -sTCP:LISTEN 2>&1) || true
+      echo ""
+    fi
+
+    if [ -s /tmp/health.out ]; then
+      echo "── Last health response body (tail 4 KB) ──"
+      tail -c 4096 /tmp/health.out 2>/dev/null || true
+      echo ""
+    fi
+
+    echo "── Disk usage (${DEPLOY_PATH:-/}) ──"
+    df -h "${DEPLOY_PATH:-/}" 2>&1 || true
+    echo ""
+    echo "── Memory ──"
+    free -h 2>&1 || true
+    echo ""
+    echo "── Bundle markers ──"
+    ls -la "${DEPLOY_PATH:-.}/deploy-version.json" "${DEPLOY_PATH:-.}/manifest.json" "${DEPLOY_PATH:-.}/SHA256SUMS" 2>&1 || true
+    [ -f "${DEPLOY_PATH:-.}/deploy-version.json" ] && cat "${DEPLOY_PATH}/deploy-version.json" 2>&1 || true
+    echo ""
+    echo "  Hint: re-run the workflow with repo variable DEBUG_INSTALL=1"
+    echo "  to enable full 'set -x' tracing from line 1."
+    echo "════════════════════════════════════════════════════════════════"
+  } >&2
+}
+trap 'dump_failure_diagnostics $? ${LINENO} "${BASH_COMMAND}"' ERR
 trap cleanup_self EXIT
 cd "$DEPLOY_PATH"
 [ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
