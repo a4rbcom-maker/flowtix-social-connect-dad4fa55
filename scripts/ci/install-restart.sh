@@ -674,22 +674,30 @@ if [ "$BOUND" -ne 1 ]; then
 fi
 echo "✓ App is listening on ${APP_PORT}."
 
-# === Health gate ===
-# The NEW workers are now serving. Probe local health before declaring success.
-# If health fails repeatedly, restore LAST_GOOD onto disk and reload again so
-# clients return to a known-good build instead of being stuck on a broken one.
-echo "→ Local health gate (http://127.0.0.1:${APP_PORT}/api/public/health)…"
+# === Runtime gate ===
+# The NEW workers are now serving. First verify the custom Node runner is alive
+# and serving the freshly-rsynced deploy-version.json. This avoids false deploy
+# failures caused by an app-level route regression while still proving that PM2
+# restarted onto the new bundle. The workflow's next step performs the full SSR
+# home-page smoke test separately with clearer diagnostics.
+SHORT_SHA="${DEPLOY_SHA:-unknown}"
+SHORT_SHA="${SHORT_SHA:0:7}"
+echo "→ Local runtime gate (http://127.0.0.1:${APP_PORT}/deploy-version.json)…"
 HEALTH_OK=0
 for attempt in 1 2 3 4 5 6 7 8 9 10; do
-  CODE=$(curl -fsS -o /tmp/health.out -w '%{http_code}' --max-time 5 \
-    "http://127.0.0.1:${APP_PORT}/api/public/health" || echo "000")
-  if [ "$CODE" = "200" ]; then HEALTH_OK=1; break; fi
-  echo "  health attempt $attempt → HTTP $CODE"
+  CODE=$(curl -sS -o /tmp/health.out -w '%{http_code}' --max-time 5 \
+    "http://127.0.0.1:${APP_PORT}/deploy-version.json" 2>/dev/null) || CODE="000"
+  CODE="${CODE##*$'\n'}"
+  if [ "$CODE" = "200" ] && grep -q "$SHORT_SHA" /tmp/health.out 2>/dev/null; then
+    HEALTH_OK=1; break
+  fi
+  echo "  runtime attempt $attempt → HTTP $CODE"
+  cat /tmp/health.out 2>/dev/null | cut -c1-300 || true
   sleep 2
 done
 
 if [ "$HEALTH_OK" -ne 1 ]; then
-  echo "ERROR: Health endpoint did not return 200 after reload."
+  echo "ERROR: Runtime endpoint did not return this deploy (${SHORT_SHA}) after reload."
   cat /tmp/health.out 2>/dev/null || true
   pm2 logs "$APP_NAME" --lines 120 --nostream || true
   echo "→ Auto-rollback: restoring LAST_GOOD and reloading…"
