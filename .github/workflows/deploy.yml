@@ -1076,7 +1076,7 @@ jobs:
 
           ROLLBACK_INFO=$(ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
             "${DEPLOY_USER}@${SERVER_HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' bash -s" <<'EOSSH'
+            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' LEGACY_PM2_APPS='${LEGACY_PM2_APPS}' bash -s" <<'EOSSH'
           set -euo pipefail
           has_ssr_entry() {
             local candidate="$1"
@@ -1185,7 +1185,7 @@ jobs:
           export DEPLOYED_AT="$RESTORED_AT"
           export APP_NAME APP_PORT DEPLOY_PATH
 
-          for pm2_app in "$APP_NAME" flowtix flowtixtools flowtixtools-web flowtixtools-ssr flowtixtools-srvx; do
+          for pm2_app in "$APP_NAME" ${LEGACY_PM2_APPS:-}; do
             [ -n "$pm2_app" ] || continue
             if pm2 describe "$pm2_app" >/dev/null 2>&1; then
               echo "Stopping PM2 app before rollback start: $pm2_app"
