@@ -320,8 +320,10 @@ function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null
     isGroup,
     providerMessageId: messageIdFrom(entry),
     status: normalizeMessageStatus(pickStr(entry, "status", "ack", "messageStatus"), fromMe),
+    waTimestamp: parseWaTimestamp(entry),
   };
 }
+
 
 function collectMessageEntries(payload: Record<string, unknown>): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = [];
