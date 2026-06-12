@@ -415,10 +415,11 @@ wait_for_port_free() {
   return 1
 }
 
-# Clean up legacy fork-mode apps under different names. Do NOT touch the
-# current $APP_NAME — we want to RELOAD it gracefully, not delete it.
-for pm2_app in flowtix flowtixtools flowtixtools-ssr flowtixtools-srvx; do
-  if [ "$pm2_app" != "$APP_NAME" ] && pm2 describe "$pm2_app" >/dev/null 2>&1; then
+# Optional cleanup for legacy PM2 app names. Keep empty by default so the
+# deploy script is safe to reuse in any repository/server. Set LEGACY_PM2_APPS
+# as a space-separated repository variable only when migrating an old app.
+for pm2_app in ${LEGACY_PM2_APPS:-}; do
+  if [ -n "$pm2_app" ] && [ "$pm2_app" != "$APP_NAME" ] && pm2 describe "$pm2_app" >/dev/null 2>&1; then
     echo "Removing stale legacy PM2 app: $pm2_app"
     pm2 delete "$pm2_app" || true
   fi
