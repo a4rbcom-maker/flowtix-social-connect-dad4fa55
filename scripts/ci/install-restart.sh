@@ -645,7 +645,12 @@ if [ "$APP_IS_RUNNING" = "1" ] && [ "$APP_IS_CLUSTER" = "1" ]; then
     wait_for_port_free "${APP_PORT}" || {
       echo "ERROR: Port ${APP_PORT} still bound after failed reload fallback."; print_port_diagnostics; exit 1;
     }
-    pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env
+    pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env || {
+      echo "ERROR: pm2 start failed after reload fallback."
+      print_port_diagnostics
+      pm2 logs "$APP_NAME" --lines 120 --nostream || true
+      exit 1
+    }
   fi
 else
   if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
@@ -656,7 +661,12 @@ else
     }
   fi
   echo "→ Fresh start in cluster mode…"
-  pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env
+  pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env || {
+    echo "ERROR: pm2 start failed."
+    print_port_diagnostics
+    pm2 logs "$APP_NAME" --lines 120 --nostream || true
+    exit 1
+  }
 fi
 pm2 save || echo "::warning::pm2 save failed (non-fatal — process list may not survive reboot)."
 
