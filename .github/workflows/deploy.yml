@@ -51,6 +51,26 @@ jobs:
           [ "$ERR" -eq 0 ] || exit 1
           echo "✓ Required secrets present"
 
+      - name: Preflight — validate deploy scripts
+        run: |
+          set -eu
+          bash -n scripts/ci/install-restart.sh
+          node --check scripts/tanstack-node-server.mjs
+          node - <<'NODE'
+          const config = require('./ecosystem.config.cjs');
+          const app = config?.apps?.[0] || {};
+          const failures = [];
+          if (app.pmx !== false) failures.push('pmx must be false');
+          if (app.automation !== false) failures.push('automation must be false');
+          if (app.disable_trace !== true) failures.push('disable_trace must be true');
+          if (app.trace === true) failures.push('trace must not be true');
+          if (failures.length) {
+            console.error(`PM2 APM/tracing guard failed: ${failures.join('; ')}`);
+            process.exit(1);
+          }
+          console.log('✓ Deploy scripts and PM2 tracing guard are valid');
+          NODE
+
       # ─── 3. Build ──────────────────────────────────────────────────────
       - name: Install dependencies (frozen lockfile)
         run: bun install --frozen-lockfile
