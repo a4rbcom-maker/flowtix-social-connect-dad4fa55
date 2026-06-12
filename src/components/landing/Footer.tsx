@@ -42,16 +42,6 @@ const SocialIcon = ({ children, label, href }: { children: React.ReactNode; labe
 export function Footer() {
   const { t, dir, lang } = useI18n();
   const { ref, isInView } = useInView();
-  const [email, setEmail] = useState("");
-  const [subscribed, setSubscribed] = useState(false);
-
-  const handleSubscribe = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email) return;
-    setSubscribed(true);
-    setEmail("");
-    setTimeout(() => setSubscribed(false), 3000);
-  };
 
   const isAr = lang === "ar";
 
