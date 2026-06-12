@@ -82,7 +82,7 @@ export function CTASection() {
             href="/login"
             className="btn-luxury-base btn-luxury group !px-10 !py-4 text-lg"
           >
-            <span>{dir === "rtl" ? "ابدأ مجاناً الآن" : "Start Free Now"}</span>
+            <span>{dir === "rtl" ? "تسجيل دخول" : "Login"}</span>
             <svg className="h-5 w-5 transition-transform duration-500 ease-out group-hover:translate-x-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
             </svg>
