@@ -68,6 +68,22 @@ sudo nginx -t && sudo nginx -s reload
   Cloudflare. rollback لن يحل المشكلة، فقط يخفي نسخة شغالة خلف edge مكسور.
   أصلح البروكسي/الكاش وأعد المحاولة.
 
+### سلوك GitHub Actions الحالي
+
+- بعد هذا التعديل، خطوة **public domain check** لم تعد تُسقط الـworkflow تلقائيًا
+  إذا كان التطبيق شغال محليًا على الـVPS لكن الدومين العام ما زال يتذبذب بسبب
+  cache / proxy / vhost.
+- النجاح النهائي يعتمد أولًا على **local SSR health**.
+- لو تريد السلوك الصارم القديم، أضف متغير GitHub Actions باسم:
+
+```bash
+STRICT_PUBLIC_DOMAIN_CHECK=true
+```
+
+- الفحص العام نفسه صار أقوى: يتبع redirects، ويضيف cache-busting querystring،
+  ويرسل `Cache-Control: no-cache`، ويطلب 3 نجاحات متتالية بدل أن يفشل بسبب
+  رد واحد قديم عابر.
+
 ---
 
 ## مسارات الـsmoke test في النشر
