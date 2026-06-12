@@ -86,8 +86,8 @@ function AccountsTab() {
   const refreshAllCredits = useServerFn(refreshAllAiAccountCredits);
   const stats = useServerFn(getAiPoolStats);
 
-  const { data: rows } = useQuery({ queryKey: ["ai-accounts"], queryFn: () => list(), refetchInterval: 30000 });
-  const { data: poolStats } = useQuery({ queryKey: ["ai-pool-stats"], queryFn: () => stats(), refetchInterval: 30000 });
+  const { data: rows } = useQuery({ queryKey: ["ai-accounts"], queryFn: () => list() });
+  const { data: poolStats } = useQuery({ queryKey: ["ai-pool-stats"], queryFn: () => stats() });
 
   const [openAdd, setOpenAdd] = useState(false);
   const [editing, setEditing] = useState<null | { id: string; label: string; priority: number }>(null);
@@ -97,23 +97,8 @@ function AccountsTab() {
     qc.invalidateQueries({ queryKey: ["ai-pool-stats"] });
   };
 
-  // Auto-refresh real credit balances from kie.ai on mount + every 60s
-  // so the admin panel always shows the live remaining balance, not a stale snapshot.
-  const autoRefreshed = useRef(false);
-  useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      try { await refreshAllCredits(); } catch { /* ignore */ }
-      if (!cancelled) refresh();
-    };
-    if (!autoRefreshed.current) {
-      autoRefreshed.current = true;
-      run();
-    }
-    const id = setInterval(run, 60000);
-    return () => { cancelled = true; clearInterval(id); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Credit balances refresh only on manual user action (refresh buttons).
+  // No auto-refresh on mount, no polling interval.
 
   const mCreate = useMutation({
     mutationFn: (data: { label: string; apiKey: string; priority: number }) => create({ data }),
