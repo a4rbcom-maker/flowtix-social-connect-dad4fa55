@@ -25,7 +25,7 @@ function LoginPage() {
   const { lang, dir } = useI18n();
   const { user } = useAuth();
   const { isAdmin, isLoading: isAdminLoading } = useIsAdmin();
-  const navigate = useNavigate();
+  
   const { redirect: redirectParam } = Route.useSearch();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
