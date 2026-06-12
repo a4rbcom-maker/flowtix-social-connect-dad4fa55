@@ -17,17 +17,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const rememberMe = localStorage.getItem("flowtix_remember_me") !== "false";
-    if (!rememberMe) {
-      (supabase.auth as any).storage = sessionStorage;
-    }
-
+    // Subscribe FIRST so we don't miss the initial SIGNED_IN event.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
+    // Then restore any persisted session.
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);

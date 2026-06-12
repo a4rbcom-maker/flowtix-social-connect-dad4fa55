@@ -1,10 +1,9 @@
-import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { checkIsAdmin } from "@/lib/admin.functions";
 import { Navbar } from "@/components/landing/Navbar";
 import { AlertCircle, Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,7 +25,7 @@ function LoginPage() {
   const { lang, dir } = useI18n();
   const { user } = useAuth();
   const { isAdmin, isLoading: isAdminLoading } = useIsAdmin();
-  const navigate = useNavigate();
+  
   const { redirect: redirectParam } = Route.useSearch();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
@@ -117,24 +116,13 @@ function LoginPage() {
 
     try {
       if (isLogin) {
-        if (rememberMe) {
-          localStorage.setItem("flowtix_remember_me", "true");
-        } else {
-          localStorage.setItem("flowtix_remember_me", "false");
-        }
+        localStorage.setItem("flowtix_remember_me", rememberMe ? "true" : "false");
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        // Use server function so the role check goes through the trusted server
-        // path (bearer attached automatically). Falls back to /dashboard on failure.
-        let dest: string = "/dashboard";
-        try {
-          const res = await checkIsAdmin();
-          if (res?.isAdmin) dest = "/admin";
-        } catch {
-          /* ignore – default to /dashboard */
-        }
-        if (isSafeRedirect(redirectParam)) dest = redirectParam;
-        navigate({ to: dest });
+        // Don't navigate manually — the role-aware <Navigate> gate above
+        // redirects to /admin or /dashboard once useIsAdmin resolves. This
+        // avoids a race where an admin is sent to /dashboard before the
+        // server-side role check completes.
       } else {
         const { error } = await supabase.auth.signUp({
           email,
