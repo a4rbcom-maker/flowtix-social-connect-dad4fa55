@@ -228,9 +228,16 @@ function AccountsTab() {
                       {r.credit_error ? (
                         <span className="text-xs text-red-500" title={r.credit_error}>—</span>
                       ) : r.credit_balance !== null && r.credit_balance !== undefined ? (
-                        <span className={`text-sm font-mono ${Number(r.credit_balance) <= 0 ? "text-red-500" : Number(r.credit_balance) < 5 ? "text-yellow-500" : "text-green-600"}`}>
-                          {Number(r.credit_balance).toFixed(2)}
-                        </span>
+                        <div className="flex flex-col items-center">
+                          <span className={`text-sm font-mono ${Number(r.credit_balance) <= 0 ? "text-red-500" : Number(r.credit_balance) < 5 ? "text-yellow-500" : "text-green-600"}`}>
+                            {Number(r.credit_balance).toFixed(2)}
+                          </span>
+                          {r.credit_checked_at && (
+                            <span className="text-[10px] text-muted-foreground" title={new Date(r.credit_checked_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}>
+                              {new Date(r.credit_checked_at).toLocaleTimeString(lang === "ar" ? "ar-EG" : "en-US", { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
                       )}
