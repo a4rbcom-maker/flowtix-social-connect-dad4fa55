@@ -494,7 +494,11 @@ if [ "$ACTUAL_COUNT" != "$MANIFEST_TOTAL" ] || [ "$DRIFT" -gt 0 ]; then
   echo "::warning::Continuing with PM2 restart because drift appears to be extra files only."
 fi
 rm -f "$EXPECTED_LIST" "$ACTUAL_LIST"
-echo "✓ VPS file count matches manifest exactly: ${ACTUAL_COUNT} files"
+if [ "$ACTUAL_COUNT" = "$MANIFEST_TOTAL" ] && [ "$DRIFT" -eq 0 ]; then
+  echo "✓ VPS file count matches manifest exactly: ${ACTUAL_COUNT} files"
+else
+  echo "✓ All shipped files are present; ignored server-local extras remain on disk."
+fi
 echo "✓ Every shipped file passed SHA-256 verification"
 echo "→ Proceeding to PM2 restart"
 
