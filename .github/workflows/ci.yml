@@ -2,9 +2,11 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches-ignore:
+      - "lovable-backup-*"
   pull_request:
-    branches: [main, master]
+    branches-ignore:
+      - "lovable-backup-*"
   workflow_dispatch:
 
 jobs:

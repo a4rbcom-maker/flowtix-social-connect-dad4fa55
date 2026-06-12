@@ -2,7 +2,8 @@ name: Deploy to VPS
 
 on:
   push:
-    branches: [main, master]
+    branches-ignore:
+      - "lovable-backup-*"
   workflow_dispatch:
     inputs:
       integrity_rollback_dry_run:
