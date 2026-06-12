@@ -465,7 +465,15 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
                 {PLANS.map((p) => (
                   <button
                     key={p}
-                    onClick={() => planMut.mutate(p)}
+                    onClick={() => {
+                      if (d.profile?.plan === p) return;
+                      const name = d.profile?.full_name || d.profile?.email || t("هذا المستخدم", "this user");
+                      const msg = t(
+                        `هل أنت متأكد من تغيير باقة ${name} إلى ${p}؟`,
+                        `Are you sure you want to change ${name}'s plan to ${p}?`
+                      );
+                      if (window.confirm(msg)) planMut.mutate(p);
+                    }}
                     disabled={planMut.isPending}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-all ${
                       d.profile?.plan === p
@@ -475,6 +483,7 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
                   >
                     {p}
                   </button>
+
                 ))}
               </div>
             </div>
