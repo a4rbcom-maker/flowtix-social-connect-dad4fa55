@@ -426,7 +426,7 @@ if ! sha256sum --quiet -c SHA256SUMS; then
   echo "ERROR: checksum verification failed — bundle is corrupted or incomplete"
   echo "PM2 restart BLOCKED — current process kept alive on the previous build"
   integrity_rollback "checksum-failed" || true
-  exit 1
+  fail_deploy "checksum-verification-failed"
 fi
 
 # === CI vs VPS file-list diff ===
@@ -519,7 +519,7 @@ if [ "$MISSING_COUNT" -gt 0 ]; then
   echo "PM2 restart BLOCKED — current process kept alive on the previous build"
   rm -f "$EXPECTED_LIST" "$ACTUAL_LIST"
   integrity_rollback "file-list-drift-missing" || true
-  exit 1
+  fail_deploy "rsync-missing-shipped-files"
 fi
 if [ "$ACTUAL_COUNT" != "$MANIFEST_TOTAL" ] || [ "$DRIFT" -gt 0 ]; then
   echo "::warning::VPS file tree differs from manifest after rsync, but all shipped files passed SHA-256 verification."
@@ -535,11 +535,11 @@ echo "✓ Every shipped file passed SHA-256 verification"
 echo "→ Proceeding to PM2 restart"
 
 # node_modules is shipped from CI — server runs zero installs.
-[ -d node_modules ] || { echo "ERROR: node_modules missing on server (CI ship failed)"; exit 1; }
-command -v pm2 >/dev/null 2>&1 || { echo "ERROR: pm2 is not installed on the server"; exit 1; }
-command -v node >/dev/null 2>&1 || { echo "ERROR: node is not installed on the server"; exit 1; }
-[ -f scripts/tanstack-node-server.mjs ] || { echo "ERROR: Node SSR runner missing: scripts/tanstack-node-server.mjs"; exit 1; }
-[ -f ecosystem.config.cjs ] || { echo "ERROR: PM2 ecosystem missing: ecosystem.config.cjs"; exit 1; }
+[ -d node_modules ] || fail_deploy "node_modules-missing"
+command -v pm2 >/dev/null 2>&1 || fail_deploy "pm2-not-installed"
+command -v node >/dev/null 2>&1 || fail_deploy "node-not-installed"
+[ -f scripts/tanstack-node-server.mjs ] || fail_deploy "node-ssr-runner-missing"
+[ -f ecosystem.config.cjs ] || fail_deploy "pm2-ecosystem-missing"
 node - <<'NODE'
 const config = require('./ecosystem.config.cjs');
 const app = config?.apps?.[0] || {};
