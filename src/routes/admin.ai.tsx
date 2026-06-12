@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -86,7 +86,7 @@ function AccountsTab() {
   const refreshAllCredits = useServerFn(refreshAllAiAccountCredits);
   const stats = useServerFn(getAiPoolStats);
 
-  const { data: rows } = useQuery({ queryKey: ["ai-accounts"], queryFn: () => list() });
+  const { data: rows } = useQuery({ queryKey: ["ai-accounts"], queryFn: () => list(), refetchInterval: 30000 });
   const { data: poolStats } = useQuery({ queryKey: ["ai-pool-stats"], queryFn: () => stats(), refetchInterval: 30000 });
 
   const [openAdd, setOpenAdd] = useState(false);
@@ -96,6 +96,24 @@ function AccountsTab() {
     qc.invalidateQueries({ queryKey: ["ai-accounts"] });
     qc.invalidateQueries({ queryKey: ["ai-pool-stats"] });
   };
+
+  // Auto-refresh real credit balances from kie.ai on mount + every 60s
+  // so the admin panel always shows the live remaining balance, not a stale snapshot.
+  const autoRefreshed = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try { await refreshAllCredits(); } catch { /* ignore */ }
+      if (!cancelled) refresh();
+    };
+    if (!autoRefreshed.current) {
+      autoRefreshed.current = true;
+      run();
+    }
+    const id = setInterval(run, 60000);
+    return () => { cancelled = true; clearInterval(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const mCreate = useMutation({
     mutationFn: (data: { label: string; apiKey: string; priority: number }) => create({ data }),
@@ -210,9 +228,16 @@ function AccountsTab() {
                       {r.credit_error ? (
                         <span className="text-xs text-red-500" title={r.credit_error}>—</span>
                       ) : r.credit_balance !== null && r.credit_balance !== undefined ? (
-                        <span className={`text-sm font-mono ${Number(r.credit_balance) <= 0 ? "text-red-500" : Number(r.credit_balance) < 5 ? "text-yellow-500" : "text-green-600"}`}>
-                          {Number(r.credit_balance).toFixed(2)}
-                        </span>
+                        <div className="flex flex-col items-center">
+                          <span className={`text-sm font-mono ${Number(r.credit_balance) <= 0 ? "text-red-500" : Number(r.credit_balance) < 5 ? "text-yellow-500" : "text-green-600"}`}>
+                            {Number(r.credit_balance).toFixed(2)}
+                          </span>
+                          {r.credit_checked_at && (
+                            <span className="text-[10px] text-muted-foreground" title={new Date(r.credit_checked_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}>
+                              {new Date(r.credit_checked_at).toLocaleTimeString(lang === "ar" ? "ar-EG" : "en-US", { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
                       )}
