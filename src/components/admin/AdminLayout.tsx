@@ -373,16 +373,104 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
-            <Link
-              to="/admin/profile"
-              className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-500/10 to-primary/10 border border-amber-500/20 hover:from-amber-500/20 hover:to-primary/20 transition"
-              title={lang === "ar" ? "ملفي الشخصي" : "My Profile"}
-            >
-              <div className="h-7 w-7 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground text-xs font-bold">
-                {user.email?.[0]?.toUpperCase() ?? "A"}
-              </div>
-              <span className="text-xs font-medium truncate max-w-[120px]">{user.email}</span>
-            </Link>
+            {(() => {
+              const fullName = (profile?.full_name ?? (user.user_metadata as any)?.full_name ?? "").trim();
+              const displayName = fullName || (user.email?.split("@")[0] ?? "Admin");
+              const firstName = displayName.split(" ")[0];
+              const initials = (fullName || user.email || "A")
+                .split(/\s+/)
+                .map((p: string) => p[0])
+                .slice(0, 2)
+                .join("")
+                .toUpperCase();
+              const greeting = lang === "ar" ? `مرحبًا، ${firstName}` : `Hi, ${firstName}`;
+              const avatarUrl = (profile?.avatar_url as string | undefined) ?? undefined;
+              const menuItems: { to: AdminPath; icon: typeof UserIcon; ar: string; en: string }[] = [
+                { to: "/admin/profile", icon: UserIcon, ar: "الملف الشخصي", en: "Profile" },
+                { to: "/admin/profile", icon: Settings, ar: "إعدادات الحساب", en: "Account settings" },
+                { to: "/admin/profile", icon: KeyRound, ar: "تغيير كلمة المرور", en: "Change password" },
+                { to: "/admin/notifications", icon: Bell, ar: "الإشعارات", en: "Notifications" },
+              ];
+              return (
+                <div className="relative" ref={menuRef}>
+                  <button
+                    onClick={() => setMenuOpen((v) => !v)}
+                    className="flex items-center gap-2 ps-1 pe-2 md:pe-3 py-1 rounded-full bg-gradient-to-r from-amber-500/10 to-primary/10 border border-amber-500/20 hover:from-amber-500/20 hover:to-primary/20 transition"
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpen}
+                    title={lang === "ar" ? "حسابي" : "My account"}
+                  >
+                    {avatarUrl ? (
+                      <img src={avatarUrl} alt={displayName} className="h-8 w-8 rounded-full object-cover ring-2 ring-amber-500/30" />
+                    ) : (
+                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground text-xs font-bold ring-2 ring-amber-500/30">
+                        {initials || "A"}
+                      </div>
+                    )}
+                    <div className="hidden md:flex flex-col items-start leading-tight">
+                      <span className="text-xs font-bold text-foreground truncate max-w-[140px]">{greeting}</span>
+                      <span className="text-[10px] text-muted-foreground truncate max-w-[140px]" dir="ltr">{user.email}</span>
+                    </div>
+                    <ChevronDown className={`hidden md:block h-3.5 w-3.5 text-muted-foreground transition ${menuOpen ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {menuOpen && (
+                    <div
+                      role="menu"
+                      className={`absolute mt-2 w-64 rounded-2xl border border-border bg-card shadow-2xl shadow-primary/10 backdrop-blur-xl overflow-hidden z-50 ${dir === "rtl" ? "start-0" : "end-0"}`}
+                    >
+                      <div className="p-4 bg-gradient-to-br from-amber-500/10 to-primary/10 border-b border-border">
+                        <div className="flex items-center gap-3">
+                          {avatarUrl ? (
+                            <img src={avatarUrl} alt={displayName} className="h-11 w-11 rounded-full object-cover ring-2 ring-amber-500/30" />
+                          ) : (
+                            <div className="h-11 w-11 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground text-sm font-bold ring-2 ring-amber-500/30">
+                              {initials || "A"}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <div className="text-sm font-bold text-foreground truncate">{displayName}</div>
+                            <div className="text-[11px] text-muted-foreground truncate" dir="ltr">{user.email}</div>
+                            <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                              <ShieldCheck className="h-3 w-3" />
+                              {lang === "ar" ? "سوبر أدمن" : "Super admin"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-1.5">
+                        {menuItems.map((item) => (
+                          <Link
+                            key={`${item.to}-${item.en}`}
+                            to={item.to}
+                            onClick={() => setMenuOpen(false)}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-foreground hover:bg-muted transition"
+                            role="menuitem"
+                          >
+                            <item.icon className="h-4 w-4 text-muted-foreground" />
+                            <span>{lang === "ar" ? item.ar : item.en}</span>
+                          </Link>
+                        ))}
+                        <div className="my-1 border-t border-border" />
+                        <button
+                          onClick={async () => {
+                            setMenuOpen(false);
+                            await signOut();
+                            navigate({ to: "/" });
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition"
+                          role="menuitem"
+                        >
+                          <LogOut className="h-4 w-4" />
+                          <span>{lang === "ar" ? "تسجيل الخروج" : "Sign out"}</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
           </div>
         </header>
 
