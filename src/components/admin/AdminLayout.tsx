@@ -150,7 +150,9 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
       });
       if (error) throw error;
 
-      const adminResult = await checkIsAdmin();
+      const { data: sessionData } = await supabase.auth.getUser();
+      const uid = sessionData.user?.id;
+      const adminResult = uid ? await checkIsAdminClient(uid) : { isAdmin: false };
       if (!adminResult?.isAdmin) {
         await supabase.auth.signOut();
         throw new Error("not_admin");
