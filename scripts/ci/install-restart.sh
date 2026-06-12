@@ -104,7 +104,11 @@ fail_deploy() {
 }
 trap 'dump_failure_diagnostics $? ${LINENO} "${BASH_COMMAND}"' ERR
 trap cleanup_self EXIT
-cd "$DEPLOY_PATH"
+if [ -z "${DEPLOY_PATH:-}" ] || [ ! -d "${DEPLOY_PATH:-}" ]; then
+  echo "ERROR: DEPLOY_PATH is missing or not a directory: ${DEPLOY_PATH:-<unset>}"
+  fail_deploy "deploy-path-missing"
+fi
+cd "$DEPLOY_PATH" || fail_deploy "deploy-path-cd-failed"
 SSR_ENTRY_CANDIDATES="dist/server/server.js dist/server/server.mjs dist/server/index.js dist/server/index.mjs"
 [ -n "${SERVER_ENTRY:-}" ] && [ -f "$SERVER_ENTRY" ] || {
   echo "ERROR: SSR entry missing: ${SERVER_ENTRY:-<unset>}"
