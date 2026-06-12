@@ -1307,11 +1307,11 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
 
   const { data, error } = await supabase
     .from("wa_messages")
-    .select("id, remote_jid, direction, status, text_body, msg_type, media_url, created_at, raw")
+    .select("id, remote_jid, direction, status, text_body, msg_type, media_url, wa_timestamp, created_at, raw")
     .eq("user_id", userId)
     .eq("session_id", sess.session_id)
     .eq("remote_jid", remoteJid)
-    .order("created_at", { ascending: true })
+    .order("wa_timestamp", { ascending: true })
     .limit(1000);
   if (error) throw new Error(error.message);
 
@@ -1329,13 +1329,14 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
       text_body: cleanMessageText(row.text_body, raw, msgType),
       msg_type: msgType,
       media_url: mediaUrl,
-      created_at: row.created_at,
+      created_at: row.wa_timestamp ?? row.created_at,
       is_ai: raw.ai === true,
       sender_name: pickString(raw, "pushName", "senderName", "notifyName", "contactName"),
       sender_phone: digits(pickString(raw, "participantPn", "senderPn", "phoneNumber")),
     };
   }));
 }
+
 
 async function fetchInboxConnectionState(userId: string): Promise<{ status: string } | null> {
   const { data, error } = await supabase
