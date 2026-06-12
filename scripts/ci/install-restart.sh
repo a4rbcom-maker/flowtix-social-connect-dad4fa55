@@ -634,7 +634,14 @@ fi
 
 if [ "$APP_IS_RUNNING" = "1" ] && [ "$APP_IS_CLUSTER" = "1" ]; then
   echo "→ Graceful reload (cluster mode, no downtime)…"
-  pm2 reload ecosystem.config.cjs --only "$APP_NAME" --update-env
+  if ! pm2 reload ecosystem.config.cjs --only "$APP_NAME" --update-env; then
+    echo "::warning::pm2 reload failed — falling back to delete+start."
+    pm2 delete "$APP_NAME" || true
+    wait_for_port_free "${APP_PORT}" || {
+      echo "ERROR: Port ${APP_PORT} still bound after failed reload fallback."; print_port_diagnostics; exit 1;
+    }
+    pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env
+  fi
 else
   if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
     echo "→ Existing PM2 app is ${APP_STATUS}/${APP_MODE} — recreating in cluster mode."
@@ -646,7 +653,7 @@ else
   echo "→ Fresh start in cluster mode…"
   pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env
 fi
-pm2 save
+pm2 save || echo "::warning::pm2 save failed (non-fatal — process list may not survive reboot)."
 
 # Confirm the Node SSR app bound the port after reload/start.
 BOUND=0
@@ -689,14 +696,14 @@ if [ "$HEALTH_OK" -ne 1 ]; then
   if integrity_rollback "post-reload-health-failed"; then
     pm2 reload ecosystem.config.cjs --only "$APP_NAME" --update-env || \
       pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env
-    pm2 save
+    pm2 save || echo "::warning::pm2 save failed after rollback (non-fatal)."
   fi
   exit 1
 fi
 
 MALFORMED_CODE=$(curl --path-as-is -sS -o /tmp/malformed-path.out -w '%{http_code}' --max-time 5 \
-  "http://127.0.0.1:${APP_PORT}//" || echo "000")
-MALFORMED_CODE="${MALFORMED_CODE: -3}"
+  "http://127.0.0.1:${APP_PORT}//" 2>/dev/null) || MALFORMED_CODE="000"
+MALFORMED_CODE="${MALFORMED_CODE##*$'\n'}"
 case "$MALFORMED_CODE" in
   2??|3??|4??)
     echo "✓ Malformed-path guard passed — GET // returned HTTP ${MALFORMED_CODE}, not a server crash." ;;
