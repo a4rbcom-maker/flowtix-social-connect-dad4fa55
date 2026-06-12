@@ -82,6 +82,27 @@ function findSessionId(payload: Record<string, unknown>, headers: Headers): stri
   );
 }
 
+function parseWaTimestamp(entry: Record<string, unknown>): string | null {
+  const candidates: unknown[] = [
+    entry.messageTimestamp,
+    entry.timestamp,
+    entry.t,
+    asObj(entry.key).timestamp,
+    asObj(entry.message).messageTimestamp,
+    asObj(entry.data).timestamp,
+  ];
+  for (const raw of candidates) {
+    if (raw == null) continue;
+    const num = typeof raw === "number" ? raw : Number(String(raw).trim());
+    if (!Number.isFinite(num) || num <= 0) continue;
+    // Heuristic: < 10^12 => seconds; otherwise milliseconds
+    const ms = num < 1_000_000_000_000 ? num * 1000 : num;
+    const d = new Date(ms);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  return null;
+}
+
 interface ParsedMessage {
   remoteJid: string;
   fromPhone: string | null;
@@ -93,7 +114,9 @@ interface ParsedMessage {
   isGroup: boolean;
   providerMessageId: string | null;
   status: string;
+  waTimestamp: string | null;
 }
+
 
 const WA_MEDIA_BUCKET = "wa-media";
 
