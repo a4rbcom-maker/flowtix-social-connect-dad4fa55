@@ -346,6 +346,40 @@ jobs:
           EOSSH
 
       # ─── 11. Mark SHA as deployed (release the dedupe marker) ──────────
+      - name: Verify public domain is serving this build
+        if: steps.lock.outputs.skip != 'true'
+        env:
+          PUBLIC_URL: ${{ vars.PUBLIC_URL || secrets.PUBLIC_URL || 'https://flowtixtools.com' }}
+        run: |
+          set -eu
+          URL="${PUBLIC_URL%/}"
+          [ -n "$URL" ] || { echo "No PUBLIC_URL configured — skipping public domain check."; exit 0; }
+
+          echo "Checking public domain: $URL"
+          FAIL=0
+          for i in $(seq 1 12); do
+            HEALTH_BODY=$(curl -fsS --max-time 15 "$URL/api/public/health" || true)
+            VERSION_BODY=$(curl -fsS --max-time 15 "$URL/deploy-version.json" || true)
+
+            HEALTH_OK=$(printf '%s' "$HEALTH_BODY" | grep -q '"short_sha"[[:space:]]*:[[:space:]]*"'"$SHORT_SHA"'"' && echo 1 || echo 0)
+            VERSION_OK=$(printf '%s' "$VERSION_BODY" | grep -q '"short_sha"[[:space:]]*:[[:space:]]*"'"$SHORT_SHA"'"' && echo 1 || echo 0)
+
+            if [ "$HEALTH_OK" = "1" ] && [ "$VERSION_OK" = "1" ]; then
+              echo "  attempt $i/12: ok — public domain serves ${SHORT_SHA}"
+            else
+              FAIL=$((FAIL + 1))
+              echo "  attempt $i/12: stale/misrouted public response"
+              echo "    health : ${HEALTH_BODY:-<empty>}" | cut -c1-500
+              echo "    version: ${VERSION_BODY:-<empty>}" | cut -c1-500
+            fi
+            sleep 2
+          done
+
+          if [ "$FAIL" -gt 0 ]; then
+            echo "::error::Public domain is not consistently serving ${SHORT_SHA}. Fix the domain/proxy/vhost before marking this deploy successful."
+            exit 1
+          fi
+
       - name: Mark SHA as deployed on server
         if: success() && steps.lock.outputs.skip != 'true'
         env:
