@@ -33,7 +33,7 @@ export const Route = createFileRoute("/api/public/health")({
         return Response.json(
           {
             status: "ok",
-            service: "flowtixtools-web",
+            service: process.env.APP_NAME || "tanstack-start-app",
             timestamp: new Date().toISOString(),
             uptime_seconds: Math.round(process.uptime?.() ?? 0),
             build: readBuildInfo(),

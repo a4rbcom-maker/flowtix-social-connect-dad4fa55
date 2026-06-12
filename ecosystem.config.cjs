@@ -15,7 +15,7 @@
 module.exports = {
   apps: [
     {
-      name: process.env.APP_NAME || "flowtixtools-web",
+      name: process.env.APP_NAME || "tanstack-start-app",
       script: "scripts/tanstack-node-server.mjs",
       cwd: process.env.DEPLOY_PATH || process.cwd(),
       interpreter: "node",
