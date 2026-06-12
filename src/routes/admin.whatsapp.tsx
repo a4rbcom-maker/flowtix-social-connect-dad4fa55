@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { motion } from "framer-motion";
@@ -12,19 +11,14 @@ import {
   Activity,
   CheckCircle2,
   XCircle,
-  Loader2,
-  Search,
   ArrowDownLeft,
   ArrowUpRight,
-  AlertTriangle,
   QrCode,
-  Crown,
   Sparkles,
-  Hash,
   Wifi,
   WifiOff,
   RefreshCw,
-  Link2,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -43,7 +37,6 @@ const REFRESH_MS = 20_000;
 function AdminWhatsappPage() {
   const { lang } = useI18n();
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
-  const [search, setSearch] = useState("");
 
   const q = useQuery({
     queryKey: ["admin", "whatsapp", "overview"],
@@ -52,16 +45,8 @@ function AdminWhatsappPage() {
   });
 
   const totals = q.data?.totals;
-  const filteredUsers = useMemo(() => {
-    const list = q.data?.users ?? [];
-    if (!search.trim()) return list;
-    const s = search.toLowerCase();
-    return list.filter(
-      (u) =>
-        (u.full_name ?? "").toLowerCase().includes(s) ||
-        (u.session?.phone ?? "").toLowerCase().includes(s),
-    );
-  }, [q.data, search]);
+
+
 
   return (
     <AdminLayout title={t("مراقبة واتساب", "WhatsApp Monitoring")}>
@@ -132,123 +117,6 @@ function AdminWhatsappPage() {
           {/* Hourly traffic chart */}
           <HourlyChart data={q.data?.hourly ?? []} t={t} />
 
-          {/* Search */}
-          <div className="rounded-2xl border border-border bg-card p-4">
-            <div className="relative">
-              <Search className="absolute top-1/2 -translate-y-1/2 start-3 h-4 w-4 text-muted-foreground" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={t("ابحث باسم المستخدم أو الرقم...", "Search by name or phone...")}
-                className="w-full rounded-lg border border-input bg-background py-2.5 ps-10 pe-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-          </div>
-
-          {/* Per-user table */}
-          <div className="rounded-2xl border border-border bg-card overflow-hidden">
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-              <h2 className="font-bold text-base">{t("النشاط لكل مستخدم", "Per-user Activity")}</h2>
-              <span className="text-xs text-muted-foreground">{filteredUsers.length} {t("مستخدم", "users")}</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-muted-foreground">
-                  <tr className="text-xs uppercase tracking-wider">
-                    <Th>{t("المستخدم", "User")}</Th>
-                    <Th>{t("الجلسة", "Session")}</Th>
-                    <Th>{t("محادثات", "Convos")}</Th>
-                    <Th>{t("وارد/صادر (24س)", "In/Out (24h)")}</Th>
-                    <Th>{t("رسائل (7أ)", "Msgs (7d)")}</Th>
-                    <Th>{t("ذكاء (7أ)", "AI (7d)")}</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredUsers.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-10 text-center text-muted-foreground">
-                        {t("لا توجد بيانات", "No data yet")}
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredUsers.map((u) => (
-                      <tr key={u.user_id} className="border-t border-border hover:bg-muted/30 transition-colors">
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <Avatar name={u.full_name} url={u.avatar_url} />
-                            <div className="min-w-0">
-                              <div className="font-medium truncate flex items-center gap-1.5">
-                                {u.full_name || t("بدون اسم", "Unnamed")}
-                                {u.plan && u.plan !== "free" && (
-                                  <Crown className="h-3.5 w-3.5 text-amber-500" />
-                                )}
-                              </div>
-                              {u.session?.phone && (
-                                <div className="text-xs text-muted-foreground flex items-center gap-1 truncate">
-                                  <Smartphone className="h-3 w-3" />
-                                  {u.session.phone}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <SessionStatusBadge status={u.session?.status ?? null} t={t} />
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="font-semibold">{u.conversations}</span>
-                          {u.unread > 0 && (
-                            <span className="ms-1.5 text-xs text-primary">
-                              ({u.unread} {t("غير مقروء", "unread")})
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2 text-xs">
-                            <span className="inline-flex items-center gap-1 text-violet-600 dark:text-violet-400">
-                              <ArrowDownLeft className="h-3 w-3" />
-                              {u.msgs_in_24h}
-                            </span>
-                            <span className="text-muted-foreground">/</span>
-                            <span className="inline-flex items-center gap-1 text-cyan-600 dark:text-cyan-400">
-                              <ArrowUpRight className="h-3 w-3" />
-                              {u.msgs_out_24h}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 font-semibold">{u.msgs_7d}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2 text-xs">
-                            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                              <Bot className="h-3 w-3" />
-                              {u.ai_calls_7d}
-                            </span>
-                            {u.ai_errors_7d > 0 && (
-                              <span className="inline-flex items-center gap-1 text-red-500">
-                                <AlertTriangle className="h-3 w-3" />
-                                {u.ai_errors_7d}
-                              </span>
-                            )}
-                            {u.tokens_7d > 0 && (
-                              <span className="inline-flex items-center gap-1 text-muted-foreground">
-                                <Hash className="h-3 w-3" />
-                                {formatNum(u.tokens_7d)}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Recent conversations */}
-          <RecentConversations rows={q.data?.recentConversations ?? []} t={t} />
-
           {/* Recent messages */}
           <RecentMessages rows={q.data?.recentMessages ?? []} t={t} />
         </div>
@@ -263,20 +131,6 @@ function formatNum(n: number) {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
   if (n >= 1_000) return (n / 1_000).toFixed(1) + "k";
   return n.toString();
-}
-
-function Th({ children }: { children: React.ReactNode }) {
-  return <th className="text-start px-4 py-3 font-semibold">{children}</th>;
-}
-
-function Avatar({ name, url }: { name: string | null; url: string | null }) {
-  const initial = (name ?? "?").trim().charAt(0).toUpperCase() || "?";
-  if (url) return <img src={url} alt={name ?? ""} className="h-9 w-9 rounded-full object-cover border border-border" />;
-  return (
-    <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary/20 to-[oklch(0.66_0.26_320)]/20 flex items-center justify-center text-sm font-bold text-primary border border-primary/20">
-      {initial}
-    </div>
-  );
 }
 
 type Tone = "primary" | "blue" | "emerald" | "violet" | "amber" | "red" | "cyan";
@@ -323,30 +177,7 @@ function KpiCard({
   );
 }
 
-function SessionStatusBadge({ status, t }: { status: string | null; t: (ar: string, en: string) => string }) {
-  if (!status) {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-        <XCircle className="h-3.5 w-3.5" />
-        {t("لا توجد جلسة", "No session")}
-      </span>
-    );
-  }
-  const map: Record<string, { cls: string; icon: React.ComponentType<{ className?: string }>; ar: string; en: string }> = {
-    connected: { cls: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", icon: CheckCircle2, ar: "متصل", en: "Connected" },
-    connecting: { cls: "bg-blue-500/10 text-blue-600 dark:text-blue-400", icon: Loader2, ar: "جاري الاتصال", en: "Connecting" },
-    qr: { cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400", icon: QrCode, ar: "بانتظار QR", en: "Awaiting QR" },
-    disconnected: { cls: "bg-muted text-muted-foreground", icon: XCircle, ar: "غير متصل", en: "Disconnected" },
-  };
-  const m = map[status] ?? { cls: "bg-muted text-muted-foreground", icon: Activity, ar: status, en: status };
-  const Icon = m.icon;
-  return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${m.cls}`}>
-      <Icon className={`h-3.5 w-3.5 ${status === "connecting" ? "animate-spin" : ""}`} />
-      {t(m.ar, m.en)}
-    </span>
-  );
-}
+
 
 function HourlyChart({ data, t }: { data: Array<{ hour: number; in: number; out: number }>; t: (ar: string, en: string) => string }) {
   const max = Math.max(1, ...data.map((d) => d.in + d.out));
@@ -398,64 +229,6 @@ function HourlyChart({ data, t }: { data: Array<{ hour: number; in: number; out:
   );
 }
 
-type ConvRow = {
-  id: string;
-  contact_name: string | null;
-  contact_phone: string | null;
-  last_message_text: string | null;
-  last_message_at: string;
-  unread_count: number;
-  ai_enabled: boolean;
-  user: { full_name: string | null; avatar_url: string | null; plan: string | null } | null;
-};
-
-function RecentConversations({ rows, t }: { rows: ConvRow[]; t: (ar: string, en: string) => string }) {
-  return (
-    <div className="rounded-2xl border border-border bg-card overflow-hidden">
-      <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-        <h2 className="font-bold text-base flex items-center gap-2">
-          <MessageCircle className="h-4 w-4 text-primary" />
-          {t("أحدث المحادثات", "Recent conversations")}
-        </h2>
-        <span className="text-xs text-muted-foreground">{rows.length}</span>
-      </div>
-      <div className="divide-y divide-border max-h-[420px] overflow-y-auto">
-        {rows.length === 0 ? (
-          <div className="py-10 text-center text-sm text-muted-foreground">{t("لا توجد محادثات", "No conversations yet")}</div>
-        ) : (
-          rows.map((c) => (
-            <div key={c.id} className="px-5 py-3 hover:bg-muted/30 transition-colors">
-              <div className="flex items-center justify-between gap-3 mb-1">
-                <div className="min-w-0 flex items-center gap-2 flex-1">
-                  <Avatar name={c.contact_name ?? c.contact_phone} url={null} />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium text-sm truncate flex items-center gap-1.5">
-                      {c.contact_name || c.contact_phone || t("غير معروف", "Unknown")}
-                      {c.ai_enabled && <Bot className="h-3 w-3 text-violet-500" />}
-                    </div>
-                    <div className="text-[11px] text-muted-foreground truncate">
-                      {c.user?.full_name ?? t("غير معروف", "Unknown")}
-                    </div>
-                  </div>
-                </div>
-                {c.unread_count > 0 && (
-                  <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold">
-                    {c.unread_count}
-                  </span>
-                )}
-              </div>
-              {c.last_message_text && (
-                <div className="text-xs text-muted-foreground line-clamp-1 ps-11">
-                  {c.last_message_text}
-                </div>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
 
 
 type MsgRow = {
@@ -543,7 +316,7 @@ function BridgeHealthCard({
   });
 
   const h = q.data;
-  const loading = q.isLoading || mut.isPending;
+  
   const online = !!h?.ok;
 
   return (
@@ -579,25 +352,13 @@ function BridgeHealthCard({
         <div className="flex items-center gap-2">
           <span
             className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
-              loading
-                ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
-                : online
-                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                  : "bg-rose-500/15 text-rose-700 dark:text-rose-300"
+              online
+                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                : "bg-rose-500/15 text-rose-700 dark:text-rose-300"
             }`}
           >
-            {loading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : online ? (
-              <CheckCircle2 className="h-3.5 w-3.5" />
-            ) : (
-              <XCircle className="h-3.5 w-3.5" />
-            )}
-            {loading
-              ? t("جارٍ الفحص…", "Checking…")
-              : online
-                ? t("متصل", "Online")
-                : t("غير متصل", "Offline")}
+            {online ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+            {online ? t("متصل", "Online") : t("غير متصل", "Offline")}
           </span>
           <button
             type="button"
@@ -611,14 +372,7 @@ function BridgeHealthCard({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <ConfigRow
-          icon={Link2}
-          label={t("رابط البريدج", "Bridge URL")}
-          value={h?.url ?? "—"}
-          monospace
-          ok={!!h?.url}
-        />
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <ConfigRow
           icon={QrCode}
           label={t("مفتاح API", "API Key")}
