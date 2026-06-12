@@ -316,14 +316,18 @@ jobs:
       - name: Resolve deploy path
         env:
           DEPLOY_PATH_SECRET: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_PATH_VAR: ${{ vars.DEPLOY_PATH }}
         run: |
           set -euo pipefail
-          DEPLOY_PATH="${DEPLOY_PATH_SECRET:-/www/wwwroot/flowtixtools.com}"
+          DEPLOY_PATH="${DEPLOY_PATH_SECRET:-${DEPLOY_PATH_VAR:-/www/wwwroot/${GITHUB_REPOSITORY##*/}}}"
           case "$DEPLOY_PATH" in
-            /www/wwwroot/*flowtix*) : ;;
-            *) echo "::error::Refusing to deploy outside Flowtix path: $DEPLOY_PATH"; exit 1 ;;
+            /www/wwwroot/*) : ;;
+            *) echo "::error::Refusing to deploy outside /www/wwwroot: $DEPLOY_PATH"; exit 1 ;;
           esac
-          BACKUPS_DIR="$(dirname "$DEPLOY_PATH")/flowtixtools-backups"
+          case "$DEPLOY_PATH" in
+            *'..'*|*' '*|*$'\t'*|*$'\n'*) echo "::error::DEPLOY_PATH must not contain '..' or whitespace: $DEPLOY_PATH"; exit 1 ;;
+          esac
+          BACKUPS_DIR="$(dirname "$DEPLOY_PATH")/$(basename "$DEPLOY_PATH")-backups"
           echo "DEPLOY_PATH=$DEPLOY_PATH" >> "$GITHUB_ENV"
           echo "BACKUPS_DIR=$BACKUPS_DIR" >> "$GITHUB_ENV"
           echo "Deploy path: $DEPLOY_PATH"
