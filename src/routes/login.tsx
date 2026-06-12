@@ -117,24 +117,13 @@ function LoginPage() {
 
     try {
       if (isLogin) {
-        if (rememberMe) {
-          localStorage.setItem("flowtix_remember_me", "true");
-        } else {
-          localStorage.setItem("flowtix_remember_me", "false");
-        }
+        localStorage.setItem("flowtix_remember_me", rememberMe ? "true" : "false");
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        // Use server function so the role check goes through the trusted server
-        // path (bearer attached automatically). Falls back to /dashboard on failure.
-        let dest: string = "/dashboard";
-        try {
-          const res = await checkIsAdmin();
-          if (res?.isAdmin) dest = "/admin";
-        } catch {
-          /* ignore – default to /dashboard */
-        }
-        if (isSafeRedirect(redirectParam)) dest = redirectParam;
-        navigate({ to: dest });
+        // Don't navigate manually — the role-aware <Navigate> gate above
+        // redirects to /admin or /dashboard once useIsAdmin resolves. This
+        // avoids a race where an admin is sent to /dashboard before the
+        // server-side role check completes.
       } else {
         const { error } = await supabase.auth.signUp({
           email,
