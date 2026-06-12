@@ -82,6 +82,27 @@ function findSessionId(payload: Record<string, unknown>, headers: Headers): stri
   );
 }
 
+function parseWaTimestamp(entry: Record<string, unknown>): string | null {
+  const candidates: unknown[] = [
+    entry.messageTimestamp,
+    entry.timestamp,
+    entry.t,
+    asObj(entry.key).timestamp,
+    asObj(entry.message).messageTimestamp,
+    asObj(entry.data).timestamp,
+  ];
+  for (const raw of candidates) {
+    if (raw == null) continue;
+    const num = typeof raw === "number" ? raw : Number(String(raw).trim());
+    if (!Number.isFinite(num) || num <= 0) continue;
+    // Heuristic: < 10^12 => seconds; otherwise milliseconds
+    const ms = num < 1_000_000_000_000 ? num * 1000 : num;
+    const d = new Date(ms);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  return null;
+}
+
 interface ParsedMessage {
   remoteJid: string;
   fromPhone: string | null;
@@ -93,7 +114,9 @@ interface ParsedMessage {
   isGroup: boolean;
   providerMessageId: string | null;
   status: string;
+  waTimestamp: string | null;
 }
+
 
 const WA_MEDIA_BUCKET = "wa-media";
 
@@ -297,8 +320,10 @@ function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null
     isGroup,
     providerMessageId: messageIdFrom(entry),
     status: normalizeMessageStatus(pickStr(entry, "status", "ack", "messageStatus"), fromMe),
+    waTimestamp: parseWaTimestamp(entry),
   };
 }
+
 
 function collectMessageEntries(payload: Record<string, unknown>): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = [];
@@ -472,6 +497,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       }
     }
 
+    const waTimestamp = m.waTimestamp ?? new Date().toISOString();
     const { error: insErr } = await supabaseAdmin.from("wa_messages").insert({
       user_id: userId,
       session_id: sessionId,
@@ -484,11 +510,13 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       media_url: mediaUrl,
       status: m.status,
       provider_message_id: m.providerMessageId,
+      wa_timestamp: waTimestamp,
       raw: {
         ...entry,
         normalizedRemoteJid: m.remoteJid,
         normalizedContactPhone: m.fromPhone,
         normalizedStatus: m.status,
+        normalizedWaTimestamp: waTimestamp,
         providerMessageId: m.providerMessageId,
         storedMediaUrl: mediaUrl?.startsWith("wa-media:") ? mediaUrl : null,
       } as never,
@@ -507,7 +535,9 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       contactPhone: m.isGroup ? null : m.fromPhone,
       text: text ?? (msgType !== "text" ? `[${msgType}]` : null),
       direction: m.fromMe ? "out" : "in",
+      messageAt: waTimestamp,
     });
+
 
     if (text && !m.fromMe) {
       // Try keyword auto-reply FIRST. If it matches, skip AI entirely.

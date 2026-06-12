@@ -1302,6 +1302,7 @@ export type Database = {
           text_body: string | null
           to_phone: string | null
           user_id: string
+          wa_timestamp: string | null
         }
         Insert: {
           created_at?: string
@@ -1318,6 +1319,7 @@ export type Database = {
           text_body?: string | null
           to_phone?: string | null
           user_id: string
+          wa_timestamp?: string | null
         }
         Update: {
           created_at?: string
@@ -1334,6 +1336,7 @@ export type Database = {
           text_body?: string | null
           to_phone?: string | null
           user_id?: string
+          wa_timestamp?: string | null
         }
         Relationships: []
       }

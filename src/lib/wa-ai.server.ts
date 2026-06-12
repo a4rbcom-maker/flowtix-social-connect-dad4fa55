@@ -86,11 +86,12 @@ export async function handleAiAutoReply(opts: {
     const ctxLimit = Math.min(Math.max(settings.ai_max_context_messages || 10, 2), 30);
     const { data: history } = await supabaseAdmin
       .from("wa_messages")
-      .select("direction, text_body, msg_type, created_at")
+      .select("direction, text_body, msg_type, wa_timestamp, created_at")
       .eq("user_id", userId)
       .eq("remote_jid", remoteJid)
-      .order("created_at", { ascending: false })
+      .order("wa_timestamp", { ascending: false })
       .limit(ctxLimit);
+
 
     const ordered = (history ?? []).reverse();
     const isFirstMessage = ordered.length <= 1;
@@ -100,6 +101,7 @@ export async function handleAiAutoReply(opts: {
       try {
         const welcomeRes = await waBridge.sendText(sessionId, phone, settings.ai_welcome_message);
         const providerMessageId = typeof welcomeRes?.id === "string" ? welcomeRes.id : null;
+        const welcomeAt = new Date().toISOString();
         await supabaseAdmin.from("wa_messages").insert({
           user_id: userId,
           session_id: sessionId,
@@ -110,6 +112,7 @@ export async function handleAiAutoReply(opts: {
           text_body: settings.ai_welcome_message,
           status: "sent",
           provider_message_id: providerMessageId,
+          wa_timestamp: welcomeAt,
           raw: { ai: true, kind: "welcome", providerMessageId } as never,
         });
         await upsertConversationFromMessage({
@@ -120,11 +123,13 @@ export async function handleAiAutoReply(opts: {
           contactPhone: fromPhone,
           text: settings.ai_welcome_message,
           direction: "out",
+          messageAt: welcomeAt,
         });
       } catch (err) {
         console.error("[wa-ai] welcome send failed:", err);
       }
     }
+
 
     const systemPrompt =
       settings.ai_system_prompt?.trim() ||
@@ -182,6 +187,7 @@ export async function handleAiAutoReply(opts: {
       try {
         const sendRes = await waBridge.sendText(sessionId, phone, aiText);
         const providerMessageId = typeof sendRes?.id === "string" ? sendRes.id : null;
+        const aiAt = new Date().toISOString();
         await supabaseAdmin.from("wa_messages").insert({
           user_id: userId,
           session_id: sessionId,
@@ -192,6 +198,7 @@ export async function handleAiAutoReply(opts: {
           text_body: aiText,
           status: "sent",
           provider_message_id: providerMessageId,
+          wa_timestamp: aiAt,
           raw: { ai: true, tier, model, providerMessageId } as never,
         });
         await upsertConversationFromMessage({
@@ -202,12 +209,14 @@ export async function handleAiAutoReply(opts: {
           contactPhone: fromPhone,
           text: aiText,
           direction: "out",
+          messageAt: aiAt,
         });
       } catch (err) {
         errMsg = err instanceof Error ? err.message : "Bridge send failed";
         aiText = "";
       }
     }
+
 
     await supabaseAdmin.from("wa_ai_logs").insert({
       user_id: userId,
@@ -239,26 +248,36 @@ export async function upsertConversationFromMessage(opts: {
   contactPhone: string | null;
   text: string | null;
   direction: "in" | "out";
+  messageAt?: string;
 }): Promise<string | null> {
   const { userId, sessionId, remoteJid, contactName, contactPhone, text, direction } = opts;
-  const now = new Date().toISOString();
+  const messageAt = opts.messageAt ?? new Date().toISOString();
 
   // Try update first
   const { data: existing } = await supabaseAdmin
     .from("wa_conversations")
-    .select("id, unread_count, contact_name, contact_phone")
+    .select("id, unread_count, contact_name, contact_phone, last_message_at")
     .eq("user_id", userId)
     .eq("remote_jid", remoteJid)
     .maybeSingle();
 
   if (existing) {
+    // Only bump the summary if this message is newer than the existing one,
+    // so historical/imported messages don't reorder the inbox.
+    const existingAt = existing.last_message_at ? new Date(existing.last_message_at).getTime() : 0;
+    const incomingAt = new Date(messageAt).getTime();
+    const isNewer = incomingAt >= existingAt;
     await supabaseAdmin
       .from("wa_conversations")
       .update({
         session_id: sessionId,
-        last_message_text: text ?? null,
-        last_message_at: now,
-        last_direction: direction,
+        ...(isNewer
+          ? {
+              last_message_text: text ?? null,
+              last_message_at: messageAt,
+              last_direction: direction,
+            }
+          : {}),
         unread_count: direction === "in" ? (existing.unread_count || 0) + 1 : existing.unread_count,
         contact_name: existing.contact_name || contactName,
         contact_phone: contactPhone || existing.contact_phone,
@@ -276,7 +295,7 @@ export async function upsertConversationFromMessage(opts: {
       contact_name: contactName,
       contact_phone: contactPhone,
       last_message_text: text ?? null,
-      last_message_at: now,
+      last_message_at: messageAt,
       last_direction: direction,
       unread_count: direction === "in" ? 1 : 0,
     })
@@ -285,3 +304,4 @@ export async function upsertConversationFromMessage(opts: {
 
   return inserted?.id ?? null;
 }
+

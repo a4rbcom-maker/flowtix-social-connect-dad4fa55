@@ -73,13 +73,14 @@ export const listConversations = createServerFn({ method: "POST" })
     const remoteJids = rows.map((row) => row.remote_jid);
     const { data: rawMessages } = await supabase
       .from("wa_messages")
-      .select("remote_jid, text_body, msg_type, raw, created_at")
+      .select("remote_jid, text_body, msg_type, raw, wa_timestamp, created_at")
       .eq("user_id", userId)
       .eq("session_id", sess.session_id)
       .in("remote_jid", remoteJids)
       .not("raw", "is", null)
-      .order("created_at", { ascending: false })
+      .order("wa_timestamp", { ascending: false })
       .limit(1000);
+
 
     const metaByJid = new Map<string, { phone: string | null; profile: string | null; preview: string | null }>();
     for (const msg of rawMessages ?? []) {
@@ -122,11 +123,11 @@ export const getConversationMessages = createServerFn({ method: "POST" })
 
     const { data: rows, error } = await supabase
       .from("wa_messages")
-      .select("id, remote_jid, direction, status, text_body, msg_type, media_url, created_at, raw")
+      .select("id, remote_jid, direction, status, text_body, msg_type, media_url, wa_timestamp, created_at, raw")
       .eq("user_id", userId)
       .eq("session_id", sess.session_id)
       .eq("remote_jid", data.remoteJid)
-      .order("created_at", { ascending: true })
+      .order("wa_timestamp", { ascending: true })
       .limit(1000);
     if (error) throw new Error(error.message);
     return (rows ?? []).map((r) => {
@@ -142,13 +143,14 @@ export const getConversationMessages = createServerFn({ method: "POST" })
         text_body: cleanMessageText(r.text_body, raw, msgType),
         msg_type: msgType,
         media_url: preferChatMediaUrl(storedMediaUrl, rawMediaUrl),
-        created_at: r.created_at,
+        created_at: r.wa_timestamp ?? r.created_at,
         is_ai: raw.ai === true,
         sender_name: pickString(raw, "pushName", "senderName", "notifyName", "contactName"),
         sender_phone: digits(pickString(raw, "participantPn", "senderPn", "phoneNumber")),
       };
     });
   });
+
 
 function isWaStorageUrl(url: string | null | undefined): boolean {
   const value = url?.trim() ?? "";
@@ -234,6 +236,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         : phoneDigits
           ? `${phoneDigits}@s.whatsapp.net`
           : data.remoteJid;
+    const sentAt = new Date().toISOString();
     try {
       const res = await waBridge.sendText(sess.session_id, to, data.text);
       // Bridge may return 200 with ok:false / error message — surface it.
@@ -251,6 +254,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         text_body: data.text,
         status: "sent",
         provider_message_id: providerMessageId,
+        wa_timestamp: sentAt,
         raw: providerMessageId ? ({ bridgeMessageId: providerMessageId } as never) : null,
       });
     } catch (err) {
@@ -268,7 +272,9 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       contactPhone: phoneDigits || null,
       text: data.text,
       direction: "out",
+      messageAt: sentAt,
     });
+
 
     return { ok: true };
   });
