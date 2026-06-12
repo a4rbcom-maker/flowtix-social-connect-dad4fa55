@@ -45,7 +45,8 @@ type AdminPath =
   | "/admin/logs"
   | "/admin/notifications"
   | "/admin/settings"
-  | "/admin/security";
+  | "/admin/security"
+  | "/admin/profile";
 
 interface NavItem {
   to: AdminPath;
@@ -340,12 +341,16 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-500/10 to-primary/10 border border-amber-500/20">
+            <Link
+              to="/admin/profile"
+              className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-500/10 to-primary/10 border border-amber-500/20 hover:from-amber-500/20 hover:to-primary/20 transition"
+              title={lang === "ar" ? "ملفي الشخصي" : "My Profile"}
+            >
               <div className="h-7 w-7 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground text-xs font-bold">
                 {user.email?.[0]?.toUpperCase() ?? "A"}
               </div>
               <span className="text-xs font-medium truncate max-w-[120px]">{user.email}</span>
-            </div>
+            </Link>
           </div>
         </header>
 
