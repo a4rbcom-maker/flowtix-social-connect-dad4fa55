@@ -1331,3 +1331,22 @@ jobs:
             echo "::warning::Checked URL(s) from ${PUBLIC_URL_SOURCE}: $(for u in $PUBLIC_URLS; do mask_url "$u"; done | tr '\n' ' ')"
             echo "::warning::Last URL tried: $(mask_url "${LAST_TRIED:-none}")"
           fi
+
+      # Per-SHA deploy lock — saved only when ALL preceding steps succeeded.
+      # Future runs for the same commit SHA will hit this cache in check_sha
+      # and skip the deploy entirely. Prevents re-deploying the same SHA
+      # even if the workflow is re-triggered (push retry, re-run, etc.).
+      - name: Mark this SHA as deployed (cache lock)
+        if: success()
+        run: |
+          mkdir -p .deploy-lock
+          printf 'sha=%s\nrun_id=%s\ndeployed_at=%s\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > .deploy-lock/marker
+
+      - name: Save per-SHA deploy lock
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: .deploy-lock
+          key: vps-deploy-sha-${{ github.sha }}-v1
