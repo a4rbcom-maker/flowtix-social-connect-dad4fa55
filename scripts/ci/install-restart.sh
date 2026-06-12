@@ -17,6 +17,11 @@ cd "$DEPLOY_PATH"
 [ -f manifest.json ] || { echo "ERROR: manifest.json missing — bundle integrity unknown"; exit 1; }
 [ -f SHA256SUMS ] || { echo "ERROR: SHA256SUMS missing — bundle integrity unknown"; exit 1; }
 
+has_ssr_entry() {
+  local candidate="$1"
+  [ -f "$candidate/dist/server/index.js" ] || [ -f "$candidate/dist/server/index.mjs" ]
+}
+
 # ===== Integrity-failure rollback =====
 # If the freshly rsynced bundle is corrupt/incomplete, the FILES on disk
 # at $DEPLOY_PATH are already broken (PM2 still has the old in-memory
@@ -30,7 +35,7 @@ diagnose_snapshot() {
     echo "      ✗ directory missing" >&2
     return
   fi
-  for f in dist/server/index.js scripts/tanstack-node-server.mjs ecosystem.config.cjs; do
+  for f in dist/server/index.js dist/server/index.mjs scripts/tanstack-node-server.mjs ecosystem.config.cjs; do
     if [ -f "$candidate/$f" ]; then echo "      ✓ $f" >&2
     else echo "      ✗ $f (missing)" >&2; fi
   done
@@ -44,7 +49,7 @@ is_valid_ssr_snapshot() {
   local candidate="$1"
   [ -n "$candidate" ] \
     && [ -d "$candidate" ] \
-    && [ -f "$candidate/dist/server/index.js" ] \
+    && has_ssr_entry "$candidate" \
     && [ -f "$candidate/scripts/tanstack-node-server.mjs" ] \
     && [ -f "$candidate/ecosystem.config.cjs" ] \
     && [ -d "$candidate/node_modules" ]
@@ -61,7 +66,7 @@ is_runnable_prev_snapshot() {
   local candidate="$1"
   [ -n "$candidate" ] \
     && [ -d "$candidate" ] \
-    && [ -f "$candidate/dist/server/index.js" ] \
+    && has_ssr_entry "$candidate" \
     && [ -f "$candidate/ecosystem.config.cjs" ] \
     && [ -d "$candidate/node_modules" ]
 }
@@ -80,7 +85,7 @@ verdict_snapshot() {
     return 1
   fi
   local missing=""
-  [ -f "$path/dist/server/index.js" ]            || missing="${missing}dist/server/index.js "
+  has_ssr_entry "$path"                          || missing="${missing}dist/server/index.js|index.mjs "
   [ -f "$path/ecosystem.config.cjs" ]             || missing="${missing}ecosystem.config.cjs "
   [ -d "$path/node_modules" ]                     || missing="${missing}node_modules/ "
   if [ "$mode" = "strict" ]; then
