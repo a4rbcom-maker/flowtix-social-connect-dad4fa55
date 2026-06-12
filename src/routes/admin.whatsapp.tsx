@@ -316,7 +316,7 @@ function BridgeHealthCard({
   });
 
   const h = q.data;
-  const loading = q.isLoading || mut.isPending;
+  
   const online = !!h?.ok;
 
   return (
