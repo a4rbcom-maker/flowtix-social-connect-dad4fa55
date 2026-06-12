@@ -25,7 +25,70 @@ env:
   LEGACY_PM2_APPS: ${{ vars.LEGACY_PM2_APPS || '' }}
 
 jobs:
+  # ───────────────────────────────────────────────────────────────────────
+  # Skip-if-already-deployed guard.
+  # Hits PUBLIC_URL/api/public/health and compares the live `build.sha`
+  # to the current commit (GITHUB_SHA). If they match, the deploy job
+  # is skipped entirely — no install, build, rsync, or PM2 restart.
+  #
+  # Always runs (never skipped) when:
+  #   - PUBLIC_URL is not configured (can't verify)
+  #   - health endpoint is unreachable / returns no SHA
+  #   - workflow_dispatch is triggered manually (force re-deploy)
+  # ───────────────────────────────────────────────────────────────────────
+  check_sha:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.compare.outputs.skip }}
+    steps:
+      - name: Compare live SHA vs commit SHA
+        id: compare
+        env:
+          PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
+          PUBLIC_URL_VAR: ${{ vars.PUBLIC_URL }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "Manual dispatch — forcing deploy (skip guard disabled)."
+            exit 0
+          fi
+
+          PUBLIC_URL_CONFIG="${PUBLIC_URL_SECRET:-${PUBLIC_URL_VAR:-}}"
+          if [ -z "$PUBLIC_URL_CONFIG" ]; then
+            echo "PUBLIC_URL not set — cannot verify, proceeding with deploy."
+            exit 0
+          fi
+
+          URL="${PUBLIC_URL_CONFIG%/}/api/public/health"
+          echo "Querying $URL ..."
+          BODY="$(curl -fsSL --max-time 10 "$URL" 2>/dev/null || true)"
+          if [ -z "$BODY" ]; then
+            echo "Health endpoint unreachable — proceeding with deploy."
+            exit 0
+          fi
+
+          LIVE_SHA="$(printf '%s' "$BODY" | grep -o '"sha"[[:space:]]*:[[:space:]]*"[a-f0-9]\{7,40\}"' | head -n1 | sed 's/.*"\([a-f0-9]\{7,40\}\)"$/\1/' || true)"
+          if [ -z "$LIVE_SHA" ]; then
+            echo "Live SHA not exposed by health endpoint — proceeding with deploy."
+            exit 0
+          fi
+
+          echo "Live SHA:   $LIVE_SHA"
+          echo "Commit SHA: $GITHUB_SHA"
+
+          if [ "$LIVE_SHA" = "$GITHUB_SHA" ]; then
+            echo "::notice::Live SHA already matches commit SHA — skipping deploy."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "SHA mismatch — proceeding with deploy."
+          fi
+
   deploy:
+    needs: check_sha
+    if: needs.check_sha.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
