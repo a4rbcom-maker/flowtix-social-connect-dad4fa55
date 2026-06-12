@@ -356,6 +356,7 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
   const [editingName, setEditingName] = useState<string | null>(null);
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
+  const [pendingPlan, setPendingPlan] = useState<string | null>(null);
 
   return (
     <>
@@ -480,12 +481,7 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
                     key={p}
                     onClick={() => {
                       if (d.profile?.plan === p) return;
-                      const name = d.profile?.full_name || t("هذا المستخدم", "this user");
-                      const msg = t(
-                        `هل أنت متأكد من تغيير باقة ${name} إلى ${p}؟`,
-                        `Are you sure you want to change ${name}'s plan to ${p}?`
-                      );
-                      if (window.confirm(msg)) planMut.mutate(p);
+                      setPendingPlan(p);
                     }}
                     disabled={planMut.isPending}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-all ${
@@ -500,6 +496,22 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
                 ))}
               </div>
             </div>
+
+            {/* Plan change confirmation */}
+            <PlanChangeDialog
+              open={!!pendingPlan}
+              currentPlan={d.profile?.plan ?? "free"}
+              nextPlan={pendingPlan ?? ""}
+              userName={d.profile?.full_name || (d.auth.email ?? t("هذا المستخدم", "this user"))}
+              isPending={planMut.isPending}
+              onCancel={() => setPendingPlan(null)}
+              onConfirm={() => {
+                if (!pendingPlan) return;
+                planMut.mutate(pendingPlan, { onSettled: () => setPendingPlan(null) });
+              }}
+              t={t}
+              dir={dir}
+            />
 
             {/* Role + Ban controls */}
             <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
