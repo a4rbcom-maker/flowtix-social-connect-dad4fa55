@@ -41,18 +41,36 @@ jobs:
     outputs:
       skip: ${{ steps.compare.outputs.skip }}
     steps:
+      # Cache-based lock: a previous successful deploy for THIS exact commit
+      # SHA saves a marker into the Actions cache. If the marker exists, we
+      # skip immediately — no health probe needed. This survives across
+      # workflow re-runs, duplicate triggers, and retries.
+      - name: Restore per-SHA deploy lock
+        id: lock
+        uses: actions/cache/restore@v4
+        with:
+          path: .deploy-lock
+          key: vps-deploy-sha-${{ github.sha }}-v1
+
       - name: Compare live SHA vs commit SHA
         id: compare
         env:
           PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
           PUBLIC_URL_VAR: ${{ vars.PUBLIC_URL }}
           EVENT_NAME: ${{ github.event_name }}
+          LOCK_HIT: ${{ steps.lock.outputs.cache-hit }}
         run: |
           set -euo pipefail
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "Manual dispatch — forcing deploy (skip guard disabled)."
+            exit 0
+          fi
+
+          if [ "${LOCK_HIT:-false}" = "true" ]; then
+            echo "::notice::Per-SHA deploy lock found in cache — this commit ($GITHUB_SHA) was already deployed. Skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -89,6 +107,13 @@ jobs:
   deploy:
     needs: check_sha
     if: needs.check_sha.outputs.skip != 'true'
+    # Per-SHA concurrency lock: at most ONE deploy job for a given commit
+    # SHA can run at a time. Combined with the global vps-deploy lock above,
+    # this guarantees the same SHA never deploys twice in parallel even if
+    # multiple triggers fire (push + re-run, manual dispatch, etc.).
+    concurrency:
+      group: vps-deploy-sha-${{ github.sha }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -1306,3 +1331,22 @@ jobs:
             echo "::warning::Checked URL(s) from ${PUBLIC_URL_SOURCE}: $(for u in $PUBLIC_URLS; do mask_url "$u"; done | tr '\n' ' ')"
             echo "::warning::Last URL tried: $(mask_url "${LAST_TRIED:-none}")"
           fi
+
+      # Per-SHA deploy lock — saved only when ALL preceding steps succeeded.
+      # Future runs for the same commit SHA will hit this cache in check_sha
+      # and skip the deploy entirely. Prevents re-deploying the same SHA
+      # even if the workflow is re-triggered (push retry, re-run, etc.).
+      - name: Mark this SHA as deployed (cache lock)
+        if: success()
+        run: |
+          mkdir -p .deploy-lock
+          printf 'sha=%s\nrun_id=%s\ndeployed_at=%s\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > .deploy-lock/marker
+
+      - name: Save per-SHA deploy lock
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: .deploy-lock
+          key: vps-deploy-sha-${{ github.sha }}-v1
