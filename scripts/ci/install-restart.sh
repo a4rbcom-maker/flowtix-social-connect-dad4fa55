@@ -96,14 +96,24 @@ dump_failure_diagnostics() {
 trap 'dump_failure_diagnostics $? ${LINENO} "${BASH_COMMAND}"' ERR
 trap cleanup_self EXIT
 cd "$DEPLOY_PATH"
-[ -f "$SERVER_ENTRY" ] || { echo "ERROR: SSR entry missing: $SERVER_ENTRY"; exit 1; }
+SSR_ENTRY_CANDIDATES="dist/server/server.js dist/server/server.mjs dist/server/index.js dist/server/index.mjs"
+[ -n "${SERVER_ENTRY:-}" ] && [ -f "$SERVER_ENTRY" ] || {
+  echo "ERROR: SSR entry missing: ${SERVER_ENTRY:-<unset>}"
+  echo "Expected one of: $SSR_ENTRY_CANDIDATES"
+  find dist/server -maxdepth 2 -type f 2>/dev/null | LC_ALL=C sort | sed -n '1,80p' || true
+  exit 1
+}
 [ -f deploy-version.json ] || { echo "ERROR: deploy-version.json missing"; exit 1; }
 [ -f manifest.json ] || { echo "ERROR: manifest.json missing — bundle integrity unknown"; exit 1; }
 [ -f SHA256SUMS ] || { echo "ERROR: SHA256SUMS missing — bundle integrity unknown"; exit 1; }
 
 has_ssr_entry() {
   local candidate="$1"
-  [ -f "$candidate/dist/server/index.js" ] || [ -f "$candidate/dist/server/index.mjs" ]
+  local f
+  for f in $SSR_ENTRY_CANDIDATES; do
+    [ -f "$candidate/$f" ] && return 0
+  done
+  return 1
 }
 
 # ===== Integrity-failure rollback =====
@@ -119,7 +129,7 @@ diagnose_snapshot() {
     echo "      ✗ directory missing" >&2
     return
   fi
-  for f in dist/server/index.js dist/server/index.mjs scripts/tanstack-node-server.mjs ecosystem.config.cjs; do
+  for f in $SSR_ENTRY_CANDIDATES scripts/tanstack-node-server.mjs ecosystem.config.cjs; do
     if [ -f "$candidate/$f" ]; then echo "      ✓ $f" >&2
     else echo "      ✗ $f (missing)" >&2; fi
   done
