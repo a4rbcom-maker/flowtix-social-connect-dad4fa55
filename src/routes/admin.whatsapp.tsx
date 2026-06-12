@@ -43,7 +43,6 @@ const REFRESH_MS = 20_000;
 function AdminWhatsappPage() {
   const { lang } = useI18n();
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
-  const [search, setSearch] = useState("");
 
   const q = useQuery({
     queryKey: ["admin", "whatsapp", "overview"],
@@ -52,16 +51,8 @@ function AdminWhatsappPage() {
   });
 
   const totals = q.data?.totals;
-  const filteredUsers = useMemo(() => {
-    const list = q.data?.users ?? [];
-    if (!search.trim()) return list;
-    const s = search.toLowerCase();
-    return list.filter(
-      (u) =>
-        (u.full_name ?? "").toLowerCase().includes(s) ||
-        (u.session?.phone ?? "").toLowerCase().includes(s),
-    );
-  }, [q.data, search]);
+
+
 
   return (
     <AdminLayout title={t("مراقبة واتساب", "WhatsApp Monitoring")}>
