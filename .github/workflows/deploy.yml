@@ -40,6 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       skip: ${{ steps.compare.outputs.skip }}
+      cache_hit: ${{ steps.lock.outputs.cache-hit || 'false' }}
     steps:
       # Cache-based lock: a previous successful deploy for THIS exact commit
       # SHA saves a marker into the Actions cache. If the marker exists, we
@@ -48,9 +49,11 @@ jobs:
       - name: Restore per-SHA deploy lock
         id: lock
         uses: actions/cache/restore@v4
+        continue-on-error: true
         with:
           path: .deploy-lock
           key: vps-deploy-sha-${{ github.sha }}-v1
+          lookup-only: true
 
       - name: Compare live SHA vs commit SHA
         id: compare
@@ -1345,8 +1348,9 @@ jobs:
             > .deploy-lock/marker
 
       - name: Save per-SHA deploy lock
-        if: success()
+        if: success() && needs.check_sha.outputs.cache_hit != 'true'
         uses: actions/cache/save@v4
+        continue-on-error: true
         with:
           path: .deploy-lock
           key: vps-deploy-sha-${{ github.sha }}-v1
