@@ -1,20 +1,17 @@
 name: Deploy to VPS
 
+# Single trigger surface: push to any non-backup branch, or manual dispatch.
+# No schedule, no PR triggers — guarantees one workflow run per commit.
 on:
   push:
     branches-ignore:
       - "lovable-backup-*"
   workflow_dispatch:
-    inputs:
-      integrity_rollback_dry_run:
-        description: "Dry-run integrity_rollback (print chosen snapshot, skip rsync). Forces an integrity failure to exercise the rollback path."
-        type: boolean
-        default: false
 
-# Global deploy lock: at most one deploy run per repository touches the VPS at a time.
-# cancel-in-progress: false → queue new runs instead of killing the running
-# one mid-rsync/PM2-restart (which would leave the server in an inconsistent
-# state). New runs wait until the current deploy finishes cleanly.
+# Global per-repo lock: at most one deploy run touches the VPS at a time.
+# cancel-in-progress: false → queue new runs instead of killing a deploy
+# mid-rsync/PM2-restart. Combined with the on-server flock (see below),
+# this prevents any duplicate or overlapping deploys.
 concurrency:
   group: vps-deploy-${{ github.repository }}
   cancel-in-progress: false
@@ -25,328 +22,67 @@ env:
   LEGACY_PM2_APPS: ${{ vars.LEGACY_PM2_APPS || '' }}
 
 jobs:
-  # ───────────────────────────────────────────────────────────────────────
-  # Skip-if-already-deployed guard.
-  # Hits PUBLIC_URL/api/public/health and compares the live `build.sha`
-  # to the current commit (GITHUB_SHA). If they match, the deploy job
-  # is skipped entirely — no install, build, rsync, or PM2 restart.
-  #
-  # Always runs (never skipped) when:
-  #   - PUBLIC_URL is not configured (can't verify)
-  #   - health endpoint is unreachable / returns no SHA
-  #   - workflow_dispatch is triggered manually (force re-deploy)
-  # ───────────────────────────────────────────────────────────────────────
-  check_sha:
-    runs-on: ubuntu-latest
-    outputs:
-      skip: ${{ steps.compare.outputs.skip }}
-      cache_hit: ${{ steps.lock.outputs.cache-hit || 'false' }}
-    steps:
-      # Cache-based lock: a previous successful deploy for THIS exact commit
-      # SHA saves a marker into the Actions cache. If the marker exists, we
-      # skip immediately — no health probe needed. This survives across
-      # workflow re-runs, duplicate triggers, and retries.
-      - name: Restore per-SHA deploy lock
-        id: lock
-        uses: actions/cache/restore@v4
-        continue-on-error: true
-        with:
-          path: .deploy-lock
-          key: vps-deploy-sha-${{ github.sha }}-v1
-          lookup-only: true
-
-      - name: Compare live SHA vs commit SHA
-        id: compare
-        env:
-          PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
-          PUBLIC_URL_VAR: ${{ vars.PUBLIC_URL }}
-          EVENT_NAME: ${{ github.event_name }}
-          LOCK_HIT: ${{ steps.lock.outputs.cache-hit }}
-        run: |
-          set -euo pipefail
-          echo "skip=false" >> "$GITHUB_OUTPUT"
-
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            echo "Manual dispatch — forcing deploy (skip guard disabled)."
-            exit 0
-          fi
-
-          if [ "${LOCK_HIT:-false}" = "true" ]; then
-            echo "::notice::Per-SHA deploy lock found in cache — this commit ($GITHUB_SHA) was already deployed. Skipping."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          PUBLIC_URL_CONFIG="${PUBLIC_URL_SECRET:-${PUBLIC_URL_VAR:-}}"
-          if [ -z "$PUBLIC_URL_CONFIG" ]; then
-            echo "PUBLIC_URL not set — cannot verify, proceeding with deploy."
-            exit 0
-          fi
-
-          URL="${PUBLIC_URL_CONFIG%/}/api/public/health"
-          echo "Querying $URL ..."
-          BODY="$(curl -fsSL --max-time 10 "$URL" 2>/dev/null || true)"
-          if [ -z "$BODY" ]; then
-            echo "Health endpoint unreachable — proceeding with deploy."
-            exit 0
-          fi
-
-          LIVE_SHA="$(printf '%s' "$BODY" | grep -o '"sha"[[:space:]]*:[[:space:]]*"[a-f0-9]\{7,40\}"' | head -n1 | sed 's/.*"\([a-f0-9]\{7,40\}\)"$/\1/' || true)"
-          if [ -z "$LIVE_SHA" ]; then
-            echo "Live SHA not exposed by health endpoint — proceeding with deploy."
-            exit 0
-          fi
-
-          echo "Live SHA:   $LIVE_SHA"
-          echo "Commit SHA: $GITHUB_SHA"
-
-          if [ "$LIVE_SHA" = "$GITHUB_SHA" ]; then
-            echo "::notice::Live SHA already matches commit SHA — skipping deploy."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "SHA mismatch — proceeding with deploy."
-          fi
-
   deploy:
-    needs: check_sha
-    if: needs.check_sha.outputs.skip != 'true'
-    # Per-SHA concurrency lock: at most ONE deploy job for a given commit
-    # SHA can run at a time. Combined with the global vps-deploy lock above,
-    # this guarantees the same SHA never deploys twice in parallel even if
-    # multiple triggers fire (push + re-run, manual dispatch, etc.).
-    concurrency:
-      group: vps-deploy-sha-${{ github.sha }}
-      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
+      # ─── 1. Source & toolchain ──────────────────────────────────────────
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Preflight — validate workflow secrets & inputs
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-          DEPLOY_PATH_SECRET: ${{ secrets.DEPLOY_PATH }}
-          DEPLOY_PATH_VAR: ${{ vars.DEPLOY_PATH }}
-          PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
-          PUBLIC_URL_VAR: ${{ vars.PUBLIC_URL }}
-        run: |
-          set -euo pipefail
-
-          ERRORS=0
-          # mask(): print "<len> chars, starts=XX…ends=YY" — never reveals the value.
-          mask() {
-            local v="$1"
-            local n=${#v}
-            if [ "$n" -eq 0 ]; then echo "(empty)"; return; fi
-            if [ "$n" -le 4 ]; then echo "len=${n} (too short to preview)"; return; fi
-            printf 'len=%s starts=%s…ends=%s\n' "$n" "${v:0:2}" "${v: -2}"
-          }
-          check_required() {
-            local name="$1" val="$2"
-            if [ -z "${val:-}" ]; then
-              echo "  ✗ ${name}: MISSING"
-              ERRORS=$((ERRORS+1))
-            else
-              echo "  ✓ ${name}: $(mask "$val")"
-            fi
-          }
-          check_optional() {
-            local name="$1" val="$2"
-            if [ -z "${val:-}" ]; then
-              echo "  • ${name}: not set (will use fallback)"
-            else
-              echo "  ✓ ${name}: $(mask "$val")"
-            fi
-          }
-
-          echo "=== Workflow-level env (non-secret) ==="
-          echo "  APP_NAME=${APP_NAME}"
-          echo "  APP_PORT=${APP_PORT}"
-          case "${APP_PORT}" in
-            ''|*[!0-9]*) echo "::error::APP_PORT must be numeric, got: ${APP_PORT}"; ERRORS=$((ERRORS+1)) ;;
-            *)
-              if [ "${APP_PORT}" -ge 1 ] && [ "${APP_PORT}" -le 65535 ]; then
-                :
-              else
-                echo "::error::APP_PORT out of range"
-                ERRORS=$((ERRORS+1))
-              fi
-              ;;
-          esac
-
-          echo ""
-          echo "=== Required GitHub Secrets ==="
-          check_required SSH_PRIVATE_KEY "${SSH_PRIVATE_KEY:-}"
-
-          # Either SERVER_USER or SSH_USER must be present.
-          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
-          if [ -z "$DEPLOY_USER" ]; then
-            echo "  ✗ SERVER_USER / SSH_USER: BOTH MISSING (need at least one)"
-            ERRORS=$((ERRORS+1))
-          else
-            echo "  ✓ deploy user (SERVER_USER|SSH_USER): $(mask "$DEPLOY_USER")"
-          fi
-
-          # Either SERVER_IP or SSH_HOST must be present.
-          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
-          if [ -z "$SERVER_HOST" ]; then
-            echo "  ✗ SERVER_IP / SSH_HOST: BOTH MISSING (need at least one)"
-            ERRORS=$((ERRORS+1))
-          else
-            echo "  ✓ server host (SERVER_IP|SSH_HOST): $(mask "$SERVER_HOST")"
-          fi
-
-          echo ""
-          echo "=== Optional GitHub Secrets ==="
-          check_optional SSH_PORT "${SSH_PORT:-}"
-          check_optional DEPLOY_PATH "${DEPLOY_PATH_SECRET:-${DEPLOY_PATH_VAR:-}}"
-          check_optional PUBLIC_URL "${PUBLIC_URL_SECRET:-${PUBLIC_URL_VAR:-}}"
-
-          echo ""
-          echo "=== Format validation ==="
-
-          # SSH private key must look like a PEM/OpenSSH key.
-          if [ -n "${SSH_PRIVATE_KEY:-}" ]; then
-            if printf '%s' "$SSH_PRIVATE_KEY" | grep -q -- "-----BEGIN .*PRIVATE KEY-----"; then
-              echo "  ✓ SSH_PRIVATE_KEY has a valid PEM header"
-            else
-              echo "::error::SSH_PRIVATE_KEY missing '-----BEGIN ... PRIVATE KEY-----' header (wrong format or extra wrapping?)"
-              ERRORS=$((ERRORS+1))
-            fi
-            if printf '%s' "$SSH_PRIVATE_KEY" | grep -q -- "-----END .*PRIVATE KEY-----"; then
-              echo "  ✓ SSH_PRIVATE_KEY has a valid PEM footer"
-            else
-              echo "::error::SSH_PRIVATE_KEY missing '-----END ... PRIVATE KEY-----' footer (truncated?)"
-              ERRORS=$((ERRORS+1))
-            fi
-          fi
-
-          # SSH_PORT (if set) must be numeric in range.
-          if [ -n "${SSH_PORT:-}" ]; then
-            case "${SSH_PORT}" in
-              ''|*[!0-9]*) echo "::error::SSH_PORT must be numeric, got: ${SSH_PORT}"; ERRORS=$((ERRORS+1)) ;;
-              *)
-                if [ "${SSH_PORT}" -ge 1 ] && [ "${SSH_PORT}" -le 65535 ]; then
-                  echo "  ✓ SSH_PORT in valid range"
-                else
-                  echo "::error::SSH_PORT out of range"
-                  ERRORS=$((ERRORS+1))
-                fi
-                ;;
-            esac
-          fi
-
-          # Host must not contain a scheme or a slash.
-          if [ -n "${SERVER_HOST:-}" ]; then
-            case "$SERVER_HOST" in
-              *://*|*/*) echo "::error::server host must be bare host/IP, not a URL. Got something containing '://' or '/'"; ERRORS=$((ERRORS+1)) ;;
-              *) echo "  ✓ server host looks like a bare host/IP" ;;
-            esac
-          fi
-
-          # Deploy path may come from secret, repo variable, or a repository-name fallback.
-          # It is intentionally NOT tied to a Flowtix-specific folder so this workflow
-          # can be reused safely in any repository.
-          DEPLOY_PATH_CONFIG="${DEPLOY_PATH_SECRET:-${DEPLOY_PATH_VAR:-/www/wwwroot/${GITHUB_REPOSITORY##*/}}}"
-          case "$DEPLOY_PATH_CONFIG" in
-            /www/wwwroot/*) echo "  ✓ DEPLOY_PATH is under /www/wwwroot" ;;
-            *) echo "::error::DEPLOY_PATH must be an absolute path under /www/wwwroot — got: $DEPLOY_PATH_CONFIG"; ERRORS=$((ERRORS+1)) ;;
-          esac
-          case "$DEPLOY_PATH_CONFIG" in
-            *'..'*|*' '*|*$'\t'*|*$'\n'*) echo "::error::DEPLOY_PATH must not contain '..' or whitespace — got: $DEPLOY_PATH_CONFIG"; ERRORS=$((ERRORS+1)) ;;
-          esac
-          if [ -n "${DEPLOY_PATH_SECRET:-${DEPLOY_PATH_VAR:-}}" ]; then
-            echo "  ✓ DEPLOY_PATH configured explicitly"
-          else
-            echo "  • DEPLOY_PATH unset — repository fallback will be used: $DEPLOY_PATH_CONFIG"
-          fi
-
-          # PUBLIC_URL (if set) must start with https:// and must NOT end with '/'.
-          # The downstream checks build URLs as "${PUBLIC_URL%/}/path", but we
-          # still reject trailing slashes here to surface config mistakes early
-          # and keep logs/diagnostics consistent.
-          PUBLIC_URL_CONFIG="${PUBLIC_URL_SECRET:-${PUBLIC_URL_VAR:-}}"
-          if [ -n "${PUBLIC_URL_CONFIG:-}" ]; then
-            PU_OK=1
-            case "$PUBLIC_URL_CONFIG" in
-              https://*) : ;;
-              *) echo "::error::PUBLIC_URL must start with 'https://' — got: $PUBLIC_URL_CONFIG"; ERRORS=$((ERRORS+1)); PU_OK=0 ;;
-            esac
-            case "$PUBLIC_URL_CONFIG" in
-              */) echo "::error::PUBLIC_URL must NOT end with '/' — got: $PUBLIC_URL_CONFIG"; ERRORS=$((ERRORS+1)); PU_OK=0 ;;
-            esac
-            case "$PUBLIC_URL_CONFIG" in
-              *' '*|*$'\t'*|*$'\n'*) echo "::error::PUBLIC_URL must not contain whitespace"; ERRORS=$((ERRORS+1)); PU_OK=0 ;;
-            esac
-            if [ "$PU_OK" -eq 1 ]; then
-              echo "  ✓ PUBLIC_URL format OK ($PUBLIC_URL_CONFIG)"
-            fi
-          else
-            echo "::error::PUBLIC_URL is required as a repository secret or variable. This prevents checking the wrong hard-coded domain after changing repositories."
-            ERRORS=$((ERRORS+1))
-          fi
-
-          echo ""
-          if [ "$ERRORS" -gt 0 ]; then
-            echo "::error::Preflight failed with ${ERRORS} problem(s). Fix the secrets above before redeploying."
-            exit 1
-          fi
-          echo "✓ Preflight passed — all secrets present and well-formed."
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - name: Print toolchain versions
+      # ─── 2. Validate required secrets early (clear failure messages) ───
+      - name: Preflight — validate required secrets
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
-          bun --version
-          node --version
-          bun pm ls | grep -E "@tanstack/(react-start|react-router|router-core|router-plugin)" || true
+          set -eu
+          ERR=0
+          [ -n "${SSH_PRIVATE_KEY:-}" ] || { echo "::error::Missing secret SSH_PRIVATE_KEY"; ERR=1; }
+          [ -n "${SERVER_USER:-}${SSH_USER:-}" ] || { echo "::error::Missing secret SERVER_USER or SSH_USER"; ERR=1; }
+          [ -n "${SERVER_IP:-}${SSH_HOST:-}" ] || { echo "::error::Missing secret SERVER_IP or SSH_HOST"; ERR=1; }
+          [ "$ERR" -eq 0 ] || exit 1
+          echo "✓ Required secrets present"
 
+      # ─── 3. Build ──────────────────────────────────────────────────────
       - name: Install dependencies (frozen lockfile)
         run: bun install --frozen-lockfile
 
       - name: Build project
         run: bun run build
 
-      - name: Install production-only dependencies for shipping
+      - name: Reinstall production-only deps for shipping
         run: |
-          set -euo pipefail
-          # Build is done; now produce a node_modules tree containing ONLY
-          # production deps so the server doesn't need bun/npm to install.
+          set -eu
           rm -rf node_modules
           bun install --production --frozen-lockfile
-          echo "Production node_modules size:"
-          du -sh node_modules || true
 
+      # ─── 4. Prepare deploy bundle ──────────────────────────────────────
       - name: Prepare SSR deploy bundle
         run: |
-          set -euo pipefail
-
+          set -eu
           SERVER_ENTRY=""
-          for candidate in dist/server/index.js dist/server/index.mjs; do
-            if [ -f "$candidate" ]; then SERVER_ENTRY="$candidate"; break; fi
+          for c in dist/server/index.js dist/server/index.mjs; do
+            [ -f "$c" ] && { SERVER_ENTRY="$c"; break; }
           done
-          [ -n "$SERVER_ENTRY" ] || { echo "::error::SSR entry missing: expected dist/server/index.js or dist/server/index.mjs"; find dist -maxdepth 3 -type f 2>/dev/null | head -n 120 || true; exit 1; }
-          [ -d node_modules ] || { echo "::error::node_modules missing after production install"; exit 1; }
+          [ -n "$SERVER_ENTRY" ] || { echo "::error::SSR entry missing (dist/server/index.{js,mjs})"; exit 1; }
 
           DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+          SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
 
-          rm -rf deploy
-          mkdir -p deploy
+          rm -rf deploy && mkdir -p deploy
           cp -r dist deploy/dist
           cp -r scripts deploy/scripts
           cp -r node_modules deploy/node_modules
           cp package.json deploy/package.json
           cp ecosystem.config.cjs deploy/ecosystem.config.cjs
-          # Lockfiles are NOT shipped — the server never runs install anymore.
 
           cat > deploy/deploy-version.json <<JSON
           {
@@ -360,48 +96,28 @@ jobs:
           }
           JSON
 
-          # Build manifest.json: every shipped file with relative path, size, sha256.
-          # Used by the server to verify the bundle arrived intact before restart.
-          echo "Building deploy/manifest.json ..."
+          # Simple manifest + checksums for on-server integrity check.
           (
             cd deploy
             TOTAL_FILES=$(find . -type f ! -name 'manifest.json' | wc -l | tr -d ' ')
-            TOTAL_BYTES=$(find . -type f ! -name 'manifest.json' -exec stat -c '%s' {} + | awk '{s+=$1} END {print s+0}')
             {
-              printf '{\n'
-              printf '  "generated_at": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-              printf '  "sha": "%s",\n' "${GITHUB_SHA}"
-              printf '  "run_id": "%s",\n' "${GITHUB_RUN_ID}"
-              printf '  "total_files": %s,\n' "$TOTAL_FILES"
-              printf '  "total_bytes": %s,\n' "$TOTAL_BYTES"
-              printf '  "files": [\n'
+              printf '{\n  "sha":"%s",\n  "total_files":%s,\n  "files":[\n' "$GITHUB_SHA" "$TOTAL_FILES"
               find . -type f ! -name 'manifest.json' -printf '%P\n' | LC_ALL=C sort | \
-                awk 'BEGIN{first=1}
-                     { if(!first) printf ",\n"; first=0;
-                       printf "    {\"path\": \"%s\"}", $0 }'
-              printf '\n  ]\n'
-              printf '}\n'
+                awk 'BEGIN{f=1}{if(!f)printf",\n";f=0;printf"    {\"path\":\"%s\"}",$0}'
+              printf '\n  ]\n}\n'
             } > manifest.json
-
-            # Sidecar: SHA256SUMS for fast server-side verification (sha256sum -c).
             find . -type f ! -name 'manifest.json' ! -name 'SHA256SUMS' -print0 \
-              | LC_ALL=C sort -z \
-              | xargs -0 sha256sum > SHA256SUMS
+              | LC_ALL=C sort -z | xargs -0 sha256sum > SHA256SUMS
           )
-          echo "Manifest: $(jq -r '.total_files' deploy/manifest.json 2>/dev/null || grep total_files deploy/manifest.json) files, $(wc -l < deploy/SHA256SUMS) checksummed"
 
           {
-            echo "MODE=ssr"
             echo "SERVER_ENTRY=$SERVER_ENTRY"
             echo "DEPLOYED_AT=$DEPLOYED_AT"
             echo "SHORT_SHA=$SHORT_SHA"
           } >> "$GITHUB_ENV"
+          echo "✓ Bundle ready: $(find deploy -type f | wc -l) files, $(du -sh deploy | cut -f1)"
 
-          echo "=== SSR bundle ready ==="
-          (find deploy -maxdepth 2 -type f -not -path 'deploy/node_modules/*' | head -n 80) || true
-          echo "Total files in bundle: $(find deploy -type f | wc -l)"
-          echo "Bundle size: $(du -sh deploy | cut -f1)"
-
+      # ─── 5. SSH setup ──────────────────────────────────────────────────
       - name: Setup SSH key
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -409,82 +125,136 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
-          set -euo pipefail
-          : "${SSH_PRIVATE_KEY:?Missing GitHub Secret: SSH_PRIVATE_KEY}"
-          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
-          : "${SERVER_HOST:?Missing GitHub Secret: SERVER_IP or SSH_HOST}"
-          SSH_PORT="${SSH_PORT:-22}"
+          set -eu
+          HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          PORT="${SSH_PORT:-22}"
           mkdir -p ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -p "$SSH_PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Resolve deploy path
         env:
           DEPLOY_PATH_SECRET: ${{ secrets.DEPLOY_PATH }}
           DEPLOY_PATH_VAR: ${{ vars.DEPLOY_PATH }}
         run: |
-          set -euo pipefail
-          DEPLOY_PATH="${DEPLOY_PATH_SECRET:-${DEPLOY_PATH_VAR:-/www/wwwroot/${GITHUB_REPOSITORY##*/}}}"
-          case "$DEPLOY_PATH" in
+          set -eu
+          DP="${DEPLOY_PATH_SECRET:-${DEPLOY_PATH_VAR:-/www/wwwroot/${GITHUB_REPOSITORY##*/}}}"
+          case "$DP" in
             /www/wwwroot/*) : ;;
-            *) echo "::error::Refusing to deploy outside /www/wwwroot: $DEPLOY_PATH"; exit 1 ;;
+            *) echo "::error::DEPLOY_PATH must be under /www/wwwroot — got: $DP"; exit 1 ;;
           esac
-          case "$DEPLOY_PATH" in
-            *'..'*|*' '*|*$'\t'*|*$'\n'*) echo "::error::DEPLOY_PATH must not contain '..' or whitespace: $DEPLOY_PATH"; exit 1 ;;
-          esac
-          BACKUPS_DIR="$(dirname "$DEPLOY_PATH")/$(basename "$DEPLOY_PATH")-backups"
-          echo "DEPLOY_PATH=$DEPLOY_PATH" >> "$GITHUB_ENV"
-          echo "BACKUPS_DIR=$BACKUPS_DIR" >> "$GITHUB_ENV"
-          echo "Deploy path: $DEPLOY_PATH"
-          echo "Backups dir: $BACKUPS_DIR"
+          echo "DEPLOY_PATH=$DP" >> "$GITHUB_ENV"
+          echo "BACKUPS_DIR=$(dirname "$DP")/$(basename "$DP")-backups" >> "$GITHUB_ENV"
 
-      - name: Snapshot current site
+      # ─── 6. Server-side lock + SHA dedupe (real lock, no GH cache) ─────
+      # flock holds an exclusive file lock per DEPLOY_PATH on the VPS.
+      # The SHA marker prevents redeploying the same commit. Together they
+      # make duplicate triggers safe even if GH concurrency lets two runs through.
+      - name: Acquire server lock & check SHA marker
+        id: lock
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SERVER_IP: ${{ secrets.SERVER_IP }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
-          INTEGRITY_ROLLBACK_DRY_RUN: ${{ inputs.integrity_rollback_dry_run && '1' || '0' }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
         run: |
-          set -euo pipefail
-          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
-          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
-          SSH_PORT="${SSH_PORT:-22}"
-          : "${DEPLOY_USER:?Missing GitHub Secret: SERVER_USER or SSH_USER}"
-          : "${SERVER_HOST:?Missing GitHub Secret: SERVER_IP or SSH_HOST}"
+          set -eu
+          USER="${SERVER_USER:-${SSH_USER:-}}"
+          HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          PORT="${SSH_PORT:-22}"
 
-          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" \
+          RESULT=$(ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
+            "${USER}@${HOST}" \
+            "DEPLOY_PATH='${DEPLOY_PATH}' GITHUB_SHA='${GITHUB_SHA}' FORCE='${FORCE}' bash -s" <<'EOSSH'
+          set -eu
+          LOCK_DIR="${DEPLOY_PATH}/.deploy"
+          mkdir -p "$LOCK_DIR"
+          LOCK="${LOCK_DIR}/deploy.lock"
+          MARKER="${LOCK_DIR}/last-sha"
+
+          # Wait up to 10 minutes for any other in-flight deploy to release.
+          exec 9>"$LOCK"
+          if ! flock -w 600 9; then
+            echo "RESULT=lock_timeout"
+            exit 0
+          fi
+
+          # If this exact SHA was already deployed successfully, skip.
+          if [ "$FORCE" != "1" ] && [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$GITHUB_SHA" ]; then
+            echo "RESULT=already_deployed"
+            exit 0
+          fi
+          echo "RESULT=acquired"
+          EOSSH
+          )
+          echo "$RESULT"
+          STATUS=$(echo "$RESULT" | grep '^RESULT=' | tail -n1 | cut -d= -f2)
+
+          case "$STATUS" in
+            acquired)
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              echo "✓ Server lock acquired, SHA not yet deployed."
+              ;;
+            already_deployed)
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "::notice::This commit was already deployed to the VPS — skipping."
+              ;;
+            lock_timeout)
+              echo "::error::Could not acquire server deploy lock within 10 minutes (another deploy is running). Re-run later."
+              exit 1
+              ;;
+            *)
+              echo "::error::Unexpected lock result: $STATUS"
+              exit 1
+              ;;
+          esac
+
+      # ─── 7. Snapshot current site (for rollback) ───────────────────────
+      - name: Snapshot current site
+        if: steps.lock.outputs.skip != 'true'
+        env:
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -eu
+          USER="${SERVER_USER:-${SSH_USER:-}}"
+          HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          PORT="${SSH_PORT:-22}"
+          ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
+            "${USER}@${HOST}" \
             "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' bash -s" <<'EOSSH'
-          set -euo pipefail
+          set -eu
           mkdir -p "$BACKUPS_DIR"
           if [ ! -d "$DEPLOY_PATH" ] || [ -z "$(ls -A "$DEPLOY_PATH" 2>/dev/null || true)" ]; then
             echo "No existing site to snapshot — skipping."
             exit 0
           fi
-
           PREV_SHA="none"
           if [ -f "$DEPLOY_PATH/deploy-version.json" ]; then
-            PREV_SHA=$(grep -o '"short_sha"[[:space:]]*:[[:space:]]*"[^"]*"' "$DEPLOY_PATH/deploy-version.json" | head -n1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "none")
+            PREV_SHA=$(grep -o '"short_sha"[[:space:]]*:[[:space:]]*"[^"]*"' "$DEPLOY_PATH/deploy-version.json" \
+              | head -n1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "none")
             [ -z "$PREV_SHA" ] && PREV_SHA="none"
           fi
           SNAP="$BACKUPS_DIR/$(date -u +%Y%m%d%H%M%S)-${PREV_SHA}"
-          echo "Creating snapshot: $SNAP"
           mkdir -p "$SNAP"
           rsync -a --delete \
-            --exclude='.env' \
-            --exclude='.user.ini' \
-            --exclude='.htaccess' \
-            --exclude='var/' \
-            --exclude='.well-known/' \
+            --exclude='.env' --exclude='.user.ini' --exclude='.htaccess' \
+            --exclude='var/' --exclude='.well-known/' --exclude='.deploy/' \
             "$DEPLOY_PATH/" "$SNAP/"
           echo "$SNAP" > "$BACKUPS_DIR/PREV_SNAPSHOT"
           ls -1dt "$BACKUPS_DIR"/[0-9]* 2>/dev/null | tail -n +6 | xargs -r rm -rf
+          echo "✓ Snapshot: $SNAP"
           EOSSH
 
+      # ─── 8. Ship bundle ────────────────────────────────────────────────
       - name: Deploy bundle via rsync
+        if: steps.lock.outputs.skip != 'true'
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -492,28 +262,23 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
-          set -euo pipefail
-          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
-          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
-          SSH_PORT="${SSH_PORT:-22}"
-          : "${DEPLOY_USER:?Missing GitHub Secret: SERVER_USER or SSH_USER}"
-          : "${SERVER_HOST:?Missing GitHub Secret: SERVER_IP or SSH_HOST}"
-
-          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" "mkdir -p '${DEPLOY_PATH}'"
-
+          set -eu
+          USER="${SERVER_USER:-${SSH_USER:-}}"
+          HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          PORT="${SSH_PORT:-22}"
+          ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
+            "${USER}@${HOST}" "mkdir -p '${DEPLOY_PATH}'"
           rsync -az --delete \
-            --exclude='.env' \
-            --exclude='.user.ini' \
-            --exclude='.htaccess' \
-            --exclude='.well-known/' \
-            --exclude='var/' \
-            --exclude='*.log' \
-            -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
-            ./deploy/ \
-            "${DEPLOY_USER}@${SERVER_HOST}:${DEPLOY_PATH}/"
+            --exclude='.env' --exclude='.user.ini' --exclude='.htaccess' \
+            --exclude='.well-known/' --exclude='var/' --exclude='*.log' \
+            --exclude='.deploy/' \
+            -e "ssh -i ~/.ssh/deploy_key -p $PORT -o StrictHostKeyChecking=no" \
+            ./deploy/ "${USER}@${HOST}:${DEPLOY_PATH}/"
+          echo "✓ rsync complete"
 
-      - name: Install dependencies and restart SSR app
+      # ─── 9. Install & restart on server (delegates to script) ──────────
+      - name: Install & restart SSR app on server
+        if: steps.lock.outputs.skip != 'true'
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -521,67 +286,30 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
-          set -euo pipefail
-          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
-          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
-          SSH_PORT="${SSH_PORT:-22}"
-          : "${DEPLOY_USER:?Missing GitHub Secret: SERVER_USER or SSH_USER}"
-          : "${SERVER_HOST:?Missing GitHub Secret: SERVER_IP or SSH_HOST}"
+          set -eu
+          USER="${SERVER_USER:-${SSH_USER:-}}"
+          HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          PORT="${SSH_PORT:-22}"
 
-          DRY_RUN_FLAG="${INTEGRITY_ROLLBACK_DRY_RUN:-0}"
-
-          # Ship the install-restart script to the server, then execute it remotely.
-          # Keeping the heredoc out of this YAML run block avoids GitHub Actions'
-          # 21000-char per-expression validation limit (the inlined script was ~25KB).
           REMOTE_SCRIPT="/tmp/install-restart-${GITHUB_RUN_ID}.sh"
-          scp -i ~/.ssh/deploy_key -P "$SSH_PORT" -o StrictHostKeyChecking=no \
+          scp -i ~/.ssh/deploy_key -P "$PORT" -o StrictHostKeyChecking=no \
             scripts/ci/install-restart.sh \
-            "${DEPLOY_USER}@${SERVER_HOST}:${REMOTE_SCRIPT}"
+            "${USER}@${HOST}:${REMOTE_SCRIPT}"
 
-          # Avoid `ssh ... | tee`: under `set -euo pipefail` it can surface
-          # SIGPIPE (exit 141) from tee instead of the real ssh exit code,
-          # masking the actual integrity/rollback reason. Redirect to a log
-          # file, capture ssh's own exit code directly, then print the log.
           set +e
-          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' LEGACY_PM2_APPS='${LEGACY_PM2_APPS}' DEPLOY_SHA='${GITHUB_SHA}' DEPLOY_RUN_ID='${GITHUB_RUN_ID}' DEPLOY_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOYED_AT='${DEPLOYED_AT}' INTEGRITY_ROLLBACK_DRY_RUN='${DRY_RUN_FLAG}' bash '${REMOTE_SCRIPT}'" \
-            >/tmp/install-restart.log 2>&1
+          ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
+            "${USER}@${HOST}" \
+            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' LEGACY_PM2_APPS='${LEGACY_PM2_APPS}' DEPLOY_SHA='${GITHUB_SHA}' DEPLOY_RUN_ID='${GITHUB_RUN_ID}' DEPLOY_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOYED_AT='${DEPLOYED_AT}' bash '${REMOTE_SCRIPT}'"
           SSH_EXIT=$?
           set -e
-
-          # Note: the remote script self-deletes via a `trap` inside
-          # install-restart.sh and also sweeps any stale leftovers older than
-          # 1 day from previous deploys — no manual rm needed here.
-
-
-          # Print the captured server log so it appears in the GitHub Actions UI.
-          cat /tmp/install-restart.log || true
-
           if [ "$SSH_EXIT" -ne 0 ]; then
-            if grep -q '^INTEGRITY_ROLLBACK_RESULT=dry_run' /tmp/install-restart.log; then
-              ROLLBACK_SRC=$(grep '^INTEGRITY_ROLLBACK_SRC=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
-              ROLLBACK_KIND=$(grep '^INTEGRITY_ROLLBACK_KIND=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
-              echo ""
-              echo "::notice::🧪 integrity_rollback DRY-RUN finished — no files were touched."
-              echo "::notice::Would have restored kind=${ROLLBACK_KIND:-unknown} from: ${ROLLBACK_SRC:-unknown}"
-              echo "FAILURE_REASON=integrity-restored-last-good" >> "$GITHUB_ENV"
-            elif grep -q '^INTEGRITY_ROLLBACK_RESULT=restored' /tmp/install-restart.log; then
-              ROLLBACK_SRC=$(grep '^INTEGRITY_ROLLBACK_SRC=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
-              ROLLBACK_KIND=$(grep '^INTEGRITY_ROLLBACK_KIND=' /tmp/install-restart.log | head -n1 | cut -d= -f2-)
-              echo ""
-              echo "::warning::Bundle integrity check failed — snapshot was auto-restored on disk AND PM2 was reloaded onto it."
-              echo "::warning::Source kind: ${ROLLBACK_KIND:-unknown} — path: ${ROLLBACK_SRC}"
-              echo "::warning::The site is serving the restored snapshot. The NEW commit was NOT deployed — push a fix to retry."
-              echo "FAILURE_REASON=integrity-restored-last-good" >> "$GITHUB_ENV"
-            elif grep -qE '^INTEGRITY_ROLLBACK_RESULT=(no_valid_snapshot|no_backups_dir|no_last_good|invalid_last_good)' /tmp/install-restart.log; then
-              echo "::error::Bundle integrity check failed AND no valid snapshot was available to auto-restore."
-              echo "FAILURE_REASON=integrity-no-snapshot" >> "$GITHUB_ENV"
-            fi
+            echo "::error::Install/restart step failed on server (exit $SSH_EXIT) — see log above."
             exit "$SSH_EXIT"
           fi
 
-      - name: Verify SSR app locally on server
+      # ─── 10. Local health check on the VPS itself ──────────────────────
+      - name: Verify SSR app on 127.0.0.1
+        if: steps.lock.outputs.skip != 'true'
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -589,32 +317,32 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
-          set -euo pipefail
-          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
-          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
-          SSH_PORT="${SSH_PORT:-22}"
-
-          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" \
+          set -eu
+          USER="${SERVER_USER:-${SSH_USER:-}}"
+          HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          PORT="${SSH_PORT:-22}"
+          ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
+            "${USER}@${HOST}" \
             "APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' SHORT_SHA='${SHORT_SHA}' bash -s" <<'EOSSH'
-          set -euo pipefail
+          set -eu
           for i in $(seq 1 30); do
-            HOME_STATUS=$(curl -fsS --max-time 10 "http://127.0.0.1:${APP_PORT}/" >/dev/null && echo ok || echo fail)
-            VERSION_BODY=$(curl -fsS --max-time 10 "http://127.0.0.1:${APP_PORT}/deploy-version.json" || true)
-            echo "$VERSION_BODY"
-            if [ "$HOME_STATUS" = "ok" ] && echo "$VERSION_BODY" | grep -q "$SHORT_SHA"; then
-              echo "SSR app is healthy locally on port ${APP_PORT}"
+            HOME_OK=$(curl -fsS --max-time 10 "http://127.0.0.1:${APP_PORT}/" >/dev/null && echo 1 || echo 0)
+            BODY=$(curl -fsS --max-time 10 "http://127.0.0.1:${APP_PORT}/deploy-version.json" || true)
+            if [ "$HOME_OK" = "1" ] && echo "$BODY" | grep -q "$SHORT_SHA"; then
+              echo "✓ SSR healthy on 127.0.0.1:${APP_PORT} serving ${SHORT_SHA}"
               exit 0
             fi
             sleep 2
           done
-          echo "ERROR: SSR app not responding correctly on 127.0.0.1:${APP_PORT}"
+          echo "::error::SSR app not serving ${SHORT_SHA} on 127.0.0.1:${APP_PORT}"
           pm2 describe "$APP_NAME" || true
-          pm2 logs "$APP_NAME" --lines 160 --nostream || true
+          pm2 logs "$APP_NAME" --lines 120 --nostream || true
           exit 1
           EOSSH
 
-      - name: Auto-fix Nginx upstream port (3001 → APP_PORT)
+      # ─── 11. Mark SHA as deployed (release the dedupe marker) ──────────
+      - name: Mark SHA as deployed on server
+        if: success() && steps.lock.outputs.skip != 'true'
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -622,77 +350,18 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
-          set -euo pipefail
-          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
-          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
-          SSH_PORT="${SSH_PORT:-22}"
+          set -eu
+          USER="${SERVER_USER:-${SSH_USER:-}}"
+          HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          PORT="${SSH_PORT:-22}"
+          ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
+            "${USER}@${HOST}" \
+            "mkdir -p '${DEPLOY_PATH}/.deploy' && printf '%s' '${GITHUB_SHA}' > '${DEPLOY_PATH}/.deploy/last-sha'"
+          echo "✓ Marked ${GITHUB_SHA} as deployed."
 
-          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" \
-            "APP_PORT='${APP_PORT}' bash -s" <<'EOSSH'
-          set -euo pipefail
-          echo "=== Auto-fix: replace legacy port 3001 with ${APP_PORT} in Nginx ==="
-
-          SEARCH_DIRS=()
-          for d in /www/server/panel/vhost/nginx /www/server/nginx/conf /etc/nginx; do
-            [ -d "$d" ] && SEARCH_DIRS+=("$d")
-          done
-          if [ ${#SEARCH_DIRS[@]} -eq 0 ]; then
-            echo "::warning::No Nginx config directory found — skipping auto-fix"
-            exit 0
-          fi
-
-          if ! sudo -n true 2>/dev/null; then
-            echo "::warning::sudo requires a password on this server — cannot auto-fix Nginx"
-            echo "::warning::Run manually: sudo sed -i.bak 's/127.0.0.1:3001/127.0.0.1:${APP_PORT}/g; s/localhost:3001/localhost:${APP_PORT}/g' /www/server/panel/vhost/nginx/*.conf && sudo nginx -t && sudo nginx -s reload"
-            exit 0
-          fi
-
-          # Find files containing legacy 3001 reference (proxy_pass or upstream server)
-          AFFECTED=$(sudo -n grep -rlE '(127\.0\.0\.1|localhost):3001\b' "${SEARCH_DIRS[@]}" 2>/dev/null || true)
-
-          if [ -z "$AFFECTED" ]; then
-            echo "✓ No references to port 3001 found — nothing to fix"
-            exit 0
-          fi
-
-          echo "Files containing legacy port 3001:"
-          echo "$AFFECTED" | sed 's/^/  /'
-
-          TS=$(date +%Y%m%d-%H%M%S)
-          echo ""
-          echo "→ Backing up and rewriting (suffix .bak-${TS})…"
-          while IFS= read -r f; do
-            [ -z "$f" ] && continue
-            sudo -n cp -a "$f" "${f}.bak-${TS}"
-            sudo -n sed -i \
-              -e "s/127\.0\.0\.1:3001\b/127.0.0.1:${APP_PORT}/g" \
-              -e "s/localhost:3001\b/localhost:${APP_PORT}/g" \
-              "$f"
-            echo "  ✓ patched $f (backup: ${f}.bak-${TS})"
-          done <<< "$AFFECTED"
-
-          echo ""
-          echo "→ Validating Nginx config (nginx -t)…"
-          if ! sudo -n nginx -t; then
-            echo ""
-            echo "::error::nginx -t failed after auto-fix — rolling back patched files"
-            while IFS= read -r f; do
-              [ -z "$f" ] && continue
-              sudo -n mv "${f}.bak-${TS}" "$f"
-              echo "  ↺ reverted $f"
-            done <<< "$AFFECTED"
-            sudo -n nginx -t || true
-            exit 1
-          fi
-
-          echo ""
-          echo "→ Reloading Nginx…"
-          sudo -n nginx -s reload
-          echo "✓ Nginx auto-fix complete — upstream now targets ${APP_PORT}"
-          EOSSH
-
-      - name: Verify Nginx upstream matches APP_PORT
+      # ─── 12. Rollback on failure (best-effort) ─────────────────────────
+      - name: Rollback on failure
+        if: failure() && steps.lock.outputs.skip != 'true'
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -700,671 +369,29 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
-          set -euo pipefail
-          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
-          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
-          SSH_PORT="${SSH_PORT:-22}"
+          set -eu
+          USER="${SERVER_USER:-${SSH_USER:-}}"
+          HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          PORT="${SSH_PORT:-22}"
+          [ -n "${DEPLOY_PATH:-}" ] || { echo "::warning::No DEPLOY_PATH — cannot rollback"; exit 0; }
 
-          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" \
-            "APP_PORT='${APP_PORT}' bash -s" <<'EOSSH'
-          set -euo pipefail
-          echo "=== Scanning Nginx configs for upstream ports ==="
-          SEARCH_DIRS=()
-          for d in /www/server/panel/vhost/nginx /www/server/nginx/conf /etc/nginx; do
-            [ -d "$d" ] && SEARCH_DIRS+=("$d")
-          done
-          if [ ${#SEARCH_DIRS[@]} -eq 0 ]; then
-            echo "::error::No Nginx config directory found on server — cannot verify upstream port"
-            exit 1
-          fi
-          echo "Scanning: ${SEARCH_DIRS[*]}"
-
-          # Use sudo if available, fall back to plain grep (may miss root-owned files)
-          GREP_CMD="grep"
-          if sudo -n true 2>/dev/null; then
-            GREP_CMD="sudo -n grep"
-          fi
-
-          # Regex covers both:
-          #   proxy_pass http(s)://127.0.0.1:<port>...;   (location blocks)
-          #   server     127.0.0.1:<port> ...;            (upstream blocks)
-          UPSTREAM_RE='(proxy_pass[[:space:]]+https?://(127\.0\.0\.1|localhost):[0-9]+|^[[:space:]]*server[[:space:]]+(127\.0\.0\.1|localhost):[0-9]+)'
-
-          # Hard block: any reference to the legacy 3001 port is a deploy-stopper.
-          # -H prints the filename so you can jump straight to the offending vhost.
-          LEGACY=$($GREP_CMD -rHnE "(127\.0\.0\.1|localhost):3001\b" "${SEARCH_DIRS[@]}" 2>/dev/null || true)
-          if [ -n "$LEGACY" ]; then
-            echo ""
-            echo "::error::Found legacy port 3001 in Nginx config — deploy blocked"
-            echo "  Matching lines (file:line:content):"
-            echo "$LEGACY" | sed 's/^/    /'
-            echo "::error::Fix on the server:"
-            echo "::error::  sudo sed -i.bak 's/127.0.0.1:3001/127.0.0.1:${APP_PORT}/g; s/localhost:3001/localhost:${APP_PORT}/g' /www/server/panel/vhost/nginx/*.conf"
-            echo "::error::  sudo nginx -t && sudo nginx -s reload"
-            exit 1
-          fi
-
-          # Find all proxy_pass / upstream server entries pointing at a local port
-          MATCHES=$($GREP_CMD -rHnE "$UPSTREAM_RE" "${SEARCH_DIRS[@]}" 2>/dev/null || true)
-
-          if [ -z "$MATCHES" ]; then
-            echo "::warning::No local upstream found in Nginx — domain may not be wired to PM2. Deploy will continue; fix Nginx manually if the public site doesn't update."
-            echo "✓ Skipping strict Nginx upstream check (none configured for 127.0.0.1/localhost)."
-            exit 0
-          fi
-          echo "Found upstream entries (file:line:content):"
-          echo "$MATCHES" | sed 's/^/  /'
-
-          # Extract ports and check for any that don't match APP_PORT
-          BAD_LINES=$(echo "$MATCHES" | grep -E "(127\.0\.0\.1|localhost):[0-9]+" \
-            | grep -vE "(127\.0\.0\.1|localhost):${APP_PORT}\b" || true)
-
-          if [ -n "$BAD_LINES" ]; then
-            BAD_PORTS=$(echo "$BAD_LINES" | grep -oE '(127\.0\.0\.1|localhost):[0-9]+' | awk -F: '{print $2}' | sort -u | tr '\n' ' ')
-            echo ""
-            echo "::error::Nginx upstream points to port(s) [${BAD_PORTS}] but APP_PORT is ${APP_PORT}"
-            echo "  Mismatched lines:"
-            echo "$BAD_LINES" | sed 's/^/    /'
-            echo "::error::Fix on the server with:"
-            echo "::error::  sudo sed -i.bak \"s/127.0.0.1:<OLD>/127.0.0.1:${APP_PORT}/g\" /www/server/panel/vhost/nginx/*.conf"
-            echo "::error::  sudo nginx -t && sudo nginx -s reload"
-            exit 1
-          fi
-          echo "✓ All Nginx upstream entries point to 127.0.0.1:${APP_PORT}"
-          EOSSH
-
-      - name: Verify public domain shows this commit
-        env:
-          PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
-          PUBLIC_URL_VAR: ${{ vars.PUBLIC_URL }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-        run: |
-          set -euo pipefail
-          # mask_url(): show scheme + first 3 + last 4 chars of the rest.
-          # e.g. https://www.example.com → https://www…e.com (len=15)
-          mask_url() {
-            local u="$1" scheme rest n
-            case "$u" in
-              https://*) scheme="https://"; rest="${u#https://}" ;;
-              http://*)  scheme="http://";  rest="${u#http://}" ;;
-              *)         scheme="";         rest="$u" ;;
-            esac
-            n=${#rest}
-            if [ "$n" -le 8 ]; then printf '%slen=%s\n' "$scheme" "$n"; return; fi
-            printf '%s%s…%s (len=%s)\n' "$scheme" "${rest:0:3}" "${rest: -4}" "$n"
-          }
-          PUBLIC_URL_CONFIG="${PUBLIC_URL_SECRET:-${PUBLIC_URL_VAR:-}}"
-          if [ -n "${PUBLIC_URL_CONFIG:-}" ]; then
-            PUBLIC_URLS="${PUBLIC_URL_CONFIG%/}"
-            echo "→ PUBLIC_URL (configured, no hard-coded fallback): $(mask_url "$PUBLIC_URLS")"
-          else
-            echo "::error::PUBLIC_URL is required as a repository secret or variable for public-domain verification."
-            exit 1
-          fi
-
-          # Cache-buster + no-cache header so Cloudflare/edge caches never
-          # serve a stale deploy-version.json that masks a real failure.
-          for i in $(seq 1 24); do
-            for PUBLIC_URL in $PUBLIC_URLS; do
-              VERSION_URL="${PUBLIC_URL%/}/deploy-version.json?ts=${GITHUB_RUN_ID}-${i}"
-              BODY=$(curl -fsS --max-time 20 \
-                -H "Cache-Control: no-cache" \
-                -H "Pragma: no-cache" \
-                "$VERSION_URL" || true)
-              echo "$VERSION_URL"
-              echo "$BODY"
-              if echo "$BODY" | grep -q "$SHORT_SHA"; then
-                echo "✅ Public domain serves commit ${SHORT_SHA} via ${PUBLIC_URL%/}"
-                exit 0
-              fi
-            done
-            sleep 5
-          done
-
-          # ===== Public domain mismatch — diagnose proxy vs app =====
-          echo ""
-          echo "=== Public domain did not show commit ${SHORT_SHA}. Diagnosing… ==="
-
-          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
-          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
-          SSH_PORT="${SSH_PORT:-22}"
-
-          LOCAL_BODY=$(ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" \
-            "curl -fsS --max-time 10 http://127.0.0.1:${APP_PORT}/deploy-version.json || echo ''")
-          echo "→ Local (127.0.0.1:${APP_PORT}) /deploy-version.json:"
-          echo "  ${LOCAL_BODY:-<empty>}"
-
-          if echo "$LOCAL_BODY" | grep -q "$SHORT_SHA"; then
-            echo ""
-            echo "::error::Local PM2 serves commit ${SHORT_SHA} correctly on 127.0.0.1:${APP_PORT},"
-            echo "::error::but the public domain does NOT. This is a domain proxy/upstream problem,"
-            echo "::error::not an app problem. Fix the domain's reverse proxy (Nginx/aaPanel/CDN)"
-            echo "::error::to forward to http://127.0.0.1:${APP_PORT} — auto-rollback is SKIPPED"
-            echo "::error::because reverting the app would not fix the domain."
-            echo "FAILURE_REASON=public-domain-proxy-misconfigured" >> "$GITHUB_ENV"
-          else
-            echo ""
-            echo "::error::Neither the public domain nor the local app on 127.0.0.1:${APP_PORT}"
-            echo "::error::serves commit ${SHORT_SHA}. PM2 may have started a stale build."
-            echo "FAILURE_REASON=app-version-mismatch" >> "$GITHUB_ENV"
-          fi
-          exit 1
-
-      - name: Smoke test — homepage + /api/public/health/
-        env:
-          PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
-          PUBLIC_URL_VAR: ${{ vars.PUBLIC_URL }}
-        run: |
-          set -euo pipefail
-          mask_url() {
-            local u="$1" scheme rest n
-            case "$u" in
-              https://*) scheme="https://"; rest="${u#https://}" ;;
-              http://*)  scheme="http://";  rest="${u#http://}" ;;
-              *)         scheme="";         rest="$u" ;;
-            esac
-            n=${#rest}
-            if [ "$n" -le 8 ]; then printf '%slen=%s\n' "$scheme" "$n"; return; fi
-            printf '%s%s…%s (len=%s)\n' "$scheme" "${rest:0:3}" "${rest: -4}" "$n"
-          }
-          PUBLIC_URL_CONFIG="${PUBLIC_URL_SECRET:-${PUBLIC_URL_VAR:-}}"
-          if [ -n "${PUBLIC_URL_CONFIG:-}" ]; then
-            BASE_URL="${PUBLIC_URL_CONFIG%/}"
-            echo "→ BASE_URL (configured, no hard-coded fallback): $(mask_url "$BASE_URL")"
-          else
-            echo "::error::PUBLIC_URL is required as a repository secret or variable for smoke tests."
-            exit 1
-          fi
-
-          echo "=== Smoke test against ${BASE_URL} ==="
-          FAILED=0
-
-          # 1) Homepage must return 2xx and look like an HTML document.
-          echo "→ GET ${BASE_URL}/"
-          HOME_TMP=$(mktemp)
-          HOME_CODE=$(curl -sS -o "$HOME_TMP" -w "%{http_code}" \
-            --max-time 20 --retry 3 --retry-delay 4 --retry-connrefused \
-            -H "User-Agent: flowtix-smoke-test" \
-            "${BASE_URL}/" || echo "000")
-          HOME_SIZE=$(wc -c < "$HOME_TMP" | tr -d ' ')
-          echo "   status=${HOME_CODE}  bytes=${HOME_SIZE}"
-          if [ "$HOME_CODE" != "200" ]; then
-            echo "::error::Homepage returned HTTP ${HOME_CODE} (expected 200)"
-            FAILED=$((FAILED+1))
-          elif ! head -c 4096 "$HOME_TMP" | grep -qi "<html"; then
-            echo "::error::Homepage response is not HTML — first bytes:"
-            head -c 400 "$HOME_TMP" || true
-            echo
-            FAILED=$((FAILED+1))
-          else
-            echo "   ✓ homepage OK"
-          fi
-          rm -f "$HOME_TMP"
-
-          # 2) Health endpoint must return 200 + JSON {status:"ok"}.
-          # Self-hosted Nginx/CDN routing on this server resolves the route reliably
-          # with the trailing slash, while the app still owns the same health handler.
-          echo "→ GET ${BASE_URL}/api/public/health/"
-          HEALTH_TMP=$(mktemp)
-          HEALTH_CODE=$(curl -sS -o "$HEALTH_TMP" -w "%{http_code}" \
-            --max-time 15 --retry 3 --retry-delay 4 --retry-connrefused \
-            -H "User-Agent: flowtix-smoke-test" \
-            "${BASE_URL}/api/public/health/" || echo "000")
-          HEALTH_BODY=$(cat "$HEALTH_TMP")
-          echo "   status=${HEALTH_CODE}  body=${HEALTH_BODY}"
-          if [ "$HEALTH_CODE" != "200" ]; then
-            echo "::error::Health endpoint returned HTTP ${HEALTH_CODE} (expected 200)"
-            FAILED=$((FAILED+1))
-          elif ! echo "$HEALTH_BODY" | grep -q '"status":"ok"'; then
-            echo "::error::Health endpoint response missing {\"status\":\"ok\"}"
-            FAILED=$((FAILED+1))
-          else
-            echo "   ✓ /api/public/health OK"
-          fi
-          rm -f "$HEALTH_TMP"
-
-          # 3) Confirm the build pinned by deploy-version.json matches this run's SHA.
-          echo "→ GET ${BASE_URL}/deploy-version.json"
-          VERSION_BODY=$(curl -fsS --max-time 15 "${BASE_URL}/deploy-version.json" || echo "")
-          echo "   body=${VERSION_BODY}"
-          if ! echo "$VERSION_BODY" | grep -q "$SHORT_SHA"; then
-            echo "::error::deploy-version.json does not contain SHA ${SHORT_SHA} — wrong build is live"
-            FAILED=$((FAILED+1))
-          else
-            echo "   ✓ deploy-version.json pinned to ${SHORT_SHA}"
-          fi
-
-          if [ "$FAILED" -gt 0 ]; then
-            echo "::error::Smoke test failed with ${FAILED} problem(s) — deployment is NOT healthy"
-            exit 1
-          fi
-          echo "✅ Smoke test passed — homepage, health, and version all green"
-
-      - name: Smoke test — dashboard routes must not 5xx
-        env:
-          PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
-          PUBLIC_URL_VAR: ${{ vars.PUBLIC_URL }}
-        run: |
-          set -euo pipefail
-          # Dashboard routes are user-scoped (ssr: false) — they should return
-          # an HTML shell (200) or a redirect to /login (3xx). They must NEVER
-          # return 5xx. This catches origin SSR regressions like the previous
-          # 502 on /dashboard/facebook/bot before users hit them.
-          PUBLIC_URL_CONFIG="${PUBLIC_URL_SECRET:-${PUBLIC_URL_VAR:-}}"
-          if [ -z "${PUBLIC_URL_CONFIG:-}" ]; then
-            echo "::error::PUBLIC_URL is required as a repository secret or variable for dashboard smoke tests."
-            exit 1
-          fi
-          BASE_URL="$PUBLIC_URL_CONFIG"
-          BASE_URL="${BASE_URL%/}"
-          ROUTES=(
-            "/dashboard"
-            "/dashboard/facebook"
-            "/dashboard/facebook/bot"
-            "/dashboard/facebook/groups"
-            "/dashboard/whatsapp"
-            "/dashboard/profile"
-          )
-
-          # Warm-up: SSR cold-start after PM2 restart can take 20-40s for
-          # less-visited routes. Hit each route once (ignoring result) so the
-          # real check below runs against a warmed worker.
-          echo "=== Warming up SSR routes (cold-start absorber) ==="
-          for path in "${ROUTES[@]}"; do
-            curl -sS -o /dev/null -w "warmup ${path} -> %{http_code} in %{time_total}s\n" \
-              --max-time 45 \
-              -H "User-Agent: flowtix-smoke-warmup" \
-              "${BASE_URL}${path}?warmup=${GITHUB_RUN_ID}" || true
-          done
-
-          echo "=== Verifying dashboard routes ==="
-          FAILED=0
-          for path in "${ROUTES[@]}"; do
-            # Per-route retry loop. curl --retry doesn't retry on HTTP 000
-            # (connect failure) reliably across versions, so do it ourselves.
-            CODE="000"
-            for attempt in 1 2 3 4; do
-              CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
-                --max-time 45 \
-                -H "User-Agent: flowtix-smoke-test" \
-                -H "Cache-Control: no-cache" \
-                "${BASE_URL}${path}?ts=${GITHUB_RUN_ID}-${attempt}" || echo "000")
-              case "$CODE" in
-                2*|3*) break ;;
-                *) echo "   attempt ${attempt}: ${path} -> ${CODE} (retrying)"; sleep 5 ;;
-              esac
-            done
-            echo "   ${BASE_URL}${path} -> ${CODE}"
-            case "$CODE" in
-              2*|3*) : ;;
-              *) echo "::error::Dashboard route ${path} returned HTTP ${CODE} (expected 2xx/3xx)"; FAILED=$((FAILED+1)) ;;
-            esac
-          done
-          if [ "$FAILED" -gt 0 ]; then
-            echo "::error::${FAILED} dashboard route(s) returned 5xx — origin SSR is unhealthy"
-            exit 1
-          fi
-          echo "✅ All dashboard routes return non-5xx"
-
-
-      - name: Final SHA equality gate (no false success)
-        env:
-          PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
-          PUBLIC_URL_VAR: ${{ vars.PUBLIC_URL }}
-        run: |
-          set -euo pipefail
-          # Strict gate: the live site's deploy-version.json MUST contain the
-          # EXACT full GITHUB_SHA of this build (not a substring, not short).
-          # This blocks any "fake success" where earlier steps passed but the
-          # public site is actually serving an older commit (CDN cache, proxy
-          # misroute, stale PM2 process, partial rsync, etc.).
-          PUBLIC_URL_CONFIG="${PUBLIC_URL_SECRET:-${PUBLIC_URL_VAR:-}}"
-          if [ -n "${PUBLIC_URL_CONFIG:-}" ]; then
-            PUBLIC_URLS="${PUBLIC_URL_CONFIG%/}"
-          else
-            echo "::error::PUBLIC_URL is required as a repository secret or variable for the final SHA gate."
-            exit 1
-          fi
-
-          EXPECTED_SHA="${GITHUB_SHA}"
-          EXPECTED_SHORT="${SHORT_SHA}"
-          echo "Expected full SHA:  ${EXPECTED_SHA}"
-          echo "Expected short SHA: ${EXPECTED_SHORT}"
-
-          MATCH_URL=""
-          LIVE_SHA=""
-          LIVE_SHORT=""
-
-          for attempt in $(seq 1 18); do
-            for PUBLIC_URL in $PUBLIC_URLS; do
-              URL="${PUBLIC_URL%/}/deploy-version.json?gate=${GITHUB_RUN_ID}-${attempt}"
-              BODY=$(curl -fsS --max-time 20 \
-                -H "Cache-Control: no-cache" \
-                -H "Pragma: no-cache" \
-                -H "User-Agent: flowtix-sha-gate" \
-                "$URL" || true)
-              [ -z "$BODY" ] && continue
-
-              # Parse strictly. If jq is unavailable, fall back to grep.
-              if command -v jq >/dev/null 2>&1; then
-                LIVE_SHA=$(echo "$BODY" | jq -r '.sha // ""' 2>/dev/null || echo "")
-                LIVE_SHORT=$(echo "$BODY" | jq -r '.short_sha // ""' 2>/dev/null || echo "")
-              else
-                LIVE_SHA=$(echo "$BODY" | grep -o '"sha"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n1 | sed 's/.*"\([^"]*\)"$/\1/')
-                LIVE_SHORT=$(echo "$BODY" | grep -o '"short_sha"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n1 | sed 's/.*"\([^"]*\)"$/\1/')
-              fi
-
-              echo "  [$attempt] ${PUBLIC_URL%/} -> sha=${LIVE_SHA:-<none>} short=${LIVE_SHORT:-<none>}"
-
-              if [ "$LIVE_SHA" = "$EXPECTED_SHA" ] && [ "$LIVE_SHORT" = "$EXPECTED_SHORT" ]; then
-                MATCH_URL="${PUBLIC_URL%/}"
-                break 2
-              fi
-            done
-            sleep 5
-          done
-
-          if [ -z "$MATCH_URL" ]; then
-            echo ""
-            echo "::error::🛑 FINAL SHA GATE FAILED — live site does NOT match this build."
-            echo "::error::  expected sha        = ${EXPECTED_SHA}"
-            echo "::error::  expected short_sha  = ${EXPECTED_SHORT}"
-            echo "::error::  live sha (last)     = ${LIVE_SHA:-<empty>}"
-            echo "::error::  live short (last)   = ${LIVE_SHORT:-<empty>}"
-            echo "::error::Refusing to report deploy as successful. This guarantees"
-            echo "::error::that a green workflow always means the new commit IS live."
-            echo "FAILURE_REASON=final-sha-gate-mismatch" >> "$GITHUB_ENV"
-            exit 1
-          fi
-
-          echo ""
-          echo "✅ FINAL SHA GATE PASSED — ${MATCH_URL} serves exact commit ${EXPECTED_SHA}"
-
-      - name: Record LAST_GOOD snapshot
-
-        env:
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-        run: |
-          set -euo pipefail
-          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
-          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
-          SSH_PORT="${SSH_PORT:-22}"
-
-          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' SHORT_SHA='${SHORT_SHA}' bash -s" <<'EOSSH'
-          set -euo pipefail
-          mkdir -p "$BACKUPS_DIR"
-          GOOD="$BACKUPS_DIR/good-$(date -u +%Y%m%d%H%M%S)-${SHORT_SHA}"
-          mkdir -p "$GOOD"
+          ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
+            "${USER}@${HOST}" \
+            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' APP_NAME='${APP_NAME}' bash -s" <<'EOSSH' || true
+          set -eu
+          [ -f "$BACKUPS_DIR/PREV_SNAPSHOT" ] || { echo "No PREV_SNAPSHOT — leaving site as-is."; exit 0; }
+          SRC="$(cat "$BACKUPS_DIR/PREV_SNAPSHOT")"
+          [ -d "$SRC" ] || { echo "PREV_SNAPSHOT path missing ($SRC) — skipping rollback."; exit 0; }
+          echo "Restoring previous snapshot: $SRC"
           rsync -a --delete \
-            --exclude='.env' \
-            --exclude='.user.ini' \
-            --exclude='.htaccess' \
-            --exclude='var/' \
-            --exclude='.well-known/' \
-            "$DEPLOY_PATH/" "$GOOD/"
-          echo "$GOOD" > "$BACKUPS_DIR/LAST_GOOD"
-          echo "Recorded LAST_GOOD -> $GOOD"
-          ls -1dt "$BACKUPS_DIR"/good-* 2>/dev/null | tail -n +6 | xargs -r rm -rf
-          EOSSH
-
-      - name: Auto rollback on failure
-        if: failure()
-        env:
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-          PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
-          PUBLIC_URL_VAR: ${{ vars.PUBLIC_URL }}
-        run: |
-          set -euo pipefail
-
-          # Skip rollback when the failure is "app is fine, domain proxy is wrong".
-          # Reverting to a previous build will NOT fix the reverse proxy, and would
-          # only mask a working app behind a broken edge.
-          if [ "${FAILURE_REASON:-}" = "public-domain-proxy-misconfigured" ]; then
-            echo "::warning::Skipping auto-rollback — failure reason is ${FAILURE_REASON}."
-            echo "::warning::The new build is healthy on 127.0.0.1:${APP_PORT}. Fix the domain proxy/upstream instead."
-            exit 0
-          fi
-
-          # Integrity rollback already restored LAST_GOOD onto disk inside the
-          # restart step (before PM2 was touched). PM2 is still running the old
-          # in-memory process, so there is nothing left to do here.
-          if [ "${FAILURE_REASON:-}" = "integrity-restored-last-good" ]; then
-            echo "::warning::Skipping auto-rollback — LAST_GOOD was already restored on disk by the integrity check."
-            exit 0
-          fi
-
-          DEPLOY_USER="${SERVER_USER:-${SSH_USER:-}}"
-          SERVER_HOST="${SERVER_IP:-${SSH_HOST:-}}"
-          SSH_PORT="${SSH_PORT:-22}"
-          mask_url() {
-            local u="$1" scheme rest n
-            case "$u" in
-              https://*) scheme="https://"; rest="${u#https://}" ;;
-              http://*)  scheme="http://";  rest="${u#http://}" ;;
-              *)         scheme="";         rest="$u" ;;
-            esac
-            n=${#rest}
-            if [ "$n" -le 8 ]; then printf '%slen=%s\n' "$scheme" "$n"; return; fi
-            printf '%s%s…%s (len=%s)\n' "$scheme" "${rest:0:3}" "${rest: -4}" "$n"
-          }
-          PUBLIC_URL_CONFIG="${PUBLIC_URL_SECRET:-${PUBLIC_URL_VAR:-}}"
-          if [ -n "${PUBLIC_URL_CONFIG:-}" ]; then
-            PUBLIC_URLS="${PUBLIC_URL_CONFIG%/}"
-            echo "→ PUBLIC_URL (configured, no hard-coded fallback): $(mask_url "$PUBLIC_URLS")"
-          else
-            echo "::warning::PUBLIC_URL is unset; rollback can restore files but public verification will be skipped."
-            PUBLIC_URLS=""
-          fi
-
-          if [ -z "${DEPLOY_PATH:-}" ] || [ -z "${BACKUPS_DIR:-}" ]; then
-            echo "::warning::DEPLOY_PATH/BACKUPS_DIR not set — cannot rollback"
-            exit 0
-          fi
-
-          echo "Deploy failed — attempting automatic rollback"
-
-          ROLLBACK_INFO=$(ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no \
-            "${DEPLOY_USER}@${SERVER_HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' LEGACY_PM2_APPS='${LEGACY_PM2_APPS}' bash -s" <<'EOSSH'
-          set -euo pipefail
-          has_ssr_entry() {
-            local candidate="$1"
-            [ -f "$candidate/dist/server/index.js" ] || [ -f "$candidate/dist/server/index.mjs" ]
-          }
-          is_valid_ssr_snapshot() {
-            local candidate="$1"
-            [ -d "$candidate" ] \
-              && has_ssr_entry "$candidate" \
-              && [ -f "$candidate/scripts/tanstack-node-server.mjs" ] \
-              && [ -f "$candidate/ecosystem.config.cjs" ]
-          }
-          is_runnable_prev_snapshot() {
-            local candidate="$1"
-            [ -d "$candidate" ] \
-              && has_ssr_entry "$candidate" \
-              && [ -f "$candidate/ecosystem.config.cjs" ] \
-              && [ -d "$candidate/node_modules" ]
-          }
-
-          choose_rollback_snapshot() {
-            local candidate
-            if [ -f "$BACKUPS_DIR/LAST_GOOD" ]; then
-              candidate=$(cat "$BACKUPS_DIR/LAST_GOOD")
-              if is_valid_ssr_snapshot "$candidate"; then
-                echo "$candidate"; return 0
-              fi
-              echo "Skipping incompatible rollback snapshot from LAST_GOOD: ${candidate:-empty}" >&2
-            fi
-            if [ -f "$BACKUPS_DIR/PREV_SNAPSHOT" ]; then
-              candidate=$(cat "$BACKUPS_DIR/PREV_SNAPSHOT")
-              if is_runnable_prev_snapshot "$candidate"; then
-                echo "$candidate"; return 0
-              fi
-              echo "Skipping non-runnable rollback snapshot from PREV_SNAPSHOT: ${candidate:-empty}" >&2
-            fi
-            while IFS= read -r candidate; do
-              if is_valid_ssr_snapshot "$candidate"; then
-                echo "$candidate"
-                return 0
-              fi
-              echo "Skipping incompatible rollback snapshot: $candidate" >&2
-            done < <(ls -1dt "$BACKUPS_DIR"/good-* "$BACKUPS_DIR"/[0-9]* 2>/dev/null || true)
-            return 1
-          }
-
-          SRC=$(choose_rollback_snapshot || true)
-          if [ -z "$SRC" ]; then
-            echo "ROLLBACK_RESULT=no_valid_ssr_snapshot"
-            exit 0
-          fi
-
-          rsync -a --delete \
-            --exclude='.env' \
-            --exclude='.user.ini' \
-            --exclude='.htaccess' \
-            --exclude='var/' \
-            --exclude='.well-known/' \
+            --exclude='.env' --exclude='.user.ini' --exclude='.htaccess' \
+            --exclude='var/' --exclude='.well-known/' --exclude='.deploy/' \
             "$SRC/" "$DEPLOY_PATH/"
-
           cd "$DEPLOY_PATH"
-          ENTRY=""
-          for candidate in dist/server/index.js dist/server/index.mjs; do
-            if [ -f "$candidate" ]; then ENTRY="$candidate"; break; fi
-          done
-          [ -n "$ENTRY" ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
-          [ -f scripts/tanstack-node-server.mjs ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
-          [ -f ecosystem.config.cjs ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
-          [ -d node_modules ] || { echo "ROLLBACK_RESULT=restore_incomplete"; exit 0; }
-
-          RESTORED_SHA="unknown"
-          RESTORED_SHORT="unknown"
-          RESTORED_RUN=""
-          RESTORED_REPO=""
-          RESTORED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          if [ -f deploy-version.json ]; then
-            RESTORED_SHA=$(grep -o '"sha"[[:space:]]*:[[:space:]]*"[^"]*"' deploy-version.json | head -n1 | sed 's/.*"\([^"]*\)"$/\1/' || echo unknown)
-            RESTORED_SHORT=$(grep -o '"short_sha"[[:space:]]*:[[:space:]]*"[^"]*"' deploy-version.json | head -n1 | sed 's/.*"\([^"]*\)"$/\1/' || echo unknown)
-            RESTORED_RUN=$(grep -o '"run_id"[[:space:]]*:[[:space:]]*"[^"]*"' deploy-version.json | head -n1 | sed 's/.*"\([^"]*\)"$/\1/' || true)
-            RESTORED_REPO=$(grep -o '"repo"[[:space:]]*:[[:space:]]*"[^"]*"' deploy-version.json | head -n1 | sed 's/.*"\([^"]*\)"$/\1/' || true)
-            RESTORED_AT=$(grep -o '"deployed_at"[[:space:]]*:[[:space:]]*"[^"]*"' deploy-version.json | head -n1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "$RESTORED_AT")
+          if [ -f ecosystem.config.cjs ] && command -v pm2 >/dev/null 2>&1; then
+            pm2 reload ecosystem.config.cjs --only "$APP_NAME" --update-env \
+              || pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env || true
+            pm2 save || true
           fi
-          [ -z "$RESTORED_SHA" ] && RESTORED_SHA="$RESTORED_SHORT"
-
-
-          if [ -f .env ]; then
-            while IFS= read -r line || [ -n "$line" ]; do
-              case "$line" in ""|\#*) continue ;; esac
-              key="${line%%=*}"
-              value="${line#*=}"
-              case "$key" in
-                SUPABASE_URL|SUPABASE_PUBLISHABLE_KEY|SUPABASE_SERVICE_ROLE_KEY|VITE_SUPABASE_URL|VITE_SUPABASE_PUBLISHABLE_KEY|BOT_ENCRYPTION_KEY|BOT_WORKER_SECRET|FLOWTIX_ALERT_WEBHOOK_URL|ALERT_WEBHOOK_URL|SSR_ALERT_WEBHOOK_URL|ALERT_THROTTLE_MS)
-                  value="${value%\"}"; value="${value#\"}"
-                  value="${value%\'}"; value="${value#\'}"
-                  export "$key=$value"
-                  ;;
-              esac
-            done < .env
-          fi
-          export SUPABASE_URL="${SUPABASE_URL:-${VITE_SUPABASE_URL:-}}"
-          export SUPABASE_PUBLISHABLE_KEY="${SUPABASE_PUBLISHABLE_KEY:-${VITE_SUPABASE_PUBLISHABLE_KEY:-}}"
-          export NODE_ENV=production
-          export DEPLOY_SHA="$RESTORED_SHA"
-          export DEPLOY_RUN_ID="$RESTORED_RUN"
-          export DEPLOY_REPOSITORY="$RESTORED_REPO"
-          export DEPLOYED_AT="$RESTORED_AT"
-          export APP_NAME APP_PORT DEPLOY_PATH
-
-          for pm2_app in "$APP_NAME" ${LEGACY_PM2_APPS:-}; do
-            [ -n "$pm2_app" ] || continue
-            if pm2 describe "$pm2_app" >/dev/null 2>&1; then
-              echo "Stopping PM2 app before rollback start: $pm2_app"
-              pm2 delete "$pm2_app" || true
-            fi
-          done
-
-          pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env
-          pm2 save
-
-          echo "ROLLBACK_RESULT=ok"
-          echo "ROLLBACK_SRC=$SRC"
-          echo "ROLLBACK_SHA=$RESTORED_SHA"
-          echo "ROLLBACK_SHORT=$RESTORED_SHORT"
+          echo "✓ Rollback applied."
           EOSSH
-          )
-
-          echo "$ROLLBACK_INFO"
-
-          if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=none"; then
-            echo "::warning::No previous snapshot found — site left as-is."
-            exit 0
-          fi
-          if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=no_valid_ssr_snapshot"; then
-            echo "::warning::No compatible SSR rollback snapshot found — this is expected immediately after migrating from the old deployment architecture."
-            exit 0
-          fi
-          if echo "$ROLLBACK_INFO" | grep -q "ROLLBACK_RESULT=restore_incomplete"; then
-            echo "::warning::Rollback snapshot restore was incomplete — site left as-is for manual inspection."
-            exit 0
-          fi
-
-          RESTORED_SHORT=$(echo "$ROLLBACK_INFO" | grep '^ROLLBACK_SHORT=' | head -n1 | cut -d= -f2)
-          ROLLBACK_SRC=$(echo "$ROLLBACK_INFO" | grep '^ROLLBACK_SRC=' | head -n1 | cut -d= -f2-)
-          PUBLIC_URL_SOURCE=$([ -n "${PUBLIC_URL_CONFIG:-}" ] && echo "configured PUBLIC_URL" || echo "none")
-          echo "Rolled back to commit ${RESTORED_SHORT:-unknown} (from snapshot: ${ROLLBACK_SRC:-unknown})"
-          echo "→ Verifying rollback against URLs from ${PUBLIC_URL_SOURCE}: $(for u in $PUBLIC_URLS; do mask_url "$u"; done | tr '\n' ' ')"
-
-          if [ -n "${PUBLIC_URLS:-}" ] && [ -n "${RESTORED_SHORT:-}" ] && [ "$RESTORED_SHORT" != "unknown" ]; then
-            LAST_TRIED=""
-            for _attempt in $(seq 1 12); do
-              for PUBLIC_URL in $PUBLIC_URLS; do
-                LAST_TRIED="${PUBLIC_URL%/}"
-                BODY=$(curl -fsS --max-time 20 "${LAST_TRIED}/deploy-version.json" || true)
-                echo "$BODY"
-                if echo "$BODY" | grep -q "$RESTORED_SHORT"; then
-                  echo "✅ Rollback verified — ${LAST_TRIED} now serves commit ${RESTORED_SHORT}"
-                  echo "   (snapshot source: ${ROLLBACK_SRC:-unknown}, PUBLIC_URL from: ${PUBLIC_URL_SOURCE})"
-                  exit 0
-                fi
-              done
-              sleep 5
-            done
-            echo "::warning::Rollback applied to commit ${RESTORED_SHORT} but verification timed out."
-            echo "::warning::Checked URL(s) from ${PUBLIC_URL_SOURCE}: $(for u in $PUBLIC_URLS; do mask_url "$u"; done | tr '\n' ' ')"
-            echo "::warning::Last URL tried: $(mask_url "${LAST_TRIED:-none}")"
-          fi
-
-      # Per-SHA deploy lock — saved only when ALL preceding steps succeeded.
-      # Future runs for the same commit SHA will hit this cache in check_sha
-      # and skip the deploy entirely. Prevents re-deploying the same SHA
-      # even if the workflow is re-triggered (push retry, re-run, etc.).
-      - name: Mark this SHA as deployed (cache lock)
-        if: success()
-        run: |
-          mkdir -p .deploy-lock
-          printf 'sha=%s\nrun_id=%s\ndeployed_at=%s\n' \
-            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            > .deploy-lock/marker
-
-      - name: Save per-SHA deploy lock
-        if: success() && needs.check_sha.outputs.cache_hit != 'true'
-        uses: actions/cache/save@v4
-        continue-on-error: true
-        with:
-          path: .deploy-lock
-          key: vps-deploy-sha-${{ github.sha }}-v1

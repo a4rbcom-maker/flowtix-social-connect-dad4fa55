@@ -1,37 +1,49 @@
 ## الهدف
+إيقاف دوامة الفشل والتكرار في GitHub Actions عبر تحويل النشر إلى مسار واحد واضح، بقفل حقيقي على السيرفر، ورسائل خطأ تحدد السبب الفعلي بدل `exit code 1` فقط.
 
-ترتيب الرسائل والمحادثات اعتمادًا على وقت الرسالة الفعلي من واتساب (messageTimestamp) بدل وقت إدخال السجل في قاعدة البيانات. ده بيحل مشكلة ظهور الرسائل القديمة المستوردة بترتيب غلط، وبيخلي تجربة الترتيب مطابقة لتطبيق واتساب.
+## ما سأغيّره بعد الموافقة
 
-## الخطوات
+1. **تبسيط workflow النشر بدل الترقيعات المتراكمة**
+   - تقليل `.github/workflows/deploy.yml` من ملف طويل ومعقد إلى خطوات أساسية فقط: checkout، install، build، تجهيز bundle، rsync، restart، health check.
+   - إزالة بوابات كثيرة تسبب فشل أحمر حتى لو التطبيق على السيرفر يعمل، مثل فحوصات Nginx/CDN الصارمة وفحص public SHA المتكرر.
 
-1. **Migration** على `wa_messages`:
-   - إضافة عمود `wa_timestamp timestamptz` (nullable مبدئيًا للتوافق مع البيانات القديمة).
-   - Backfill: تعيين القيمة من `raw->>'messageTimestamp'` أو `raw->>'t'` (ثواني Unix) عند توفرها، وإلا = `created_at`.
-   - Index على `(user_id, remote_jid, wa_timestamp)` لتسريع الاستعلامات.
+2. **قفل نشر حقيقي داخل الـ VPS**
+   - إضافة lock file على السيرفر باستخدام `flock` داخل `$DEPLOY_PATH/.deploy/deploy.lock`.
+   - إذا بدأ trigger ثاني لنفس الوقت، ينتظر أو يخرج برسالة واضحة بدل تشغيل Deploy مرتين.
+   - إضافة marker على السيرفر باسم آخر SHA تم نشره، فإذا نفس الـ SHA موجود مسبقاً يتم تخطي النشر بأمان.
 
-2. **Webhook** (`src/lib/wa-webhook.server.ts`):
-   - استخراج التايمستامب من حقول الـ Baileys/BotXtra الشائعة: `messageTimestamp`, `t`, `timestamp`, `key.timestamp`, `data.timestamp` (ثواني أو ميلي ثانية).
-   - تحويلها لـ ISO وتخزينها في `wa_timestamp` عند الإدراج.
+3. **منع تكرار GitHub Actions من المصدر**
+   - الإبقاء على trigger واحد فعلي للنشر: `push` + `workflow_dispatch` فقط.
+   - استخدام `concurrency` على مستوى الـ workflow باسم المستودع حتى لا يلمس الـ VPS أكثر من Run واحد في نفس الوقت.
+   - إبقاء CI منفصل للـ PR/manual فقط بدون تشغيل Build/Deploy مكرر على كل push.
 
-3. **إرسال من داخل النظام** (`src/lib/wa-chat.functions.ts` + `src/lib/wa-ai.server.ts`):
-   - تعيين `wa_timestamp = now()` للرسائل الصادرة من واجهتنا.
+4. **جعل سبب الفشل واضحاً داخل GitHub**
+   - كل خطوة ستطبع سبب فشل محدد: missing secret، build failed، SSH failed، rsync failed، PM2 failed، health failed.
+   - لن نعتمد على Cache GitHub كقفل deploy لأن فشله/تأخره سبب محتمل للّخبطة.
 
-4. **القراءة والترتيب**:
-   - تحديث استعلامات `getConversationMessages` و`getLatestMessagePreviews` لاستخدام `wa_timestamp` بدل `created_at` مع fallback عبر `COALESCE(wa_timestamp, created_at)`.
-   - تحديث `upsertConversationFromMessage` في `src/lib/wa-ai.server.ts` لتعيين `last_message_at` من تايمستامب الرسالة الفعلي (مع الحفاظ على الأحدث فقط، عشان رسالة قديمة مستوردة ما ترفعش المحادثة لأعلى القائمة).
-   - ترتيب `wa_conversations` يبقى زي ما هو على `last_message_at` بعد التصحيح.
+5. **الإبقاء على rollback والنسخ الاحتياطي بشكل أبسط**
+   - أخذ snapshot قبل rsync.
+   - إذا فشل health check المحلي على السيرفر، يتم إرجاع آخر snapshot وإعادة تشغيل PM2.
+   - الفحص النهائي سيكون محلياً على `127.0.0.1:$APP_PORT` لأنه مصدر الحقيقة المباشر، وليس CDN أو Nginx.
 
-5. **ترقيع البيانات الموجودة**: SQL تشغيل لمرة واحدة يحدّث `wa_conversations.last_message_at` لكل محادثة من أحدث `wa_timestamp` في رسائلها.
+## تفاصيل تقنية مختصرة
 
-## الملفات المتأثرة
+- الملف الأساسي: `.github/workflows/deploy.yml`
+- السكربت الموجود: `scripts/ci/install-restart.sh`
+- سأحافظ على الأسرار الحالية:
+  - `SSH_PRIVATE_KEY`
+  - `SERVER_USER` أو `SSH_USER`
+  - `SERVER_IP` أو `SSH_HOST`
+  - اختياري: `SSH_PORT`, `DEPLOY_PATH`, `APP_NAME`, `APP_PORT`, `PUBLIC_URL`
+- لن أضيف اسم المستودع داخل الكود، وسيبقى workflow صالحاً للمستودع الحالي أو غيره.
 
-- `supabase/migrations/<new>.sql` — العمود + الـ index + الـ backfill.
-- `src/lib/wa-webhook.server.ts` — استخراج وتخزين التايمستامب.
-- `src/lib/wa-chat.functions.ts` — ترتيب الرسائل والمحادثات + رسائل صادرة.
-- `src/lib/wa-ai.server.ts` — تعيين `last_message_at` من تايمستامب الرسالة + رسائل AI صادرة.
-- `src/routes/dashboard.whatsapp.inbox.tsx` — تأكد إن العرض يقرأ `wa_timestamp` (مع fallback).
-- `src/integrations/supabase/types.ts` — يتحدث تلقائيًا بعد الـ migration.
+## النتيجة المتوقعة
 
-## ملاحظة
+بعد التطبيق، أي push جديد يجب أن يعطي واحدة من حالتين فقط:
 
-مفيش تغيير في حقل `created_at` (يفضل بيسجل وقت الاستلام عندنا للتدقيق)، التغيير بس في الترتيب والعرض.
+```text
+نجاح: تم بناء ونشر SHA واحد مرة واحدة فقط.
+أو فشل واضح: step محددة + سبب مباشر قابل للإصلاح.
+```
+
+بهذا ننهي التكرار والترقيعات، ونحوّل النشر إلى مسار بسيط وقابل للتشخيص.
