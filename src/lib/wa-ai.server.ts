@@ -239,26 +239,36 @@ export async function upsertConversationFromMessage(opts: {
   contactPhone: string | null;
   text: string | null;
   direction: "in" | "out";
+  messageAt?: string;
 }): Promise<string | null> {
   const { userId, sessionId, remoteJid, contactName, contactPhone, text, direction } = opts;
-  const now = new Date().toISOString();
+  const messageAt = opts.messageAt ?? new Date().toISOString();
 
   // Try update first
   const { data: existing } = await supabaseAdmin
     .from("wa_conversations")
-    .select("id, unread_count, contact_name, contact_phone")
+    .select("id, unread_count, contact_name, contact_phone, last_message_at")
     .eq("user_id", userId)
     .eq("remote_jid", remoteJid)
     .maybeSingle();
 
   if (existing) {
+    // Only bump the summary if this message is newer than the existing one,
+    // so historical/imported messages don't reorder the inbox.
+    const existingAt = existing.last_message_at ? new Date(existing.last_message_at).getTime() : 0;
+    const incomingAt = new Date(messageAt).getTime();
+    const isNewer = incomingAt >= existingAt;
     await supabaseAdmin
       .from("wa_conversations")
       .update({
         session_id: sessionId,
-        last_message_text: text ?? null,
-        last_message_at: now,
-        last_direction: direction,
+        ...(isNewer
+          ? {
+              last_message_text: text ?? null,
+              last_message_at: messageAt,
+              last_direction: direction,
+            }
+          : {}),
         unread_count: direction === "in" ? (existing.unread_count || 0) + 1 : existing.unread_count,
         contact_name: existing.contact_name || contactName,
         contact_phone: contactPhone || existing.contact_phone,
@@ -276,7 +286,7 @@ export async function upsertConversationFromMessage(opts: {
       contact_name: contactName,
       contact_phone: contactPhone,
       last_message_text: text ?? null,
-      last_message_at: now,
+      last_message_at: messageAt,
       last_direction: direction,
       unread_count: direction === "in" ? 1 : 0,
     })
@@ -285,3 +295,4 @@ export async function upsertConversationFromMessage(opts: {
 
   return inserted?.id ?? null;
 }
+
