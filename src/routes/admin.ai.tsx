@@ -46,20 +46,33 @@ function AiAdminPage() {
   return (
     <AdminLayout title={lang === "ar" ? "وكلاء الذكاء الاصطناعي" : "AI Agents"}>
       <Tabs defaultValue="accounts" dir={lang === "ar" ? "rtl" : "ltr"}>
-        <TabsList className="grid w-full max-w-2xl grid-cols-3 mb-6">
-          <TabsTrigger value="accounts" className="gap-2">
-            <Key className="h-4 w-4" />
-            {lang === "ar" ? "حسابات kie.ai" : "kie.ai Accounts"}
-          </TabsTrigger>
-          <TabsTrigger value="models" className="gap-2">
-            <Sparkles className="h-4 w-4" />
-            {lang === "ar" ? "الموديلات" : "Models"}
-          </TabsTrigger>
-          <TabsTrigger value="logs" className="gap-2">
-            <Activity className="h-4 w-4" />
-            {lang === "ar" ? "سجل الاستخدام" : "Usage Logs"}
-          </TabsTrigger>
-        </TabsList>
+        <div className="mb-6 -mx-2 px-2 overflow-x-auto sm:overflow-visible">
+          <TabsList
+            className="inline-flex sm:grid sm:w-full sm:max-w-2xl sm:grid-cols-3 h-auto p-1.5 gap-1 rounded-2xl bg-gradient-to-br from-primary/5 via-background to-primary/5 border border-primary/15 shadow-[0_4px_20px_-8px_oklch(0.62_0.27_295_/_0.25)] backdrop-blur"
+          >
+            <TabsTrigger
+              value="accounts"
+              className="gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-200 hover:text-foreground hover:bg-primary/5 data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary data-[state=active]:to-primary/85 data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_6px_16px_-6px_oklch(0.62_0.27_295_/_0.55)] data-[state=active]:font-semibold"
+            >
+              <Key className="h-4 w-4" />
+              <span className="whitespace-nowrap">{lang === "ar" ? "حسابات kie.ai" : "kie.ai Accounts"}</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="models"
+              className="gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-200 hover:text-foreground hover:bg-primary/5 data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary data-[state=active]:to-primary/85 data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_6px_16px_-6px_oklch(0.62_0.27_295_/_0.55)] data-[state=active]:font-semibold"
+            >
+              <Sparkles className="h-4 w-4" />
+              <span className="whitespace-nowrap">{lang === "ar" ? "الموديلات" : "Models"}</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="logs"
+              className="gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-200 hover:text-foreground hover:bg-primary/5 data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary data-[state=active]:to-primary/85 data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_6px_16px_-6px_oklch(0.62_0.27_295_/_0.55)] data-[state=active]:font-semibold"
+            >
+              <Activity className="h-4 w-4" />
+              <span className="whitespace-nowrap">{lang === "ar" ? "سجل الاستخدام" : "Usage Logs"}</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="accounts"><AccountsTab /></TabsContent>
         <TabsContent value="models"><ModelsTab /></TabsContent>
