@@ -17,9 +17,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APP_NAME: ${{ vars.APP_NAME || 'flowtix' }}
-  APP_PORT: ${{ vars.APP_PORT || '3001' }}
-  LEGACY_PM2_APPS: ${{ vars.LEGACY_PM2_APPS || 'flowtixtools-web flowtix-social-connect' }}
+  APP_NAME: ${{ vars.APP_NAME || 'flowtixtools-web' }}
+  APP_PORT: ${{ vars.APP_PORT || '3100' }}
+  LEGACY_PM2_APPS: ${{ vars.LEGACY_PM2_APPS || 'flowtix flowtix-social-connect' }}
 
 jobs:
   deploy:
@@ -310,7 +310,7 @@ jobs:
           SERVER_IP: ${{ secrets.SERVER_IP }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
-          DEBUG_INSTALL: ${{ vars.DEBUG_INSTALL || '0' }}
+          DEBUG_INSTALL: ${{ vars.DEBUG_INSTALL || '1' }}
         run: |
           set -eu
           USER="${SERVER_USER:-${SSH_USER:-}}"
@@ -333,7 +333,12 @@ jobs:
             echo "::group::Install/restart failure log tail"
             tail -n 220 install-restart.log || true
             echo "::endgroup::"
-            echo "::error::Install/restart step failed on server (exit $SSH_EXIT) — see log above."
+            REASON=$(grep -E '^DEPLOY_FAILURE_REASON=' install-restart.log | tail -n1 | cut -d= -f2- || true)
+            if [ -n "$REASON" ]; then
+              echo "::error::Install/restart step failed on server (exit $SSH_EXIT) — reason: $REASON"
+            else
+              echo "::error::Install/restart step failed on server (exit $SSH_EXIT) — no DEPLOY_FAILURE_REASON was emitted; see diagnostic dump above."
+            fi
             exit "$SSH_EXIT"
           fi
 
