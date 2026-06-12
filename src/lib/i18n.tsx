@@ -10,7 +10,7 @@ const translations = {
       howItWorks: "كيف يعمل",
       pricing: "الأسعار",
       faq: "الأسئلة الشائعة",
-      startFree: "ابدأ مجاناً",
+      startFree: "تسجيل دخول",
       dashboard: "لوحة التحكم",
     },
     hero: {
@@ -19,7 +19,7 @@ const translations = {
       title2: "فيسبوك وواتساب",
       title3: "بذكاء وسهولة",
       desc: "أرسل لجروبات الفيسبوك، شغّل واتساب بوت بالذكاء الاصطناعي، وتابع عملاءك — كل ده من مكان واحد",
-      cta: "ابدأ مجاناً",
+      cta: "تسجيل دخول",
       ctaSecondary: "اكتشف المميزات",
     },
     features: {
