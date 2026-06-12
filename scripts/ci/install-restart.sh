@@ -93,6 +93,15 @@ dump_failure_diagnostics() {
     echo "════════════════════════════════════════════════════════════════"
   } >&2
 }
+
+fail_deploy() {
+  local reason="$1"
+  local code="${2:-1}"
+  echo "DEPLOY_FAILURE_REASON=${reason}"
+  echo "::error::install-restart failed: ${reason}"
+  dump_failure_diagnostics "$code" "${BASH_LINENO[0]:-0}" "${BASH_COMMAND:-fail_deploy}"
+  exit "$code"
+}
 trap 'dump_failure_diagnostics $? ${LINENO} "${BASH_COMMAND}"' ERR
 trap cleanup_self EXIT
 cd "$DEPLOY_PATH"
@@ -101,11 +110,11 @@ SSR_ENTRY_CANDIDATES="dist/server/server.js dist/server/server.mjs dist/server/i
   echo "ERROR: SSR entry missing: ${SERVER_ENTRY:-<unset>}"
   echo "Expected one of: $SSR_ENTRY_CANDIDATES"
   find dist/server -maxdepth 2 -type f 2>/dev/null | LC_ALL=C sort | sed -n '1,80p' || true
-  exit 1
+  fail_deploy "ssr-entry-missing"
 }
-[ -f deploy-version.json ] || { echo "ERROR: deploy-version.json missing"; exit 1; }
-[ -f manifest.json ] || { echo "ERROR: manifest.json missing — bundle integrity unknown"; exit 1; }
-[ -f SHA256SUMS ] || { echo "ERROR: SHA256SUMS missing — bundle integrity unknown"; exit 1; }
+[ -f deploy-version.json ] || fail_deploy "deploy-version-missing"
+[ -f manifest.json ] || fail_deploy "manifest-missing"
+[ -f SHA256SUMS ] || fail_deploy "sha256sums-missing"
 
 has_ssr_entry() {
   local candidate="$1"
