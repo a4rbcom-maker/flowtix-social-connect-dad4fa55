@@ -1264,13 +1264,14 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
 
   const { data: rawMessages } = await supabase
     .from("wa_messages")
-    .select("remote_jid, text_body, msg_type, raw, created_at")
+    .select("remote_jid, text_body, msg_type, raw, wa_timestamp, created_at")
     .eq("user_id", userId)
     .eq("session_id", sess.session_id)
     .in("remote_jid", rows.map((row) => row.remote_jid))
     .not("raw", "is", null)
-    .order("created_at", { ascending: false })
+    .order("wa_timestamp", { ascending: false })
     .limit(1000);
+
 
   const metaByJid = new Map<string, { phone: string | null; profile: string | null; preview: string | null }>();
   for (const msg of rawMessages ?? []) {
