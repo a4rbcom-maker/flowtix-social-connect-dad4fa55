@@ -383,7 +383,7 @@ jobs:
               fi
             else
               SUCCESS_STREAK=0
-              echo "  attempt $i/12: stale/misrouted public response"
+              echo "  attempt $i/20: stale/misrouted public response"
               echo "    health : ${HEALTH_BODY:-<empty>}" | cut -c1-500
               echo "    version: ${VERSION_BODY:-<empty>}" | cut -c1-500
             fi
