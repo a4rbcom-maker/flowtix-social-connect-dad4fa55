@@ -679,7 +679,28 @@ fi
 
 if [ "$APP_IS_RUNNING" = "1" ] && [ "$APP_IS_CLUSTER" = "1" ]; then
   echo "→ Graceful reload (cluster mode, no downtime)…"
+  RELOAD_FAILED=0
   if ! pm2 reload ecosystem.config.cjs --only "$APP_NAME" --update-env; then
+    RELOAD_FAILED=1
+  elif ! PM2_POST_RELOAD=$(pm2 jlist 2>/dev/null | APP_NAME="$APP_NAME" node -e '
+let input = "";
+process.stdin.on("data", (chunk) => { input += chunk; });
+process.stdin.on("end", () => {
+  try {
+    const app = JSON.parse(input).find((item) => item && item.name === process.env.APP_NAME);
+    const status = app?.pm2_env?.status || "missing";
+    console.log(status);
+    process.exit(status === "online" ? 0 : 1);
+  } catch {
+    console.log("unknown");
+    process.exit(1);
+  }
+});
+'); then
+    echo "::warning::pm2 reload returned success but app status is ${PM2_POST_RELOAD:-unknown}; falling back to delete+start."
+    RELOAD_FAILED=1
+  fi
+  if [ "$RELOAD_FAILED" = "1" ]; then
     echo "::warning::pm2 reload failed — falling back to delete+start."
     pm2 delete "$APP_NAME" || true
     wait_for_port_free "${APP_PORT}" || {
