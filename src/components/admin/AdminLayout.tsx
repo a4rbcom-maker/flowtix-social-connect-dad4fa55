@@ -45,7 +45,8 @@ type AdminPath =
   | "/admin/logs"
   | "/admin/notifications"
   | "/admin/settings"
-  | "/admin/security";
+  | "/admin/security"
+  | "/admin/profile";
 
 interface NavItem {
   to: AdminPath;
