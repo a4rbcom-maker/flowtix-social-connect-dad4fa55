@@ -560,7 +560,7 @@ port_pids() {
 
 wait_for_port_free() {
   local p="$1"
-  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+  for attempt in $(seq 1 45); do
     if ! port_is_bound "$p"; then
       return 0
     fi
@@ -662,7 +662,7 @@ pm2 save || echo "::warning::pm2 save failed (non-fatal — process list may not
 
 # Confirm the Node SSR app bound the port after reload/start.
 BOUND=0
-for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+for attempt in $(seq 1 45); do
   sleep 1
   if port_is_bound "${APP_PORT}"; then
     BOUND=1; break
@@ -689,7 +689,7 @@ SHORT_SHA="${DEPLOY_SHA:-unknown}"
 SHORT_SHA="${SHORT_SHA:0:7}"
 echo "→ Local runtime gate (http://127.0.0.1:${APP_PORT}/deploy-version.json)…"
 HEALTH_OK=0
-for attempt in 1 2 3 4 5 6 7 8 9 10; do
+for attempt in $(seq 1 30); do
   CODE=$(curl -sS -o /tmp/health.out -w '%{http_code}' --max-time 5 \
     "http://127.0.0.1:${APP_PORT}/deploy-version.json" 2>/dev/null) || CODE="000"
   CODE="${CODE##*$'\n'}"
