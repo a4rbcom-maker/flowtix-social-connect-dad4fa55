@@ -884,7 +884,78 @@ jobs:
           echo "✅ All dashboard routes return non-5xx"
 
 
+      - name: Final SHA equality gate (no false success)
+        env:
+          PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
+        run: |
+          set -euo pipefail
+          # Strict gate: the live site's deploy-version.json MUST contain the
+          # EXACT full GITHUB_SHA of this build (not a substring, not short).
+          # This blocks any "fake success" where earlier steps passed but the
+          # public site is actually serving an older commit (CDN cache, proxy
+          # misroute, stale PM2 process, partial rsync, etc.).
+          if [ -n "${PUBLIC_URL_SECRET:-}" ]; then
+            PUBLIC_URLS="${PUBLIC_URL_SECRET%/}"
+          else
+            PUBLIC_URLS="https://www.flowtixtools.com https://flowtixtools.com"
+          fi
+
+          EXPECTED_SHA="${GITHUB_SHA}"
+          EXPECTED_SHORT="${SHORT_SHA}"
+          echo "Expected full SHA:  ${EXPECTED_SHA}"
+          echo "Expected short SHA: ${EXPECTED_SHORT}"
+
+          MATCH_URL=""
+          LIVE_SHA=""
+          LIVE_SHORT=""
+
+          for attempt in $(seq 1 18); do
+            for PUBLIC_URL in $PUBLIC_URLS; do
+              URL="${PUBLIC_URL%/}/deploy-version.json?gate=${GITHUB_RUN_ID}-${attempt}"
+              BODY=$(curl -fsS --max-time 20 \
+                -H "Cache-Control: no-cache" \
+                -H "Pragma: no-cache" \
+                -H "User-Agent: flowtix-sha-gate" \
+                "$URL" || true)
+              [ -z "$BODY" ] && continue
+
+              # Parse strictly. If jq is unavailable, fall back to grep.
+              if command -v jq >/dev/null 2>&1; then
+                LIVE_SHA=$(echo "$BODY" | jq -r '.sha // ""' 2>/dev/null || echo "")
+                LIVE_SHORT=$(echo "$BODY" | jq -r '.short_sha // ""' 2>/dev/null || echo "")
+              else
+                LIVE_SHA=$(echo "$BODY" | grep -o '"sha"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n1 | sed 's/.*"\([^"]*\)"$/\1/')
+                LIVE_SHORT=$(echo "$BODY" | grep -o '"short_sha"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n1 | sed 's/.*"\([^"]*\)"$/\1/')
+              fi
+
+              echo "  [$attempt] ${PUBLIC_URL%/} -> sha=${LIVE_SHA:-<none>} short=${LIVE_SHORT:-<none>}"
+
+              if [ "$LIVE_SHA" = "$EXPECTED_SHA" ] && [ "$LIVE_SHORT" = "$EXPECTED_SHORT" ]; then
+                MATCH_URL="${PUBLIC_URL%/}"
+                break 2
+              fi
+            done
+            sleep 5
+          done
+
+          if [ -z "$MATCH_URL" ]; then
+            echo ""
+            echo "::error::🛑 FINAL SHA GATE FAILED — live site does NOT match this build."
+            echo "::error::  expected sha        = ${EXPECTED_SHA}"
+            echo "::error::  expected short_sha  = ${EXPECTED_SHORT}"
+            echo "::error::  live sha (last)     = ${LIVE_SHA:-<empty>}"
+            echo "::error::  live short (last)   = ${LIVE_SHORT:-<empty>}"
+            echo "::error::Refusing to report deploy as successful. This guarantees"
+            echo "::error::that a green workflow always means the new commit IS live."
+            echo "FAILURE_REASON=final-sha-gate-mismatch" >> "$GITHUB_ENV"
+            exit 1
+          fi
+
+          echo ""
+          echo "✅ FINAL SHA GATE PASSED — ${MATCH_URL} serves exact commit ${EXPECTED_SHA}"
+
       - name: Record LAST_GOOD snapshot
+
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_USER: ${{ secrets.SSH_USER }}
