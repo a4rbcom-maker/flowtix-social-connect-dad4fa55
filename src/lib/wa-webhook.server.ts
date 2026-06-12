@@ -497,6 +497,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       }
     }
 
+    const waTimestamp = m.waTimestamp ?? new Date().toISOString();
     const { error: insErr } = await supabaseAdmin.from("wa_messages").insert({
       user_id: userId,
       session_id: sessionId,
@@ -509,11 +510,13 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       media_url: mediaUrl,
       status: m.status,
       provider_message_id: m.providerMessageId,
+      wa_timestamp: waTimestamp,
       raw: {
         ...entry,
         normalizedRemoteJid: m.remoteJid,
         normalizedContactPhone: m.fromPhone,
         normalizedStatus: m.status,
+        normalizedWaTimestamp: waTimestamp,
         providerMessageId: m.providerMessageId,
         storedMediaUrl: mediaUrl?.startsWith("wa-media:") ? mediaUrl : null,
       } as never,
@@ -532,7 +535,9 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       contactPhone: m.isGroup ? null : m.fromPhone,
       text: text ?? (msgType !== "text" ? `[${msgType}]` : null),
       direction: m.fromMe ? "out" : "in",
+      messageAt: waTimestamp,
     });
+
 
     if (text && !m.fromMe) {
       // Try keyword auto-reply FIRST. If it matches, skip AI entirely.
