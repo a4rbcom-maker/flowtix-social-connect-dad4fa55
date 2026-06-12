@@ -179,7 +179,7 @@ verdict_snapshot() {
     return 1
   fi
   local missing=""
-  has_ssr_entry "$path"                          || missing="${missing}dist/server/index.js|index.mjs "
+  has_ssr_entry "$path"                          || missing="${missing}dist/server/server.js|server.mjs|index.js|index.mjs "
   [ -f "$path/ecosystem.config.cjs" ]             || missing="${missing}ecosystem.config.cjs "
   [ -d "$path/node_modules" ]                     || missing="${missing}node_modules/ "
   if [ "$mode" = "strict" ]; then
@@ -536,7 +536,7 @@ if [ -f .env ]; then
 fi
 export SUPABASE_URL="${SUPABASE_URL:-${VITE_SUPABASE_URL:-}}"
 export SUPABASE_PUBLISHABLE_KEY="${SUPABASE_PUBLISHABLE_KEY:-${VITE_SUPABASE_PUBLISHABLE_KEY:-}}"
-export APP_NAME APP_PORT DEPLOY_PATH
+export APP_NAME APP_PORT DEPLOY_PATH SERVER_ENTRY
 export NODE_ENV=production
 export DEPLOY_SHA DEPLOY_RUN_ID DEPLOY_REPOSITORY DEPLOYED_AT
 
