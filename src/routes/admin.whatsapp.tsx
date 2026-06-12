@@ -246,11 +246,8 @@ function AdminWhatsappPage() {
             </div>
           </div>
 
-          {/* Two columns: recent conversations + recent AI logs */}
-          <div className="grid lg:grid-cols-2 gap-6">
-            <RecentConversations rows={q.data?.recentConversations ?? []} t={t} />
-            <RecentAiLogs rows={q.data?.recentAiLogs ?? []} t={t} />
-          </div>
+          {/* Recent conversations */}
+          <RecentConversations rows={q.data?.recentConversations ?? []} t={t} />
 
           {/* Recent messages */}
           <RecentMessages rows={q.data?.recentMessages ?? []} t={t} />
