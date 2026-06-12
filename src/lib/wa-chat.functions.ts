@@ -123,11 +123,11 @@ export const getConversationMessages = createServerFn({ method: "POST" })
 
     const { data: rows, error } = await supabase
       .from("wa_messages")
-      .select("id, remote_jid, direction, status, text_body, msg_type, media_url, created_at, raw")
+      .select("id, remote_jid, direction, status, text_body, msg_type, media_url, wa_timestamp, created_at, raw")
       .eq("user_id", userId)
       .eq("session_id", sess.session_id)
       .eq("remote_jid", data.remoteJid)
-      .order("created_at", { ascending: true })
+      .order("wa_timestamp", { ascending: true })
       .limit(1000);
     if (error) throw new Error(error.message);
     return (rows ?? []).map((r) => {
@@ -143,13 +143,14 @@ export const getConversationMessages = createServerFn({ method: "POST" })
         text_body: cleanMessageText(r.text_body, raw, msgType),
         msg_type: msgType,
         media_url: preferChatMediaUrl(storedMediaUrl, rawMediaUrl),
-        created_at: r.created_at,
+        created_at: r.wa_timestamp ?? r.created_at,
         is_ai: raw.ai === true,
         sender_name: pickString(raw, "pushName", "senderName", "notifyName", "contactName"),
         sender_phone: digits(pickString(raw, "participantPn", "senderPn", "phoneNumber")),
       };
     });
   });
+
 
 function isWaStorageUrl(url: string | null | undefined): boolean {
   const value = url?.trim() ?? "";
