@@ -213,8 +213,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          SERVER_ENTRY="dist/server/index.js"
-          [ -f "$SERVER_ENTRY" ] || { echo "::error::SSR entry missing: $SERVER_ENTRY"; find dist -maxdepth 3 -type f 2>/dev/null | head -n 120 || true; exit 1; }
+          SERVER_ENTRY=""
+          for candidate in dist/server/index.js dist/server/index.mjs; do
+            if [ -f "$candidate" ]; then SERVER_ENTRY="$candidate"; break; fi
+          done
+          [ -n "$SERVER_ENTRY" ] || { echo "::error::SSR entry missing: expected dist/server/index.js or dist/server/index.mjs"; find dist -maxdepth 3 -type f 2>/dev/null | head -n 120 || true; exit 1; }
           [ -d node_modules ] || { echo "::error::node_modules missing after production install"; exit 1; }
 
           DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
