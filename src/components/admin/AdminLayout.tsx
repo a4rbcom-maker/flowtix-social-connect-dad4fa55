@@ -58,6 +58,7 @@ const flowtixLogo = "/flowtix-logo.webp";
 type AdminPath =
   | "/admin"
   | "/admin/users"
+  | "/admin/plans"
   | "/admin/facebook"
   | "/admin/whatsapp"
   | "/admin/ai"
@@ -78,6 +79,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { to: "/admin", icon: LayoutDashboard, ar: "نظرة عامة", en: "Overview" },
   { to: "/admin/users", icon: Users, ar: "المستخدمون", en: "Users" },
+  { to: "/admin/plans", icon: Package, ar: "الباقات والأسعار", en: "Plans & Pricing" },
   { to: "/admin/facebook", icon: Facebook, ar: "فيسبوك", en: "Facebook" },
   { to: "/admin/whatsapp", icon: MessageCircle, ar: "واتساب", en: "WhatsApp" },
   { to: "/admin/ai", icon: Sparkles, ar: "استهلاك الذكاء", en: "AI Usage" },
