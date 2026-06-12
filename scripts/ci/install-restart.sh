@@ -334,12 +334,19 @@ integrity_rollback() {
 }
 
 publish_good_snapshot() {
+  set +e
   if [ -z "${BACKUPS_DIR:-}" ]; then
     echo "::warning::BACKUPS_DIR unset — cannot mark a trusted rollback snapshot."
+    set -e
     return 0
   fi
 
   mkdir -p "$BACKUPS_DIR"
+  if [ $? -ne 0 ]; then
+    echo "::warning::Could not create BACKUPS_DIR ($BACKUPS_DIR); deploy stays successful but no trusted snapshot was recorded."
+    set -e
+    return 0
+  fi
   local stamp short snapshot tmp
   stamp=$(date -u +%Y%m%d%H%M%S)
   short="${DEPLOY_SHA:-unknown}"
@@ -350,6 +357,11 @@ publish_good_snapshot() {
 
   rm -rf "$tmp"
   mkdir -p "$tmp"
+  if [ $? -ne 0 ]; then
+    echo "::warning::Could not create snapshot temp dir ($tmp); deploy stays successful but no trusted snapshot was recorded."
+    set -e
+    return 0
+  fi
   rsync -a --delete \
     --exclude='.env' \
     --exclude='.user.ini' \
@@ -358,17 +370,28 @@ publish_good_snapshot() {
     --exclude='.well-known/' \
     --exclude='.deploy/' \
     "$DEPLOY_PATH/" "$tmp/"
+  if [ $? -ne 0 ]; then
+    echo "::warning::Trusted snapshot rsync failed; deploy is live, but rollback snapshot was not updated."
+    rm -rf "$tmp"
+    set -e
+    return 0
+  fi
 
   if is_valid_ssr_snapshot "$tmp"; then
-    mv "$tmp" "$snapshot"
-    printf '%s' "$snapshot" > "$BACKUPS_DIR/LAST_GOOD"
-    ls -1dt "$BACKUPS_DIR"/good-* 2>/dev/null | tail -n +6 | xargs -r rm -rf
-    echo "✓ Trusted SSR snapshot recorded: $snapshot"
+    if mv "$tmp" "$snapshot" \
+      && printf '%s' "$snapshot" > "$BACKUPS_DIR/LAST_GOOD"; then
+      ls -1dt "$BACKUPS_DIR"/good-* 2>/dev/null | tail -n +6 | xargs -r rm -rf || true
+      echo "✓ Trusted SSR snapshot recorded: $snapshot"
+    else
+      echo "::warning::Trusted snapshot finalize step failed; deploy is live, but rollback snapshot metadata was not updated."
+      rm -rf "$tmp" "$snapshot" 2>/dev/null || true
+    fi
   else
     echo "::warning::Healthy deploy is live, but trusted snapshot creation failed."
     diagnose_snapshot "$tmp" "new-good-snapshot"
     rm -rf "$tmp"
   fi
+  set -e
 }
 
 # Dry-run hook: force integrity_rollback to run without breaking the
