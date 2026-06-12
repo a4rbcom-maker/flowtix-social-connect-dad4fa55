@@ -27,6 +27,7 @@ function readBuildInfo() {
 }
 
 export const Route = createFileRoute("/api/public/health")({
+  component: () => null,
   server: {
     handlers: {
       GET: async () => {
