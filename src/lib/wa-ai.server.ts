@@ -187,6 +187,7 @@ export async function handleAiAutoReply(opts: {
       try {
         const sendRes = await waBridge.sendText(sessionId, phone, aiText);
         const providerMessageId = typeof sendRes?.id === "string" ? sendRes.id : null;
+        const aiAt = new Date().toISOString();
         await supabaseAdmin.from("wa_messages").insert({
           user_id: userId,
           session_id: sessionId,
@@ -197,6 +198,7 @@ export async function handleAiAutoReply(opts: {
           text_body: aiText,
           status: "sent",
           provider_message_id: providerMessageId,
+          wa_timestamp: aiAt,
           raw: { ai: true, tier, model, providerMessageId } as never,
         });
         await upsertConversationFromMessage({
@@ -207,12 +209,14 @@ export async function handleAiAutoReply(opts: {
           contactPhone: fromPhone,
           text: aiText,
           direction: "out",
+          messageAt: aiAt,
         });
       } catch (err) {
         errMsg = err instanceof Error ? err.message : "Bridge send failed";
         aiText = "";
       }
     }
+
 
     await supabaseAdmin.from("wa_ai_logs").insert({
       user_id: userId,
