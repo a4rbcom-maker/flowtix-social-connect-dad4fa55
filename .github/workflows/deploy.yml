@@ -40,6 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       skip: ${{ steps.compare.outputs.skip }}
+      cache_hit: ${{ steps.lock.outputs.cache-hit || 'false' }}
     steps:
       # Cache-based lock: a previous successful deploy for THIS exact commit
       # SHA saves a marker into the Actions cache. If the marker exists, we
@@ -48,9 +49,11 @@ jobs:
       - name: Restore per-SHA deploy lock
         id: lock
         uses: actions/cache/restore@v4
+        continue-on-error: true
         with:
           path: .deploy-lock
           key: vps-deploy-sha-${{ github.sha }}-v1
+          lookup-only: true
 
       - name: Compare live SHA vs commit SHA
         id: compare
@@ -166,7 +169,14 @@ jobs:
           echo "  APP_PORT=${APP_PORT}"
           case "${APP_PORT}" in
             ''|*[!0-9]*) echo "::error::APP_PORT must be numeric, got: ${APP_PORT}"; ERRORS=$((ERRORS+1)) ;;
-            *) [ "${APP_PORT}" -ge 1 ] && [ "${APP_PORT}" -le 65535 ] || { echo "::error::APP_PORT out of range"; ERRORS=$((ERRORS+1)); } ;;
+            *)
+              if [ "${APP_PORT}" -ge 1 ] && [ "${APP_PORT}" -le 65535 ]; then
+                :
+              else
+                echo "::error::APP_PORT out of range"
+                ERRORS=$((ERRORS+1))
+              fi
+              ;;
           esac
 
           echo ""
@@ -220,9 +230,14 @@ jobs:
           if [ -n "${SSH_PORT:-}" ]; then
             case "${SSH_PORT}" in
               ''|*[!0-9]*) echo "::error::SSH_PORT must be numeric, got: ${SSH_PORT}"; ERRORS=$((ERRORS+1)) ;;
-              *) [ "${SSH_PORT}" -ge 1 ] && [ "${SSH_PORT}" -le 65535 ] \
-                   && echo "  ✓ SSH_PORT in valid range" \
-                   || { echo "::error::SSH_PORT out of range"; ERRORS=$((ERRORS+1)); } ;;
+              *)
+                if [ "${SSH_PORT}" -ge 1 ] && [ "${SSH_PORT}" -le 65535 ]; then
+                  echo "  ✓ SSH_PORT in valid range"
+                else
+                  echo "::error::SSH_PORT out of range"
+                  ERRORS=$((ERRORS+1))
+                fi
+                ;;
             esac
           fi
 
@@ -375,10 +390,12 @@ jobs:
           )
           echo "Manifest: $(jq -r '.total_files' deploy/manifest.json 2>/dev/null || grep total_files deploy/manifest.json) files, $(wc -l < deploy/SHA256SUMS) checksummed"
 
-          echo "MODE=ssr" >> "$GITHUB_ENV"
-          echo "SERVER_ENTRY=$SERVER_ENTRY" >> "$GITHUB_ENV"
-          echo "DEPLOYED_AT=$DEPLOYED_AT" >> "$GITHUB_ENV"
-          echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
+          {
+            echo "MODE=ssr"
+            echo "SERVER_ENTRY=$SERVER_ENTRY"
+            echo "DEPLOYED_AT=$DEPLOYED_AT"
+            echo "SHORT_SHA=$SHORT_SHA"
+          } >> "$GITHUB_ENV"
 
           echo "=== SSR bundle ready ==="
           (find deploy -maxdepth 2 -type f -not -path 'deploy/node_modules/*' | head -n 80) || true
@@ -1314,7 +1331,7 @@ jobs:
 
           if [ -n "${PUBLIC_URLS:-}" ] && [ -n "${RESTORED_SHORT:-}" ] && [ "$RESTORED_SHORT" != "unknown" ]; then
             LAST_TRIED=""
-            for i in $(seq 1 12); do
+            for _attempt in $(seq 1 12); do
               for PUBLIC_URL in $PUBLIC_URLS; do
                 LAST_TRIED="${PUBLIC_URL%/}"
                 BODY=$(curl -fsS --max-time 20 "${LAST_TRIED}/deploy-version.json" || true)
@@ -1345,8 +1362,9 @@ jobs:
             > .deploy-lock/marker
 
       - name: Save per-SHA deploy lock
-        if: success()
+        if: success() && needs.check_sha.outputs.cache_hit != 'true'
         uses: actions/cache/save@v4
+        continue-on-error: true
         with:
           path: .deploy-lock
           key: vps-deploy-sha-${{ github.sha }}-v1
