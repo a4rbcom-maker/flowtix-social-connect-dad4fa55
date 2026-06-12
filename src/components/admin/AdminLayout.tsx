@@ -94,6 +94,34 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
     staleTime: 60_000,
   });
 
+  const { data: profile } = useQuery({
+    queryKey: ["admin", "profile", user?.id],
+    queryFn: async () => {
+      if (!user) return null;
+      const { data } = await supabase
+        .from("profiles")
+        .select("full_name, avatar_url")
+        .eq("id", user.id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!user,
+    staleTime: 30_000,
+  });
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [menuOpen]);
+
+
+
   const handleAdminLogin = async (event: React.FormEvent) => {
     event.preventDefault();
     setLoginError("");
