@@ -403,6 +403,7 @@ publish_good_snapshot() {
 # exits the install step before PM2 is touched.
 if [ "${INTEGRITY_ROLLBACK_DRY_RUN:-0}" = "1" ]; then
   echo ""
+  echo "::error::INTEGRITY_ROLLBACK_DRY_RUN=1 is set — deploy is intentionally blocked. Unset this repo variable to resume normal deployments."
   echo "🧪 INTEGRITY_ROLLBACK_DRY_RUN=1 — forcing integrity_rollback path"
   integrity_rollback "dry-run-forced" || true
   echo "🧪 Dry-run finished. Exiting install step before PM2 is touched."
@@ -734,8 +735,10 @@ echo "✓ App is listening on ${APP_PORT}."
 # failures caused by an app-level route regression while still proving that PM2
 # restarted onto the new bundle. The workflow's next step performs the full SSR
 # home-page smoke test separately with clearer diagnostics.
-SHORT_SHA="${DEPLOY_SHA:-unknown}"
-SHORT_SHA="${SHORT_SHA:0:7}"
+if [ -z "${DEPLOY_SHA:-}" ]; then
+  fail_deploy "deploy-sha-unset"
+fi
+SHORT_SHA="${DEPLOY_SHA:0:7}"
 echo "→ Local runtime gate (http://127.0.0.1:${APP_PORT}/deploy-version.json)…"
 HEALTH_OK=0
 for attempt in $(seq 1 30); do
@@ -756,8 +759,6 @@ if [ "$HEALTH_OK" -ne 1 ]; then
   pm2 logs "$APP_NAME" --lines 120 --nostream || true
   echo "→ Auto-rollback: restoring LAST_GOOD and reloading…"
   if integrity_rollback "post-reload-health-failed"; then
-    pm2 reload ecosystem.config.cjs --only "$APP_NAME" --update-env || \
-      pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env
     pm2 save || echo "::warning::pm2 save failed after rollback (non-fatal)."
   fi
   fail_deploy "runtime-version-gate-failed"
