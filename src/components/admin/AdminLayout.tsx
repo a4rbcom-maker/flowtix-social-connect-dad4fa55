@@ -33,7 +33,22 @@ import {
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
-import { checkIsAdmin } from "@/lib/admin.functions";
+// Note: admin check now reads user_roles directly via the client (RLS allows
+// users to read their own roles). This avoids a server-function round trip
+// that can fail in production due to bearer-token attachment issues.
+async function checkIsAdminClient(userId: string): Promise<{ isAdmin: boolean }> {
+  const { data, error } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("role", "admin")
+    .maybeSingle();
+  if (error) {
+    console.error("[AdminLayout] user_roles read failed", error);
+    return { isAdmin: false };
+  }
+  return { isAdmin: !!data };
+}
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
