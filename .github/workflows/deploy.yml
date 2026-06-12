@@ -11,19 +11,17 @@ on:
         type: boolean
         default: false
 
-# Global deploy lock: at most one deploy run touches the VPS at a time.
+# Global deploy lock: at most one deploy run per repository touches the VPS at a time.
 # cancel-in-progress: false → queue new runs instead of killing the running
 # one mid-rsync/PM2-restart (which would leave the server in an inconsistent
 # state). New runs wait until the current deploy finishes cleanly.
-# Note: concurrency.group does NOT support the `env` context, so the app
-# name is hard-coded here. Keep it in sync with the `env.APP_NAME` below.
 concurrency:
-  group: vps-deploy-flowtixtools-web
+  group: vps-deploy-${{ github.repository }}
   cancel-in-progress: false
 
 env:
-  APP_NAME: flowtixtools-web
-  APP_PORT: 3100
+  APP_NAME: ${{ vars.APP_NAME || github.event.repository.name }}
+  APP_PORT: ${{ vars.APP_PORT || '3100' }}
 
 jobs:
   deploy:
@@ -41,7 +39,9 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
           DEPLOY_PATH_SECRET: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_PATH_VAR: ${{ vars.DEPLOY_PATH }}
           PUBLIC_URL_SECRET: ${{ secrets.PUBLIC_URL }}
+          PUBLIC_URL_VAR: ${{ vars.PUBLIC_URL }}
         run: |
           set -euo pipefail
 
@@ -105,8 +105,8 @@ jobs:
           echo ""
           echo "=== Optional GitHub Secrets ==="
           check_optional SSH_PORT "${SSH_PORT:-}"
-          check_optional DEPLOY_PATH "${DEPLOY_PATH_SECRET:-}"
-          check_optional PUBLIC_URL "${PUBLIC_URL_SECRET:-}"
+          check_optional DEPLOY_PATH "${DEPLOY_PATH_SECRET:-${DEPLOY_PATH_VAR:-}}"
+          check_optional PUBLIC_URL "${PUBLIC_URL_SECRET:-${PUBLIC_URL_VAR:-}}"
 
           echo ""
           echo "=== Format validation ==="
@@ -145,37 +145,46 @@ jobs:
             esac
           fi
 
-          # Deploy path (if set) must match the project's safety prefix.
-          if [ -n "${DEPLOY_PATH_SECRET:-}" ]; then
-            case "$DEPLOY_PATH_SECRET" in
-              /www/wwwroot/*flowtix*) echo "  ✓ DEPLOY_PATH matches /www/wwwroot/*flowtix* safety rule" ;;
-              *) echo "::error::DEPLOY_PATH must match /www/wwwroot/*flowtix* — got: $DEPLOY_PATH_SECRET"; ERRORS=$((ERRORS+1)) ;;
-            esac
+          # Deploy path may come from secret, repo variable, or a repository-name fallback.
+          # It is intentionally NOT tied to a Flowtix-specific folder so this workflow
+          # can be reused safely in any repository.
+          DEPLOY_PATH_CONFIG="${DEPLOY_PATH_SECRET:-${DEPLOY_PATH_VAR:-/www/wwwroot/${GITHUB_REPOSITORY##*/}}}"
+          case "$DEPLOY_PATH_CONFIG" in
+            /www/wwwroot/*) echo "  ✓ DEPLOY_PATH is under /www/wwwroot" ;;
+            *) echo "::error::DEPLOY_PATH must be an absolute path under /www/wwwroot — got: $DEPLOY_PATH_CONFIG"; ERRORS=$((ERRORS+1)) ;;
+          esac
+          case "$DEPLOY_PATH_CONFIG" in
+            *'..'*|*' '*|*$'\t'*|*$'\n'*) echo "::error::DEPLOY_PATH must not contain '..' or whitespace — got: $DEPLOY_PATH_CONFIG"; ERRORS=$((ERRORS+1)) ;;
+          esac
+          if [ -n "${DEPLOY_PATH_SECRET:-${DEPLOY_PATH_VAR:-}}" ]; then
+            echo "  ✓ DEPLOY_PATH configured explicitly"
           else
-            echo "  • DEPLOY_PATH unset — fallback /www/wwwroot/flowtixtools.com will be used"
+            echo "  • DEPLOY_PATH unset — repository fallback will be used: $DEPLOY_PATH_CONFIG"
           fi
 
           # PUBLIC_URL (if set) must start with https:// and must NOT end with '/'.
           # The downstream checks build URLs as "${PUBLIC_URL%/}/path", but we
           # still reject trailing slashes here to surface config mistakes early
           # and keep logs/diagnostics consistent.
-          if [ -n "${PUBLIC_URL_SECRET:-}" ]; then
+          PUBLIC_URL_CONFIG="${PUBLIC_URL_SECRET:-${PUBLIC_URL_VAR:-}}"
+          if [ -n "${PUBLIC_URL_CONFIG:-}" ]; then
             PU_OK=1
-            case "$PUBLIC_URL_SECRET" in
+            case "$PUBLIC_URL_CONFIG" in
               https://*) : ;;
-              *) echo "::error::PUBLIC_URL must start with 'https://' — got: $PUBLIC_URL_SECRET"; ERRORS=$((ERRORS+1)); PU_OK=0 ;;
+              *) echo "::error::PUBLIC_URL must start with 'https://' — got: $PUBLIC_URL_CONFIG"; ERRORS=$((ERRORS+1)); PU_OK=0 ;;
             esac
-            case "$PUBLIC_URL_SECRET" in
-              */) echo "::error::PUBLIC_URL must NOT end with '/' — got: $PUBLIC_URL_SECRET"; ERRORS=$((ERRORS+1)); PU_OK=0 ;;
+            case "$PUBLIC_URL_CONFIG" in
+              */) echo "::error::PUBLIC_URL must NOT end with '/' — got: $PUBLIC_URL_CONFIG"; ERRORS=$((ERRORS+1)); PU_OK=0 ;;
             esac
-            case "$PUBLIC_URL_SECRET" in
+            case "$PUBLIC_URL_CONFIG" in
               *' '*|*$'\t'*|*$'\n'*) echo "::error::PUBLIC_URL must not contain whitespace"; ERRORS=$((ERRORS+1)); PU_OK=0 ;;
             esac
             if [ "$PU_OK" -eq 1 ]; then
-              echo "  ✓ PUBLIC_URL format OK ($PUBLIC_URL_SECRET)"
+              echo "  ✓ PUBLIC_URL format OK ($PUBLIC_URL_CONFIG)"
             fi
           else
-            echo "  • PUBLIC_URL unset — fallback https://www.flowtixtools.com will be used"
+            echo "::error::PUBLIC_URL is required as a repository secret or variable. This prevents checking the wrong hard-coded domain after changing repositories."
+            ERRORS=$((ERRORS+1))
           fi
 
           echo ""
