@@ -169,7 +169,14 @@ jobs:
           echo "  APP_PORT=${APP_PORT}"
           case "${APP_PORT}" in
             ''|*[!0-9]*) echo "::error::APP_PORT must be numeric, got: ${APP_PORT}"; ERRORS=$((ERRORS+1)) ;;
-            *) [ "${APP_PORT}" -ge 1 ] && [ "${APP_PORT}" -le 65535 ] || { echo "::error::APP_PORT out of range"; ERRORS=$((ERRORS+1)); } ;;
+            *)
+              if [ "${APP_PORT}" -ge 1 ] && [ "${APP_PORT}" -le 65535 ]; then
+                :
+              else
+                echo "::error::APP_PORT out of range"
+                ERRORS=$((ERRORS+1))
+              fi
+              ;;
           esac
 
           echo ""
@@ -223,9 +230,14 @@ jobs:
           if [ -n "${SSH_PORT:-}" ]; then
             case "${SSH_PORT}" in
               ''|*[!0-9]*) echo "::error::SSH_PORT must be numeric, got: ${SSH_PORT}"; ERRORS=$((ERRORS+1)) ;;
-              *) [ "${SSH_PORT}" -ge 1 ] && [ "${SSH_PORT}" -le 65535 ] \
-                   && echo "  ✓ SSH_PORT in valid range" \
-                   || { echo "::error::SSH_PORT out of range"; ERRORS=$((ERRORS+1)); } ;;
+              *)
+                if [ "${SSH_PORT}" -ge 1 ] && [ "${SSH_PORT}" -le 65535 ]; then
+                  echo "  ✓ SSH_PORT in valid range"
+                else
+                  echo "::error::SSH_PORT out of range"
+                  ERRORS=$((ERRORS+1))
+                fi
+                ;;
             esac
           fi
 
