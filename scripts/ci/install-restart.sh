@@ -480,8 +480,8 @@ set +o pipefail
 if [ "$MISSING_COUNT" -gt 0 ]; then
   echo "--- Missing files (first 30, all paths) ---"
   printf '%s\n' "$MISSING" | awk 'NR<=30'
-  MISSING_NM=$(printf '%s\n' "$MISSING" | grep -c '^\./node_modules/' 2>/dev/null || echo 0)
-  MISSING_APP=$(printf '%s\n' "$MISSING" | grep -vc '^\./node_modules/' 2>/dev/null || echo 0)
+  MISSING_NM=$(printf '%s\n' "$MISSING" | awk 'BEGIN{c=0} /^\.\/node_modules\//{c++} END{print c}')
+  MISSING_APP=$(printf '%s\n' "$MISSING" | awk 'BEGIN{c=0} !/^\.\/node_modules\//{c++} END{print c}')
   MISSING_NM=${MISSING_NM:-0}
   MISSING_APP=${MISSING_APP:-0}
   echo "  missing inside node_modules: ${MISSING_NM}"
@@ -494,8 +494,8 @@ fi
 if [ "$EXTRA_COUNT" -gt 0 ]; then
   echo "--- Extra files (first 30, all paths) ---"
   printf '%s\n' "$EXTRA" | awk 'NR<=30'
-  EXTRA_NM=$(printf '%s\n' "$EXTRA" | grep -c '^\./node_modules/' 2>/dev/null || echo 0)
-  EXTRA_APP=$(printf '%s\n' "$EXTRA" | grep -vc '^\./node_modules/' 2>/dev/null || echo 0)
+  EXTRA_NM=$(printf '%s\n' "$EXTRA" | awk 'BEGIN{c=0} /^\.\/node_modules\//{c++} END{print c}')
+  EXTRA_APP=$(printf '%s\n' "$EXTRA" | awk 'BEGIN{c=0} !/^\.\/node_modules\//{c++} END{print c}')
   EXTRA_NM=${EXTRA_NM:-0}
   EXTRA_APP=${EXTRA_APP:-0}
   echo "  extra inside node_modules: ${EXTRA_NM}"
