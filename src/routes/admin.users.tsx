@@ -467,7 +467,7 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
                     key={p}
                     onClick={() => {
                       if (d.profile?.plan === p) return;
-                      const name = d.profile?.full_name || d.profile?.email || t("هذا المستخدم", "this user");
+                      const name = d.profile?.full_name || t("هذا المستخدم", "this user");
                       const msg = t(
                         `هل أنت متأكد من تغيير باقة ${name} إلى ${p}؟`,
                         `Are you sure you want to change ${name}'s plan to ${p}?`
