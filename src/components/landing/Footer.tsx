@@ -56,46 +56,6 @@ export function Footer() {
         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
 
         <div ref={ref} className="relative mx-auto max-w-7xl px-4 pt-20 pb-8">
-          {/* Newsletter CTA card */}
-          <div className={`mb-16 overflow-hidden rounded-3xl border border-border/60 bg-gradient-to-br from-primary/8 via-card to-primary-glow/8 p-8 shadow-xl shadow-primary/5 backdrop-blur-sm md:p-12 transition-all duration-700 ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
-            <div className="flex flex-col items-start gap-6 md:flex-row md:items-center md:justify-between">
-              <div className="max-w-xl">
-                <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                  <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-                  </span>
-                  {isAr ? "ابق على اطلاع" : "Stay in the loop"}
-                </div>
-                <h3 className="text-2xl font-bold text-foreground md:text-3xl">
-                  {isAr ? "اشترك في النشرة البريدية" : "Subscribe to our newsletter"}
-                </h3>
-                <p className="mt-2 text-sm text-muted-foreground md:text-base">
-                  {isAr ? "أحدث التحديثات، النصائح، والعروض الحصرية مباشرة إلى بريدك" : "Latest updates, tips, and exclusive offers straight to your inbox"}
-                </p>
-              </div>
-
-              <form onSubmit={handleSubscribe} className="flex w-full max-w-md flex-col gap-2 sm:flex-row">
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder={isAr ? "بريدك الإلكتروني" : "your@email.com"}
-                  className="flex-1 rounded-xl border border-border bg-background/80 px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/70 backdrop-blur transition-all focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
-                <button
-                  type="submit"
-                  className="group relative overflow-hidden rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-300 hover:shadow-xl hover:shadow-primary/40 active:scale-95"
-                >
-                  <span className="relative z-10">
-                    {subscribed ? (isAr ? "✓ تم الاشتراك" : "✓ Subscribed") : (isAr ? "اشترك" : "Subscribe")}
-                  </span>
-                  <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-                </button>
-              </form>
-            </div>
-          </div>
 
           {/* Main grid */}
           <div className={`grid gap-10 md:grid-cols-2 lg:grid-cols-12 transition-all duration-700 delay-100 ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
