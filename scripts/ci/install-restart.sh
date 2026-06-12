@@ -415,6 +415,7 @@ sed 's/^[0-9a-f]\{64\}  //' SHA256SUMS | LC_ALL=C sort > "$EXPECTED_LIST"
 # files that rsync preserves via --exclude (env/secrets, panel files,
 # ACME challenges, logs, and app runtime state under var/). Those files
 # are expected to exist only on the VPS and must not be treated as bundle drift.
+# .deploy/ is also server-local: it holds the VPS deploy lock and last-SHA marker.
 find . -type f \
   ! -name 'manifest.json' \
   ! -name 'SHA256SUMS' \
@@ -424,6 +425,7 @@ find . -type f \
   ! -name '*.log' \
   ! -path './var/*' \
   ! -path './.well-known/*' \
+  ! -path './.deploy/*' \
   -printf './%P\n' \
   | LC_ALL=C sort > "$ACTUAL_LIST"
 
@@ -654,4 +656,5 @@ if [ "$HEALTH_OK" -ne 1 ]; then
   fi
   exit 1
 fi
+publish_good_snapshot
 echo "✓ Health gate passed — new build is live for all clients."
