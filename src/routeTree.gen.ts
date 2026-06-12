@@ -28,6 +28,7 @@ import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as AdminSettingsRouteImport } from './routes/admin.settings'
 import { Route as AdminSecurityRouteImport } from './routes/admin.security'
 import { Route as AdminProfileRouteImport } from './routes/admin.profile'
+import { Route as AdminPlansRouteImport } from './routes/admin.plans'
 import { Route as AdminNotificationsRouteImport } from './routes/admin.notifications'
 import { Route as AdminLogsRouteImport } from './routes/admin.logs'
 import { Route as AdminJobsRouteImport } from './routes/admin.jobs'
@@ -153,6 +154,11 @@ const AdminSecurityRoute = AdminSecurityRouteImport.update({
 const AdminProfileRoute = AdminProfileRouteImport.update({
   id: '/admin/profile',
   path: '/admin/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminPlansRoute = AdminPlansRouteImport.update({
+  id: '/admin/plans',
+  path: '/admin/plans',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminNotificationsRoute = AdminNotificationsRouteImport.update({
@@ -337,6 +343,7 @@ export interface FileRoutesByFullPath {
   '/admin/jobs': typeof AdminJobsRouteWithChildren
   '/admin/logs': typeof AdminLogsRoute
   '/admin/notifications': typeof AdminNotificationsRoute
+  '/admin/plans': typeof AdminPlansRoute
   '/admin/profile': typeof AdminProfileRoute
   '/admin/security': typeof AdminSecurityRoute
   '/admin/settings': typeof AdminSettingsRoute
@@ -389,6 +396,7 @@ export interface FileRoutesByTo {
   '/admin/jobs': typeof AdminJobsRouteWithChildren
   '/admin/logs': typeof AdminLogsRoute
   '/admin/notifications': typeof AdminNotificationsRoute
+  '/admin/plans': typeof AdminPlansRoute
   '/admin/profile': typeof AdminProfileRoute
   '/admin/security': typeof AdminSecurityRoute
   '/admin/settings': typeof AdminSettingsRoute
@@ -442,6 +450,7 @@ export interface FileRoutesById {
   '/admin/jobs': typeof AdminJobsRouteWithChildren
   '/admin/logs': typeof AdminLogsRoute
   '/admin/notifications': typeof AdminNotificationsRoute
+  '/admin/plans': typeof AdminPlansRoute
   '/admin/profile': typeof AdminProfileRoute
   '/admin/security': typeof AdminSecurityRoute
   '/admin/settings': typeof AdminSettingsRoute
@@ -496,6 +505,7 @@ export interface FileRouteTypes {
     | '/admin/jobs'
     | '/admin/logs'
     | '/admin/notifications'
+    | '/admin/plans'
     | '/admin/profile'
     | '/admin/security'
     | '/admin/settings'
@@ -548,6 +558,7 @@ export interface FileRouteTypes {
     | '/admin/jobs'
     | '/admin/logs'
     | '/admin/notifications'
+    | '/admin/plans'
     | '/admin/profile'
     | '/admin/security'
     | '/admin/settings'
@@ -600,6 +611,7 @@ export interface FileRouteTypes {
     | '/admin/jobs'
     | '/admin/logs'
     | '/admin/notifications'
+    | '/admin/plans'
     | '/admin/profile'
     | '/admin/security'
     | '/admin/settings'
@@ -653,6 +665,7 @@ export interface RootRouteChildren {
   AdminJobsRoute: typeof AdminJobsRouteWithChildren
   AdminLogsRoute: typeof AdminLogsRoute
   AdminNotificationsRoute: typeof AdminNotificationsRoute
+  AdminPlansRoute: typeof AdminPlansRoute
   AdminProfileRoute: typeof AdminProfileRoute
   AdminSecurityRoute: typeof AdminSecurityRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
@@ -800,6 +813,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/profile'
       fullPath: '/admin/profile'
       preLoaderRoute: typeof AdminProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/plans': {
+      id: '/admin/plans'
+      path: '/admin/plans'
+      fullPath: '/admin/plans'
+      preLoaderRoute: typeof AdminPlansRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/notifications': {
@@ -1138,6 +1158,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminJobsRoute: AdminJobsRouteWithChildren,
   AdminLogsRoute: AdminLogsRoute,
   AdminNotificationsRoute: AdminNotificationsRoute,
+  AdminPlansRoute: AdminPlansRoute,
   AdminProfileRoute: AdminProfileRoute,
   AdminSecurityRoute: AdminSecurityRoute,
   AdminSettingsRoute: AdminSettingsRoute,
