@@ -924,6 +924,69 @@ export type Database = {
         }
         Relationships: []
       }
+      plans: {
+        Row: {
+          billing_period: string
+          created_at: string
+          credits: number
+          currency: string
+          description_ar: string | null
+          description_en: string | null
+          features_ar: string[]
+          features_en: string[]
+          id: string
+          is_active: boolean
+          is_popular: boolean
+          limits: Json
+          name_ar: string
+          name_en: string
+          price: number
+          slug: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          billing_period?: string
+          created_at?: string
+          credits?: number
+          currency?: string
+          description_ar?: string | null
+          description_en?: string | null
+          features_ar?: string[]
+          features_en?: string[]
+          id?: string
+          is_active?: boolean
+          is_popular?: boolean
+          limits?: Json
+          name_ar: string
+          name_en: string
+          price?: number
+          slug: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          billing_period?: string
+          created_at?: string
+          credits?: number
+          currency?: string
+          description_ar?: string | null
+          description_en?: string | null
+          features_ar?: string[]
+          features_en?: string[]
+          id?: string
+          is_active?: boolean
+          is_popular?: boolean
+          limits?: Json
+          name_ar?: string
+          name_en?: string
+          price?: number
+          slug?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       platform_announcements: {
         Row: {
           body: string
