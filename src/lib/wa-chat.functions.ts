@@ -236,6 +236,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         : phoneDigits
           ? `${phoneDigits}@s.whatsapp.net`
           : data.remoteJid;
+    const sentAt = new Date().toISOString();
     try {
       const res = await waBridge.sendText(sess.session_id, to, data.text);
       // Bridge may return 200 with ok:false / error message — surface it.
@@ -253,6 +254,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         text_body: data.text,
         status: "sent",
         provider_message_id: providerMessageId,
+        wa_timestamp: sentAt,
         raw: providerMessageId ? ({ bridgeMessageId: providerMessageId } as never) : null,
       });
     } catch (err) {
@@ -270,7 +272,9 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       contactPhone: phoneDigits || null,
       text: data.text,
       direction: "out",
+      messageAt: sentAt,
     });
+
 
     return { ok: true };
   });
