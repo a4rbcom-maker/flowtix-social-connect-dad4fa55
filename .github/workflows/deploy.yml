@@ -327,7 +327,7 @@ jobs:
             "${USER}@${HOST}" \
             "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' LEGACY_PM2_APPS='${LEGACY_PM2_APPS}' DEPLOY_SHA='${GITHUB_SHA}' DEPLOY_RUN_ID='${GITHUB_RUN_ID}' DEPLOY_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOYED_AT='${DEPLOYED_AT}' DEBUG_INSTALL='${DEBUG_INSTALL}' bash '${REMOTE_SCRIPT}'" \
             2>&1 | tee install-restart.log
-          SSH_EXIT=$?
+          SSH_EXIT=${PIPESTATUS[0]}
           set -e
           if [ "$SSH_EXIT" -ne 0 ]; then
             echo "::group::Install/restart failure log tail"
