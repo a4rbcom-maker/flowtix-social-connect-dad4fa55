@@ -104,9 +104,10 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
 
   const { data: adminCheck, isLoading: checkingAdmin } = useQuery({
     queryKey: ["admin", "check", user?.id],
-    queryFn: () => checkIsAdmin(),
+    queryFn: () => checkIsAdminClient(user!.id),
     enabled: !!user,
     staleTime: 60_000,
+    retry: 1,
   });
 
   const { data: profile } = useQuery({
