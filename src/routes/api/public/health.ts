@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createAPIFileRoute } from "@tanstack/react-start/api";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -26,27 +26,23 @@ function readBuildInfo() {
   }
 }
 
-export const Route = createFileRoute("/api/public/health")({
-  server: {
-    handlers: {
-      GET: async () => {
-        return Response.json(
-          {
-            status: "ok",
-            service: process.env.APP_NAME || "tanstack-start-app",
-            timestamp: new Date().toISOString(),
-            uptime_seconds: Math.round(process.uptime?.() ?? 0),
-            build: readBuildInfo(),
-          },
-          {
-            status: 200,
-            headers: {
-              "Cache-Control": "no-store, max-age=0",
-              "Content-Type": "application/json",
-            },
-          },
-        );
+export const APIRoute = createAPIFileRoute("/api/public/health")({
+  GET: async () => {
+    return Response.json(
+      {
+        status: "ok",
+        service: process.env.APP_NAME || "tanstack-start-app",
+        timestamp: new Date().toISOString(),
+        uptime_seconds: Math.round(process.uptime?.() ?? 0),
+        build: readBuildInfo(),
       },
-    },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+          "Content-Type": "application/json",
+        },
+      },
+    );
   },
 });
