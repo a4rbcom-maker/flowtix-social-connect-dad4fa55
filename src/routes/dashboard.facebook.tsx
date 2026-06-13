@@ -986,7 +986,26 @@ function FacebookPage() {
       });
       const unwrapped = (raw as { data?: unknown })?.data ?? raw;
       const account = unwrapped as BotAccountSummary | null;
-      if (account?.id) {
+      if (!account?.id) {
+        // Server returned without throwing but no row came back — treat as failure
+        // so the user doesn't see a misleading "saved" toast.
+        throw new Error(
+          lang === "ar"
+            ? "لم يتم استلام الحساب من الخادم. لم يُحفظ شيء — أعد المحاولة."
+            : "The server did not return the saved account. Nothing was stored — please retry.",
+        );
+      }
+      // Re-fetch from DB so the list matches what /dashboard/facebook/bot will show,
+      // not just a local optimistic row that could diverge from server state.
+      try {
+        const { data: fresh } = await supabase
+          .from("fb_bot_accounts")
+          .select("id, display_name, auth_method, status")
+          .eq("user_id", user!.id)
+          .order("created_at", { ascending: false });
+        if (fresh) setBotAccounts(fresh as BotAccountSummary[]);
+        else setBotAccounts((prev) => [account, ...prev.filter((a) => a.id !== account.id)]);
+      } catch {
         setBotAccounts((prev) => [account, ...prev.filter((a) => a.id !== account.id)]);
       }
       setCookieName("");
@@ -994,8 +1013,6 @@ function FacebookPage() {
       toast.success(t.cookieSaved, { description: t.cookieSavedDesc });
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
-      // Server-side validation often returns a Zod or RPC error — surface the
-      // real reason instead of a generic "Failed to save".
       const desc = lang === "ar"
         ? "تأكد أن الكوكيز JSON صحيحة من Cookie-Editor، وأنك مسجّل دخول على facebook.com في نفس المتصفح."
         : "Verify the JSON came from Cookie-Editor and that you're signed in to facebook.com in the same browser.";
@@ -1006,6 +1023,7 @@ function FacebookPage() {
     } finally {
       setSavingCookieAccount(false);
     }
+
   };
 
   const handleSaveCredentialsAccount = async () => {
