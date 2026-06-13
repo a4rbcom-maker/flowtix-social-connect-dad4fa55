@@ -78,7 +78,7 @@ function NotificationsPage() {
   const statsFn = useServerFn(getAnnouncementStats);
 
   const { data, isLoading } = useQuery({ queryKey: ["admin", "announcements"], queryFn: () => fetchFn() });
-  const { data: usersData } = useQuery({ queryKey: ["admin", "users-mini"], queryFn: () => listUsersFn({ data: { search: "", limit: 500 } }) });
+  const { data: usersData } = useQuery({ queryKey: ["admin", "users-mini"], queryFn: () => listUsersFn({ data: { search: "", limit: 200 } }) });
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
