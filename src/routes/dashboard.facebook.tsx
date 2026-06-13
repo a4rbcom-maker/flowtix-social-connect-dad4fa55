@@ -357,7 +357,6 @@ function FacebookPage() {
   const [debugMode, setDebugMode] = useState(false);
   const [debugLogs, setDebugLogs] = useState<DebugLog[]>([]);
   const debugLog = (level: DebugLog["level"], step: string, detail?: string) => {
-    if (!debugMode) return;
     const entry: DebugLog = {
       id: crypto.randomUUID(),
       ts: new Date().toISOString().slice(11, 23),
@@ -367,6 +366,7 @@ function FacebookPage() {
     };
     setDebugLogs((prev) => [...prev.slice(-49), entry]);
     // Mirror to browser console for power users / Lovable console-logs tool.
+    if (!debugMode) return;
     const tag = `[FB-DBG ${entry.ts}] ${step}`;
     if (level === "error") console.error(tag, detail);
     else if (level === "warn") console.warn(tag, detail);
