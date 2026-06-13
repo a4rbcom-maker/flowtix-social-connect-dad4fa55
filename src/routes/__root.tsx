@@ -6,6 +6,7 @@ import { I18nProvider } from "@/lib/i18n";
 import { ThemeProvider } from "@/lib/theme";
 import { AuthProvider } from "@/lib/auth";
 import { NotificationsProvider } from "@/hooks/useSendNotifications";
+import { GlobalAnnouncements } from "@/components/dashboard/GlobalAnnouncements";
 import { installStaleChunkReload } from "@/lib/stale-chunk-reload";
 
 import appCss from "../styles.css?url";
@@ -145,6 +146,7 @@ function RootComponent() {
           <AuthProvider>
             <NotificationsProvider>
               <Outlet />
+              <GlobalAnnouncements />
               <Toaster
                 position="top-center"
                 richColors
