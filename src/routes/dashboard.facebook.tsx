@@ -1441,6 +1441,7 @@ function FacebookPage() {
 
 
 
+        {!connection && connectionMode === "cookies" && (
         <div id="fb-step-connect" className="scroll-mt-24 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm transition-shadow">
 
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1545,6 +1546,7 @@ function FacebookPage() {
             </div>
           )}
         </div>
+        )}
 
         {appRateLimitMessage && !rateLimitDismissed && (
           <div className="relative rounded-2xl border border-amber-400/50 bg-amber-50 p-5 shadow-sm dark:bg-amber-950/20">
