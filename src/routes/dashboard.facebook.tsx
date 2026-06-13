@@ -40,7 +40,7 @@ import {
   inspectFacebookConnection,
   testFacebookToken,
 } from "@/lib/facebook.functions";
-import { addBotAccount } from "@/lib/fb-bot.functions";
+import { addBotAccount, deleteBotAccount } from "@/lib/fb-bot.functions";
 import { parseCookiesInputDetailed, validateFacebookCookies } from "@/lib/fb-cookie-diagnostics";
 import { openExternalUrl } from "@/components/shared/ExternalLinkButton";
 
