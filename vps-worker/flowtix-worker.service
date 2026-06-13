@@ -1,0 +1,25 @@
+[Unit]
+Description=Flowtix Facebook Automation Worker
+After=network.target
+
+[Service]
+Type=simple
+# Change User= and WorkingDirectory= to match your setup
+User=flowtix
+WorkingDirectory=/home/flowtix/vps-worker
+EnvironmentFile=/home/flowtix/vps-worker/.env
+ExecStart=/usr/bin/node /home/flowtix/vps-worker/worker.js
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/flowtix-worker.log
+StandardError=append:/var/log/flowtix-worker.log
+
+# Isolation hardening (won't touch other sites/users on the VPS)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/flowtix/vps-worker /var/log/flowtix-worker.log
+
+[Install]
+WantedBy=multi-user.target
