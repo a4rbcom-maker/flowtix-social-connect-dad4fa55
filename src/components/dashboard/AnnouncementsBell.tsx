@@ -2,8 +2,7 @@
 // Sits next to NotificationsBell in the dashboard header.
 import { useState, useRef, useEffect } from "react";
 import { Link } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-router";
-import { useServerFn as useFn } from "@tanstack/react-start";
+import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Megaphone, Info, AlertTriangle, CheckCircle2, Bell, Wrench, Gift, ShieldAlert } from "lucide-react";
 import { getMyNotifications, markAllNotificationsRead, markNotificationRead } from "@/lib/notifications.functions";
