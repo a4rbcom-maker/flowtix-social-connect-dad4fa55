@@ -51,7 +51,8 @@ export function AnnouncementsBell() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["my-notifications"] }),
   });
 
-  const items = (data?.rows ?? []).slice(0, 8);
+  type NotifRow = NonNullable<typeof data>["rows"][number];
+  const items: NotifRow[] = (data?.rows ?? []).slice(0, 8);
   const unread = data?.unreadCount ?? 0;
 
   return (
