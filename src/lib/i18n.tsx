@@ -11,6 +11,7 @@ const translations = {
       pricing: "الأسعار",
       faq: "الأسئلة الشائعة",
       startFree: "تسجيل دخول",
+      loginShort: "دخول",
       dashboard: "لوحة التحكم",
     },
     hero: {
@@ -94,6 +95,7 @@ const translations = {
       pricing: "Pricing",
       faq: "FAQ",
       startFree: "Start Free",
+      loginShort: "Login",
       dashboard: "Dashboard",
     },
     hero: {
