@@ -415,6 +415,7 @@ function BotAccountsPage() {
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testProgress, setTestProgress] = useState<{ value: number; label: string } | null>(null);
   const [testLogs, setTestLogs] = useState<Record<string, TestEvent[]>>({});
+  const [saveLogs, setSaveLogs] = useState<SaveLogEvent[]>([]);
   const [autoRetry, setAutoRetry] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("fbBotAutoRetry") !== "0";
@@ -604,6 +605,20 @@ function BotAccountsPage() {
     });
     // signOut() flips AuthProvider state and we navigate to login.
     void signOut().finally(() => navigate({ to: "/login" }));
+  };
+
+  const appendSaveLog = (level: SaveLogEvent["level"], step: string, detail: string) => {
+    setSaveLogs((prev) => [...prev.slice(-29), { at: Date.now(), level, step, detail }]);
+  };
+
+  const appendServerDiagnostics = (diagnostics: BotSaveDiagnostic[]) => {
+    diagnostics.forEach((item) => {
+      appendSaveLog(
+        item.ok === false ? "error" : "success",
+        `server:${item.step ?? item.phase ?? "unknown"}:${item.debugCode ?? "UNKNOWN"}`,
+        formatSaveDiagnostic(item),
+      );
+    });
   };
 
   const isAuthErr = (e: unknown) => AUTH_ERROR_RE.test(e instanceof Error ? e.message : String(e ?? ""));
