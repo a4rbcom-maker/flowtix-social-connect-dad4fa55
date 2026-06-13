@@ -105,7 +105,6 @@ jobs:
           rm -rf deploy && mkdir -p deploy
           cp -r dist deploy/dist
           cp -r scripts deploy/scripts
-          cp -r vps-worker deploy/vps-worker
           cp -r node_modules deploy/node_modules
           cp package.json deploy/package.json
           cp ecosystem.config.cjs deploy/ecosystem.config.cjs
