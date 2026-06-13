@@ -709,7 +709,9 @@ function BotAccountsPage() {
         handleAuthExpired();
         return;
       }
-      toast.error(t.saveFailed, { description: describeServerActionError(e, lang === "ar" ? "ar" : "en") });
+      const diagnostics = (e as Error & { diagnostics?: BotSaveDiagnostic[] })?.diagnostics ?? [];
+      const lastFailure = [...diagnostics].reverse().find((item) => item.ok === false);
+      toast.error(t.saveFailed, { description: lastFailure?.message || describeServerActionError(e, lang === "ar" ? "ar" : "en") });
     } finally {
       setSubmitting(false);
     }
@@ -754,7 +756,9 @@ function BotAccountsPage() {
         handleAuthExpired();
         return;
       }
-      toast.error(t.saveFailed, { description: describeServerActionError(e, lang === "ar" ? "ar" : "en") });
+      const diagnostics = (e as Error & { diagnostics?: BotSaveDiagnostic[] })?.diagnostics ?? [];
+      const lastFailure = [...diagnostics].reverse().find((item) => item.ok === false);
+      toast.error(t.saveFailed, { description: lastFailure?.message || describeServerActionError(e, lang === "ar" ? "ar" : "en") });
     } finally {
       setSubmitting(false);
     }
