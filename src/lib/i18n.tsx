@@ -98,6 +98,7 @@ const translations = {
       startFree: "Start Free",
       loginShort: "Login",
       dashboard: "Dashboard",
+      dashboardShort: "Account",
     },
     hero: {
       badge: "🚀 The Most Powerful Social Commerce Platform",
