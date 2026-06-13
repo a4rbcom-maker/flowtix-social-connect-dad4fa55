@@ -13,6 +13,7 @@ const translations = {
       startFree: "تسجيل دخول",
       loginShort: "دخول",
       dashboard: "لوحة التحكم",
+      dashboardShort: "حسابي",
     },
     hero: {
       badge: "🚀 أقوى منصة للتجارة الاجتماعية",
