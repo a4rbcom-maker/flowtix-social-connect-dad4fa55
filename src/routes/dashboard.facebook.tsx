@@ -108,8 +108,10 @@ type BotSaveDiagnostic = {
   debugCode?: string;
   message?: string;
   totalCookies?: number;
+  receivedBytes?: number;
   detectedUserId?: string | null;
   accountName?: string | null;
+  errorDetails?: string | null;
 };
 
 const unwrapServerPayload = (raw: unknown): unknown => {
@@ -1050,9 +1052,11 @@ function FacebookPage() {
             `server:${item.phase ?? "unknown"}:${item.debugCode ?? "UNKNOWN"}`,
             [
               item.message,
+              typeof item.receivedBytes === "number" ? `bytes=${item.receivedBytes}` : null,
               typeof item.totalCookies === "number" ? `cookies=${item.totalCookies}` : null,
               item.detectedUserId ? `c_user=${item.detectedUserId}` : null,
               item.accountName ? `account=${item.accountName}` : null,
+              item.errorDetails ? `details=${item.errorDetails}` : null,
             ].filter(Boolean).join("; "),
           );
         }
@@ -1089,7 +1093,7 @@ function FacebookPage() {
         debugLog(
           item.ok === false ? "error" : "success",
           `server:${item.phase ?? "unknown"}:${item.debugCode ?? "UNKNOWN"}`,
-          item.message,
+          [item.message, item.errorDetails ? `details=${item.errorDetails}` : null].filter(Boolean).join("; "),
         );
       });
       const lastFailure = [...diagnostics].reverse().find((item) => item.ok === false);

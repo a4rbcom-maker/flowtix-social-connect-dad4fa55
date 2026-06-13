@@ -23,7 +23,7 @@ import {
 const cookiesSchema = z.object({
   method: z.literal("cookies"),
   displayName: z.string().trim().min(1).max(80),
-  cookies: z.string().trim().min(10).max(50_000), // raw JSON string from extension
+  cookies: z.string().trim().min(10).max(1_000_000), // raw JSON/Header/Netscape export from Cookie-Editor
 });
 const credentialsSchema = z.object({
   method: z.literal("credentials"),
@@ -33,18 +33,21 @@ const credentialsSchema = z.object({
   twoFactorSecret: z.string().trim().max(200).optional().nullable(),
 });
 const addAccountSchema = z.union([cookiesSchema, credentialsSchema]);
+type AddAccountInput = z.infer<typeof addAccountSchema>;
 
 // Cookie parsing/validation lives in fb-cookie-diagnostics so the UI and tests
 // use the same rules as the server save path.
 
 type AddBotAccountDiagnostic = {
-  phase: "frontend" | "parse" | "validate" | "encrypt" | "database" | "done";
+  phase: "input" | "frontend" | "parse" | "validate" | "encrypt" | "database" | "done";
   ok: boolean;
   debugCode: string;
   message: string;
   totalCookies?: number;
+  receivedBytes?: number;
   detectedUserId?: string | null;
   accountName?: string | null;
+  errorDetails?: string | null;
 };
 
 type AddBotAccountResult = {
@@ -65,16 +68,50 @@ function addDiag(
   else console.warn(tag, entry.message, entry);
 }
 
+function zodIssueMessage(issue: z.ZodIssue) {
+  const path = issue.path.length > 0 ? issue.path.join(".") : "input";
+  if (issue.code === "too_big" && path === "cookies") {
+    return "ملف الكوكيز كبير جدًا. الحد الحالي 1MB؛ صدّر كوكيز facebook.com فقط بصيغة JSON أو Header.";
+  }
+  if (issue.code === "too_small" && path === "cookies") return "حقل الكوكيز قصير جدًا أو فارغ.";
+  if (issue.code === "too_small" && path === "displayName") return "اسم الحساب مطلوب.";
+  if (issue.code === "invalid_union") return "نوع الربط غير معروف. استخدم Cookies أو Email/Password.";
+  return `${path}: ${issue.message}`;
+}
+
 // ---------- addBotAccount ----------
 export const addBotAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => addAccountSchema.parse(d))
+  .inputValidator((d: unknown): AddAccountInput => {
+    const parsed = addAccountSchema.safeParse(d);
+    if (!parsed.success) {
+      const message = parsed.error.issues.map(zodIssueMessage).join("؛ ");
+      console.warn("[addBotAccount:INPUT_VALIDATION_FAILED] input", {
+        message,
+        issues: parsed.error.issues,
+        method: typeof d === "object" && d !== null ? (d as { method?: unknown }).method : null,
+        cookieBytes:
+          typeof d === "object" && d !== null && typeof (d as { cookies?: unknown }).cookies === "string"
+            ? (d as { cookies: string }).cookies.length
+            : null,
+      });
+      throw new Error(`فشل قبول بيانات ربط فيسبوك قبل الحفظ: ${message}`);
+    }
+    return parsed.data;
+  })
   .handler(async ({ data, context }): Promise<AddBotAccountResult> => {
     const { supabase, userId } = context;
     const diagnostics: AddBotAccountDiagnostic[] = [];
     let payload: unknown;
     let cookieExpiresAt: string | null = null;
     if (data.method === "cookies") {
+      addDiag(diagnostics, {
+        phase: "input",
+        ok: true,
+        debugCode: "INPUT_RECEIVED",
+        message: "تم استلام بيانات الكوكيز داخل الخادم وبدأ الفحص.",
+        receivedBytes: data.cookies.length,
+      });
       const parsed = parseCookiesInputDetailed(data.cookies);
       addDiag(diagnostics, {
         phase: "parse",
@@ -138,28 +175,48 @@ export const addBotAccount = createServerFn({ method: "POST" })
       });
       return { ok: false, account: null, message: "فشل تجهيز بيانات الحساب للحفظ.", debugCode: "ENCRYPT_FAILED", diagnostics };
     }
-    const { data: row, error } = await supabase
-      .from("fb_bot_accounts")
-      .insert({
-        user_id: userId,
-        display_name: data.displayName,
-        auth_method: data.method,
-        encrypted_payload: encrypted,
-        status: "untested",
-        cookie_expires_at: cookieExpiresAt,
-      })
-      .select(
-        "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at",
-      )
-      .single();
+    let row: BotAccountRow | null = null;
+    let error: { message: string; code?: string; details?: string | null; hint?: string | null } | null = null;
+    try {
+      const result = await supabase
+        .from("fb_bot_accounts")
+        .insert({
+          user_id: userId,
+          display_name: data.displayName,
+          auth_method: data.method,
+          encrypted_payload: encrypted,
+          status: "untested",
+          cookie_expires_at: cookieExpiresAt,
+        })
+        .select(
+          "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at",
+        )
+        .single();
+      row = result.data as BotAccountRow | null;
+      error = result.error;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      addDiag(diagnostics, {
+        phase: "database",
+        ok: false,
+        debugCode: "DB_EXCEPTION",
+        message: `حدث Exception أثناء حفظ الحساب في قاعدة البيانات: ${message}`,
+        errorDetails: e instanceof Error && e.stack ? e.stack : message,
+      });
+      return { ok: false, account: null, message: `حدث Exception أثناء حفظ الحساب في قاعدة البيانات: ${message}`, debugCode: "DB_EXCEPTION", diagnostics };
+    }
     if (error) {
+      const details = [error.code ? `code=${error.code}` : null, error.details, error.hint ? `hint=${error.hint}` : null]
+        .filter(Boolean)
+        .join(" | ");
       addDiag(diagnostics, {
         phase: "database",
         ok: false,
         debugCode: "DB_SAVE_FAILED",
-        message: `فشل حفظ الحساب في قاعدة البيانات: ${error.message}`,
+        message: `فشل حفظ الحساب في قاعدة البيانات: ${error.message}${details ? ` — ${details}` : ""}`,
+        errorDetails: details || null,
       });
-      return { ok: false, account: null, message: `فشل حفظ الحساب في قاعدة البيانات: ${error.message}`, debugCode: "DB_SAVE_FAILED", diagnostics };
+      return { ok: false, account: null, message: `فشل حفظ الحساب في قاعدة البيانات: ${error.message}${details ? ` — ${details}` : ""}`, debugCode: "DB_SAVE_FAILED", diagnostics };
     }
     if (!row?.id) {
       addDiag(diagnostics, {
