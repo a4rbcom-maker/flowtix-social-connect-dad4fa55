@@ -9,7 +9,7 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview --port 3100 --strictPort",
-    "start": "PORT=3100 node scripts/tanstack-node-server.mjs",
+    "start": "node scripts/tanstack-node-server.mjs",
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run"
