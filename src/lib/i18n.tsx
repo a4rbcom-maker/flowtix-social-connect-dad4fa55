@@ -95,6 +95,7 @@ const translations = {
       pricing: "Pricing",
       faq: "FAQ",
       startFree: "Start Free",
+      loginShort: "Login",
       dashboard: "Dashboard",
     },
     hero: {
