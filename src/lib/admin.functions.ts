@@ -1043,14 +1043,23 @@ export const createAnnouncement = createServerFn({ method: "POST" })
   .middleware([requireAdmin])
   .inputValidator((d: {
     title: string; body: string; level: "info" | "success" | "warning" | "error";
-    target_kind: "all" | "plan" | "users"; target_plan?: string | null; target_user_ids?: string[];
+    notif_type?: "info" | "alert" | "update" | "maintenance" | "warning" | "offer" | "success";
+    priority?: "low" | "normal" | "high" | "urgent";
+    require_ack?: boolean;
+    show_as_popup?: boolean;
+    target_kind: "all" | "plan" | "users" | "single_user" | "active_users" | "suspended_users";
+    target_plan?: string | null; target_user_ids?: string[];
     starts_at?: string | null; ends_at?: string | null;
   }) =>
     z.object({
       title: z.string().min(1).max(200),
       body: z.string().min(1).max(4000),
       level: z.enum(["info", "success", "warning", "error"]),
-      target_kind: z.enum(["all", "plan", "users"]),
+      notif_type: z.enum(["info", "alert", "update", "maintenance", "warning", "offer", "success"]).optional(),
+      priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+      require_ack: z.boolean().optional(),
+      show_as_popup: z.boolean().optional(),
+      target_kind: z.enum(["all", "plan", "users", "single_user", "active_users", "suspended_users"]),
       target_plan: z.string().max(40).nullable().optional(),
       target_user_ids: z.array(z.string().uuid()).max(500).optional(),
       starts_at: z.string().nullable().optional(),
@@ -1059,20 +1068,76 @@ export const createAnnouncement = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const db = admin();
+    const usesUserIds = data.target_kind === "users" || data.target_kind === "single_user";
     const { error, data: row } = await db.from("platform_announcements").insert({
       title: data.title,
       body: data.body,
       level: data.level,
+      notif_type: data.notif_type ?? "info",
+      priority: data.priority ?? "normal",
+      require_ack: data.require_ack ?? false,
+      show_as_popup: data.show_as_popup ?? true,
       target_kind: data.target_kind,
       target_plan: data.target_kind === "plan" ? data.target_plan ?? null : null,
-      target_user_ids: data.target_kind === "users" ? data.target_user_ids ?? [] : [],
+      target_user_ids: usesUserIds ? data.target_user_ids ?? [] : [],
       starts_at: data.starts_at || new Date().toISOString(),
       ends_at: data.ends_at || null,
       created_by: context.adminUserId,
+      updated_by: context.adminUserId,
     }).select().single();
     if (error) throw new Error(error.message);
     await logAction(context.adminUserId, "create_announcement", null, { id: row.id, title: data.title });
     return { ok: true, id: row.id };
+  });
+
+export const updateAnnouncement = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: {
+    id: string;
+    title: string; body: string; level: "info" | "success" | "warning" | "error";
+    notif_type: "info" | "alert" | "update" | "maintenance" | "warning" | "offer" | "success";
+    priority: "low" | "normal" | "high" | "urgent";
+    require_ack: boolean;
+    show_as_popup: boolean;
+    target_kind: "all" | "plan" | "users" | "single_user" | "active_users" | "suspended_users";
+    target_plan?: string | null; target_user_ids?: string[];
+    ends_at?: string | null;
+  }) =>
+    z.object({
+      id: z.string().uuid(),
+      title: z.string().min(1).max(200),
+      body: z.string().min(1).max(4000),
+      level: z.enum(["info", "success", "warning", "error"]),
+      notif_type: z.enum(["info", "alert", "update", "maintenance", "warning", "offer", "success"]),
+      priority: z.enum(["low", "normal", "high", "urgent"]),
+      require_ack: z.boolean(),
+      show_as_popup: z.boolean(),
+      target_kind: z.enum(["all", "plan", "users", "single_user", "active_users", "suspended_users"]),
+      target_plan: z.string().max(40).nullable().optional(),
+      target_user_ids: z.array(z.string().uuid()).max(500).optional(),
+      ends_at: z.string().nullable().optional(),
+    }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const db = admin();
+    const usesUserIds = data.target_kind === "users" || data.target_kind === "single_user";
+    const { error } = await db.from("platform_announcements").update({
+      title: data.title,
+      body: data.body,
+      level: data.level,
+      notif_type: data.notif_type,
+      priority: data.priority,
+      require_ack: data.require_ack,
+      show_as_popup: data.show_as_popup,
+      target_kind: data.target_kind,
+      target_plan: data.target_kind === "plan" ? data.target_plan ?? null : null,
+      target_user_ids: usesUserIds ? data.target_user_ids ?? [] : [],
+      ends_at: data.ends_at || null,
+      updated_by: context.adminUserId,
+    }).eq("id", data.id);
+    if (error) throw new Error(error.message);
+    await logAction(context.adminUserId, "update_announcement", null, { id: data.id });
+    return { ok: true };
   });
 
 export const deleteAnnouncement = createServerFn({ method: "POST" })
@@ -1085,6 +1150,81 @@ export const deleteAnnouncement = createServerFn({ method: "POST" })
     await logAction(context.adminUserId, "delete_announcement", null, { id: data.id });
     return { ok: true };
   });
+
+export const getAnnouncementStats = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { id: string }) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    const db = admin();
+    const { data: ann, error: e1 } = await db
+      .from("platform_announcements").select("*").eq("id", data.id).single();
+    if (e1 || !ann) throw new Error(e1?.message ?? "Not found");
+
+    // Compute audience size
+    let audienceSize = 0;
+    if (ann.target_kind === "all") {
+      const { count } = await db.from("profiles").select("id", { count: "exact", head: true });
+      audienceSize = count ?? 0;
+    } else if (ann.target_kind === "plan") {
+      const { count } = await db.from("profiles").select("id", { count: "exact", head: true }).eq("plan", ann.target_plan ?? "");
+      audienceSize = count ?? 0;
+    } else if (ann.target_kind === "active_users") {
+      const { count } = await db.from("profiles").select("id", { count: "exact", head: true }).eq("status", "active");
+      audienceSize = count ?? 0;
+    } else if (ann.target_kind === "suspended_users") {
+      const { count } = await db.from("profiles").select("id", { count: "exact", head: true }).in("status", ["suspended", "warned"]);
+      audienceSize = count ?? 0;
+    } else {
+      audienceSize = ann.target_user_ids?.length ?? 0;
+    }
+
+    const { data: reads } = await db
+      .from("notification_reads")
+      .select("user_id,delivered_at,opened_at,read_at,ack_at")
+      .eq("announcement_id", data.id);
+
+    const list = reads ?? [];
+    const delivered = list.length;
+    const opened = list.filter((r) => r.opened_at).length;
+    const read = list.filter((r) => r.read_at).length;
+    const acked = list.filter((r) => r.ack_at).length;
+
+    // Avg read latency (delivered -> read) in seconds
+    const latencies = list
+      .filter((r) => r.read_at && r.delivered_at)
+      .map((r) => (new Date(r.read_at!).getTime() - new Date(r.delivered_at).getTime()) / 1000);
+    const avgReadLatency = latencies.length
+      ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
+      : null;
+
+    // Enrich with profile names (top 200)
+    const userIds = list.map((r) => r.user_id).slice(0, 200);
+    let profiles: Array<{ id: string; full_name: string | null }> = [];
+    if (userIds.length) {
+      const { data } = await db.from("profiles").select("id,full_name").in("id", userIds);
+      profiles = data ?? [];
+    }
+    const pmap = new Map(profiles.map((p) => [p.id, p.full_name]));
+    const readers = list.map((r) => ({
+      user_id: r.user_id,
+      full_name: pmap.get(r.user_id) ?? null,
+      delivered_at: r.delivered_at,
+      opened_at: r.opened_at,
+      read_at: r.read_at,
+      ack_at: r.ack_at,
+    }));
+
+    return {
+      audienceSize,
+      delivered,
+      opened,
+      read,
+      acked,
+      avgReadLatency,
+      readers,
+    };
+  });
+
 
 // ============================================================
 // Security overview
