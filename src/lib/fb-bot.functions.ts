@@ -23,7 +23,7 @@ import {
 const cookiesSchema = z.object({
   method: z.literal("cookies"),
   displayName: z.string().trim().min(1).max(80),
-  cookies: z.string().trim().min(10).max(50_000), // raw JSON string from extension
+  cookies: z.string().trim().min(10).max(1_000_000), // raw JSON/Header/Netscape export from Cookie-Editor
 });
 const credentialsSchema = z.object({
   method: z.literal("credentials"),
@@ -33,18 +33,21 @@ const credentialsSchema = z.object({
   twoFactorSecret: z.string().trim().max(200).optional().nullable(),
 });
 const addAccountSchema = z.union([cookiesSchema, credentialsSchema]);
+type AddAccountInput = z.infer<typeof addAccountSchema>;
 
 // Cookie parsing/validation lives in fb-cookie-diagnostics so the UI and tests
 // use the same rules as the server save path.
 
 type AddBotAccountDiagnostic = {
-  phase: "frontend" | "parse" | "validate" | "encrypt" | "database" | "done";
+  phase: "input" | "frontend" | "parse" | "validate" | "encrypt" | "database" | "done";
   ok: boolean;
   debugCode: string;
   message: string;
   totalCookies?: number;
+  receivedBytes?: number;
   detectedUserId?: string | null;
   accountName?: string | null;
+  errorDetails?: string | null;
 };
 
 type AddBotAccountResult = {
@@ -63,6 +66,17 @@ function addDiag(
   const tag = `[addBotAccount:${entry.debugCode}] ${entry.phase}`;
   if (entry.ok) console.info(tag, entry.message, entry);
   else console.warn(tag, entry.message, entry);
+}
+
+function zodIssueMessage(issue: z.ZodIssue) {
+  const path = issue.path.length > 0 ? issue.path.join(".") : "input";
+  if (issue.code === "too_big" && path === "cookies") {
+    return "ملف الكوكيز كبير جدًا. الحد الحالي 1MB؛ صدّر كوكيز facebook.com فقط بصيغة JSON أو Header.";
+  }
+  if (issue.code === "too_small" && path === "cookies") return "حقل الكوكيز قصير جدًا أو فارغ.";
+  if (issue.code === "too_small" && path === "displayName") return "اسم الحساب مطلوب.";
+  if (issue.code === "invalid_union") return "نوع الربط غير معروف. استخدم Cookies أو Email/Password.";
+  return `${path}: ${issue.message}`;
 }
 
 // ---------- addBotAccount ----------
