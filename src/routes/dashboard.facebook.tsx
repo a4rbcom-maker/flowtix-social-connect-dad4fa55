@@ -116,7 +116,7 @@ type BotSaveDiagnostic = {
 
 const unwrapServerPayload = (raw: unknown): unknown => {
   let value = raw;
-  for (let i = 0; i < 4; i += 1) {
+  for (let i = 0; i < 6; i += 1) {
     if (!value || typeof value !== "object") return value;
     const obj = value as { data?: unknown; result?: unknown; ok?: unknown; account?: unknown; accounts?: unknown };
     if ("ok" in obj || "account" in obj || "accounts" in obj) return value;
@@ -1036,14 +1036,24 @@ function FacebookPage() {
         },
       );
     }
+    if (!user?.id) {
+      toast.error(lang === "ar" ? "الجلسة غير جاهزة، أعد تحميل الصفحة" : "Session not ready, reload the page");
+      return;
+    }
     setSavingCookieAccount(true);
+    const displayName = cookieName.trim() || (lang === "ar" ? "حساب فيسبوك Cookies" : "Facebook Cookies account");
+    const beforeSaveAt = new Date(Date.now() - 5_000).toISOString();
+    let savedAccount: BotAccountSummary | null = null;
+    let saveError: Error | null = null;
+
     try {
-      const displayName = cookieName.trim() || (lang === "ar" ? "حساب فيسبوك Cookies" : "Facebook Cookies account");
       debugLog("info", "cookies:send-to-server", `displayName=${displayName}; bytes=${cookiePayload.length}`);
       const raw = await addBotAccountFn({
         data: { method: "cookies", displayName, cookies: cookiePayload },
       });
-      const account = normalizeBotAccountPayload(raw);
+      try {
+        debugLog("info", "cookies:raw-response-shape", JSON.stringify(raw).slice(0, 300));
+      } catch { /* circular */ }
       const saveDto = unwrapServerPayload(raw) as { diagnostics?: BotSaveDiagnostic[] } | null;
       if (Array.isArray(saveDto?.diagnostics)) {
         for (const item of saveDto.diagnostics) {
@@ -1061,34 +1071,10 @@ function FacebookPage() {
           );
         }
       }
-      if (!account?.id) {
-        // Server returned without throwing but no row came back — treat as failure
-        // so the user doesn't see a misleading "saved" toast.
-        throw new Error(
-          lang === "ar"
-            ? "لم يرجع الخادم صف الحساب بعد الحفظ. راجع سجل التشخيص لمعرفة المرحلة الدقيقة."
-            : "The server did not return the saved account. Nothing was stored — please retry.",
-        );
-      }
-      // Re-fetch from DB so the list matches what /dashboard/facebook/bot will show,
-      // not just a local optimistic row that could diverge from server state.
-      try {
-        const { data: fresh } = await supabase
-          .from("fb_bot_accounts")
-          .select("id, display_name, auth_method, status")
-          .eq("user_id", user!.id)
-          .order("created_at", { ascending: false });
-        if (fresh) setBotAccounts(fresh as BotAccountSummary[]);
-        else setBotAccounts((prev) => [account, ...prev.filter((a) => a.id !== account.id)]);
-      } catch {
-        setBotAccounts((prev) => [account, ...prev.filter((a) => a.id !== account.id)]);
-      }
-      setCookieName("");
-      setCookiePayload("");
-      toast.success(t.cookieSaved, { description: t.cookieSavedDesc });
+      savedAccount = normalizeBotAccountPayload(raw);
     } catch (err) {
-      const raw = err instanceof Error ? err.message : String(err);
-      const diagnostics = (err as Error & { diagnostics?: BotSaveDiagnostic[] })?.diagnostics ?? [];
+      saveError = err instanceof Error ? err : new Error(String(err));
+      const diagnostics = (saveError as Error & { diagnostics?: BotSaveDiagnostic[] })?.diagnostics ?? [];
       diagnostics.forEach((item) => {
         debugLog(
           item.ok === false ? "error" : "success",
@@ -1096,19 +1082,60 @@ function FacebookPage() {
           [item.message, item.errorDetails ? `details=${item.errorDetails}` : null].filter(Boolean).join("; "),
         );
       });
-      const lastFailure = [...diagnostics].reverse().find((item) => item.ok === false);
-      const desc = lastFailure?.message || (lang === "ar"
-        ? "راجع سبب الفشل أعلاه؛ لم نعد نخفي الخطأ خلف رسالة عامة."
-        : "See the exact failure above; the generic save error is no longer used.");
-      debugLog("error", "cookies:save-failed", `${raw}; ${desc}`);
-      toast.error(raw || (lang === "ar" ? "فشل حفظ الكوكيز" : "Failed to save cookies"), {
-        description: desc,
-        duration: 9000,
-      });
-    } finally {
-      setSavingCookieAccount(false);
     }
 
+    // Fallback: even if the RPC response was lost, the INSERT may have succeeded.
+    if (!savedAccount?.id) {
+      try {
+        const { data: recent } = await supabase
+          .from("fb_bot_accounts")
+          .select("id, display_name, auth_method, status, created_at")
+          .eq("user_id", user.id)
+          .eq("display_name", displayName)
+          .gte("created_at", beforeSaveAt)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (recent?.id) {
+          debugLog("success", "cookies:fallback-recovered", `id=${recent.id}; created_at=${recent.created_at}`);
+          savedAccount = recent as BotAccountSummary;
+        }
+      } catch (lookupErr) {
+        debugLog("warn", "cookies:fallback-lookup-failed", lookupErr instanceof Error ? lookupErr.message : String(lookupErr));
+      }
+    }
+
+    if (savedAccount?.id) {
+      setBotAccounts((prev) => [savedAccount!, ...prev.filter((a) => a.id !== savedAccount!.id)]);
+      setCookieName("");
+      setCookiePayload("");
+      toast.success(t.cookieSaved, { description: t.cookieSavedDesc });
+      try {
+        const { data: fresh } = await supabase
+          .from("fb_bot_accounts")
+          .select("id, display_name, auth_method, status")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+        if (fresh) setBotAccounts(fresh as BotAccountSummary[]);
+      } catch (refetchErr) {
+        debugLog("warn", "cookies:refetch-failed", refetchErr instanceof Error ? refetchErr.message : String(refetchErr));
+      }
+      setSavingCookieAccount(false);
+      return;
+    }
+
+    const rawMsg = saveError?.message ?? (lang === "ar" ? "لم يستجب الخادم" : "Server did not respond");
+    const diagnostics = (saveError as (Error & { diagnostics?: BotSaveDiagnostic[] }) | null)?.diagnostics ?? [];
+    const lastFailure = [...diagnostics].reverse().find((item) => item.ok === false);
+    const desc = lastFailure?.message || (lang === "ar"
+      ? "لم يتم حفظ الحساب. راجع سجل التشخيص أعلاه لمعرفة المرحلة الدقيقة."
+      : "Account was not saved. See the diagnostic log above for the exact stage.");
+    debugLog("error", "cookies:save-failed", `${rawMsg}; ${desc}`);
+    toast.error(rawMsg || (lang === "ar" ? "فشل حفظ الكوكيز" : "Failed to save cookies"), {
+      description: desc,
+      duration: 9000,
+    });
+    setSavingCookieAccount(false);
   };
 
   const handleSaveCredentialsAccount = async () => {
