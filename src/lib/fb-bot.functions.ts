@@ -242,6 +242,13 @@ export const addBotAccount = createServerFn({ method: "POST" })
     let row: BotAccountRow | null = null;
     let error: { message: string; code?: string; details?: string | null; hint?: string | null } | null = null;
     try {
+      addDiag(diagnostics, {
+        phase: "database",
+        ok: true,
+        debugCode: "DB_INSERT_START",
+        step: "create_account_record",
+        message: "بدأ إنشاء سجل الحساب في قاعدة البيانات.",
+      });
       const result = await supabase
         .from("fb_bot_accounts")
         .insert({
@@ -259,27 +266,37 @@ export const addBotAccount = createServerFn({ method: "POST" })
       row = result.data as BotAccountRow | null;
       error = result.error;
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = errorMessage(e);
       addDiag(diagnostics, {
         phase: "database",
         ok: false,
         debugCode: "DB_EXCEPTION",
+        step: "save_to_database",
         message: `حدث Exception أثناء حفظ الحساب في قاعدة البيانات: ${message}`,
-        errorDetails: e instanceof Error && e.stack ? e.stack : message,
+        errorDetails: message,
+        responseBody: safeStringify(e),
+        stackTrace: e instanceof Error ? e.stack ?? null : null,
       });
+      console.error("[addBotAccount:DB_EXCEPTION]", { message, stack: e instanceof Error ? e.stack : null, raw: e });
       return { ok: false, account: null, message: `حدث Exception أثناء حفظ الحساب في قاعدة البيانات: ${message}`, debugCode: "DB_EXCEPTION", diagnostics };
     }
     if (error) {
       const details = [error.code ? `code=${error.code}` : null, error.details, error.hint ? `hint=${error.hint}` : null]
         .filter(Boolean)
         .join(" | ");
+      const rawError = error as typeof error & { status?: number; statusCode?: number };
       addDiag(diagnostics, {
         phase: "database",
         ok: false,
         debugCode: "DB_SAVE_FAILED",
+        step: "save_to_database",
         message: `فشل حفظ الحساب في قاعدة البيانات: ${error.message}${details ? ` — ${details}` : ""}`,
         errorDetails: details || null,
+        sqlError: [error.code, error.details, error.hint].filter(Boolean).join(" | ") || error.message,
+        httpStatus: rawError.status ?? rawError.statusCode ?? null,
+        responseBody: safeStringify(error),
       });
+      console.error("[addBotAccount:DB_SAVE_FAILED]", { message: error.message, code: error.code, details: error.details, hint: error.hint, status: rawError.status ?? rawError.statusCode ?? null, responseBody: error });
       return { ok: false, account: null, message: `فشل حفظ الحساب في قاعدة البيانات: ${error.message}${details ? ` — ${details}` : ""}`, debugCode: "DB_SAVE_FAILED", diagnostics };
     }
     if (!row?.id) {
