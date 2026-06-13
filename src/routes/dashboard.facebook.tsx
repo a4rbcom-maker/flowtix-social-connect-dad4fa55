@@ -1028,8 +1028,8 @@ function FacebookPage() {
         {
           description:
             lang === "ar"
-              ? `لم نجدها محليًا: ${diag.missing.join(", ")}. سنرسلها للخادم للتحقق النهائي.`
-              : `Not found locally: ${diag.missing.join(", ")}. Sending to the server for final validation.`,
+              ? `${diag.message}. سنرسلها للخادم للتحقق النهائي.`
+              : `${diag.message}. Sending to the server for final validation.`,
           duration: 5000,
         },
       );
