@@ -1020,7 +1020,7 @@ function FacebookPage() {
     debugLog(
       diag.ok ? "success" : "warn",
       "cookies:frontend-validation",
-      `found=${diag.found}; missing=${diag.missing.join(",") || "none"}; bytes=${cookiePayload.length}`,
+      `${diag.debugCode}; found=${diag.found}; missing=${diag.missing.join(",") || "none"}; bytes=${cookiePayload.length}; ${diag.message}`,
     );
     if (!diag.ok) {
       toast.warning(
