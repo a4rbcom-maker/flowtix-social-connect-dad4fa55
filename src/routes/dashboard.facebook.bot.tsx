@@ -749,9 +749,9 @@ function BotAccountsPage() {
               },
             });
       const dto = unwrapServerPayload(row) as { diagnostics?: unknown } | null;
-      if (Array.isArray(dto?.diagnostics)) appendServerDiagnostics(dto.diagnostics as BotSaveDiagnostic[]);
       const account = normalizeAccountPayload(row);
       if (account) {
+        if (Array.isArray(dto?.diagnostics)) appendServerDiagnostics(dto.diagnostics as BotSaveDiagnostic[]);
         setAccounts((prev) => [account, ...prev.filter((a) => a.id !== account.id)]);
         setJustAddedId(account.id);
         setTimeout(() => setJustAddedId(null), 4000);
@@ -806,9 +806,9 @@ function BotAccountsPage() {
         },
       });
       const dto = unwrapServerPayload(row) as { diagnostics?: unknown } | null;
-      if (Array.isArray(dto?.diagnostics)) appendServerDiagnostics(dto.diagnostics as BotSaveDiagnostic[]);
       const account = normalizeAccountPayload(row);
       if (account) {
+        if (Array.isArray(dto?.diagnostics)) appendServerDiagnostics(dto.diagnostics as BotSaveDiagnostic[]);
         setAccounts((prev) => [account, ...prev.filter((a) => a.id !== account.id)]);
         setJustAddedId(account.id);
         setTimeout(() => setJustAddedId(null), 4000);
