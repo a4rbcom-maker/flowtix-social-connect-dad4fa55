@@ -18,6 +18,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as DashboardWhatsappRouteImport } from './routes/dashboard.whatsapp'
 import { Route as DashboardProfileRouteImport } from './routes/dashboard.profile'
+import { Route as DashboardNotificationsRouteImport } from './routes/dashboard.notifications'
 import { Route as DashboardFacebookRouteImport } from './routes/dashboard.facebook'
 import { Route as DashboardEnrichRouteImport } from './routes/dashboard.enrich'
 import { Route as DashboardControlRouteImport } from './routes/dashboard.control'
@@ -104,6 +105,11 @@ const DashboardWhatsappRoute = DashboardWhatsappRouteImport.update({
 const DashboardProfileRoute = DashboardProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardNotificationsRoute = DashboardNotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardFacebookRoute = DashboardFacebookRouteImport.update({
@@ -354,6 +360,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/control': typeof DashboardControlRoute
   '/dashboard/enrich': typeof DashboardEnrichRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
+  '/dashboard/notifications': typeof DashboardNotificationsRoute
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
   '/admin/': typeof AdminIndexRoute
@@ -407,6 +414,7 @@ export interface FileRoutesByTo {
   '/dashboard/control': typeof DashboardControlRoute
   '/dashboard/enrich': typeof DashboardEnrichRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
+  '/dashboard/notifications': typeof DashboardNotificationsRoute
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
   '/admin': typeof AdminIndexRoute
@@ -461,6 +469,7 @@ export interface FileRoutesById {
   '/dashboard/control': typeof DashboardControlRoute
   '/dashboard/enrich': typeof DashboardEnrichRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
+  '/dashboard/notifications': typeof DashboardNotificationsRoute
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
   '/admin/': typeof AdminIndexRoute
@@ -516,6 +525,7 @@ export interface FileRouteTypes {
     | '/dashboard/control'
     | '/dashboard/enrich'
     | '/dashboard/facebook'
+    | '/dashboard/notifications'
     | '/dashboard/profile'
     | '/dashboard/whatsapp'
     | '/admin/'
@@ -569,6 +579,7 @@ export interface FileRouteTypes {
     | '/dashboard/control'
     | '/dashboard/enrich'
     | '/dashboard/facebook'
+    | '/dashboard/notifications'
     | '/dashboard/profile'
     | '/dashboard/whatsapp'
     | '/admin'
@@ -622,6 +633,7 @@ export interface FileRouteTypes {
     | '/dashboard/control'
     | '/dashboard/enrich'
     | '/dashboard/facebook'
+    | '/dashboard/notifications'
     | '/dashboard/profile'
     | '/dashboard/whatsapp'
     | '/admin/'
@@ -743,6 +755,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/dashboard/profile'
       preLoaderRoute: typeof DashboardProfileRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/notifications': {
+      id: '/dashboard/notifications'
+      path: '/notifications'
+      fullPath: '/dashboard/notifications'
+      preLoaderRoute: typeof DashboardNotificationsRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/facebook': {
@@ -1116,6 +1135,7 @@ interface DashboardRouteChildren {
   DashboardControlRoute: typeof DashboardControlRoute
   DashboardEnrichRoute: typeof DashboardEnrichRoute
   DashboardFacebookRoute: typeof DashboardFacebookRouteWithChildren
+  DashboardNotificationsRoute: typeof DashboardNotificationsRoute
   DashboardProfileRoute: typeof DashboardProfileRoute
   DashboardWhatsappRoute: typeof DashboardWhatsappRouteWithChildren
 }
@@ -1126,6 +1146,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardControlRoute: DashboardControlRoute,
   DashboardEnrichRoute: DashboardEnrichRoute,
   DashboardFacebookRoute: DashboardFacebookRouteWithChildren,
+  DashboardNotificationsRoute: DashboardNotificationsRoute,
   DashboardProfileRoute: DashboardProfileRoute,
   DashboardWhatsappRoute: DashboardWhatsappRouteWithChildren,
 }
