@@ -39,15 +39,20 @@ type AddAccountInput = z.infer<typeof addAccountSchema>;
 // use the same rules as the server save path.
 
 type AddBotAccountDiagnostic = {
-  phase: "input" | "frontend" | "parse" | "validate" | "encrypt" | "database" | "done";
+  phase: "input" | "frontend" | "parse" | "validate" | "extract" | "encrypt" | "associate" | "database" | "done";
   ok: boolean;
   debugCode: string;
   message: string;
+  step?: string;
   totalCookies?: number;
   receivedBytes?: number;
   detectedUserId?: string | null;
   accountName?: string | null;
   errorDetails?: string | null;
+  sqlError?: string | null;
+  httpStatus?: number | null;
+  responseBody?: string | null;
+  stackTrace?: string | null;
 };
 
 type AddBotAccountResult = {
@@ -77,6 +82,20 @@ function zodIssueMessage(issue: z.ZodIssue) {
   if (issue.code === "too_small" && path === "displayName") return "اسم الحساب مطلوب.";
   if (issue.code === "invalid_union") return "نوع الربط غير معروف. استخدم Cookies أو Email/Password.";
   return `${path}: ${issue.message}`;
+}
+
+function safeStringify(value: unknown, max = 4000) {
+  try {
+    const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    return text.length > max ? `${text.slice(0, max)}…[truncated]` : text;
+  } catch {
+    const text = String(value);
+    return text.length > max ? `${text.slice(0, max)}…[truncated]` : text;
+  }
+}
+
+function errorMessage(value: unknown) {
+  return value instanceof Error ? value.message : String(value);
 }
 
 // ---------- addBotAccount ----------
