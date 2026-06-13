@@ -109,11 +109,24 @@ type BotSaveDiagnostic = {
   phase?: string;
   ok?: boolean;
   debugCode?: string;
+  step?: string;
   message?: string;
   receivedBytes?: number;
   totalCookies?: number;
   detectedUserId?: string | null;
+  accountName?: string | null;
   errorDetails?: string | null;
+  sqlError?: string | null;
+  httpStatus?: number | null;
+  responseBody?: string | null;
+  stackTrace?: string | null;
+};
+
+type SaveLogEvent = {
+  at: number;
+  level: "info" | "success" | "warn" | "error";
+  step: string;
+  detail: string;
 };
 
 const LEGACY_ERROR = /صفحة \/me|login page|\/me أعادت/i;
