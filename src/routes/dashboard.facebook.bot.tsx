@@ -318,6 +318,31 @@ const describeServerActionError = (err: unknown, lang: "ar" | "en") => {
       : "Something went wrong. Refresh and try again.";
 };
 
+const formatSaveDiagnostic = (item: BotSaveDiagnostic) =>
+  [
+    item.message,
+    typeof item.receivedBytes === "number" ? `bytes=${item.receivedBytes}` : null,
+    typeof item.totalCookies === "number" ? `cookies=${item.totalCookies}` : null,
+    item.detectedUserId ? `c_user=${item.detectedUserId}` : null,
+    item.accountName ? `account=${item.accountName}` : null,
+    typeof item.httpStatus === "number" ? `http_status=${item.httpStatus}` : null,
+    item.sqlError ? `sql=${item.sqlError}` : null,
+    item.errorDetails ? `details=${item.errorDetails}` : null,
+    item.responseBody ? `response=${item.responseBody}` : null,
+    item.stackTrace ? `stack=${item.stackTrace}` : null,
+  ]
+    .filter(Boolean)
+    .join("; ");
+
+const saveLogTone = (level: SaveLogEvent["level"]) =>
+  level === "error"
+    ? "border-destructive/40 bg-destructive/10 text-destructive"
+    : level === "warn"
+      ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+      : level === "success"
+        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+        : "border-border bg-muted/30 text-muted-foreground";
+
 const sanitizeAccounts = (list: Account[]): Account[] =>
   list.map((a) =>
     a.last_error && LEGACY_ERROR.test(a.last_error)
