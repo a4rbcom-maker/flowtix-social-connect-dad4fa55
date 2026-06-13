@@ -146,6 +146,7 @@ function RootComponent() {
           <AuthProvider>
             <NotificationsProvider>
               <Outlet />
+              <GlobalAnnouncements />
               <Toaster
                 position="top-center"
                 richColors
