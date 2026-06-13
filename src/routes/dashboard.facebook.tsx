@@ -934,9 +934,48 @@ function FacebookPage() {
   const connectionName = (name: string | null | undefined) =>
     name?.startsWith("Facebook token saved") ? t.savedPendingName : name || t.savedPendingName;
 
+  // Client-side cookie diagnostic so the user sees *why* their save will fail
+  // BEFORE the round-trip. We don't try to be exhaustive — we just look for the
+  // 4 critical Facebook session cookies the backend insists on.
+  const REQUIRED_FB_COOKIES = ["c_user", "xs", "fr", "datr"] as const;
+  const diagnoseCookies = (raw: string): { ok: boolean; missing: string[]; found: number } => {
+    const text = raw.trim();
+    if (!text) return { ok: false, missing: [...REQUIRED_FB_COOKIES], found: 0 };
+    const names = new Set<string>();
+    try {
+      const j = JSON.parse(text);
+      const arr = Array.isArray(j) ? j : Array.isArray(j?.cookies) ? j.cookies : null;
+      if (arr) {
+        for (const c of arr) {
+          const n = (c?.name ?? c?.Name ?? c?.key) as string | undefined;
+          if (typeof n === "string") names.add(n);
+        }
+      }
+    } catch {
+      // header style or cookies.txt — extract names by simple regex
+      for (const m of text.matchAll(/(?:^|[;\n\t])\s*([a-zA-Z0-9_]+)\s*=/g)) names.add(m[1]);
+    }
+    const missing = REQUIRED_FB_COOKIES.filter((c) => !names.has(c));
+    return { ok: missing.length === 0, missing, found: names.size };
+  };
+
   const handleSaveCookieAccount = async () => {
     if (!cookiePayload.trim()) {
       toast.error(t.cookieRequired);
+      return;
+    }
+    const diag = diagnoseCookies(cookiePayload);
+    if (!diag.ok) {
+      toast.error(
+        lang === "ar" ? "كوكيز ناقصة — لا يمكن الحفظ" : "Missing cookies — can't save",
+        {
+          description:
+            lang === "ar"
+              ? `الكوكيز المفقودة: ${diag.missing.join(", ")}. تأكد أنك مسجّل دخول على فيسبوك في نفس المتصفح، ثم اضغط Export → JSON في Cookie-Editor.`
+              : `Missing: ${diag.missing.join(", ")}. Make sure you're logged into Facebook in the same browser, then click Export → JSON in Cookie-Editor.`,
+          duration: 9000,
+        },
+      );
       return;
     }
     setSavingCookieAccount(true);
@@ -954,10 +993,67 @@ function FacebookPage() {
       setCookiePayload("");
       toast.success(t.cookieSaved, { description: t.cookieSavedDesc });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : lang === "ar" ? "فشل حفظ الكوكيز" : "Failed to save cookies";
-      toast.error(msg);
+      const raw = err instanceof Error ? err.message : String(err);
+      // Server-side validation often returns a Zod or RPC error — surface the
+      // real reason instead of a generic "Failed to save".
+      const desc = lang === "ar"
+        ? "تأكد أن الكوكيز JSON صحيحة من Cookie-Editor، وأنك مسجّل دخول على facebook.com في نفس المتصفح."
+        : "Verify the JSON came from Cookie-Editor and that you're signed in to facebook.com in the same browser.";
+      toast.error(raw || (lang === "ar" ? "فشل حفظ الكوكيز" : "Failed to save cookies"), {
+        description: desc,
+        duration: 9000,
+      });
     } finally {
       setSavingCookieAccount(false);
+    }
+  };
+
+  const handleSaveCredentialsAccount = async () => {
+    if (!credEmail.trim() || !credPassword) {
+      toast.error(lang === "ar" ? "أدخل البريد وكلمة المرور" : "Enter email and password");
+      return;
+    }
+    setSavingCredAccount(true);
+    try {
+      const displayName = credName.trim() || credEmail.trim();
+      const raw = await addBotAccountFn({
+        data: {
+          method: "credentials",
+          displayName,
+          email: credEmail.trim(),
+          password: credPassword,
+          twoFactorSecret: credTwoFA.trim() || undefined,
+        },
+      });
+      const unwrapped = (raw as { data?: unknown })?.data ?? raw;
+      const account = unwrapped as BotAccountSummary | null;
+      if (account?.id) {
+        setBotAccounts((prev) => [account, ...prev.filter((a) => a.id !== account.id)]);
+      }
+      setCredName("");
+      setCredEmail("");
+      setCredPassword("");
+      setCredTwoFA("");
+      toast.success(
+        lang === "ar" ? "تم حفظ حساب البوت" : "Bot account saved",
+        {
+          description:
+            lang === "ar"
+              ? "افتح حسابات النشر التلقائي لاختبار تسجيل الدخول."
+              : "Open Auto-posting accounts to test sign-in.",
+        },
+      );
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      toast.error(raw || (lang === "ar" ? "فشل حفظ الحساب" : "Failed to save account"), {
+        description:
+          lang === "ar"
+            ? "لو فعّلت 2FA على الحساب، أدخل مفتاح TOTP (Base32) في الحقل المخصّص."
+            : "If 2FA is enabled on the account, paste the TOTP secret (Base32) in the dedicated field.",
+        duration: 9000,
+      });
+    } finally {
+      setSavingCredAccount(false);
     }
   };
 
