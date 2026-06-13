@@ -164,7 +164,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     {
       title: labels.sectionInsights,
       items: [
-        { kind: "leaf", icon: MapPin, label: lang === "ar" ? "إثراء العملاء" : "Enrich leads", to: "/dashboard/enrich" },
+        { kind: "leaf", icon: MapPin, label: lang === "ar" ? "تعزيز بيانات العملاء" : "Lead enrichment", to: "/dashboard/enrich" },
         { kind: "leaf", icon: Activity, label: labels.activity, to: "/dashboard/activity" },
         { kind: "leaf", icon: Settings, label: labels.settings, to: "/dashboard/profile" },
       ],
