@@ -21,6 +21,10 @@ import {
   History,
   Clock,
   Cookie,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
