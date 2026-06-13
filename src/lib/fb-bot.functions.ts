@@ -187,11 +187,33 @@ export const addBotAccount = createServerFn({ method: "POST" })
       const minExp = earliestRequiredExpiry(parsed.cookies);
       if (minExp !== null) cookieExpiresAt = new Date(minExp * 1000).toISOString();
     } else {
+      addDiag(diagnostics, {
+        phase: "input",
+        ok: true,
+        debugCode: "INPUT_RECEIVED",
+        step: "receive_request",
+        message: "تم استلام بيانات البريد وكلمة المرور داخل الخادم وبدأ التجهيز.",
+      });
+      addDiag(diagnostics, {
+        phase: "associate",
+        ok: true,
+        debugCode: "USER_ASSOCIATED",
+        step: "link_to_current_user",
+        message: `سيتم ربط الحساب بالمستخدم الحالي user_id=${userId}.`,
+      });
       payload = {
         email: data.email,
         password: data.password,
         twoFactorSecret: data.twoFactorSecret || null,
       };
+      addDiag(diagnostics, {
+        phase: "extract",
+        ok: true,
+        debugCode: "ACCOUNT_DATA_EXTRACTED",
+        step: "prepare_credentials_payload",
+        message: "تم تجهيز بيانات الدخول للحفظ بدون كشف كلمة المرور.",
+        accountName: data.email,
+      });
     }
     let encrypted: string;
     try {
@@ -201,15 +223,19 @@ export const addBotAccount = createServerFn({ method: "POST" })
         phase: "encrypt",
         ok: true,
         debugCode: "PAYLOAD_ENCRYPTED",
+        step: "encrypt_payload",
         message: "تم تجهيز بيانات الحساب للحفظ بأمان.",
       });
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = errorMessage(e);
       addDiag(diagnostics, {
         phase: "encrypt",
         ok: false,
         debugCode: "ENCRYPT_FAILED",
+        step: "encrypt_payload",
         message: `فشل تجهيز بيانات الحساب للحفظ: ${message}`,
+        errorDetails: message,
+        stackTrace: e instanceof Error ? e.stack ?? null : null,
       });
       return { ok: false, account: null, message: "فشل تجهيز بيانات الحساب للحفظ.", debugCode: "ENCRYPT_FAILED", diagnostics };
     }
