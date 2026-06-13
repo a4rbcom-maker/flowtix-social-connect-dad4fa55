@@ -2,10 +2,16 @@
 // All write paths are RLS-scoped to the calling user via requireSupabaseAuth.
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { createClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { Database } from "@/integrations/supabase/types";
 import { buildPostToGroupsPayload } from "@/lib/fb-job-payload";
+import {
+  cookieValidationMessage,
+  earliestRequiredExpiry,
+  normalizeStoredCookies,
+  parseCookiesInputDetailed,
+  validateFacebookCookies,
+  type NormalizedCookie,
+} from "@/lib/fb-cookie-diagnostics";
 // NOTE: `@/server/crypto.server` is intentionally NOT imported at the top.
 // The TanStack Start server-fn transformer strips `.handler()` bodies from the
 // client bundle but keeps top-level imports. Importing a `*.server.ts` module
@@ -28,175 +34,82 @@ const credentialsSchema = z.object({
 });
 const addAccountSchema = z.union([cookiesSchema, credentialsSchema]);
 
-// Accepts: JSON array from extensions (EditThisCookie/Cookie-Editor), a single
-// JSON object with a `cookies` array, header-style "name=value; name2=value2",
-// or Netscape cookies.txt format. Returns a normalized array of cookie objects.
-type NormalizedCookie = {
-  name: string;
-  value: string;
-  domain?: string;
-  path?: string;
-  expirationDate?: number;
+// Cookie parsing/validation lives in fb-cookie-diagnostics so the UI and tests
+// use the same rules as the server save path.
+
+type AddBotAccountDiagnostic = {
+  phase: "frontend" | "parse" | "validate" | "encrypt" | "database" | "done";
+  ok: boolean;
+  debugCode: string;
+  message: string;
+  totalCookies?: number;
+  detectedUserId?: string | null;
+  accountName?: string | null;
 };
-function parseCookiesInput(raw: string): NormalizedCookie[] | null {
-  const text = raw.trim();
-  if (!text) return null;
 
-  // 1) JSON
-  if (text.startsWith("[") || text.startsWith("{")) {
-    try {
-      const j = JSON.parse(text);
-      const arr = Array.isArray(j)
-        ? j
-        : Array.isArray((j as any)?.cookies)
-          ? (j as any).cookies
-          : null;
-      if (arr) {
-        const out: NormalizedCookie[] = [];
-        for (const c of arr) {
-          if (!c || typeof c !== "object") continue;
-          const name = (c.name ?? c.Name ?? c.key) as string | undefined;
-          const value = (c.value ?? c.Value) as string | undefined;
-          if (typeof name === "string" && typeof value === "string") {
-            const expRaw = (c as any).expirationDate ?? (c as any).expires ?? (c as any).expiry;
-            const expirationDate =
-              typeof expRaw === "number" && isFinite(expRaw) && expRaw > 0 ? expRaw : undefined;
-            out.push({ name, value, domain: c.domain, path: c.path, expirationDate });
-          }
-        }
-        if (out.length) return out;
-      }
-    } catch {
-      // fall through
-    }
-  }
+type AddBotAccountResult = {
+  ok: boolean;
+  account: BotAccountRow | null;
+  message: string;
+  debugCode: string;
+  diagnostics: AddBotAccountDiagnostic[];
+};
 
-  // 2) Netscape cookies.txt (tab-separated, 7 fields)
-  if (text.includes("\t")) {
-    const out: NormalizedCookie[] = [];
-    for (const line of text.split(/\r?\n/)) {
-      if (!line || line.startsWith("#")) continue;
-      const parts = line.split("\t");
-      if (parts.length >= 7) {
-        const exp = Number(parts[4]);
-        out.push({
-          name: parts[5],
-          value: parts[6],
-          domain: parts[0],
-          path: parts[2],
-          expirationDate: isFinite(exp) && exp > 0 ? exp : undefined,
-        });
-      }
-    }
-    if (out.length) return out;
-  }
-
-  // 3) Header string: "name=value; name2=value2"
-  const out: NormalizedCookie[] = [];
-  for (const pair of text.split(/;\s*|\n+/)) {
-    const eq = pair.indexOf("=");
-    if (eq <= 0) continue;
-    const name = pair.slice(0, eq).trim();
-    const value = pair.slice(eq + 1).trim();
-    if (name) out.push({ name, value });
-  }
-  return out.length ? out : null;
-}
-
-function normalizeStoredCookies(payload: unknown): NormalizedCookie[] {
-  const candidate = Array.isArray(payload)
-    ? payload
-    : typeof payload === "string"
-      ? payload
-      : payload && typeof payload === "object"
-        ? (payload as { cookies?: unknown }).cookies
-        : null;
-
-  if (Array.isArray(candidate)) {
-    return candidate
-      .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
-      .map((c) => ({
-        name: String(c.name ?? c.Name ?? c.key ?? ""),
-        value: String(c.value ?? c.Value ?? ""),
-        domain: typeof c.domain === "string" ? c.domain : undefined,
-        path: typeof c.path === "string" ? c.path : undefined,
-        expirationDate: typeof c.expirationDate === "number" ? c.expirationDate : undefined,
-      }))
-      .filter((c) => c.name.length > 0);
-  }
-
-  if (typeof candidate === "string") return parseCookiesInput(candidate) ?? [];
-  return [];
-}
-
-// Cookies needed to treat a stored Facebook session as usable. `sb` helps
-// Facebook recognize the browser but should not block progress by itself.
-const CRITICAL_COOKIES = ["c_user", "xs", "fr", "datr"] as const;
-const RECOMMENDED_COOKIES = ["sb"] as const;
-const REQUIRED_COOKIES = [...CRITICAL_COOKIES, ...RECOMMENDED_COOKIES] as const;
-
-// Soonest expiry (Unix seconds) among the REQUIRED cookies. Skips session
-// cookies (no expirationDate). Returns null if none of the required cookies
-// have an expiry, which is treated as "unknown".
-function earliestRequiredExpiry(cookies: NormalizedCookie[]): number | null {
-  const required = new Set<string>(REQUIRED_COOKIES as readonly string[]);
-  let min: number | null = null;
-  for (const c of cookies) {
-    if (!required.has(c.name)) continue;
-    if (typeof c.expirationDate !== "number") continue;
-    if (min === null || c.expirationDate < min) min = c.expirationDate;
-  }
-  return min;
-}
-
-function validateFacebookCookies(cookies: NormalizedCookie[]) {
-  const byName = new Map(cookies.map((c) => [c.name, c.value]));
-  const present: string[] = [];
-  const missing: string[] = [];
-  const invalid: { name: string; reason: string }[] = [];
-
-  for (const name of REQUIRED_COOKIES) {
-    const v = byName.get(name);
-    if (!v || v.length === 0) {
-      missing.push(name);
-      continue;
-    }
-    present.push(name);
-    if (name === "c_user" && !/^\d{6,}$/.test(v)) {
-      invalid.push({ name, reason: "c_user يجب أن يحتوي على أرقام فقط (6 خانات أو أكثر)" });
-    }
-    if (name === "xs" && v.length < 10) {
-      invalid.push({ name, reason: "xs قصير جدًا — صدِّر الكوكيز من جلسة نشطة" });
-    }
-  }
-
-  const missingCritical = missing.filter((name) =>
-    (CRITICAL_COOKIES as readonly string[]).includes(name),
-  );
-  const missingRecommended = missing.filter((name) =>
-    (RECOMMENDED_COOKIES as readonly string[]).includes(name),
-  );
-
-  return { present, missing, missingCritical, missingRecommended, invalid };
+function addDiag(
+  diagnostics: AddBotAccountDiagnostic[],
+  entry: AddBotAccountDiagnostic,
+) {
+  diagnostics.push(entry);
+  const tag = `[addBotAccount:${entry.debugCode}] ${entry.phase}`;
+  if (entry.ok) console.info(tag, entry.message, entry);
+  else console.warn(tag, entry.message, entry);
 }
 
 // ---------- addBotAccount ----------
 export const addBotAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => addAccountSchema.parse(d))
-  .handler(async ({ data, context }) => {
+  .handler(async ({ data, context }): Promise<AddBotAccountResult> => {
     const { supabase, userId } = context;
+    const diagnostics: AddBotAccountDiagnostic[] = [];
     let payload: unknown;
     let cookieExpiresAt: string | null = null;
     if (data.method === "cookies") {
-      const parsed = parseCookiesInput(data.cookies);
-      if (!parsed || parsed.length === 0) {
-        throw new Error(
-          "تعذّر قراءة الكوكيز. الصق إما JSON المُصدَّر من إضافة المتصفح، أو سلسلة مثل name=value; name2=value2",
-        );
+      const parsed = parseCookiesInputDetailed(data.cookies);
+      addDiag(diagnostics, {
+        phase: "parse",
+        ok: parsed.ok,
+        debugCode: parsed.debugCode,
+        message: parsed.message,
+        totalCookies: parsed.cookies.length,
+      });
+      if (!parsed.ok) {
+        return { ok: false, account: null, message: parsed.message, debugCode: parsed.debugCode, diagnostics };
       }
-      payload = { cookies: parsed };
-      const minExp = earliestRequiredExpiry(parsed);
+
+      const validation = validateFacebookCookies(parsed.cookies);
+      const validationOk = validation.missingCritical.length === 0 && validation.invalid.length === 0;
+      addDiag(diagnostics, {
+        phase: "validate",
+        ok: validationOk,
+        debugCode: validationOk ? "COOKIE_SESSION_VALID" : "COOKIE_SESSION_INVALID",
+        message: cookieValidationMessage(validation),
+        totalCookies: parsed.cookies.length,
+        detectedUserId: validation.detectedUserId,
+        accountName: validation.detectedUserId ? `Facebook user ${validation.detectedUserId}` : null,
+      });
+      if (!validationOk) {
+        return {
+          ok: false,
+          account: null,
+          message: cookieValidationMessage(validation),
+          debugCode: validation.expired ? "COOKIES_EXPIRED" : "COOKIE_SESSION_INVALID",
+          diagnostics,
+        };
+      }
+
+      payload = { cookies: parsed.cookies, detectedUserId: validation.detectedUserId };
+      const minExp = earliestRequiredExpiry(parsed.cookies);
       if (minExp !== null) cookieExpiresAt = new Date(minExp * 1000).toISOString();
     } else {
       payload = {
@@ -205,8 +118,26 @@ export const addBotAccount = createServerFn({ method: "POST" })
         twoFactorSecret: data.twoFactorSecret || null,
       };
     }
-    const { encryptJson } = await import("@/server/crypto.server");
-    const encrypted = encryptJson(payload);
+    let encrypted: string;
+    try {
+      const { encryptJson } = await import("@/server/crypto.server");
+      encrypted = encryptJson(payload);
+      addDiag(diagnostics, {
+        phase: "encrypt",
+        ok: true,
+        debugCode: "PAYLOAD_ENCRYPTED",
+        message: "تم تجهيز بيانات الحساب للحفظ بأمان.",
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      addDiag(diagnostics, {
+        phase: "encrypt",
+        ok: false,
+        debugCode: "ENCRYPT_FAILED",
+        message: `فشل تجهيز بيانات الحساب للحفظ: ${message}`,
+      });
+      return { ok: false, account: null, message: "فشل تجهيز بيانات الحساب للحفظ.", debugCode: "ENCRYPT_FAILED", diagnostics };
+    }
     const { data: row, error } = await supabase
       .from("fb_bot_accounts")
       .insert({
@@ -221,8 +152,32 @@ export const addBotAccount = createServerFn({ method: "POST" })
         "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at",
       )
       .single();
-    if (error) throw new Error(error.message);
-    return row;
+    if (error) {
+      addDiag(diagnostics, {
+        phase: "database",
+        ok: false,
+        debugCode: "DB_SAVE_FAILED",
+        message: `فشل حفظ الحساب في قاعدة البيانات: ${error.message}`,
+      });
+      return { ok: false, account: null, message: `فشل حفظ الحساب في قاعدة البيانات: ${error.message}`, debugCode: "DB_SAVE_FAILED", diagnostics };
+    }
+    if (!row?.id) {
+      addDiag(diagnostics, {
+        phase: "database",
+        ok: false,
+        debugCode: "DB_EMPTY_RETURN",
+        message: "تم تنفيذ طلب الحفظ لكن قاعدة البيانات لم تُرجع صف الحساب.",
+      });
+      return { ok: false, account: null, message: "تم تنفيذ طلب الحفظ لكن قاعدة البيانات لم تُرجع صف الحساب.", debugCode: "DB_EMPTY_RETURN", diagnostics };
+    }
+    addDiag(diagnostics, {
+      phase: "done",
+      ok: true,
+      debugCode: "ACCOUNT_SAVED",
+      message: `تم حفظ الحساب بنجاح: ${row.display_name}.`,
+      accountName: row.display_name,
+    });
+    return { ok: true, account: row, message: "تم حفظ الحساب بنجاح.", debugCode: "ACCOUNT_SAVED", diagnostics };
   });
 
 type BotAccountRow = {
@@ -688,12 +643,6 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
     const now = Date.now();
     const expiresInDays = minExp !== null ? Math.floor((minExp * 1000 - now) / 86_400_000) : null;
     const expired = minExp !== null && minExp * 1000 <= now;
-    if (expired) {
-      invalid.push({
-        name: "expiry",
-        reason: "انتهت صلاحية الجلسة — صدِّر كوكيز جديدة من Cookie-Editor",
-      });
-    }
 
     const hasBlockingFailure = missingCritical.length > 0 || invalid.length > 0 || expired;
     const ok = !hasBlockingFailure;

@@ -41,6 +41,7 @@ import {
   testFacebookToken,
 } from "@/lib/facebook.functions";
 import { addBotAccount } from "@/lib/fb-bot.functions";
+import { parseCookiesInputDetailed, validateFacebookCookies } from "@/lib/fb-cookie-diagnostics";
 import { openExternalUrl } from "@/components/shared/ExternalLinkButton";
 
 import { useFacebookApi, describeFbError } from "@/features/facebook/api";
@@ -101,19 +102,54 @@ type BotAccountSummary = {
   status: string;
 };
 
+type BotSaveDiagnostic = {
+  phase?: string;
+  ok?: boolean;
+  debugCode?: string;
+  message?: string;
+  totalCookies?: number;
+  detectedUserId?: string | null;
+  accountName?: string | null;
+};
+
 const unwrapServerPayload = (raw: unknown): unknown => {
-  if (!raw || typeof raw !== "object") return raw;
-  const obj = raw as { data?: unknown; result?: unknown; account?: unknown };
-  return obj.data ?? obj.result ?? obj.account ?? raw;
+  let value = raw;
+  for (let i = 0; i < 4; i += 1) {
+    if (!value || typeof value !== "object") return value;
+    const obj = value as { data?: unknown; result?: unknown; ok?: unknown; account?: unknown; accounts?: unknown };
+    if ("ok" in obj || "account" in obj || "accounts" in obj) return value;
+    if ("data" in obj) value = obj.data;
+    else if ("result" in obj) value = obj.result;
+    else return value;
+  }
+  return value;
 };
 
 const normalizeBotAccountPayload = (raw: unknown): BotAccountSummary | null => {
   const payload = unwrapServerPayload(raw);
-  return payload &&
-    typeof payload === "object" &&
-    typeof (payload as BotAccountSummary).id === "string"
-    ? (payload as BotAccountSummary)
-    : null;
+  if (payload && typeof payload === "object") {
+    const dto = payload as {
+      ok?: unknown;
+      account?: unknown;
+      message?: unknown;
+      debugCode?: unknown;
+      diagnostics?: unknown;
+    };
+    if (dto.ok === false) {
+      const msg = typeof dto.message === "string" ? dto.message : "فشل حفظ حساب فيسبوك.";
+      const code = typeof dto.debugCode === "string" ? ` (${dto.debugCode})` : "";
+      const err = new Error(`${msg}${code}`);
+      (err as Error & { diagnostics?: BotSaveDiagnostic[] }).diagnostics = Array.isArray(dto.diagnostics)
+        ? (dto.diagnostics as BotSaveDiagnostic[])
+        : [];
+      throw err;
+    }
+    if (dto.account && typeof dto.account === "object" && typeof (dto.account as BotAccountSummary).id === "string") {
+      return dto.account as BotAccountSummary;
+    }
+    if (typeof (payload as BotAccountSummary).id === "string") return payload as BotAccountSummary;
+  }
+  return null;
 };
 
 function DemoPreview({ stepKey, lang }: { stepKey: string; lang: "ar" | "en" }) {
@@ -322,7 +358,6 @@ function FacebookPage() {
   const [debugMode, setDebugMode] = useState(false);
   const [debugLogs, setDebugLogs] = useState<DebugLog[]>([]);
   const debugLog = (level: DebugLog["level"], step: string, detail?: string) => {
-    if (!debugMode) return;
     const entry: DebugLog = {
       id: crypto.randomUUID(),
       ts: new Date().toISOString().slice(11, 23),
@@ -332,6 +367,7 @@ function FacebookPage() {
     };
     setDebugLogs((prev) => [...prev.slice(-49), entry]);
     // Mirror to browser console for power users / Lovable console-logs tool.
+    if (!debugMode) return;
     const tag = `[FB-DBG ${entry.ts}] ${step}`;
     if (level === "error") console.error(tag, detail);
     else if (level === "warn") console.warn(tag, detail);
@@ -952,26 +988,24 @@ function FacebookPage() {
   // Client-side cookie diagnostic so the user sees *why* their save will fail
   // BEFORE the round-trip. We don't try to be exhaustive — we just look for the
   // 4 critical Facebook session cookies the backend insists on.
-  const REQUIRED_FB_COOKIES = ["c_user", "xs", "fr", "datr"] as const;
-  const diagnoseCookies = (raw: string): { ok: boolean; missing: string[]; found: number } => {
-    const text = raw.trim();
-    if (!text) return { ok: false, missing: [...REQUIRED_FB_COOKIES], found: 0 };
-    const names = new Set<string>();
-    try {
-      const j = JSON.parse(text);
-      const arr = Array.isArray(j) ? j : Array.isArray(j?.cookies) ? j.cookies : null;
-      if (arr) {
-        for (const c of arr) {
-          const n = (c?.name ?? c?.Name ?? c?.key) as string | undefined;
-          if (typeof n === "string") names.add(n);
-        }
-      }
-    } catch {
-      // header style or cookies.txt — extract names by simple regex
-      for (const m of text.matchAll(/(?:^|[;\n\t])\s*([a-zA-Z0-9_]+)\s*=/g)) names.add(m[1]);
+  const diagnoseCookies = (raw: string): { ok: boolean; missing: string[]; found: number; debugCode: string; message: string } => {
+    const parsed = parseCookiesInputDetailed(raw);
+    if (!parsed.ok) {
+      return { ok: false, missing: [], found: 0, debugCode: parsed.debugCode, message: parsed.message };
     }
-    const missing = REQUIRED_FB_COOKIES.filter((c) => !names.has(c));
-    return { ok: missing.length === 0, missing, found: names.size };
+    const validation = validateFacebookCookies(parsed.cookies);
+    const ok = validation.missingCritical.length === 0 && validation.invalid.length === 0;
+    return {
+      ok,
+      missing: validation.missingCritical,
+      found: parsed.cookies.length,
+      debugCode: ok ? "FRONTEND_COOKIE_OK" : "FRONTEND_COOKIE_INVALID",
+      message: ok
+        ? `تم العثور على ${parsed.cookies.length} كوكيز واستخراج c_user=${validation.detectedUserId ?? "غير موجود"}.`
+        : validation.missingCritical.length > 0
+          ? `كوكيز أساسية ناقصة: ${validation.missingCritical.join(", ")}`
+          : validation.invalid.map((i) => `${i.name}: ${i.reason}`).join("؛ "),
+    };
   };
 
   const handleSaveCookieAccount = async () => {
@@ -983,14 +1017,19 @@ function FacebookPage() {
     // (JSON / header / Netscape). If client diag flags missing cookies we show
     // a warning but still let the request go through so the server validates.
     const diag = diagnoseCookies(cookiePayload);
+    debugLog(
+      diag.ok ? "success" : "warn",
+      "cookies:frontend-validation",
+      `${diag.debugCode}; found=${diag.found}; missing=${diag.missing.join(",") || "none"}; bytes=${cookiePayload.length}; ${diag.message}`,
+    );
     if (!diag.ok) {
       toast.warning(
         lang === "ar" ? "تحذير: قد تكون الكوكيز ناقصة" : "Warning: cookies may be incomplete",
         {
           description:
             lang === "ar"
-              ? `لم نجدها محليًا: ${diag.missing.join(", ")}. سنرسلها للخادم للتحقق النهائي.`
-              : `Not found locally: ${diag.missing.join(", ")}. Sending to the server for final validation.`,
+              ? `${diag.message}. سنرسلها للخادم للتحقق النهائي.`
+              : `${diag.message}. Sending to the server for final validation.`,
           duration: 5000,
         },
       );
@@ -998,16 +1037,32 @@ function FacebookPage() {
     setSavingCookieAccount(true);
     try {
       const displayName = cookieName.trim() || (lang === "ar" ? "حساب فيسبوك Cookies" : "Facebook Cookies account");
+      debugLog("info", "cookies:send-to-server", `displayName=${displayName}; bytes=${cookiePayload.length}`);
       const raw = await addBotAccountFn({
         data: { method: "cookies", displayName, cookies: cookiePayload },
       });
       const account = normalizeBotAccountPayload(raw);
+      const saveDto = unwrapServerPayload(raw) as { diagnostics?: BotSaveDiagnostic[] } | null;
+      if (Array.isArray(saveDto?.diagnostics)) {
+        for (const item of saveDto.diagnostics) {
+          debugLog(
+            item.ok === false ? "error" : "success",
+            `server:${item.phase ?? "unknown"}:${item.debugCode ?? "UNKNOWN"}`,
+            [
+              item.message,
+              typeof item.totalCookies === "number" ? `cookies=${item.totalCookies}` : null,
+              item.detectedUserId ? `c_user=${item.detectedUserId}` : null,
+              item.accountName ? `account=${item.accountName}` : null,
+            ].filter(Boolean).join("; "),
+          );
+        }
+      }
       if (!account?.id) {
         // Server returned without throwing but no row came back — treat as failure
         // so the user doesn't see a misleading "saved" toast.
         throw new Error(
           lang === "ar"
-            ? "لم يتم استلام الحساب من الخادم. لم يُحفظ شيء — أعد المحاولة."
+            ? "لم يرجع الخادم صف الحساب بعد الحفظ. راجع سجل التشخيص لمعرفة المرحلة الدقيقة."
             : "The server did not return the saved account. Nothing was stored — please retry.",
         );
       }
@@ -1029,9 +1084,19 @@ function FacebookPage() {
       toast.success(t.cookieSaved, { description: t.cookieSavedDesc });
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
-      const desc = lang === "ar"
-        ? "تأكد أن الكوكيز JSON صحيحة من Cookie-Editor، وأنك مسجّل دخول على facebook.com في نفس المتصفح."
-        : "Verify the JSON came from Cookie-Editor and that you're signed in to facebook.com in the same browser.";
+      const diagnostics = (err as Error & { diagnostics?: BotSaveDiagnostic[] })?.diagnostics ?? [];
+      diagnostics.forEach((item) => {
+        debugLog(
+          item.ok === false ? "error" : "success",
+          `server:${item.phase ?? "unknown"}:${item.debugCode ?? "UNKNOWN"}`,
+          item.message,
+        );
+      });
+      const lastFailure = [...diagnostics].reverse().find((item) => item.ok === false);
+      const desc = lastFailure?.message || (lang === "ar"
+        ? "راجع سبب الفشل أعلاه؛ لم نعد نخفي الخطأ خلف رسالة عامة."
+        : "See the exact failure above; the generic save error is no longer used.");
+      debugLog("error", "cookies:save-failed", `${raw}; ${desc}`);
       toast.error(raw || (lang === "ar" ? "فشل حفظ الكوكيز" : "Failed to save cookies"), {
         description: desc,
         duration: 9000,
@@ -1709,6 +1774,63 @@ function FacebookPage() {
                     <ExternalLink className="h-4 w-4" />
                     {t.openCookieEditor}
                   </button>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/25 p-3">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDebugMode((v) => !v)}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                        debugMode
+                          ? "border-primary/50 bg-primary/10 text-primary"
+                          : "border-border bg-card text-muted-foreground hover:bg-accent"
+                      }`}
+                    >
+                      <FlaskConical className="h-3.5 w-3.5" />
+                      {lang === "ar" ? "سجل تشخيص ربط الكوكيز" : "Cookie link diagnostics"}
+                    </button>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={copyDebug}
+                        disabled={debugLogs.length === 0}
+                        className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-[11px] hover:bg-accent disabled:opacity-50"
+                      >
+                        <Copy className="h-3 w-3" />
+                        {lang === "ar" ? "نسخ" : "Copy"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearDebug}
+                        disabled={debugLogs.length === 0}
+                        className="rounded-md border border-border bg-card px-2 py-1 text-[11px] hover:bg-accent disabled:opacity-50"
+                      >
+                        {lang === "ar" ? "مسح" : "Clear"}
+                      </button>
+                    </div>
+                  </div>
+                  {debugMode && (
+                    <div className="max-h-44 overflow-y-auto rounded-lg bg-background p-2 font-mono text-[11px] leading-relaxed">
+                      {debugLogs.length === 0 ? (
+                        <p className="py-3 text-center text-muted-foreground">
+                          {lang === "ar"
+                            ? "سيظهر هنا عدد الكوكيز، نتيجة تحليل JSON، واستخراج c_user ونتيجة الحفظ."
+                            : "Cookie count, JSON parsing, c_user extraction, and save result will appear here."}
+                        </p>
+                      ) : (
+                        debugLogs.map((l) => (
+                          <div key={l.id} className="flex gap-2 border-b border-border/50 py-1 last:border-0">
+                            <span className="shrink-0 text-muted-foreground">{l.ts}</span>
+                            <span className="shrink-0 uppercase">{l.level}</span>
+                            <span className="break-all">
+                              <b>{l.step}</b>
+                              {l.detail && <span className="text-muted-foreground"> — {l.detail}</span>}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
                 {/* Fallback: always show full URLs as plain text + Copy. If the
                     iframe blocks popups, the user can copy and paste manually. */}
