@@ -11,7 +11,18 @@ const HARD_CAP_SENDS_PER_JOB_PER_TICK = 100;
 export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
   server: {
     handlers: {
-      POST: async () => {
+      POST: async ({ request }) => {
+        // Shared-secret auth: pg_cron / external scheduler must send
+        // `Authorization: Bearer <CRON_SECRET or BOT_WORKER_SECRET>`.
+        const secret = process.env.CRON_SECRET || process.env.BOT_WORKER_SECRET;
+        if (!secret) {
+          return new Response("Worker secret not configured", { status: 500 });
+        }
+        const auth = request.headers.get("authorization");
+        if (!auth || auth !== `Bearer ${secret}`) {
+          return new Response("Unauthorized", { status: 401 });
+        }
+
         const now = new Date();
         const summary = { promoted: 0, processed: 0, sent: 0, completed: 0 };
 
