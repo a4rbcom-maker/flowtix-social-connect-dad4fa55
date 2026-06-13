@@ -1776,6 +1776,63 @@ function FacebookPage() {
                     {t.openCookieEditor}
                   </button>
                 </div>
+                <div className="rounded-xl border border-border bg-muted/25 p-3">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDebugMode((v) => !v)}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                        debugMode
+                          ? "border-primary/50 bg-primary/10 text-primary"
+                          : "border-border bg-card text-muted-foreground hover:bg-accent"
+                      }`}
+                    >
+                      <FlaskConical className="h-3.5 w-3.5" />
+                      {lang === "ar" ? "سجل تشخيص ربط الكوكيز" : "Cookie link diagnostics"}
+                    </button>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={copyDebug}
+                        disabled={debugLogs.length === 0}
+                        className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-[11px] hover:bg-accent disabled:opacity-50"
+                      >
+                        <Copy className="h-3 w-3" />
+                        {lang === "ar" ? "نسخ" : "Copy"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearDebug}
+                        disabled={debugLogs.length === 0}
+                        className="rounded-md border border-border bg-card px-2 py-1 text-[11px] hover:bg-accent disabled:opacity-50"
+                      >
+                        {lang === "ar" ? "مسح" : "Clear"}
+                      </button>
+                    </div>
+                  </div>
+                  {debugMode && (
+                    <div className="max-h-44 overflow-y-auto rounded-lg bg-background p-2 font-mono text-[11px] leading-relaxed">
+                      {debugLogs.length === 0 ? (
+                        <p className="py-3 text-center text-muted-foreground">
+                          {lang === "ar"
+                            ? "سيظهر هنا عدد الكوكيز، نتيجة تحليل JSON، واستخراج c_user ونتيجة الحفظ."
+                            : "Cookie count, JSON parsing, c_user extraction, and save result will appear here."}
+                        </p>
+                      ) : (
+                        debugLogs.map((l) => (
+                          <div key={l.id} className="flex gap-2 border-b border-border/50 py-1 last:border-0">
+                            <span className="shrink-0 text-muted-foreground">{l.ts}</span>
+                            <span className="shrink-0 uppercase">{l.level}</span>
+                            <span className="break-all">
+                              <b>{l.step}</b>
+                              {l.detail && <span className="text-muted-foreground"> — {l.detail}</span>}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
                 {/* Fallback: always show full URLs as plain text + Copy. If the
                     iframe blocks popups, the user can copy and paste manually. */}
                 <div className="space-y-1.5 rounded-lg border border-dashed border-border/60 bg-muted/20 p-2.5 text-[11px]">
