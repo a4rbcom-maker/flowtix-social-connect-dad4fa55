@@ -508,6 +508,12 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                   <LogOut className="h-4 w-4" />
                 </button>
               </div>
+
+              <div className="text-center">
+                <span className="text-[10px] text-muted-foreground/50">
+                  {lang === "ar" ? "الإصدار 2.1.0" : "v2.1.0"}
+                </span>
+              </div>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2">
@@ -522,6 +528,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
               >
                 <LogOut className="h-[18px] w-[18px]" />
               </button>
+              <span className="text-[9px] text-muted-foreground/40">v2.1.0</span>
             </div>
           )}
         </div>
