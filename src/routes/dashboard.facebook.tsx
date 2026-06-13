@@ -988,26 +988,24 @@ function FacebookPage() {
   // Client-side cookie diagnostic so the user sees *why* their save will fail
   // BEFORE the round-trip. We don't try to be exhaustive — we just look for the
   // 4 critical Facebook session cookies the backend insists on.
-  const REQUIRED_FB_COOKIES = ["c_user", "xs", "fr", "datr"] as const;
-  const diagnoseCookies = (raw: string): { ok: boolean; missing: string[]; found: number } => {
-    const text = raw.trim();
-    if (!text) return { ok: false, missing: [...REQUIRED_FB_COOKIES], found: 0 };
-    const names = new Set<string>();
-    try {
-      const j = JSON.parse(text);
-      const arr = Array.isArray(j) ? j : Array.isArray(j?.cookies) ? j.cookies : null;
-      if (arr) {
-        for (const c of arr) {
-          const n = (c?.name ?? c?.Name ?? c?.key) as string | undefined;
-          if (typeof n === "string") names.add(n);
-        }
-      }
-    } catch {
-      // header style or cookies.txt — extract names by simple regex
-      for (const m of text.matchAll(/(?:^|[;\n\t])\s*([a-zA-Z0-9_]+)\s*=/g)) names.add(m[1]);
+  const diagnoseCookies = (raw: string): { ok: boolean; missing: string[]; found: number; debugCode: string; message: string } => {
+    const parsed = parseCookiesInputDetailed(raw);
+    if (!parsed.ok) {
+      return { ok: false, missing: [], found: 0, debugCode: parsed.debugCode, message: parsed.message };
     }
-    const missing = REQUIRED_FB_COOKIES.filter((c) => !names.has(c));
-    return { ok: missing.length === 0, missing, found: names.size };
+    const validation = validateFacebookCookies(parsed.cookies);
+    const ok = validation.missingCritical.length === 0 && validation.invalid.length === 0;
+    return {
+      ok,
+      missing: validation.missingCritical,
+      found: parsed.cookies.length,
+      debugCode: ok ? "FRONTEND_COOKIE_OK" : "FRONTEND_COOKIE_INVALID",
+      message: ok
+        ? `تم العثور على ${parsed.cookies.length} كوكيز واستخراج c_user=${validation.detectedUserId ?? "غير موجود"}.`
+        : validation.missingCritical.length > 0
+          ? `كوكيز أساسية ناقصة: ${validation.missingCritical.join(", ")}`
+          : validation.invalid.map((i) => `${i.name}: ${i.reason}`).join("؛ "),
+    };
   };
 
   const handleSaveCookieAccount = async () => {
