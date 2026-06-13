@@ -105,7 +105,16 @@ type Account = {
 };
 
 type BotAccountStatus = "untested" | "active" | "invalid" | "checkpoint" | "disabled";
-type BotSaveDiagnostic = { phase?: string; ok?: boolean; debugCode?: string; message?: string };
+type BotSaveDiagnostic = {
+  phase?: string;
+  ok?: boolean;
+  debugCode?: string;
+  message?: string;
+  receivedBytes?: number;
+  totalCookies?: number;
+  detectedUserId?: string | null;
+  errorDetails?: string | null;
+};
 
 const LEGACY_ERROR = /صفحة \/me|login page|\/me أعادت/i;
 const AUTH_ERROR_RE = /unauthorized|401|session|auth_required|auth_invalid|invalid token/i;
@@ -711,7 +720,7 @@ function BotAccountsPage() {
       }
       const diagnostics = (e as Error & { diagnostics?: BotSaveDiagnostic[] })?.diagnostics ?? [];
       const lastFailure = [...diagnostics].reverse().find((item) => item.ok === false);
-      toast.error(t.saveFailed, { description: lastFailure?.message || describeServerActionError(e, lang === "ar" ? "ar" : "en") });
+      toast.error(t.saveFailed, { description: [lastFailure?.message, lastFailure?.errorDetails].filter(Boolean).join(" — ") || describeServerActionError(e, lang === "ar" ? "ar" : "en") });
     } finally {
       setSubmitting(false);
     }
@@ -758,7 +767,7 @@ function BotAccountsPage() {
       }
       const diagnostics = (e as Error & { diagnostics?: BotSaveDiagnostic[] })?.diagnostics ?? [];
       const lastFailure = [...diagnostics].reverse().find((item) => item.ok === false);
-      toast.error(t.saveFailed, { description: lastFailure?.message || describeServerActionError(e, lang === "ar" ? "ar" : "en") });
+      toast.error(t.saveFailed, { description: [lastFailure?.message, lastFailure?.errorDetails].filter(Boolean).join(" — ") || describeServerActionError(e, lang === "ar" ? "ar" : "en") });
     } finally {
       setSubmitting(false);
     }
