@@ -1664,7 +1664,7 @@ function FacebookPage() {
         })()}
 
         {/* Quick-start strip — concise 3 steps */}
-        {!connection && (
+        {!connection && connectionMode === "token" && (
           <div className="rounded-2xl border border-border/50 bg-gradient-to-br from-primary/5 via-card to-[oklch(0.66_0.26_320)]/5 p-5 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" />
@@ -1699,7 +1699,7 @@ function FacebookPage() {
         {/* Required Scopes — standalone, prominent block. Gives the user
             ready-to-paste lists for Graph API Explorer's "Add a Permission"
             field, plus a one-per-line variant for manual entry. */}
-        {!connection && (
+        {!connection && connectionMode === "token" && (
           <div id="fb-step-configure" className="scroll-mt-24 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm transition-shadow">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div className="flex items-start gap-3">
@@ -1778,7 +1778,7 @@ function FacebookPage() {
         )}
 
         {/* Step-by-step guide — shown only when not connected */}
-        {!connection && (
+        {!connection && connectionMode === "token" && (
           <div className="overflow-hidden rounded-2xl border border-border/50 bg-card shadow-sm">
             <button
               onClick={() => setGuideOpen(!guideOpen)}
