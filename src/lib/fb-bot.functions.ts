@@ -2,10 +2,17 @@
 // All write paths are RLS-scoped to the calling user via requireSupabaseAuth.
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { createClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { buildPostToGroupsPayload } from "@/lib/fb-job-payload";
+import {
+  cookieValidationMessage,
+  earliestRequiredExpiry,
+  normalizeStoredCookies,
+  parseCookiesInputDetailed,
+  validateFacebookCookies,
+  type NormalizedCookie,
+} from "@/lib/fb-cookie-diagnostics";
 // NOTE: `@/server/crypto.server` is intentionally NOT imported at the top.
 // The TanStack Start server-fn transformer strips `.handler()` bodies from the
 // client bundle but keeps top-level imports. Importing a `*.server.ts` module
@@ -28,157 +35,8 @@ const credentialsSchema = z.object({
 });
 const addAccountSchema = z.union([cookiesSchema, credentialsSchema]);
 
-// Accepts: JSON array from extensions (EditThisCookie/Cookie-Editor), a single
-// JSON object with a `cookies` array, header-style "name=value; name2=value2",
-// or Netscape cookies.txt format. Returns a normalized array of cookie objects.
-type NormalizedCookie = {
-  name: string;
-  value: string;
-  domain?: string;
-  path?: string;
-  expirationDate?: number;
-};
-function parseCookiesInput(raw: string): NormalizedCookie[] | null {
-  const text = raw.trim();
-  if (!text) return null;
-
-  // 1) JSON
-  if (text.startsWith("[") || text.startsWith("{")) {
-    try {
-      const j = JSON.parse(text);
-      const arr = Array.isArray(j)
-        ? j
-        : Array.isArray((j as any)?.cookies)
-          ? (j as any).cookies
-          : null;
-      if (arr) {
-        const out: NormalizedCookie[] = [];
-        for (const c of arr) {
-          if (!c || typeof c !== "object") continue;
-          const name = (c.name ?? c.Name ?? c.key) as string | undefined;
-          const value = (c.value ?? c.Value) as string | undefined;
-          if (typeof name === "string" && typeof value === "string") {
-            const expRaw = (c as any).expirationDate ?? (c as any).expires ?? (c as any).expiry;
-            const expirationDate =
-              typeof expRaw === "number" && isFinite(expRaw) && expRaw > 0 ? expRaw : undefined;
-            out.push({ name, value, domain: c.domain, path: c.path, expirationDate });
-          }
-        }
-        if (out.length) return out;
-      }
-    } catch {
-      // fall through
-    }
-  }
-
-  // 2) Netscape cookies.txt (tab-separated, 7 fields)
-  if (text.includes("\t")) {
-    const out: NormalizedCookie[] = [];
-    for (const line of text.split(/\r?\n/)) {
-      if (!line || line.startsWith("#")) continue;
-      const parts = line.split("\t");
-      if (parts.length >= 7) {
-        const exp = Number(parts[4]);
-        out.push({
-          name: parts[5],
-          value: parts[6],
-          domain: parts[0],
-          path: parts[2],
-          expirationDate: isFinite(exp) && exp > 0 ? exp : undefined,
-        });
-      }
-    }
-    if (out.length) return out;
-  }
-
-  // 3) Header string: "name=value; name2=value2"
-  const out: NormalizedCookie[] = [];
-  for (const pair of text.split(/;\s*|\n+/)) {
-    const eq = pair.indexOf("=");
-    if (eq <= 0) continue;
-    const name = pair.slice(0, eq).trim();
-    const value = pair.slice(eq + 1).trim();
-    if (name) out.push({ name, value });
-  }
-  return out.length ? out : null;
-}
-
-function normalizeStoredCookies(payload: unknown): NormalizedCookie[] {
-  const candidate = Array.isArray(payload)
-    ? payload
-    : typeof payload === "string"
-      ? payload
-      : payload && typeof payload === "object"
-        ? (payload as { cookies?: unknown }).cookies
-        : null;
-
-  if (Array.isArray(candidate)) {
-    return candidate
-      .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
-      .map((c) => ({
-        name: String(c.name ?? c.Name ?? c.key ?? ""),
-        value: String(c.value ?? c.Value ?? ""),
-        domain: typeof c.domain === "string" ? c.domain : undefined,
-        path: typeof c.path === "string" ? c.path : undefined,
-        expirationDate: typeof c.expirationDate === "number" ? c.expirationDate : undefined,
-      }))
-      .filter((c) => c.name.length > 0);
-  }
-
-  if (typeof candidate === "string") return parseCookiesInput(candidate) ?? [];
-  return [];
-}
-
-// Cookies needed to treat a stored Facebook session as usable. `sb` helps
-// Facebook recognize the browser but should not block progress by itself.
-const CRITICAL_COOKIES = ["c_user", "xs", "fr", "datr"] as const;
-const RECOMMENDED_COOKIES = ["sb"] as const;
-const REQUIRED_COOKIES = [...CRITICAL_COOKIES, ...RECOMMENDED_COOKIES] as const;
-
-// Soonest expiry (Unix seconds) among the REQUIRED cookies. Skips session
-// cookies (no expirationDate). Returns null if none of the required cookies
-// have an expiry, which is treated as "unknown".
-function earliestRequiredExpiry(cookies: NormalizedCookie[]): number | null {
-  const required = new Set<string>(REQUIRED_COOKIES as readonly string[]);
-  let min: number | null = null;
-  for (const c of cookies) {
-    if (!required.has(c.name)) continue;
-    if (typeof c.expirationDate !== "number") continue;
-    if (min === null || c.expirationDate < min) min = c.expirationDate;
-  }
-  return min;
-}
-
-function validateFacebookCookies(cookies: NormalizedCookie[]) {
-  const byName = new Map(cookies.map((c) => [c.name, c.value]));
-  const present: string[] = [];
-  const missing: string[] = [];
-  const invalid: { name: string; reason: string }[] = [];
-
-  for (const name of REQUIRED_COOKIES) {
-    const v = byName.get(name);
-    if (!v || v.length === 0) {
-      missing.push(name);
-      continue;
-    }
-    present.push(name);
-    if (name === "c_user" && !/^\d{6,}$/.test(v)) {
-      invalid.push({ name, reason: "c_user يجب أن يحتوي على أرقام فقط (6 خانات أو أكثر)" });
-    }
-    if (name === "xs" && v.length < 10) {
-      invalid.push({ name, reason: "xs قصير جدًا — صدِّر الكوكيز من جلسة نشطة" });
-    }
-  }
-
-  const missingCritical = missing.filter((name) =>
-    (CRITICAL_COOKIES as readonly string[]).includes(name),
-  );
-  const missingRecommended = missing.filter((name) =>
-    (RECOMMENDED_COOKIES as readonly string[]).includes(name),
-  );
-
-  return { present, missing, missingCritical, missingRecommended, invalid };
-}
+// Cookie parsing/validation lives in fb-cookie-diagnostics so the UI and tests
+// use the same rules as the server save path.
 
 // ---------- addBotAccount ----------
 export const addBotAccount = createServerFn({ method: "POST" })
