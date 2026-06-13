@@ -1018,6 +1018,11 @@ function FacebookPage() {
     // (JSON / header / Netscape). If client diag flags missing cookies we show
     // a warning but still let the request go through so the server validates.
     const diag = diagnoseCookies(cookiePayload);
+    debugLog(
+      diag.ok ? "success" : "warn",
+      "cookies:frontend-validation",
+      `found=${diag.found}; missing=${diag.missing.join(",") || "none"}; bytes=${cookiePayload.length}`,
+    );
     if (!diag.ok) {
       toast.warning(
         lang === "ar" ? "تحذير: قد تكون الكوكيز ناقصة" : "Warning: cookies may be incomplete",
@@ -1033,16 +1038,32 @@ function FacebookPage() {
     setSavingCookieAccount(true);
     try {
       const displayName = cookieName.trim() || (lang === "ar" ? "حساب فيسبوك Cookies" : "Facebook Cookies account");
+      debugLog("info", "cookies:send-to-server", `displayName=${displayName}; bytes=${cookiePayload.length}`);
       const raw = await addBotAccountFn({
         data: { method: "cookies", displayName, cookies: cookiePayload },
       });
       const account = normalizeBotAccountPayload(raw);
+      const saveDto = unwrapServerPayload(raw) as { diagnostics?: BotSaveDiagnostic[] } | null;
+      if (Array.isArray(saveDto?.diagnostics)) {
+        for (const item of saveDto.diagnostics) {
+          debugLog(
+            item.ok === false ? "error" : "success",
+            `server:${item.phase ?? "unknown"}:${item.debugCode ?? "UNKNOWN"}`,
+            [
+              item.message,
+              typeof item.totalCookies === "number" ? `cookies=${item.totalCookies}` : null,
+              item.detectedUserId ? `c_user=${item.detectedUserId}` : null,
+              item.accountName ? `account=${item.accountName}` : null,
+            ].filter(Boolean).join("; "),
+          );
+        }
+      }
       if (!account?.id) {
         // Server returned without throwing but no row came back — treat as failure
         // so the user doesn't see a misleading "saved" toast.
         throw new Error(
           lang === "ar"
-            ? "لم يتم استلام الحساب من الخادم. لم يُحفظ شيء — أعد المحاولة."
+            ? "لم يرجع الخادم صف الحساب بعد الحفظ. راجع سجل التشخيص لمعرفة المرحلة الدقيقة."
             : "The server did not return the saved account. Nothing was stored — please retry.",
         );
       }
@@ -1064,9 +1085,19 @@ function FacebookPage() {
       toast.success(t.cookieSaved, { description: t.cookieSavedDesc });
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
-      const desc = lang === "ar"
-        ? "تأكد أن الكوكيز JSON صحيحة من Cookie-Editor، وأنك مسجّل دخول على facebook.com في نفس المتصفح."
-        : "Verify the JSON came from Cookie-Editor and that you're signed in to facebook.com in the same browser.";
+      const diagnostics = (err as Error & { diagnostics?: BotSaveDiagnostic[] })?.diagnostics ?? [];
+      diagnostics.forEach((item) => {
+        debugLog(
+          item.ok === false ? "error" : "success",
+          `server:${item.phase ?? "unknown"}:${item.debugCode ?? "UNKNOWN"}`,
+          item.message,
+        );
+      });
+      const lastFailure = [...diagnostics].reverse().find((item) => item.ok === false);
+      const desc = lastFailure?.message || (lang === "ar"
+        ? "راجع سبب الفشل أعلاه؛ لم نعد نخفي الخطأ خلف رسالة عامة."
+        : "See the exact failure above; the generic save error is no longer used.");
+      debugLog("error", "cookies:save-failed", `${raw}; ${desc}`);
       toast.error(raw || (lang === "ar" ? "فشل حفظ الكوكيز" : "Failed to save cookies"), {
         description: desc,
         duration: 9000,
