@@ -1677,19 +1677,190 @@ function FacebookPage() {
                     {t.openCookieEditor}
                   </button>
                 </div>
+                {/* Fallback: always show full URLs as plain text + Copy. If the
+                    iframe blocks popups, the user can copy and paste manually. */}
+                <div className="space-y-1.5 rounded-lg border border-dashed border-border/60 bg-muted/20 p-2.5 text-[11px]">
+                  <p className="font-semibold text-foreground">
+                    {lang === "ar" ? "لو ما اشتغلش زر الفتح، استخدم الروابط:" : "If the open button is blocked, use these links:"}
+                  </p>
+                  {[
+                    { label: lang === "ar" ? "Cookie-Editor (Chrome)" : "Cookie-Editor (Chrome)", url: "https://chromewebstore.google.com/detail/cookie-editor/ookdjilphngeeeghgngjabigmpepanpl" },
+                    { label: lang === "ar" ? "Cookie-Editor (Firefox)" : "Cookie-Editor (Firefox)", url: "https://addons.mozilla.org/en-US/firefox/addon/cookie-editor/" },
+                    { label: "facebook.com", url: "https://www.facebook.com/" },
+                  ].map((row) => (
+                    <div key={row.url} className="flex items-center gap-1.5">
+                      <span className="w-32 shrink-0 text-muted-foreground">{row.label}</span>
+                      <a
+                        href={row.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        dir="ltr"
+                        className="min-w-0 flex-1 truncate font-mono text-primary hover:underline"
+                      >
+                        {row.url}
+                      </a>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(row.url);
+                            toast.success(lang === "ar" ? "تم النسخ" : "Copied");
+                          } catch {
+                            toast.error(lang === "ar" ? "فشل النسخ" : "Copy failed");
+                          }
+                        }}
+                        className="rounded-md p-1 text-muted-foreground hover:bg-card hover:text-foreground"
+                        aria-label="Copy"
+                      >
+                        <Copy className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className="rounded-xl border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
                 <p className="font-semibold text-foreground">{t.botCookiesTitle}</p>
                 <p className="mt-2 text-xs leading-relaxed">{t.botCookiesDesc}</p>
                 <ol className="mt-3 list-inside list-decimal space-y-1.5 text-xs leading-relaxed">
-                  <li>{lang === "ar" ? "افتح facebook.com وأنت مسجل دخول." : "Open facebook.com while signed in."}</li>
-                  <li>{lang === "ar" ? "من Cookie Editor اختر Export as JSON." : "From Cookie Editor choose Export as JSON."}</li>
-                  <li>{lang === "ar" ? "الصق الناتج هنا واحفظ الحساب." : "Paste the result here and save."}</li>
+                  <li>{lang === "ar" ? "افتح facebook.com وسجّل الدخول في نفس المتصفح." : "Open facebook.com and sign in (same browser)."}</li>
+                  <li>{lang === "ar" ? "ثبّت Cookie-Editor من الرابط أعلاه." : "Install Cookie-Editor from the link above."}</li>
+                  <li>{lang === "ar" ? "افتح facebook.com ثم افتح إضافة Cookie-Editor." : "On facebook.com, open the Cookie-Editor extension."}</li>
+                  <li>{lang === "ar" ? "اضغط Export ← JSON." : "Click Export → JSON."}</li>
+                  <li>{lang === "ar" ? "الصق الناتج هنا واضغط حفظ." : "Paste here and press Save."}</li>
                 </ol>
+                <p className="mt-3 rounded-md bg-card p-2 text-[11px] leading-relaxed text-foreground/80 ring-1 ring-border">
+                  {lang === "ar"
+                    ? "الكوكيز الضرورية: c_user, xs, fr, datr. لو ناقصة سيرفض الحفظ."
+                    : "Required cookies: c_user, xs, fr, datr. Save will fail if any are missing."}
+                </p>
               </div>
             </div>
           )}
         </div>
+        )}
+
+        {!connection && connectionMode === "credentials" && (
+          <div className="scroll-mt-24 rounded-2xl border border-red-500/20 bg-gradient-to-br from-red-500/5 via-card to-card p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-500/10 text-red-600 dark:text-red-400">
+                  <Mail className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-foreground">
+                    {lang === "ar" ? "ربط بالإيميل وكلمة المرور" : "Email & password sign-in"}
+                  </h2>
+                  <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                    {lang === "ar"
+                      ? "نسجّل الدخول بحسابك على فيسبوك عبر متصفح آلي. الطريقة الأبسط لكن فيسبوك قد يطلب رمز تحقّق أو يحظر الحساب."
+                      : "We sign in to Facebook via an automated browser. Simplest method but Facebook may challenge or block the account."}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 rounded-xl border border-amber-400/40 bg-amber-50/60 p-3 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+              <p className="font-semibold">
+                {lang === "ar" ? "تحذير قبل الاستخدام" : "Read before using"}
+              </p>
+              <ul className="mt-1.5 list-inside list-disc space-y-0.5 leading-relaxed">
+                <li>{lang === "ar" ? "استخدم حساباً ثانوياً، ليس حسابك الشخصي الرئيسي." : "Use a secondary account, not your personal one."}</li>
+                <li>{lang === "ar" ? "لو فعّلت 2FA، أضف مفتاح TOTP (Base32) لتفادي الفشل." : "If 2FA is on, add the TOTP secret (Base32) to avoid failures."}</li>
+                <li>{lang === "ar" ? "كلمة المرور تُحفظ مشفّرة في قاعدة بياناتك المحمية." : "Password is stored encrypted in your RLS-protected database."}</li>
+              </ul>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                  {lang === "ar" ? "اسم الحساب (للعرض)" : "Account label (display)"}
+                </label>
+                <input
+                  value={credName}
+                  onChange={(e) => setCredName(e.target.value)}
+                  placeholder={lang === "ar" ? "مثال: حساب البوت 1" : "e.g. Bot account 1"}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                  {lang === "ar" ? "البريد الإلكتروني أو رقم الهاتف" : "Email or phone"}
+                </label>
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={credEmail}
+                    onChange={(e) => setCredEmail(e.target.value)}
+                    type="text"
+                    autoComplete="off"
+                    dir="ltr"
+                    placeholder="name@example.com"
+                    className="w-full rounded-xl border border-border bg-background ps-9 pe-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                  {lang === "ar" ? "كلمة المرور" : "Password"}
+                </label>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={credPassword}
+                    onChange={(e) => setCredPassword(e.target.value)}
+                    type={credShowPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    dir="ltr"
+                    placeholder="••••••••"
+                    className="w-full rounded-xl border border-border bg-background ps-9 pe-10 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCredShowPassword((v) => !v)}
+                    className="absolute end-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    aria-label={credShowPassword ? "Hide" : "Show"}
+                  >
+                    {credShowPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                  {lang === "ar" ? "مفتاح 2FA (اختياري — Base32)" : "2FA secret (optional — Base32)"}
+                </label>
+                <input
+                  value={credTwoFA}
+                  onChange={(e) => setCredTwoFA(e.target.value)}
+                  type="text"
+                  dir="ltr"
+                  placeholder="JBSWY3DPEHPK3PXP"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 font-mono text-xs focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {lang === "ar"
+                    ? "إذا فعّلت Two-Factor، أضف المفتاح السرّي من إعدادات Authenticator."
+                    : "If you enabled Two-Factor, paste the secret shown in your Authenticator setup."}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSaveCredentialsAccount}
+                disabled={savingCredAccount || !credEmail.trim() || !credPassword}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingCredAccount ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                {savingCredAccount
+                  ? lang === "ar" ? "جاري الحفظ..." : "Saving..."
+                  : lang === "ar" ? "حفظ حساب البوت" : "Save bot account"}
+              </button>
+              <Link to="/dashboard/facebook/bot">
+                <button className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground hover:bg-accent">
+                  <Cookie className="h-4 w-4" />
+                  {t.openBotCookies}
+                </button>
+              </Link>
+            </div>
+          </div>
         )}
 
         {appRateLimitMessage && !rateLimitDismissed && (
