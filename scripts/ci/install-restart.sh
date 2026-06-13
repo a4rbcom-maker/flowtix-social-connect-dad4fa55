@@ -800,59 +800,6 @@ esac
 publish_good_snapshot || echo "::warning::publish_good_snapshot exited unexpectedly after app became healthy. Deployment remains successful because runtime validation already passed."
 echo "✓ Health gate passed — new build is live for all clients."
 
-# === Flowtix VPS worker (systemd) auto-install / auto-update ===
-# Installs or refreshes the background Facebook automation worker that ships
-# in vps-worker/. Idempotent: safe to run on every deploy. Non-fatal: a
-# worker failure must never block a successful web deploy.
-{
-  WORKER_DIR="${DEPLOY_PATH}/vps-worker"
-  WORKER_UNIT="/etc/systemd/system/flowtix-worker.service"
-  WORKER_LOG="/var/log/flowtix-worker.log"
 
-  if [ ! -f "${WORKER_DIR}/worker.js" ] || [ ! -f "${WORKER_DIR}/flowtix-worker.service" ]; then
-    echo "  (info) vps-worker/ not present in this bundle — skipping worker install."
-  elif ! command -v systemctl >/dev/null 2>&1; then
-    echo "  (info) systemctl not available — skipping worker install."
-  else
-    echo "→ Installing/refreshing flowtix-worker systemd service (${WORKER_DIR})…"
 
-    # Install worker deps (production only). Non-fatal.
-    if [ -f "${WORKER_DIR}/package.json" ]; then
-      (cd "${WORKER_DIR}" && npm install --omit=dev --no-audit --no-fund --silent) \
-        || echo "::warning::worker npm install failed — service may not start"
-    fi
-
-    # Ensure log file exists and is writable.
-    touch "${WORKER_LOG}" 2>/dev/null || true
-    chmod 644 "${WORKER_LOG}" 2>/dev/null || true
-
-    # Render unit from template (substitute the real WorkingDirectory path).
-    NEW_UNIT="$(sed "s|__WORKER_DIR__|${WORKER_DIR}|g" "${WORKER_DIR}/flowtix-worker.service")"
-
-    # Only rewrite + reload if the unit changed (avoids needless restarts).
-    if [ ! -f "${WORKER_UNIT}" ] || ! printf '%s' "${NEW_UNIT}" | diff -q - "${WORKER_UNIT}" >/dev/null 2>&1; then
-      printf '%s' "${NEW_UNIT}" > "${WORKER_UNIT}"
-      systemctl daemon-reload || true
-      systemctl enable flowtix-worker >/dev/null 2>&1 || true
-      echo "  ✓ unit written and reloaded"
-    else
-      echo "  ✓ unit unchanged"
-    fi
-
-    # Restart so the worker picks up new worker.js / deps on every deploy.
-    if systemctl restart flowtix-worker; then
-      sleep 2
-      if systemctl is-active --quiet flowtix-worker; then
-        echo "  ✓ flowtix-worker is active"
-      else
-        echo "::warning::flowtix-worker failed to stay active after restart"
-        systemctl status flowtix-worker --no-pager || true
-        tail -n 30 "${WORKER_LOG}" 2>/dev/null || true
-      fi
-    else
-      echo "::warning::flowtix-worker restart returned non-zero"
-      systemctl status flowtix-worker --no-pager || true
-    fi
-  fi
-} || true
 
