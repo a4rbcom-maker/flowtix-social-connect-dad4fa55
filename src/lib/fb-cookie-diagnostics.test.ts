@@ -57,6 +57,8 @@ describe("Facebook cookie diagnostics", () => {
     const validation = validateFacebookCookies(parsed.cookies);
     expect(validation.missingCritical).toEqual(["c_user", "xs", "fr", "datr"]);
     expect(cookieValidationMessage(validation)).toContain("لا توجد Session صالحة");
+  });
+
 
   it("accepts the real user-uploaded Cookie-Editor export", async () => {
     const fs = await import("node:fs/promises");
