@@ -43,6 +43,8 @@ import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
 import { supabase } from "@/integrations/supabase/client";
 import { NotificationsBell } from "@/components/dashboard/NotificationsBell";
+import { AnnouncementsBell } from "@/components/dashboard/AnnouncementsBell";
+import { AnnouncementModal } from "@/components/dashboard/AnnouncementModal";
 import { ChannelStatusDot } from "@/components/dashboard/ChannelStatusDot";
 import { ChannelQuickActions } from "@/components/dashboard/ChannelQuickActions";
 import { useChannelStatus } from "@/hooks/useChannelStatus";
@@ -97,7 +99,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     ? { overview: "نظرة عامة", control: "لوحة التحكم", facebook: "فيسبوك", fbConnect: "ربط حساب فيسبوك", fbGroups: "جروباتي المرتبطة", whatsapp: "واتساب", waInbox: "الدردشة", waAccounts: "حساباتي", waBot: "البوت (ردود الكلمات)", waAgent: "وكيل الذكاء الاصطناعي", waSettings: "إعدادات واتساب", bulk: "إرسال جماعي", activity: "سجل النشاط", settings: "الملف الشخصي", logout: "تسجيل الخروج", sectionMain: "الرئيسية", sectionChannels: "القنوات", sectionInsights: "التحليلات" }
     : { overview: "Overview", control: "Control Panel", facebook: "Facebook", fbConnect: "Connect Facebook Account", fbGroups: "My Linked Groups", whatsapp: "WhatsApp", waInbox: "Chats", waAccounts: "My Accounts", waBot: "Bot (Keyword Replies)", waAgent: "AI Agent", waSettings: "WhatsApp Settings", bulk: "Bulk Send", activity: "Activity", settings: "Profile", logout: "Sign Out", sectionMain: "Main", sectionChannels: "Channels", sectionInsights: "Insights" };
 
-  type LeafItem = { kind: "leaf"; icon: typeof LayoutDashboard; label: string; to: "/dashboard" | "/dashboard/control" | "/dashboard/facebook" | "/dashboard/facebook/groups" | "/dashboard/facebook/insights" | "/dashboard/facebook/messages" | "/dashboard/facebook/bot" | "/dashboard/facebook/jobs" | "/dashboard/facebook/history" | "/dashboard/facebook/campaigns" | "/dashboard/facebook/templates" | "/dashboard/facebook/media" | "/dashboard/facebook/autoreply" | "/dashboard/whatsapp" | "/dashboard/whatsapp/inbox" | "/dashboard/whatsapp/accounts" | "/dashboard/whatsapp/bot" | "/dashboard/whatsapp/automation" | "/dashboard/whatsapp/settings" | "/dashboard/whatsapp/contacts" | "/dashboard/bulk" | "/dashboard/enrich" | "/dashboard/activity" | "/dashboard/profile"; search?: Record<string, string> };
+  type LeafItem = { kind: "leaf"; icon: typeof LayoutDashboard; label: string; to: "/dashboard" | "/dashboard/control" | "/dashboard/facebook" | "/dashboard/facebook/groups" | "/dashboard/facebook/insights" | "/dashboard/facebook/messages" | "/dashboard/facebook/bot" | "/dashboard/facebook/jobs" | "/dashboard/facebook/history" | "/dashboard/facebook/campaigns" | "/dashboard/facebook/templates" | "/dashboard/facebook/media" | "/dashboard/facebook/autoreply" | "/dashboard/whatsapp" | "/dashboard/whatsapp/inbox" | "/dashboard/whatsapp/accounts" | "/dashboard/whatsapp/bot" | "/dashboard/whatsapp/automation" | "/dashboard/whatsapp/settings" | "/dashboard/whatsapp/contacts" | "/dashboard/bulk" | "/dashboard/enrich" | "/dashboard/activity" | "/dashboard/profile" | "/dashboard/notifications"; search?: Record<string, string> };
   type SubheaderItem = { kind: "subheader"; label: string };
   type GroupChild = LeafItem | SubheaderItem;
   type GroupItem = { kind: "group"; key: string; icon: typeof LayoutDashboard; label: string; children: GroupChild[] };
@@ -165,6 +167,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
       title: labels.sectionInsights,
       items: [
         { kind: "leaf", icon: MapPin, label: lang === "ar" ? "إثراء العملاء" : "Lead enrichment", to: "/dashboard/enrich" },
+        { kind: "leaf", icon: Megaphone, label: lang === "ar" ? "مركز الإشعارات" : "Notifications", to: "/dashboard/notifications" },
         { kind: "leaf", icon: Activity, label: labels.activity, to: "/dashboard/activity" },
         { kind: "leaf", icon: Settings, label: labels.settings, to: "/dashboard/profile" },
       ],
@@ -566,6 +569,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
             <h1 className="text-base font-semibold text-foreground md:text-lg">{title}</h1>
           </div>
           <div className="flex items-center gap-2">
+            <AnnouncementsBell />
             <NotificationsBell />
             <button onClick={() => setLang(lang === "ar" ? "en" : "ar")} className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent">
               {lang === "ar" ? "EN" : "عربي"}
@@ -584,6 +588,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
 
         <div className="p-4 md:p-6">{children}</div>
       </main>
+      <AnnouncementModal />
     </div>
   );
 }
