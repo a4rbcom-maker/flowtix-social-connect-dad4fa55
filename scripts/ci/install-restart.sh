@@ -294,7 +294,7 @@ integrity_rollback() {
     echo "🧪 DRY-RUN — skipping rsync. Would have restored:"
     echo "   source : $src"
     echo "   target : $DEPLOY_PATH"
-    echo "   excludes: .env .user.ini .htaccess var/ .well-known/ .deploy/"
+    echo "   excludes: .env .user.ini .htaccess var/ .well-known/ .deploy/ vps-worker/"
     echo "INTEGRITY_ROLLBACK_RESULT=dry_run"
     echo "INTEGRITY_ROLLBACK_KIND=$kind"
     echo "INTEGRITY_ROLLBACK_SRC=$src"
@@ -307,6 +307,7 @@ integrity_rollback() {
     --exclude='var/' \
     --exclude='.well-known/' \
     --exclude='.deploy/' \
+    --exclude='vps-worker/' \
     "$src/" "$DEPLOY_PATH/"
   echo "✓ Snapshot restored to disk."
 
@@ -373,6 +374,7 @@ publish_good_snapshot() {
     --exclude='var/' \
     --exclude='.well-known/' \
     --exclude='.deploy/' \
+    --exclude='vps-worker/' \
     "$DEPLOY_PATH/" "$tmp/"
   if [ $? -ne 0 ]; then
     echo "::warning::Trusted snapshot rsync failed; deploy is live, but rollback snapshot was not updated."
