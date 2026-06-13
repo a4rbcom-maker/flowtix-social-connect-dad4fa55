@@ -1627,513 +1627,117 @@ function FacebookPage() {
     <DashboardLayout title={t.title}>
       <div className="mx-auto max-w-5xl space-y-6">
         {!connection && (
-          <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
-            <div className="mb-4">
-              <h2 className="text-lg font-bold text-foreground">{t.modeTitle}</h2>
-              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-                {t.modeSubtitle}
-              </p>
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              <button
-                type="button"
-                onClick={() => setConnectionMode("cookies")}
-                className={`rounded-xl border p-4 text-start transition-all ${
-                  connectionMode === "cookies"
-                    ? "border-primary/50 bg-primary/5 ring-2 ring-primary/20"
-                    : "border-border bg-muted/20 hover:bg-muted/40"
-                }`}
-              >
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary">
-                    <Cookie className="h-5 w-5" />
-                  </span>
-                  <span className="rounded-full bg-green-500/10 px-2.5 py-1 text-[11px] font-semibold text-green-700 ring-1 ring-green-500/20 dark:text-green-300">
-                    {t.recommended}
-                  </span>
-                </div>
-                <h3 className="text-base font-bold text-foreground">{t.cookiesModeTitle}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{t.cookiesModeDesc}</p>
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  {lang === "ar" ? "صعوبة: سهل · مدة الصلاحية: أسابيع" : "Difficulty: easy · Lifetime: weeks"}
-                </p>
-              </button>
-              <button
-                type="button"
-                onClick={() => setConnectionMode("token")}
-                className={`rounded-xl border p-4 text-start transition-all ${
-                  connectionMode === "token"
-                    ? "border-primary/50 bg-primary/5 ring-2 ring-primary/20"
-                    : "border-border bg-muted/20 hover:bg-muted/40"
-                }`}
-              >
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary">
-                    <KeyRound className="h-5 w-5" />
-                  </span>
-                  <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-500/20 dark:text-amber-300">
-                    {t.advanced}
-                  </span>
-                </div>
-                <h3 className="text-base font-bold text-foreground">{t.tokenModeTitle}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{t.tokenModeDesc}</p>
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  {lang === "ar" ? "صعوبة: متوسط · مدة الصلاحية: ~60 يوم" : "Difficulty: medium · Lifetime: ~60 days"}
-                </p>
-              </button>
-              <button
-                type="button"
-                onClick={() => setConnectionMode("credentials")}
-                className={`rounded-xl border p-4 text-start transition-all ${
-                  connectionMode === "credentials"
-                    ? "border-primary/50 bg-primary/5 ring-2 ring-primary/20"
-                    : "border-border bg-muted/20 hover:bg-muted/40"
-                }`}
-              >
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary">
-                    <Mail className="h-5 w-5" />
-                  </span>
-                  <span className="rounded-full bg-red-500/10 px-2.5 py-1 text-[11px] font-semibold text-red-700 ring-1 ring-red-500/20 dark:text-red-300">
-                    {lang === "ar" ? "تجريبي" : "Experimental"}
-                  </span>
-                </div>
-                <h3 className="text-base font-bold text-foreground">
-                  {lang === "ar" ? "إيميل وكلمة مرور" : "Email & password"}
-                </h3>
-                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                  {lang === "ar"
-                    ? "أبسط بصرياً: نسجّل الدخول نيابة عنك. فيسبوك قد يطلب تأكيداً ويحظر الحساب."
-                    : "Simplest UI: we sign in on your behalf. Facebook may challenge or block the account."}
-                </p>
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  {lang === "ar" ? "صعوبة: الأسهل · موثوقية: منخفضة" : "Difficulty: easiest · Reliability: low"}
-                </p>
-              </button>
-            </div>
-          </div>
-        )}
-
-
-
-        {!connection && connectionMode === "cookies" && (
-        <div id="fb-step-connect" className="scroll-mt-24 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm transition-shadow">
-
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
-                <Cookie className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-foreground">{t.fallbackTitle}</h2>
-                <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{t.fallbackDesc}</p>
-                {botAccounts.length > 0 && (
-                  <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2.5 py-1 text-xs font-semibold text-green-700 ring-1 ring-green-500/20 dark:text-green-300">
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    {t.savedBotAccounts(botAccounts.length)}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={(e) => openExternal(e, "https://www.facebook.com/")}
-                className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-accent"
-              >
-                <ExternalLink className="h-4 w-4" />
-                {t.openFacebook}
-              </button>
-              <Link to="/dashboard/facebook/bot">
-                <button className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:opacity-90">
-                  <Cookie className="h-4 w-4" />
-                  {t.openBotCookies}
-                </button>
-              </Link>
-            </div>
-          </div>
-
-          {botAccounts.length > 0 && (
-            <div className="mt-4 space-y-2 rounded-xl border border-border bg-card/50 p-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-foreground">
-                  {lang === "ar" ? "الحسابات المحفوظة" : "Saved accounts"}
-                </h3>
-                <Link to="/dashboard/facebook/bot" className="text-xs font-medium text-primary hover:underline">
-                  {lang === "ar" ? "إدارة كاملة ←" : "Full management →"}
-                </Link>
-              </div>
-              <ul className="space-y-2">
-                {botAccounts.map((acc) => {
-                  const statusColor =
-                    acc.status === "active"
-                      ? "bg-green-500/10 text-green-700 ring-green-500/20 dark:text-green-300"
-                      : acc.status === "invalid" || acc.status === "checkpoint"
-                        ? "bg-red-500/10 text-red-700 ring-red-500/20 dark:text-red-300"
-                        : "bg-amber-500/10 text-amber-700 ring-amber-500/20 dark:text-amber-300";
-                  const statusLabel =
-                    lang === "ar"
-                      ? acc.status === "active"
-                        ? "نشط"
-                        : acc.status === "invalid"
-                          ? "غير صالح"
-                          : acc.status === "checkpoint"
-                            ? "Checkpoint"
-                            : acc.status === "disabled"
-                              ? "معطّل"
-                              : "لم يُختبر"
-                      : acc.status;
-                  return (
-                    <li
-                      key={acc.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-background px-3 py-2"
-                    >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                          <Cookie className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-foreground">{acc.display_name}</div>
-                          <div className="truncate text-[11px] text-muted-foreground">
-                            {acc.auth_method === "cookies"
-                              ? lang === "ar" ? "Cookies" : "Cookies"
-                              : lang === "ar" ? "بريد + كلمة مرور" : "Email + password"}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${statusColor}`}>
-                          {statusLabel}
-                        </span>
-                        <button
-                          type="button"
-                          disabled={deletingBotId === acc.id}
-                          onClick={async () => {
-                            if (!confirm(lang === "ar" ? `حذف الحساب "${acc.display_name}"؟` : `Delete "${acc.display_name}"?`)) return;
-                            setDeletingBotId(acc.id);
-                            try {
-                              await deleteBotAccountFn({ data: { id: acc.id } });
-                              setBotAccounts((prev) => prev.filter((a) => a.id !== acc.id));
-                              toast.success(lang === "ar" ? "تم حذف الحساب" : "Account deleted");
-                            } catch (e) {
-                              toast.error(e instanceof Error ? e.message : (lang === "ar" ? "فشل الحذف" : "Delete failed"));
-                            } finally {
-                              setDeletingBotId(null);
-                            }
-                          }}
-                          className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-50"
-                          aria-label={lang === "ar" ? "حذف" : "Delete"}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-
-          {!connection && (
-            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-              <div className="space-y-3">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-foreground">
-                    {t.cookieNameLabel}
-                  </label>
-                  <input
-                    value={cookieName}
-                    onChange={(e) => setCookieName(e.target.value)}
-                    placeholder={t.cookieNamePh}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-foreground">
-                    {t.cookieJsonLabel}
-                  </label>
-                  <textarea
-                    value={cookiePayload}
-                    onChange={(e) => setCookiePayload(e.target.value)}
-                    placeholder={t.cookieJsonPh}
-                    rows={4}
-                    dir="ltr"
-                    className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 font-mono text-xs text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSaveCookieAccount}
-                    disabled={savingCookieAccount || !cookiePayload.trim()}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {savingCookieAccount ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Cookie className="h-4 w-4" />
-                    )}
-                    {savingCookieAccount ? t.savingCookieAccount : t.saveCookieAccount}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) =>
-                      openExternal(
-                        e,
-                        "https://chromewebstore.google.com/detail/cookie-editor/ookdjilphngeeeghgngjabigmpepanpl",
-                      )
-                    }
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground hover:bg-accent"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    {t.openCookieEditor}
-                  </button>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/25 p-3">
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setDebugMode((v) => !v)}
-                      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                        debugMode
-                          ? "border-primary/50 bg-primary/10 text-primary"
-                          : "border-border bg-card text-muted-foreground hover:bg-accent"
-                      }`}
-                    >
-                      <FlaskConical className="h-3.5 w-3.5" />
-                      {lang === "ar" ? "سجل تشخيص ربط الكوكيز" : "Cookie link diagnostics"}
-                    </button>
-                    <div className="flex gap-1">
-                      <button
-                        type="button"
-                        onClick={copyDebug}
-                        disabled={debugLogs.length === 0}
-                        className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-[11px] hover:bg-accent disabled:opacity-50"
-                      >
-                        <Copy className="h-3 w-3" />
-                        {lang === "ar" ? "نسخ" : "Copy"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={clearDebug}
-                        disabled={debugLogs.length === 0}
-                        className="rounded-md border border-border bg-card px-2 py-1 text-[11px] hover:bg-accent disabled:opacity-50"
-                      >
-                        {lang === "ar" ? "مسح" : "Clear"}
-                      </button>
-                    </div>
-                  </div>
-                  {debugMode && (
-                    <div className="max-h-44 overflow-y-auto rounded-lg bg-background p-2 font-mono text-[11px] leading-relaxed">
-                      {debugLogs.length === 0 ? (
-                        <p className="py-3 text-center text-muted-foreground">
-                          {lang === "ar"
-                            ? "سيظهر هنا عدد الكوكيز، نتيجة تحليل JSON، واستخراج c_user ونتيجة الحفظ."
-                            : "Cookie count, JSON parsing, c_user extraction, and save result will appear here."}
-                        </p>
-                      ) : (
-                        debugLogs.map((l) => (
-                          <div key={l.id} className="flex gap-2 border-b border-border/50 py-1 last:border-0">
-                            <span className="shrink-0 text-muted-foreground">{l.ts}</span>
-                            <span className="shrink-0 uppercase">{l.level}</span>
-                            <span className="break-all">
-                              <b>{l.step}</b>
-                              {l.detail && <span className="text-muted-foreground"> — {l.detail}</span>}
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-                {/* Fallback: always show full URLs as plain text + Copy. If the
-                    iframe blocks popups, the user can copy and paste manually. */}
-                <div className="space-y-1.5 rounded-lg border border-dashed border-border/60 bg-muted/20 p-2.5 text-[11px]">
-                  <p className="font-semibold text-foreground">
-                    {lang === "ar" ? "لو ما اشتغلش زر الفتح، استخدم الروابط:" : "If the open button is blocked, use these links:"}
-                  </p>
-                  {[
-                    { label: lang === "ar" ? "Cookie-Editor (Chrome)" : "Cookie-Editor (Chrome)", url: "https://chromewebstore.google.com/detail/cookie-editor/ookdjilphngeeeghgngjabigmpepanpl" },
-                    { label: lang === "ar" ? "Cookie-Editor (Firefox)" : "Cookie-Editor (Firefox)", url: "https://addons.mozilla.org/en-US/firefox/addon/cookie-editor/" },
-                    { label: "facebook.com", url: "https://www.facebook.com/" },
-                  ].map((row) => (
-                    <div key={row.url} className="flex items-center gap-1.5">
-                      <span className="w-32 shrink-0 text-muted-foreground">{row.label}</span>
-                      <a
-                        href={row.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        dir="ltr"
-                        className="min-w-0 flex-1 truncate font-mono text-primary hover:underline"
-                      >
-                        {row.url}
-                      </a>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(row.url);
-                            toast.success(lang === "ar" ? "تم النسخ" : "Copied");
-                          } catch {
-                            toast.error(lang === "ar" ? "فشل النسخ" : "Copy failed");
-                          }
-                        }}
-                        className="rounded-md p-1 text-muted-foreground hover:bg-card hover:text-foreground"
-                        aria-label="Copy"
-                      >
-                        <Copy className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="rounded-xl border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
-                <p className="font-semibold text-foreground">{t.botCookiesTitle}</p>
-                <p className="mt-2 text-xs leading-relaxed">{t.botCookiesDesc}</p>
-                <ol className="mt-3 list-inside list-decimal space-y-1.5 text-xs leading-relaxed">
-                  <li>{lang === "ar" ? "افتح facebook.com وسجّل الدخول في نفس المتصفح." : "Open facebook.com and sign in (same browser)."}</li>
-                  <li>{lang === "ar" ? "ثبّت Cookie-Editor من الرابط أعلاه." : "Install Cookie-Editor from the link above."}</li>
-                  <li>{lang === "ar" ? "افتح facebook.com ثم افتح إضافة Cookie-Editor." : "On facebook.com, open the Cookie-Editor extension."}</li>
-                  <li>{lang === "ar" ? "اضغط Export ← JSON." : "Click Export → JSON."}</li>
-                  <li>{lang === "ar" ? "الصق الناتج هنا واضغط حفظ." : "Paste here and press Save."}</li>
-                </ol>
-                <p className="mt-3 rounded-md bg-card p-2 text-[11px] leading-relaxed text-foreground/80 ring-1 ring-border">
-                  {lang === "ar"
-                    ? "الكوكيز الضرورية: c_user, xs, fr, datr. لو ناقصة سيرفض الحفظ."
-                    : "Required cookies: c_user, xs, fr, datr. Save will fail if any are missing."}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-        )}
-
-        {!connection && connectionMode === "credentials" && (
-          <div className="scroll-mt-24 rounded-2xl border border-red-500/20 bg-gradient-to-br from-red-500/5 via-card to-card p-5 shadow-sm">
+          <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-6 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-500/10 text-red-600 dark:text-red-400">
-                  <Mail className="h-5 w-5" />
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                  <Cookie className="h-5 w-5" />
                 </div>
-                <div>
+                <div className="max-w-2xl">
                   <h2 className="text-lg font-bold text-foreground">
-                    {lang === "ar" ? "ربط بالإيميل وكلمة المرور" : "Email & password sign-in"}
+                    {lang === "ar" ? "ربط حسابات فيسبوك" : "Link Facebook accounts"}
                   </h2>
-                  <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                     {lang === "ar"
-                      ? "نسجّل الدخول بحسابك على فيسبوك عبر متصفح آلي. الطريقة الأبسط لكن فيسبوك قد يطلب رمز تحقّق أو يحظر الحساب."
-                      : "We sign in to Facebook via an automated browser. Simplest method but Facebook may challenge or block the account."}
+                      ? "إدارة ربط حسابات فيسبوك (Cookies / Token / Credentials) والتشخيص الكامل أصبحت في صفحة واحدة: حسابات النشر التلقائي."
+                      : "All Facebook account linking (Cookies / Token / Credentials) and diagnostics now live in one place: Auto-posting accounts."}
                   </p>
+                  {botAccounts.length > 0 && (
+                    <span className="mt-3 inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2.5 py-1 text-xs font-semibold text-green-700 ring-1 ring-green-500/20 dark:text-green-300">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      {t.savedBotAccounts(botAccounts.length)}
+                    </span>
+                  )}
                 </div>
               </div>
-            </div>
-            <div className="mt-4 rounded-xl border border-amber-400/40 bg-amber-50/60 p-3 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
-              <p className="font-semibold">
-                {lang === "ar" ? "تحذير قبل الاستخدام" : "Read before using"}
-              </p>
-              <ul className="mt-1.5 list-inside list-disc space-y-0.5 leading-relaxed">
-                <li>{lang === "ar" ? "استخدم حساباً ثانوياً، ليس حسابك الشخصي الرئيسي." : "Use a secondary account, not your personal one."}</li>
-                <li>{lang === "ar" ? "لو فعّلت 2FA، أضف مفتاح TOTP (Base32) لتفادي الفشل." : "If 2FA is on, add the TOTP secret (Base32) to avoid failures."}</li>
-                <li>{lang === "ar" ? "كلمة المرور تُحفظ مشفّرة في قاعدة بياناتك المحمية." : "Password is stored encrypted in your RLS-protected database."}</li>
-              </ul>
-            </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-foreground">
-                  {lang === "ar" ? "اسم مميّز للحساب — اختياري" : "Nickname for this account — optional"}
-                </label>
-                <input
-                  value={credName}
-                  onChange={(e) => setCredName(e.target.value)}
-                  placeholder={lang === "ar" ? "مثال: بوت متجر الأحذية" : "e.g. Shoes-store bot"}
-                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
-                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                  {lang === "ar"
-                    ? "اسم داخلي بس عشان تميّز الحساب لو ربطت أكتر من حساب فيسبوك. لو سيبته فاضي هنستخدم الإيميل تلقائياً."
-                    : "Internal label to tell accounts apart if you link more than one. Leave empty to use the email."}
-                </p>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-foreground">
-                  {lang === "ar" ? "البريد الإلكتروني أو رقم الهاتف" : "Email or phone"}
-                </label>
-                <div className="relative">
-                  <Mail className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    value={credEmail}
-                    onChange={(e) => setCredEmail(e.target.value)}
-                    type="text"
-                    autoComplete="off"
-                    dir="ltr"
-                    placeholder="name@example.com"
-                    className="w-full rounded-xl border border-border bg-background ps-9 pe-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-foreground">
-                  {lang === "ar" ? "كلمة المرور" : "Password"}
-                </label>
-                <div className="relative">
-                  <Lock className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    value={credPassword}
-                    onChange={(e) => setCredPassword(e.target.value)}
-                    type={credShowPassword ? "text" : "password"}
-                    autoComplete="new-password"
-                    dir="ltr"
-                    placeholder="••••••••"
-                    className="w-full rounded-xl border border-border bg-background ps-9 pe-10 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setCredShowPassword((v) => !v)}
-                    className="absolute end-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-                    aria-label={credShowPassword ? "Hide" : "Show"}
-                  >
-                    {credShowPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-foreground">
-                  {lang === "ar" ? "مفتاح 2FA (اختياري — Base32)" : "2FA secret (optional — Base32)"}
-                </label>
-                <input
-                  value={credTwoFA}
-                  onChange={(e) => setCredTwoFA(e.target.value)}
-                  type="text"
-                  dir="ltr"
-                  placeholder="JBSWY3DPEHPK3PXP"
-                  className="w-full rounded-xl border border-border bg-background px-3 py-2 font-mono text-xs focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {lang === "ar"
-                    ? "إذا فعّلت Two-Factor، أضف المفتاح السرّي من إعدادات Authenticator."
-                    : "If you enabled Two-Factor, paste the secret shown in your Authenticator setup."}
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={handleSaveCredentialsAccount}
-                disabled={savingCredAccount || !credEmail.trim() || !credPassword}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {savingCredAccount ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                {savingCredAccount
-                  ? lang === "ar" ? "جاري الحفظ..." : "Saving..."
-                  : lang === "ar" ? "حفظ حساب البوت" : "Save bot account"}
-              </button>
               <Link to="/dashboard/facebook/bot">
-                <button className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground hover:bg-accent">
+                <button className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:opacity-90">
                   <Cookie className="h-4 w-4" />
                   {t.openBotCookies}
                 </button>
               </Link>
             </div>
+
+            {botAccounts.length > 0 && (
+              <div className="mt-5 space-y-2 rounded-xl border border-border bg-card/50 p-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">
+                    {lang === "ar" ? "الحسابات المحفوظة" : "Saved accounts"}
+                  </h3>
+                  <Link to="/dashboard/facebook/bot" className="text-xs font-medium text-primary hover:underline">
+                    {lang === "ar" ? "إدارة كاملة ←" : "Full management →"}
+                  </Link>
+                </div>
+                <ul className="space-y-2">
+                  {botAccounts.map((acc) => {
+                    const statusColor =
+                      acc.status === "active"
+                        ? "bg-green-500/10 text-green-700 ring-green-500/20 dark:text-green-300"
+                        : acc.status === "invalid" || acc.status === "checkpoint"
+                          ? "bg-red-500/10 text-red-700 ring-red-500/20 dark:text-red-300"
+                          : "bg-amber-500/10 text-amber-700 ring-amber-500/20 dark:text-amber-300";
+                    const statusLabel =
+                      lang === "ar"
+                        ? acc.status === "active"
+                          ? "نشط"
+                          : acc.status === "invalid"
+                            ? "غير صالح"
+                            : acc.status === "checkpoint"
+                              ? "Checkpoint"
+                              : acc.status === "disabled"
+                                ? "معطّل"
+                                : "لم يُختبر"
+                        : acc.status;
+                    return (
+                      <li
+                        key={acc.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-background px-3 py-2"
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                            <Cookie className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-foreground">{acc.display_name}</div>
+                            <div className="truncate text-[11px] text-muted-foreground">
+                              {acc.auth_method === "cookies"
+                                ? lang === "ar" ? "Cookies" : "Cookies"
+                                : lang === "ar" ? "بريد + كلمة مرور" : "Email + password"}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${statusColor}`}>
+                            {statusLabel}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={deletingBotId === acc.id}
+                            onClick={async () => {
+                              if (!confirm(lang === "ar" ? `حذف الحساب "${acc.display_name}"؟` : `Delete "${acc.display_name}"?`)) return;
+                              setDeletingBotId(acc.id);
+                              try {
+                                await deleteBotAccountFn({ data: { id: acc.id } });
+                                setBotAccounts((prev) => prev.filter((a) => a.id !== acc.id));
+                                toast.success(lang === "ar" ? "تم حذف الحساب" : "Account deleted");
+                              } catch (e) {
+                                toast.error(e instanceof Error ? e.message : (lang === "ar" ? "فشل الحذف" : "Delete failed"));
+                              } finally {
+                                setDeletingBotId(null);
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-50"
+                            aria-label={lang === "ar" ? "حذف" : "Delete"}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
           </div>
         )}
 
