@@ -924,6 +924,50 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_reads: {
+        Row: {
+          ack_at: string | null
+          announcement_id: string
+          created_at: string
+          delivered_at: string
+          id: string
+          opened_at: string | null
+          read_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ack_at?: string | null
+          announcement_id: string
+          created_at?: string
+          delivered_at?: string
+          id?: string
+          opened_at?: string | null
+          read_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ack_at?: string | null
+          announcement_id?: string
+          created_at?: string
+          delivered_at?: string
+          id?: string
+          opened_at?: string | null
+          read_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_reads_announcement_id_fkey"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "platform_announcements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       plans: {
         Row: {
           billing_period: string
@@ -995,11 +1039,17 @@ export type Database = {
           ends_at: string | null
           id: string
           level: string
+          notif_type: string
+          priority: string
+          require_ack: boolean
+          show_as_popup: boolean
           starts_at: string
           target_kind: string
           target_plan: string | null
           target_user_ids: string[] | null
           title: string
+          updated_at: string
+          updated_by: string | null
         }
         Insert: {
           body: string
@@ -1008,11 +1058,17 @@ export type Database = {
           ends_at?: string | null
           id?: string
           level?: string
+          notif_type?: string
+          priority?: string
+          require_ack?: boolean
+          show_as_popup?: boolean
           starts_at?: string
           target_kind?: string
           target_plan?: string | null
           target_user_ids?: string[] | null
           title: string
+          updated_at?: string
+          updated_by?: string | null
         }
         Update: {
           body?: string
@@ -1021,11 +1077,17 @@ export type Database = {
           ends_at?: string | null
           id?: string
           level?: string
+          notif_type?: string
+          priority?: string
+          require_ack?: boolean
+          show_as_popup?: boolean
           starts_at?: string
           target_kind?: string
           target_plan?: string | null
           target_user_ids?: string[] | null
           title?: string
+          updated_at?: string
+          updated_by?: string | null
         }
         Relationships: []
       }
@@ -1060,6 +1122,7 @@ export type Database = {
           full_name: string | null
           id: string
           plan: string | null
+          status: string
           updated_at: string
         }
         Insert: {
@@ -1068,6 +1131,7 @@ export type Database = {
           full_name?: string | null
           id: string
           plan?: string | null
+          status?: string
           updated_at?: string
         }
         Update: {
@@ -1076,6 +1140,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           plan?: string | null
+          status?: string
           updated_at?: string
         }
         Relationships: []
