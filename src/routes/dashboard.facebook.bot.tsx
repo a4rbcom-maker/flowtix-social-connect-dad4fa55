@@ -727,6 +727,8 @@ function BotAccountsPage() {
       return;
     }
     setSubmitting(true);
+    setSaveLogs([]);
+    appendSaveLog("info", "client:send-to-server", `method=${tab}; displayName=${form.displayName.trim()}; cookie_bytes=${form.cookies.length}`);
     try {
       const row =
         tab === "cookies"
@@ -746,6 +748,8 @@ function BotAccountsPage() {
                 twoFactorSecret: form.twoFactorSecret || null,
               },
             });
+      const dto = unwrapServerPayload(row) as { diagnostics?: unknown } | null;
+      if (Array.isArray(dto?.diagnostics)) appendServerDiagnostics(dto.diagnostics as BotSaveDiagnostic[]);
       const account = normalizeAccountPayload(row);
       if (account) {
         setAccounts((prev) => [account, ...prev.filter((a) => a.id !== account.id)]);
@@ -772,7 +776,9 @@ function BotAccountsPage() {
         return;
       }
       const diagnostics = (e as Error & { diagnostics?: BotSaveDiagnostic[] })?.diagnostics ?? [];
+      appendServerDiagnostics(diagnostics);
       const lastFailure = [...diagnostics].reverse().find((item) => item.ok === false);
+      appendSaveLog("error", "client:save-failed", [e instanceof Error ? e.message : String(e), lastFailure?.message, lastFailure?.errorDetails, lastFailure?.sqlError].filter(Boolean).join(" — "));
       toast.error(t.saveFailed, { description: [lastFailure?.message, lastFailure?.errorDetails].filter(Boolean).join(" — ") || describeServerActionError(e, lang === "ar" ? "ar" : "en") });
     } finally {
       setSubmitting(false);
@@ -789,6 +795,8 @@ function BotAccountsPage() {
       return;
     }
     setSubmitting(true);
+    setSaveLogs([]);
+    appendSaveLog("info", "client:send-to-server", `method=cookies; displayName=${form.displayName.trim()}; cookie_bytes=${form.cookies.length}`);
     try {
       const row = await addAccountFn({
         data: {
@@ -797,6 +805,8 @@ function BotAccountsPage() {
           cookies: form.cookies,
         },
       });
+      const dto = unwrapServerPayload(row) as { diagnostics?: unknown } | null;
+      if (Array.isArray(dto?.diagnostics)) appendServerDiagnostics(dto.diagnostics as BotSaveDiagnostic[]);
       const account = normalizeAccountPayload(row);
       if (account) {
         setAccounts((prev) => [account, ...prev.filter((a) => a.id !== account.id)]);
@@ -819,7 +829,9 @@ function BotAccountsPage() {
         return;
       }
       const diagnostics = (e as Error & { diagnostics?: BotSaveDiagnostic[] })?.diagnostics ?? [];
+      appendServerDiagnostics(diagnostics);
       const lastFailure = [...diagnostics].reverse().find((item) => item.ok === false);
+      appendSaveLog("error", "client:save-failed", [e instanceof Error ? e.message : String(e), lastFailure?.message, lastFailure?.errorDetails, lastFailure?.sqlError].filter(Boolean).join(" — "));
       toast.error(t.saveFailed, { description: [lastFailure?.message, lastFailure?.errorDetails].filter(Boolean).join(" — ") || describeServerActionError(e, lang === "ar" ? "ar" : "en") });
     } finally {
       setSubmitting(false);
