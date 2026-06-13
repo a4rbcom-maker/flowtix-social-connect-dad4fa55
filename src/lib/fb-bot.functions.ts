@@ -304,14 +304,24 @@ export const addBotAccount = createServerFn({ method: "POST" })
         phase: "database",
         ok: false,
         debugCode: "DB_EMPTY_RETURN",
+        step: "read_created_record",
         message: "تم تنفيذ طلب الحفظ لكن قاعدة البيانات لم تُرجع صف الحساب.",
       });
       return { ok: false, account: null, message: "تم تنفيذ طلب الحفظ لكن قاعدة البيانات لم تُرجع صف الحساب.", debugCode: "DB_EMPTY_RETURN", diagnostics };
     }
     addDiag(diagnostics, {
+      phase: "database",
+      ok: true,
+      debugCode: "DB_INSERT_OK",
+      step: "save_to_database",
+      message: `تم إنشاء سجل الحساب وربطه بالمستخدم الحالي. record_id=${row.id}.`,
+      accountName: row.display_name,
+    });
+    addDiag(diagnostics, {
       phase: "done",
       ok: true,
       debugCode: "ACCOUNT_SAVED",
+      step: "complete_save_flow",
       message: `تم حفظ الحساب بنجاح: ${row.display_name}.`,
       accountName: row.display_name,
     });
