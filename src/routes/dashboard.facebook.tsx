@@ -226,6 +226,7 @@ function FacebookPage() {
   const [botAccounts, setBotAccounts] = useState<BotAccountSummary[]>([]);
   const [cookieName, setCookieName] = useState("");
   const [cookiePayload, setCookiePayload] = useState("");
+  const [connectionMode, setConnectionMode] = useState<"cookies" | "token">("cookies");
   const [savingCookieAccount, setSavingCookieAccount] = useState(false);
   const [tokenExpiry, setTokenExpiry] = useState<{
     expiresAt: string | null;
@@ -462,30 +463,38 @@ function FacebookPage() {
     lang === "ar"
       ? {
           title: "ربط فيسبوك",
-          subtitle: "اربط حساب فيسبوك لتحميل جروباتك وصفحاتك تلقائياً",
+          subtitle: "اختر طريقة واحدة للربط ثم أكمل الخطوات الظاهرة فقط",
+          modeTitle: "اختر طريقة ربط فيسبوك",
+          modeSubtitle: "لو هدفك الربط غير الرسمي استخدم الكوكيز. التوكن الرسمي متقدم ومناسب لمن لديه Meta App وصلاحيات.",
+          cookiesModeTitle: "ربط غير رسمي بالكوكيز",
+          cookiesModeDesc: "الأسهل حالياً: انسخ Cookies JSON من حسابك المفتوح في المتصفح واحفظها هنا.",
+          tokenModeTitle: "ربط رسمي بالتوكن",
+          tokenModeDesc: "يحتاج Graph API Explorer وتطبيق Meta وصلاحيات؛ استخدمه فقط لو تعرف هذه الخطوات.",
+          recommended: "الأنسب الآن",
+          advanced: "متقدم",
           tokenLabel: "Access Token",
           tokenPlaceholder: "الصق توكن فيسبوك هنا...",
           tokenHelp: "احصل على التوكن من Graph API Explorer",
           getToken: "الحصول على توكن",
-          botCookiesTitle: "عايز إعداد البوت بالـ Cookies؟",
+          botCookiesTitle: "خطوات الربط غير الرسمي",
           botCookiesDesc:
-            "ده مكان مختلف عن Access Token. افتح صفحة حسابات البوت والصق Cookies JSON مباشرة.",
-          openBotCookies: "فتح إعداد Cookies للبوت",
-          fallbackTitle: "حل بديل عملي: ربط بالـ Cookies",
+            "استخدم نفس حساب فيسبوك المفتوح في المتصفح. بعد الحفظ يمكنك فتح حسابات النشر التلقائي لاختبار الكوكيز.",
+          openBotCookies: "حسابات النشر التلقائي",
+          fallbackTitle: "ربط فيسبوك بالكوكيز",
           fallbackDesc:
-            "لو توكن Meta لا يعمل معك، الصق Cookies JSON من المتصفح هنا وسيتم حفظ الحساب لاستخدامه في مهام البوت والـ VPS Worker.",
+            "لا تحتاج توكن هنا. افتح فيسبوك بحسابك، صدّر الكوكيز JSON من إضافة Cookie Editor، ثم الصقها واحفظ الحساب.",
           cookieNameLabel: "اسم الحساب",
           cookieNamePh: "مثال: حساب فيسبوك الرئيسي",
-          cookieJsonLabel: "Cookies JSON",
+          cookieJsonLabel: "كوكيز الحساب (JSON)",
           cookieJsonPh: '[{"name":"c_user","value":"..."}]',
-          saveCookieAccount: "حفظ ربط Cookies",
+          saveCookieAccount: "حفظ الحساب بالكوكيز",
           savingCookieAccount: "جاري الحفظ...",
           cookieRequired: "الصق Cookies JSON أولاً",
           cookieSaved: "تم حفظ ربط فيسبوك بالـ Cookies",
           cookieSavedDesc: "اذهب إلى حسابات البوت لاختبار الكوكيز وتشغيل مهام النشر.",
           savedBotAccounts: (n: number) => `حسابات Cookies محفوظة: ${n}`,
-          openFacebook: "فتح facebook.com",
-          openCookieEditor: "إضافة Cookie Editor",
+          openFacebook: "فتح فيسبوك",
+          openCookieEditor: "تحميل Cookie Editor",
           connect: "ربط الحساب",
           connecting: "جاري الربط...",
           disconnect: "إلغاء الربط",
@@ -589,30 +598,38 @@ function FacebookPage() {
         }
       : {
           title: "Facebook Connection",
-          subtitle: "Link your Facebook account to load your groups and pages",
+          subtitle: "Choose one connection method, then follow only the visible steps",
+          modeTitle: "Choose Facebook connection method",
+          modeSubtitle: "For unofficial linking, use Cookies. Official token linking is advanced and requires a Meta App with permissions.",
+          cookiesModeTitle: "Unofficial Cookies link",
+          cookiesModeDesc: "Easiest for now: export Cookies JSON from your signed-in browser and save it here.",
+          tokenModeTitle: "Official token link",
+          tokenModeDesc: "Requires Graph API Explorer, a Meta App, and permissions; use it only if you know that flow.",
+          recommended: "Recommended now",
+          advanced: "Advanced",
           tokenLabel: "Access Token",
           tokenPlaceholder: "Paste your Facebook token here...",
           tokenHelp: "Get a token from Graph API Explorer",
           getToken: "Get Token",
-          botCookiesTitle: "Need the Cookies bot setup?",
+          botCookiesTitle: "Unofficial link steps",
           botCookiesDesc:
-            "This is separate from Access Token. Open Bot accounts and paste the Cookies JSON directly.",
-          openBotCookies: "Open bot Cookies setup",
-          fallbackTitle: "Practical fallback: connect with Cookies",
+            "Use the same Facebook account currently open in your browser. After saving, open Auto-posting accounts to test the cookies.",
+          openBotCookies: "Auto-posting accounts",
+          fallbackTitle: "Connect Facebook with Cookies",
           fallbackDesc:
-            "If the Meta token flow keeps failing, paste Cookie Editor JSON here and we will save it for bot/VPS Worker jobs.",
+            "No token is needed here. Open Facebook, export Cookies JSON from Cookie Editor, paste it, then save the account.",
           cookieNameLabel: "Account name",
           cookieNamePh: "e.g. Main Facebook account",
-          cookieJsonLabel: "Cookies JSON",
+          cookieJsonLabel: "Account cookies (JSON)",
           cookieJsonPh: '[{"name":"c_user","value":"..."}]',
-          saveCookieAccount: "Save Cookies connection",
+          saveCookieAccount: "Save account with Cookies",
           savingCookieAccount: "Saving...",
           cookieRequired: "Paste Cookies JSON first",
           cookieSaved: "Facebook Cookies connection saved",
           cookieSavedDesc: "Open Bot accounts to test the cookies and run posting jobs.",
           savedBotAccounts: (n: number) => `${n} Cookies account${n === 1 ? "" : "s"} saved`,
-          openFacebook: "Open facebook.com",
-          openCookieEditor: "Cookie Editor extension",
+          openFacebook: "Open Facebook",
+          openCookieEditor: "Install Cookie Editor",
           connect: "Connect Account",
           connecting: "Connecting...",
           disconnect: "Disconnect",
@@ -1369,134 +1386,62 @@ function FacebookPage() {
   return (
     <DashboardLayout title={t.title}>
       <div className="mx-auto max-w-5xl space-y-6">
-        {/* Journey stepper — Connect → Configure → Test → Run */}
-        <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-foreground">
-                {lang === "ar" ? "رحلة إعداد فيسبوك" : "Facebook setup journey"}
-              </h3>
-              <p className="text-[12px] text-muted-foreground">
-                {lang === "ar" ? "تابع الخطوات بالترتيب — اضغط أي خطوة للانتقال إليها" : "Follow the steps in order — click any step to jump"}
+        {!connection && (
+          <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
+            <div className="mb-4">
+              <h2 className="text-lg font-bold text-foreground">{t.modeTitle}</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+                {t.modeSubtitle}
               </p>
             </div>
-            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
-              {journeySteps.steps.filter((s) => s.done).length}/{journeySteps.steps.length}
-            </span>
-          </div>
-          <ol className="flex flex-col gap-2 sm:flex-row sm:items-stretch sm:gap-0">
-            {journeySteps.steps.map((step, idx) => {
-              const isActive = idx === journeySteps.activeIdx;
-              const isDone = step.done;
-              return (
-                <li key={step.key} className="flex flex-1 items-stretch">
-                  <button
-                    type="button"
-                    onClick={() => goToStep(step.anchor, step.action)}
-                    className={`group relative flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-start transition-all ${
-                      isDone
-                        ? "border-green-500/30 bg-green-500/5 hover:bg-green-500/10"
-                        : isActive
-                          ? "border-primary/40 bg-primary/5 ring-1 ring-primary/20 hover:bg-primary/10"
-                          : "border-border/60 bg-muted/30 hover:bg-muted/60"
-                    }`}
-                  >
-                    <span
-                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-bold ${
-                        isDone
-                          ? "bg-green-500 text-white"
-                          : isActive
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      {isDone ? <CheckCircle2 className="h-4 w-4" /> : idx + 1}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-semibold text-foreground">{step.title}</span>
-                      <span className="block truncate text-[11px] text-muted-foreground">{step.desc}</span>
-                    </span>
-                  </button>
-                  {idx < journeySteps.steps.length - 1 && (
-                    <span className="hidden w-3 shrink-0 items-center justify-center text-muted-foreground/40 sm:flex">
-                      <ChevronDown className="h-4 w-4 -rotate-90 rtl:rotate-90" />
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-
-          {/* Active-step explainer: short description + examples + what's next */}
-          {(() => {
-            const active = journeySteps.steps[journeySteps.activeIdx];
-            if (!active) return null;
-            return (
-              <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
-                <div className="flex items-start gap-3">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-[12px] font-bold text-primary-foreground">
-                    {journeySteps.activeIdx + 1}
+            <div className="grid gap-3 md:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setConnectionMode("cookies")}
+                className={`rounded-xl border p-4 text-start transition-all ${
+                  connectionMode === "cookies"
+                    ? "border-primary/50 bg-primary/5 ring-2 ring-primary/20"
+                    : "border-border bg-muted/20 hover:bg-muted/40"
+                }`}
+              >
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                    <Cookie className="h-5 w-5" />
                   </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2">
-                      <h4 className="text-[14px] font-bold text-foreground">{active.title}</h4>
-                      <span className="text-[11.5px] text-muted-foreground">— {active.desc}</span>
-                    </div>
-                    <p className="mt-1.5 text-[12.5px] leading-relaxed text-foreground/80">{active.intro}</p>
-                    <div className="mt-3">
-                      <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground/80">
-                        {lang === "ar" ? "أمثلة على ما سيحدث" : "Examples of what happens"}
-                      </div>
-                      <ul className="space-y-1">
-                        {active.examples.map((ex, i) => (
-                          <li key={i} className="flex items-start gap-2 text-[12px] text-foreground/80">
-                            <CheckCircle2 className="mt-[2px] h-3.5 w-3.5 shrink-0 text-primary/70" />
-                            <span>{ex}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {/* Live demo preview — mock data only, no real action */}
-                    <div className="mt-3 rounded-lg border border-dashed border-primary/30 bg-background/70 p-3">
-                      <div className="mb-2 flex items-center justify-between">
-                        <div className="text-[10.5px] font-semibold uppercase tracking-wider text-primary/80">
-                          {lang === "ar" ? "مثال حي (بيانات تجريبية)" : "Live demo (sample data)"}
-                        </div>
-                        <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
-                          {lang === "ar" ? "تجريبي — لن يُنفّذ شيء" : "Demo — nothing executes"}
-                        </span>
-                      </div>
-                      <DemoPreview stepKey={active.key} lang={lang} />
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-primary/15 pt-2.5">
-                      <span className="text-[11.5px] text-muted-foreground">
-                        <span className="font-semibold text-foreground/80">{lang === "ar" ? "التالي: " : "Next: "}</span>
-                        {active.next}
-                      </span>
-                      {journeySteps.activeIdx < journeySteps.steps.length - 1 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const nxt = journeySteps.steps[journeySteps.activeIdx + 1];
-                            if (nxt) goToStep(nxt.anchor, nxt.action);
-                          }}
-                          className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-[11.5px] font-semibold text-primary-foreground hover:bg-primary/90"
-                        >
-                          {lang === "ar" ? "انتقل للخطوة التالية" : "Go to next step"}
-                          <ChevronDown className="h-3.5 w-3.5 -rotate-90 rtl:rotate-90" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                  <span className="rounded-full bg-green-500/10 px-2.5 py-1 text-[11px] font-semibold text-green-700 ring-1 ring-green-500/20 dark:text-green-300">
+                    {t.recommended}
+                  </span>
                 </div>
-              </div>
-            );
-          })()}
-        </div>
+                <h3 className="text-base font-bold text-foreground">{t.cookiesModeTitle}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{t.cookiesModeDesc}</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setConnectionMode("token")}
+                className={`rounded-xl border p-4 text-start transition-all ${
+                  connectionMode === "token"
+                    ? "border-primary/50 bg-primary/5 ring-2 ring-primary/20"
+                    : "border-border bg-muted/20 hover:bg-muted/40"
+                }`}
+              >
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                    <KeyRound className="h-5 w-5" />
+                  </span>
+                  <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-500/20 dark:text-amber-300">
+                    {t.advanced}
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-foreground">{t.tokenModeTitle}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{t.tokenModeDesc}</p>
+              </button>
+            </div>
+          </div>
+        )}
 
 
 
+        {!connection && connectionMode === "cookies" && (
         <div id="fb-step-connect" className="scroll-mt-24 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm transition-shadow">
 
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1601,6 +1546,7 @@ function FacebookPage() {
             </div>
           )}
         </div>
+        )}
 
         {appRateLimitMessage && !rateLimitDismissed && (
           <div className="relative rounded-2xl border border-amber-400/50 bg-amber-50 p-5 shadow-sm dark:bg-amber-950/20">
@@ -1718,7 +1664,7 @@ function FacebookPage() {
         })()}
 
         {/* Quick-start strip — concise 3 steps */}
-        {!connection && (
+        {!connection && connectionMode === "token" && (
           <div className="rounded-2xl border border-border/50 bg-gradient-to-br from-primary/5 via-card to-[oklch(0.66_0.26_320)]/5 p-5 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" />
@@ -1753,7 +1699,7 @@ function FacebookPage() {
         {/* Required Scopes — standalone, prominent block. Gives the user
             ready-to-paste lists for Graph API Explorer's "Add a Permission"
             field, plus a one-per-line variant for manual entry. */}
-        {!connection && (
+        {!connection && connectionMode === "token" && (
           <div id="fb-step-configure" className="scroll-mt-24 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-5 shadow-sm transition-shadow">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div className="flex items-start gap-3">
@@ -1832,7 +1778,7 @@ function FacebookPage() {
         )}
 
         {/* Step-by-step guide — shown only when not connected */}
-        {!connection && (
+        {!connection && connectionMode === "token" && (
           <div className="overflow-hidden rounded-2xl border border-border/50 bg-card shadow-sm">
             <button
               onClick={() => setGuideOpen(!guideOpen)}
@@ -1938,6 +1884,7 @@ function FacebookPage() {
         )}
 
         {/* Connection card */}
+        {(connection || connectionMode === "token") && (
         <div id="fb-step-test" className="scroll-mt-24 rounded-2xl border border-border/50 bg-card p-6 shadow-sm transition-shadow">
           <div className="mb-4 flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[oklch(0.66_0.26_320)] text-white shadow-lg">
@@ -2401,6 +2348,7 @@ function FacebookPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* Groups & Pages — only shown when connected */}
         {connection && (
