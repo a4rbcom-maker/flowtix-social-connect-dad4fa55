@@ -109,7 +109,9 @@ const unwrapServerPayload = (raw: unknown): unknown => {
 
 const normalizeBotAccountPayload = (raw: unknown): BotAccountSummary | null => {
   const payload = unwrapServerPayload(raw);
-  return payload && typeof payload === "object" && typeof (payload as BotAccountSummary).id === "string"
+  return payload &&
+    typeof payload === "object" &&
+    typeof (payload as BotAccountSummary).id === "string"
     ? (payload as BotAccountSummary)
     : null;
 };
