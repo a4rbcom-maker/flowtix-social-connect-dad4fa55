@@ -230,8 +230,17 @@ function FacebookPage() {
   const [botAccounts, setBotAccounts] = useState<BotAccountSummary[]>([]);
   const [cookieName, setCookieName] = useState("");
   const [cookiePayload, setCookiePayload] = useState("");
-  const [connectionMode, setConnectionMode] = useState<"cookies" | "token">("cookies");
+  const [connectionMode, setConnectionMode] = useState<"cookies" | "token" | "credentials">("cookies");
   const [savingCookieAccount, setSavingCookieAccount] = useState(false);
+  // Email/password (credentials) flow — calls the same addBotAccount server fn
+  // with method:"credentials". Less reliable than cookies; Facebook may block
+  // unfamiliar logins, but kept as an option for users who can't export cookies.
+  const [credName, setCredName] = useState("");
+  const [credEmail, setCredEmail] = useState("");
+  const [credPassword, setCredPassword] = useState("");
+  const [credTwoFA, setCredTwoFA] = useState("");
+  const [credShowPassword, setCredShowPassword] = useState(false);
+  const [savingCredAccount, setSavingCredAccount] = useState(false);
   const [tokenExpiry, setTokenExpiry] = useState<{
     expiresAt: string | null;
     dataAccessExpiresAt: string | null;
