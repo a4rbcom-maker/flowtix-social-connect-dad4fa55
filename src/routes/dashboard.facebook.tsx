@@ -463,7 +463,15 @@ function FacebookPage() {
     lang === "ar"
       ? {
           title: "ربط فيسبوك",
-          subtitle: "اربط حساب فيسبوك لتحميل جروباتك وصفحاتك تلقائياً",
+          subtitle: "اختر طريقة واحدة للربط ثم أكمل الخطوات الظاهرة فقط",
+          modeTitle: "اختر طريقة ربط فيسبوك",
+          modeSubtitle: "لو هدفك الربط غير الرسمي استخدم الكوكيز. التوكن الرسمي متقدم ومناسب لمن لديه Meta App وصلاحيات.",
+          cookiesModeTitle: "ربط غير رسمي بالكوكيز",
+          cookiesModeDesc: "الأسهل حالياً: انسخ Cookies JSON من حسابك المفتوح في المتصفح واحفظها هنا.",
+          tokenModeTitle: "ربط رسمي بالتوكن",
+          tokenModeDesc: "يحتاج Graph API Explorer وتطبيق Meta وصلاحيات؛ استخدمه فقط لو تعرف هذه الخطوات.",
+          recommended: "الأنسب الآن",
+          advanced: "متقدم",
           tokenLabel: "Access Token",
           tokenPlaceholder: "الصق توكن فيسبوك هنا...",
           tokenHelp: "احصل على التوكن من Graph API Explorer",
@@ -472,9 +480,9 @@ function FacebookPage() {
           botCookiesDesc:
             "ده مكان مختلف عن Access Token. افتح صفحة حسابات البوت والصق Cookies JSON مباشرة.",
           openBotCookies: "فتح إعداد Cookies للبوت",
-          fallbackTitle: "حل بديل عملي: ربط بالـ Cookies",
+          fallbackTitle: "ربط فيسبوك بالكوكيز",
           fallbackDesc:
-            "لو توكن Meta لا يعمل معك، الصق Cookies JSON من المتصفح هنا وسيتم حفظ الحساب لاستخدامه في مهام البوت والـ VPS Worker.",
+            "لا تحتاج توكن هنا. افتح فيسبوك بحسابك، صدّر الكوكيز JSON من إضافة Cookie Editor، ثم الصقها واحفظ الحساب.",
           cookieNameLabel: "اسم الحساب",
           cookieNamePh: "مثال: حساب فيسبوك الرئيسي",
           cookieJsonLabel: "Cookies JSON",
@@ -590,7 +598,15 @@ function FacebookPage() {
         }
       : {
           title: "Facebook Connection",
-          subtitle: "Link your Facebook account to load your groups and pages",
+          subtitle: "Choose one connection method, then follow only the visible steps",
+          modeTitle: "Choose Facebook connection method",
+          modeSubtitle: "For unofficial linking, use Cookies. Official token linking is advanced and requires a Meta App with permissions.",
+          cookiesModeTitle: "Unofficial Cookies link",
+          cookiesModeDesc: "Easiest for now: export Cookies JSON from your signed-in browser and save it here.",
+          tokenModeTitle: "Official token link",
+          tokenModeDesc: "Requires Graph API Explorer, a Meta App, and permissions; use it only if you know that flow.",
+          recommended: "Recommended now",
+          advanced: "Advanced",
           tokenLabel: "Access Token",
           tokenPlaceholder: "Paste your Facebook token here...",
           tokenHelp: "Get a token from Graph API Explorer",
@@ -599,9 +615,9 @@ function FacebookPage() {
           botCookiesDesc:
             "This is separate from Access Token. Open Bot accounts and paste the Cookies JSON directly.",
           openBotCookies: "Open bot Cookies setup",
-          fallbackTitle: "Practical fallback: connect with Cookies",
+          fallbackTitle: "Connect Facebook with Cookies",
           fallbackDesc:
-            "If the Meta token flow keeps failing, paste Cookie Editor JSON here and we will save it for bot/VPS Worker jobs.",
+            "No token is needed here. Open Facebook, export Cookies JSON from Cookie Editor, paste it, then save the account.",
           cookieNameLabel: "Account name",
           cookieNamePh: "e.g. Main Facebook account",
           cookieJsonLabel: "Cookies JSON",
