@@ -5,7 +5,7 @@ import { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
 import { createAlertManager } from "./server-alerts.mjs";
 
-const port = Number(process.env.PORT || process.env.APP_PORT || 3100);
+const port = Number(process.env.PORT || process.env.APP_PORT || 3001);
 const root = process.cwd();
 const clientRoot = resolve(root, "dist/client");
 const versionFilePath = resolve(root, "deploy-version.json");
