@@ -11,6 +11,7 @@ const translations = {
       pricing: "الأسعار",
       faq: "الأسئلة الشائعة",
       startFree: "تسجيل دخول",
+      loginShort: "دخول",
       dashboard: "لوحة التحكم",
     },
     hero: {
