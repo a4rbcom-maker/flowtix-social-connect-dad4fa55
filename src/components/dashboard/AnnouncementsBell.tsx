@@ -19,12 +19,11 @@ const TYPE_ICONS: Record<string, { Icon: typeof Info; color: string }> = {
 };
 
 export function AnnouncementsBell() {
-  void useServerFn; // keep import — TS unused suppression
   const { lang, dir } = useI18n();
   const qc = useQueryClient();
-  const fetchFn = useFn(getMyNotifications);
-  const allReadFn = useFn(markAllNotificationsRead);
-  const oneReadFn = useFn(markNotificationRead);
+  const fetchFn = useServerFn(getMyNotifications);
+  const allReadFn = useServerFn(markAllNotificationsRead);
+  const oneReadFn = useServerFn(markNotificationRead);
 
   const { data } = useQuery({
     queryKey: ["my-notifications"],
