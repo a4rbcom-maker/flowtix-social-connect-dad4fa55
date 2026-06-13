@@ -270,7 +270,7 @@ jobs:
           mkdir -p "$SNAP"
           rsync -a --delete \
             --exclude='.env' --exclude='.user.ini' --exclude='.htaccess' \
-            --exclude='var/' --exclude='.well-known/' --exclude='.deploy/' \
+            --exclude='var/' --exclude='.well-known/' --exclude='.deploy/' --exclude='vps-worker/' \
             "$DEPLOY_PATH/" "$SNAP/"
           echo "$SNAP" > "$BACKUPS_DIR/PREV_SNAPSHOT"
           ls -1dt "$BACKUPS_DIR"/[0-9]* 2>/dev/null | tail -n +6 | xargs -r rm -rf
@@ -296,7 +296,7 @@ jobs:
           rsync -az --delete \
             --exclude='.env' --exclude='.user.ini' --exclude='.htaccess' \
             --exclude='.well-known/' --exclude='var/' --exclude='*.log' \
-            --exclude='.deploy/' \
+            --exclude='.deploy/' --exclude='vps-worker/' \
             -e "ssh -i ~/.ssh/deploy_key -p $PORT -o StrictHostKeyChecking=no" \
             ./deploy/ "${USER}@${HOST}:${DEPLOY_PATH}/"
           echo "✓ rsync complete"
@@ -476,7 +476,7 @@ jobs:
           echo "Restoring previous snapshot: $SRC"
           rsync -a --delete \
             --exclude='.env' --exclude='.user.ini' --exclude='.htaccess' \
-            --exclude='var/' --exclude='.well-known/' --exclude='.deploy/' \
+            --exclude='var/' --exclude='.well-known/' --exclude='.deploy/' --exclude='vps-worker/' \
             "$SRC/" "$DEPLOY_PATH/"
           cd "$DEPLOY_PATH"
           if [ -f ecosystem.config.cjs ] && command -v pm2 >/dev/null 2>&1; then
