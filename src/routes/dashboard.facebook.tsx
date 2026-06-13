@@ -1503,7 +1503,7 @@ function FacebookPage() {
                 {t.modeSubtitle}
               </p>
             </div>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-3">
               <button
                 type="button"
                 onClick={() => setConnectionMode("cookies")}
@@ -1523,6 +1523,9 @@ function FacebookPage() {
                 </div>
                 <h3 className="text-base font-bold text-foreground">{t.cookiesModeTitle}</h3>
                 <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{t.cookiesModeDesc}</p>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  {lang === "ar" ? "صعوبة: سهل · مدة الصلاحية: أسابيع" : "Difficulty: easy · Lifetime: weeks"}
+                </p>
               </button>
               <button
                 type="button"
@@ -1543,6 +1546,38 @@ function FacebookPage() {
                 </div>
                 <h3 className="text-base font-bold text-foreground">{t.tokenModeTitle}</h3>
                 <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{t.tokenModeDesc}</p>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  {lang === "ar" ? "صعوبة: متوسط · مدة الصلاحية: ~60 يوم" : "Difficulty: medium · Lifetime: ~60 days"}
+                </p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setConnectionMode("credentials")}
+                className={`rounded-xl border p-4 text-start transition-all ${
+                  connectionMode === "credentials"
+                    ? "border-primary/50 bg-primary/5 ring-2 ring-primary/20"
+                    : "border-border bg-muted/20 hover:bg-muted/40"
+                }`}
+              >
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                    <Mail className="h-5 w-5" />
+                  </span>
+                  <span className="rounded-full bg-red-500/10 px-2.5 py-1 text-[11px] font-semibold text-red-700 ring-1 ring-red-500/20 dark:text-red-300">
+                    {lang === "ar" ? "تجريبي" : "Experimental"}
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-foreground">
+                  {lang === "ar" ? "إيميل وكلمة مرور" : "Email & password"}
+                </h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                  {lang === "ar"
+                    ? "أبسط بصرياً: نسجّل الدخول نيابة عنك. فيسبوك قد يطلب تأكيداً ويحظر الحساب."
+                    : "Simplest UI: we sign in on your behalf. Facebook may challenge or block the account."}
+                </p>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  {lang === "ar" ? "صعوبة: الأسهل · موثوقية: منخفضة" : "Difficulty: easiest · Reliability: low"}
+                </p>
               </button>
             </div>
           </div>
