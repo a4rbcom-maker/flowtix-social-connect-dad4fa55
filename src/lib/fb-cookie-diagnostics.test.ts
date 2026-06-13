@@ -57,5 +57,21 @@ describe("Facebook cookie diagnostics", () => {
     const validation = validateFacebookCookies(parsed.cookies);
     expect(validation.missingCritical).toEqual(["c_user", "xs", "fr", "datr"]);
     expect(cookieValidationMessage(validation)).toContain("لا توجد Session صالحة");
+
+  it("accepts the real user-uploaded Cookie-Editor export", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const raw = await fs.readFile(
+      path.resolve(__dirname, "__fixtures__/fb-cookies-sample.json"),
+      "utf8",
+    );
+    const parsed = parseCookiesInputDetailed(raw);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.cookies.length).toBeGreaterThanOrEqual(5);
+    const validation = validateFacebookCookies(parsed.cookies);
+    expect(validation.missingCritical).toEqual([]);
+    expect(validation.invalid).toEqual([]);
+    expect(validation.detectedUserId).toBe("61590157555205");
+    expect(validation.expired).toBe(false);
   });
 });
