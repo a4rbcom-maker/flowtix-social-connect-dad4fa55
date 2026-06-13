@@ -69,12 +69,22 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const channelStatus = useChannelStatus(lang);
   const { isAdmin, isLoading: isAdminLoading } = useIsAdmin();
 
-  // Admins must use the admin panel only — never the client dashboard.
+  const adminAllowedDashboardPaths = [
+    "/dashboard/facebook/bot",
+    "/dashboard/facebook/jobs",
+    "/dashboard/facebook/history",
+  ];
+
+  // Admins use the admin panel by default, but can open the Facebook bot flow
+  // to inspect/create extraction jobs exactly like a client account.
   useEffect(() => {
-    if (!isAdminLoading && isAdmin) {
+    const canStayOnDashboard = adminAllowedDashboardPaths.some((path) =>
+      location.pathname === path || location.pathname.startsWith(`${path}/`),
+    );
+    if (!isAdminLoading && isAdmin && !canStayOnDashboard) {
       navigate({ to: "/admin", replace: true });
     }
-  }, [isAdmin, isAdminLoading, navigate]);
+  }, [isAdmin, isAdminLoading, location.pathname, navigate]);
 
   // Track viewport size only — do not auto-collapse the sidebar.
   useEffect(() => {
