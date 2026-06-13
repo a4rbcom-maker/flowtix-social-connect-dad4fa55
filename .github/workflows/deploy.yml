@@ -18,7 +18,7 @@ concurrency:
 
 env:
   APP_NAME: ${{ vars.APP_NAME || 'flowtixtools-web' }}
-  APP_PORT: ${{ vars.APP_PORT || '3100' }}
+  APP_PORT: ${{ vars.APP_PORT || '3001' }}
   LEGACY_PM2_APPS: ${{ vars.LEGACY_PM2_APPS || 'flowtix flowtix-social-connect' }}
 
 jobs:
