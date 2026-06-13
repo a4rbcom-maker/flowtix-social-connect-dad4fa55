@@ -73,7 +73,7 @@ export function Navbar() {
           </button>
           {!authLoading && (
             <Link to={user ? "/dashboard" : "/login"} className="btn-luxury-base btn-luxury hidden !px-4 !py-2 text-sm md:inline-flex">
-              {user ? t.nav.dashboard : t.nav.startFree}
+              {user ? t.nav.dashboardShort : t.nav.startFree}
             </Link>
           )}
           <button onClick={() => setOpen(!open)} className="p-2 text-foreground md:hidden" aria-label="Menu">
