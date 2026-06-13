@@ -643,12 +643,6 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
     const now = Date.now();
     const expiresInDays = minExp !== null ? Math.floor((minExp * 1000 - now) / 86_400_000) : null;
     const expired = minExp !== null && minExp * 1000 <= now;
-    if (expired) {
-      invalid.push({
-        name: "expiry",
-        reason: "انتهت صلاحية الجلسة — صدِّر كوكيز جديدة من Cookie-Editor",
-      });
-    }
 
     const hasBlockingFailure = missingCritical.length > 0 || invalid.length > 0 || expired;
     const ok = !hasBlockingFailure;
