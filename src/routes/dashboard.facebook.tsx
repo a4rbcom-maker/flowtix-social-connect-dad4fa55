@@ -280,7 +280,9 @@ function FacebookPage() {
   // token, so opening the page does not spend Meta Graph API quota.
   const { call: fbCall } = useFacebookApi();
   const addBotAccountFn = useServerFn(addBotAccount);
+  const deleteBotAccountFn = useServerFn(deleteBotAccount);
   const [botAccounts, setBotAccounts] = useState<BotAccountSummary[]>([]);
+  const [deletingBotId, setDeletingBotId] = useState<string | null>(null);
   const [cookieName, setCookieName] = useState("");
   const [cookiePayload, setCookiePayload] = useState("");
   const [connectionMode, setConnectionMode] = useState<"cookies" | "token" | "credentials">("cookies");
