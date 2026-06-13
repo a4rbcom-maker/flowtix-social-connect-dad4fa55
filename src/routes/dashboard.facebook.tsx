@@ -101,6 +101,19 @@ type BotAccountSummary = {
   status: string;
 };
 
+const unwrapServerPayload = (raw: unknown): unknown => {
+  if (!raw || typeof raw !== "object") return raw;
+  const obj = raw as { data?: unknown; result?: unknown; account?: unknown };
+  return obj.data ?? obj.result ?? obj.account ?? raw;
+};
+
+const normalizeBotAccountPayload = (raw: unknown): BotAccountSummary | null => {
+  const payload = unwrapServerPayload(raw);
+  return payload && typeof payload === "object" && typeof (payload as BotAccountSummary).id === "string"
+    ? (payload as BotAccountSummary)
+    : null;
+};
+
 function DemoPreview({ stepKey, lang }: { stepKey: string; lang: "ar" | "en" }) {
   const isAr = lang === "ar";
   if (stepKey === "connect") {
@@ -986,8 +999,7 @@ function FacebookPage() {
       const raw = await addBotAccountFn({
         data: { method: "cookies", displayName, cookies: cookiePayload },
       });
-      const unwrapped = (raw as { data?: unknown })?.data ?? raw;
-      const account = unwrapped as BotAccountSummary | null;
+      const account = normalizeBotAccountPayload(raw);
       if (!account?.id) {
         // Server returned without throwing but no row came back — treat as failure
         // so the user doesn't see a misleading "saved" toast.
@@ -1045,8 +1057,7 @@ function FacebookPage() {
           twoFactorSecret: credTwoFA.trim() || undefined,
         },
       });
-      const unwrapped = (raw as { data?: unknown })?.data ?? raw;
-      const account = unwrapped as BotAccountSummary | null;
+      const account = normalizeBotAccountPayload(raw);
       if (account?.id) {
         setBotAccounts((prev) => [account, ...prev.filter((a) => a.id !== account.id)]);
       }
