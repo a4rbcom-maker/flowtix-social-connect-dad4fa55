@@ -294,7 +294,7 @@ integrity_rollback() {
     echo "🧪 DRY-RUN — skipping rsync. Would have restored:"
     echo "   source : $src"
     echo "   target : $DEPLOY_PATH"
-    echo "   excludes: .env .user.ini .htaccess var/ .well-known/ .deploy/"
+    echo "   excludes: .env .user.ini .htaccess var/ .well-known/ .deploy/ vps-worker/"
     echo "INTEGRITY_ROLLBACK_RESULT=dry_run"
     echo "INTEGRITY_ROLLBACK_KIND=$kind"
     echo "INTEGRITY_ROLLBACK_SRC=$src"
@@ -307,6 +307,7 @@ integrity_rollback() {
     --exclude='var/' \
     --exclude='.well-known/' \
     --exclude='.deploy/' \
+    --exclude='vps-worker/' \
     "$src/" "$DEPLOY_PATH/"
   echo "✓ Snapshot restored to disk."
 
@@ -373,6 +374,7 @@ publish_good_snapshot() {
     --exclude='var/' \
     --exclude='.well-known/' \
     --exclude='.deploy/' \
+    --exclude='vps-worker/' \
     "$DEPLOY_PATH/" "$tmp/"
   if [ $? -ne 0 ]; then
     echo "::warning::Trusted snapshot rsync failed; deploy is live, but rollback snapshot was not updated."
@@ -451,6 +453,8 @@ sed 's/^[0-9a-f]\{64\}  //' SHA256SUMS | LC_ALL=C sort > "$EXPECTED_LIST"
 # ACME challenges, logs, and app runtime state under var/). Those files
 # are expected to exist only on the VPS and must not be treated as bundle drift.
 # .deploy/ is also server-local: it holds the VPS deploy lock and last-SHA marker.
+# vps-worker/ is server-local too: background worker files may have independent
+# ownership/runtime state and must never block the web deploy.
 find . -type f \
   ! -name 'manifest.json' \
   ! -name 'SHA256SUMS' \
@@ -461,6 +465,7 @@ find . -type f \
   ! -path './var/*' \
   ! -path './.well-known/*' \
   ! -path './.deploy/*' \
+  ! -path './vps-worker/*' \
   -printf './%P\n' \
   | LC_ALL=C sort > "$ACTUAL_LIST"
 
