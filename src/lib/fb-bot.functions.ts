@@ -128,14 +128,23 @@ export const addBotAccount = createServerFn({ method: "POST" })
         phase: "input",
         ok: true,
         debugCode: "INPUT_RECEIVED",
+        step: "receive_request",
         message: "تم استلام بيانات الكوكيز داخل الخادم وبدأ الفحص.",
         receivedBytes: data.cookies.length,
+      });
+      addDiag(diagnostics, {
+        phase: "associate",
+        ok: true,
+        debugCode: "USER_ASSOCIATED",
+        step: "link_to_current_user",
+        message: `سيتم ربط الحساب بالمستخدم الحالي user_id=${userId}.`,
       });
       const parsed = parseCookiesInputDetailed(data.cookies);
       addDiag(diagnostics, {
         phase: "parse",
         ok: parsed.ok,
         debugCode: parsed.debugCode,
+        step: "parse_cookie_payload",
         message: parsed.message,
         totalCookies: parsed.cookies.length,
       });
@@ -149,6 +158,7 @@ export const addBotAccount = createServerFn({ method: "POST" })
         phase: "validate",
         ok: validationOk,
         debugCode: validationOk ? "COOKIE_SESSION_VALID" : "COOKIE_SESSION_INVALID",
+        step: "verify_required_cookies",
         message: cookieValidationMessage(validation),
         totalCookies: parsed.cookies.length,
         detectedUserId: validation.detectedUserId,
@@ -165,6 +175,15 @@ export const addBotAccount = createServerFn({ method: "POST" })
       }
 
       payload = { cookies: parsed.cookies, detectedUserId: validation.detectedUserId };
+      addDiag(diagnostics, {
+        phase: "extract",
+        ok: true,
+        debugCode: "ACCOUNT_DATA_EXTRACTED",
+        step: "extract_account_identity",
+        message: `تم استخراج بيانات الحساب المطلوبة للحفظ بدون كشف الكوكيز: c_user=${validation.detectedUserId ?? "غير موجود"}.`,
+        detectedUserId: validation.detectedUserId,
+        accountName: validation.detectedUserId ? `Facebook user ${validation.detectedUserId}` : null,
+      });
       const minExp = earliestRequiredExpiry(parsed.cookies);
       if (minExp !== null) cookieExpiresAt = new Date(minExp * 1000).toISOString();
     } else {
