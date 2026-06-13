@@ -109,11 +109,24 @@ type BotSaveDiagnostic = {
   phase?: string;
   ok?: boolean;
   debugCode?: string;
+  step?: string;
   message?: string;
   receivedBytes?: number;
   totalCookies?: number;
   detectedUserId?: string | null;
+  accountName?: string | null;
   errorDetails?: string | null;
+  sqlError?: string | null;
+  httpStatus?: number | null;
+  responseBody?: string | null;
+  stackTrace?: string | null;
+};
+
+type SaveLogEvent = {
+  at: number;
+  level: "info" | "success" | "warn" | "error";
+  step: string;
+  detail: string;
 };
 
 const LEGACY_ERROR = /صفحة \/me|login page|\/me أعادت/i;
@@ -305,6 +318,31 @@ const describeServerActionError = (err: unknown, lang: "ar" | "en") => {
       : "Something went wrong. Refresh and try again.";
 };
 
+const formatSaveDiagnostic = (item: BotSaveDiagnostic) =>
+  [
+    item.message,
+    typeof item.receivedBytes === "number" ? `bytes=${item.receivedBytes}` : null,
+    typeof item.totalCookies === "number" ? `cookies=${item.totalCookies}` : null,
+    item.detectedUserId ? `c_user=${item.detectedUserId}` : null,
+    item.accountName ? `account=${item.accountName}` : null,
+    typeof item.httpStatus === "number" ? `http_status=${item.httpStatus}` : null,
+    item.sqlError ? `sql=${item.sqlError}` : null,
+    item.errorDetails ? `details=${item.errorDetails}` : null,
+    item.responseBody ? `response=${item.responseBody}` : null,
+    item.stackTrace ? `stack=${item.stackTrace}` : null,
+  ]
+    .filter(Boolean)
+    .join("; ");
+
+const saveLogTone = (level: SaveLogEvent["level"]) =>
+  level === "error"
+    ? "border-destructive/40 bg-destructive/10 text-destructive"
+    : level === "warn"
+      ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+      : level === "success"
+        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+        : "border-border bg-muted/30 text-muted-foreground";
+
 const sanitizeAccounts = (list: Account[]): Account[] =>
   list.map((a) =>
     a.last_error && LEGACY_ERROR.test(a.last_error)
@@ -377,6 +415,7 @@ function BotAccountsPage() {
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testProgress, setTestProgress] = useState<{ value: number; label: string } | null>(null);
   const [testLogs, setTestLogs] = useState<Record<string, TestEvent[]>>({});
+  const [saveLogs, setSaveLogs] = useState<SaveLogEvent[]>([]);
   const [autoRetry, setAutoRetry] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("fbBotAutoRetry") !== "0";
@@ -568,6 +607,20 @@ function BotAccountsPage() {
     void signOut().finally(() => navigate({ to: "/login" }));
   };
 
+  const appendSaveLog = (level: SaveLogEvent["level"], step: string, detail: string) => {
+    setSaveLogs((prev) => [...prev.slice(-29), { at: Date.now(), level, step, detail }]);
+  };
+
+  const appendServerDiagnostics = (diagnostics: BotSaveDiagnostic[]) => {
+    diagnostics.forEach((item) => {
+      appendSaveLog(
+        item.ok === false ? "error" : "success",
+        `server:${item.step ?? item.phase ?? "unknown"}:${item.debugCode ?? "UNKNOWN"}`,
+        formatSaveDiagnostic(item),
+      );
+    });
+  };
+
   const isAuthErr = (e: unknown) => AUTH_ERROR_RE.test(e instanceof Error ? e.message : String(e ?? ""));
 
   const load = async () => {
@@ -674,6 +727,8 @@ function BotAccountsPage() {
       return;
     }
     setSubmitting(true);
+    setSaveLogs([]);
+    appendSaveLog("info", "client:send-to-server", `method=${tab}; displayName=${form.displayName.trim()}; cookie_bytes=${form.cookies.length}`);
     try {
       const row =
         tab === "cookies"
@@ -693,8 +748,10 @@ function BotAccountsPage() {
                 twoFactorSecret: form.twoFactorSecret || null,
               },
             });
+      const dto = unwrapServerPayload(row) as { diagnostics?: unknown } | null;
       const account = normalizeAccountPayload(row);
       if (account) {
+        if (Array.isArray(dto?.diagnostics)) appendServerDiagnostics(dto.diagnostics as BotSaveDiagnostic[]);
         setAccounts((prev) => [account, ...prev.filter((a) => a.id !== account.id)]);
         setJustAddedId(account.id);
         setTimeout(() => setJustAddedId(null), 4000);
@@ -719,7 +776,9 @@ function BotAccountsPage() {
         return;
       }
       const diagnostics = (e as Error & { diagnostics?: BotSaveDiagnostic[] })?.diagnostics ?? [];
+      appendServerDiagnostics(diagnostics);
       const lastFailure = [...diagnostics].reverse().find((item) => item.ok === false);
+      appendSaveLog("error", "client:save-failed", [e instanceof Error ? e.message : String(e), lastFailure?.message, lastFailure?.errorDetails, lastFailure?.sqlError].filter(Boolean).join(" — "));
       toast.error(t.saveFailed, { description: [lastFailure?.message, lastFailure?.errorDetails].filter(Boolean).join(" — ") || describeServerActionError(e, lang === "ar" ? "ar" : "en") });
     } finally {
       setSubmitting(false);
@@ -736,6 +795,8 @@ function BotAccountsPage() {
       return;
     }
     setSubmitting(true);
+    setSaveLogs([]);
+    appendSaveLog("info", "client:send-to-server", `method=cookies; displayName=${form.displayName.trim()}; cookie_bytes=${form.cookies.length}`);
     try {
       const row = await addAccountFn({
         data: {
@@ -744,8 +805,10 @@ function BotAccountsPage() {
           cookies: form.cookies,
         },
       });
+      const dto = unwrapServerPayload(row) as { diagnostics?: unknown } | null;
       const account = normalizeAccountPayload(row);
       if (account) {
+        if (Array.isArray(dto?.diagnostics)) appendServerDiagnostics(dto.diagnostics as BotSaveDiagnostic[]);
         setAccounts((prev) => [account, ...prev.filter((a) => a.id !== account.id)]);
         setJustAddedId(account.id);
         setTimeout(() => setJustAddedId(null), 4000);
@@ -766,7 +829,9 @@ function BotAccountsPage() {
         return;
       }
       const diagnostics = (e as Error & { diagnostics?: BotSaveDiagnostic[] })?.diagnostics ?? [];
+      appendServerDiagnostics(diagnostics);
       const lastFailure = [...diagnostics].reverse().find((item) => item.ok === false);
+      appendSaveLog("error", "client:save-failed", [e instanceof Error ? e.message : String(e), lastFailure?.message, lastFailure?.errorDetails, lastFailure?.sqlError].filter(Boolean).join(" — "));
       toast.error(t.saveFailed, { description: [lastFailure?.message, lastFailure?.errorDetails].filter(Boolean).join(" — ") || describeServerActionError(e, lang === "ar" ? "ar" : "en") });
     } finally {
       setSubmitting(false);
@@ -1156,6 +1221,30 @@ function BotAccountsPage() {
               {t.saveCookies}
             </Button>
           </div>
+          {saveLogs.length > 0 && (
+            <div className="mt-4 rounded-lg border border-border/70 bg-background/70 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Activity className="h-4 w-4 text-primary" />
+                  {lang === "ar" ? "سجل حفظ الحساب" : "Account save log"}
+                </div>
+                <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setSaveLogs([])}>
+                  {lang === "ar" ? "مسح" : "Clear"}
+                </Button>
+              </div>
+              <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                {saveLogs.map((log, index) => (
+                  <div key={`${log.at}-${index}`} className={`rounded-md border px-3 py-2 text-xs ${saveLogTone(log.level)}`}>
+                    <div className="mb-1 flex items-center justify-between gap-3 font-mono">
+                      <span className="break-all">{log.step}</span>
+                      <span className="shrink-0 opacity-70">{new Date(log.at).toLocaleTimeString(lang === "ar" ? "ar" : "en")}</span>
+                    </div>
+                    <p className="whitespace-pre-wrap break-words leading-relaxed">{log.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </Card>
 
         {(() => {

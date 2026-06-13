@@ -39,15 +39,20 @@ type AddAccountInput = z.infer<typeof addAccountSchema>;
 // use the same rules as the server save path.
 
 type AddBotAccountDiagnostic = {
-  phase: "input" | "frontend" | "parse" | "validate" | "encrypt" | "database" | "done";
+  phase: "input" | "frontend" | "parse" | "validate" | "extract" | "encrypt" | "associate" | "database" | "done";
   ok: boolean;
   debugCode: string;
   message: string;
+  step?: string;
   totalCookies?: number;
   receivedBytes?: number;
   detectedUserId?: string | null;
   accountName?: string | null;
   errorDetails?: string | null;
+  sqlError?: string | null;
+  httpStatus?: number | null;
+  responseBody?: string | null;
+  stackTrace?: string | null;
 };
 
 type AddBotAccountResult = {
@@ -77,6 +82,20 @@ function zodIssueMessage(issue: z.ZodIssue) {
   if (issue.code === "too_small" && path === "displayName") return "اسم الحساب مطلوب.";
   if (issue.code === "invalid_union") return "نوع الربط غير معروف. استخدم Cookies أو Email/Password.";
   return `${path}: ${issue.message}`;
+}
+
+function safeStringify(value: unknown, max = 4000) {
+  try {
+    const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    return text.length > max ? `${text.slice(0, max)}…[truncated]` : text;
+  } catch {
+    const text = String(value);
+    return text.length > max ? `${text.slice(0, max)}…[truncated]` : text;
+  }
+}
+
+function errorMessage(value: unknown) {
+  return value instanceof Error ? value.message : String(value);
 }
 
 // ---------- addBotAccount ----------
@@ -109,14 +128,23 @@ export const addBotAccount = createServerFn({ method: "POST" })
         phase: "input",
         ok: true,
         debugCode: "INPUT_RECEIVED",
+        step: "receive_request",
         message: "تم استلام بيانات الكوكيز داخل الخادم وبدأ الفحص.",
         receivedBytes: data.cookies.length,
+      });
+      addDiag(diagnostics, {
+        phase: "associate",
+        ok: true,
+        debugCode: "USER_ASSOCIATED",
+        step: "link_to_current_user",
+        message: `سيتم ربط الحساب بالمستخدم الحالي user_id=${userId}.`,
       });
       const parsed = parseCookiesInputDetailed(data.cookies);
       addDiag(diagnostics, {
         phase: "parse",
         ok: parsed.ok,
         debugCode: parsed.debugCode,
+        step: "parse_cookie_payload",
         message: parsed.message,
         totalCookies: parsed.cookies.length,
       });
@@ -130,6 +158,7 @@ export const addBotAccount = createServerFn({ method: "POST" })
         phase: "validate",
         ok: validationOk,
         debugCode: validationOk ? "COOKIE_SESSION_VALID" : "COOKIE_SESSION_INVALID",
+        step: "verify_required_cookies",
         message: cookieValidationMessage(validation),
         totalCookies: parsed.cookies.length,
         detectedUserId: validation.detectedUserId,
@@ -146,14 +175,45 @@ export const addBotAccount = createServerFn({ method: "POST" })
       }
 
       payload = { cookies: parsed.cookies, detectedUserId: validation.detectedUserId };
+      addDiag(diagnostics, {
+        phase: "extract",
+        ok: true,
+        debugCode: "ACCOUNT_DATA_EXTRACTED",
+        step: "extract_account_identity",
+        message: `تم استخراج بيانات الحساب المطلوبة للحفظ بدون كشف الكوكيز: c_user=${validation.detectedUserId ?? "غير موجود"}.`,
+        detectedUserId: validation.detectedUserId,
+        accountName: validation.detectedUserId ? `Facebook user ${validation.detectedUserId}` : null,
+      });
       const minExp = earliestRequiredExpiry(parsed.cookies);
       if (minExp !== null) cookieExpiresAt = new Date(minExp * 1000).toISOString();
     } else {
+      addDiag(diagnostics, {
+        phase: "input",
+        ok: true,
+        debugCode: "INPUT_RECEIVED",
+        step: "receive_request",
+        message: "تم استلام بيانات البريد وكلمة المرور داخل الخادم وبدأ التجهيز.",
+      });
+      addDiag(diagnostics, {
+        phase: "associate",
+        ok: true,
+        debugCode: "USER_ASSOCIATED",
+        step: "link_to_current_user",
+        message: `سيتم ربط الحساب بالمستخدم الحالي user_id=${userId}.`,
+      });
       payload = {
         email: data.email,
         password: data.password,
         twoFactorSecret: data.twoFactorSecret || null,
       };
+      addDiag(diagnostics, {
+        phase: "extract",
+        ok: true,
+        debugCode: "ACCOUNT_DATA_EXTRACTED",
+        step: "prepare_credentials_payload",
+        message: "تم تجهيز بيانات الدخول للحفظ بدون كشف كلمة المرور.",
+        accountName: data.email,
+      });
     }
     let encrypted: string;
     try {
@@ -163,21 +223,32 @@ export const addBotAccount = createServerFn({ method: "POST" })
         phase: "encrypt",
         ok: true,
         debugCode: "PAYLOAD_ENCRYPTED",
+        step: "encrypt_payload",
         message: "تم تجهيز بيانات الحساب للحفظ بأمان.",
       });
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = errorMessage(e);
       addDiag(diagnostics, {
         phase: "encrypt",
         ok: false,
         debugCode: "ENCRYPT_FAILED",
+        step: "encrypt_payload",
         message: `فشل تجهيز بيانات الحساب للحفظ: ${message}`,
+        errorDetails: message,
+        stackTrace: e instanceof Error ? e.stack ?? null : null,
       });
       return { ok: false, account: null, message: "فشل تجهيز بيانات الحساب للحفظ.", debugCode: "ENCRYPT_FAILED", diagnostics };
     }
     let row: BotAccountRow | null = null;
     let error: { message: string; code?: string; details?: string | null; hint?: string | null } | null = null;
     try {
+      addDiag(diagnostics, {
+        phase: "database",
+        ok: true,
+        debugCode: "DB_INSERT_START",
+        step: "create_account_record",
+        message: "بدأ إنشاء سجل الحساب في قاعدة البيانات.",
+      });
       const result = await supabase
         .from("fb_bot_accounts")
         .insert({
@@ -195,27 +266,37 @@ export const addBotAccount = createServerFn({ method: "POST" })
       row = result.data as BotAccountRow | null;
       error = result.error;
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = errorMessage(e);
       addDiag(diagnostics, {
         phase: "database",
         ok: false,
         debugCode: "DB_EXCEPTION",
+        step: "save_to_database",
         message: `حدث Exception أثناء حفظ الحساب في قاعدة البيانات: ${message}`,
-        errorDetails: e instanceof Error && e.stack ? e.stack : message,
+        errorDetails: message,
+        responseBody: safeStringify(e),
+        stackTrace: e instanceof Error ? e.stack ?? null : null,
       });
+      console.error("[addBotAccount:DB_EXCEPTION]", { message, stack: e instanceof Error ? e.stack : null, raw: e });
       return { ok: false, account: null, message: `حدث Exception أثناء حفظ الحساب في قاعدة البيانات: ${message}`, debugCode: "DB_EXCEPTION", diagnostics };
     }
     if (error) {
       const details = [error.code ? `code=${error.code}` : null, error.details, error.hint ? `hint=${error.hint}` : null]
         .filter(Boolean)
         .join(" | ");
+      const rawError = error as typeof error & { status?: number; statusCode?: number };
       addDiag(diagnostics, {
         phase: "database",
         ok: false,
         debugCode: "DB_SAVE_FAILED",
+        step: "save_to_database",
         message: `فشل حفظ الحساب في قاعدة البيانات: ${error.message}${details ? ` — ${details}` : ""}`,
         errorDetails: details || null,
+        sqlError: [error.code, error.details, error.hint].filter(Boolean).join(" | ") || error.message,
+        httpStatus: rawError.status ?? rawError.statusCode ?? null,
+        responseBody: safeStringify(error),
       });
+      console.error("[addBotAccount:DB_SAVE_FAILED]", { message: error.message, code: error.code, details: error.details, hint: error.hint, status: rawError.status ?? rawError.statusCode ?? null, responseBody: error });
       return { ok: false, account: null, message: `فشل حفظ الحساب في قاعدة البيانات: ${error.message}${details ? ` — ${details}` : ""}`, debugCode: "DB_SAVE_FAILED", diagnostics };
     }
     if (!row?.id) {
@@ -223,14 +304,24 @@ export const addBotAccount = createServerFn({ method: "POST" })
         phase: "database",
         ok: false,
         debugCode: "DB_EMPTY_RETURN",
+        step: "read_created_record",
         message: "تم تنفيذ طلب الحفظ لكن قاعدة البيانات لم تُرجع صف الحساب.",
       });
       return { ok: false, account: null, message: "تم تنفيذ طلب الحفظ لكن قاعدة البيانات لم تُرجع صف الحساب.", debugCode: "DB_EMPTY_RETURN", diagnostics };
     }
     addDiag(diagnostics, {
+      phase: "database",
+      ok: true,
+      debugCode: "DB_INSERT_OK",
+      step: "save_to_database",
+      message: `تم إنشاء سجل الحساب وربطه بالمستخدم الحالي. record_id=${row.id}.`,
+      accountName: row.display_name,
+    });
+    addDiag(diagnostics, {
       phase: "done",
       ok: true,
       debugCode: "ACCOUNT_SAVED",
+      step: "complete_save_flow",
       message: `تم حفظ الحساب بنجاح: ${row.display_name}.`,
       accountName: row.display_name,
     });
