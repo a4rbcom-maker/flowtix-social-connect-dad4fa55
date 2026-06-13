@@ -151,30 +151,45 @@ function JobsHubPage() {
       return;
     }
     (async () => {
+      // Robust loader: try server fn; if it returns ok:false OR throws OR returns
+      // empty, fall back to a direct RLS-scoped browser query so this page
+      // never disagrees with /dashboard/facebook/bot.
+      const browserFallback = async (): Promise<Account[]> => {
+        const { data: rows, error } = await supabase
+          .from("fb_bot_accounts")
+          .select(SAFE_ACCOUNT_SELECT)
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        return (rows ?? []) as Account[];
+      };
+
+      let data: Account[] | null = null;
       try {
-        const raw = await listAccountsFn();
-        const data: Account[] = Array.isArray((raw as { accounts?: unknown })?.accounts)
-          ? ((raw as { accounts: Account[] }).accounts)
-          : [];
-        setAccounts(data);
-        if (data.length > 0) setAccountId(data[0].id);
+        const raw = (await listAccountsFn()) as { ok?: boolean; accounts?: Account[] };
+        if (raw && raw.ok !== false && Array.isArray(raw.accounts)) {
+          data = raw.accounts;
+        } else {
+          console.warn("[fb-jobs] server fn returned non-ok, falling back", raw);
+        }
       } catch (e) {
+        console.warn("[fb-jobs] listBotAccounts threw, falling back:", e);
+      }
+
+      if (data === null || data.length === 0) {
         try {
-          const { data: browserRows, error } = await supabase
-            .from("fb_bot_accounts")
-            .select(SAFE_ACCOUNT_SELECT)
-            .eq("user_id", user.id)
-            .order("created_at", { ascending: false });
-          if (error) throw error;
-          const data = (browserRows ?? []) as Account[];
-          setAccounts(data);
-          if (data.length > 0) setAccountId(data[0].id);
+          const fb = await browserFallback();
+          if (fb.length > 0 || data === null) data = fb;
         } catch (fallbackErr) {
-          console.error("[fb-jobs] listBotAccounts failed:", fallbackErr);
+          console.error("[fb-jobs] browser fallback failed:", fallbackErr);
           toast.error(String(fallbackErr));
+          data = data ?? [];
         }
       }
-      finally { setLoading(false); }
+
+      setAccounts(data);
+      if (data.length > 0) setAccountId(data[0].id);
+      setLoading(false);
     })();
   }, [user, authLoading]);
 
