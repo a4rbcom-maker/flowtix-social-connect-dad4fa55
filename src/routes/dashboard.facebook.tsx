@@ -21,6 +21,10 @@ import {
   History,
   Clock,
   Cookie,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -226,8 +230,17 @@ function FacebookPage() {
   const [botAccounts, setBotAccounts] = useState<BotAccountSummary[]>([]);
   const [cookieName, setCookieName] = useState("");
   const [cookiePayload, setCookiePayload] = useState("");
-  const [connectionMode, setConnectionMode] = useState<"cookies" | "token">("cookies");
+  const [connectionMode, setConnectionMode] = useState<"cookies" | "token" | "credentials">("cookies");
   const [savingCookieAccount, setSavingCookieAccount] = useState(false);
+  // Email/password (credentials) flow — calls the same addBotAccount server fn
+  // with method:"credentials". Less reliable than cookies; Facebook may block
+  // unfamiliar logins, but kept as an option for users who can't export cookies.
+  const [credName, setCredName] = useState("");
+  const [credEmail, setCredEmail] = useState("");
+  const [credPassword, setCredPassword] = useState("");
+  const [credTwoFA, setCredTwoFA] = useState("");
+  const [credShowPassword, setCredShowPassword] = useState(false);
+  const [savingCredAccount, setSavingCredAccount] = useState(false);
   const [tokenExpiry, setTokenExpiry] = useState<{
     expiresAt: string | null;
     dataAccessExpiresAt: string | null;
@@ -921,9 +934,48 @@ function FacebookPage() {
   const connectionName = (name: string | null | undefined) =>
     name?.startsWith("Facebook token saved") ? t.savedPendingName : name || t.savedPendingName;
 
+  // Client-side cookie diagnostic so the user sees *why* their save will fail
+  // BEFORE the round-trip. We don't try to be exhaustive — we just look for the
+  // 4 critical Facebook session cookies the backend insists on.
+  const REQUIRED_FB_COOKIES = ["c_user", "xs", "fr", "datr"] as const;
+  const diagnoseCookies = (raw: string): { ok: boolean; missing: string[]; found: number } => {
+    const text = raw.trim();
+    if (!text) return { ok: false, missing: [...REQUIRED_FB_COOKIES], found: 0 };
+    const names = new Set<string>();
+    try {
+      const j = JSON.parse(text);
+      const arr = Array.isArray(j) ? j : Array.isArray(j?.cookies) ? j.cookies : null;
+      if (arr) {
+        for (const c of arr) {
+          const n = (c?.name ?? c?.Name ?? c?.key) as string | undefined;
+          if (typeof n === "string") names.add(n);
+        }
+      }
+    } catch {
+      // header style or cookies.txt — extract names by simple regex
+      for (const m of text.matchAll(/(?:^|[;\n\t])\s*([a-zA-Z0-9_]+)\s*=/g)) names.add(m[1]);
+    }
+    const missing = REQUIRED_FB_COOKIES.filter((c) => !names.has(c));
+    return { ok: missing.length === 0, missing, found: names.size };
+  };
+
   const handleSaveCookieAccount = async () => {
     if (!cookiePayload.trim()) {
       toast.error(t.cookieRequired);
+      return;
+    }
+    const diag = diagnoseCookies(cookiePayload);
+    if (!diag.ok) {
+      toast.error(
+        lang === "ar" ? "كوكيز ناقصة — لا يمكن الحفظ" : "Missing cookies — can't save",
+        {
+          description:
+            lang === "ar"
+              ? `الكوكيز المفقودة: ${diag.missing.join(", ")}. تأكد أنك مسجّل دخول على فيسبوك في نفس المتصفح، ثم اضغط Export → JSON في Cookie-Editor.`
+              : `Missing: ${diag.missing.join(", ")}. Make sure you're logged into Facebook in the same browser, then click Export → JSON in Cookie-Editor.`,
+          duration: 9000,
+        },
+      );
       return;
     }
     setSavingCookieAccount(true);
@@ -941,10 +993,67 @@ function FacebookPage() {
       setCookiePayload("");
       toast.success(t.cookieSaved, { description: t.cookieSavedDesc });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : lang === "ar" ? "فشل حفظ الكوكيز" : "Failed to save cookies";
-      toast.error(msg);
+      const raw = err instanceof Error ? err.message : String(err);
+      // Server-side validation often returns a Zod or RPC error — surface the
+      // real reason instead of a generic "Failed to save".
+      const desc = lang === "ar"
+        ? "تأكد أن الكوكيز JSON صحيحة من Cookie-Editor، وأنك مسجّل دخول على facebook.com في نفس المتصفح."
+        : "Verify the JSON came from Cookie-Editor and that you're signed in to facebook.com in the same browser.";
+      toast.error(raw || (lang === "ar" ? "فشل حفظ الكوكيز" : "Failed to save cookies"), {
+        description: desc,
+        duration: 9000,
+      });
     } finally {
       setSavingCookieAccount(false);
+    }
+  };
+
+  const handleSaveCredentialsAccount = async () => {
+    if (!credEmail.trim() || !credPassword) {
+      toast.error(lang === "ar" ? "أدخل البريد وكلمة المرور" : "Enter email and password");
+      return;
+    }
+    setSavingCredAccount(true);
+    try {
+      const displayName = credName.trim() || credEmail.trim();
+      const raw = await addBotAccountFn({
+        data: {
+          method: "credentials",
+          displayName,
+          email: credEmail.trim(),
+          password: credPassword,
+          twoFactorSecret: credTwoFA.trim() || undefined,
+        },
+      });
+      const unwrapped = (raw as { data?: unknown })?.data ?? raw;
+      const account = unwrapped as BotAccountSummary | null;
+      if (account?.id) {
+        setBotAccounts((prev) => [account, ...prev.filter((a) => a.id !== account.id)]);
+      }
+      setCredName("");
+      setCredEmail("");
+      setCredPassword("");
+      setCredTwoFA("");
+      toast.success(
+        lang === "ar" ? "تم حفظ حساب البوت" : "Bot account saved",
+        {
+          description:
+            lang === "ar"
+              ? "افتح حسابات النشر التلقائي لاختبار تسجيل الدخول."
+              : "Open Auto-posting accounts to test sign-in.",
+        },
+      );
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      toast.error(raw || (lang === "ar" ? "فشل حفظ الحساب" : "Failed to save account"), {
+        description:
+          lang === "ar"
+            ? "لو فعّلت 2FA على الحساب، أدخل مفتاح TOTP (Base32) في الحقل المخصّص."
+            : "If 2FA is enabled on the account, paste the TOTP secret (Base32) in the dedicated field.",
+        duration: 9000,
+      });
+    } finally {
+      setSavingCredAccount(false);
     }
   };
 
@@ -1394,7 +1503,7 @@ function FacebookPage() {
                 {t.modeSubtitle}
               </p>
             </div>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-3">
               <button
                 type="button"
                 onClick={() => setConnectionMode("cookies")}
@@ -1414,6 +1523,9 @@ function FacebookPage() {
                 </div>
                 <h3 className="text-base font-bold text-foreground">{t.cookiesModeTitle}</h3>
                 <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{t.cookiesModeDesc}</p>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  {lang === "ar" ? "صعوبة: سهل · مدة الصلاحية: أسابيع" : "Difficulty: easy · Lifetime: weeks"}
+                </p>
               </button>
               <button
                 type="button"
@@ -1434,6 +1546,38 @@ function FacebookPage() {
                 </div>
                 <h3 className="text-base font-bold text-foreground">{t.tokenModeTitle}</h3>
                 <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{t.tokenModeDesc}</p>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  {lang === "ar" ? "صعوبة: متوسط · مدة الصلاحية: ~60 يوم" : "Difficulty: medium · Lifetime: ~60 days"}
+                </p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setConnectionMode("credentials")}
+                className={`rounded-xl border p-4 text-start transition-all ${
+                  connectionMode === "credentials"
+                    ? "border-primary/50 bg-primary/5 ring-2 ring-primary/20"
+                    : "border-border bg-muted/20 hover:bg-muted/40"
+                }`}
+              >
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                    <Mail className="h-5 w-5" />
+                  </span>
+                  <span className="rounded-full bg-red-500/10 px-2.5 py-1 text-[11px] font-semibold text-red-700 ring-1 ring-red-500/20 dark:text-red-300">
+                    {lang === "ar" ? "تجريبي" : "Experimental"}
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-foreground">
+                  {lang === "ar" ? "إيميل وكلمة مرور" : "Email & password"}
+                </h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                  {lang === "ar"
+                    ? "أبسط بصرياً: نسجّل الدخول نيابة عنك. فيسبوك قد يطلب تأكيداً ويحظر الحساب."
+                    : "Simplest UI: we sign in on your behalf. Facebook may challenge or block the account."}
+                </p>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  {lang === "ar" ? "صعوبة: الأسهل · موثوقية: منخفضة" : "Difficulty: easiest · Reliability: low"}
+                </p>
               </button>
             </div>
           </div>
@@ -1533,19 +1677,190 @@ function FacebookPage() {
                     {t.openCookieEditor}
                   </button>
                 </div>
+                {/* Fallback: always show full URLs as plain text + Copy. If the
+                    iframe blocks popups, the user can copy and paste manually. */}
+                <div className="space-y-1.5 rounded-lg border border-dashed border-border/60 bg-muted/20 p-2.5 text-[11px]">
+                  <p className="font-semibold text-foreground">
+                    {lang === "ar" ? "لو ما اشتغلش زر الفتح، استخدم الروابط:" : "If the open button is blocked, use these links:"}
+                  </p>
+                  {[
+                    { label: lang === "ar" ? "Cookie-Editor (Chrome)" : "Cookie-Editor (Chrome)", url: "https://chromewebstore.google.com/detail/cookie-editor/ookdjilphngeeeghgngjabigmpepanpl" },
+                    { label: lang === "ar" ? "Cookie-Editor (Firefox)" : "Cookie-Editor (Firefox)", url: "https://addons.mozilla.org/en-US/firefox/addon/cookie-editor/" },
+                    { label: "facebook.com", url: "https://www.facebook.com/" },
+                  ].map((row) => (
+                    <div key={row.url} className="flex items-center gap-1.5">
+                      <span className="w-32 shrink-0 text-muted-foreground">{row.label}</span>
+                      <a
+                        href={row.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        dir="ltr"
+                        className="min-w-0 flex-1 truncate font-mono text-primary hover:underline"
+                      >
+                        {row.url}
+                      </a>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(row.url);
+                            toast.success(lang === "ar" ? "تم النسخ" : "Copied");
+                          } catch {
+                            toast.error(lang === "ar" ? "فشل النسخ" : "Copy failed");
+                          }
+                        }}
+                        className="rounded-md p-1 text-muted-foreground hover:bg-card hover:text-foreground"
+                        aria-label="Copy"
+                      >
+                        <Copy className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className="rounded-xl border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
                 <p className="font-semibold text-foreground">{t.botCookiesTitle}</p>
                 <p className="mt-2 text-xs leading-relaxed">{t.botCookiesDesc}</p>
                 <ol className="mt-3 list-inside list-decimal space-y-1.5 text-xs leading-relaxed">
-                  <li>{lang === "ar" ? "افتح facebook.com وأنت مسجل دخول." : "Open facebook.com while signed in."}</li>
-                  <li>{lang === "ar" ? "من Cookie Editor اختر Export as JSON." : "From Cookie Editor choose Export as JSON."}</li>
-                  <li>{lang === "ar" ? "الصق الناتج هنا واحفظ الحساب." : "Paste the result here and save."}</li>
+                  <li>{lang === "ar" ? "افتح facebook.com وسجّل الدخول في نفس المتصفح." : "Open facebook.com and sign in (same browser)."}</li>
+                  <li>{lang === "ar" ? "ثبّت Cookie-Editor من الرابط أعلاه." : "Install Cookie-Editor from the link above."}</li>
+                  <li>{lang === "ar" ? "افتح facebook.com ثم افتح إضافة Cookie-Editor." : "On facebook.com, open the Cookie-Editor extension."}</li>
+                  <li>{lang === "ar" ? "اضغط Export ← JSON." : "Click Export → JSON."}</li>
+                  <li>{lang === "ar" ? "الصق الناتج هنا واضغط حفظ." : "Paste here and press Save."}</li>
                 </ol>
+                <p className="mt-3 rounded-md bg-card p-2 text-[11px] leading-relaxed text-foreground/80 ring-1 ring-border">
+                  {lang === "ar"
+                    ? "الكوكيز الضرورية: c_user, xs, fr, datr. لو ناقصة سيرفض الحفظ."
+                    : "Required cookies: c_user, xs, fr, datr. Save will fail if any are missing."}
+                </p>
               </div>
             </div>
           )}
         </div>
+        )}
+
+        {!connection && connectionMode === "credentials" && (
+          <div className="scroll-mt-24 rounded-2xl border border-red-500/20 bg-gradient-to-br from-red-500/5 via-card to-card p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-500/10 text-red-600 dark:text-red-400">
+                  <Mail className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-foreground">
+                    {lang === "ar" ? "ربط بالإيميل وكلمة المرور" : "Email & password sign-in"}
+                  </h2>
+                  <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                    {lang === "ar"
+                      ? "نسجّل الدخول بحسابك على فيسبوك عبر متصفح آلي. الطريقة الأبسط لكن فيسبوك قد يطلب رمز تحقّق أو يحظر الحساب."
+                      : "We sign in to Facebook via an automated browser. Simplest method but Facebook may challenge or block the account."}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 rounded-xl border border-amber-400/40 bg-amber-50/60 p-3 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+              <p className="font-semibold">
+                {lang === "ar" ? "تحذير قبل الاستخدام" : "Read before using"}
+              </p>
+              <ul className="mt-1.5 list-inside list-disc space-y-0.5 leading-relaxed">
+                <li>{lang === "ar" ? "استخدم حساباً ثانوياً، ليس حسابك الشخصي الرئيسي." : "Use a secondary account, not your personal one."}</li>
+                <li>{lang === "ar" ? "لو فعّلت 2FA، أضف مفتاح TOTP (Base32) لتفادي الفشل." : "If 2FA is on, add the TOTP secret (Base32) to avoid failures."}</li>
+                <li>{lang === "ar" ? "كلمة المرور تُحفظ مشفّرة في قاعدة بياناتك المحمية." : "Password is stored encrypted in your RLS-protected database."}</li>
+              </ul>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                  {lang === "ar" ? "اسم الحساب (للعرض)" : "Account label (display)"}
+                </label>
+                <input
+                  value={credName}
+                  onChange={(e) => setCredName(e.target.value)}
+                  placeholder={lang === "ar" ? "مثال: حساب البوت 1" : "e.g. Bot account 1"}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                  {lang === "ar" ? "البريد الإلكتروني أو رقم الهاتف" : "Email or phone"}
+                </label>
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={credEmail}
+                    onChange={(e) => setCredEmail(e.target.value)}
+                    type="text"
+                    autoComplete="off"
+                    dir="ltr"
+                    placeholder="name@example.com"
+                    className="w-full rounded-xl border border-border bg-background ps-9 pe-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                  {lang === "ar" ? "كلمة المرور" : "Password"}
+                </label>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={credPassword}
+                    onChange={(e) => setCredPassword(e.target.value)}
+                    type={credShowPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    dir="ltr"
+                    placeholder="••••••••"
+                    className="w-full rounded-xl border border-border bg-background ps-9 pe-10 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCredShowPassword((v) => !v)}
+                    className="absolute end-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    aria-label={credShowPassword ? "Hide" : "Show"}
+                  >
+                    {credShowPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                  {lang === "ar" ? "مفتاح 2FA (اختياري — Base32)" : "2FA secret (optional — Base32)"}
+                </label>
+                <input
+                  value={credTwoFA}
+                  onChange={(e) => setCredTwoFA(e.target.value)}
+                  type="text"
+                  dir="ltr"
+                  placeholder="JBSWY3DPEHPK3PXP"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 font-mono text-xs focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {lang === "ar"
+                    ? "إذا فعّلت Two-Factor، أضف المفتاح السرّي من إعدادات Authenticator."
+                    : "If you enabled Two-Factor, paste the secret shown in your Authenticator setup."}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSaveCredentialsAccount}
+                disabled={savingCredAccount || !credEmail.trim() || !credPassword}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingCredAccount ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                {savingCredAccount
+                  ? lang === "ar" ? "جاري الحفظ..." : "Saving..."
+                  : lang === "ar" ? "حفظ حساب البوت" : "Save bot account"}
+              </button>
+              <Link to="/dashboard/facebook/bot">
+                <button className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground hover:bg-accent">
+                  <Cookie className="h-4 w-4" />
+                  {t.openBotCookies}
+                </button>
+              </Link>
+            </div>
+          </div>
         )}
 
         {appRateLimitMessage && !rateLimitDismissed && (
