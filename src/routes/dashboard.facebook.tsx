@@ -1833,23 +1833,6 @@ function FacebookPage() {
               </ul>
             </div>
           )}
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={(e) => openExternal(e, "https://www.facebook.com/")}
-                className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-accent"
-              >
-                <ExternalLink className="h-4 w-4" />
-                {t.openFacebook}
-              </button>
-              <Link to="/dashboard/facebook/bot">
-                <button className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:opacity-90">
-                  <Cookie className="h-4 w-4" />
-                  {t.openBotCookies}
-                </button>
-              </Link>
-            </div>
-          </div>
 
           {!connection && (
             <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
