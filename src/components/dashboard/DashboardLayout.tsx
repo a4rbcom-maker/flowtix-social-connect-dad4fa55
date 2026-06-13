@@ -94,8 +94,8 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   };
 
   const labels = lang === "ar"
-    ? { overview: "نظرة عامة", control: "لوحة التحكم", facebook: "فيسبوك", fbConnect: "الربط والحالة", fbGroups: "الجروبات", whatsapp: "واتساب", waInbox: "الدردشة", waAccounts: "حساباتي", waBot: "البوت (ردود الكلمات)", waAgent: "وكيل الذكاء الاصطناعي", waSettings: "إعدادات واتساب", bulk: "إرسال جماعي", activity: "سجل النشاط", settings: "الملف الشخصي", logout: "تسجيل الخروج", sectionMain: "الرئيسية", sectionChannels: "القنوات", sectionInsights: "التحليلات" }
-    : { overview: "Overview", control: "Control Panel", facebook: "Facebook", fbConnect: "Connect & Status", fbGroups: "Groups", whatsapp: "WhatsApp", waInbox: "Chats", waAccounts: "My Accounts", waBot: "Bot (Keyword Replies)", waAgent: "AI Agent", waSettings: "WhatsApp Settings", bulk: "Bulk Send", activity: "Activity", settings: "Profile", logout: "Sign Out", sectionMain: "Main", sectionChannels: "Channels", sectionInsights: "Insights" };
+    ? { overview: "نظرة عامة", control: "لوحة التحكم", facebook: "فيسبوك", fbConnect: "ربط حساب فيسبوك", fbGroups: "جروباتي المرتبطة", whatsapp: "واتساب", waInbox: "الدردشة", waAccounts: "حساباتي", waBot: "البوت (ردود الكلمات)", waAgent: "وكيل الذكاء الاصطناعي", waSettings: "إعدادات واتساب", bulk: "إرسال جماعي", activity: "سجل النشاط", settings: "الملف الشخصي", logout: "تسجيل الخروج", sectionMain: "الرئيسية", sectionChannels: "القنوات", sectionInsights: "التحليلات" }
+    : { overview: "Overview", control: "Control Panel", facebook: "Facebook", fbConnect: "Connect Facebook Account", fbGroups: "My Linked Groups", whatsapp: "WhatsApp", waInbox: "Chats", waAccounts: "My Accounts", waBot: "Bot (Keyword Replies)", waAgent: "AI Agent", waSettings: "WhatsApp Settings", bulk: "Bulk Send", activity: "Activity", settings: "Profile", logout: "Sign Out", sectionMain: "Main", sectionChannels: "Channels", sectionInsights: "Insights" };
 
   type LeafItem = { kind: "leaf"; icon: typeof LayoutDashboard; label: string; to: "/dashboard" | "/dashboard/control" | "/dashboard/facebook" | "/dashboard/facebook/groups" | "/dashboard/facebook/insights" | "/dashboard/facebook/messages" | "/dashboard/facebook/bot" | "/dashboard/facebook/jobs" | "/dashboard/facebook/history" | "/dashboard/facebook/campaigns" | "/dashboard/facebook/templates" | "/dashboard/facebook/media" | "/dashboard/facebook/autoreply" | "/dashboard/whatsapp" | "/dashboard/whatsapp/inbox" | "/dashboard/whatsapp/accounts" | "/dashboard/whatsapp/bot" | "/dashboard/whatsapp/automation" | "/dashboard/whatsapp/settings" | "/dashboard/whatsapp/contacts" | "/dashboard/bulk" | "/dashboard/enrich" | "/dashboard/activity" | "/dashboard/profile"; search?: Record<string, string> };
   type SubheaderItem = { kind: "subheader"; label: string };
@@ -121,27 +121,27 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
           icon: Facebook,
           label: labels.facebook,
           children: [
-            { kind: "subheader", label: lang === "ar" ? "الإعداد والربط" : "Setup & Connect" },
+            { kind: "subheader", label: lang === "ar" ? "الحسابات والإعداد" : "Accounts & Setup" },
             { kind: "leaf", icon: PlugZap, label: labels.fbConnect, to: "/dashboard/facebook" },
-            { kind: "leaf", icon: Bot, label: lang === "ar" ? "حسابات البوت" : "Bot accounts", to: "/dashboard/facebook/bot" },
+            { kind: "leaf", icon: Bot, label: lang === "ar" ? "حسابات النشر التلقائي" : "Auto-posting accounts", to: "/dashboard/facebook/bot" },
             { kind: "leaf", icon: Users2, label: labels.fbGroups, to: "/dashboard/facebook/groups" },
 
-            { kind: "subheader", label: lang === "ar" ? "النشر والحملات" : "Publishing & Campaigns" },
-            { kind: "leaf", icon: Megaphone, label: lang === "ar" ? "حملات النشر" : "Campaigns", to: "/dashboard/facebook/campaigns" },
-            { kind: "leaf", icon: PlusCircle, label: lang === "ar" ? "إنشاء مهمة" : "Create job", to: "/dashboard/facebook/jobs" },
-            { kind: "leaf", icon: FileText, label: lang === "ar" ? "القوالب النصية" : "Templates", to: "/dashboard/facebook/templates" },
-            { kind: "leaf", icon: ImageIcon, label: lang === "ar" ? "مكتبة الوسائط" : "Media library", to: "/dashboard/facebook/media" },
+            { kind: "subheader", label: lang === "ar" ? "النشر في الجروبات والصفحات" : "Post to Groups & Pages" },
+            { kind: "leaf", icon: Megaphone, label: lang === "ar" ? "حملات النشر المجدولة" : "Scheduled campaigns", to: "/dashboard/facebook/campaigns" },
+            { kind: "leaf", icon: PlusCircle, label: lang === "ar" ? "نشر سريع الآن" : "Quick post", to: "/dashboard/facebook/jobs" },
+            { kind: "leaf", icon: FileText, label: lang === "ar" ? "قوالب الرسائل" : "Message templates", to: "/dashboard/facebook/templates" },
+            { kind: "leaf", icon: ImageIcon, label: lang === "ar" ? "الصور والفيديوهات" : "Photos & videos", to: "/dashboard/facebook/media" },
 
-            { kind: "subheader", label: lang === "ar" ? "استخراج البيانات" : "Data Extraction" },
-            { kind: "leaf", icon: MessageSquareQuote, label: lang === "ar" ? "سحب المعلقين" : "Extract commenters", to: "/dashboard/facebook/jobs", search: { tab: "commenters" } },
-            { kind: "leaf", icon: UsersRound, label: lang === "ar" ? "أعضاء جروب" : "Group members", to: "/dashboard/facebook/jobs", search: { tab: "groupmembers" } },
-            { kind: "leaf", icon: Target, label: lang === "ar" ? "جمهور صفحة" : "Page audience", to: "/dashboard/facebook/jobs", search: { tab: "pageaudience" } },
+            { kind: "subheader", label: lang === "ar" ? "استخراج جهات الاتصال" : "Extract Contacts" },
+            { kind: "leaf", icon: MessageSquareQuote, label: lang === "ar" ? "استخراج المعلقين على منشور" : "Extract post commenters", to: "/dashboard/facebook/jobs", search: { tab: "commenters" } },
+            { kind: "leaf", icon: UsersRound, label: lang === "ar" ? "استخراج أعضاء جروب" : "Extract group members", to: "/dashboard/facebook/jobs", search: { tab: "groupmembers" } },
+            { kind: "leaf", icon: Target, label: lang === "ar" ? "استخراج متابعي صفحة" : "Extract page followers", to: "/dashboard/facebook/jobs", search: { tab: "pageaudience" } },
 
-            { kind: "subheader", label: lang === "ar" ? "التفاعل والتحليل" : "Engage & Analyze" },
-            { kind: "leaf", icon: Inbox, label: lang === "ar" ? "رسائل Inbox" : "Messenger Inbox", to: "/dashboard/facebook/messages" },
-            { kind: "leaf", icon: Reply, label: lang === "ar" ? "الرد التلقائي" : "Auto-reply", to: "/dashboard/facebook/autoreply" },
-            { kind: "leaf", icon: BarChart3, label: lang === "ar" ? "تحليلات الصفحة" : "Page insights", to: "/dashboard/facebook/insights" },
-            { kind: "leaf", icon: History, label: lang === "ar" ? "سجل المهام" : "Jobs history", to: "/dashboard/facebook/history" },
+            { kind: "subheader", label: lang === "ar" ? "الرسائل والإحصائيات" : "Messages & Stats" },
+            { kind: "leaf", icon: Inbox, label: lang === "ar" ? "صندوق رسائل ماسنجر" : "Messenger inbox", to: "/dashboard/facebook/messages" },
+            { kind: "leaf", icon: Reply, label: lang === "ar" ? "الرد التلقائي على التعليقات" : "Auto-reply to comments", to: "/dashboard/facebook/autoreply" },
+            { kind: "leaf", icon: BarChart3, label: lang === "ar" ? "إحصائيات الصفحة" : "Page stats", to: "/dashboard/facebook/insights" },
+            { kind: "leaf", icon: History, label: lang === "ar" ? "سجل العمليات السابقة" : "Activity history", to: "/dashboard/facebook/history" },
           ],
         },
         {
