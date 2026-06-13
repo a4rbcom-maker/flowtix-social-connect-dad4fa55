@@ -41,6 +41,7 @@ import {
   testFacebookToken,
 } from "@/lib/facebook.functions";
 import { addBotAccount } from "@/lib/fb-bot.functions";
+import { parseCookiesInputDetailed, validateFacebookCookies } from "@/lib/fb-cookie-diagnostics";
 import { openExternalUrl } from "@/components/shared/ExternalLinkButton";
 
 import { useFacebookApi, describeFbError } from "@/features/facebook/api";
