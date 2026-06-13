@@ -1771,14 +1771,19 @@ function FacebookPage() {
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-foreground">
-                  {lang === "ar" ? "اسم الحساب (للعرض)" : "Account label (display)"}
+                  {lang === "ar" ? "اسم مميّز للحساب — اختياري" : "Nickname for this account — optional"}
                 </label>
                 <input
                   value={credName}
                   onChange={(e) => setCredName(e.target.value)}
-                  placeholder={lang === "ar" ? "مثال: حساب البوت 1" : "e.g. Bot account 1"}
+                  placeholder={lang === "ar" ? "مثال: بوت متجر الأحذية" : "e.g. Shoes-store bot"}
                   className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                  {lang === "ar"
+                    ? "اسم داخلي بس عشان تميّز الحساب لو ربطت أكتر من حساب فيسبوك. لو سيبته فاضي هنستخدم الإيميل تلقائياً."
+                    : "Internal label to tell accounts apart if you link more than one. Leave empty to use the email."}
+                </p>
               </div>
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-foreground">
