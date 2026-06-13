@@ -221,13 +221,19 @@ function JobsHubPage() {
   };
 
   const submitExtractCommenters = async () => {
-    if (!accountId || !postUrl) return;
+    if (!accountId) { toast.error("لا يوجد حساب فيسبوك مرتبط — اربط حسابك أولاً من صفحة البوت"); return; }
+    if (!postUrl.trim()) { toast.error("الرجاء إدخال رابط البوست"); return; }
     setBusy(true);
     try {
-      await createExtractCommentersJobFn({ data: { accountId, postUrl } });
-      toast.success(t.created);
+      const res = await createExtractCommentersJobFn({ data: { accountId, postUrl: postUrl.trim() } });
+      console.log("[extract-commenters] job created:", res);
+      toast.success(`${t.created} — تم إنشاء المهمة (id: ${(res as { id?: string })?.id ?? "?"}). تنبيه: لن تُنفَّذ حتى يكون VPS Worker شغّالاً.`);
       setPostUrl("");
-    } catch (e) { toast.error(String(e)); } finally { setBusy(false); }
+    } catch (e) {
+      console.error("[extract-commenters] failed:", e);
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`فشل إنشاء المهمة: ${msg}`);
+    } finally { setBusy(false); }
   };
 
   const submitGroupMembers = async () => {
