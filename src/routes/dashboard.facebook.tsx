@@ -101,19 +101,54 @@ type BotAccountSummary = {
   status: string;
 };
 
+type BotSaveDiagnostic = {
+  phase?: string;
+  ok?: boolean;
+  debugCode?: string;
+  message?: string;
+  totalCookies?: number;
+  detectedUserId?: string | null;
+  accountName?: string | null;
+};
+
 const unwrapServerPayload = (raw: unknown): unknown => {
-  if (!raw || typeof raw !== "object") return raw;
-  const obj = raw as { data?: unknown; result?: unknown; account?: unknown };
-  return obj.data ?? obj.result ?? obj.account ?? raw;
+  let value = raw;
+  for (let i = 0; i < 4; i += 1) {
+    if (!value || typeof value !== "object") return value;
+    const obj = value as { data?: unknown; result?: unknown; ok?: unknown; account?: unknown; accounts?: unknown };
+    if ("ok" in obj || "account" in obj || "accounts" in obj) return value;
+    if ("data" in obj) value = obj.data;
+    else if ("result" in obj) value = obj.result;
+    else return value;
+  }
+  return value;
 };
 
 const normalizeBotAccountPayload = (raw: unknown): BotAccountSummary | null => {
   const payload = unwrapServerPayload(raw);
-  return payload &&
-    typeof payload === "object" &&
-    typeof (payload as BotAccountSummary).id === "string"
-    ? (payload as BotAccountSummary)
-    : null;
+  if (payload && typeof payload === "object") {
+    const dto = payload as {
+      ok?: unknown;
+      account?: unknown;
+      message?: unknown;
+      debugCode?: unknown;
+      diagnostics?: unknown;
+    };
+    if (dto.ok === false) {
+      const msg = typeof dto.message === "string" ? dto.message : "فشل حفظ حساب فيسبوك.";
+      const code = typeof dto.debugCode === "string" ? ` (${dto.debugCode})` : "";
+      const err = new Error(`${msg}${code}`);
+      (err as Error & { diagnostics?: BotSaveDiagnostic[] }).diagnostics = Array.isArray(dto.diagnostics)
+        ? (dto.diagnostics as BotSaveDiagnostic[])
+        : [];
+      throw err;
+    }
+    if (dto.account && typeof dto.account === "object" && typeof (dto.account as BotAccountSummary).id === "string") {
+      return dto.account as BotAccountSummary;
+    }
+    if (typeof (payload as BotAccountSummary).id === "string") return payload as BotAccountSummary;
+  }
+  return null;
 };
 
 function DemoPreview({ stepKey, lang }: { stepKey: string; lang: "ar" | "en" }) {
