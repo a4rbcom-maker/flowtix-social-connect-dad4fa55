@@ -40,7 +40,7 @@ import {
   inspectFacebookConnection,
   testFacebookToken,
 } from "@/lib/facebook.functions";
-import { addBotAccount } from "@/lib/fb-bot.functions";
+import { addBotAccount, deleteBotAccount } from "@/lib/fb-bot.functions";
 import { parseCookiesInputDetailed, validateFacebookCookies } from "@/lib/fb-cookie-diagnostics";
 import { openExternalUrl } from "@/components/shared/ExternalLinkButton";
 
@@ -280,7 +280,9 @@ function FacebookPage() {
   // token, so opening the page does not spend Meta Graph API quota.
   const { call: fbCall } = useFacebookApi();
   const addBotAccountFn = useServerFn(addBotAccount);
+  const deleteBotAccountFn = useServerFn(deleteBotAccount);
   const [botAccounts, setBotAccounts] = useState<BotAccountSummary[]>([]);
+  const [deletingBotId, setDeletingBotId] = useState<string | null>(null);
   const [cookieName, setCookieName] = useState("");
   const [cookiePayload, setCookiePayload] = useState("");
   const [connectionMode, setConnectionMode] = useState<"cookies" | "token" | "credentials">("cookies");
@@ -1750,6 +1752,87 @@ function FacebookPage() {
               </Link>
             </div>
           </div>
+
+          {botAccounts.length > 0 && (
+            <div className="mt-4 space-y-2 rounded-xl border border-border bg-card/50 p-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-foreground">
+                  {lang === "ar" ? "الحسابات المحفوظة" : "Saved accounts"}
+                </h3>
+                <Link to="/dashboard/facebook/bot" className="text-xs font-medium text-primary hover:underline">
+                  {lang === "ar" ? "إدارة كاملة ←" : "Full management →"}
+                </Link>
+              </div>
+              <ul className="space-y-2">
+                {botAccounts.map((acc) => {
+                  const statusColor =
+                    acc.status === "active"
+                      ? "bg-green-500/10 text-green-700 ring-green-500/20 dark:text-green-300"
+                      : acc.status === "invalid" || acc.status === "checkpoint"
+                        ? "bg-red-500/10 text-red-700 ring-red-500/20 dark:text-red-300"
+                        : "bg-amber-500/10 text-amber-700 ring-amber-500/20 dark:text-amber-300";
+                  const statusLabel =
+                    lang === "ar"
+                      ? acc.status === "active"
+                        ? "نشط"
+                        : acc.status === "invalid"
+                          ? "غير صالح"
+                          : acc.status === "checkpoint"
+                            ? "Checkpoint"
+                            : acc.status === "disabled"
+                              ? "معطّل"
+                              : "لم يُختبر"
+                      : acc.status;
+                  return (
+                    <li
+                      key={acc.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-background px-3 py-2"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <Cookie className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-foreground">{acc.display_name}</div>
+                          <div className="truncate text-[11px] text-muted-foreground">
+                            {acc.auth_method === "cookies"
+                              ? lang === "ar" ? "Cookies" : "Cookies"
+                              : lang === "ar" ? "بريد + كلمة مرور" : "Email + password"}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${statusColor}`}>
+                          {statusLabel}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={deletingBotId === acc.id}
+                          onClick={async () => {
+                            if (!confirm(lang === "ar" ? `حذف الحساب "${acc.display_name}"؟` : `Delete "${acc.display_name}"?`)) return;
+                            setDeletingBotId(acc.id);
+                            try {
+                              await deleteBotAccountFn({ data: { id: acc.id } });
+                              setBotAccounts((prev) => prev.filter((a) => a.id !== acc.id));
+                              toast.success(lang === "ar" ? "تم حذف الحساب" : "Account deleted");
+                            } catch (e) {
+                              toast.error(e instanceof Error ? e.message : (lang === "ar" ? "فشل الحذف" : "Delete failed"));
+                            } finally {
+                              setDeletingBotId(null);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-50"
+                          aria-label={lang === "ar" ? "حذف" : "Delete"}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
 
           {!connection && (
             <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
