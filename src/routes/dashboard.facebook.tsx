@@ -226,6 +226,7 @@ function FacebookPage() {
   const [botAccounts, setBotAccounts] = useState<BotAccountSummary[]>([]);
   const [cookieName, setCookieName] = useState("");
   const [cookiePayload, setCookiePayload] = useState("");
+  const [connectionMode, setConnectionMode] = useState<"cookies" | "token">("cookies");
   const [savingCookieAccount, setSavingCookieAccount] = useState(false);
   const [tokenExpiry, setTokenExpiry] = useState<{
     expiresAt: string | null;
