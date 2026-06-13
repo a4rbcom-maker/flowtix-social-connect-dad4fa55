@@ -1221,6 +1221,30 @@ function BotAccountsPage() {
               {t.saveCookies}
             </Button>
           </div>
+          {saveLogs.length > 0 && (
+            <div className="mt-4 rounded-lg border border-border/70 bg-background/70 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Activity className="h-4 w-4 text-primary" />
+                  {lang === "ar" ? "سجل حفظ الحساب" : "Account save log"}
+                </div>
+                <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setSaveLogs([])}>
+                  {lang === "ar" ? "مسح" : "Clear"}
+                </Button>
+              </div>
+              <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                {saveLogs.map((log, index) => (
+                  <div key={`${log.at}-${index}`} className={`rounded-md border px-3 py-2 text-xs ${saveLogTone(log.level)}`}>
+                    <div className="mb-1 flex items-center justify-between gap-3 font-mono">
+                      <span className="break-all">{log.step}</span>
+                      <span className="shrink-0 opacity-70">{new Date(log.at).toLocaleTimeString(lang === "ar" ? "ar" : "en")}</span>
+                    </div>
+                    <p className="whitespace-pre-wrap break-words leading-relaxed">{log.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </Card>
 
         {(() => {
