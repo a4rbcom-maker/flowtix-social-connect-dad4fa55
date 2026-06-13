@@ -964,19 +964,21 @@ function FacebookPage() {
       toast.error(t.cookieRequired);
       return;
     }
+    // Client diag is informational only — the server has a more lenient parser
+    // (JSON / header / Netscape). If client diag flags missing cookies we show
+    // a warning but still let the request go through so the server validates.
     const diag = diagnoseCookies(cookiePayload);
     if (!diag.ok) {
-      toast.error(
-        lang === "ar" ? "كوكيز ناقصة — لا يمكن الحفظ" : "Missing cookies — can't save",
+      toast.warning(
+        lang === "ar" ? "تحذير: قد تكون الكوكيز ناقصة" : "Warning: cookies may be incomplete",
         {
           description:
             lang === "ar"
-              ? `الكوكيز المفقودة: ${diag.missing.join(", ")}. تأكد أنك مسجّل دخول على فيسبوك في نفس المتصفح، ثم اضغط Export → JSON في Cookie-Editor.`
-              : `Missing: ${diag.missing.join(", ")}. Make sure you're logged into Facebook in the same browser, then click Export → JSON in Cookie-Editor.`,
-          duration: 9000,
+              ? `لم نجدها محليًا: ${diag.missing.join(", ")}. سنرسلها للخادم للتحقق النهائي.`
+              : `Not found locally: ${diag.missing.join(", ")}. Sending to the server for final validation.`,
+          duration: 5000,
         },
       );
-      return;
     }
     setSavingCookieAccount(true);
     try {
