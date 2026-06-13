@@ -38,23 +38,79 @@ const addAccountSchema = z.union([cookiesSchema, credentialsSchema]);
 // Cookie parsing/validation lives in fb-cookie-diagnostics so the UI and tests
 // use the same rules as the server save path.
 
+type AddBotAccountDiagnostic = {
+  phase: "frontend" | "parse" | "validate" | "encrypt" | "database" | "done";
+  ok: boolean;
+  debugCode: string;
+  message: string;
+  totalCookies?: number;
+  detectedUserId?: string | null;
+  accountName?: string | null;
+};
+
+type AddBotAccountResult = {
+  ok: boolean;
+  account: BotAccountRow | null;
+  message: string;
+  debugCode: string;
+  diagnostics: AddBotAccountDiagnostic[];
+};
+
+function addDiag(
+  diagnostics: AddBotAccountDiagnostic[],
+  entry: AddBotAccountDiagnostic,
+) {
+  diagnostics.push(entry);
+  const tag = `[addBotAccount:${entry.debugCode}] ${entry.phase}`;
+  if (entry.ok) console.info(tag, entry.message, entry);
+  else console.warn(tag, entry.message, entry);
+}
+
 // ---------- addBotAccount ----------
 export const addBotAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => addAccountSchema.parse(d))
-  .handler(async ({ data, context }) => {
+  .handler(async ({ data, context }): Promise<AddBotAccountResult> => {
     const { supabase, userId } = context;
+    const diagnostics: AddBotAccountDiagnostic[] = [];
     let payload: unknown;
     let cookieExpiresAt: string | null = null;
     if (data.method === "cookies") {
-      const parsed = parseCookiesInput(data.cookies);
-      if (!parsed || parsed.length === 0) {
-        throw new Error(
-          "تعذّر قراءة الكوكيز. الصق إما JSON المُصدَّر من إضافة المتصفح، أو سلسلة مثل name=value; name2=value2",
-        );
+      const parsed = parseCookiesInputDetailed(data.cookies);
+      addDiag(diagnostics, {
+        phase: "parse",
+        ok: parsed.ok,
+        debugCode: parsed.debugCode,
+        message: parsed.message,
+        totalCookies: parsed.cookies.length,
+      });
+      if (!parsed.ok) {
+        return { ok: false, account: null, message: parsed.message, debugCode: parsed.debugCode, diagnostics };
       }
-      payload = { cookies: parsed };
-      const minExp = earliestRequiredExpiry(parsed);
+
+      const validation = validateFacebookCookies(parsed.cookies);
+      const validationOk = validation.missingCritical.length === 0 && validation.invalid.length === 0;
+      addDiag(diagnostics, {
+        phase: "validate",
+        ok: validationOk,
+        debugCode: validationOk ? "COOKIE_SESSION_VALID" : "COOKIE_SESSION_INVALID",
+        message: cookieValidationMessage(validation),
+        totalCookies: parsed.cookies.length,
+        detectedUserId: validation.detectedUserId,
+        accountName: validation.detectedUserId ? `Facebook user ${validation.detectedUserId}` : null,
+      });
+      if (!validationOk) {
+        return {
+          ok: false,
+          account: null,
+          message: cookieValidationMessage(validation),
+          debugCode: validation.expired ? "COOKIES_EXPIRED" : "COOKIE_SESSION_INVALID",
+          diagnostics,
+        };
+      }
+
+      payload = { cookies: parsed.cookies, detectedUserId: validation.detectedUserId };
+      const minExp = earliestRequiredExpiry(parsed.cookies);
       if (minExp !== null) cookieExpiresAt = new Date(minExp * 1000).toISOString();
     } else {
       payload = {
@@ -63,8 +119,26 @@ export const addBotAccount = createServerFn({ method: "POST" })
         twoFactorSecret: data.twoFactorSecret || null,
       };
     }
-    const { encryptJson } = await import("@/server/crypto.server");
-    const encrypted = encryptJson(payload);
+    let encrypted: string;
+    try {
+      const { encryptJson } = await import("@/server/crypto.server");
+      encrypted = encryptJson(payload);
+      addDiag(diagnostics, {
+        phase: "encrypt",
+        ok: true,
+        debugCode: "PAYLOAD_ENCRYPTED",
+        message: "تم تجهيز بيانات الحساب للحفظ بأمان.",
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      addDiag(diagnostics, {
+        phase: "encrypt",
+        ok: false,
+        debugCode: "ENCRYPT_FAILED",
+        message: `فشل تجهيز بيانات الحساب للحفظ: ${message}`,
+      });
+      return { ok: false, account: null, message: "فشل تجهيز بيانات الحساب للحفظ.", debugCode: "ENCRYPT_FAILED", diagnostics };
+    }
     const { data: row, error } = await supabase
       .from("fb_bot_accounts")
       .insert({
@@ -79,8 +153,32 @@ export const addBotAccount = createServerFn({ method: "POST" })
         "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at",
       )
       .single();
-    if (error) throw new Error(error.message);
-    return row;
+    if (error) {
+      addDiag(diagnostics, {
+        phase: "database",
+        ok: false,
+        debugCode: "DB_SAVE_FAILED",
+        message: `فشل حفظ الحساب في قاعدة البيانات: ${error.message}`,
+      });
+      return { ok: false, account: null, message: `فشل حفظ الحساب في قاعدة البيانات: ${error.message}`, debugCode: "DB_SAVE_FAILED", diagnostics };
+    }
+    if (!row?.id) {
+      addDiag(diagnostics, {
+        phase: "database",
+        ok: false,
+        debugCode: "DB_EMPTY_RETURN",
+        message: "تم تنفيذ طلب الحفظ لكن قاعدة البيانات لم تُرجع صف الحساب.",
+      });
+      return { ok: false, account: null, message: "تم تنفيذ طلب الحفظ لكن قاعدة البيانات لم تُرجع صف الحساب.", debugCode: "DB_EMPTY_RETURN", diagnostics };
+    }
+    addDiag(diagnostics, {
+      phase: "done",
+      ok: true,
+      debugCode: "ACCOUNT_SAVED",
+      message: `تم حفظ الحساب بنجاح: ${row.display_name}.`,
+      accountName: row.display_name,
+    });
+    return { ok: true, account: row, message: "تم حفظ الحساب بنجاح.", debugCode: "ACCOUNT_SAVED", diagnostics };
   });
 
 type BotAccountRow = {
