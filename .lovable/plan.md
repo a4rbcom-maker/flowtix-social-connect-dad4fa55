@@ -1,80 +1,49 @@
+## ما يحدث الآن
 
-## نتائج اختبار ملف الكوكيز الذي رفعته
+- PM2 يعمل ويُحمِّل ملف SSR من `dist/server/*` بنجاح (وإلا لظهر `SSR entry missing`).
+- كل الطلبات ترجع `500 text/plain`. هذا ليس رد `renderErrorPage()` لدينا (الذي يُرسل `text/html`)، إذن الخطأ يحدث **داخل** SSR handler وh3 يحوّله إلى نص عادي ثم wrapper الـ `src/server.ts` لا يحوّله إلى HTML لأن `content-type` ليس `application/json` — فحاليًا الرسالة الحقيقية مكتومة.
+- معنى ذلك: السبب الجذري ليس Nginx ولا المنفذ ولا الـ build — بل استثناء داخل SSR يتم ابتلاعه.
 
-اختبرت الملف فعليًا عبر نفس منطق الخادم:
+## السبب الأرجح
 
-- **الحجم:** 3,030 بايت ✅ (الحد 1MB)
-- **عدد الكوكيز:** 10
-- **الأسماء:** `sb, datr, ps_l, ps_n, c_user, dpr, fr, xs, presence, wd`
-- **الكوكيز الحرجة:** `c_user=61590157555205`, `xs`, `fr`, `datr` — كلها موجودة وصالحة
-- **الصلاحية:** سارية حتى 2027
-- **النتيجة المتوقعة في الخادم:** يجب أن يتم الحفظ بنجاح ✅
+`vite.config.ts` يستخدم Override لمدخل السيرفر إلى `src/server.ts`. هذا الـ wrapper مكتوب لبيئة Cloudflare Worker (يستورد `@tanstack/react-start/server-entry` لازم Vite plugin). عند البناء لهدف Node + التشغيل عبر `scripts/tanstack-node-server.mjs`، الـ import الديناميكي قد لا يُحلّ، فيرفض الـ promise مع كل طلب → 500 نظيف بلا تفاصيل.
 
-**الملف ليس فيه أي عيب.** كل مراحل `parse → validate → encrypt → INSERT` ستنجح.
+`optimizeDeps.exclude: ["@tanstack/react-start", "zod"]` أيضًا يفسّر دائرة 504 في معاينة Vite (إعادة تحسين مستمرة تُسقط chunks).
 
-## ما اكتشفته فعلًا في قاعدة البيانات
+## الخطوات
 
-يوجد صف تم إنشاؤه **اليوم الساعة 15:08** في `fb_bot_accounts` باسم `"1"` لحسابك (`user_id=4f4b101d…739e`)، حالته `active`. أي أن **عملية الحفظ نجحت فعلًا في الخادم**، لكن الواجهة عرضت رسالة "فشل حفظ حساب فيسبوك" بسبب خلل في معالجة الاستجابة بعد الإدراج — لا في الإدراج نفسه.
+1) **اقرأ الخطأ الفعلي** على VPS (بدون أي تعديل بعد):
+   ```bash
+   pm2 logs flowtixtools-web --lines 80 --nostream
+   ```
+   والصق آخر stack trace.
 
-## السبب الجذري الحقيقي
+2) **إصلاح إعداد Vite** (إزالة الـ overrides التي تضرّ Node target وحلقة الـ deps):
+   - حذف `tanstackStart.server.entry` من `vite.config.ts` والاعتماد على المدخل الافتراضي.
+   - حذف `optimizeDeps.exclude` (سبب 504 في المعاينة).
+   - الإبقاء على `src/lib/error-capture.ts` و `src/lib/error-page.ts` و `src/server.ts` كملفات احتياطية فقط — لكن لا نوجّه TanStack إليها.
 
-في `src/routes/dashboard.facebook.tsx` بعد نجاح `addBotAccountFn`، الكود ينفذ:
+3) **تحديث `scripts/tanstack-node-server.mjs`** ليكشف الخطأ بدلًا من ابتلاعه:
+   - عند `status >= 500`، طباعة `body` كاملًا في `console.error` قبل إرساله للعميل.
 
-```ts
-await supabase.from("fb_bot_accounts").select(...).eq("user_id", user!.id)
+4) **إعادة البناء والتشغيل** على VPS:
+   ```bash
+   git pull && bun install && bun run build
+   ls dist/server   # تأكد من وجود ملف الإدخال
+   pm2 restart flowtixtools-web --update-env
+   curl -i http://127.0.0.1:3100/api/public/health
+   ```
+
+5) **التحقق**:
+   - `/api/public/health` → 200
+   - `/api/public/bot/next-job` POST → 401 (بدون السر) أو 200 (مع السر)
+   - الصفحة الرئيسية → 200 HTML
+
+## أحتاج منك قبل التنفيذ
+
+ألصق ناتج:
+```bash
+pm2 logs flowtixtools-web --lines 80 --nostream
 ```
 
-إذا كان `user` لحظتها `null` (race condition مع تحديث الجلسة)، يُرمى `TypeError` فيدخل الـ `catch`. الـ catch لا يفرّق بين "فشل الإدراج" و"فشل التحديث بعد الإدراج"، فيظهر للمستخدم: **"فشل حفظ حساب فيسبوك"** بينما الحساب فعلًا محفوظ في قاعدة البيانات.
-
-احتمال ثانوي: عند ضعف الشبكة قد يصل الـ INSERT ثم تنقطع الاستجابة → نفس النتيجة (حفظ فعلي + رسالة فشل في الواجهة).
-
-## خطة الإصلاح
-
-### 1) فصل مرحلتي "الحفظ" و"التحديث المحلي" في `src/routes/dashboard.facebook.tsx`
-
-نقل النجاح خارج الـ try الكبير: بمجرد رجوع `account.id` من الخادم نُظهر **toast نجاح فورًا** ونحدّث القائمة بشكل تفاؤلي. أي خطأ في إعادة الجلب بعد ذلك يصبح تحذيرًا منفصلًا (لا رسالة "فشل").
-
-```text
-try {
-  raw = await addBotAccountFn(...)
-  account = normalize(raw)
-  if (!account?.id) throw "lookup-fallback"
-  ✅ toast.success("تم الحفظ")  ← خارج أي عملية تالية
-} catch (saveErr) {
-  // فقط أخطاء الحفظ الفعلية
-}
-
-try { refetchList() } catch { /* تحذير صامت، لا toast فشل */ }
-```
-
-### 2) Fallback ذكي عند `account=null`
-
-قبل إعلان الفشل، نستعلم مباشرة من قاعدة البيانات عن آخر صف للمستخدم بنفس `display_name` خلال آخر 30 ثانية. إذا وُجد → اعتبره نجاحًا (الحفظ تم لكن الاستجابة ضاعت).
-
-### 3) تقوية `unwrapServerPayload`
-
-إضافة دعم لشكل `{ result: { data: {...} } }` الذي يُرجعه TanStack أحيانًا، وتسجيل الشكل الخام في سجل التشخيص ليتضح أي اختلاف مستقبلي.
-
-### 4) إصلاح خطأ التضارب مع `user`
-
-إضافة حارس `if (!user?.id) return` قبل أي استعلام Supabase تابع للحفظ، بدل `user!.id`.
-
-### 5) إضافة زر "تحقق من الحسابات الموجودة"
-
-في نفس واجهة ربط الكوكيز: زر يستدعي `listBotAccounts` ويعرض كم حسابًا فعلًا مرتبطًا — حتى لو ظهرت رسالة فشل، المستخدم يرى أن الحساب موجود ولا يكرر المحاولة.
-
-### 6) اختبار وحدة باستخدام ملفك المرفوع
-
-إضافة اختبار في `src/lib/fb-cookie-diagnostics.test.ts` يقرأ ملف JSON الحقيقي ويتحقق من نجاح `parse + validate + earliestRequiredExpiry`، حتى لا تتكرر شكوك الملف.
-
-## تفاصيل تقنية
-
-- **الملفات المعدّلة:** `src/routes/dashboard.facebook.tsx` (دالة `handleSaveCookieAccount`، unwrap)، `src/lib/fb-cookie-diagnostics.test.ts`
-- **بدون migration:** المشكلة في الواجهة فقط، قاعدة البيانات سليمة (RLS صحيح، INSERT يعمل، SELECT يعمل).
-- **لن يتم حذف الحساب الموجود "1"** — هو دليل أن الحفظ يعمل أصلًا. (لو أردت حذفه أخبرني.)
-
-## التحقق بعد التنفيذ
-
-1. تشغيل اختبار الوحدة على ملفك → يجب أن ينجح.
-2. إعادة تجربة الربط في الواجهة → يجب أن يظهر toast نجاح + يظهر الحساب الجديد في القائمة.
-3. مراجعة `fb_bot_accounts` في قاعدة البيانات → عدد الحسابات يطابق ما تراه في الواجهة.
+هذا يحدد إن كان السبب فعلًا هو wrapper المدخل أم استثناء آخر (متغير بيئة ناقص، Supabase client، إلخ) فأطبّق الإصلاح الدقيق بدل التخمين.

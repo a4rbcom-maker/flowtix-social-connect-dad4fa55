@@ -1,12 +1,3 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
-export default defineConfig({
-  tanstackStart: {
-    server: { entry: "server" },
-  },
-  vite: {
-    optimizeDeps: {
-      exclude: ["@tanstack/react-start", "zod"],
-    },
-  },
-});
+export default defineConfig({});
