@@ -139,6 +139,19 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
     return () => document.removeEventListener("mousedown", onClick);
   }, [menuOpen]);
 
+  // Auto-close mobile sidebar on route change
+  useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+
+  // Lock body scroll while mobile sidebar overlay is open
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (!mobileOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [mobileOpen]);
+
+
 
 
   const handleAdminLogin = async (event: React.FormEvent) => {
