@@ -44,7 +44,11 @@ export default {
       const response = await handler.fetch(normalizedRequest, env, context);
       if (isHead) {
         const normalized = await normalizeCatastrophicSsrResponse(response);
-        return new Response(null, normalized);
+        return new Response(null, {
+          status: normalized.status,
+          statusText: normalized.statusText,
+          headers: normalized.headers,
+        });
       }
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
