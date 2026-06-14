@@ -25,10 +25,13 @@ export const Route = createFileRoute("/api/public/webhooks/facebook")({
         const raw = await request.text();
 
         if (!appSecret) {
-          return new Response("Facebook webhook not configured", {
-            status: 503,
-            headers: { "Cache-Control": "no-store, max-age=0" },
-          });
+          return Response.json(
+            { ok: true, status: "disabled", reason: "facebook_webhook_not_configured" },
+            {
+              status: 200,
+              headers: { "Cache-Control": "no-store, max-age=0" },
+            },
+          );
         }
         const expected = "sha256=" + createHmac("sha256", appSecret).update(raw).digest("hex");
         const sigBuf = Buffer.from(signature);
