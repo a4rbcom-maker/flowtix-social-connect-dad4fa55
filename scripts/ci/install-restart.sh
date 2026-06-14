@@ -94,12 +94,47 @@ dump_failure_diagnostics() {
   } >&2
 }
 
+__ROLLBACK_DONE=0
+__BUNDLE_PROMOTED=0
+# Auto-rollback: triggers integrity_rollback for ANY Install & restart
+# failure once the new bundle has touched DEPLOY_PATH. Skips pre-promotion
+# guards (where disk is untouched) and reasons that already ran rollback
+# inline so we don't double-restore.
+__should_auto_rollback() {
+  local reason="$1"
+  [ "$__ROLLBACK_DONE" = "1" ] && return 1
+  [ "$__BUNDLE_PROMOTED" = "1" ] || return 1
+  [ -n "${BACKUPS_DIR:-}" ] && [ -d "${BACKUPS_DIR:-}" ] || return 1
+  case "$reason" in
+    integrity-rollback-dry-run-forced) return 1 ;;
+    checksum-verification-failed|rsync-missing-shipped-files|port-not-bound|runtime-version-gate-failed)
+      return 1 ;;
+  esac
+  return 0
+}
+
+__try_auto_rollback() {
+  local reason="$1"
+  __should_auto_rollback "$reason" || return 0
+  __ROLLBACK_DONE=1
+  echo ""
+  echo "════════════════════════════════════════════════════════════════"
+  echo "  AUTO-ROLLBACK — Install & restart failed (${reason})"
+  echo "  Restoring server to most recent known-good build…"
+  echo "════════════════════════════════════════════════════════════════"
+  trap - ERR
+  integrity_rollback "auto-rollback:${reason}" \
+    || echo "::warning::Auto-rollback could not restore a known-good snapshot — manual intervention required."
+  trap 'handle_uncaught_error $? ${LINENO} "${BASH_COMMAND}"' ERR
+}
+
 fail_deploy() {
   local reason="$1"
   local code="${2:-1}"
   echo "DEPLOY_FAILURE_REASON=${reason}"
   echo "::error::install-restart failed: ${reason}"
   dump_failure_diagnostics "$code" "${BASH_LINENO[0]:-0}" "${BASH_COMMAND:-fail_deploy}"
+  __try_auto_rollback "$reason"
   exit "$code"
 }
 
@@ -108,6 +143,7 @@ handle_uncaught_error() {
   echo "DEPLOY_FAILURE_REASON=uncaught-error"
   echo "::error::install-restart failed: uncaught-error at line ${line}: ${cmd}"
   dump_failure_diagnostics "$exit_code" "$line" "$cmd"
+  __try_auto_rollback "uncaught-error"
   exit "$exit_code"
 }
 trap 'handle_uncaught_error $? ${LINENO} "${BASH_COMMAND}"' ERR
