@@ -88,6 +88,13 @@ async function normalizeCatastrophicSsrResponse(response: Response, request: Req
   });
 }
 
+function cloneHeadRequestAsGet(request: Request): Request {
+  return new Request(request.url, {
+    method: "GET",
+    headers: new Headers(request.headers),
+  });
+}
+
 export default {
   async fetch(request: Request, env: unknown, context: unknown) {
     try {
@@ -104,7 +111,7 @@ export default {
       }
       const handler = await getServerEntry();
       const isHead = request.method === "HEAD";
-      const normalizedRequest = isHead ? new Request(request, { method: "GET" }) : request;
+      const normalizedRequest = isHead ? cloneHeadRequestAsGet(request) : request;
       const response = await handler.fetch(normalizedRequest, env, context);
       if (isHead) {
         const normalized = await normalizeCatastrophicSsrResponse(response, normalizedRequest);
