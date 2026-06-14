@@ -63,9 +63,15 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  // Default: sidebar always open (both desktop and mobile overlay).
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [isDesktop, setIsDesktop] = useState(true);
+  // Default: closed on mobile, open on desktop (avoid sidebar covering screen on first mobile load).
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia("(min-width: 768px)").matches;
+  });
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia("(min-width: 768px)").matches;
+  });
   const channelStatus = useChannelStatus(lang);
   const { isAdmin, isLoading: isAdminLoading } = useIsAdmin();
 
