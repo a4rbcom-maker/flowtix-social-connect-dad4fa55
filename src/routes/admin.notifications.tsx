@@ -478,20 +478,27 @@ function StatsModal({ id, statsFn, onClose, lang, dir }: {
             <div className="flex items-center justify-center h-40"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
           ) : (
             <>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                 {[
                   { label: lang === "ar" ? "الجمهور" : "Audience", value: data.audienceSize, color: "text-foreground" },
-                  { label: lang === "ar" ? "وصل" : "Delivered", value: data.delivered, color: "text-sky-500" },
+                  { label: lang === "ar" ? "استلم" : "Delivered", value: data.delivered, color: "text-sky-500" },
+                  { label: lang === "ar" ? "لم يستلم" : "Not delivered", value: data.notDelivered ?? Math.max(0, data.audienceSize - data.delivered), color: "text-rose-500" },
                   { label: lang === "ar" ? "فُتح" : "Opened", value: data.opened, color: "text-violet-500" },
                   { label: lang === "ar" ? "قُرئ" : "Read", value: data.read, color: "text-emerald-500" },
                   { label: lang === "ar" ? "أُكّد" : "Acked", value: data.acked, color: "text-amber-500" },
-                ].map((s) => (
-                  <div key={s.label} className="rounded-xl border border-border bg-background/50 p-3 text-center">
-                    <div className={`text-2xl font-black ${s.color}`}>{s.value}</div>
-                    <div className="text-[10px] text-muted-foreground mt-1">{s.label}</div>
-                  </div>
-                ))}
+                ].map((s) => {
+                  const pct = data.audienceSize > 0 ? Math.round((Number(s.value) / data.audienceSize) * 100) : 0;
+                  const showPct = s.label !== (lang === "ar" ? "الجمهور" : "Audience");
+                  return (
+                    <div key={s.label} className="rounded-xl border border-border bg-background/50 p-3 text-center">
+                      <div className={`text-2xl font-black ${s.color}`}>{s.value}</div>
+                      <div className="text-[10px] text-muted-foreground mt-1">{s.label}</div>
+                      {showPct && <div className="text-[10px] font-semibold text-muted-foreground/70 mt-0.5">{pct}%</div>}
+                    </div>
+                  );
+                })}
               </div>
+
               <div className="rounded-xl border border-border bg-background/50 p-3 inline-flex items-center gap-2 text-sm">
                 <Clock className="h-4 w-4 text-primary" />
                 <span className="text-muted-foreground">{lang === "ar" ? "متوسط وقت القراءة:" : "Avg read latency:"}</span>
