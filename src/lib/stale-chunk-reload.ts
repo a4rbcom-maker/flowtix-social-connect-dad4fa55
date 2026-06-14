@@ -49,8 +49,8 @@ export function installStaleChunkReload() {
   });
 
   window.addEventListener("error", (event) => {
-    const target = event.target as HTMLScriptElement | HTMLLinkElement | null;
-    const targetUrl = target?.src ?? target?.href ?? "";
+    const target = event.target as Element | null;
+    const targetUrl = target?.getAttribute("src") ?? target?.getAttribute("href") ?? "";
     const msg = (event as ErrorEvent).message || String((event as ErrorEvent).error ?? "");
     if (shouldHandle(msg) || isViteDependencyUrl(targetUrl)) reloadOnce();
   });
