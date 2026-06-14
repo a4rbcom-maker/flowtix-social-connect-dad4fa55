@@ -538,7 +538,7 @@ function ModelForm({ initial, onSubmit, loading }: { initial: Partial<ModelTierR
         <Label>{lang === "ar" ? "وصف مختصر" : "Description"}</Label>
         <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} />
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
           <Label>Max tokens</Label>
           <Input type="number" min={64} max={8192} value={form.max_tokens} onChange={(e) => setForm({ ...form, max_tokens: Number(e.target.value) })} />
