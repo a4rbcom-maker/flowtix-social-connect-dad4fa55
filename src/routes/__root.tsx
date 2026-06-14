@@ -7,7 +7,7 @@ import { ThemeProvider } from "@/lib/theme";
 import { AuthProvider } from "@/lib/auth";
 import { NotificationsProvider } from "@/hooks/useSendNotifications";
 import { GlobalAnnouncements } from "@/components/dashboard/GlobalAnnouncements";
-import { installStaleChunkReload } from "@/lib/stale-chunk-reload";
+import { installStaleChunkReload, staleChunkReloadInlineScript } from "@/lib/stale-chunk-reload";
 
 import appCss from "../styles.css?url";
 
@@ -118,6 +118,11 @@ function RootShell({ children }: { children: React.ReactNode }) {
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem('flowtix-theme');if(t==='dark')document.documentElement.classList.add('dark')}catch(e){}})()`,
+          }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: staleChunkReloadInlineScript,
           }}
         />
         {children}
