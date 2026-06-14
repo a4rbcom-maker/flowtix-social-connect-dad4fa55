@@ -172,7 +172,7 @@ function serveStatic(req, res, pathname) {
   return true;
 }
 
-function toFetchRequest(req) {
+function toFetchRequest(req, methodOverride = req.method) {
   const url = absoluteRequestUrl(req);
   const headers = new Headers();
   for (const [key, value] of Object.entries(req.headers)) {
@@ -182,16 +182,17 @@ function toFetchRequest(req) {
       headers.set(key, value);
     }
   }
+  if (methodOverride !== req.method) headers.set("x-flowtix-original-method", req.method || "");
 
-  const init = { method: req.method, headers };
-  if (req.method !== "GET" && req.method !== "HEAD") {
+  const init = { method: methodOverride, headers };
+  if (methodOverride !== "GET" && methodOverride !== "HEAD") {
     init.body = Readable.toWeb(req);
     init.duplex = "half";
   }
   return new Request(url, init);
 }
 
-async function writeFetchResponse(fetchResponse, res) {
+async function writeFetchResponse(fetchResponse, res, { omitBody = false } = {}) {
   res.statusCode = fetchResponse.status;
   res.statusMessage = fetchResponse.statusText;
 
@@ -204,7 +205,7 @@ async function writeFetchResponse(fetchResponse, res) {
   });
   if (setCookies.length > 0) res.setHeader("set-cookie", setCookies);
 
-  if (!fetchResponse.body) {
+  if (omitBody || !fetchResponse.body) {
     res.end();
     return;
   }
@@ -236,6 +237,20 @@ async function alertOnServerError(fetchResponse, request) {
   });
 }
 
+function serveNativeHealth(req, res) {
+  const body = JSON.stringify({
+    status: "ok",
+    service: process.env.APP_NAME || "flowtixtools-web",
+    timestamp: new Date().toISOString(),
+    uptime_seconds: Math.round(process.uptime?.() ?? 0),
+    build: readDeployVersion(),
+  });
+  res.statusCode = 200;
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  res.setHeader("cache-control", "no-store, max-age=0");
+  res.end(req.method === "HEAD" ? undefined : body);
+}
+
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(absoluteRequestUrl(req));
@@ -247,15 +262,20 @@ const server = createServer(async (req, res) => {
       res.end(req.method === "HEAD" ? undefined : body);
       return;
     }
+    if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/api/public/health") {
+      serveNativeHealth(req, res);
+      return;
+    }
     if ((req.method === "GET" || req.method === "HEAD") && serveStatic(req, res, url.pathname)) {
       return;
     }
 
-    const request = toFetchRequest(req);
+    const isHead = req.method === "HEAD";
+    const request = toFetchRequest(req, isHead ? "GET" : req.method);
     const handler = await getSsrHandler();
     const response = await handler.fetch(request, process.env, {});
     await alertOnServerError(response, request);
-    await writeFetchResponse(response, res);
+    await writeFetchResponse(response, res, { omitBody: isHead });
   } catch (error) {
     console.error(error);
     const pathname = (() => {
