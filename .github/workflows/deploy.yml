@@ -492,12 +492,10 @@ jobs:
           EOSSH
           echo "✓ Marked ${GITHUB_SHA} as deployed."
 
-      # ─── 12. Auto-rollback on failure (multi-candidate + verified) ─────
-      # Triggers on ANY prior step failure (except dedupe-skip). Tries snapshots
-      # in priority order: LAST_GOOD → PREV_SNAPSHOT → newest good-* → newest raw.
-      # Validates each candidate, restores, reloads PM2, then health-checks
-      # locally. If all candidates fail or health check still fails, the step
-      # exits with a hard error (no silent || true) so the workflow stays red.
+      # ─── 12. Auto-rollback on failure (best-effort) ─────────────────────
+      # The deployment failure should remain attributable to the original step.
+      # Rollback tries to help restore service, but if no snapshot exists yet
+      # it must not replace the real failure reason with rollback noise.
       - name: Auto-rollback on failure
         id: rollback
         if: failure() && steps.lock.outputs.skip != 'true'
@@ -512,7 +510,7 @@ jobs:
           USER="${SERVER_USER:-${SSH_USER:-}}"
           HOST="${SERVER_IP:-${SSH_HOST:-}}"
           PORT="${SSH_PORT:-22}"
-          [ -n "${DEPLOY_PATH:-}" ] || { echo "::error::No DEPLOY_PATH — cannot rollback"; exit 1; }
+          [ -n "${DEPLOY_PATH:-}" ] || { echo "::warning::No DEPLOY_PATH — cannot rollback"; exit 0; }
 
           set +e
           ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
@@ -682,9 +680,9 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-          # Propagate failure if rollback itself failed.
           if [ "$SSH_EXIT" -ne 0 ] || [ "$RESULT" != "restored" ]; then
-            exit 1
+            echo "::warning::Rollback did not complete automatically; preserving the original deployment failure as the workflow result."
+            exit 0
           fi
 
       # ─── 13. Verify rollback via public domain ─────────────────────────
