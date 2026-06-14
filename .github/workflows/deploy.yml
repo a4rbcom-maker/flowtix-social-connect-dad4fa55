@@ -539,6 +539,16 @@ jobs:
             return 1
           }
 
+          snapshot_matches_failed_sha() {
+            local d="$1"
+            [ -f "$d/deploy-version.json" ] || return 1
+            local deployed_sha deployed_short failed_short
+            deployed_sha=$(sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$d/deploy-version.json" | head -n1)
+            deployed_short=$(sed -n 's/.*"short_sha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$d/deploy-version.json" | head -n1)
+            failed_short="${FAILED_SHA:0:7}"
+            [ "$deployed_sha" = "$FAILED_SHA" ] || { [ -n "$failed_short" ] && [ "$deployed_short" = "$failed_short" ]; }
+          }
+
           # Build candidate list in priority order.
           CANDIDATES=()
           [ -f "$BACKUPS_DIR/LAST_GOOD" ] && CANDIDATES+=("LAST_GOOD:$(cat "$BACKUPS_DIR/LAST_GOOD" 2>/dev/null)")
@@ -555,7 +565,9 @@ jobs:
           PICKED=""; KIND=""
           for entry in "${CANDIDATES[@]}"; do
             kind="${entry%%:*}"; path="${entry#*:}"
-            if is_valid "$path"; then
+            if snapshot_matches_failed_sha "$path"; then
+              echo "  ✗ rejected failed SHA ($kind): $path"
+            elif is_valid "$path"; then
               PICKED="$path"; KIND="$kind"
               echo "→ Selected ($kind): $PICKED"
               break
