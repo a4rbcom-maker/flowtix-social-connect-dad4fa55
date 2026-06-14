@@ -26,6 +26,16 @@ export const Route = createFileRoute("/api/public/health")({
   component: () => null,
   server: {
     handlers: {
+      HEAD: async () => {
+        return new Response(null, {
+          status: 200,
+          headers: {
+            "Cache-Control": "no-store, max-age=0",
+            "Content-Type": "application/json",
+            "X-Health": "ok",
+          },
+        });
+      },
       GET: async () => {
         let uptime = 0;
         try {
@@ -45,6 +55,7 @@ export const Route = createFileRoute("/api/public/health")({
             headers: {
               "Cache-Control": "no-store, max-age=0",
               "Content-Type": "application/json",
+              "X-Health": "ok",
             },
           },
         );

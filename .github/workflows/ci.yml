@@ -37,6 +37,39 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Static check — HEAD handler present
+        run: |
+          if ! grep -q "HEAD: async" src/routes/api/public/health.ts; then
+            echo "::error::HEAD handler missing in src/routes/api/public/health.ts"
+            exit 1
+          fi
+          echo "✓ HEAD handler present"
+
+      - name: Start preview server
+        run: |
+          (bun run start > /tmp/preview.log 2>&1 &) || (bunx vite preview --port 4173 > /tmp/preview.log 2>&1 &)
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:4173/api/public/health >/dev/null 2>&1 \
+              || curl -fsS http://127.0.0.1:3000/api/public/health >/dev/null 2>&1; then
+              echo "preview is up"; break
+            fi
+            sleep 2
+          done
+
+      - name: Verify /api/public/health (GET + HEAD)
+        run: |
+          BASE=""
+          for p in 4173 3000; do
+            if curl -fsS "http://127.0.0.1:$p/api/public/health" >/dev/null 2>&1; then
+              BASE="http://127.0.0.1:$p"; break
+            fi
+          done
+          if [[ -z "$BASE" ]]; then
+            echo "::warning::preview did not start; skipping live HTTP probe"
+            exit 0
+          fi
+          bash scripts/ci/verify-health-endpoint.sh "$BASE"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
