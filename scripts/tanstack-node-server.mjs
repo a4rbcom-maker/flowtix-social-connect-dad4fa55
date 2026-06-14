@@ -5,6 +5,10 @@ import { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
 import { createAlertManager } from "./server-alerts.mjs";
 
+function renderSsrFallbackPage() {
+  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Flowtix Tools — خطأ مؤقت</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#faf8ff;color:#1b1428;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{width:min(92vw,560px);padding:40px 28px;text-align:center}h1{margin:0 0 12px;font-size:28px;line-height:1.25}p{margin:0 0 24px;color:#594a6d;line-height:1.8}.actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}a,button{border:0;border-radius:10px;padding:12px 18px;font:inherit;font-weight:700;cursor:pointer;text-decoration:none}button{background:#8b3ff6;color:white}a{background:#eee8fb;color:#2c164b}</style></head><body><main><h1>حدث خطأ مؤقت</h1><p>تم تسجيل الخطأ تلقائيًا. جرّب تحديث الصفحة أو راجع نسخة النشر.</p><div class="actions"><button onclick="location.reload()">تحديث الصفحة</button><a href="/deploy-version.json">نسخة النشر</a></div></main></body></html>`;
+}
+
 function loadDotEnv() {
   const envPath = resolve(process.cwd(), ".env");
   if (!existsSync(envPath)) return;
@@ -30,7 +34,7 @@ function loadDotEnv() {
 
 loadDotEnv();
 
-const port = Number(process.env.PORT || process.env.APP_PORT || 3001);
+const port = Number(process.env.PORT || process.env.APP_PORT || 3100);
 const root = process.cwd();
 const clientRoot = resolve(root, "dist/client");
 const versionFilePath = resolve(root, "deploy-version.json");
@@ -250,8 +254,8 @@ function serveNativeHealth(req, res) {
 
 const server = createServer(async (req, res) => {
   const method = req.method || "GET";
-  const rawUrl = req.url || "/";
-  const pathname = rawUrl.split("?")[0];
+  const target = requestTarget(req);
+  const pathname = target.split("?")[0];
 
   // 1. Ultra-minimal health/version routes (no complex URL parsing, no SSR)
   if (method === "GET" || method === "HEAD") {
@@ -270,7 +274,6 @@ const server = createServer(async (req, res) => {
 
   try {
     const origin = requestOrigin(req);
-    const target = requestTarget(req);
     const isHead = method === "HEAD";
     const request = toFetchRequest(req, origin, target, isHead ? "GET" : method);
     
@@ -291,8 +294,8 @@ const server = createServer(async (req, res) => {
 
     if (!res.headersSent) {
       res.statusCode = 500;
-      res.setHeader("content-type", "text/plain; charset=utf-8");
-      res.end("Internal Server Error");
+      res.setHeader("content-type", currentPath.startsWith("/api/") ? "text/plain; charset=utf-8" : "text/html; charset=utf-8");
+      res.end(currentPath.startsWith("/api/") ? "Internal Server Error" : renderSsrFallbackPage());
     } else {
       res.end();
     }
