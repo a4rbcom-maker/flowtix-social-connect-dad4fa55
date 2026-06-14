@@ -3,6 +3,10 @@
 دليل تشغيل قصير لتشخيص فشل النشر بسرعة بدون تخمين. مصدر الحقيقة هو
 `deploy-version.json` على القرص في `$DEPLOY_PATH` على الـVPS.
 
+مهم: GitHub sync لم يعد يشغّل نشر VPS تلقائيًا مع كل push. النشر الآن يدوي من
+GitHub Actions عبر **Deploy to VPS (manual)** حتى لا يفشل التزامن بسبب SSH/VPS/
+rollback أو أي مشكلة خارج كود التطبيق.
+
 آخر تعديل مزامنة: 2026-06-14 — touch آمن لتشغيل GitHub sync/deploy بدون تغيير سلوك التطبيق.
 
 ---
