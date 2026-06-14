@@ -368,7 +368,38 @@ function AdminPlansPage() {
             ))}
           </div>
         )}
+
+        {filteredRows.length > pageSize && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted-foreground">
+            <div>
+              {t(
+                `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, filteredRows.length)} من ${filteredRows.length}`,
+                `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, filteredRows.length)} of ${filteredRows.length}`,
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage((p) => p - 1)}
+                className="inline-flex items-center gap-1 h-8 px-3 rounded-lg border border-border bg-background hover:bg-muted disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4 rtl:rotate-180" />
+                <span className="hidden sm:inline">{t("السابق", "Prev")}</span>
+              </button>
+              <span className="px-2 font-medium text-foreground">{page} / {totalPages}</span>
+              <button
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+                className="inline-flex items-center gap-1 h-8 px-3 rounded-lg border border-border bg-background hover:bg-muted disabled:opacity-40"
+              >
+                <span className="hidden sm:inline">{t("التالي", "Next")}</span>
+                <ChevronRight className="h-4 w-4 rtl:rotate-180" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
 
       <AnimatePresence>
         {editing && (
