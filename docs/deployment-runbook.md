@@ -106,6 +106,9 @@ sudo nginx -t && sudo nginx -s reload
 - خطوة **public domain check** الأصلية لم تعد تُسقط الـworkflow تلقائيًا
   إذا كان التطبيق شغال محليًا على الـVPS لكن الدومين العام ما زال يتذبذب
   بسبب cache / proxy / vhost.
+- فحص الدومين بعد **rollback** أيضًا أصبح متساهلًا بنفس القاعدة: نجاح
+  الاستعادة محليًا هو مصدر الحقيقة، أما 5xx على الدومين العام بعد ذلك فهو
+  warning ما لم يكن `STRICT_PUBLIC_DOMAIN_CHECK=true`.
 - لتفعيل السلوك الصارم: أضف متغير GitHub Actions باسم
   `STRICT_PUBLIC_DOMAIN_CHECK=true`.
 - الفحص العام يتبع redirects، ويضيف cache-busting querystring، ويرسل
