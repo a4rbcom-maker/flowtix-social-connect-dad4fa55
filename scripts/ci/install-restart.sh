@@ -117,6 +117,37 @@ if [ -z "${DEPLOY_PATH:-}" ] || [ ! -d "${DEPLOY_PATH:-}" ]; then
   fail_deploy "deploy-path-missing"
 fi
 
+if [ -n "${STAGING_PATH:-}" ]; then
+  case "$STAGING_PATH" in
+    /*) : ;;
+    *) STAGING_PATH="$HOME/$STAGING_PATH" ;;
+  esac
+  [ -d "$STAGING_PATH" ] || fail_deploy "staging-path-missing"
+  echo "=== Promoting staged bundle into DEPLOY_PATH ==="
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    sudo rsync -a --delete \
+      --exclude='.env' \
+      --exclude='.user.ini' \
+      --exclude='.htaccess' \
+      --exclude='var/' \
+      --exclude='.well-known/' \
+      --exclude='.deploy/' \
+      --exclude='vps-worker/' \
+      "$STAGING_PATH/" "$DEPLOY_PATH/" || fail_deploy "staging-rsync-failed"
+  else
+    rsync -a --delete \
+      --exclude='.env' \
+      --exclude='.user.ini' \
+      --exclude='.htaccess' \
+      --exclude='var/' \
+      --exclude='.well-known/' \
+      --exclude='.deploy/' \
+      --exclude='vps-worker/' \
+      "$STAGING_PATH/" "$DEPLOY_PATH/" || fail_deploy "staging-rsync-failed"
+  fi
+  echo "✓ Staged bundle promoted to live deploy path."
+fi
+
 cd "$DEPLOY_PATH" || fail_deploy "deploy-path-cd-failed"
 SSR_ENTRY_CANDIDATES="dist/server/server.js dist/server/server.mjs dist/server/index.js dist/server/index.mjs"
 [ -n "${SERVER_ENTRY:-}" ] && [ -f "$SERVER_ENTRY" ] || {

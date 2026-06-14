@@ -288,13 +288,17 @@ jobs:
           USER="${SERVER_USER:-${SSH_USER:-}}"
           HOST="${SERVER_IP:-${SSH_HOST:-}}"
           PORT="${SSH_PORT:-22}"
+          REMOTE_STAGING=".flowtixtools-web-staging/${GITHUB_RUN_ID}"
+          ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
+            "${USER}@${HOST}" "rm -rf '${REMOTE_STAGING}' && mkdir -p '${REMOTE_STAGING}'"
           rsync -az --delete \
             --exclude='.env' --exclude='.user.ini' --exclude='.htaccess' \
             --exclude='.well-known/' --exclude='var/' --exclude='*.log' \
             --exclude='.deploy/' --exclude='vps-worker/' \
             -e "ssh -i ~/.ssh/deploy_key -p $PORT -o StrictHostKeyChecking=no" \
-            ./deploy/ "${USER}@${HOST}:${DEPLOY_PATH}/"
-          echo "✓ rsync to deploy path complete"
+            ./deploy/ "${USER}@${HOST}:${REMOTE_STAGING}/"
+          echo "REMOTE_STAGING=$REMOTE_STAGING" >> "$GITHUB_ENV"
+          echo "✓ rsync to safe staging complete"
 
       # ─── 9. Install & restart on server (delegates to script) ──────────
       - name: Install & restart SSR app on server
@@ -320,7 +324,7 @@ jobs:
           set +e
           ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
             "${USER}@${HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' LEGACY_PM2_APPS='${LEGACY_PM2_APPS}' DEPLOY_SHA='${GITHUB_SHA}' DEPLOY_RUN_ID='${GITHUB_RUN_ID}' DEPLOY_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOYED_AT='${DEPLOYED_AT}' DEBUG_INSTALL='${DEBUG_INSTALL}' bash '${REMOTE_SCRIPT}'" \
+            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' STAGING_PATH='${REMOTE_STAGING}' SERVER_ENTRY='${SERVER_ENTRY}' APP_NAME='${APP_NAME}' APP_PORT='${APP_PORT}' LEGACY_PM2_APPS='${LEGACY_PM2_APPS}' DEPLOY_SHA='${GITHUB_SHA}' DEPLOY_RUN_ID='${GITHUB_RUN_ID}' DEPLOY_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOYED_AT='${DEPLOYED_AT}' DEBUG_INSTALL='${DEBUG_INSTALL}' bash '${REMOTE_SCRIPT}'" \
             2>&1 | tee install-restart.log
           SSH_EXIT=${PIPESTATUS[0]}
           set -e
