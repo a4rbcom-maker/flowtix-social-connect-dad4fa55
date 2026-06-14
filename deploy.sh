@@ -52,11 +52,12 @@ fi
 
 echo "==> [6/6] Restarting server (pm2)..."
 if command -v pm2 >/dev/null 2>&1; then
-  pm2 reload flowtix || pm2 start .output/server/index.mjs --name flowtix
+  pm2 delete flowtixtools-web 2>/dev/null || true
+  pm2 start ecosystem.config.cjs --only flowtixtools-web --update-env
   pm2 save
 else
   echo "⚠️  pm2 not found — restart your server process manually:"
-  echo "    node .output/server/index.mjs"
+  echo "    PORT=3001 node scripts/tanstack-node-server.mjs"
 fi
 
 # Optional: purge Cloudflare cache (uncomment + fill in)
@@ -70,4 +71,4 @@ ls -dt .output.backup.* 2>/dev/null | tail -n +4 | xargs -r rm -rf
 
 echo ""
 echo "🎉 Deploy complete! Site should be live."
-echo "   If anything looks broken: rm -rf .output && mv $BACKUP_DIR .output && pm2 reload flowtix"
+echo "   If anything looks broken: rm -rf .output && mv $BACKUP_DIR .output && pm2 restart flowtixtools-web --update-env"
