@@ -288,7 +288,7 @@ jobs:
           USER="${SERVER_USER:-${SSH_USER:-}}"
           HOST="${SERVER_IP:-${SSH_HOST:-}}"
           PORT="${SSH_PORT:-22}"
-          STAGING_PATH="~/.flowtixtools-web-staging"
+          STAGING_PATH=".flowtixtools-web-staging"
           ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
             "${USER}@${HOST}" "mkdir -p ${STAGING_PATH}"
           rsync -az --delete \
