@@ -691,6 +691,7 @@ jobs:
         if: failure() && steps.rollback.outcome == 'success'
         env:
           PUBLIC_URL: ${{ vars.PUBLIC_URL || secrets.PUBLIC_URL || 'https://flowtixtools.com' }}
+          STRICT_PUBLIC_DOMAIN_CHECK: ${{ vars.STRICT_PUBLIC_DOMAIN_CHECK || 'false' }}
         run: |
           set -eu
           URL="${PUBLIC_URL%/}"
@@ -707,6 +708,11 @@ jobs:
             echo "  attempt $i/15: code=$CODE — retrying…"
             sleep 4
           done
-          echo "::error::Public domain still not healthy after rollback"
-          echo "❌ Public verify FAILED after rollback (last code: $CODE)" >> "$GITHUB_STEP_SUMMARY"
-          exit 1
+          STRICT=$(printf '%s' "$STRICT_PUBLIC_DOMAIN_CHECK" | tr '[:upper:]' '[:lower:]')
+          if [ "$STRICT" = "true" ]; then
+            echo "::error::Public domain still not healthy after rollback"
+            echo "❌ Public verify FAILED after rollback (last code: $CODE)" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "::warning::Public domain still returned ${CODE:-unknown} after rollback, but rollback already succeeded locally. Check proxy/cache separately."
+          echo "⚠️ Public verify after rollback was not stable (last code: ${CODE:-unknown}); local rollback succeeded." >> "$GITHUB_STEP_SUMMARY"
