@@ -240,6 +240,31 @@ function JobsHistoryPage() {
               <span>{selected && t.types[selected.job_type]}</span>
               {results.length > 0 && (
                 <div className="flex flex-wrap gap-2">
+                  {isPeople && selected?.job_type !== "deep_profile_scrape" && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={async () => {
+                        if (!selected?.id) return;
+                        const accountId = (selected as unknown as { account_id?: string }).account_id
+                          ?? (jobs.find((x) => x.id === selected.id) as unknown as { account_id?: string })?.account_id;
+                        const profiles = enrichedRows
+                          .map((e) => e.profile || e.row.target)
+                          .filter((v): v is string => !!v);
+                        if (!accountId) { toast.error(lang === "ar" ? "تعذّر تحديد الحساب" : "Account missing"); return; }
+                        if (profiles.length === 0) { toast.error(lang === "ar" ? "لا توجد بروفايلات" : "No profiles"); return; }
+                        try {
+                          await call(createDeepProfileScrapeJob, { accountId, profiles });
+                          toast.success(lang === "ar" ? "تم إنشاء مهمة فحص عميق" : "Deep scrape job queued");
+                          setSelected(null);
+                          load();
+                        } catch (e) { toast.error(String(e)); }
+                      }}
+                      className="gap-2"
+                    >
+                      {lang === "ar" ? "فحص عميق للبروفايلات" : "Deep profile scrape"}
+                    </Button>
+                  )}
                   {isPeople && (
                     <Button
                       size="sm"
