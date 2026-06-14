@@ -241,7 +241,7 @@ function AccountsTab() {
               </SelectContent>
             </Select>
           </div>
-        <CardContent>
+
           <div className="rounded-lg border border-border/60 overflow-hidden">
             <Table>
               <TableHeader>
