@@ -12,6 +12,7 @@ let mockRoleLookup: () => Promise<{ data: { role: string } | null; error: unknow
 
 vi.mock("@tanstack/react-start/server", () => ({
   getRequest: () => mockRequest,
+  setResponseStatus: () => undefined,
 }));
 
 vi.mock("@supabase/supabase-js", () => ({

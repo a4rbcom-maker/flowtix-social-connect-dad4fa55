@@ -549,6 +549,14 @@ jobs:
             [ "$deployed_sha" = "$FAILED_SHA" ] || { [ -n "$failed_short" ] && [ "$deployed_short" = "$failed_short" ]; }
           }
 
+          same_sha_allowed_as_last_resort() {
+            local kind="$1"
+            case "$kind" in
+              PREV_SNAPSHOT|raw) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
           # Build candidate list in priority order.
           CANDIDATES=()
           [ -f "$BACKUPS_DIR/LAST_GOOD" ] && CANDIDATES+=("LAST_GOOD:$(cat "$BACKUPS_DIR/LAST_GOOD" 2>/dev/null)")
@@ -575,6 +583,23 @@ jobs:
               echo "  ✗ invalid ($kind): $path"
             fi
           done
+          if [ -z "$PICKED" ]; then
+            echo ""
+            echo "No alternate SHA snapshot was usable; retrying with last-resort candidates captured before this failed deploy."
+            for entry in "${CANDIDATES[@]}"; do
+              kind="${entry%%:*}"; path="${entry#*:}"
+              if ! same_sha_allowed_as_last_resort "$kind"; then
+                continue
+              fi
+              if is_valid "$path"; then
+                PICKED="$path"; KIND="$kind"
+                echo "→ Last-resort selection ($kind, same SHA allowed): $PICKED"
+                break
+              else
+                echo "  ✗ invalid last-resort ($kind): $path"
+              fi
+            done
+          fi
           [ -n "$PICKED" ] || { echo "::error::No valid snapshot found"; echo "ROLLBACK_RESULT=no_valid_snapshot"; exit 1; }
 
           echo ""

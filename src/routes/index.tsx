@@ -33,6 +33,7 @@ const TITLE = "Flowtix Tools — أقوى منصة للتجارة الاجتما
 const DESC = "أدر أعمالك على فيسبوك وواتساب بذكاء اصطناعي. إرسال جماعي للجروبات، بوت واتساب احترافي، ومتابعة العملاء من مكان واحد.";
 
 export const Route = createFileRoute("/")({
+  ssr: false,
   head: () => ({
     meta: [
       { title: TITLE },

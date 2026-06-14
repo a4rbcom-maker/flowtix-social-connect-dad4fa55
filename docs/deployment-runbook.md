@@ -80,11 +80,13 @@ sudo nginx -t && sudo nginx -s reload
 
 1. **اختيار snapshot** بالترتيب: `LAST_GOOD` (آخر نسخة موثوقة بعد smoke-test كامل)
    → `PREV_SNAPSHOT` (ما كان شغال قبل الـdeploy الفاشل) → أحدث `good-*` →
-   أحدث snapshot خام `[0-9]*`.
+   أحدث snapshot خام `[0-9]*`، ثم محاولة أخيرة بـ`PREV_SNAPSHOT/raw` حتى لو
+   كان يحمل نفس SHA الفاشل عند عدم وجود أي بديل صالح.
 2. **التحقق من صلاحية** المرشح (وجود `dist/server/*`, `ecosystem.config.cjs`,
    `node_modules`) قبل النسخ.
-3. **رفض أي snapshot يحمل نفس SHA الفاشل** حتى لو كان موجودًا خطأً في
-   `LAST_GOOD` من محاولة سابقة.
+3. **رفض أي snapshot يحمل نفس SHA الفاشل** في المسار الطبيعي حتى لو كان موجودًا
+   خطأً في `LAST_GOOD` من محاولة سابقة؛ يُسمح به فقط كحل أخير للـpre-deploy
+   snapshots لمنع الوقوف عند `no_valid_snapshot`.
 4. **rsync + PM2 reload + pm2 save** على النسخة المختارة.
 5. **Local health check** على `127.0.0.1:$APP_PORT` لمدة 60 ثانية.
 6. **Public domain verify** على الدومين العام (200 OK).
