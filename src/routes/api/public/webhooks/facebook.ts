@@ -24,7 +24,12 @@ export const Route = createFileRoute("/api/public/webhooks/facebook")({
         const signature = request.headers.get("x-hub-signature-256") ?? "";
         const raw = await request.text();
 
-        if (!appSecret) return new Response("Server not configured", { status: 500 });
+        if (!appSecret) {
+          return new Response("Facebook webhook not configured", {
+            status: 503,
+            headers: { "Cache-Control": "no-store, max-age=0" },
+          });
+        }
         const expected = "sha256=" + createHmac("sha256", appSecret).update(raw).digest("hex");
         const sigBuf = Buffer.from(signature);
         const expBuf = Buffer.from(expected);
