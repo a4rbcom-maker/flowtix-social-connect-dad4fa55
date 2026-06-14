@@ -247,8 +247,7 @@ function JobsHistoryPage() {
                       variant="secondary"
                       onClick={async () => {
                         if (!selected?.id) return;
-                        const accountId = (selected as unknown as { account_id?: string }).account_id
-                          ?? (jobs.find((x) => x.id === selected.id) as unknown as { account_id?: string })?.account_id;
+                        const accountId = selected.account_id;
                         const profiles = enrichedRows
                           .map((e) => e.profile || e.row.target)
                           .filter((v): v is string => !!v);
