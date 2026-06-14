@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { handleWaWebhook } from "@/lib/wa-webhook.server";
 
 export const Route = createFileRoute("/api/public/wa-webhook")({
   server: {
     handlers: {
-      POST: async ({ request }) => handleWaWebhook(request),
+      POST: async ({ request }) => {
+        const { handleWaWebhook } = await import("@/lib/wa-webhook.server");
+        return handleWaWebhook(request);
+      },
       GET: async () =>
         new Response(
           JSON.stringify({ ok: true, endpoint: "wa-webhook", method: "POST", expects: "signed JSON" }),

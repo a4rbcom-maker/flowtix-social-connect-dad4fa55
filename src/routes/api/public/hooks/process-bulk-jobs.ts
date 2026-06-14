@@ -2,7 +2,6 @@
 // Called by pg_cron every minute via /api/public/hooks/process-bulk-jobs.
 // Uses service-role admin client to advance jobs across all users.
 import { createFileRoute } from "@tanstack/react-router";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const MAX_JOBS_PER_TICK = 25;
 const DEFAULT_BATCH_SIZE = 10;
@@ -22,6 +21,8 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
         if (!auth || auth !== `Bearer ${secret}`) {
           return new Response("Unauthorized", { status: 401 });
         }
+
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
         const now = new Date();
         const summary = { promoted: 0, processed: 0, sent: 0, completed: 0 };

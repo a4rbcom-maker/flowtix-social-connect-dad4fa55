@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 function authorize(request: Request): Response | null {
   const secret = process.env.BOT_WORKER_SECRET;
@@ -15,6 +14,8 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
       POST: async ({ request }) => {
         const denied = authorize(request);
         if (denied) return denied;
+
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
         const body = (await request.json().catch(() => null)) as
           | {
