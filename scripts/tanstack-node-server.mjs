@@ -16,7 +16,7 @@ function loadDotEnv() {
     const index = trimmed.indexOf("=");
     const key = trimmed.slice(0, index).trim();
     let value = trimmed.slice(index + 1).trim();
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || process.env[key] !== undefined) continue;
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || (process.env[key] !== undefined && process.env[key] !== "")) continue;
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
     }
