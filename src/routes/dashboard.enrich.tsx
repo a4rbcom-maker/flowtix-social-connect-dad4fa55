@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Download, Sparkles, Loader2, Upload, MapPin } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
@@ -20,6 +20,32 @@ function EnrichPage() {
   const [input, setInput] = useState("");
   const [rows, setRows] = useState<EnrichedLead[]>([]);
   const [busy, setBusy] = useState(false);
+
+  // Auto-fill from a job's results when navigated from history page.
+  useEffect(() => {
+    try {
+      const pre = sessionStorage.getItem("flowtix:enrich:prefill");
+      if (pre && pre.trim()) {
+        setInput(pre);
+        sessionStorage.removeItem("flowtix:enrich:prefill");
+        // Auto-run after state settles
+        setTimeout(() => {
+          const lines = pre.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+          if (lines.length > 0) {
+            setBusy(true);
+            enrichLines(lines)
+              .then((data) => {
+                setRows(data);
+                toast.success(lang === "ar" ? `تم إثراء ${data.length} سطر` : `Enriched ${data.length} rows`);
+              })
+              .catch((e) => toast.error(String(e)))
+              .finally(() => setBusy(false));
+          }
+        }, 50);
+      }
+    } catch (_) { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const t = lang === "ar" ? {
     title: "إثراء العملاء",
