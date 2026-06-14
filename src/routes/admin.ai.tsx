@@ -627,6 +627,9 @@ function LogsTab() {
   const stats = useServerFn(getAiPoolStats);
   const [tier, setTier] = useState("");
   const [status, setStatus] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const pageSize = 15;
   const { data } = useQuery({
     queryKey: ["ai-logs", tier, status],
     queryFn: () => list({ data: { limit: 200, tier, status } }),
@@ -635,6 +638,20 @@ function LogsTab() {
 
   const series = poolStats?.series ?? [];
   const maxV = Math.max(1, ...series.map((d) => d.success + d.failed));
+
+  const filteredLogs = useMemo(() => {
+    const all = data?.rows ?? [];
+    const q = search.trim().toLowerCase();
+    if (q === "") return all;
+    return all.filter((r) =>
+      r.model?.toLowerCase().includes(q) ||
+      r.error_message?.toLowerCase().includes(q) ||
+      r.tier?.toLowerCase().includes(q)
+    );
+  }, [data, search]);
+  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / pageSize));
+  useEffect(() => { if (page > totalPages) setPage(1); }, [totalPages, page]);
+  const pageLogs = filteredLogs.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <div className="space-y-6">
@@ -664,68 +681,108 @@ function LogsTab() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <CardTitle>{lang === "ar" ? "سجل الاستخدام" : "Usage logs"}</CardTitle>
-            <div className="flex gap-2">
-              <Select value={tier || "all"} onValueChange={(v) => setTier(v === "all" ? "" : v)}>
-                <SelectTrigger className="w-32"><SelectValue placeholder={lang === "ar" ? "كل الطبقات" : "All tiers"} /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{lang === "ar" ? "كل الطبقات" : "All tiers"}</SelectItem>
-                  <SelectItem value="simple">{lang === "ar" ? "بسيط" : "Simple"}</SelectItem>
-                  <SelectItem value="smart">{lang === "ar" ? "ذكي" : "Smart"}</SelectItem>
-                  <SelectItem value="negotiation">{lang === "ar" ? "تفاوض" : "Negotiation"}</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={status || "all"} onValueChange={(v) => setStatus(v === "all" ? "" : v)}>
-                <SelectTrigger className="w-32"><SelectValue placeholder={lang === "ar" ? "كل الحالات" : "All status"} /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{lang === "ar" ? "كل الحالات" : "All status"}</SelectItem>
-                  <SelectItem value="success">{lang === "ar" ? "ناجح" : "Success"}</SelectItem>
-                  <SelectItem value="error">{lang === "ar" ? "خطأ" : "Error"}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          <CardTitle>{lang === "ar" ? "سجل الاستخدام" : "Usage logs"}</CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                placeholder={lang === "ar" ? "بحث في الموديل أو الخطأ..." : "Search model or error..."}
+                className="ps-9 h-9"
+              />
+            </div>
+            <Select value={tier || "all"} onValueChange={(v) => { setTier(v === "all" ? "" : v); setPage(1); }}>
+              <SelectTrigger className="w-full sm:w-36 h-9"><SelectValue placeholder={lang === "ar" ? "كل الطبقات" : "All tiers"} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{lang === "ar" ? "كل الطبقات" : "All tiers"}</SelectItem>
+                <SelectItem value="simple">{lang === "ar" ? "بسيط" : "Simple"}</SelectItem>
+                <SelectItem value="smart">{lang === "ar" ? "ذكي" : "Smart"}</SelectItem>
+                <SelectItem value="negotiation">{lang === "ar" ? "تفاوض" : "Negotiation"}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={status || "all"} onValueChange={(v) => { setStatus(v === "all" ? "" : v); setPage(1); }}>
+              <SelectTrigger className="w-full sm:w-36 h-9"><SelectValue placeholder={lang === "ar" ? "كل الحالات" : "All status"} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{lang === "ar" ? "كل الحالات" : "All status"}</SelectItem>
+                <SelectItem value="success">{lang === "ar" ? "ناجح" : "Success"}</SelectItem>
+                <SelectItem value="error">{lang === "ar" ? "خطأ" : "Error"}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="rounded-lg border border-border/60 overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>{lang === "ar" ? "الوقت" : "Time"}</TableHead>
-                  <TableHead>{lang === "ar" ? "الطبقة" : "Tier"}</TableHead>
-                  <TableHead>{lang === "ar" ? "الموديل" : "Model"}</TableHead>
+                  <TableHead className="hidden sm:table-cell">{lang === "ar" ? "الطبقة" : "Tier"}</TableHead>
+                  <TableHead className="hidden md:table-cell">{lang === "ar" ? "الموديل" : "Model"}</TableHead>
                   <TableHead className="text-center">Tokens</TableHead>
-                  <TableHead className="text-center">{lang === "ar" ? "زمن (ms)" : "Latency"}</TableHead>
+                  <TableHead className="hidden lg:table-cell text-center">{lang === "ar" ? "زمن (ms)" : "Latency"}</TableHead>
                   <TableHead>{lang === "ar" ? "الحالة" : "Status"}</TableHead>
-                  <TableHead>{lang === "ar" ? "الخطأ" : "Error"}</TableHead>
+                  <TableHead className="hidden lg:table-cell">{lang === "ar" ? "الخطأ" : "Error"}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(data?.rows ?? []).length === 0 ? (
+                {pageLogs.length === 0 ? (
                   <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
-                    {lang === "ar" ? "لا توجد سجلات" : "No logs"}
+                    {(data?.rows ?? []).length === 0
+                      ? (lang === "ar" ? "لا توجد سجلات" : "No logs")
+                      : (lang === "ar" ? "لا نتائج للبحث" : "No matching results")}
                   </TableCell></TableRow>
-                ) : data!.rows.map((r) => (
+                ) : pageLogs.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="text-xs whitespace-nowrap">{new Date(r.created_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</TableCell>
-                    <TableCell>{r.tier && <Badge variant="outline" className="text-xs">{r.tier}</Badge>}</TableCell>
-                    <TableCell className="font-mono text-xs">{r.model}</TableCell>
+                    <TableCell className="text-xs whitespace-nowrap">
+                      <div>{new Date(r.created_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</div>
+                      <div className="md:hidden font-mono text-[10px] text-muted-foreground mt-0.5 truncate max-w-[160px]">{r.model}</div>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">{r.tier && <Badge variant="outline" className="text-xs">{r.tier}</Badge>}</TableCell>
+                    <TableCell className="hidden md:table-cell font-mono text-xs">{r.model}</TableCell>
                     <TableCell className="text-center text-xs">{(r.tokens_in || 0) + (r.tokens_out || 0)}</TableCell>
-                    <TableCell className="text-center text-xs">{r.latency_ms ?? "—"}</TableCell>
+                    <TableCell className="hidden lg:table-cell text-center text-xs">{r.latency_ms ?? "—"}</TableCell>
                     <TableCell>
                       {r.status === "success"
                         ? <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20">{lang === "ar" ? "ناجح" : "OK"}</Badge>
                         : <Badge className="bg-red-500/10 text-red-600 border-red-500/20">{lang === "ar" ? "خطأ" : "Error"}</Badge>}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground max-w-xs truncate">{r.error_message || "—"}</TableCell>
+                    <TableCell className="hidden lg:table-cell text-xs text-muted-foreground max-w-xs truncate">{r.error_message || "—"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
+
+          {filteredLogs.length > pageSize && (
+            <Pagination page={page} totalPages={totalPages} total={filteredLogs.length} pageSize={pageSize} onChange={setPage} lang={lang} />
+          )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function Pagination({ page, totalPages, total, pageSize, onChange, lang }: { page: number; totalPages: number; total: number; pageSize: number; onChange: (p: number) => void; lang: "ar" | "en" }) {
+  const start = (page - 1) * pageSize + 1;
+  const end = Math.min(page * pageSize, total);
+  return (
+    <div className="mt-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted-foreground">
+      <div>
+        {lang === "ar" ? `${start}–${end} من ${total}` : `${start}–${end} of ${total}`}
+      </div>
+      <div className="flex items-center gap-1">
+        <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => onChange(page - 1)} className="h-8 gap-1">
+          <ChevronLeft className="h-4 w-4 rtl:rotate-180" />
+          <span className="hidden sm:inline">{lang === "ar" ? "السابق" : "Prev"}</span>
+        </Button>
+        <span className="px-2 font-medium text-foreground">{page} / {totalPages}</span>
+        <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => onChange(page + 1)} className="h-8 gap-1">
+          <span className="hidden sm:inline">{lang === "ar" ? "التالي" : "Next"}</span>
+          <ChevronRight className="h-4 w-4 rtl:rotate-180" />
+        </Button>
+      </div>
     </div>
   );
 }
