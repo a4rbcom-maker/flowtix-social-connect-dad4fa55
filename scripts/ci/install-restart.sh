@@ -361,6 +361,10 @@ integrity_rollback() {
       echo "→ LAST_GOOD/PREV_SNAPSHOT unusable — restoring from most recent smoke-verified good-* snapshot: $src" ;;
     raw_snapshot)
       echo "→ No trusted snapshot usable — restoring from most recent raw pre-deploy snapshot: $src" ;;
+    prev_snapshot_last_resort)
+      echo "→ Last resort — restoring PREV_SNAPSHOT even though it matches the failed SHA: $src" ;;
+    raw_snapshot_last_resort)
+      echo "→ Last resort — restoring raw pre-deploy snapshot even though it matches the failed SHA: $src" ;;
   esac
   if [ "${INTEGRITY_ROLLBACK_DRY_RUN:-0}" = "1" ]; then
     echo "🧪 DRY-RUN — skipping rsync. Would have restored:"
