@@ -88,13 +88,6 @@ async function normalizeCatastrophicSsrResponse(response: Response, request: Req
   });
 }
 
-function cloneHeadRequestAsGet(request: Request): Request {
-  return new Request(request.url, {
-    method: "GET",
-    headers: new Headers(request.headers),
-  });
-}
-
 export default {
   async fetch(request: Request, env: unknown, context: unknown) {
     try {
@@ -111,17 +104,16 @@ export default {
       }
       const handler = await getServerEntry();
       const isHead = request.method === "HEAD";
-      const normalizedRequest = isHead ? cloneHeadRequestAsGet(request) : request;
-      const response = await handler.fetch(normalizedRequest, env, context);
+      const response = await handler.fetch(request, env, context);
+      const normalized = await normalizeCatastrophicSsrResponse(response, request);
       if (isHead) {
-        const normalized = await normalizeCatastrophicSsrResponse(response, normalizedRequest);
         return new Response(null, {
           status: normalized.status,
           statusText: normalized.statusText,
           headers: normalized.headers,
         });
       }
-      return await normalizeCatastrophicSsrResponse(response, normalizedRequest);
+      return normalized;
     } catch (error) {
       console.error(error);
       return new Response(renderErrorPage(), {
