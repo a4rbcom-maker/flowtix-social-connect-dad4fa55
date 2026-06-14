@@ -598,7 +598,7 @@ jobs:
               fi
             done
           fi
-          [ -n "$PICKED" ] || { echo "::error::No valid snapshot found"; echo "ROLLBACK_RESULT=no_valid_snapshot"; exit 1; }
+          [ -n "$PICKED" ] || { echo "::warning::No valid snapshot found; rollback could not help, original deployment failure remains the root cause."; echo "ROLLBACK_RESULT=no_valid_snapshot"; exit 1; }
 
           echo ""
           echo "── Restoring $PICKED → $DEPLOY_PATH ──"
