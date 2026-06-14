@@ -233,12 +233,32 @@ function JobsHistoryPage() {
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
+            <DialogTitle className="flex flex-wrap items-center justify-between gap-2">
               <span>{selected && t.types[selected.job_type]}</span>
               {results.length > 0 && (
-                <Button size="sm" variant="outline" onClick={downloadCsv}>
-                  <Download className="me-2 h-4 w-4" />{t.download}
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  {isPeople && (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        const lines = enrichedRows
+                          .map((e) => [e.name, e.phone, e.city, e.gov, e.row.target].filter(Boolean).join(" "))
+                          .filter(Boolean);
+                        try {
+                          sessionStorage.setItem("flowtix:enrich:prefill", lines.join("\n"));
+                        } catch (_) { /* ignore quota */ }
+                        navigate({ to: "/dashboard/enrich" });
+                      }}
+                      className="gap-2"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      {lang === "ar" ? "إثراء بداتا مصر" : "Enrich with Egypt data"}
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" onClick={downloadCsv}>
+                    <Download className="me-2 h-4 w-4" />{t.download}
+                  </Button>
+                </div>
               )}
             </DialogTitle>
           </DialogHeader>
