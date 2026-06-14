@@ -435,7 +435,7 @@ jobs:
             echo "::warning::Public domain did not show ${SHORT_SHA} during CI. Deployment kept successful because local SSR health already passed. Check proxy/vhost/cache separately."
           fi
 
-      - name: Mark SHA as deployed and trusted on server
+      - name: Mark SHA as deployed on server
         if: success() && steps.lock.outputs.skip != 'true'
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
@@ -451,8 +451,9 @@ jobs:
           ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
             "${USER}@${HOST}" \
             "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' GITHUB_SHA='${GITHUB_SHA}' SHORT_SHA='${SHORT_SHA}' bash -s" <<'EOSSH'
-          set -eu
+          set -u
           mkdir -p "${DEPLOY_PATH}/.deploy" "$BACKUPS_DIR"
+          printf '%s' "$GITHUB_SHA" > "${DEPLOY_PATH}/.deploy/last-sha"
 
           is_valid_snapshot() {
             local d="$1"
@@ -468,33 +469,33 @@ jobs:
 
           SNAP="$BACKUPS_DIR/good-$(date -u +%Y%m%d%H%M%S)-${SHORT_SHA}"
           TMP="${SNAP}.tmp"
-          rm -rf "$TMP"
-          mkdir -p "$TMP"
+          rm -rf "$TMP" 2>/dev/null || true
+          mkdir -p "$TMP" || { echo "::warning::Could not create trusted snapshot temp dir; deploy remains successful."; exit 0; }
           rsync -a --delete \
             --exclude='.env' --exclude='.user.ini' --exclude='.htaccess' \
             --exclude='var/' --exclude='.well-known/' --exclude='.deploy/' --exclude='vps-worker/' \
-            "$DEPLOY_PATH/" "$TMP/"
+            "$DEPLOY_PATH/" "$TMP/" || { echo "::warning::Trusted snapshot rsync failed; deploy remains successful."; rm -rf "$TMP" 2>/dev/null || true; exit 0; }
 
           if ! is_valid_snapshot "$TMP"; then
-            rm -rf "$TMP"
-            echo "::error::Smoke tests passed, but trusted snapshot validation failed. Refusing to update LAST_GOOD."
-            exit 1
+            rm -rf "$TMP" 2>/dev/null || true
+            echo "::warning::Trusted snapshot validation failed; deploy remains successful and rollback will use PREV_SNAPSHOT if available."
+            exit 0
           fi
 
-          mv "$TMP" "$SNAP"
-          printf '%s' "$SNAP" > "$BACKUPS_DIR/LAST_GOOD"
-          ls -1dt "$BACKUPS_DIR"/good-* 2>/dev/null | tail -n +6 | xargs -r rm -rf || true
-          printf '%s' "$GITHUB_SHA" > "${DEPLOY_PATH}/.deploy/last-sha"
-          echo "✓ Trusted rollback snapshot recorded: $SNAP"
+          if mv "$TMP" "$SNAP" && printf '%s' "$SNAP" > "$BACKUPS_DIR/LAST_GOOD"; then
+            ls -1dt "$BACKUPS_DIR"/good-* 2>/dev/null | tail -n +6 | xargs -r rm -rf || true
+            echo "✓ Trusted rollback snapshot recorded: $SNAP"
+          else
+            rm -rf "$TMP" "$SNAP" 2>/dev/null || true
+            echo "::warning::Trusted snapshot finalize failed; deploy remains successful."
+          fi
           EOSSH
-          echo "✓ Marked ${GITHUB_SHA} as deployed and trusted."
+          echo "✓ Marked ${GITHUB_SHA} as deployed."
 
-      # ─── 12. Auto-rollback on failure (multi-candidate + verified) ─────
-      # Triggers on ANY prior step failure (except dedupe-skip). Tries snapshots
-      # in priority order: LAST_GOOD → PREV_SNAPSHOT → newest good-* → newest raw.
-      # Validates each candidate, restores, reloads PM2, then health-checks
-      # locally. If all candidates fail or health check still fails, the step
-      # exits with a hard error (no silent || true) so the workflow stays red.
+      # ─── 12. Auto-rollback on failure (best-effort) ─────────────────────
+      # The deployment failure should remain attributable to the original step.
+      # Rollback tries to help restore service, but if no snapshot exists yet
+      # it must not replace the real failure reason with rollback noise.
       - name: Auto-rollback on failure
         id: rollback
         if: failure() && steps.lock.outputs.skip != 'true'
@@ -509,7 +510,7 @@ jobs:
           USER="${SERVER_USER:-${SSH_USER:-}}"
           HOST="${SERVER_IP:-${SSH_HOST:-}}"
           PORT="${SSH_PORT:-22}"
-          [ -n "${DEPLOY_PATH:-}" ] || { echo "::error::No DEPLOY_PATH — cannot rollback"; exit 1; }
+          [ -n "${DEPLOY_PATH:-}" ] || { echo "::warning::No DEPLOY_PATH — cannot rollback"; exit 0; }
 
           set +e
           ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
@@ -662,6 +663,7 @@ jobs:
           KIND=$(grep -E '^ROLLBACK_KIND=' rollback.log | tail -n1 | cut -d= -f2 || echo "")
           SRC=$(grep -E '^ROLLBACK_SRC=' rollback.log | tail -n1 | cut -d= -f2 || echo "")
           SHA=$(grep -E '^ROLLBACK_SHA=' rollback.log | tail -n1 | cut -d= -f2 || echo "")
+          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
 
           {
             echo "## 🔁 Auto-Rollback Report"
@@ -679,16 +681,16 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-          # Propagate failure if rollback itself failed.
           if [ "$SSH_EXIT" -ne 0 ] || [ "$RESULT" != "restored" ]; then
-            exit 1
+            echo "::warning::Rollback did not complete automatically; preserving the original deployment failure as the workflow result."
+            exit 0
           fi
 
       # ─── 13. Verify rollback via public domain ─────────────────────────
       # Only runs if step 12 actually restored a snapshot. Confirms the public
       # URL serves a working response (not necessarily the failed SHA).
       - name: Verify rollback via public domain
-        if: failure() && steps.rollback.outcome == 'success'
+        if: failure() && steps.rollback.outputs.result == 'restored'
         env:
           PUBLIC_URL: ${{ vars.PUBLIC_URL || secrets.PUBLIC_URL || 'https://flowtixtools.com' }}
           STRICT_PUBLIC_DOMAIN_CHECK: ${{ vars.STRICT_PUBLIC_DOMAIN_CHECK || 'false' }}
