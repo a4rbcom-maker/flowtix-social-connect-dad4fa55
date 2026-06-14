@@ -5,53 +5,26 @@ import { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
 import { createAlertManager } from "./server-alerts.mjs";
 
-function renderSsrFallbackPage() {
-  return `<!doctype html>
-<html lang="ar" dir="rtl">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Flowtix Tools — خطأ مؤقت</title>
-    <style>
-      body{margin:0;min-height:100vh;display:grid;place-items:center;background:#faf8ff;color:#1b1428;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-      main{width:min(92vw,560px);padding:40px 28px;text-align:center}
-      h1{margin:0 0 12px;font-size:28px;line-height:1.25}
-      p{margin:0 0 24px;color:#594a6d;line-height:1.8}
-      .actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-      a,button{border:0;border-radius:10px;padding:12px 18px;font:inherit;font-weight:700;cursor:pointer;text-decoration:none}
-      button{background:#8b3ff6;color:white}
-      a{background:#eee8fb;color:#2c164b}
-    </style>
-  </head>
-  <body>
-    <main>
-      <h1>حدث خطأ مؤقت</h1>
-      <p>الخادم شغّال لكن حصل خطأ داخلي أثناء عرض الصفحة. جرّب التحديث الآن.</p>
-      <div class="actions">
-        <button onclick="location.reload()">تحديث الصفحة</button>
-        <a href="/deploy-version.json">نسخة النشر</a>
-      </div>
-    </main>
-  </body>
-</html>`;
-}
-
 function loadDotEnv() {
   const envPath = resolve(process.cwd(), ".env");
   if (!existsSync(envPath)) return;
 
-  const lines = readFileSync(envPath, "utf8").split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
-    const index = trimmed.indexOf("=");
-    const key = trimmed.slice(0, index).trim();
-    let value = trimmed.slice(index + 1).trim();
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || (process.env[key] !== undefined && process.env[key] !== "")) continue;
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
+  try {
+    const lines = readFileSync(envPath, "utf8").split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+      const index = trimmed.indexOf("=");
+      const key = trimmed.slice(0, index).trim();
+      let value = trimmed.slice(index + 1).trim();
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || (process.env[key] !== undefined && process.env[key] !== "")) continue;
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      process.env[key] = value;
     }
-    process.env[key] = value;
+  } catch (err) {
+    console.warn("Failed to load .env:", err.message);
   }
 }
 
@@ -96,10 +69,6 @@ function absoluteRequestUrl(req) {
   return `${requestOrigin(req)}${requestTarget(req)}`;
 }
 
-// Source of truth = deploy-version.json on disk. We re-read it each request
-// (it's tiny and only written on deploy) so PM2 doesn't have to be restarted
-// for the version endpoint to reflect the freshly-rsynced bundle. Env vars
-// are kept as a fallback only for local dev where no version file exists.
 function readDeployVersion() {
   try {
     if (existsSync(versionFilePath)) {
@@ -108,7 +77,7 @@ function readDeployVersion() {
       if (parsed && typeof parsed === "object") return { ...parsed, source: "file" };
     }
   } catch {
-    // fall through to env
+    // fall through to env fallback
   }
   const sha = process.env.DEPLOY_SHA || process.env.GITHUB_SHA || "development";
   return {
@@ -124,10 +93,12 @@ function readDeployVersion() {
 }
 
 process.on("unhandledRejection", (error) => {
+  console.error("Unhandled Rejection:", error);
   void alerts.notify({ kind: "process-unhandled-rejection", error });
 });
 
 process.on("uncaughtException", (error) => {
+  console.error("Uncaught Exception:", error);
   alerts.notify({ kind: "process-uncaught-exception", error })
     .finally(() => process.exit(1));
   setTimeout(() => process.exit(1), 3000).unref();
@@ -144,9 +115,7 @@ async function getSsrHandler() {
     ].filter(Boolean);
     const entry = candidates.find((candidate) => existsSync(resolve(root, candidate)));
     if (!entry) {
-      throw new Error(
-        `SSR entry missing. Checked: ${candidates.join(", ")}`,
-      );
+      throw new Error(`SSR entry missing. Checked: ${candidates.join(", ")}`);
     }
     ssrHandlerPromise = import(pathToFileURL(resolve(root, entry)).toString())
       .then((module) => module.default ?? module);
@@ -203,8 +172,8 @@ function serveStatic(req, res, pathname) {
   return true;
 }
 
-function toFetchRequest(req, methodOverride = req.method) {
-  const url = absoluteRequestUrl(req);
+function toFetchRequest(req, origin, target, methodOverride = req.method) {
+  const url = `${origin}${target}`;
   const headers = new Headers();
   for (const [key, value] of Object.entries(req.headers)) {
     if (Array.isArray(value)) {
@@ -254,10 +223,7 @@ async function alertOnServerError(fetchResponse, request) {
     bodySnippet = await fetchResponse.clone().text().catch(() => "");
   }
 
-  // Surface the hidden SSR error to PM2 logs so we can diagnose root cause.
-  console.error(
-    `[SSR ${fetchResponse.status}] ${request.method} ${url.pathname} :: ${bodySnippet.slice(0, 2000)}`,
-  );
+  console.error(`[SSR ${fetchResponse.status}] ${request.method} ${url.pathname} :: ${bodySnippet.slice(0, 2000)}`);
 
   await alerts.notify({
     kind: url.pathname.startsWith("/api/") ? "api" : "ssr",
@@ -273,7 +239,7 @@ function serveNativeHealth(req, res) {
     status: "ok",
     service: process.env.APP_NAME || "flowtixtools-web",
     timestamp: new Date().toISOString(),
-    uptime_seconds: Math.round(process.uptime?.() ?? 0),
+    uptime_seconds: Math.round(process.uptime()),
     build: readDeployVersion(),
   });
   res.statusCode = 200;
@@ -283,51 +249,53 @@ function serveNativeHealth(req, res) {
 }
 
 const server = createServer(async (req, res) => {
-  try {
-    const url = new URL(absoluteRequestUrl(req));
-    if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/deploy-version.json") {
+  const method = req.method || "GET";
+  const rawUrl = req.url || "/";
+  const pathname = rawUrl.split("?")[0];
+
+  // 1. Ultra-minimal health/version routes (no complex URL parsing, no SSR)
+  if (method === "GET" || method === "HEAD") {
+    if (pathname === "/api/public/health") return serveNativeHealth(req, res);
+    if (pathname === "/deploy-version.json") {
       const body = JSON.stringify(readDeployVersion());
       res.statusCode = 200;
       res.setHeader("content-type", "application/json; charset=utf-8");
       res.setHeader("cache-control", "no-store, max-age=0");
-      res.end(req.method === "HEAD" ? undefined : body);
+      res.end(method === "HEAD" ? undefined : body);
       return;
     }
-    if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/api/public/health") {
-      serveNativeHealth(req, res);
-      return;
-    }
-    if ((req.method === "GET" || req.method === "HEAD") && serveStatic(req, res, url.pathname)) {
-      return;
-    }
+    // 2. Static files
+    if (serveStatic(req, res, pathname)) return;
+  }
 
-    const isHead = req.method === "HEAD";
-    const request = toFetchRequest(req, isHead ? "GET" : req.method);
+  try {
+    const origin = requestOrigin(req);
+    const target = requestTarget(req);
+    const isHead = method === "HEAD";
+    const request = toFetchRequest(req, origin, target, isHead ? "GET" : method);
+    
     const handler = await getSsrHandler();
     const response = await handler.fetch(request, process.env, {});
     await alertOnServerError(response, request);
     await writeFetchResponse(response, res, { omitBody: isHead });
   } catch (error) {
-    console.error(error);
-    const pathname = (() => {
-      try {
-        return new URL(absoluteRequestUrl(req)).pathname;
-      } catch {
-        return req.url || "/";
-      }
-    })();
+    console.error("Server Error:", error);
+    const currentPath = pathname || "/";
     await alerts.notify({
-      kind: pathname.startsWith("/api/") ? "api-exception" : "ssr-exception",
-      method: req.method,
-      path: pathname,
+      kind: currentPath.startsWith("/api/") ? "api-exception" : "ssr-exception",
+      method: method,
+      path: currentPath,
       status: 500,
       error,
-    });
+    }).catch(() => {});
+
     if (!res.headersSent) {
       res.statusCode = 500;
-      res.setHeader("content-type", pathname.startsWith("/api/") ? "text/plain; charset=utf-8" : "text/html; charset=utf-8");
+      res.setHeader("content-type", "text/plain; charset=utf-8");
+      res.end("Internal Server Error");
+    } else {
+      res.end();
     }
-    res.end(pathname.startsWith("/api/") ? "Internal Server Error" : renderSsrFallbackPage());
   }
 });
 
