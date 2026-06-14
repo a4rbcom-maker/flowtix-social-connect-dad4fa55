@@ -144,6 +144,27 @@ function AdminPlansPage() {
 
   const rows = listQ.data ?? [];
 
+  const [search, setSearch] = useState("");
+  const [periodFilter, setPeriodFilter] = useState<"all" | "monthly" | "yearly">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "disabled">("all");
+  const [page, setPage] = useState(1);
+  const pageSize = 6;
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((p) =>
+      (periodFilter === "all" || p.billing_period === periodFilter) &&
+      (statusFilter === "all" || (statusFilter === "active" ? p.is_active : !p.is_active)) &&
+      (q === "" ||
+        p.name_ar?.toLowerCase().includes(q) ||
+        p.name_en?.toLowerCase().includes(q) ||
+        p.slug?.toLowerCase().includes(q))
+    );
+  }, [rows, search, periodFilter, statusFilter]);
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  useEffect(() => { if (page > totalPages) setPage(1); }, [totalPages, page]);
+  const pageRows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
+
   return (
     <AdminLayout title={t("الباقات والأسعار", "Plans & Pricing")}>
       <div className="space-y-6">
@@ -172,6 +193,39 @@ function AdminPlansPage() {
           </button>
         </div>
 
+        {/* Filters */}
+        {rows.length > 0 && (
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                placeholder={t("بحث بالاسم أو المعرف...", "Search by name or slug...")}
+                className="w-full h-9 rounded-lg border border-border bg-background ps-9 pe-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <select
+              value={periodFilter}
+              onChange={(e) => { setPeriodFilter(e.target.value as never); setPage(1); }}
+              className="h-9 rounded-lg border border-border bg-background px-3 text-sm w-full sm:w-40 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="all">{t("كل الفترات", "All periods")}</option>
+              <option value="monthly">{t("شهري", "Monthly")}</option>
+              <option value="yearly">{t("سنوي", "Yearly")}</option>
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value as never); setPage(1); }}
+              className="h-9 rounded-lg border border-border bg-background px-3 text-sm w-full sm:w-40 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="all">{t("كل الحالات", "All status")}</option>
+              <option value="active">{t("مفعّلة", "Active")}</option>
+              <option value="disabled">{t("معطّلة", "Disabled")}</option>
+            </select>
+          </div>
+        )}
+
         {listQ.isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -187,9 +241,13 @@ function AdminPlansPage() {
               {t("لا توجد باقات بعد. أضف باقة جديدة لتبدأ.", "No plans yet. Add a new plan to start.")}
             </p>
           </div>
+        ) : filteredRows.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card p-10 text-center text-sm text-muted-foreground">
+            {t("لا نتائج تطابق التصفية.", "No plans match the filters.")}
+          </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {rows.map((p, i) => (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {pageRows.map((p, i) => (
               <motion.div
                 key={p.id}
                 layout
