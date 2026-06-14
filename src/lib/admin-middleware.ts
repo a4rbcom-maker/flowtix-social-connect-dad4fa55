@@ -16,13 +16,17 @@ function adminClient() {
   });
 }
 
+function httpError(status: number, message: string) {
+  return Object.assign(new Error(message), { status });
+}
+
 export const requireAdmin = createMiddleware({ type: "function" })
   .server(async ({ next, context }) => {
     const request = getRequest();
     const authHeader = request?.headers?.get("authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       setResponseStatus(401);
-      throw new Error("Unauthorized: missing bearer token");
+      throw httpError(401, "Unauthorized: missing bearer token");
     }
 
     const token = authHeader.replace("Bearer ", "");
@@ -30,7 +34,7 @@ export const requireAdmin = createMiddleware({ type: "function" })
     const publicKey = process.env.SUPABASE_PUBLISHABLE_KEY;
     if (!url || !publicKey) {
       setResponseStatus(500);
-      throw new Error("Missing backend environment variables");
+      throw httpError(500, "Missing backend environment variables");
     }
 
     const authClient = createClient<Database>(url, publicKey, {
@@ -41,7 +45,7 @@ export const requireAdmin = createMiddleware({ type: "function" })
     const userId = claimsData?.claims?.sub;
     if (claimsError || !userId) {
       setResponseStatus(401);
-      throw new Error("Unauthorized: invalid token");
+      throw httpError(401, "Unauthorized: invalid token");
     }
 
     const db = adminClient();
@@ -54,15 +58,16 @@ export const requireAdmin = createMiddleware({ type: "function" })
     if (error) {
       console.error("[requireAdmin] role lookup failed", error);
       setResponseStatus(403);
-      throw new Error("forbidden");
+      throw httpError(403, "forbidden");
     }
     if (!data) {
       setResponseStatus(403);
-      throw new Error("forbidden: admin role required");
+      throw httpError(403, "forbidden: admin role required");
     }
     return next({
       context: {
         adminUserId: userId,
+        userId,
         supabaseAdmin: db,
       },
     });
