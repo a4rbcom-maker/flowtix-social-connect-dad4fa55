@@ -305,3 +305,24 @@ const server = createServer(async (req, res) => {
 server.listen(port, "127.0.0.1", () => {
   console.log(`Flowtix SSR server listening on http://127.0.0.1:${port}`);
 });
+
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Received ${signal}; closing HTTP server...`);
+  server.close((error) => {
+    if (error) {
+      console.error("HTTP server close failed:", error);
+      process.exit(1);
+    }
+    process.exit(0);
+  });
+  setTimeout(() => {
+    console.warn("Forced shutdown after timeout.");
+    process.exit(1);
+  }, 8000).unref();
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
