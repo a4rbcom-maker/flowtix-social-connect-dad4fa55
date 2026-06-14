@@ -59,8 +59,19 @@ async function getServerEntry(): Promise<ServerEntry> {
   return serverEntryPromise;
 }
 
-async function normalizeCatastrophicSsrResponse(response: Response): Promise<Response> {
+async function normalizeCatastrophicSsrResponse(response: Response, request: Request): Promise<Response> {
   if (response.status < 500) return response;
+
+  const pathname = new URL(request.url).pathname;
+  if (!pathname.startsWith("/api/")) {
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("text/plain") || !contentType.includes("text/html")) {
+      return new Response(renderErrorPage(), {
+        status: 500,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+  }
 
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) return response;
@@ -96,14 +107,14 @@ export default {
       const normalizedRequest = isHead ? new Request(request, { method: "GET" }) : request;
       const response = await handler.fetch(normalizedRequest, env, context);
       if (isHead) {
-        const normalized = await normalizeCatastrophicSsrResponse(response);
+        const normalized = await normalizeCatastrophicSsrResponse(response, normalizedRequest);
         return new Response(null, {
           status: normalized.status,
           statusText: normalized.statusText,
           headers: normalized.headers,
         });
       }
-      return await normalizeCatastrophicSsrResponse(response);
+      return await normalizeCatastrophicSsrResponse(response, normalizedRequest);
     } catch (error) {
       console.error(error);
       return new Response(renderErrorPage(), {
