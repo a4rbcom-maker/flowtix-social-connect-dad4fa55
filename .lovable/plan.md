@@ -1,49 +1,54 @@
-## ما يحدث الآن
+# تقوية Auto-Rollback عند فشل الـ Deploy
 
-- PM2 يعمل ويُحمِّل ملف SSR من `dist/server/*` بنجاح (وإلا لظهر `SSR entry missing`).
-- كل الطلبات ترجع `500 text/plain`. هذا ليس رد `renderErrorPage()` لدينا (الذي يُرسل `text/html`)، إذن الخطأ يحدث **داخل** SSR handler وh3 يحوّله إلى نص عادي ثم wrapper الـ `src/server.ts` لا يحوّله إلى HTML لأن `content-type` ليس `application/json` — فحاليًا الرسالة الحقيقية مكتومة.
-- معنى ذلك: السبب الجذري ليس Nginx ولا المنفذ ولا الـ build — بل استثناء داخل SSR يتم ابتلاعه.
+## الوضع الحالي
 
-## السبب الأرجح
+النظام يملك بالفعل rollback متعدد الطبقات:
 
-`vite.config.ts` يستخدم Override لمدخل السيرفر إلى `src/server.ts`. هذا الـ wrapper مكتوب لبيئة Cloudflare Worker (يستورد `@tanstack/react-start/server-entry` لازم Vite plugin). عند البناء لهدف Node + التشغيل عبر `scripts/tanstack-node-server.mjs`، الـ import الديناميكي قد لا يُحلّ، فيرفض الـ promise مع كل طلب → 500 نظيف بلا تفاصيل.
+- **داخل السيرفر** (`scripts/ci/install-restart.sh`): دالة `integrity_rollback` تشتغل تلقائياً عند فشل checksum، أو نقص ملفات، أو عدم ربط البورت، أو فشل health بعد reload. تختار بالترتيب: `LAST_GOOD` → `PREV_SNAPSHOT` → أحدث `good-*`.
+- **في الـ workflow** (الخطوة 12): فقط تستعيد `PREV_SNAPSHOT`، وتتجاهل الباقي، ولا تتحقق من صحة الموقع بعد الاستعادة.
+- **تسجيل LAST_GOOD**: `publish_good_snapshot` يُنشئ snapshot موثوق بعد كل deploy ناجح.
 
-`optimizeDeps.exclude: ["@tanstack/react-start", "zod"]` أيضًا يفسّر دائرة 504 في معاينة Vite (إعادة تحسين مستمرة تُسقط chunks).
+## الثغرات التي تحتاج إصلاح
 
-## الخطوات
+1. **خطوة Rollback في الـ workflow ضعيفة**: لو فشل الـ SSH أو الـ rsync نفسه (قبل تشغيل install-restart.sh)، تنفذ خطوة 12 لكنها تستعيد `PREV_SNAPSHOT` فقط. إذا كان فاسداً أو مفقوداً، تستسلم وتترك الموقع مكسوراً.
+2. **لا يوجد health check بعد الاستعادة في الـ workflow**: قد تُطبَّق الاستعادة لكن الموقع يظل 500 ولا أحد يعلم — الـ workflow يعرض ✅ على خطوة الـ rollback لأنها مكتوبة بـ `|| true`.
+3. **مؤشر SHA الفاشل لا يُمسح بشكل صريح**: يُكتب فقط عند النجاح، لكن إن وُجد marker قديم لنفس الـ SHA من محاولة فاشلة سابقة، قد يُتخطّى الـ deploy التالي عن طريق الخطأ.
+4. **لا توجد رسالة واضحة في الـ workflow log** عند نجاح/فشل الـ rollback مع رابط الموقع الحالي.
 
-1) **اقرأ الخطأ الفعلي** على VPS (بدون أي تعديل بعد):
-   ```bash
-   pm2 logs flowtixtools-web --lines 80 --nostream
-   ```
-   والصق آخر stack trace.
+## الحل المقترح
 
-2) **إصلاح إعداد Vite** (إزالة الـ overrides التي تضرّ Node target وحلقة الـ deps):
-   - حذف `tanstackStart.server.entry` من `vite.config.ts` والاعتماد على المدخل الافتراضي.
-   - حذف `optimizeDeps.exclude` (سبب 504 في المعاينة).
-   - الإبقاء على `src/lib/error-capture.ts` و `src/lib/error-page.ts` و `src/server.ts` كملفات احتياطية فقط — لكن لا نوجّه TanStack إليها.
+### 1) ترقية خطوة "Rollback on failure" في `.github/workflows/deploy.yml`
 
-3) **تحديث `scripts/tanstack-node-server.mjs`** ليكشف الخطأ بدلًا من ابتلاعه:
-   - عند `status >= 500`، طباعة `body` كاملًا في `console.error` قبل إرساله للعميل.
+استبدال الخطوة 12 الحالية بمنطق:
 
-4) **إعادة البناء والتشغيل** على VPS:
-   ```bash
-   git pull && bun install && bun run build
-   ls dist/server   # تأكد من وجود ملف الإدخال
-   pm2 restart flowtixtools-web --update-env
-   curl -i http://127.0.0.1:3100/api/public/health
-   ```
+- **اختيار snapshot بالترتيب**: `LAST_GOOD` → `PREV_SNAPSHOT` → أحدث `good-*` → أحدث `[0-9]*`.
+- **التحقق من صلاحية الـ snapshot** قبل النسخ (وجود `dist/server/`, `ecosystem.config.cjs`, `node_modules`).
+- **rsync + pm2 reload + pm2 save** بنفس النمط الحالي.
+- **Health check محلي** (`curl http://127.0.0.1:$APP_PORT/`) لمدة 30 ثانية بعد الاستعادة.
+- **Public URL health check** (`curl https://flowtixtools.com/api/public/health`) للتأكد أن CDN/Nginx تخدم النسخة المستعادة.
+- **مسح `.deploy/last-sha`** للتأكد أن نفس الـ SHA الفاشل لن يُتخطّى لاحقاً.
+- **إخراج markdown summary** في `$GITHUB_STEP_SUMMARY` يوضح: السبب، الـ snapshot المُستعاد، نتيجة الـ health check.
 
-5) **التحقق**:
-   - `/api/public/health` → 200
-   - `/api/public/bot/next-job` POST → 401 (بدون السر) أو 200 (مع السر)
-   - الصفحة الرئيسية → 200 HTML
+### 2) خطوة جديدة "Verify rollback health"
 
-## أحتاج منك قبل التنفيذ
+تُضاف بعد خطوة الـ rollback مباشرة، تعمل فقط لو نُفّذ rollback. ترفع failure حقيقية إذا الموقع ظل 500 بعد الاستعادة (بدل الـ silent `|| true`).
 
-ألصق ناتج:
-```bash
-pm2 logs flowtixtools-web --lines 80 --nostream
-```
+### 3) (اختياري — لا يحتاج تعديل) منطق `install-restart.sh` الحالي
 
-هذا يحدد إن كان السبب فعلًا هو wrapper المدخل أم استثناء آخر (متغير بيئة ناقص، Supabase client، إلخ) فأطبّق الإصلاح الدقيق بدل التخمين.
+يبقى كما هو — هو الطبقة الأولى للحماية ويعمل بشكل ممتاز. التعديل فقط على طبقة الـ workflow التي تغطي حالات لا يصلها السكربت أصلاً (فشل rsync، فشل SSH، فشل بناء، إلخ).
+
+## ملخص الملفات
+
+| ملف | تغيير |
+|---|---|
+| `.github/workflows/deploy.yml` | استبدال خطوة "Rollback on failure" + إضافة "Verify rollback health" |
+| `scripts/ci/install-restart.sh` | بدون تعديل |
+| `docs/deployment-runbook.md` | تحديث قسم Rollback ليعكس السلوك الجديد |
+
+## النتيجة المتوقعة
+
+- أي فشل في الـ deploy (في أي خطوة) → استعادة تلقائية لأحدث نسخة موثوقة → health check → الموقع يعمل خلال دقائق دون تدخل يدوي.
+- لو فشلت الاستعادة نفسها (سيناريو نادر جداً)، الـ workflow يرفع failure واضح مع تفاصيل في الـ summary بدل الإخفاء الصامت.
+- لا حاجة لأي تدخل من المستخدم على السيرفر مرة أخرى للحالات العادية.
+
+هل أبدأ التنفيذ؟
