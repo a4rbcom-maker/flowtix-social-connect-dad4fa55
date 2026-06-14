@@ -222,6 +222,11 @@ async function alertOnServerError(fetchResponse, request) {
     bodySnippet = await fetchResponse.clone().text().catch(() => "");
   }
 
+  // Surface the hidden SSR error to PM2 logs so we can diagnose root cause.
+  console.error(
+    `[SSR ${fetchResponse.status}] ${request.method} ${url.pathname} :: ${bodySnippet.slice(0, 2000)}`,
+  );
+
   await alerts.notify({
     kind: url.pathname.startsWith("/api/") ? "api" : "ssr",
     method: request.method,
