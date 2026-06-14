@@ -63,9 +63,15 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  // Default: sidebar always open (both desktop and mobile overlay).
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [isDesktop, setIsDesktop] = useState(true);
+  // Default: closed on mobile, open on desktop (avoid sidebar covering screen on first mobile load).
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia("(min-width: 768px)").matches;
+  });
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia("(min-width: 768px)").matches;
+  });
   const channelStatus = useChannelStatus(lang);
   const { isAdmin, isLoading: isAdminLoading } = useIsAdmin();
 
@@ -100,6 +106,16 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   useEffect(() => {
     if (!isDesktop) setSidebarOpen(false);
   }, [location.pathname, isDesktop]);
+
+  // Lock body scroll while the mobile sidebar overlay is open.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (sidebarOpen && !isDesktop) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [sidebarOpen, isDesktop]);
 
   const closeOnMobile = () => {
     if (!isDesktop) setSidebarOpen(false);
@@ -560,11 +576,17 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="group relative flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-background/50 text-muted-foreground transition-all duration-200 hover:border-primary/40 hover:text-primary hover:shadow-[0_4px_12px_-4px_rgba(124,58,237,0.4)]"
-              aria-label="Toggle menu"
+              className="group relative flex h-10 w-10 items-center justify-center rounded-xl border border-primary/30 bg-gradient-to-br from-primary/15 to-primary/5 text-primary shadow-sm transition-all duration-200 hover:from-primary/25 hover:to-primary/10 hover:shadow-[0_4px_12px_-4px_rgba(124,58,237,0.4)] md:h-9 md:w-9 md:border-border/60 md:bg-background/50 md:text-muted-foreground md:hover:border-primary/40 md:hover:text-primary"
+              aria-label={sidebarOpen ? (lang === "ar" ? "إغلاق القائمة" : "Close menu") : (lang === "ar" ? "فتح القائمة" : "Open menu")}
+              aria-expanded={sidebarOpen}
             >
-              {/* Show different icons depending on state, hidden on mobile vs desktop */}
-              <Menu className="h-[18px] w-[18px] md:hidden" />
+              {/* Mobile: animated hamburger ↔ X */}
+              <span className="relative h-4 w-5 md:hidden">
+                <span className={`absolute left-0 top-0 h-[2px] w-5 rounded-full bg-current transition-all duration-200 ${sidebarOpen ? "translate-y-[7px] rotate-45" : ""}`} />
+                <span className={`absolute left-0 top-[7px] h-[2px] w-5 rounded-full bg-current transition-all duration-200 ${sidebarOpen ? "opacity-0" : "opacity-100"}`} />
+                <span className={`absolute left-0 top-[14px] h-[2px] w-5 rounded-full bg-current transition-all duration-200 ${sidebarOpen ? "-translate-y-[7px] -rotate-45" : ""}`} />
+              </span>
+              {/* Desktop: collapse chevrons */}
               {sidebarOpen ? (
                 <ChevronsLeft className="hidden h-[18px] w-[18px] md:block rtl:hidden" />
               ) : (
@@ -576,7 +598,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                 <ChevronsLeft className="hidden h-[18px] w-[18px] rtl:md:block" />
               )}
             </button>
-            <h1 className="text-base font-semibold text-foreground md:text-lg">{title}</h1>
+            <h1 className="text-base font-semibold text-foreground md:text-lg truncate">{title}</h1>
           </div>
           <div className="flex items-center gap-2">
             <AnnouncementsBell />
