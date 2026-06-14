@@ -2,8 +2,6 @@
 // Auth: Authorization: Bearer <BOT_WORKER_SECRET>
 // Single round-trip via UPDATE…RETURNING with SKIP LOCKED to avoid contention.
 import { createFileRoute } from "@tanstack/react-router";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { decryptJson } from "@/server/crypto.server";
 
 function authorize(request: Request): Response | null {
   const secret = process.env.BOT_WORKER_SECRET;
@@ -21,6 +19,11 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
       POST: async ({ request }) => {
         const denied = authorize(request);
         if (denied) return denied;
+
+        const [{ supabaseAdmin }, { decryptJson }] = await Promise.all([
+          import("@/integrations/supabase/client.server"),
+          import("@/server/crypto.server"),
+        ]);
 
         // Atomically claim the oldest pending job whose schedule has arrived.
         // We use an UPDATE … WHERE id = (SELECT … LIMIT 1 FOR UPDATE SKIP LOCKED)

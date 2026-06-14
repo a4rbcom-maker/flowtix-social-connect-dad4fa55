@@ -1,6 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
 
 /**
  * Public health-check endpoint.
@@ -10,8 +8,12 @@ import { resolve } from "node:path";
  * Also surfaces the currently-deployed build SHA (from deploy-version.json
  * on disk) so a single endpoint can confirm both "alive" and "right build".
  */
-function readBuildInfo() {
+async function readBuildInfo() {
   try {
+    const [{ existsSync, readFileSync }, { resolve }] = await Promise.all([
+      import("node:fs"),
+      import("node:path"),
+    ]);
     const p = resolve(process.cwd(), "deploy-version.json");
     if (!existsSync(p)) return { source: "missing" as const };
     const parsed = JSON.parse(readFileSync(p, "utf8"));
@@ -37,7 +39,7 @@ export const Route = createFileRoute("/api/public/health")({
             service: process.env.APP_NAME || "tanstack-start-app",
             timestamp: new Date().toISOString(),
             uptime_seconds: Math.round(process.uptime?.() ?? 0),
-            build: readBuildInfo(),
+            build: await readBuildInfo(),
           },
           {
             status: 200,
