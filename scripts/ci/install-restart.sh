@@ -802,10 +802,14 @@ let input = "";
 process.stdin.on("data", (chunk) => { input += chunk; });
 process.stdin.on("end", () => {
   try {
-    const app = JSON.parse(input).find((item) => item && item.name === process.env.APP_NAME);
-    if (!app) return console.log("missing|missing");
-    const env = app.pm2_env || {};
-    console.log(`${env.status || "unknown"}|${env.exec_mode || "unknown"}`);
+    const apps = JSON.parse(input).filter((item) => item && item.name === process.env.APP_NAME);
+    if (apps.length === 0) return console.log("missing|missing");
+    const envs = apps.map((app) => app.pm2_env || {});
+    const hasOnline = envs.some((env) => env.status === "online");
+    const hasCluster = envs.some((env) => env.exec_mode === "cluster_mode" || env.exec_mode === "cluster");
+    const status = hasOnline ? "online" : (envs[0].status || "unknown");
+    const mode = hasCluster ? "cluster_mode" : (envs[0].exec_mode || "unknown");
+    console.log(`${status}|${mode}`);
   } catch {
     console.log("unknown|unknown");
   }
