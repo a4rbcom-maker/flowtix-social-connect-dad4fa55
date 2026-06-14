@@ -1,11 +1,36 @@
 #!/usr/bin/env bash
 # Flowtix Tools — Safe deploy script for self-hosted server
 # Usage: ./deploy.sh
-# Requirements: bun installed, .env file present in project root with VITE_* vars
+# Requirements: node/npm or bun installed, .env file present in project root with VITE_* vars
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
+
+if command -v bun >/dev/null 2>&1; then
+  PKG_MANAGER="bun"
+elif command -v npm >/dev/null 2>&1; then
+  PKG_MANAGER="npm"
+else
+  echo "❌ Neither bun nor npm is installed. Install Node.js/npm or Bun, then re-run."
+  exit 1
+fi
+
+install_dependencies() {
+  if [ "$PKG_MANAGER" = "bun" ]; then
+    bun install --frozen-lockfile || bun install
+  else
+    npm install
+  fi
+}
+
+build_project() {
+  if [ "$PKG_MANAGER" = "bun" ]; then
+    bun run build
+  else
+    npm run build
+  fi
+}
 
 echo "==> [1/6] Checking .env file..."
 if [ ! -f .env ]; then
@@ -33,10 +58,11 @@ fi
 
 echo "==> [4/6] Clean install dependencies..."
 rm -rf node_modules dist .vinxi
-bun install --frozen-lockfile || bun install
+echo "Using package manager: $PKG_MANAGER"
+install_dependencies
 
 echo "==> [5/6] Building project..."
-if bun run build; then
+if build_project; then
   echo "✅ Build succeeded"
 else
   [ -d "$BACKUP_DIR" ] && { rm -rf dist && mv "$BACKUP_DIR" dist; }

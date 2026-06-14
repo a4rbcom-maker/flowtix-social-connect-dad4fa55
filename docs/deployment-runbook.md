@@ -75,6 +75,10 @@ sudo nginx -t && sudo nginx -s reload
 يرجع `502 Bad Gateway`، فهذا يعني غالبًا أن ملف الـvhost ما زال يوجّه إلى
 `127.0.0.1:3100` أو upstream قديم بدل `127.0.0.1:3001`.
 
+إذا ظهر `bun: command not found` على الـVPS، لا تثبّت أدوات عامة أثناء الإنقاذ.
+استخدم `npm install` و `npm run build` بدل `bun install` و `bun run build`؛
+سكربت `deploy.sh` صار يختار `bun` إن وجد وإلا يستخدم `npm` تلقائيًا.
+
 ### سلوك GitHub Actions الحالي
 
 - بعد هذا التعديل، خطوة **public domain check** لم تعد تُسقط الـworkflow تلقائيًا
