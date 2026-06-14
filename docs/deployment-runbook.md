@@ -75,17 +75,23 @@ sudo nginx -t && sudo nginx -s reload
 عند فشل أي خطوة من الـdeploy (بناء، rsync، PM2 restart، health check…)،
 يشغّل الـworkflow خطوة **Auto-rollback on failure** التي تعمل تلقائيًا:
 
-1. **اختيار snapshot** بالترتيب: `LAST_GOOD` (آخر نسخة موثوقة بعد smoke-test)
+1. **اختيار snapshot** بالترتيب: `LAST_GOOD` (آخر نسخة موثوقة بعد smoke-test كامل)
    → `PREV_SNAPSHOT` (ما كان شغال قبل الـdeploy الفاشل) → أحدث `good-*` →
    أحدث snapshot خام `[0-9]*`.
 2. **التحقق من صلاحية** المرشح (وجود `dist/server/*`, `ecosystem.config.cjs`,
    `node_modules`) قبل النسخ.
-3. **rsync + PM2 reload + pm2 save** على النسخة المختارة.
-4. **Local health check** على `127.0.0.1:$APP_PORT` لمدة 60 ثانية.
-5. **Public domain verify** على الدومين العام (200 OK).
-6. **مسح `.deploy/last-sha`** الفاشل حتى لا يُتخطّى الـdeploy التالي بالخطأ.
-7. **تقرير في GitHub Step Summary** يوضح: السبب، الـsnapshot المُستعاد،
+3. **رفض أي snapshot يحمل نفس SHA الفاشل** حتى لو كان موجودًا خطأً في
+   `LAST_GOOD` من محاولة سابقة.
+4. **rsync + PM2 reload + pm2 save** على النسخة المختارة.
+5. **Local health check** على `127.0.0.1:$APP_PORT` لمدة 60 ثانية.
+6. **Public domain verify** على الدومين العام (200 OK).
+7. **مسح `.deploy/last-sha`** الفاشل حتى لا يُتخطّى الـdeploy التالي بالخطأ.
+8. **تقرير في GitHub Step Summary** يوضح: السبب، الـsnapshot المُستعاد،
    الـSHA الحالي.
+
+مهم: لا يتم تحديث `LAST_GOOD` الآن إلا بعد نجاح فحص الصفحة الرئيسية و
+`/api/public/health` و`deploy-version.json`؛ لذلك لا يمكن اعتبار نسخة ترجع
+500 كـ “آخر نسخة ناجحة”.
 
 أي فشل في خطوات الاستعادة نفسها يرفع failure حقيقي في الـworkflow بدل
 الإخفاء الصامت. لا حاجة لتدخل يدوي في الحالات العادية.

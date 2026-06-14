@@ -178,6 +178,19 @@ is_runnable_prev_snapshot() {
     && [ -d "$candidate/node_modules" ]
 }
 
+snapshot_matches_failed_sha() {
+  local candidate="$1"
+  [ -n "${DEPLOY_SHA:-}" ] || return 1
+  [ -f "$candidate/deploy-version.json" ] || return 1
+
+  local deployed_sha deployed_short failed_short
+  deployed_sha=$(sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$candidate/deploy-version.json" | head -n1)
+  deployed_short=$(sed -n 's/.*"short_sha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$candidate/deploy-version.json" | head -n1)
+  failed_short="${DEPLOY_SHA:0:7}"
+
+  [ "$deployed_sha" = "$DEPLOY_SHA" ] || { [ -n "$failed_short" ] && [ "$deployed_short" = "$failed_short" ]; }
+}
+
 # Build a verdict line for one snapshot candidate.
 # Args: <marker-label> <path> <mode: strict|loose>
 # Prints: "<verdict>  <marker>  <path>  [<reason>]"
@@ -189,6 +202,10 @@ verdict_snapshot() {
   fi
   if [ ! -d "$path" ]; then
     echo "  ✗ REJECT  ${label}  ${path}   (directory missing)" >&2
+    return 1
+  fi
+  if snapshot_matches_failed_sha "$path"; then
+    echo "  ✗ REJECT  ${label}  ${path}   (same SHA as failed deploy: ${DEPLOY_SHA:0:7})" >&2
     return 1
   fi
   local missing=""
@@ -802,8 +819,8 @@ case "$MALFORMED_CODE" in
     pm2 logs "$APP_NAME" --lines 120 --nostream || true
     ;;
 esac
-publish_good_snapshot || echo "::warning::publish_good_snapshot exited unexpectedly after app became healthy. Deployment remains successful because runtime validation already passed."
-echo "✓ Health gate passed — new build is live for all clients."
+echo "→ Trusted rollback snapshot is deferred until the workflow homepage/API smoke tests pass."
+echo "✓ Runtime gate passed — new build is serving deploy-version.json."
 
 
 

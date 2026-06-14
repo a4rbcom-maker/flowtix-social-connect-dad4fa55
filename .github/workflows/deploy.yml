@@ -362,14 +362,17 @@ jobs:
           set -eu
           for i in $(seq 1 30); do
             HOME_OK=$(curl -fsS --max-time 10 "http://127.0.0.1:${APP_PORT}/" >/dev/null && echo 1 || echo 0)
-            BODY=$(curl -fsS --max-time 10 "http://127.0.0.1:${APP_PORT}/deploy-version.json" || true)
-            if [ "$HOME_OK" = "1" ] && echo "$BODY" | grep -q "$SHORT_SHA"; then
+            VERSION_BODY=$(curl -fsS --max-time 10 "http://127.0.0.1:${APP_PORT}/deploy-version.json" || true)
+            HEALTH_BODY=$(curl -fsS --max-time 10 "http://127.0.0.1:${APP_PORT}/api/public/health" || true)
+            VERSION_OK=$(echo "$VERSION_BODY" | grep -q "$SHORT_SHA" && echo 1 || echo 0)
+            HEALTH_OK=$(echo "$HEALTH_BODY" | grep -q '"status"[[:space:]]*:[[:space:]]*"ok"' && echo "$HEALTH_BODY" | grep -q "$SHORT_SHA" && echo 1 || echo 0)
+            if [ "$HOME_OK" = "1" ] && [ "$VERSION_OK" = "1" ] && [ "$HEALTH_OK" = "1" ]; then
               echo "✓ SSR healthy on 127.0.0.1:${APP_PORT} serving ${SHORT_SHA}"
               exit 0
             fi
             sleep 2
           done
-          echo "::error::SSR app not serving ${SHORT_SHA} on 127.0.0.1:${APP_PORT}"
+          echo "::error::SSR app not healthy for ${SHORT_SHA} on 127.0.0.1:${APP_PORT}"
           pm2 describe "$APP_NAME" || true
           pm2 logs "$APP_NAME" --lines 120 --nostream || true
           exit 1
@@ -432,7 +435,7 @@ jobs:
             echo "::warning::Public domain did not show ${SHORT_SHA} during CI. Deployment kept successful because local SSR health already passed. Check proxy/vhost/cache separately."
           fi
 
-      - name: Mark SHA as deployed on server
+      - name: Mark SHA as deployed and trusted on server
         if: success() && steps.lock.outputs.skip != 'true'
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
@@ -447,8 +450,44 @@ jobs:
           PORT="${SSH_PORT:-22}"
           ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
             "${USER}@${HOST}" \
-            "mkdir -p '${DEPLOY_PATH}/.deploy' && printf '%s' '${GITHUB_SHA}' > '${DEPLOY_PATH}/.deploy/last-sha'"
-          echo "✓ Marked ${GITHUB_SHA} as deployed."
+            "DEPLOY_PATH='${DEPLOY_PATH}' BACKUPS_DIR='${BACKUPS_DIR}' GITHUB_SHA='${GITHUB_SHA}' SHORT_SHA='${SHORT_SHA}' bash -s" <<'EOSSH'
+          set -eu
+          mkdir -p "${DEPLOY_PATH}/.deploy" "$BACKUPS_DIR"
+
+          is_valid_snapshot() {
+            local d="$1"
+            [ -d "$d" ] || return 1
+            [ -f "$d/ecosystem.config.cjs" ] || return 1
+            [ -d "$d/node_modules" ] || return 1
+            [ -f "$d/scripts/tanstack-node-server.mjs" ] || return 1
+            for c in dist/server/server.js dist/server/server.mjs dist/server/index.js dist/server/index.mjs; do
+              [ -f "$d/$c" ] && return 0
+            done
+            return 1
+          }
+
+          SNAP="$BACKUPS_DIR/good-$(date -u +%Y%m%d%H%M%S)-${SHORT_SHA}"
+          TMP="${SNAP}.tmp"
+          rm -rf "$TMP"
+          mkdir -p "$TMP"
+          rsync -a --delete \
+            --exclude='.env' --exclude='.user.ini' --exclude='.htaccess' \
+            --exclude='var/' --exclude='.well-known/' --exclude='.deploy/' --exclude='vps-worker/' \
+            "$DEPLOY_PATH/" "$TMP/"
+
+          if ! is_valid_snapshot "$TMP"; then
+            rm -rf "$TMP"
+            echo "::error::Smoke tests passed, but trusted snapshot validation failed. Refusing to update LAST_GOOD."
+            exit 1
+          fi
+
+          mv "$TMP" "$SNAP"
+          printf '%s' "$SNAP" > "$BACKUPS_DIR/LAST_GOOD"
+          ls -1dt "$BACKUPS_DIR"/good-* 2>/dev/null | tail -n +6 | xargs -r rm -rf || true
+          printf '%s' "$GITHUB_SHA" > "${DEPLOY_PATH}/.deploy/last-sha"
+          echo "✓ Trusted rollback snapshot recorded: $SNAP"
+          EOSSH
+          echo "✓ Marked ${GITHUB_SHA} as deployed and trusted."
 
       # ─── 12. Auto-rollback on failure (multi-candidate + verified) ─────
       # Triggers on ANY prior step failure (except dedupe-skip). Tries snapshots
@@ -500,6 +539,16 @@ jobs:
             return 1
           }
 
+          snapshot_matches_failed_sha() {
+            local d="$1"
+            [ -f "$d/deploy-version.json" ] || return 1
+            local deployed_sha deployed_short failed_short
+            deployed_sha=$(sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$d/deploy-version.json" | head -n1)
+            deployed_short=$(sed -n 's/.*"short_sha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$d/deploy-version.json" | head -n1)
+            failed_short="${FAILED_SHA:0:7}"
+            [ "$deployed_sha" = "$FAILED_SHA" ] || { [ -n "$failed_short" ] && [ "$deployed_short" = "$failed_short" ]; }
+          }
+
           # Build candidate list in priority order.
           CANDIDATES=()
           [ -f "$BACKUPS_DIR/LAST_GOOD" ] && CANDIDATES+=("LAST_GOOD:$(cat "$BACKUPS_DIR/LAST_GOOD" 2>/dev/null)")
@@ -516,7 +565,9 @@ jobs:
           PICKED=""; KIND=""
           for entry in "${CANDIDATES[@]}"; do
             kind="${entry%%:*}"; path="${entry#*:}"
-            if is_valid "$path"; then
+            if snapshot_matches_failed_sha "$path"; then
+              echo "  ✗ rejected failed SHA ($kind): $path"
+            elif is_valid "$path"; then
               PICKED="$path"; KIND="$kind"
               echo "→ Selected ($kind): $PICKED"
               break
