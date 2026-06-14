@@ -43,6 +43,7 @@ function JobsHistoryPage() {
   const { user } = useAuth();
   const { lang } = useI18n();
   const { call } = useFacebookApi();
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<JobRow | null>(null);
