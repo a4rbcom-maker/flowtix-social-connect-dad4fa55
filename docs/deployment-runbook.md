@@ -70,21 +70,35 @@ sudo nginx -t && sudo nginx -s reload
   Cloudflare. rollback لن يحل المشكلة، فقط يخفي نسخة شغالة خلف edge مكسور.
   أصلح البروكسي/الكاش وأعد المحاولة.
 
-### سلوك GitHub Actions الحالي
+### سلوك Auto-Rollback في GitHub Actions
 
-- بعد هذا التعديل، خطوة **public domain check** لم تعد تُسقط الـworkflow تلقائيًا
-  إذا كان التطبيق شغال محليًا على الـVPS لكن الدومين العام ما زال يتذبذب بسبب
-  cache / proxy / vhost.
-- النجاح النهائي يعتمد أولًا على **local SSR health**.
-- لو تريد السلوك الصارم القديم، أضف متغير GitHub Actions باسم:
+عند فشل أي خطوة من الـdeploy (بناء، rsync، PM2 restart، health check…)،
+يشغّل الـworkflow خطوة **Auto-rollback on failure** التي تعمل تلقائيًا:
 
-```bash
-STRICT_PUBLIC_DOMAIN_CHECK=true
-```
+1. **اختيار snapshot** بالترتيب: `LAST_GOOD` (آخر نسخة موثوقة بعد smoke-test)
+   → `PREV_SNAPSHOT` (ما كان شغال قبل الـdeploy الفاشل) → أحدث `good-*` →
+   أحدث snapshot خام `[0-9]*`.
+2. **التحقق من صلاحية** المرشح (وجود `dist/server/*`, `ecosystem.config.cjs`,
+   `node_modules`) قبل النسخ.
+3. **rsync + PM2 reload + pm2 save** على النسخة المختارة.
+4. **Local health check** على `127.0.0.1:$APP_PORT` لمدة 60 ثانية.
+5. **Public domain verify** على الدومين العام (200 OK).
+6. **مسح `.deploy/last-sha`** الفاشل حتى لا يُتخطّى الـdeploy التالي بالخطأ.
+7. **تقرير في GitHub Step Summary** يوضح: السبب، الـsnapshot المُستعاد،
+   الـSHA الحالي.
 
-- الفحص العام نفسه صار أقوى: يتبع redirects، ويضيف cache-busting querystring،
-  ويرسل `Cache-Control: no-cache`، ويطلب 3 نجاحات متتالية بدل أن يفشل بسبب
-  رد واحد قديم عابر.
+أي فشل في خطوات الاستعادة نفسها يرفع failure حقيقي في الـworkflow بدل
+الإخفاء الصامت. لا حاجة لتدخل يدوي في الحالات العادية.
+
+#### Public domain check (وضع متساهل)
+
+- خطوة **public domain check** الأصلية لم تعد تُسقط الـworkflow تلقائيًا
+  إذا كان التطبيق شغال محليًا على الـVPS لكن الدومين العام ما زال يتذبذب
+  بسبب cache / proxy / vhost.
+- لتفعيل السلوك الصارم: أضف متغير GitHub Actions باسم
+  `STRICT_PUBLIC_DOMAIN_CHECK=true`.
+- الفحص العام يتبع redirects، ويضيف cache-busting querystring، ويرسل
+  `Cache-Control: no-cache`، ويطلب 3 نجاحات متتالية.
 
 ---
 
