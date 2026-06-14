@@ -785,6 +785,44 @@ process.stdin.on("end", () => {
 ' || true
 }
 
+pm2_app_state() {
+  command -v pm2 >/dev/null 2>&1 || {
+    echo "missing|missing"
+    return 0
+  }
+  pm2 jlist 2>/dev/null | APP_NAME="$APP_NAME" node -e '
+let input = "";
+process.stdin.on("data", (chunk) => { input += chunk; });
+process.stdin.on("end", () => {
+  try {
+    const app = JSON.parse(input).find((item) => item && item.name === process.env.APP_NAME);
+    if (!app) return console.log("missing|missing");
+    const env = app.pm2_env || {};
+    console.log(`${env.status || "unknown"}|${env.exec_mode || "unknown"}`);
+  } catch {
+    console.log("unknown|unknown");
+  }
+});
+' || true
+}
+
+wait_for_pm2_online() {
+  local timeout_seconds="${1:-30}"
+  local attempt state status mode
+  for attempt in $(seq 1 "$timeout_seconds"); do
+    state=$(pm2_app_state)
+    status="${state%%|*}"
+    mode="${state#*|}"
+    APP_STATUS="$status"
+    APP_MODE="$mode"
+    if [ "$status" = "online" ]; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 descendant_pids() {
   local parent="$1" child
   while IFS= read -r child; do
@@ -926,24 +964,15 @@ export DEPLOY_SHA DEPLOY_RUN_ID DEPLOY_REPOSITORY DEPLOYED_AT
 APP_IS_RUNNING=0
 APP_IS_CLUSTER=0
 APP_STATUS="missing"
-if PM2_INFO=$(pm2 jlist 2>/dev/null | APP_NAME="$APP_NAME" node -e '
-let input = "";
-process.stdin.on("data", (chunk) => { input += chunk; });
-process.stdin.on("end", () => {
-  try {
-    const app = JSON.parse(input).find((item) => item && item.name === process.env.APP_NAME);
-    if (!app) return console.log("missing|missing");
-    const env = app.pm2_env || {};
-    console.log(`${env.status || "unknown"}|${env.exec_mode || "unknown"}`);
-  } catch {
-    console.log("unknown|unknown");
-  }
-});
-'); then
+APP_MODE="unknown"
+if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
+  PM2_INFO=$(pm2_app_state)
   APP_STATUS="${PM2_INFO%%|*}"
   APP_MODE="${PM2_INFO#*|}"
-else
-  APP_MODE="unknown"
+  if [ "$APP_STATUS" != "online" ] && [ "$APP_STATUS" != "missing" ]; then
+    echo "PM2 app exists but is currently ${APP_STATUS}/${APP_MODE} — waiting briefly for it to settle before deciding restart strategy…"
+    wait_for_pm2_online 15 || true
+  fi
 fi
 echo "PM2 current state: status=${APP_STATUS}, mode=${APP_MODE}"
 
@@ -959,27 +988,14 @@ if [ "$APP_IS_RUNNING" = "1" ] && [ "$APP_IS_CLUSTER" = "1" ]; then
   RELOAD_FAILED=0
   if ! pm2 reload ecosystem.config.cjs --only "$APP_NAME" --update-env; then
     RELOAD_FAILED=1
-  elif ! PM2_POST_RELOAD=$(pm2 jlist 2>/dev/null | APP_NAME="$APP_NAME" node -e '
-let input = "";
-process.stdin.on("data", (chunk) => { input += chunk; });
-process.stdin.on("end", () => {
-  try {
-    const app = JSON.parse(input).find((item) => item && item.name === process.env.APP_NAME);
-    const status = app?.pm2_env?.status || "missing";
-    console.log(status);
-    process.exit(status === "online" ? 0 : 1);
-  } catch {
-    console.log("unknown");
-    process.exit(1);
-  }
-});
-'); then
-    echo "::warning::pm2 reload returned success but app status is ${PM2_POST_RELOAD:-unknown}; falling back to delete+start."
+  elif ! wait_for_pm2_online 30; then
+    echo "::warning::pm2 reload returned success but did not settle to online within 30s (status=${APP_STATUS:-unknown}, mode=${APP_MODE:-unknown}); falling back to delete+start."
     RELOAD_FAILED=1
   fi
   if [ "$RELOAD_FAILED" = "1" ]; then
     echo "::warning::pm2 reload failed — falling back to delete+start."
     pm2 delete "$APP_NAME" || true
+    cleanup_bound_port "${APP_PORT}"
     wait_for_port_free "${APP_PORT}" || {
       echo "ERROR: Port ${APP_PORT} still bound after failed reload fallback."; print_port_diagnostics; fail_deploy "port-still-bound-after-reload-fallback";
     }
@@ -994,6 +1010,7 @@ else
   if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
     echo "→ Existing PM2 app is ${APP_STATUS}/${APP_MODE} — recreating in cluster mode."
     pm2 delete "$APP_NAME" || true
+    cleanup_bound_port "${APP_PORT}"
     wait_for_port_free "${APP_PORT}" || {
       echo "ERROR: Port ${APP_PORT} still bound after delete."; print_port_diagnostics; fail_deploy "port-still-bound-after-delete"
     }
