@@ -1,11 +1,8 @@
-name: Deploy to VPS
+name: Deploy to VPS (manual)
 
-# Single trigger surface: push to any non-backup branch, or manual dispatch.
-# No schedule, no PR triggers — guarantees one workflow run per commit.
+# Keep Git sync independent from VPS deploy health.
+# Deploy runs only when explicitly triggered from GitHub Actions.
 on:
-  push:
-    branches-ignore:
-      - "lovable-backup-*"
   workflow_dispatch:
 
 # Global per-repo lock: at most one deploy run touches the VPS at a time.
