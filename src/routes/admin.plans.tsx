@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -18,6 +18,9 @@ import {
   X,
   Save,
   GripVertical,
+  Search,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useI18n } from "@/lib/i18n";
