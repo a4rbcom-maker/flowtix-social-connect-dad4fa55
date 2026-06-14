@@ -191,8 +191,8 @@ function AccountsTab() {
       </div>
 
       <Card className="border-border/60">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <CardTitle>{lang === "ar" ? "حسابات kie.ai" : "kie.ai Accounts"}</CardTitle>
             <CardDescription>
               {lang === "ar"
@@ -200,14 +200,14 @@ function AccountsTab() {
                 : "Central key pool — rotates automatically on failure or quota exhaustion"}
             </CardDescription>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" className="gap-2" onClick={() => mRefreshAll.mutate()} disabled={mRefreshAll.isPending}>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => mRefreshAll.mutate()} disabled={mRefreshAll.isPending}>
               <Wallet className="h-4 w-4" />
-              {lang === "ar" ? "تحديث الأرصدة" : "Refresh credits"}
+              <span className="hidden sm:inline">{lang === "ar" ? "تحديث الأرصدة" : "Refresh credits"}</span>
             </Button>
             <Dialog open={openAdd} onOpenChange={setOpenAdd}>
               <DialogTrigger asChild>
-                <Button className="gap-2"><Plus className="h-4 w-4" />{lang === "ar" ? "إضافة حساب" : "Add account"}</Button>
+                <Button size="sm" className="gap-2"><Plus className="h-4 w-4" />{lang === "ar" ? "إضافة" : "Add"}</Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader><DialogTitle>{lang === "ar" ? "إضافة حساب kie.ai جديد" : "Add new kie.ai account"}</DialogTitle></DialogHeader>
@@ -216,6 +216,31 @@ function AccountsTab() {
             </Dialog>
           </div>
         </CardHeader>
+        <CardContent>
+          {/* Filters */}
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row">
+            <div className="relative flex-1">
+              <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                placeholder={lang === "ar" ? "بحث بالاسم أو المفتاح..." : "Search by label or key..."}
+                className="ps-9 h-9"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+              <SelectTrigger className="w-full sm:w-44 h-9">
+                <SelectValue placeholder={lang === "ar" ? "كل الحالات" : "All status"} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{lang === "ar" ? "كل الحالات" : "All status"}</SelectItem>
+                <SelectItem value="active">{lang === "ar" ? "نشط" : "Active"}</SelectItem>
+                <SelectItem value="exhausted">{lang === "ar" ? "مستنفد" : "Exhausted"}</SelectItem>
+                <SelectItem value="disabled">{lang === "ar" ? "معطل" : "Disabled"}</SelectItem>
+                <SelectItem value="error">{lang === "ar" ? "خطأ" : "Error"}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         <CardContent>
           <div className="rounded-lg border border-border/60 overflow-hidden">
             <Table>
