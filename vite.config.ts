@@ -12,7 +12,9 @@ export default defineConfig({
       nodeCompat: true,
     },
   },
-  optimizeDeps: {
-    exclude: ["@tanstack/react-start", "zod"],
+  vite: {
+    optimizeDeps: {
+      exclude: ["@tanstack/react-start", "zod"],
+    },
   },
 });
