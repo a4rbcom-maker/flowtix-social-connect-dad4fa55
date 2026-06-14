@@ -8,6 +8,47 @@ type ServerEntry = {
 
 let serverEntryPromise: Promise<ServerEntry> | undefined;
 
+async function readDeployVersion() {
+  try {
+    const [{ existsSync, readFileSync }, { resolve }] = await Promise.all([
+      import("node:fs"),
+      import("node:path"),
+    ]);
+    const filePath = resolve(process.cwd(), "deploy-version.json");
+    if (existsSync(filePath)) {
+      const parsed = JSON.parse(readFileSync(filePath, "utf8"));
+      if (parsed && typeof parsed === "object") return { ...parsed, source: "file" };
+    }
+  } catch {
+    // Fall through to env fallback.
+  }
+  const sha = process.env.DEPLOY_SHA || process.env.GITHUB_SHA || "development";
+  return {
+    sha,
+    short_sha: sha === "development" ? "dev" : sha.slice(0, 7),
+    run_id: process.env.DEPLOY_RUN_ID || process.env.GITHUB_RUN_ID || null,
+    repo: process.env.DEPLOY_REPOSITORY || process.env.GITHUB_REPOSITORY || null,
+    deployed_at: process.env.DEPLOYED_AT || new Date().toISOString(),
+    mode: "ssr",
+    status: "ok",
+    source: "env",
+  };
+}
+
+async function nativeHealthResponse(request: Request) {
+  const body = JSON.stringify({
+    status: "ok",
+    service: process.env.APP_NAME || "flowtixtools-web",
+    timestamp: new Date().toISOString(),
+    uptime_seconds: Math.round(process.uptime?.() ?? 0),
+    build: await readDeployVersion(),
+  });
+  return new Response(request.method === "HEAD" ? null : body, {
+    status: 200,
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store, max-age=0" },
+  });
+}
+
 async function getServerEntry(): Promise<ServerEntry> {
   if (!serverEntryPromise) {
     serverEntryPromise = import("@tanstack/react-start/server-entry").then(
@@ -39,6 +80,17 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 export default {
   async fetch(request: Request, env: unknown, context: unknown) {
     try {
+      const url = new URL(request.url);
+      if (request.method === "GET" || request.method === "HEAD") {
+        if (url.pathname === "/api/public/health") return nativeHealthResponse(request);
+        if (url.pathname === "/deploy-version.json") {
+          const body = JSON.stringify(await readDeployVersion());
+          return new Response(request.method === "HEAD" ? null : body, {
+            status: 200,
+            headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store, max-age=0" },
+          });
+        }
+      }
       const handler = await getServerEntry();
       const isHead = request.method === "HEAD";
       const normalizedRequest = isHead ? new Request(request, { method: "GET" }) : request;
