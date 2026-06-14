@@ -223,6 +223,24 @@ verdict_snapshot() {
   return 0
 }
 
+verdict_snapshot_last_resort() {
+  local label="$1" path="$2"
+  if [ -z "$path" ]; then
+    echo "  ✗ REJECT  ${label}  <empty>   (marker file empty)" >&2
+    return 1
+  fi
+  if [ ! -d "$path" ]; then
+    echo "  ✗ REJECT  ${label}  ${path}   (directory missing)" >&2
+    return 1
+  fi
+  if is_runnable_prev_snapshot "$path"; then
+    echo "  ✓ ACCEPT  ${label}  ${path}   (last-resort loose check passed; same SHA allowed)" >&2
+    return 0
+  fi
+  echo "  ✗ REJECT  ${label}  ${path}   (missing minimum runtime files)" >&2
+  return 1
+}
+
 choose_integrity_snapshot() {
   # Echoes "<kind>|<path>" on success; non-zero on failure.
   # Always prints a full inventory of every snapshot it inspected,
@@ -284,9 +302,23 @@ choose_integrity_snapshot() {
     echo "  • SKIP    raw [0-9]*     (no raw pre-deploy snapshots exist)" >&2
   fi
 
-  if [ -z "$first_pick" ] && [ -n "$raw_first_pick" ]; then
-    first_pick="$raw_first_pick"
-    first_kind="$raw_first_kind"
+  if [ -z "$first_pick" ]; then
+    echo "  • Last-resort pass: checking PREV_SNAPSHOT/raw again with same SHA allowed" >&2
+    if [ -f "$BACKUPS_DIR/PREV_SNAPSHOT" ]; then
+      candidate=$(cat "$BACKUPS_DIR/PREV_SNAPSHOT" 2>/dev/null || true)
+      if verdict_snapshot_last_resort "PREV-LAST    " "$candidate"; then
+        first_pick="$candidate"; first_kind="prev_snapshot_last_resort"
+      fi
+    fi
+    if [ -z "$first_pick" ]; then
+      while IFS= read -r candidate; do
+        [ -z "$candidate" ] && continue
+        if verdict_snapshot_last_resort "RAW-LAST     " "$candidate"; then
+          first_pick="$candidate"; first_kind="raw_snapshot_last_resort"
+          break
+        fi
+      done < <(ls -1dt "$BACKUPS_DIR"/[0-9]* 2>/dev/null || true)
+    fi
   fi
 
   echo "=== End snapshot inventory ===" >&2
