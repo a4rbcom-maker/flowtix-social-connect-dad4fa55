@@ -242,30 +242,35 @@ function AccountsTab() {
             </Select>
           </div>
 
-          <div className="rounded-lg border border-border/60 overflow-hidden">
+          <div className="rounded-lg border border-border/60 overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>{lang === "ar" ? "الاسم" : "Label"}</TableHead>
-                  <TableHead>{lang === "ar" ? "المفتاح" : "Key"}</TableHead>
+                  <TableHead className="hidden lg:table-cell">{lang === "ar" ? "المفتاح" : "Key"}</TableHead>
                   <TableHead>{lang === "ar" ? "الحالة" : "Status"}</TableHead>
-                  <TableHead className="text-center">{lang === "ar" ? "الرصيد المتبقي" : "Credit"}</TableHead>
-                  <TableHead className="text-center">{lang === "ar" ? "الأولوية" : "Priority"}</TableHead>
-                  <TableHead className="text-center">{lang === "ar" ? "طلبات" : "Requests"}</TableHead>
-                  <TableHead className="text-center">{lang === "ar" ? "فشل" : "Failed"}</TableHead>
-                  <TableHead>{lang === "ar" ? "آخر استخدام" : "Last used"}</TableHead>
+                  <TableHead className="text-center">{lang === "ar" ? "الرصيد" : "Credit"}</TableHead>
+                  <TableHead className="hidden md:table-cell text-center">{lang === "ar" ? "الأولوية" : "Priority"}</TableHead>
+                  <TableHead className="hidden md:table-cell text-center">{lang === "ar" ? "طلبات" : "Requests"}</TableHead>
+                  <TableHead className="hidden lg:table-cell text-center">{lang === "ar" ? "فشل" : "Failed"}</TableHead>
+                  <TableHead className="hidden lg:table-cell">{lang === "ar" ? "آخر استخدام" : "Last used"}</TableHead>
                   <TableHead className="text-right">{lang === "ar" ? "إجراءات" : "Actions"}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(rows?.rows ?? []).length === 0 ? (
+                {pageAccounts.length === 0 ? (
                   <TableRow><TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
-                    {lang === "ar" ? "لا توجد حسابات بعد — أضف أول مفتاح kie.ai" : "No accounts yet — add your first kie.ai key"}
+                    {filteredAccounts.length === 0 && (rows?.rows ?? []).length > 0
+                      ? (lang === "ar" ? "لا نتائج للبحث" : "No matching results")
+                      : (lang === "ar" ? "لا توجد حسابات بعد — أضف أول مفتاح kie.ai" : "No accounts yet — add your first kie.ai key")}
                   </TableCell></TableRow>
-                ) : rows!.rows.map((r) => (
+                ) : pageAccounts.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="font-medium">{r.label}</TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{r.key_hint}</TableCell>
+                    <TableCell className="font-medium">
+                      <div>{r.label}</div>
+                      <div className="lg:hidden font-mono text-[10px] text-muted-foreground mt-0.5">{r.key_hint}</div>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell font-mono text-xs text-muted-foreground">{r.key_hint}</TableCell>
                     <TableCell><StatusBadge status={r.status} /></TableCell>
                     <TableCell className="text-center">
                       {r.credit_error ? (
@@ -276,7 +281,7 @@ function AccountsTab() {
                             {Number(r.credit_balance).toFixed(2)}
                           </span>
                           {r.credit_checked_at && (
-                            <span className="text-[10px] text-muted-foreground" title={new Date(r.credit_checked_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}>
+                            <span className="hidden sm:inline text-[10px] text-muted-foreground" title={new Date(r.credit_checked_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}>
                               {new Date(r.credit_checked_at).toLocaleTimeString(lang === "ar" ? "ar-EG" : "en-US", { hour: "2-digit", minute: "2-digit" })}
                             </span>
                           )}
@@ -285,16 +290,16 @@ function AccountsTab() {
                         <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-center">{r.priority}</TableCell>
-                    <TableCell className="text-center">{r.requests_count}</TableCell>
-                    <TableCell className="text-center">
+                    <TableCell className="hidden md:table-cell text-center">{r.priority}</TableCell>
+                    <TableCell className="hidden md:table-cell text-center">{r.requests_count}</TableCell>
+                    <TableCell className="hidden lg:table-cell text-center">
                       {r.failed_count > 0 ? <span className="text-red-500">{r.failed_count}</span> : r.failed_count}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+                    <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
                       {r.last_used_at ? new Date(r.last_used_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US") : "—"}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-1 flex-wrap">
                         <Button size="icon" variant="ghost" onClick={() => mTest.mutate(r.id)} disabled={mTest.isPending}
                           title={lang === "ar" ? "اختبار" : "Test"}>
                           <FlaskConical className="h-4 w-4" />
@@ -344,6 +349,10 @@ function AccountsTab() {
               </TableBody>
             </Table>
           </div>
+
+          {filteredAccounts.length > pageSize && (
+            <Pagination page={page} totalPages={totalPages} total={filteredAccounts.length} pageSize={pageSize} onChange={setPage} lang={lang} />
+          )}
         </CardContent>
       </Card>
 
