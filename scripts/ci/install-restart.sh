@@ -352,7 +352,7 @@ integrity_rollback() {
   local picked kind src
   picked=$(choose_integrity_snapshot || true)
   if [ -z "$picked" ]; then
-    echo "::error::No trusted SSR snapshot available in $BACKUPS_DIR — cannot auto-restore."
+    echo "::warning::No trusted SSR snapshot available in $BACKUPS_DIR — rollback could not help; the primary deploy failure remains the root cause."
     echo "  (sources checked: LAST_GOOD, PREV_SNAPSHOT, good-*, raw [0-9]* snapshots)"
     echo "INTEGRITY_ROLLBACK_RESULT=no_valid_snapshot"
     return 1
