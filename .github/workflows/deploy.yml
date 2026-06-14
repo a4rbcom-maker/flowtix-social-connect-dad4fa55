@@ -18,7 +18,7 @@ concurrency:
 
 env:
   APP_NAME: ${{ vars.APP_NAME || 'flowtixtools-web' }}
-  APP_PORT: ${{ vars.APP_PORT || '3001' }}
+  APP_PORT: ${{ vars.APP_PORT || '3100' }}
   LEGACY_PM2_APPS: ${{ vars.LEGACY_PM2_APPS || 'flowtix flowtix-social-connect' }}
 
 jobs:
@@ -164,7 +164,7 @@ jobs:
           DEPLOY_PATH_VAR: ${{ vars.DEPLOY_PATH }}
         run: |
           set -eu
-          DP="${DEPLOY_PATH_SECRET:-${DEPLOY_PATH_VAR:-/www/wwwroot/${GITHUB_REPOSITORY##*/}}}"
+          DP="${DEPLOY_PATH_SECRET:-${DEPLOY_PATH_VAR:-/www/wwwroot/flowtixtools.com}}"
           case "$DP" in
             /www/wwwroot/*) : ;;
             *) echo "::error::DEPLOY_PATH must be under /www/wwwroot — got: $DP"; exit 1 ;;
