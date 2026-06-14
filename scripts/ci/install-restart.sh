@@ -748,6 +748,9 @@ print_port_diagnostics() {
   echo "=== Port ${APP_PORT} diagnostics ==="
   (command -v ss >/dev/null 2>&1 && ss -ltnp "sport = :${APP_PORT}") || true
   (command -v lsof >/dev/null 2>&1 && lsof -iTCP:"${APP_PORT}" -sTCP:LISTEN) || true
+  local pm2_conflicts
+  pm2_conflicts=$(pm2_apps_on_port | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+  [ -n "$pm2_conflicts" ] && echo "PM2 apps configured for port ${APP_PORT}: ${pm2_conflicts}"
   pm2 list || true
 }
 
@@ -762,40 +765,121 @@ port_pids() {
   fi
 }
 
+pm2_apps_on_port() {
+  command -v pm2 >/dev/null 2>&1 || return 0
+  pm2 jlist 2>/dev/null | APP_PORT="$APP_PORT" node -e '
+let input = "";
+process.stdin.on("data", (chunk) => { input += chunk; });
+process.stdin.on("end", () => {
+  try {
+    const targetPort = String(process.env.APP_PORT || "");
+    const apps = JSON.parse(input);
+    for (const app of apps) {
+      const name = app?.name || "";
+      const env = app?.pm2_env?.env || {};
+      const appPort = String(env.PORT || env.APP_PORT || "");
+      if (name && targetPort && appPort === targetPort) console.log(name);
+    }
+  } catch {}
+});
+' || true
+}
+
+descendant_pids() {
+  local parent="$1" child
+  while IFS= read -r child; do
+    [ -n "$child" ] || continue
+    child=$(echo "$child" | awk '{print $1}')
+    [ -n "$child" ] || continue
+    descendant_pids "$child"
+    echo "$child"
+  done < <(ps -o pid= --ppid "$parent" 2>/dev/null || true)
+}
+
+kill_pid_tree() {
+  local signal="$1" root_pid="$2" pid
+  [ -n "$root_pid" ] || return 0
+  for pid in $(descendant_pids "$root_pid"); do
+    kill -"$signal" "$pid" 2>/dev/null || true
+  done
+  kill -"$signal" "$root_pid" 2>/dev/null || true
+}
+
+cleanup_bound_port() {
+  local p="$1"
+  local pm2_names app_name pids pid_list
+
+  if ! port_is_bound "$p"; then
+    return 0
+  fi
+
+  pm2_names=$(pm2_apps_on_port | awk 'NF && !seen[$0]++')
+  if [ -n "$pm2_names" ]; then
+    echo "Removing PM2 apps configured for port ${p}: $(echo "$pm2_names" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+    while IFS= read -r app_name; do
+      [ -n "$app_name" ] || continue
+      pm2 delete "$app_name" 2>/dev/null || true
+    done <<< "$pm2_names"
+    sleep 2
+  fi
+
+  pid_list=$(port_pids | awk 'NF && !seen[$0]++')
+  if [ -n "$pid_list" ]; then
+    echo "Sending SIGTERM to process trees holding port ${p}: $(echo "$pid_list" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+    while IFS= read -r pid; do
+      [ -n "$pid" ] || continue
+      kill_pid_tree TERM "$pid"
+    done <<< "$pid_list"
+    sleep 3
+  fi
+
+  pid_list=$(port_pids | awk 'NF && !seen[$0]++')
+  if [ -n "$pid_list" ]; then
+    echo "Sending SIGKILL to process trees still holding port ${p}: $(echo "$pid_list" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+    while IFS= read -r pid; do
+      [ -n "$pid" ] || continue
+      kill_pid_tree KILL "$pid"
+    done <<< "$pid_list"
+    sleep 2
+  fi
+
+  if port_is_bound "$p" && command -v fuser >/dev/null 2>&1; then
+    echo "Using fuser as last resort on port ${p}."
+    fuser -k -TERM -n tcp "$p" 2>/dev/null || true
+    sleep 2
+    if port_is_bound "$p"; then
+      fuser -k -KILL -n tcp "$p" 2>/dev/null || true
+      sleep 2
+    fi
+  fi
+}
+
 wait_for_port_free() {
   local p="$1"
   local attempt
-  for attempt in $(seq 1 30); do
+  for attempt in $(seq 1 20); do
     if ! port_is_bound "$p"; then
       return 0
     fi
     echo "Waiting for port ${p} to be released (attempt $attempt)…"
     sleep 1
   done
-  # Escalation: port still bound. Kill any PM2-managed remnants and stray
-  # listeners (orphaned cluster workers, zombie node processes) so the
-  # deploy isn't blocked by a stuck previous instance.
-  echo "::warning::Port ${p} still bound after 30s — escalating cleanup."
-  pm2 kill 2>/dev/null || true
-  sleep 2
-  local pids
-  pids=$(port_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')
-  if [ -n "$pids" ]; then
-    echo "Sending SIGTERM to PIDs holding port ${p}: ${pids}"
-    # shellcheck disable=SC2086
-    kill -TERM $pids 2>/dev/null || true
-    sleep 3
-    pids=$(port_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')
-    if [ -n "$pids" ]; then
-      echo "Sending SIGKILL to PIDs still holding port ${p}: ${pids}"
-      # shellcheck disable=SC2086
-      kill -KILL $pids 2>/dev/null || true
-      sleep 2
-    fi
-  fi
+  echo "::warning::Port ${p} still bound after 20s — running targeted cleanup."
+  cleanup_bound_port "$p"
   for attempt in $(seq 1 15); do
     if ! port_is_bound "$p"; then
-      echo "✓ Port ${p} released after escalation."
+      echo "✓ Port ${p} released after targeted cleanup."
+      return 0
+    fi
+    sleep 1
+  done
+  echo "::warning::Port ${p} still bound after targeted cleanup — escalating to PM2 daemon shutdown."
+  pm2 kill 2>/dev/null || true
+  sleep 2
+  cleanup_bound_port "$p"
+  for attempt in $(seq 1 10); do
+    if ! port_is_bound "$p"; then
+      echo "✓ Port ${p} released after PM2 daemon shutdown."
       return 0
     fi
     sleep 1
