@@ -258,22 +258,29 @@ function AdminPlansPage() {
                 } ${!p.is_active ? "opacity-60" : ""}`}
               >
                 <div className="absolute top-3 end-3 flex items-center gap-1">
-                  <button
-                    title={t("نقل للأعلى", "Move up")}
-                    disabled={i === 0 || reorder.isPending}
-                    onClick={() => reorder.mutate({ id: p.id, direction: "up" })}
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
-                  >
-                    <ArrowUp className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    title={t("نقل للأسفل", "Move down")}
-                    disabled={i === rows.length - 1 || reorder.isPending}
-                    onClick={() => reorder.mutate({ id: p.id, direction: "down" })}
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
-                  >
-                    <ArrowDown className="h-3.5 w-3.5" />
-                  </button>
+                  {(() => {
+                    const realIdx = rows.findIndex((r) => r.id === p.id);
+                    return (
+                      <>
+                        <button
+                          title={t("نقل للأعلى", "Move up")}
+                          disabled={realIdx <= 0 || reorder.isPending}
+                          onClick={() => reorder.mutate({ id: p.id, direction: "up" })}
+                          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                        >
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          title={t("نقل للأسفل", "Move down")}
+                          disabled={realIdx === rows.length - 1 || reorder.isPending}
+                          onClick={() => reorder.mutate({ id: p.id, direction: "down" })}
+                          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                        >
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    );
+                  })()}
                 </div>
 
                 <div className="flex items-start gap-2 mb-4">
