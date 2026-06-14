@@ -107,6 +107,16 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     if (!isDesktop) setSidebarOpen(false);
   }, [location.pathname, isDesktop]);
 
+  // Lock body scroll while the mobile sidebar overlay is open.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (sidebarOpen && !isDesktop) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [sidebarOpen, isDesktop]);
+
   const closeOnMobile = () => {
     if (!isDesktop) setSidebarOpen(false);
   };
