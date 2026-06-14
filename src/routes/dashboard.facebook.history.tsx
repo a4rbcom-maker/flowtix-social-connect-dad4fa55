@@ -35,6 +35,7 @@ type JobRow = {
   created_at: string;
   completed_at: string | null;
   error_message: string | null;
+  account_id: string | null;
 };
 
 type JobResult = { id: string; target: string | null; status: "success" | "failed" | "skipped"; data: unknown; error: string | null; created_at: string };
