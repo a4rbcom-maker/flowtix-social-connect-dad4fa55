@@ -102,7 +102,15 @@ fail_deploy() {
   dump_failure_diagnostics "$code" "${BASH_LINENO[0]:-0}" "${BASH_COMMAND:-fail_deploy}"
   exit "$code"
 }
-trap 'dump_failure_diagnostics $? ${LINENO} "${BASH_COMMAND}"' ERR
+
+handle_uncaught_error() {
+  local exit_code="$1" line="$2" cmd="$3"
+  echo "DEPLOY_FAILURE_REASON=uncaught-error"
+  echo "::error::install-restart failed: uncaught-error at line ${line}: ${cmd}"
+  dump_failure_diagnostics "$exit_code" "$line" "$cmd"
+  exit "$exit_code"
+}
+trap 'handle_uncaught_error $? ${LINENO} "${BASH_COMMAND}"' ERR
 trap cleanup_self EXIT
 if [ -z "${DEPLOY_PATH:-}" ] || [ ! -d "${DEPLOY_PATH:-}" ]; then
   echo "ERROR: DEPLOY_PATH is missing or not a directory: ${DEPLOY_PATH:-<unset>}"
@@ -344,7 +352,7 @@ integrity_rollback() {
   local picked kind src
   picked=$(choose_integrity_snapshot || true)
   if [ -z "$picked" ]; then
-    echo "::error::No trusted SSR snapshot available in $BACKUPS_DIR — cannot auto-restore."
+    echo "::warning::No trusted SSR snapshot available in $BACKUPS_DIR — rollback could not help; the primary deploy failure remains the root cause."
     echo "  (sources checked: LAST_GOOD, PREV_SNAPSHOT, good-*, raw [0-9]* snapshots)"
     echo "INTEGRITY_ROLLBACK_RESULT=no_valid_snapshot"
     return 1
