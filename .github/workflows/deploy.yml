@@ -663,6 +663,7 @@ jobs:
           KIND=$(grep -E '^ROLLBACK_KIND=' rollback.log | tail -n1 | cut -d= -f2 || echo "")
           SRC=$(grep -E '^ROLLBACK_SRC=' rollback.log | tail -n1 | cut -d= -f2 || echo "")
           SHA=$(grep -E '^ROLLBACK_SHA=' rollback.log | tail -n1 | cut -d= -f2 || echo "")
+          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
 
           {
             echo "## 🔁 Auto-Rollback Report"
@@ -689,7 +690,7 @@ jobs:
       # Only runs if step 12 actually restored a snapshot. Confirms the public
       # URL serves a working response (not necessarily the failed SHA).
       - name: Verify rollback via public domain
-        if: failure() && steps.rollback.outcome == 'success'
+        if: failure() && steps.rollback.outputs.result == 'restored'
         env:
           PUBLIC_URL: ${{ vars.PUBLIC_URL || secrets.PUBLIC_URL || 'https://flowtixtools.com' }}
           STRICT_PUBLIC_DOMAIN_CHECK: ${{ vars.STRICT_PUBLIC_DOMAIN_CHECK || 'false' }}
