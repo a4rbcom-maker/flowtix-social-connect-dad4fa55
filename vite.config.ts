@@ -5,7 +5,9 @@ export default defineConfig({
     server: { entry: "server" },
   },
   nitro: false,
-  optimizeDeps: {
-    exclude: ["@tanstack/react-start", "zod"],
+  vite: {
+    optimizeDeps: {
+      exclude: ["@tanstack/react-start", "zod"],
+    },
   },
 });
