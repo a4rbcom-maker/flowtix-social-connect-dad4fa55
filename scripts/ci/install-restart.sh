@@ -776,8 +776,9 @@ process.stdin.on("end", () => {
     const apps = JSON.parse(input);
     for (const app of apps) {
       const name = app?.name || "";
-      const env = app?.pm2_env?.env || {};
-      const appPort = String(env.PORT || env.APP_PORT || "");
+      const pm2Env = app?.pm2_env || {};
+      const nestedEnv = pm2Env.env || {};
+      const appPort = String(pm2Env.PORT || pm2Env.APP_PORT || nestedEnv.PORT || nestedEnv.APP_PORT || "");
       if (name && targetPort && appPort === targetPort) console.log(name);
     }
   } catch {}
@@ -838,9 +839,9 @@ kill_pid_tree() {
   local signal="$1" root_pid="$2" pid
   [ -n "$root_pid" ] || return 0
   for pid in $(descendant_pids "$root_pid"); do
-    kill -"$signal" "$pid" 2>/dev/null || true
+    kill -"$signal" "$pid" 2>/dev/null || sudo -n kill -"$signal" "$pid" 2>/dev/null || true
   done
-  kill -"$signal" "$root_pid" 2>/dev/null || true
+  kill -"$signal" "$root_pid" 2>/dev/null || sudo -n kill -"$signal" "$root_pid" 2>/dev/null || true
 }
 
 cleanup_bound_port() {
