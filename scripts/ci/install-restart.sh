@@ -124,28 +124,31 @@ if [ -n "${STAGING_PATH:-}" ]; then
   esac
   [ -d "$STAGING_PATH" ] || fail_deploy "staging-path-missing"
   echo "=== Promoting staged bundle into DEPLOY_PATH ==="
-  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-    sudo rsync -a --delete \
-      --exclude='.env' \
-      --exclude='.user.ini' \
-      --exclude='.htaccess' \
-      --exclude='var/' \
-      --exclude='.well-known/' \
-      --exclude='.deploy/' \
-      --exclude='vps-worker/' \
-      "$STAGING_PATH/" "$DEPLOY_PATH/" || fail_deploy "staging-rsync-failed"
+  RSYNC_EXCLUDES=(
+    --exclude='.env'
+    --exclude='.user.ini'
+    --exclude='.htaccess'
+    --exclude='var/'
+    --exclude='.well-known/'
+    --exclude='.deploy/'
+    --exclude='vps-worker/'
+  )
+  # Try user-level rsync first (works when the deploy user owns DEPLOY_PATH).
+  # Only escalate to sudo if a permission error actually occurs — this avoids
+  # depending on passwordless sudo when the user already has full access.
+  if rsync -a --delete "${RSYNC_EXCLUDES[@]}" "$STAGING_PATH/" "$DEPLOY_PATH/" 2>/tmp/rsync.err; then
+    echo "✓ Staged bundle promoted (user rsync)."
   else
-    rsync -a --delete \
-      --exclude='.env' \
-      --exclude='.user.ini' \
-      --exclude='.htaccess' \
-      --exclude='var/' \
-      --exclude='.well-known/' \
-      --exclude='.deploy/' \
-      --exclude='vps-worker/' \
-      "$STAGING_PATH/" "$DEPLOY_PATH/" || fail_deploy "staging-rsync-failed"
+    echo "  user rsync failed — retrying with sudo fallback…"
+    cat /tmp/rsync.err 2>/dev/null || true
+    if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+      sudo rsync -a --delete "${RSYNC_EXCLUDES[@]}" "$STAGING_PATH/" "$DEPLOY_PATH/" \
+        || fail_deploy "staging-rsync-failed"
+      echo "✓ Staged bundle promoted (sudo rsync)."
+    else
+      fail_deploy "staging-rsync-failed-no-sudo"
+    fi
   fi
-  echo "✓ Staged bundle promoted to live deploy path."
 fi
 
 cd "$DEPLOY_PATH" || fail_deploy "deploy-path-cd-failed"
