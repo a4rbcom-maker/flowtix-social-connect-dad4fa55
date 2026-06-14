@@ -109,7 +109,7 @@ function JobsHistoryPage() {
     setSelected(j);
     setResultsLoading(true);
     try {
-      const peopleTypes = ["extract_commenters", "extract_group_members", "extract_page_audience"];
+      const peopleTypes = ["extract_commenters", "extract_group_members", "extract_page_audience", "deep_profile_scrape"];
       if (peopleTypes.includes(j.job_type)) await loadEgyptData();
       const { results } = await call(getJob, { id: j.id });
       setResults(results as JobResult[]);
@@ -124,19 +124,22 @@ function JobsHistoryPage() {
 
   const isPeople = selected?.job_type === "extract_commenters"
     || selected?.job_type === "extract_group_members"
-    || selected?.job_type === "extract_page_audience";
+    || selected?.job_type === "extract_page_audience"
+    || selected?.job_type === "deep_profile_scrape";
   const enrichedRows = isPeople
     ? results.map((r) => {
-        const d = (r.data ?? {}) as { name?: string; id?: string; fb_user_id?: string; profile?: string; profile_url?: string; bio_snippet?: string; source?: string };
-        const blob = `${d.name ?? ""} ${d.bio_snippet ?? ""} ${r.target ?? ""}`;
+        const d = (r.data ?? {}) as { name?: string; id?: string; fb_user_id?: string; profile?: string; profile_url?: string; bio?: string; bio_snippet?: string; city?: string; hometown?: string; work?: string; phone?: string; source?: string };
+        const blob = `${d.name ?? ""} ${d.bio ?? ""} ${d.bio_snippet ?? ""} ${d.city ?? ""} ${d.hometown ?? ""} ${r.target ?? ""}`;
         const loc = detectLocation(blob);
         return {
           row: r,
           name: d.name ?? r.target ?? "—",
           profile: d.profile_url ?? d.profile ?? "",
-          phone: extractEgyptPhone(blob) ?? null,
-          city: loc?.city ?? null,
+          phone: d.phone ?? extractEgyptPhone(blob) ?? null,
+          city: d.city ?? loc?.city ?? null,
           gov: loc?.gov ?? null,
+          declared: d.city ?? d.hometown ?? null,
+          work: d.work ?? null,
           source: d.source ?? "",
         };
       })
