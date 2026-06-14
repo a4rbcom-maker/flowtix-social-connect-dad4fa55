@@ -1,80 +1,102 @@
+# خطة نهائية: إصلاح EADDRINUSE على البورت 3001
 
-## نتائج اختبار ملف الكوكيز الذي رفعته
+## السبب الجذري
 
-اختبرت الملف فعليًا عبر نفس منطق الخادم:
+1. **عملية قديمة (zombie) ماسكة البورت 3001** — إما PM2 سابق أو Node مباشر أو سيرفر dev قديم.
+2. **PM2 بيعيد التشغيل بسرعة** قبل ما الـ socket يتحرر، فبيدخل في loop من EADDRINUSE.
+3. **احتمال وجود نسختين PM2** (واحدة تحت `root` وواحدة تحت user آخر زي `khaled` أو `www`)، فكل واحدة ماسكة عمليتها.
 
-- **الحجم:** 3,030 بايت ✅ (الحد 1MB)
-- **عدد الكوكيز:** 10
-- **الأسماء:** `sb, datr, ps_l, ps_n, c_user, dpr, fr, xs, presence, wd`
-- **الكوكيز الحرجة:** `c_user=61590157555205`, `xs`, `fr`, `datr` — كلها موجودة وصالحة
-- **الصلاحية:** سارية حتى 2027
-- **النتيجة المتوقعة في الخادم:** يجب أن يتم الحفظ بنجاح ✅
+## الخطة (نفّذها كـ root)
 
-**الملف ليس فيه أي عيب.** كل مراحل `parse → validate → encrypt → INSERT` ستنجح.
+### الخطوة 1: تحديد كل العمليات الماسكة للبورت
 
-## ما اكتشفته فعلًا في قاعدة البيانات
+```bash
+sudo ss -ltnp 'sport = :3001'
+sudo lsof -iTCP:3001 -sTCP:LISTEN -P -n
+```
+المخرج هيقول لنا الـ PID والـ user اللي شغّال العملية.
 
-يوجد صف تم إنشاؤه **اليوم الساعة 15:08** في `fb_bot_accounts` باسم `"1"` لحسابك (`user_id=4f4b101d…739e`)، حالته `active`. أي أن **عملية الحفظ نجحت فعلًا في الخادم**، لكن الواجهة عرضت رسالة "فشل حفظ حساب فيسبوك" بسبب خلل في معالجة الاستجابة بعد الإدراج — لا في الإدراج نفسه.
+### الخطوة 2: إيقاف كل نسخ PM2 لكل المستخدمين
 
-## السبب الجذري الحقيقي
-
-في `src/routes/dashboard.facebook.tsx` بعد نجاح `addBotAccountFn`، الكود ينفذ:
-
-```ts
-await supabase.from("fb_bot_accounts").select(...).eq("user_id", user!.id)
+```bash
+# لكل user محتمل
+for u in root khaled www www-data; do
+  sudo -u "$u" -H pm2 delete all 2>/dev/null || true
+  sudo -u "$u" -H pm2 kill 2>/dev/null || true
+done
 ```
 
-إذا كان `user` لحظتها `null` (race condition مع تحديث الجلسة)، يُرمى `TypeError` فيدخل الـ `catch`. الـ catch لا يفرّق بين "فشل الإدراج" و"فشل التحديث بعد الإدراج"، فيظهر للمستخدم: **"فشل حفظ حساب فيسبوك"** بينما الحساب فعلًا محفوظ في قاعدة البيانات.
+### الخطوة 3: قتل أي عملية متبقية على البورت
 
-احتمال ثانوي: عند ضعف الشبكة قد يصل الـ INSERT ثم تنقطع الاستجابة → نفس النتيجة (حفظ فعلي + رسالة فشل في الواجهة).
+```bash
+sudo fuser -k -TERM 3001/tcp || true
+sleep 2
+sudo fuser -k -KILL 3001/tcp || true
+sleep 2
+# تأكيد إن البورت فاضي
+sudo ss -ltnp 'sport = :3001' && echo "لسه مشغول ❌" || echo "البورت فاضي ✅"
+```
 
-## خطة الإصلاح
+### الخطوة 4: تعطيل أي systemd service قديم (لو موجود)
 
-### 1) فصل مرحلتي "الحفظ" و"التحديث المحلي" في `src/routes/dashboard.facebook.tsx`
+```bash
+sudo systemctl list-units --type=service | grep -iE "flowtix|tanstack|node" || echo "مفيش service"
+# لو لقيت service:
+# sudo systemctl disable --now <service-name>
+```
 
-نقل النجاح خارج الـ try الكبير: بمجرد رجوع `account.id` من الخادم نُظهر **toast نجاح فورًا** ونحدّث القائمة بشكل تفاؤلي. أي خطأ في إعادة الجلب بعد ذلك يصبح تحذيرًا منفصلًا (لا رسالة "فشل").
+### الخطوة 5: تشغيل نظيف من ecosystem الموحّد
 
-```text
-try {
-  raw = await addBotAccountFn(...)
-  account = normalize(raw)
-  if (!account?.id) throw "lookup-fallback"
-  ✅ toast.success("تم الحفظ")  ← خارج أي عملية تالية
-} catch (saveErr) {
-  // فقط أخطاء الحفظ الفعلية
+استخدم نفس الـ ecosystem اللي عملناه قبل كده مع إضافة `kill_timeout` و `wait_ready` و `listen_timeout` عشان PM2 ميعيدش التشغيل بسرعة:
+
+```js
+// /root/flowtixtools-web.ecosystem.config.cjs
+module.exports = {
+  apps: [{
+    name: "flowtixtools-web",
+    cwd: "/www/wwwroot/flowtixtools.com",
+    script: "scripts/tanstack-node-server.mjs",
+    interpreter: "node",
+    exec_mode: "fork",
+    instances: 1,
+    autorestart: true,
+    max_restarts: 5,
+    min_uptime: "10s",
+    restart_delay: 3000,
+    kill_timeout: 5000,
+    env: {
+      NODE_ENV: "production",
+      PORT: "3001",
+      HOST: "127.0.0.1",
+      BOT_WORKER_SECRET: "<من /home/khaled/flowtix-worker/.env>",
+      CRON_SECRET: "<نفس القيمة>"
+    }
+  }]
 }
-
-try { refetchList() } catch { /* تحذير صامت، لا toast فشل */ }
 ```
 
-### 2) Fallback ذكي عند `account=null`
+ثم:
+```bash
+sudo pm2 start /root/flowtixtools-web.ecosystem.config.cjs
+sudo pm2 save
+sudo pm2 startup systemd -u root --hp /root
+```
 
-قبل إعلان الفشل، نستعلم مباشرة من قاعدة البيانات عن آخر صف للمستخدم بنفس `display_name` خلال آخر 30 ثانية. إذا وُجد → اعتبره نجاحًا (الحفظ تم لكن الاستجابة ضاعت).
+### الخطوة 6: اختبار
 
-### 3) تقوية `unwrapServerPayload`
+```bash
+sleep 5
+sudo pm2 list
+sudo pm2 logs flowtixtools-web --lines 30 --nostream
+curl -i -sS -X POST http://127.0.0.1:3001/api/public/bot/next-job | head -5
+curl -i -sS -X POST https://flowtixtools.com/api/public/bot/next-job | head -5
+```
 
-إضافة دعم لشكل `{ result: { data: {...} } }` الذي يُرجعه TanStack أحيانًا، وتسجيل الشكل الخام في سجل التشخيص ليتضح أي اختلاف مستقبلي.
+**النتيجة المتوقعة:** `401 Unauthorized` في الاختبارين = الكل شغّال صح.
 
-### 4) إصلاح خطأ التضارب مع `user`
+## ملاحظة فنية
 
-إضافة حارس `if (!user?.id) return` قبل أي استعلام Supabase تابع للحفظ، بدل `user!.id`.
+- لو الخطوة 1 أظهرت إن العملية الماسكة للبورت بتاعت user تاني (مش root)، لازم نشتغل بنفس الـ user (مثلاً `sudo -u khaled -H pm2 ...`) عشان نضمن إن PM2 instance الصح هو اللي يدير العملية. اشتغال نسختين PM2 لـ users مختلفين على نفس البورت = مصدر الـ loop.
+- `kill_timeout: 5000` بيدي العملية وقت ترجع SIGTERM قبل SIGKILL، و `restart_delay: 3000` بيدي الـ socket وقت يتحرر.
 
-### 5) إضافة زر "تحقق من الحسابات الموجودة"
-
-في نفس واجهة ربط الكوكيز: زر يستدعي `listBotAccounts` ويعرض كم حسابًا فعلًا مرتبطًا — حتى لو ظهرت رسالة فشل، المستخدم يرى أن الحساب موجود ولا يكرر المحاولة.
-
-### 6) اختبار وحدة باستخدام ملفك المرفوع
-
-إضافة اختبار في `src/lib/fb-cookie-diagnostics.test.ts` يقرأ ملف JSON الحقيقي ويتحقق من نجاح `parse + validate + earliestRequiredExpiry`، حتى لا تتكرر شكوك الملف.
-
-## تفاصيل تقنية
-
-- **الملفات المعدّلة:** `src/routes/dashboard.facebook.tsx` (دالة `handleSaveCookieAccount`، unwrap)، `src/lib/fb-cookie-diagnostics.test.ts`
-- **بدون migration:** المشكلة في الواجهة فقط، قاعدة البيانات سليمة (RLS صحيح، INSERT يعمل، SELECT يعمل).
-- **لن يتم حذف الحساب الموجود "1"** — هو دليل أن الحفظ يعمل أصلًا. (لو أردت حذفه أخبرني.)
-
-## التحقق بعد التنفيذ
-
-1. تشغيل اختبار الوحدة على ملفك → يجب أن ينجح.
-2. إعادة تجربة الربط في الواجهة → يجب أن يظهر toast نجاح + يظهر الحساب الجديد في القائمة.
-3. مراجعة `fb_bot_accounts` في قاعدة البيانات → عدد الحسابات يطابق ما تراه في الواجهة.
+هل أنفذ الخطة دي كأوامر جاهزة للنسخ؟
