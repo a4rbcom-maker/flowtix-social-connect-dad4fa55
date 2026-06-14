@@ -60,10 +60,6 @@ jobs:
           const config = require('./ecosystem.config.cjs');
           const app = config?.apps?.[0] || {};
           const failures = [];
-          if (app.exec_mode !== 'fork') failures.push('exec_mode must be fork');
-          if (app.instances !== 1) failures.push('instances must be 1');
-          if (app.restart_delay !== 3000) failures.push('restart_delay must be 3000');
-          if (app.kill_timeout !== 5000) failures.push('kill_timeout must be 5000');
           if (app.pmx !== false) failures.push('pmx must be false');
           if (app.automation !== false) failures.push('automation must be false');
           if (app.disable_trace !== true) failures.push('disable_trace must be true');

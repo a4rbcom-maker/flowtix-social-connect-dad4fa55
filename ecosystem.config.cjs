@@ -1,6 +1,17 @@
-// PM2 ecosystem — one forked web process on one port.
-// Keep a single instance to prevent duplicate listeners/EADDRINUSE on 3001.
-// restart_delay + kill_timeout give Node time to release the socket before PM2 retries.
+// PM2 ecosystem — cluster mode for zero-downtime reloads.
+//
+// Why cluster + 2 instances:
+//   `pm2 reload` in cluster mode restarts workers ONE AT A TIME and only
+//   after the new worker starts listening. While worker A is restarting,
+//   worker B keeps serving traffic on the same port → clients never see a
+//   502/connection refused during deploys. Fork mode does NOT support this.
+//
+// kill_timeout: how long PM2 waits for in-flight requests to finish on the
+// OLD worker before SIGKILL. 10s covers normal SSR responses comfortably.
+//
+// listen_timeout: how long PM2 waits for the NEW worker to bind the port
+// before considering the reload failed. If it times out, the old worker is
+// kept and the reload fails loudly — which is what we want.
 module.exports = {
   apps: [
     {
@@ -8,8 +19,8 @@ module.exports = {
       script: "scripts/tanstack-node-server.mjs",
       cwd: process.env.DEPLOY_PATH || process.cwd(),
       interpreter: "node",
-      instances: 1,
-      exec_mode: "fork",
+      instances: 2,
+      exec_mode: "cluster",
       // PM2 APM/tracing wraps Node's HTTP parser through @pm2/io. It can
       // throw ERR_INVALID_URL for malformed public requests such as `GET //`,
       // which made deploy restarts fail even when the bundle itself was valid.
@@ -18,10 +29,9 @@ module.exports = {
       trace: false,
       disable_trace: true,
       autorestart: true,
-      max_restarts: 5,
+      max_restarts: 10,
       min_uptime: "10s",
-      restart_delay: 3000,
-      kill_timeout: 5000,
+      kill_timeout: 10000,
       listen_timeout: 30000,
       wait_ready: false,
       env: {

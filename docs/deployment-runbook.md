@@ -10,7 +10,7 @@
 | المصدر | المسار | ماذا يقول |
 |---|---|---|
 | القرص على VPS | `$DEPLOY_PATH/deploy-version.json` | الملفات اللي وصلت فعلاً بعد rsync |
-| التطبيق محليًا على VPS | `http://127.0.0.1:3001/deploy-version.json` | اللي PM2 يخدمه الآن (Node runner يقرأ الملف من القرص) |
+| التطبيق محليًا على VPS | `http://127.0.0.1:3100/deploy-version.json` | اللي PM2 يخدمه الآن (Node runner يقرأ الملف من القرص) |
 | الدومين العام | `https://www.flowtixtools.com/deploy-version.json` | اللي المستخدم النهائي يشوفه (يمر عبر Nginx + Cloudflare) |
 | الصحة | `https://www.flowtixtools.com/api/public/health` | حي + build.sha من الملف |
 
@@ -38,8 +38,8 @@
 cat /www/wwwroot/flowtixtools.com/deploy-version.json
 
 # محلي على VPS
-curl -fsS http://127.0.0.1:3001/deploy-version.json
-curl -fsS http://127.0.0.1:3001/api/public/health
+curl -fsS http://127.0.0.1:3100/deploy-version.json
+curl -fsS http://127.0.0.1:3100/api/public/health
 
 # عام مع تجاوز الكاش
 curl -fsS -H "Cache-Control: no-cache" \
@@ -60,24 +60,13 @@ sudo nginx -t && sudo nginx -s reload
 ## متى نعمل rollback ومتى لا
 
 **نعمل rollback تلقائي** عندما:
-- التطبيق المحلي على `127.0.0.1:3001` لا يخدم الـSHA الجديد، أو
+- التطبيق المحلي على `127.0.0.1:3100` لا يخدم الـSHA الجديد، أو
 - التطبيق المحلي يرجع 5xx على مسارات حرجة (homepage / health / dashboard).
 
 **لا نعمل rollback** عندما:
 - التطبيق المحلي سليم لكن الدومين العام يرجع خطأ → المشكلة في Nginx أو
   Cloudflare. rollback لن يحل المشكلة، فقط يخفي نسخة شغالة خلف edge مكسور.
   أصلح البروكسي/الكاش وأعد المحاولة.
-
-## ملاحظة مهمة لحالة 502 الحالية
-
-إذا كان `http://127.0.0.1:3001/deploy-version.json` و
-`http://127.0.0.1:3001/api/public/health` يعملان محليًا لكن الدومين العام ما زال
-يرجع `502 Bad Gateway`، فهذا يعني غالبًا أن ملف الـvhost ما زال يوجّه إلى
-`127.0.0.1:3100` أو upstream قديم بدل `127.0.0.1:3001`.
-
-إذا ظهر `bun: command not found` على الـVPS، لا تثبّت أدوات عامة أثناء الإنقاذ.
-استخدم `npm install` و `npm run build` بدل `bun install` و `bun run build`؛
-سكربت `deploy.sh` صار يختار `bun` إن وجد وإلا يستخدم `npm` تلقائيًا.
 
 ### سلوك GitHub Actions الحالي
 
