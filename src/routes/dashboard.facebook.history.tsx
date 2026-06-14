@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
-import { listJobs, getJob, cancelJob } from "@/lib/fb-bot.functions";
+import { listJobs, getJob, cancelJob, createDeepProfileScrapeJob } from "@/lib/fb-bot.functions";
 import { loadEgyptData, extractEgyptPhone, detectLocation } from "@/lib/egypt-enrich";
 
 export const Route = createFileRoute("/dashboard/facebook/history")({
@@ -27,7 +27,7 @@ export const Route = createFileRoute("/dashboard/facebook/history")({
 
 type JobRow = {
   id: string;
-  job_type: "post_to_groups" | "extract_pages" | "extract_commenters" | "extract_group_members" | "extract_page_audience";
+  job_type: "post_to_groups" | "extract_pages" | "extract_commenters" | "extract_group_members" | "extract_page_audience" | "deep_profile_scrape";
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
   progress: number;
   total_items: number;
@@ -35,6 +35,7 @@ type JobRow = {
   created_at: string;
   completed_at: string | null;
   error_message: string | null;
+  account_id: string | null;
 };
 
 type JobResult = { id: string; target: string | null; status: "success" | "failed" | "skipped"; data: unknown; error: string | null; created_at: string };
@@ -63,7 +64,7 @@ function JobsHistoryPage() {
     cancel: "إلغاء",
     results: "النتائج",
     download: "تنزيل CSV",
-    types: { post_to_groups: "نشر", extract_pages: "صفحات", extract_commenters: "معلقين", extract_group_members: "أعضاء جروب", extract_page_audience: "جمهور صفحة" },
+    types: { post_to_groups: "نشر", extract_pages: "صفحات", extract_commenters: "معلقين", extract_group_members: "أعضاء جروب", extract_page_audience: "جمهور صفحة", deep_profile_scrape: "فحص عميق للبروفايل" },
     statuses: { pending: "معلّقة", running: "جارية", completed: "مكتملة", failed: "فشلت", cancelled: "ملغاة" },
   } : {
     title: "Jobs History",
@@ -78,7 +79,7 @@ function JobsHistoryPage() {
     cancel: "Cancel",
     results: "Results",
     download: "Download CSV",
-    types: { post_to_groups: "Post", extract_pages: "Pages", extract_commenters: "Commenters", extract_group_members: "Group Members", extract_page_audience: "Page Audience" },
+    types: { post_to_groups: "Post", extract_pages: "Pages", extract_commenters: "Commenters", extract_group_members: "Group Members", extract_page_audience: "Page Audience", deep_profile_scrape: "Deep Profile Scrape" },
     statuses: { pending: "Pending", running: "Running", completed: "Completed", failed: "Failed", cancelled: "Cancelled" },
   };
 
@@ -109,7 +110,7 @@ function JobsHistoryPage() {
     setSelected(j);
     setResultsLoading(true);
     try {
-      const peopleTypes = ["extract_commenters", "extract_group_members", "extract_page_audience"];
+      const peopleTypes = ["extract_commenters", "extract_group_members", "extract_page_audience", "deep_profile_scrape"];
       if (peopleTypes.includes(j.job_type)) await loadEgyptData();
       const { results } = await call(getJob, { id: j.id });
       setResults(results as JobResult[]);
@@ -124,19 +125,22 @@ function JobsHistoryPage() {
 
   const isPeople = selected?.job_type === "extract_commenters"
     || selected?.job_type === "extract_group_members"
-    || selected?.job_type === "extract_page_audience";
+    || selected?.job_type === "extract_page_audience"
+    || selected?.job_type === "deep_profile_scrape";
   const enrichedRows = isPeople
     ? results.map((r) => {
-        const d = (r.data ?? {}) as { name?: string; id?: string; fb_user_id?: string; profile?: string; profile_url?: string; bio_snippet?: string; source?: string };
-        const blob = `${d.name ?? ""} ${d.bio_snippet ?? ""} ${r.target ?? ""}`;
+        const d = (r.data ?? {}) as { name?: string; id?: string; fb_user_id?: string; profile?: string; profile_url?: string; bio?: string; bio_snippet?: string; city?: string; hometown?: string; work?: string; phone?: string; source?: string };
+        const blob = `${d.name ?? ""} ${d.bio ?? ""} ${d.bio_snippet ?? ""} ${d.city ?? ""} ${d.hometown ?? ""} ${r.target ?? ""}`;
         const loc = detectLocation(blob);
         return {
           row: r,
           name: d.name ?? r.target ?? "—",
           profile: d.profile_url ?? d.profile ?? "",
-          phone: extractEgyptPhone(blob) ?? null,
-          city: loc?.city ?? null,
+          phone: d.phone ?? extractEgyptPhone(blob) ?? null,
+          city: d.city ?? loc?.city ?? null,
           gov: loc?.gov ?? null,
+          declared: d.city ?? d.hometown ?? null,
+          work: d.work ?? null,
           source: d.source ?? "",
         };
       })
@@ -237,6 +241,30 @@ function JobsHistoryPage() {
               <span>{selected && t.types[selected.job_type]}</span>
               {results.length > 0 && (
                 <div className="flex flex-wrap gap-2">
+                  {isPeople && selected?.job_type !== "deep_profile_scrape" && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={async () => {
+                        if (!selected?.id) return;
+                        const accountId = selected.account_id;
+                        const profiles = enrichedRows
+                          .map((e) => e.profile || e.row.target)
+                          .filter((v): v is string => !!v);
+                        if (!accountId) { toast.error(lang === "ar" ? "تعذّر تحديد الحساب" : "Account missing"); return; }
+                        if (profiles.length === 0) { toast.error(lang === "ar" ? "لا توجد بروفايلات" : "No profiles"); return; }
+                        try {
+                          await call(createDeepProfileScrapeJob, { accountId, profiles });
+                          toast.success(lang === "ar" ? "تم إنشاء مهمة فحص عميق" : "Deep scrape job queued");
+                          setSelected(null);
+                          load();
+                        } catch (e) { toast.error(String(e)); }
+                      }}
+                      className="gap-2"
+                    >
+                      {lang === "ar" ? "فحص عميق للبروفايلات" : "Deep profile scrape"}
+                    </Button>
+                  )}
                   {isPeople && (
                     <Button
                       size="sm"

@@ -597,6 +597,48 @@ export const createExtractPageAudienceJob = createServerFn({ method: "POST" })
     return row;
   });
 
+// ---------- createDeepProfileScrapeJob ----------
+// Visits each Facebook profile URL and scrapes public Bio / intro / declared city / work.
+export const createDeepProfileScrapeJob = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        accountId: z.string().uuid(),
+        profiles: z.array(z.string().trim().min(1)).min(1).max(2000),
+        label: z.string().trim().max(120).optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const profiles = Array.from(
+      new Set(
+        data.profiles
+          .map((p) => p.trim())
+          .filter(Boolean)
+          .map((p) => p.replace(/\?.*$/, "").replace(/\/$/, "")),
+      ),
+    );
+    const { data: row, error } = await supabase
+      .from("fb_jobs")
+      .insert({
+        user_id: userId,
+        account_id: data.accountId,
+        job_type: "deep_profile_scrape",
+        payload: { profiles, label: data.label ?? null },
+        total_items: profiles.length,
+        scheduled_at: new Date().toISOString(),
+        status: "pending",
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    return row;
+  });
+
+
+
 // ---------- listJobs ----------
 export const listJobs = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])

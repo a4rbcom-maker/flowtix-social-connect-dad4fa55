@@ -1697,6 +1697,7 @@ export type Database = {
         | "test_account"
         | "extract_group_members"
         | "extract_page_audience"
+        | "deep_profile_scrape"
       fb_page_connection_type: "official" | "bot"
       fb_page_status: "active" | "expired" | "disconnected"
       fb_result_status: "success" | "failed" | "skipped" | "pending"
@@ -1880,6 +1881,7 @@ export const Constants = {
         "test_account",
         "extract_group_members",
         "extract_page_audience",
+        "deep_profile_scrape",
       ],
       fb_page_connection_type: ["official", "bot"],
       fb_page_status: ["active", "expired", "disconnected"],

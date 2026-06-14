@@ -247,6 +247,140 @@ async function handleExtractCommenters(job) {
   }
 }
 
+/** deep_profile_scrape — visit each profile URL and scrape public Bio / intro / city / work */
+async function handleDeepProfileScrape(job) {
+  const profiles = Array.isArray(job.payload?.profiles) ? job.payload.profiles : [];
+  if (profiles.length === 0) throw new Error("payload.profiles is empty");
+
+  const context = await openContext(job.account?.id, job.account?.credentials);
+  const page = await context.newPage();
+  let processed = 0;
+  let extracted = 0;
+
+  const toUrl = (p) => {
+    const s = String(p).trim();
+    if (/^https?:\/\//i.test(s)) return s;
+    if (/^\d{6,}$/.test(s)) return `https://www.facebook.com/profile.php?id=${s}`;
+    return `https://www.facebook.com/${s.replace(/^\//, "")}`;
+  };
+
+  try {
+    for (const ref of profiles) {
+      const url = toUrl(ref);
+      try {
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await page.waitForTimeout(1500 + Math.floor(Math.random() * 1500));
+
+        // Detect login wall once
+        if (page.url().includes("/login") || page.url().includes("/checkpoint")) {
+          await postUpdate({
+            jobId: job.id,
+            accountStatus: {
+              accountId: job.account.id,
+              status: page.url().includes("checkpoint") ? "checkpoint" : "invalid",
+              error: "Session expired or checkpoint required",
+            },
+          });
+          throw new Error("Session invalid (login/checkpoint). Re-export cookies.");
+        }
+
+        // Try to click "See more" on intro/about
+        try {
+          const more = page.locator(
+            'div[role="button"]:has-text("See more"), div[role="button"]:has-text("عرض المزيد")'
+          );
+          const n = await more.count().catch(() => 0);
+          for (let i = 0; i < Math.min(n, 3); i++) {
+            try { await more.nth(i).click({ timeout: 800 }); } catch (_) {}
+          }
+        } catch (_) {}
+
+        const data = await page.evaluate(() => {
+          const out = { name: null, bio: null, intro_lines: [], city: null, hometown: null, work: null, education: null, relationship: null, phone: null, profile_url: location.href };
+          const h1 = document.querySelector("h1");
+          if (h1) out.name = (h1.textContent || "").trim().slice(0, 120) || null;
+
+          // Intro card lines (Lives in, From, Works at, Studied at, etc.)
+          const ALL = Array.from(document.querySelectorAll("div, span, li"));
+          const texts = new Set();
+          for (const el of ALL) {
+            const t = (el.textContent || "").trim();
+            if (!t || t.length > 220) continue;
+            if (/^(Lives in|From|Works at|Worked at|Studied at|Studies at|Went to|Single|Married|In a relationship|يعيش في|من|يعمل في|درس في|درست في|أعزب|متزوج|في علاقة)/i.test(t)) {
+              texts.add(t);
+            }
+          }
+          out.intro_lines = Array.from(texts).slice(0, 12);
+
+          for (const line of out.intro_lines) {
+            const m1 = line.match(/^(?:Lives in|يعيش في)\s+(.+)$/i);
+            if (m1 && !out.city) out.city = m1[1].trim();
+            const m2 = line.match(/^(?:From|من)\s+(.+)$/i);
+            if (m2 && !out.hometown) out.hometown = m2[1].trim();
+            const m3 = line.match(/^(?:Works at|Worked at|يعمل في)\s+(.+)$/i);
+            if (m3 && !out.work) out.work = m3[1].trim();
+            const m4 = line.match(/^(?:Studied at|Studies at|Went to|درس في|درست في)\s+(.+)$/i);
+            if (m4 && !out.education) out.education = m4[1].trim();
+            if (/^(Single|Married|In a relationship|أعزب|متزوج|في علاقة)/i.test(line) && !out.relationship) {
+              out.relationship = line.trim();
+            }
+          }
+
+          // Bio text under name
+          const bioEl = document.querySelector('div[data-pagelet="ProfileTilesFeed_0"] span, div[role="main"] h1 ~ div span');
+          if (bioEl) {
+            const b = (bioEl.textContent || "").trim();
+            if (b && b.length < 300) out.bio = b;
+          }
+
+          // Hunt for phone-like patterns in visible text (Egypt-style)
+          const body = (document.body?.innerText || "").slice(0, 20000);
+          const phoneM = body.match(/(?:\+?20|0)?1[0125]\d{8}/);
+          if (phoneM) out.phone = phoneM[0];
+
+          return out;
+        });
+
+        const fbId = (() => {
+          const m1 = url.match(/profile\.php\?id=(\d+)/);
+          if (m1) return m1[1];
+          const m2 = url.match(/facebook\.com\/([^/?]+)/);
+          return m2 ? m2[1] : ref;
+        })();
+
+        await postUpdate({
+          jobId: job.id,
+          result: {
+            target: fbId,
+            status: "success",
+            data: { ...data, source: "deep_profile" },
+          },
+        });
+        extracted++;
+      } catch (e) {
+        await postUpdate({
+          jobId: job.id,
+          result: { target: String(ref).slice(0, 200), status: "failed", error: String(e.message || e).slice(0, 300) },
+        });
+      }
+
+      processed++;
+      await postUpdate({
+        jobId: job.id,
+        progress: Math.min(99, Math.round((processed / profiles.length) * 100)),
+        processedItems: extracted,
+        status: "running",
+      });
+
+      // Gentle pacing to reduce ban risk
+      await page.waitForTimeout(2500 + Math.floor(Math.random() * 3500));
+    }
+    return { extracted };
+  } finally {
+    await context.close().catch(() => {});
+  }
+}
+
 /** Placeholder for jobs not yet implemented in this worker version */
 async function handleNotImplemented(job) {
   throw new Error(`Job type "${job.type}" is not implemented in this worker yet.`);
@@ -254,6 +388,7 @@ async function handleNotImplemented(job) {
 
 const HANDLERS = {
   extract_commenters: handleExtractCommenters,
+  deep_profile_scrape: handleDeepProfileScrape,
   extract_group_members: handleNotImplemented,
   extract_page_audience: handleNotImplemented,
   extract_pages: handleNotImplemented,
