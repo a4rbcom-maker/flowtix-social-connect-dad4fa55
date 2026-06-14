@@ -1,4 +1,4 @@
-# خطة نهائية: إصلاح EADDRINUSE على البورت 3001
+# خطة نهائية آمنة: إصلاح EADDRINUSE و502 على البورت 3001
 
 ## السبب الجذري
 
@@ -6,7 +6,12 @@
 2. **PM2 بيعيد التشغيل بسرعة** قبل ما الـ socket يتحرر، فبيدخل في loop من EADDRINUSE.
 3. **احتمال وجود نسختين PM2** (واحدة تحت `root` وواحدة تحت user آخر زي `khaled` أو `www`)، فكل واحدة ماسكة عمليتها.
 
-## الخطة (نفّذها كـ root)
+## الخطة الآمنة (نفّذها كـ root)
+
+**ممنوع في هذه الخطة:** `pm2 kill`، `pm2 delete all`، `pkill -f node`،
+`fuser -k 3001/tcp`، أو `systemctl restart nginx`. هذه أوامر واسعة وقد تؤثر على
+جلسة الشل أو مواقع أخرى. نوقف فقط تطبيق PM2 باسم `flowtixtools-web`، ولا نقتل أي
+PID على البورت إلا إذا ثبت أنه Node الخاص بمجلد `/www/wwwroot/flowtixtools.com`.
 
 ### الخطوة 1: تحديد كل العمليات الماسكة للبورت
 
@@ -16,25 +21,17 @@ sudo lsof -iTCP:3001 -sTCP:LISTEN -P -n
 ```
 المخرج هيقول لنا الـ PID والـ user اللي شغّال العملية.
 
-### الخطوة 2: إيقاف كل نسخ PM2 لكل المستخدمين
+### الخطوة 2: إيقاف تطبيق Flowtix فقط داخل PM2
 
 ```bash
-# لكل user محتمل
-for u in root khaled www www-data; do
-  sudo -u "$u" -H pm2 delete all 2>/dev/null || true
-  sudo -u "$u" -H pm2 kill 2>/dev/null || true
-done
+pm2 delete flowtixtools-web 2>/dev/null || true
 ```
 
-### الخطوة 3: قتل أي عملية متبقية على البورت
+### الخطوة 3: لو البورت ما زال مشغولًا، لا تقتله إلا بعد التحقق من مالكه
 
 ```bash
-sudo fuser -k -TERM 3001/tcp || true
-sleep 2
-sudo fuser -k -KILL 3001/tcp || true
-sleep 2
-# تأكيد إن البورت فاضي
-sudo ss -ltnp 'sport = :3001' && echo "لسه مشغول ❌" || echo "البورت فاضي ✅"
+sudo ss -ltnp 'sport = :3001' || true
+sudo lsof -iTCP:3001 -sTCP:LISTEN -P -n || true
 ```
 
 ### الخطوة 4: تعطيل أي systemd service قديم (لو موجود)
@@ -77,9 +74,8 @@ module.exports = {
 
 ثم:
 ```bash
-sudo pm2 start /root/flowtixtools-web.ecosystem.config.cjs
+sudo pm2 start /root/flowtixtools-web.ecosystem.config.cjs --only flowtixtools-web --update-env
 sudo pm2 save
-sudo pm2 startup systemd -u root --hp /root
 ```
 
 ### الخطوة 6: اختبار
