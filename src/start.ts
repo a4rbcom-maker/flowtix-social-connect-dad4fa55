@@ -1,17 +1,14 @@
 import { createCsrfMiddleware, createStart } from "@tanstack/react-start";
 import { attachSupabaseAuth } from "@/integrations/supabase/auth-attacher";
 
-// Polyfill global WebSocket on Node.js < 22 (server runtime). Required by
+// Polyfill global WebSocket on Node.js < 22 (SSR runtime only). Required by
 // @supabase/realtime-js which expects a native WebSocket constructor.
-if (typeof globalThis !== "undefined" && typeof (globalThis as { WebSocket?: unknown }).WebSocket === "undefined") {
-  try {
-    // Dynamic require so it never leaks to the browser bundle.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { WebSocket: NodeWebSocket } = require("ws");
-    (globalThis as { WebSocket?: unknown }).WebSocket = NodeWebSocket;
-  } catch {
-    // ws not available (e.g. edge runtime) — ignore.
-  }
+// Guarded by import.meta.env.SSR so the `ws` import is stripped from the client bundle.
+if (import.meta.env.SSR && typeof (globalThis as { WebSocket?: unknown }).WebSocket === "undefined") {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  import("ws").then((mod: any) => {
+    (globalThis as { WebSocket?: unknown }).WebSocket = mod.WebSocket ?? mod.default;
+  }).catch(() => { /* ws not available */ });
 }
 
 const csrfMiddleware = createCsrfMiddleware({
