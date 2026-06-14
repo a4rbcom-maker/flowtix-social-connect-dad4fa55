@@ -1,8 +1,10 @@
-name: Deploy to VPS (manual)
+name: Deploy to VPS
 
-# Keep Git sync independent from VPS deploy health.
-# Deploy runs only when explicitly triggered from GitHub Actions.
+# Deploy automatically when main is updated, and still allow manual re-runs.
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 # Global per-repo lock: at most one deploy run touches the VPS at a time.
