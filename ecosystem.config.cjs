@@ -36,7 +36,7 @@ module.exports = {
       wait_ready: false,
       env: {
         NODE_ENV: "production",
-        PORT: process.env.APP_PORT || "3001",
+        PORT: process.env.APP_PORT || "3100",
         SERVER_ENTRY: process.env.SERVER_ENTRY || "",
         SUPABASE_URL: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "",
         SUPABASE_PUBLISHABLE_KEY: process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || "",
