@@ -25,9 +25,9 @@ git fetch --all --prune
 git reset --hard origin/main 2>/dev/null || git reset --hard origin/master
 
 echo "==> [3/6] Backing up current build (rollback safety)..."
-BACKUP_DIR=".output.backup.$(date +%Y%m%d-%H%M%S)"
-if [ -d .output ]; then
-  cp -r .output "$BACKUP_DIR"
+BACKUP_DIR="dist.backup.$(date +%Y%m%d-%H%M%S)"
+if [ -d dist ]; then
+  cp -r dist "$BACKUP_DIR"
   echo "✅ Backup saved to $BACKUP_DIR"
 fi
 
@@ -36,17 +36,11 @@ rm -rf node_modules dist .vinxi
 bun install --frozen-lockfile || bun install
 
 echo "==> [5/6] Building project..."
-# Build into a temp dir first, only swap if successful
-rm -rf .output.new
 if bun run build; then
-  if [ -d .output ]; then
-    mv .output .output.new
-    # We built in-place; rename for atomic swap is not needed since build succeeded
-    mv .output.new .output 2>/dev/null || true
-  fi
   echo "✅ Build succeeded"
 else
-  echo "❌ Build FAILED — keeping previous .output intact, nothing changed"
+  [ -d "$BACKUP_DIR" ] && { rm -rf dist && mv "$BACKUP_DIR" dist; }
+  echo "❌ Build FAILED — previous dist restored, nothing changed"
   exit 1
 fi
 
@@ -67,8 +61,8 @@ fi
 #   --data '{"purge_everything":true}'
 
 # Keep only last 3 backups
-ls -dt .output.backup.* 2>/dev/null | tail -n +4 | xargs -r rm -rf
+ls -dt dist.backup.* 2>/dev/null | tail -n +4 | xargs -r rm -rf
 
 echo ""
 echo "🎉 Deploy complete! Site should be live."
-echo "   If anything looks broken: rm -rf .output && mv $BACKUP_DIR .output && pm2 restart flowtixtools-web --update-env"
+echo "   If anything looks broken: rm -rf dist && mv $BACKUP_DIR dist && pm2 restart flowtixtools-web --update-env"
