@@ -388,8 +388,17 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-16 sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border flex items-center justify-between px-4 md:px-6 gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <button onClick={() => setMobileOpen(true)} className="md:hidden p-2 rounded-lg hover:bg-muted">
-              <Menu className="h-5 w-5" />
+            <button
+              onClick={() => setMobileOpen((v) => !v)}
+              className="md:hidden relative flex h-10 w-10 items-center justify-center rounded-xl border border-primary/30 bg-gradient-to-br from-primary/15 to-amber-500/10 text-primary shadow-sm transition-all duration-200 hover:from-primary/25 hover:to-amber-500/20 active:scale-95"
+              aria-label={mobileOpen ? (lang === "ar" ? "إغلاق القائمة" : "Close menu") : (lang === "ar" ? "فتح القائمة" : "Open menu")}
+              aria-expanded={mobileOpen}
+            >
+              <span className="relative h-4 w-5">
+                <span className={`absolute left-0 top-0 h-[2px] w-5 rounded-full bg-current transition-all duration-200 ${mobileOpen ? "translate-y-[7px] rotate-45" : ""}`} />
+                <span className={`absolute left-0 top-[7px] h-[2px] w-5 rounded-full bg-current transition-all duration-200 ${mobileOpen ? "opacity-0" : "opacity-100"}`} />
+                <span className={`absolute left-0 top-[14px] h-[2px] w-5 rounded-full bg-current transition-all duration-200 ${mobileOpen ? "-translate-y-[7px] -rotate-45" : ""}`} />
+              </span>
             </button>
             <div className="min-w-0">
               <div className="text-[10px] font-bold tracking-widest text-amber-500 uppercase">
