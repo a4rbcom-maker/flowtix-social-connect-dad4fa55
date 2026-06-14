@@ -724,11 +724,40 @@ port_pids() {
 
 wait_for_port_free() {
   local p="$1"
-  for attempt in $(seq 1 45); do
+  local attempt
+  for attempt in $(seq 1 30); do
     if ! port_is_bound "$p"; then
       return 0
     fi
     echo "Waiting for port ${p} to be released (attempt $attempt)…"
+    sleep 1
+  done
+  # Escalation: port still bound. Kill any PM2-managed remnants and stray
+  # listeners (orphaned cluster workers, zombie node processes) so the
+  # deploy isn't blocked by a stuck previous instance.
+  echo "::warning::Port ${p} still bound after 30s — escalating cleanup."
+  pm2 kill 2>/dev/null || true
+  sleep 2
+  local pids
+  pids=$(port_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+  if [ -n "$pids" ]; then
+    echo "Sending SIGTERM to PIDs holding port ${p}: ${pids}"
+    # shellcheck disable=SC2086
+    kill -TERM $pids 2>/dev/null || true
+    sleep 3
+    pids=$(port_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+    if [ -n "$pids" ]; then
+      echo "Sending SIGKILL to PIDs still holding port ${p}: ${pids}"
+      # shellcheck disable=SC2086
+      kill -KILL $pids 2>/dev/null || true
+      sleep 2
+    fi
+  fi
+  for attempt in $(seq 1 15); do
+    if ! port_is_bound "$p"; then
+      echo "✓ Port ${p} released after escalation."
+      return 0
+    fi
     sleep 1
   done
   return 1
