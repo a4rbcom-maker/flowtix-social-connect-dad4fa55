@@ -187,6 +187,10 @@ if [ -n "${STAGING_PATH:-}" ]; then
   fi
 fi
 
+# From this point on, DEPLOY_PATH contains the new (possibly broken) bundle —
+# enable auto-rollback for any subsequent failure.
+__BUNDLE_PROMOTED=1
+
 cd "$DEPLOY_PATH" || fail_deploy "deploy-path-cd-failed"
 SSR_ENTRY_CANDIDATES="dist/server/server.js dist/server/server.mjs dist/server/index.js dist/server/index.mjs"
 [ -n "${SERVER_ENTRY:-}" ] && [ -f "$SERVER_ENTRY" ] || {
