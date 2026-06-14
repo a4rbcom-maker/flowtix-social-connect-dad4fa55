@@ -554,6 +554,10 @@ if ! node - <<'NODE'
 const config = require('./ecosystem.config.cjs');
 const app = config?.apps?.[0] || {};
 const failures = [];
+if (app.exec_mode !== 'fork') failures.push('exec_mode must be fork');
+if (app.instances !== 1) failures.push('instances must be 1');
+if (app.restart_delay !== 3000) failures.push('restart_delay must be 3000');
+if (app.kill_timeout !== 5000) failures.push('kill_timeout must be 5000');
 if (app.pmx !== false) failures.push('pmx must be false');
 if (app.automation !== false) failures.push('automation must be false');
 if (app.disable_trace !== true) failures.push('disable_trace must be true');
@@ -646,94 +650,23 @@ export APP_NAME APP_PORT DEPLOY_PATH SERVER_ENTRY
 export NODE_ENV=production
 export DEPLOY_SHA DEPLOY_RUN_ID DEPLOY_REPOSITORY DEPLOYED_AT
 
-# === Zero-downtime release ===
-# If the app already runs under PM2 with cluster mode → graceful `reload`.
-# Workers restart one at a time; the other keeps serving on the same port,
-# so existing clients see no 502s, no dropped connections.
-# Otherwise (first deploy, or it died) → fresh `start`.
-APP_IS_RUNNING=0
-APP_IS_CLUSTER=0
-APP_STATUS="missing"
-if PM2_INFO=$(pm2 jlist 2>/dev/null | APP_NAME="$APP_NAME" node -e '
-let input = "";
-process.stdin.on("data", (chunk) => { input += chunk; });
-process.stdin.on("end", () => {
-  try {
-    const app = JSON.parse(input).find((item) => item && item.name === process.env.APP_NAME);
-    if (!app) return console.log("missing|missing");
-    const env = app.pm2_env || {};
-    console.log(`${env.status || "unknown"}|${env.exec_mode || "unknown"}`);
-  } catch {
-    console.log("unknown|unknown");
-  }
-});
-'); then
-  APP_STATUS="${PM2_INFO%%|*}"
-  APP_MODE="${PM2_INFO#*|}"
-else
-  APP_MODE="unknown"
-fi
-echo "PM2 current state: status=${APP_STATUS}, mode=${APP_MODE}"
-
-if [ "$APP_STATUS" = "online" ]; then
-  APP_IS_RUNNING=1
-  if [ "$APP_MODE" = "cluster_mode" ]; then
-    APP_IS_CLUSTER=1
-  fi
-fi
-
-if [ "$APP_IS_RUNNING" = "1" ] && [ "$APP_IS_CLUSTER" = "1" ]; then
-  echo "→ Graceful reload (cluster mode, no downtime)…"
-  RELOAD_FAILED=0
-  if ! pm2 reload ecosystem.config.cjs --only "$APP_NAME" --update-env; then
-    RELOAD_FAILED=1
-  elif ! PM2_POST_RELOAD=$(pm2 jlist 2>/dev/null | APP_NAME="$APP_NAME" node -e '
-let input = "";
-process.stdin.on("data", (chunk) => { input += chunk; });
-process.stdin.on("end", () => {
-  try {
-    const app = JSON.parse(input).find((item) => item && item.name === process.env.APP_NAME);
-    const status = app?.pm2_env?.status || "missing";
-    console.log(status);
-    process.exit(status === "online" ? 0 : 1);
-  } catch {
-    console.log("unknown");
-    process.exit(1);
-  }
-});
-'); then
-    echo "::warning::pm2 reload returned success but app status is ${PM2_POST_RELOAD:-unknown}; falling back to delete+start."
-    RELOAD_FAILED=1
-  fi
-  if [ "$RELOAD_FAILED" = "1" ]; then
-    echo "::warning::pm2 reload failed — falling back to delete+start."
-    pm2 delete "$APP_NAME" || true
-    wait_for_port_free "${APP_PORT}" || {
-      echo "ERROR: Port ${APP_PORT} still bound after failed reload fallback."; print_port_diagnostics; fail_deploy "port-still-bound-after-reload-fallback";
-    }
-    pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env || {
-      echo "ERROR: pm2 start failed after reload fallback."
-      print_port_diagnostics
-      pm2 logs "$APP_NAME" --lines 120 --nostream || true
-      fail_deploy "pm2-start-failed-after-reload-fallback"
-    }
-  fi
-else
-  if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
-    echo "→ Existing PM2 app is ${APP_STATUS}/${APP_MODE} — recreating in cluster mode."
-    pm2 delete "$APP_NAME" || true
-    wait_for_port_free "${APP_PORT}" || {
-      echo "ERROR: Port ${APP_PORT} still bound after delete."; print_port_diagnostics; fail_deploy "port-still-bound-after-delete"
-    }
-  fi
-  echo "→ Fresh start in cluster mode…"
-  pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env || {
-    echo "ERROR: pm2 start failed."
-    print_port_diagnostics
-    pm2 logs "$APP_NAME" --lines 120 --nostream || true
-    fail_deploy "pm2-start-failed"
+# === Deterministic single-process release ===
+# Always recreate the web app from ecosystem.config.cjs so old cluster/fork
+# definitions cannot keep extra workers attached to APP_PORT.
+if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
+  echo "→ Recreating PM2 app as a single forked process…"
+  pm2 delete "$APP_NAME" || true
+  wait_for_port_free "${APP_PORT}" || {
+    echo "ERROR: Port ${APP_PORT} still bound after delete."; print_port_diagnostics; fail_deploy "port-still-bound-after-delete"
   }
 fi
+echo "→ Fresh start (fork mode, 1 instance)…"
+pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env || {
+  echo "ERROR: pm2 start failed."
+  print_port_diagnostics
+  pm2 logs "$APP_NAME" --lines 120 --nostream || true
+  fail_deploy "pm2-start-failed"
+}
 pm2 save || echo "::warning::pm2 save failed (non-fatal — process list may not survive reboot)."
 
 # Confirm the Node SSR app bound the port after reload/start.
