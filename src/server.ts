@@ -39,7 +39,13 @@ export default {
   async fetch(request: Request, env: unknown, context: unknown) {
     try {
       const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, context);
+      const isHead = request.method === "HEAD";
+      const normalizedRequest = isHead ? new Request(request, { method: "GET" }) : request;
+      const response = await handler.fetch(normalizedRequest, env, context);
+      if (isHead) {
+        const normalized = await normalizeCatastrophicSsrResponse(response);
+        return new Response(null, normalized);
+      }
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
       console.error(error);
