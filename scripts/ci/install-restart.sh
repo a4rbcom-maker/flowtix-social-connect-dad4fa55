@@ -757,11 +757,17 @@ print_port_diagnostics() {
 port_pids() {
   if command -v lsof >/dev/null 2>&1; then
     lsof -tiTCP:"${APP_PORT}" -sTCP:LISTEN 2>/dev/null || true
+    sudo -n lsof -tiTCP:"${APP_PORT}" -sTCP:LISTEN 2>/dev/null || true
     return 0
   fi
   if command -v ss >/dev/null 2>&1; then
     ss -ltnp "sport = :${APP_PORT}" 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' || true
+    sudo -n ss -ltnp "sport = :${APP_PORT}" 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' || true
     return 0
+  fi
+  if command -v fuser >/dev/null 2>&1; then
+    fuser -n tcp "${APP_PORT}" 2>/dev/null || true
+    sudo -n fuser -n tcp "${APP_PORT}" 2>/dev/null || true
   fi
 }
 
@@ -885,9 +891,11 @@ cleanup_bound_port() {
   if port_is_bound "$p" && command -v fuser >/dev/null 2>&1; then
     echo "Using fuser as last resort on port ${p}."
     fuser -k -TERM -n tcp "$p" 2>/dev/null || true
+    sudo -n fuser -k -TERM -n tcp "$p" 2>/dev/null || true
     sleep 2
     if port_is_bound "$p"; then
       fuser -k -KILL -n tcp "$p" 2>/dev/null || true
+      sudo -n fuser -k -KILL -n tcp "$p" 2>/dev/null || true
       sleep 2
     fi
   fi
