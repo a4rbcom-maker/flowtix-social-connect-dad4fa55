@@ -251,9 +251,7 @@ choose_integrity_snapshot() {
     echo "  • SKIP    PREV_SNAPSHOT   (marker file does not exist)" >&2
   fi
 
-  # 3) good-* — strict, newest first. We intentionally do NOT scan
-  #    generic [0-9]* snapshots — those are raw pre-deploy captures
-  #    from possibly-broken earlier deploys.
+  # 3) good-* — strict, newest first.
   local good_count=0
   while IFS= read -r candidate; do
     [ -z "$candidate" ] && continue
@@ -266,6 +264,29 @@ choose_integrity_snapshot() {
   done < <(ls -1dt "$BACKUPS_DIR"/good-* 2>/dev/null || true)
   if [ "$good_count" -eq 0 ]; then
     echo "  • SKIP    good-*          (no smoke-verified snapshots exist yet)" >&2
+  fi
+
+  # 4) raw [0-9]* snapshots — loose, newest first. These are pre-deploy
+  #    captures and are safer than leaving the disk on a known-failed bundle
+  #    when no trusted snapshot has ever been recorded on this VPS.
+  local raw_count=0 raw_first_pick="" raw_first_kind=""
+  while IFS= read -r candidate; do
+    [ -z "$candidate" ] && continue
+    raw_count=$((raw_count + 1))
+    local raw_label
+    raw_label=$(printf "raw-#%-2d      " "$raw_count")
+    if verdict_snapshot "$raw_label" "$candidate" "loose"; then
+      [ -z "$first_pick" ] && { first_pick="$candidate"; first_kind="raw_snapshot"; }
+      [ -z "$raw_first_pick" ] && { raw_first_pick="$candidate"; raw_first_kind="raw_snapshot"; }
+    fi
+  done < <(ls -1dt "$BACKUPS_DIR"/[0-9]* 2>/dev/null || true)
+  if [ "$raw_count" -eq 0 ]; then
+    echo "  • SKIP    raw [0-9]*     (no raw pre-deploy snapshots exist)" >&2
+  fi
+
+  if [ -z "$first_pick" ] && [ -n "$raw_first_pick" ]; then
+    first_pick="$raw_first_pick"
+    first_kind="$raw_first_kind"
   fi
 
   echo "=== End snapshot inventory ===" >&2
@@ -292,7 +313,7 @@ integrity_rollback() {
   picked=$(choose_integrity_snapshot || true)
   if [ -z "$picked" ]; then
     echo "::error::No trusted SSR snapshot available in $BACKUPS_DIR — cannot auto-restore."
-    echo "  (trusted sources: LAST_GOOD, PREV_SNAPSHOT, good-* — untrusted [0-9]* snapshots are ignored)"
+    echo "  (sources checked: LAST_GOOD, PREV_SNAPSHOT, good-*, raw [0-9]* snapshots)"
     echo "INTEGRITY_ROLLBACK_RESULT=no_valid_snapshot"
     return 1
   fi
@@ -306,6 +327,8 @@ integrity_rollback() {
       echo "  source: $src" ;;
     latest_good)
       echo "→ LAST_GOOD/PREV_SNAPSHOT unusable — restoring from most recent smoke-verified good-* snapshot: $src" ;;
+    raw_snapshot)
+      echo "→ No trusted snapshot usable — restoring from most recent raw pre-deploy snapshot: $src" ;;
   esac
   if [ "${INTEGRITY_ROLLBACK_DRY_RUN:-0}" = "1" ]; then
     echo "🧪 DRY-RUN — skipping rsync. Would have restored:"
