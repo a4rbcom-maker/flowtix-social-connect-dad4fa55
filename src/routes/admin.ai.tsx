@@ -105,6 +105,25 @@ function AccountsTab() {
 
   const [openAdd, setOpenAdd] = useState(false);
   const [editing, setEditing] = useState<null | { id: string; label: string; priority: number }>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+
+  const filteredAccounts = useMemo(() => {
+    const all = rows?.rows ?? [];
+    const q = search.trim().toLowerCase();
+    return all.filter((r) =>
+      (statusFilter === "all" || r.status === statusFilter) &&
+      (q === "" ||
+        r.label?.toLowerCase().includes(q) ||
+        r.key_hint?.toLowerCase().includes(q))
+    );
+  }, [rows, search, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredAccounts.length / pageSize));
+  useEffect(() => { if (page > totalPages) setPage(1); }, [totalPages, page]);
+  const pageAccounts = filteredAccounts.slice((page - 1) * pageSize, page * pageSize);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["ai-accounts"] });
