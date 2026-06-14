@@ -1217,12 +1217,14 @@ export const getAnnouncementStats = createServerFn({ method: "POST" })
     return {
       audienceSize,
       delivered,
+      notDelivered: Math.max(0, audienceSize - delivered),
       opened,
       read,
       acked,
       avgReadLatency,
       readers,
     };
+
   });
 
 
