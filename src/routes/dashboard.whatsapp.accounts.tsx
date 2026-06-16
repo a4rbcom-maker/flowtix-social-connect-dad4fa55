@@ -226,7 +226,8 @@ function WhatsAppPage() {
       return data;
     },
     onSuccess: (data) => {
-      qc.setQueryData(["wa-state"], data);
+      qc.setQueryData(["wa-state", "local"], data);
+      qc.setQueryData(["wa-state", "cloud"], data);
       if (data.error) {
         toast.error(t.errorTitle, { description: data.error });
         return;
@@ -242,7 +243,8 @@ function WhatsAppPage() {
   const disconnectMut = useMutation({
     mutationFn: () => useCloudBridge ? callCloud<{ ok: boolean }>("disconnect") : disconnectFn(),
     onSuccess: () => {
-      qc.setQueryData(["wa-state"], null);
+      qc.setQueryData(["wa-state", "local"], null);
+      qc.setQueryData(["wa-state", "cloud"], null);
       setPolling(false);
       setShowQr(false);
       toast.success(t.successDisc);
