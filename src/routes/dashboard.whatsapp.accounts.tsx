@@ -474,6 +474,11 @@ function WhatsAppPage() {
                   {pingMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                   {t.ping}
                 </button>
+                {useCloudBridge && (
+                  <p className="mt-3 rounded-lg bg-primary/10 px-3 py-2 text-xs leading-relaxed text-primary">
+                    {t.cloudBridge}
+                  </p>
+                )}
               </div>
             </div>
           </div>
