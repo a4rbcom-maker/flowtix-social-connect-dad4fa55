@@ -3,13 +3,13 @@
 // Never import from client code.
 
 const BRIDGE_TIMEOUT_MS = 15_000;
+const DEFAULT_BRIDGE_URL = "https://bridge.botxtra.com";
 
 function getConfig() {
-  const url = process.env.WA_BRIDGE_URL;
-  const apiKey = process.env.WA_BRIDGE_API_KEY;
-  if (!url) throw new Error("WA_BRIDGE_URL is not configured");
+  const url = (process.env.WA_BRIDGE_URL?.trim() || DEFAULT_BRIDGE_URL).replace(/\/+$/, "");
+  const apiKey = process.env.WA_BRIDGE_API_KEY?.trim();
   if (!apiKey) throw new Error("WA_BRIDGE_API_KEY is not configured");
-  return { url: url.replace(/\/+$/, ""), apiKey };
+  return { url, apiKey };
 }
 
 async function bridgeFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
