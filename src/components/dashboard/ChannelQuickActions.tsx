@@ -22,9 +22,9 @@ interface Props {
   onNavigate?: () => void;
 }
 
-const ROUTE: Record<Channel, "/dashboard/facebook" | "/dashboard/whatsapp"> = {
+const ROUTE: Record<Channel, "/dashboard/facebook" | "/dashboard/whatsapp/accounts"> = {
   facebook: "/dashboard/facebook",
-  whatsapp: "/dashboard/whatsapp",
+  whatsapp: "/dashboard/whatsapp/accounts",
 };
 
 export function ChannelQuickActions({ channel, state, lang, onChanged, onNavigate }: Props) {
