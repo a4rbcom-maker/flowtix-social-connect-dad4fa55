@@ -55,8 +55,12 @@ async function callWaCloudApi<T>(action: WaCloudAction, token: string): Promise<
     },
     body: JSON.stringify({ action }),
   });
-  const body = (await res.json().catch(() => null)) as { error?: string } | T | null;
-  if (!res.ok) throw new Error((body && "error" in body && body.error) || `Bridge API ${res.status}`);
+  const body = (await res.json().catch(() => null)) as unknown;
+  const error =
+    body && typeof body === "object" && "error" in body
+      ? String((body as { error?: unknown }).error ?? "")
+      : "";
+  if (!res.ok) throw new Error(error || `Bridge API ${res.status}`);
   return body as T;
 }
 

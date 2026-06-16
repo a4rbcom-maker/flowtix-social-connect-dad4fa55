@@ -1,0 +1,22 @@
+import { createFileRoute } from "@tanstack/react-router";
+
+export const Route = createFileRoute("/api/public/wa-client")({
+  server: {
+    handlers: {
+      POST: async ({ request }) => {
+        const { handleWaClientApi } = await import("@/lib/wa-client-api.server");
+        return handleWaClientApi(request);
+      },
+      OPTIONS: async () =>
+        new Response(null, {
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Max-Age": "86400",
+          },
+        }),
+    },
+  },
+});
