@@ -2,7 +2,7 @@
 // .functions.ts file so the tss-serverfn-split transformer can resolve them
 // via import rather than as sibling declarations.
 import { getRequest } from "@tanstack/react-start/server";
-import { waBridge, BridgeError } from "./wa-bridge.server";
+import { waBridge, BridgeError, getWaBridgeConfigStatus } from "./wa-bridge.server";
 
 export const PROJECT_ID = "60cc135f-fba6-4c85-a3db-3604a51301ae";
 export const STABLE_PROD_WEBHOOK_URL = `https://project--${PROJECT_ID}.lovable.app/api/public/wa-webhook`;
@@ -103,10 +103,17 @@ export function describeBridgeError(err: unknown): string {
 }
 
 export async function doPing(): Promise<WaBridgeHealth> {
-  const url = process.env.WA_BRIDGE_URL ?? null;
-  const hasApiKey = !!process.env.WA_BRIDGE_API_KEY;
+  const config = getWaBridgeConfigStatus();
+  const url = config.url;
+  const hasApiKey = config.hasApiKey;
   const hasWebhookSecret = !!process.env.WA_BRIDGE_WEBHOOK_SECRET;
   const started = Date.now();
+  console.info("[wa] bridge config:", {
+    url,
+    hasApiKey,
+    hasWebhookSecret,
+    usingDefaultUrl: config.usingDefaultUrl,
+  });
   try {
     const res = await waBridge.health();
     return {
