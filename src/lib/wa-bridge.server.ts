@@ -5,8 +5,18 @@
 const BRIDGE_TIMEOUT_MS = 15_000;
 const DEFAULT_BRIDGE_URL = "https://bridge.botxtra.com";
 
+export function getWaBridgeConfigStatus() {
+  const rawUrl = process.env.WA_BRIDGE_URL?.trim();
+  const rawApiKey = process.env.WA_BRIDGE_API_KEY?.trim();
+  return {
+    url: (rawUrl || DEFAULT_BRIDGE_URL).replace(/\/+$/, ""),
+    hasApiKey: Boolean(rawApiKey),
+    usingDefaultUrl: !rawUrl,
+  };
+}
+
 function getConfig() {
-  const url = (process.env.WA_BRIDGE_URL?.trim() || DEFAULT_BRIDGE_URL).replace(/\/+$/, "");
+  const { url } = getWaBridgeConfigStatus();
   const apiKey = process.env.WA_BRIDGE_API_KEY?.trim();
   if (!apiKey) throw new Error("WA_BRIDGE_API_KEY is not configured");
   return { url, apiKey };
