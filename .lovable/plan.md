@@ -1,67 +1,34 @@
-# الخطة
+## Fix: قفل جدول user_roles ضد الترقية الذاتية للأدمن
 
-الصورة تؤكد أن آخر نجاح كان **#100** وبعده فشلت كل تشغيلات **Deploy to VPS** من **#101 إلى #106**؛ يعني المشكلة في مسار النشر نفسه وليست مجرد عطل عابر.
+المشكلة: جدول `user_roles` فيه فقط policy للقراءة، فأي مستخدم مسجّل يقدر يـ INSERT صف لنفسه بدور `admin` ويتجاوز كل فحوصات `has_role()`.
 
-## ما سأقوم به
+### الحل (migration واحد)
 
-1. **تحديد نقطة الفشل الدقيقة في workflow**
-   - مراجعة سجلات التشغيل الفاشلة (#101–#106) لتحديد هل الفشل في:
-     - الرفع إلى staging
-     - ترقية الملفات إلى المسار الحي
-     - إعادة تشغيل PM2
-     - فحص الصحة بعد النشر
+إضافة 3 سياسات admin-only على `user_roles`:
 
-2. **عمل رجوع آمن إلى آخر منطق كان ينجح**
-   - مقارنة منطق النشر الحالي مع الحالة التي نجحت عند **#100**.
-   - إزالة/تبسيط أي طبقة جديدة سببت الانهيار المتكرر، خصوصًا منطق:
-     - staging promotion
-     - rollback fallback
-     - file drift / checksum gates
-   - الهدف: **إرجاع المزامنة لتنجح أولًا** بدل إبقاء خط النشر معقّدًا ويمنع أي deploy.
+```sql
+-- Only admins can grant roles
+CREATE POLICY "Admins can insert roles" ON public.user_roles
+FOR INSERT TO authenticated
+WITH CHECK (public.has_role(auth.uid(), 'admin'));
 
-3. **الإبقاء على حماية الموقع بدون كسر النشر**
-   - الحفاظ على مسار health و deploy-version لأنهما مهمان للتشخيص.
-   - فصل حماية SSR عن منطق النشر بحيث إذا تعطل التطبيق لا يتعطل deploy بالكامل بسبب checks صارمة أكثر من اللازم.
+-- Only admins can update roles
+CREATE POLICY "Admins can update roles" ON public.user_roles
+FOR UPDATE TO authenticated
+USING (public.has_role(auth.uid(), 'admin'))
+WITH CHECK (public.has_role(auth.uid(), 'admin'));
 
-4. **تخفيف شروط الفشل التي تمنع الاسترجاع السريع**
-   - تعديل الـ workflow ليعتبر النشر ناجحًا عندما:
-     - التطبيق يعمل محليًا على السيرفر
-     - health endpoint يرد بشكل سليم
-   - وجعل التحقق من الدومين العام تحذيريًا إذا كانت المشكلة من proxy/cache وليس من التطبيق نفسه.
+-- Only admins can revoke roles
+CREATE POLICY "Admins can delete roles" ON public.user_roles
+FOR DELETE TO authenticated
+USING (public.has_role(auth.uid(), 'admin'));
+```
 
-5. **تثبيت rollback فعلي يمكن الاعتماد عليه**
-   - جعل الرجوع يعتمد على آخر snapshot صالح فعلاً.
-   - منع حالات الرجوع إلى نفس الـ SHA الفاشل إلا كملاذ أخير واضح.
-   - التأكد أن rollback لا يخفي سبب الفشل الأصلي لكنه يعيد الموقع للعمل.
+### ملاحظات
 
-6. **التحقق النهائي بعد التنفيذ**
-   - تشغيل deploy جديد.
-   - التأكد من 3 نقاط:
-     - نجاح GitHub Actions
-     - رجوع `deploy-version.json`
-     - رجوع `/api/public/health`
-     - فتح الصفحة الرئيسية بدون 500
+- `has_role` موجودة فعلاً كـ SECURITY DEFINER، فمفيش recursion.
+- الكود الموجود اللي بينشئ admins (مثل `scripts/update-admin.ts` أو أي seeding) لازم يستخدم service role — وده موجود بالفعل، فمش هيتأثر.
+- أول admin بيتعمل يدويًا عبر SQL/service role (مش من الـ client) فمفيش chicken-and-egg.
+- الـ trigger `handle_new_user` بيكتب في `profiles` فقط، مش في `user_roles`، فالـ signup العادي مش هيتأثر.
 
-## النتيجة المتوقعة
-
-- **المزامنة ترجع تعمل كما كانت**
-- **الموقع يرجع يفتح بدل رسالة 500**
-- **أي deploy لاحق يصير أسهل في التشخيص وأقل عرضة للانكسار بسبب تعقيد السكربت**
-
-## تفاصيل تقنية
-
-من مراجعة الملفات الحالية، هناك احتمال قوي أن سبب السلسلة الحالية ليس SSR فقط، بل **تشدد زائد داخل workflow/script** بعد آخر تعديلات النشر، خاصة في:
-
-- `.github/workflows/deploy.yml`
-- `scripts/ci/install-restart.sh`
-
-هذه الملفات الآن تحتوي على:
-- staging path promotion
-- manifest/checksum verification
-- file-list drift detection
-- integrity rollback
-- public domain stabilization checks
-
-هذا ممتاز نظريًا، لكنه في حالتك يبدو أنه صار **حساسًا أكثر من اللازم** ويكسر كل تشغيلات deploy بعد #100. التنفيذ القادم سيكون على مبدأ:
-
-**استعادة الاستقرار أولًا، ثم إعادة التحسينات تدريجيًا بعد أن يعود النشر والموقع للعمل.**
+بعد الـ migration هتختفي finding `user_roles_missing_insert_delete_policy`.
