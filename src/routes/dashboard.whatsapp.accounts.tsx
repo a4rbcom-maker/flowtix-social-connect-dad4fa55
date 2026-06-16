@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
+import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import {
   connectWaSession,
@@ -25,6 +26,7 @@ import {
   disconnectWaSession,
   pingWaBridgeUser,
   type WaConnectionState,
+  type WaBridgeHealth,
 } from "@/lib/wa.functions";
 
 export const Route = createFileRoute("/dashboard/whatsapp/accounts")({
@@ -32,7 +34,38 @@ export const Route = createFileRoute("/dashboard/whatsapp/accounts")({
   component: WhatsAppPage,
 });
 
+const WA_CLOUD_API_BASE = (
+  (import.meta.env.VITE_FLOWTIX_WA_CLOUD_API_BASE as string | undefined) ||
+  "https://project--60cc135f-fba6-4c85-a3db-3604a51301ae.lovable.app"
+).replace(/\/+$/, "");
+const WA_BRIDGE_MODE_STORAGE_KEY = "flowtix-wa-bridge-mode";
+
+type WaCloudAction = "state" | "connect" | "disconnect" | "ping";
+
+function isBridgeConfigMissing(message?: string | null) {
+  return /WA_BRIDGE_API_KEY|BOTXTRA_API_KEY|WHATSAPP_BRIDGE_API_KEY|not configured/i.test(message ?? "");
+}
+
+async function callWaCloudApi<T>(action: WaCloudAction, token: string): Promise<T> {
+  const res = await fetch(`${WA_CLOUD_API_BASE}/api/public/wa-client`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ action }),
+  });
+  const body = (await res.json().catch(() => null)) as unknown;
+  const error =
+    body && typeof body === "object" && "error" in body
+      ? String((body as { error?: unknown }).error ?? "")
+      : "";
+  if (!res.ok) throw new Error(error || `Bridge API ${res.status}`);
+  return body as T;
+}
+
 function WhatsAppPage() {
+  const { session } = useAuth();
   const { lang } = useI18n();
   const ar = lang === "ar";
   const qc = useQueryClient();
@@ -42,6 +75,9 @@ function WhatsAppPage() {
   const pingFn = useServerFn(pingWaBridgeUser);
   const [polling, setPolling] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  const [useCloudBridge, setUseCloudBridge] = useState(() =>
+    typeof window !== "undefined" && localStorage.getItem(WA_BRIDGE_MODE_STORAGE_KEY) === "cloud",
+  );
   const startedRef = useRef(false);
 
   const t = ar
@@ -68,6 +104,8 @@ function WhatsAppPage() {
         hideQr: "إخفاء QR",
         refresh: "تحديث الحالة",
         ping: "اختبار خادم الربط",
+        cloudBridge: "تم تفعيل الجسر المركزي تلقائياً لهذا السيرفر.",
+        authRequired: "يرجى تسجيل الدخول مرة أخرى لتفعيل الربط.",
         scan: "افتح واتساب → الأجهزة المرتبطة → ربط جهاز، ثم امسح الكود",
         scanWaiting: "في انتظار المسح…",
         howTitle: "خطوات الربط",
@@ -104,6 +142,8 @@ function WhatsAppPage() {
         hideQr: "Hide QR",
         refresh: "Refresh status",
         ping: "Test bridge",
+        cloudBridge: "Central bridge fallback is active for this server.",
+        authRequired: "Please sign in again to link WhatsApp.",
         scan: "Open WhatsApp → Linked Devices → Link a Device, then scan the code",
         scanWaiting: "Waiting for scan…",
         howTitle: "How to link",
@@ -118,9 +158,30 @@ function WhatsAppPage() {
         errorTitle: "An error occurred",
       };
 
+  const requireToken = () => {
+    if (!session?.access_token) throw new Error(t.authRequired);
+    return session.access_token;
+  };
+
+  const enableCloudBridge = () => {
+    setUseCloudBridge(true);
+    if (typeof window !== "undefined") localStorage.setItem(WA_BRIDGE_MODE_STORAGE_KEY, "cloud");
+  };
+
+  const callCloud = <T,>(action: WaCloudAction) => callWaCloudApi<T>(action, requireToken());
+
   const stateQuery = useQuery<WaConnectionState | null>({
-    queryKey: ["wa-state"],
-    queryFn: () => statusFn(),
+    queryKey: ["wa-state", useCloudBridge ? "cloud" : "local"],
+    enabled: !!session?.access_token,
+    queryFn: async () => {
+      if (useCloudBridge) return callCloud<WaConnectionState | null>("state");
+      const data = await statusFn();
+      if (data?.error && isBridgeConfigMissing(data.error)) {
+        enableCloudBridge();
+        return callCloud<WaConnectionState | null>("state");
+      }
+      return data;
+    },
     refetchInterval: polling ? 3000 : false,
   });
 
@@ -155,9 +216,18 @@ function WhatsAppPage() {
   }, [errorMsg, polling]);
 
   const connectMut = useMutation({
-    mutationFn: () => connectFn(),
+    mutationFn: async () => {
+      if (useCloudBridge) return callCloud<WaConnectionState>("connect");
+      const data = await connectFn();
+      if (isBridgeConfigMissing(data.error)) {
+        enableCloudBridge();
+        return callCloud<WaConnectionState>("connect");
+      }
+      return data;
+    },
     onSuccess: (data) => {
-      qc.setQueryData(["wa-state"], data);
+      qc.setQueryData(["wa-state", "local"], data);
+      qc.setQueryData(["wa-state", "cloud"], data);
       if (data.error) {
         toast.error(t.errorTitle, { description: data.error });
         return;
@@ -171,9 +241,10 @@ function WhatsAppPage() {
   });
 
   const disconnectMut = useMutation({
-    mutationFn: () => disconnectFn(),
+    mutationFn: () => useCloudBridge ? callCloud<{ ok: boolean }>("disconnect") : disconnectFn(),
     onSuccess: () => {
-      qc.setQueryData(["wa-state"], null);
+      qc.setQueryData(["wa-state", "local"], null);
+      qc.setQueryData(["wa-state", "cloud"], null);
       setPolling(false);
       setShowQr(false);
       toast.success(t.successDisc);
@@ -182,7 +253,15 @@ function WhatsAppPage() {
   });
 
   const pingMut = useMutation({
-    mutationFn: () => pingFn(),
+    mutationFn: async () => {
+      if (useCloudBridge) return callCloud<WaBridgeHealth>("ping");
+      const health = await pingFn();
+      if (!health.hasApiKey || isBridgeConfigMissing(health.error)) {
+        enableCloudBridge();
+        return callCloud<WaBridgeHealth>("ping");
+      }
+      return health;
+    },
     onSuccess: (h) => {
       if (h.ok) {
         toast.success(ar ? "خادم الربط يعمل ✅" : "Bridge online ✅", {
@@ -395,6 +474,11 @@ function WhatsAppPage() {
                   {pingMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                   {t.ping}
                 </button>
+                {useCloudBridge && (
+                  <p className="mt-3 rounded-lg bg-primary/10 px-3 py-2 text-xs leading-relaxed text-primary">
+                    {t.cloudBridge}
+                  </p>
+                )}
               </div>
             </div>
           </div>
