@@ -386,11 +386,215 @@ async function handleNotImplemented(job) {
   throw new Error(`Job type "${job.type}" is not implemented in this worker yet.`);
 }
 
+/**
+ * extract_page_audience — Scrape public audience signals from a Facebook Page:
+ *   - users who reacted to recent posts (likers/engagers)
+ *   - users who commented on recent posts
+ * Payload: { pageId | pageUrl, maxPosts?: number, maxAudience?: number, audienceType?: "reactors"|"commenters"|"all" }
+ */
+async function handleExtractPageAudience(job) {
+  const payload = job.payload || {};
+  const pageRef = payload.pageUrl || payload.pageId;
+  if (!pageRef) throw new Error("payload.pageId or payload.pageUrl is required");
+
+  const maxPosts = Math.min(Math.max(1, Number(payload.maxPosts) || 8), 25);
+  const maxAudience = Math.min(Math.max(50, Number(payload.maxAudience) || 1000), 5000);
+  const audienceType = String(payload.audienceType || "all").toLowerCase();
+  const wantReactors = audienceType === "all" || audienceType === "reactors";
+  const wantCommenters = audienceType === "all" || audienceType === "commenters";
+
+  const pageUrl = /^https?:\/\//i.test(pageRef)
+    ? pageRef.replace(/\/$/, "")
+    : `https://www.facebook.com/${String(pageRef).replace(/^\//, "").replace(/\/$/, "")}`;
+
+  const context = await openContext(job.account?.id, job.account?.credentials);
+  const page = await context.newPage();
+  const seen = new Set();
+  let extracted = 0;
+
+  const emit = async (entry, sourceTag, postUrl) => {
+    if (!entry || !entry.fbId || seen.has(entry.fbId)) return;
+    seen.add(entry.fbId);
+    await postUpdate({
+      jobId: job.id,
+      result: {
+        target: entry.fbId,
+        status: "success",
+        data: {
+          fb_user_id: entry.fbId,
+          name: entry.name,
+          profile_url: entry.profile_url,
+          source: sourceTag,
+          source_id: pageRef,
+          source_post: postUrl || null,
+        },
+      },
+    });
+    extracted++;
+  };
+
+  const harvestProfileLinks = async () =>
+    page.$$eval(
+      'a[role="link"][href*="facebook.com"], a[role="link"][href^="/"]',
+      (anchors) => {
+        const out = [];
+        const seenLocal = new Set();
+        for (const a of anchors) {
+          const href = a.href || "";
+          if (!href.match(/facebook\.com\/(profile\.php\?id=\d+|[a-zA-Z0-9.\-_]+)/)) continue;
+          if (/\/(groups|pages|events|watch|marketplace|photo|posts|videos|reel|stories|help|policies|privacy|login|reg|gaming)/.test(href)) continue;
+          const name = (a.innerText || a.textContent || "").trim();
+          if (!name || name.length < 2 || name.length > 80) continue;
+          const idMatch = href.match(/profile\.php\?id=(\d+)/);
+          const slugMatch = href.match(/facebook\.com\/([a-zA-Z0-9.\-_]+)/);
+          const fbId = idMatch ? idMatch[1] : slugMatch ? slugMatch[1] : null;
+          if (!fbId || seenLocal.has(fbId)) continue;
+          if (["profile.php", "people", "public", "directory"].includes(fbId)) continue;
+          seenLocal.add(fbId);
+          out.push({ fbId, name, profile_url: href.split("?")[0] });
+        }
+        return out;
+      }
+    );
+
+  try {
+    await page.goto(pageUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.waitForTimeout(4000);
+
+    if (page.url().includes("/login") || page.url().includes("/checkpoint")) {
+      await postUpdate({
+        jobId: job.id,
+        accountStatus: {
+          accountId: job.account.id,
+          status: page.url().includes("checkpoint") ? "checkpoint" : "invalid",
+          error: "Session expired or checkpoint required",
+        },
+      });
+      throw new Error("Session invalid (login/checkpoint). Re-export cookies.");
+    }
+
+    for (let i = 0; i < 8 && extracted < maxAudience; i++) {
+      await page.evaluate(() => window.scrollBy(0, window.innerHeight));
+      await page.waitForTimeout(1500);
+    }
+
+    const postUrls = await page.$$eval(
+      'a[href*="/posts/"], a[href*="/videos/"], a[href*="story_fbid="], a[href*="/permalink/"]',
+      (anchors) => {
+        const out = [];
+        const seenLocal = new Set();
+        for (const a of anchors) {
+          const href = a.href || "";
+          if (!/\/(posts|videos|permalink)\/|story_fbid=/.test(href)) continue;
+          const clean = href.split("?")[0];
+          if (seenLocal.has(clean)) continue;
+          seenLocal.add(clean);
+          out.push(clean);
+        }
+        return out;
+      }
+    );
+
+    const targetPosts = postUrls.slice(0, maxPosts);
+    await postUpdate({
+      jobId: job.id,
+      progress: 5,
+      processedItems: extracted,
+      totalItems: maxAudience,
+      status: "running",
+    });
+
+    for (let i = 0; i < targetPosts.length && extracted < maxAudience; i++) {
+      const postUrl = targetPosts[i];
+      try {
+        await page.goto(postUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await page.waitForTimeout(2500);
+
+        if (wantReactors) {
+          try {
+            const reactBtn = page.locator(
+              'div[role="button"][aria-label*="reaction" i], div[role="button"][aria-label*="تفاعل"], span:has-text("All reactions"), span:has-text("كل التفاعلات")'
+            );
+            const rc = await reactBtn.count().catch(() => 0);
+            if (rc > 0) {
+              try { await reactBtn.first().click({ timeout: 2000 }); } catch (_) {}
+              await page.waitForTimeout(2000);
+
+              const dialog = page.locator('div[role="dialog"]');
+              for (let s = 0; s < 12 && extracted < maxAudience; s++) {
+                try {
+                  await dialog.first().evaluate((el) => el.scrollBy(0, 600));
+                } catch (_) {
+                  await page.evaluate(() => window.scrollBy(0, 600));
+                }
+                await page.waitForTimeout(900);
+                const batch = await harvestProfileLinks();
+                for (const b of batch) {
+                  if (extracted >= maxAudience) break;
+                  await emit(b, "page_reactor", postUrl);
+                }
+              }
+              try { await page.keyboard.press("Escape"); } catch (_) {}
+              await page.waitForTimeout(500);
+            }
+          } catch (_) {}
+        }
+
+        if (wantCommenters && extracted < maxAudience) {
+          try {
+            const chooser = page.getByRole("button", { name: /most relevant|الأكثر صلة|الأكثر تفاعلًا/i });
+            if (await chooser.first().isVisible({ timeout: 1500 })) {
+              await chooser.first().click();
+              const allOpt = page.getByRole("menuitem", { name: /all comments|كل التعليقات/i });
+              if (await allOpt.first().isVisible({ timeout: 1500 })) await allOpt.first().click();
+              await page.waitForTimeout(1200);
+            }
+          } catch (_) {}
+
+          for (let s = 0; s < 6 && extracted < maxAudience; s++) {
+            const more = page.locator(
+              'div[role="button"]:has-text("more comment"), div[role="button"]:has-text("previous comment"), div[role="button"]:has-text("المزيد من التعليقات"), div[role="button"]:has-text("التعليقات السابقة")'
+            );
+            const mc = await more.count().catch(() => 0);
+            for (let b = 0; b < Math.min(mc, 3); b++) {
+              try { await more.nth(b).click({ timeout: 1200 }); } catch (_) {}
+            }
+            await page.evaluate(() => window.scrollBy(0, window.innerHeight));
+            await page.waitForTimeout(1200);
+
+            const batch = await harvestProfileLinks();
+            for (const b of batch) {
+              if (extracted >= maxAudience) break;
+              await emit(b, "page_commenter", postUrl);
+            }
+          }
+        }
+
+        await postUpdate({
+          jobId: job.id,
+          progress: Math.min(99, Math.round(((i + 1) / targetPosts.length) * 95) + 4),
+          processedItems: extracted,
+          totalItems: maxAudience,
+          status: "running",
+        });
+      } catch (e) {
+        console.warn("post audience error:", postUrl, e.message);
+      }
+
+      await page.waitForTimeout(1500 + Math.floor(Math.random() * 2000));
+    }
+
+    return { extracted };
+  } finally {
+    await context.close().catch(() => {});
+  }
+}
+
 const HANDLERS = {
   extract_commenters: handleExtractCommenters,
   deep_profile_scrape: handleDeepProfileScrape,
   extract_group_members: handleNotImplemented,
-  extract_page_audience: handleNotImplemented,
+  extract_page_audience: handleExtractPageAudience,
   extract_pages: handleNotImplemented,
   post_to_groups: handleNotImplemented,
 };
