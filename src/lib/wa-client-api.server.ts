@@ -142,7 +142,11 @@ async function readState(supabase: ReturnType<typeof getSupabaseForToken>, userI
   }
 
   const now = new Date().toISOString();
-  const update: Record<string, unknown> = { status, qr_data_url: null, last_seen_at: now };
+  const update: Database["public"]["Tables"]["wa_sessions"]["Update"] = {
+    status,
+    qr_data_url: null,
+    last_seen_at: now,
+  };
   if (phoneNumber) update.phone_number = phoneNumber;
   await supabase.from("wa_sessions").update(update).eq("user_id", userId);
 
