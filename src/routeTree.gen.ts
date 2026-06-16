@@ -53,6 +53,7 @@ import { Route as DashboardFacebookCampaignsRouteImport } from './routes/dashboa
 import { Route as DashboardFacebookBotRouteImport } from './routes/dashboard.facebook.bot'
 import { Route as DashboardFacebookAutoreplyRouteImport } from './routes/dashboard.facebook.autoreply'
 import { Route as ApiPublicWaWebhookRouteImport } from './routes/api/public/wa-webhook'
+import { Route as ApiPublicWaBridgeHealthRouteImport } from './routes/api/public/wa-bridge-health'
 import { Route as ApiPublicHealthRouteImport } from './routes/api/public/health'
 import { Route as DashboardFacebookCampaignsNewRouteImport } from './routes/dashboard.facebook.campaigns.new'
 import { Route as DashboardFacebookCampaignsIdRouteImport } from './routes/dashboard.facebook.campaigns.$id'
@@ -292,6 +293,11 @@ const ApiPublicWaWebhookRoute = ApiPublicWaWebhookRouteImport.update({
   path: '/api/public/wa-webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicWaBridgeHealthRoute = ApiPublicWaBridgeHealthRouteImport.update({
+  id: '/api/public/wa-bridge-health',
+  path: '/api/public/wa-bridge-health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHealthRoute = ApiPublicHealthRouteImport.update({
   id: '/api/public/health',
   path: '/api/public/health',
@@ -365,6 +371,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
   '/admin/': typeof AdminIndexRoute
   '/api/public/health': typeof ApiPublicHealthRoute
+  '/api/public/wa-bridge-health': typeof ApiPublicWaBridgeHealthRoute
   '/api/public/wa-webhook': typeof ApiPublicWaWebhookRoute
   '/dashboard/facebook/autoreply': typeof DashboardFacebookAutoreplyRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
@@ -419,6 +426,7 @@ export interface FileRoutesByTo {
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
   '/admin': typeof AdminIndexRoute
   '/api/public/health': typeof ApiPublicHealthRoute
+  '/api/public/wa-bridge-health': typeof ApiPublicWaBridgeHealthRoute
   '/api/public/wa-webhook': typeof ApiPublicWaWebhookRoute
   '/dashboard/facebook/autoreply': typeof DashboardFacebookAutoreplyRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
@@ -474,6 +482,7 @@ export interface FileRoutesById {
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
   '/admin/': typeof AdminIndexRoute
   '/api/public/health': typeof ApiPublicHealthRoute
+  '/api/public/wa-bridge-health': typeof ApiPublicWaBridgeHealthRoute
   '/api/public/wa-webhook': typeof ApiPublicWaWebhookRoute
   '/dashboard/facebook/autoreply': typeof DashboardFacebookAutoreplyRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
@@ -530,6 +539,7 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp'
     | '/admin/'
     | '/api/public/health'
+    | '/api/public/wa-bridge-health'
     | '/api/public/wa-webhook'
     | '/dashboard/facebook/autoreply'
     | '/dashboard/facebook/bot'
@@ -584,6 +594,7 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp'
     | '/admin'
     | '/api/public/health'
+    | '/api/public/wa-bridge-health'
     | '/api/public/wa-webhook'
     | '/dashboard/facebook/autoreply'
     | '/dashboard/facebook/bot'
@@ -638,6 +649,7 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp'
     | '/admin/'
     | '/api/public/health'
+    | '/api/public/wa-bridge-health'
     | '/api/public/wa-webhook'
     | '/dashboard/facebook/autoreply'
     | '/dashboard/facebook/bot'
@@ -685,6 +697,7 @@ export interface RootRouteChildren {
   AdminWhatsappRoute: typeof AdminWhatsappRoute
   AdminIndexRoute: typeof AdminIndexRoute
   ApiPublicHealthRoute: typeof ApiPublicHealthRoute
+  ApiPublicWaBridgeHealthRoute: typeof ApiPublicWaBridgeHealthRoute
   ApiPublicWaWebhookRoute: typeof ApiPublicWaWebhookRoute
   ApiPublicBotJobUpdateRoute: typeof ApiPublicBotJobUpdateRoute
   ApiPublicBotNextJobRoute: typeof ApiPublicBotNextJobRoute
@@ -1002,6 +1015,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicWaWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/wa-bridge-health': {
+      id: '/api/public/wa-bridge-health'
+      path: '/api/public/wa-bridge-health'
+      fullPath: '/api/public/wa-bridge-health'
+      preLoaderRoute: typeof ApiPublicWaBridgeHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/health': {
       id: '/api/public/health'
       path: '/api/public/health'
@@ -1187,6 +1207,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminWhatsappRoute: AdminWhatsappRoute,
   AdminIndexRoute: AdminIndexRoute,
   ApiPublicHealthRoute: ApiPublicHealthRoute,
+  ApiPublicWaBridgeHealthRoute: ApiPublicWaBridgeHealthRoute,
   ApiPublicWaWebhookRoute: ApiPublicWaWebhookRoute,
   ApiPublicBotJobUpdateRoute: ApiPublicBotJobUpdateRoute,
   ApiPublicBotNextJobRoute: ApiPublicBotNextJobRoute,
