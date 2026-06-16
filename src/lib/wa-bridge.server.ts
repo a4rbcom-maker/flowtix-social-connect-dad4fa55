@@ -4,22 +4,46 @@
 
 const BRIDGE_TIMEOUT_MS = 15_000;
 const DEFAULT_BRIDGE_URL = "https://bridge.botxtra.com";
+const API_KEY_ENV_NAMES = [
+  "WA_BRIDGE_API_KEY",
+  "BOTXTRA_API_KEY",
+  "BOT_XTRA_API_KEY",
+  "WHATSAPP_BRIDGE_API_KEY",
+  "WA_API_KEY",
+] as const;
+
+function readEnv(name: string): string {
+  return process.env[name]?.trim() ?? "";
+}
+
+function getConfiguredApiKey() {
+  for (const name of API_KEY_ENV_NAMES) {
+    const value = readEnv(name);
+    if (value) return { name, value };
+  }
+  return { name: null, value: "" };
+}
 
 export function getWaBridgeConfigStatus() {
-  const rawUrl = process.env.WA_BRIDGE_URL?.trim();
-  const rawApiKey = process.env.WA_BRIDGE_API_KEY?.trim();
+  const rawUrl = readEnv("WA_BRIDGE_URL");
+  const apiKey = getConfiguredApiKey();
   return {
     url: (rawUrl || DEFAULT_BRIDGE_URL).replace(/\/+$/, ""),
-    hasApiKey: Boolean(rawApiKey),
+    hasApiKey: Boolean(apiKey.value),
+    apiKeyName: apiKey.name,
     usingDefaultUrl: !rawUrl,
   };
 }
 
 function getConfig() {
   const { url } = getWaBridgeConfigStatus();
-  const apiKey = process.env.WA_BRIDGE_API_KEY?.trim();
-  if (!apiKey) throw new Error("WA_BRIDGE_API_KEY is not configured");
-  return { url, apiKey };
+  const apiKey = getConfiguredApiKey();
+  if (!apiKey.value) {
+    throw new Error(
+      `WA_BRIDGE_API_KEY is not configured on this server. Set one of: ${API_KEY_ENV_NAMES.join(", ")}`,
+    );
+  }
+  return { url, apiKey: apiKey.value };
 }
 
 async function bridgeFetch<T>(path: string, init: RequestInit = {}): Promise<T> {

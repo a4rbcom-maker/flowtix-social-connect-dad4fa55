@@ -15,6 +15,7 @@ export interface WaBridgeHealth {
   latencyMs: number;
   url: string | null;
   hasApiKey: boolean;
+  apiKeyName: string | null;
   hasWebhookSecret: boolean;
   error: string | null;
 }
@@ -111,6 +112,7 @@ export async function doPing(): Promise<WaBridgeHealth> {
   console.info("[wa] bridge config:", {
     url,
     hasApiKey,
+    apiKeyName: config.apiKeyName,
     hasWebhookSecret,
     usingDefaultUrl: config.usingDefaultUrl,
   });
@@ -123,6 +125,7 @@ export async function doPing(): Promise<WaBridgeHealth> {
       latencyMs: Date.now() - started,
       url,
       hasApiKey,
+      apiKeyName: config.apiKeyName,
       hasWebhookSecret,
       error: null,
     };
@@ -134,6 +137,7 @@ export async function doPing(): Promise<WaBridgeHealth> {
       latencyMs: Date.now() - started,
       url,
       hasApiKey,
+      apiKeyName: config.apiKeyName,
       hasWebhookSecret,
       error: describeBridgeError(err),
     };
