@@ -35,8 +35,8 @@ export const WhatsappPage = makePlaceholder(
 );
 export const AiPage = makePlaceholder(
   "استهلاك الذكاء الاصطناعي", "AI Usage",
-  "إحصائيات Lovable AI: التوكنز، المتأخر، معدلات الفشل لكل نموذج وكل مستخدم.",
-  "Lovable AI statistics: tokens, latency, failure rate per model and user.",
+  "إحصائيات Kie AI: التوكنز، المتأخر، معدلات الفشل لكل نموذج وكل مستخدم.",
+  "Kie AI statistics: tokens, latency, failure rate per model and user.",
 );
 export const JobsPage = makePlaceholder(
   "إدارة المهام", "Jobs",
