@@ -211,6 +211,81 @@ function WaSettingsPage() {
         })()}
 
 
+        {/* Webhook test mode */}
+        <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Webhook className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-foreground">
+                  {lang === "ar" ? "اختبار الـ Webhook" : "Webhook Test Mode"}
+                </h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {lang === "ar"
+                    ? "ابعت رسالة تجريبية موقّعة للـ webhook بتاعك واتأكد إنها وصلت وتم تخزينها."
+                    : "Send a signed synthetic message to your webhook and verify it was received and stored."}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onRunTest}
+              disabled={testing}
+              className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90 disabled:opacity-60"
+            >
+              {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
+              {lang === "ar" ? "تشغيل الاختبار" : "Run test"}
+            </button>
+          </div>
+
+          {testResult && (
+            <div className={`mt-4 rounded-xl border p-4 text-sm ${
+              testResult.ok
+                ? "border-emerald-500/30 bg-emerald-500/5"
+                : "border-rose-500/30 bg-rose-500/5"
+            }`}>
+              <div className="flex items-center gap-2 font-semibold">
+                {testResult.ok ? (
+                  <><CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    <span className="text-emerald-700 dark:text-emerald-300">
+                      {lang === "ar" ? "تم الاستلام بنجاح" : "Delivery succeeded"}
+                    </span></>
+                ) : (
+                  <><XCircle className="h-4 w-4 text-rose-600" />
+                    <span className="text-rose-700 dark:text-rose-300">
+                      {lang === "ar" ? "فشل الاستلام" : "Delivery failed"}
+                    </span></>
+                )}
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                <dt>HTTP</dt><dd className="font-mono text-foreground">{testResult.httpStatus || "—"}</dd>
+                <dt>{lang === "ar" ? "تم التخزين" : "Stored"}</dt>
+                <dd className="font-mono text-foreground">{testResult.messageStored ? "✓" : "✗"}</dd>
+                <dt>{lang === "ar" ? "عدد المحفوظ" : "Saved count"}</dt>
+                <dd className="font-mono text-foreground">{testResult.saved}</dd>
+                <dt>Session</dt>
+                <dd className="truncate font-mono text-foreground">{testResult.sessionId ?? "—"}</dd>
+              </dl>
+              {testResult.error && (
+                <div className="mt-3 rounded-lg bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-300">
+                  <div className="font-semibold mb-1">{lang === "ar" ? "سبب الفشل" : "Failure reason"}</div>
+                  <div className="font-mono break-all whitespace-pre-wrap">{testResult.error}</div>
+                </div>
+              )}
+              {testResult.responseBody && (
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">
+                    {lang === "ar" ? "رد الخادم" : "Server response"}
+                  </summary>
+                  <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-muted p-3 text-[11px] text-foreground">{testResult.responseBody}</pre>
+                </details>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Webhook URL section is admin-only; hidden from client settings */}
 
 
