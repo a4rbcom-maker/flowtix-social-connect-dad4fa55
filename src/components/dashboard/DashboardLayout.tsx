@@ -76,6 +76,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const { isAdmin, isLoading: isAdminLoading } = useIsAdmin();
 
   const adminAllowedDashboardPaths = [
+    "/dashboard/facebook",
     "/dashboard/facebook/bot",
     "/dashboard/facebook/campaigns",
     "/dashboard/facebook/jobs",
