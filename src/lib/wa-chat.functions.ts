@@ -2,7 +2,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { waBridge, BridgeError } from "./wa-bridge.server";
+import { waBridge, BridgeError, sendTextWithReconnect } from "./wa-bridge.server";
+import { deriveWebhookUrl } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
 import {
   asRecord,
@@ -238,7 +239,11 @@ export const sendChatMessage = createServerFn({ method: "POST" })
           : data.remoteJid;
     const sentAt = new Date().toISOString();
     try {
-      const res = await waBridge.sendText(sess.session_id, to, data.text);
+      const webhookUrl = await deriveWebhookUrl().catch(() => null);
+      const res = await sendTextWithReconnect(sess.session_id, to, data.text, {
+        webhookUrl: webhookUrl ?? undefined,
+        tenantId: userId,
+      });
       // Bridge may return 200 with ok:false / error message — surface it.
       if (res && (res.ok === false || res.error)) {
         throw new Error(res.error || res.message || "Bridge refused to deliver");

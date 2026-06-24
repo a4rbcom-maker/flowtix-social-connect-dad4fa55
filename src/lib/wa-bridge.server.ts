@@ -46,7 +46,13 @@ function getConfig() {
   return { url, apiKey: apiKey.value };
 }
 
-async function bridgeFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+// Transient errors we auto-retry. 401 is included because Bot-Xtra
+// occasionally returns it on cold sessions before the session is fully
+// (re-)registered; a short retry usually succeeds.
+const RETRYABLE_STATUSES = new Set([401, 408, 425, 429, 500, 502, 503, 504]);
+const MAX_ATTEMPTS = 3;
+
+async function bridgeFetch<T>(path: string, init: RequestInit = {}, attempt = 1): Promise<T> {
   const { url, apiKey } = getConfig();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), BRIDGE_TIMEOUT_MS);
@@ -71,19 +77,51 @@ async function bridgeFetch<T>(path: string, init: RequestInit = {}): Promise<T> 
           ? String((body as Record<string, unknown>).error)
           : "") ||
         `Bridge ${res.status}`;
+      if (RETRYABLE_STATUSES.has(res.status) && attempt < MAX_ATTEMPTS) {
+        console.warn(`[wa-bridge] retry ${attempt}/${MAX_ATTEMPTS - 1} for ${path} after HTTP ${res.status}`);
+        await sleep(backoffMs(attempt));
+        return bridgeFetch<T>(path, init, attempt + 1);
+      }
       throw new BridgeError(msg, res.status, body);
     }
     return body as T;
   } catch (err) {
     if (err instanceof BridgeError) throw err;
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new BridgeError("Bridge request timed out", 504, null);
+    const isTimeout = err instanceof Error && err.name === "AbortError";
+    if ((isTimeout || isNetworkError(err)) && attempt < MAX_ATTEMPTS) {
+      console.warn(`[wa-bridge] retry ${attempt}/${MAX_ATTEMPTS - 1} for ${path} after ${isTimeout ? "timeout" : "network error"}`);
+      clearTimeout(timer);
+      await sleep(backoffMs(attempt));
+      return bridgeFetch<T>(path, init, attempt + 1);
     }
+    if (isTimeout) throw new BridgeError("Bridge request timed out", 504, null);
     throw new BridgeError(err instanceof Error ? err.message : "Bridge network error", 502, null);
   } finally {
     clearTimeout(timer);
   }
 }
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function backoffMs(attempt: number) {
+  // 400ms, 1200ms, …
+  return Math.min(400 * Math.pow(3, attempt - 1), 5000);
+}
+
+function isNetworkError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const m = err.message.toLowerCase();
+  return (
+    m.includes("fetch failed") ||
+    m.includes("network") ||
+    m.includes("econnreset") ||
+    m.includes("etimedout") ||
+    m.includes("socket")
+  );
+}
+
 
 function safeParse(text: string): unknown {
   try {
@@ -161,18 +199,46 @@ export const waBridge = {
       {
         method: "POST",
         body: JSON.stringify({
-          to: jid,
-          jid,
-          phone,
-          type: "text",
-          text,
-          message: text,
-          body: text,
+          to: jid, jid, phone, type: "text", text, message: text, body: text,
         }),
       },
     );
   },
 };
+
+/**
+ * Resilient send: on a persistent 401 / disconnected error (session vanished
+ * on the bridge), recreate the session with the supplied webhookUrl+tenantId
+ * and retry sendText once. Use this instead of waBridge.sendText anywhere a
+ * dropped session must auto-recover without user action.
+ */
+export async function sendTextWithReconnect(
+  id: string,
+  to: string,
+  text: string,
+  recover: { webhookUrl?: string; tenantId?: string },
+): Promise<{ id?: string; ok?: boolean; error?: string; message?: string }> {
+  try {
+    return await waBridge.sendText(id, to, text);
+  } catch (err) {
+    if (!(err instanceof BridgeError)) throw err;
+    const needsReauth =
+      err.status === 401 ||
+      err.status === 404 ||
+      /session.*(not.?found|disconnected|closed|logged.?out)/i.test(err.message);
+    if (!needsReauth) throw err;
+    console.warn(`[wa-bridge] session ${id} unauthorized (${err.status}); attempting auto-reconnect`);
+    try { await waBridge.deleteSession(id); } catch { /* ignore */ }
+    try {
+      await waBridge.createSession(id, recover);
+    } catch (createErr) {
+      console.error("[wa-bridge] auto-reconnect createSession failed:", createErr);
+      throw err; // surface original send failure to caller
+    }
+    return waBridge.sendText(id, to, text);
+  }
+}
+
 
 /**
  * Infer canonical status from the Bot-Xtra bridge status payload.
