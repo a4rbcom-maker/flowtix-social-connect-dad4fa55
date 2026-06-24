@@ -43,8 +43,99 @@ function ContactsPage() {
   const [rows, setRows] = useState<ExtractedContact[]>([]);
   const [searched, setSearched] = useState(false);
   const [q, setQ] = useState("");
+  const [textInput, setTextInput] = useState("");
+  const [textPhones, setTextPhones] = useState<string[]>([]);
 
   const T = lang === "ar"
+    ? {
+        title: "استخراج أرقام الواتساب",
+        subtitle: "استخرج كل أرقام الناس اللي راسلوك خلال فترة زمنية معينة",
+        from: "من تاريخ",
+        to: "إلى تاريخ",
+        groups: "تضمين الجروبات",
+        run: "استخراج الأرقام",
+        loading: "جاري الاستخراج...",
+        quick: "اختصارات",
+        today: "اليوم",
+        d7: "آخر 7 أيام",
+        d30: "آخر 30 يوم",
+        d90: "آخر 90 يوم",
+        result: "النتائج",
+        empty: "لم يراسلك أحد في هذه الفترة.",
+        none: "اضغط «استخراج» لعرض الأرقام.",
+        unique: "رقم فريد",
+        messages: "رسالة",
+        copyAll: "نسخ كل الأرقام",
+        downloadCsv: "تنزيل CSV",
+        copied: "تم النسخ",
+        search: "بحث بالاسم أو الرقم",
+        name: "الاسم",
+        phone: "الرقم",
+        count: "عدد الرسائل",
+        first: "أول رسالة",
+        last: "آخر رسالة",
+        copyOne: "نسخ",
+        textTitle: "استخراج الأرقام من نص",
+        textSubtitle: "الصق أي نص (تعليقات، رسائل، قوائم) واستخرج كل أرقام واتساب المصرية تلقائياً",
+        textPlaceholder: "الصق النص هنا...",
+        textRun: "استخراج الأرقام",
+        textEmpty: "لم يتم العثور على أي رقم مصري في النص.",
+        textFound: "رقم تم استخراجه",
+        clear: "مسح",
+      }
+    : {
+        title: "Extract WhatsApp Numbers",
+        subtitle: "Export all phone numbers of people who messaged you within a date range",
+        from: "From",
+        to: "To",
+        groups: "Include groups",
+        run: "Extract numbers",
+        loading: "Extracting...",
+        quick: "Quick ranges",
+        today: "Today",
+        d7: "Last 7 days",
+        d30: "Last 30 days",
+        d90: "Last 90 days",
+        result: "Results",
+        empty: "No one messaged you in this period.",
+        none: "Click \"Extract\" to view numbers.",
+        unique: "unique numbers",
+        messages: "messages",
+        copyAll: "Copy all numbers",
+        downloadCsv: "Download CSV",
+        copied: "Copied",
+        search: "Search by name or number",
+        name: "Name",
+        phone: "Phone",
+        count: "Messages",
+        first: "First message",
+        last: "Last message",
+        copyOne: "Copy",
+        textTitle: "Extract numbers from text",
+        textSubtitle: "Paste any text (comments, messages, lists) and pull out all Egyptian WhatsApp numbers",
+        textPlaceholder: "Paste text here...",
+        textRun: "Extract numbers",
+        textEmpty: "No Egyptian phone numbers found in this text.",
+        textFound: "numbers extracted",
+        clear: "Clear",
+      };
+
+  const runTextExtract = () => {
+    const found = extractAllEgyptPhones(textInput);
+    setTextPhones(found);
+    if (found.length === 0) {
+      toast.info(T.textEmpty);
+    } else {
+      toast.success(`${found.length} ${T.textFound}`);
+    }
+  };
+
+  const copyTextPhones = async () => {
+    if (!textPhones.length) return;
+    await navigator.clipboard.writeText(textPhones.join("\n"));
+    toast.success(T.copied + ` (${textPhones.length})`);
+  };
+
     ? {
         title: "استخراج أرقام الواتساب",
         subtitle: "استخرج كل أرقام الناس اللي راسلوك خلال فترة زمنية معينة",
