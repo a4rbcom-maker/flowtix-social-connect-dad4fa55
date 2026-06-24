@@ -19,20 +19,69 @@ function normalize(s: string): string {
     .replace(/[إأآا]/g, "ا")
     .replace(/ى/g, "ي")
     .replace(/ة/g, "ه")
+    // strip leading "ال" article so "القاهره" matches "قاهره"
     .replace(/\s+/g, " ")
     .trim();
 }
+
+// Common Arabic city/town names that aren't in the transliterated dataset.
+// Each maps directly to its governorate so users typing Arabic get a hit.
+const ARABIC_CITY_ALIASES: { city: string; gov: string }[] = [
+  { city: "القاهرة", gov: "القاهرة" }, { city: "مدينة نصر", gov: "القاهرة" },
+  { city: "المعادي", gov: "القاهرة" }, { city: "مصر الجديدة", gov: "القاهرة" },
+  { city: "حلوان", gov: "القاهرة" }, { city: "شبرا", gov: "القاهرة" },
+  { city: "الإسكندرية", gov: "الإسكندرية" }, { city: "اسكندرية", gov: "الإسكندرية" },
+  { city: "العامرية", gov: "الإسكندرية" }, { city: "برج العرب", gov: "الإسكندرية" },
+  { city: "الجيزة", gov: "الجيزة" }, { city: "6 أكتوبر", gov: "الجيزة" },
+  { city: "السادس من أكتوبر", gov: "الجيزة" }, { city: "الشيخ زايد", gov: "الجيزة" },
+  { city: "الهرم", gov: "الجيزة" }, { city: "فيصل", gov: "الجيزة" },
+  { city: "إمبابة", gov: "الجيزة" }, { city: "العياط", gov: "الجيزة" },
+  { city: "الزقازيق", gov: "الشرقية" }, { city: "بلبيس", gov: "الشرقية" },
+  { city: "العاشر من رمضان", gov: "الشرقية" }, { city: "ههيا", gov: "الشرقية" },
+  { city: "المنصورة", gov: "الدقهلية" }, { city: "ميت غمر", gov: "الدقهلية" },
+  { city: "طلخا", gov: "الدقهلية" }, { city: "السنبلاوين", gov: "الدقهلية" },
+  { city: "طنطا", gov: "الغربية" }, { city: "المحلة الكبرى", gov: "الغربية" },
+  { city: "كفر الزيات", gov: "الغربية" }, { city: "زفتى", gov: "الغربية" },
+  { city: "شبين الكوم", gov: "المنوفية" }, { city: "السادات", gov: "المنوفية" },
+  { city: "منوف", gov: "المنوفية" }, { city: "بنها", gov: "القليوبية" },
+  { city: "شبرا الخيمة", gov: "القليوبية" }, { city: "القناطر الخيرية", gov: "القليوبية" },
+  { city: "العبور", gov: "القليوبية" }, { city: "كفر الشيخ", gov: "كفر الشيخ" },
+  { city: "دسوق", gov: "كفر الشيخ" }, { city: "دمياط", gov: "دمياط" },
+  { city: "رأس البر", gov: "دمياط" }, { city: "بورسعيد", gov: "بورسعيد" },
+  { city: "الإسماعيلية", gov: "الإسماعيلية" }, { city: "فايد", gov: "الإسماعيلية" },
+  { city: "السويس", gov: "السويس" }, { city: "العين السخنة", gov: "السويس" },
+  { city: "الفيوم", gov: "الفيوم" }, { city: "بني سويف", gov: "بني سويف" },
+  { city: "المنيا", gov: "المنيا" }, { city: "ملوي", gov: "المنيا" },
+  { city: "أسيوط", gov: "أسيوط" }, { city: "سوهاج", gov: "سوهاج" },
+  { city: "أخميم", gov: "سوهاج" }, { city: "جرجا", gov: "سوهاج" },
+  { city: "قنا", gov: "قنا" }, { city: "نجع حمادي", gov: "قنا" },
+  { city: "الأقصر", gov: "الأقصر" }, { city: "إسنا", gov: "الأقصر" },
+  { city: "أسوان", gov: "أسوان" }, { city: "كوم أمبو", gov: "أسوان" },
+  { city: "الغردقة", gov: "البحر الأحمر" }, { city: "سفاجا", gov: "البحر الأحمر" },
+  { city: "مرسى علم", gov: "البحر الأحمر" }, { city: "شرم الشيخ", gov: "جنوب سيناء" },
+  { city: "دهب", gov: "جنوب سيناء" }, { city: "نويبع", gov: "جنوب سيناء" },
+  { city: "العريش", gov: "شمال سيناء" }, { city: "رفح", gov: "شمال سيناء" },
+  { city: "مطروح", gov: "مطروح" }, { city: "مرسى مطروح", gov: "مطروح" },
+  { city: "سيوة", gov: "مطروح" }, { city: "دمنهور", gov: "البحيرة" },
+  { city: "كفر الدوار", gov: "البحيرة" }, { city: "إدكو", gov: "البحيرة" },
+  { city: "رشيد", gov: "البحيرة" }, { city: "الخارجة", gov: "الوادي الجديد" },
+  { city: "الداخلة", gov: "الوادي الجديد" },
+];
 
 export async function loadEgyptData(): Promise<EgyptDataset> {
   if (cached) return cached;
   if (loading) return loading;
   loading = import("@/data/egypt-locations.json").then((m) => {
     cached = m.default as EgyptDataset;
-    cachedNorm = cached.cities.map((c) => ({
-      city: c.city,
-      cityNorm: normalize(c.city),
-      gov: c.gov,
-    }));
+    // Build a combined searchable list: aliases + governorates + dataset cities.
+    // Sort by normalized length DESC so longest match wins (e.g. "مدينة نصر"
+    // matches before "نصر").
+    const all = [
+      ...ARABIC_CITY_ALIASES.map((c) => ({ city: c.city, cityNorm: normalize(c.city), gov: c.gov })),
+      ...cached.governorates.map((g) => ({ city: g, cityNorm: normalize(g), gov: g })),
+      ...cached.cities.map((c) => ({ city: c.city, cityNorm: normalize(c.city), gov: c.gov })),
+    ];
+    cachedNorm = all.sort((a, b) => b.cityNorm.length - a.cityNorm.length);
     return cached;
   });
   return loading;
@@ -55,10 +104,12 @@ export function extractEgyptPhone(text: string): string | null {
 export function detectLocation(text: string): EgyptLocation | null {
   if (!cachedNorm || !text) return null;
   const t = " " + normalize(text) + " ";
-  // cachedNorm is pre-sorted by length desc, so the first hit is the longest match.
+  // cachedNorm is sorted by length desc, so the first hit is the longest match.
   for (const row of cachedNorm) {
     if (row.cityNorm.length < 3) continue;
-    if (t.includes(" " + row.cityNorm) || t.includes(row.cityNorm + " ")) {
+    // Substring match (not word-boundary): Arabic text often has the city
+    // glued to prepositions like "من" or "في" with no separator.
+    if (t.includes(row.cityNorm)) {
       return { city: row.city, gov: row.gov };
     }
   }
