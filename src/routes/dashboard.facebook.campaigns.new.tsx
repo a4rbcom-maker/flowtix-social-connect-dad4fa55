@@ -2,8 +2,9 @@ import { createFileRoute, useNavigate, Link, useRouter } from "@tanstack/react-r
 import { useEffect, useMemo, useState } from "react";
 import {
   Save, Loader2, ChevronDown, FileText, Image as ImageIcon, Type, Layers, ArrowLeft,
-  Users, Search, AlertCircle, Check, AlertTriangle, ClipboardPaste, X, Hash,
+  Users, Search, AlertCircle, Check, AlertTriangle, ClipboardPaste, X, Hash, Upload,
 } from "lucide-react";
+import { useRef } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -12,7 +13,7 @@ import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { listBotAccounts } from "@/lib/fb-bot.functions";
 import { fetchFacebookGroups } from "@/lib/facebook.functions";
 import {
-  listTextTemplates, listMediaAssets, saveCampaign, startCampaign,
+  listTextTemplates, listMediaAssets, saveCampaign, startCampaign, recordMediaAsset,
 } from "@/lib/fb-campaigns.functions";
 import { safeArray, safeObject } from "@/lib/safe-data";
 import type { Tables } from "@/integrations/supabase/types";
