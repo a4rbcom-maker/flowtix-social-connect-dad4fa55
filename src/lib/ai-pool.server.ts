@@ -17,12 +17,12 @@ const KIE_MODEL_ALIASES: Record<string, string> = {
   "openai/gpt-5-mini": "gpt-5-2",
 };
 
-// kie.ai uses model-scoped chat endpoints, e.g. `/gpt-5-2/v1/chat/completions`.
-// Normalize a model id to its URL slug (drop provider prefix, replace dots).
+// kie.ai uses model-scoped chat endpoints, e.g. `/gemini-2.5-flash/v1/chat/completions`.
+// Normalize a model id to its URL slug (drop provider prefix, keep documented punctuation).
 function modelToSlug(model: string): string {
   const normalized = normalizeKieModel(model);
   const tail = normalized.includes("/") ? normalized.split("/").pop()! : normalized;
-  return tail.replace(/\./g, "-").toLowerCase();
+  return tail.toLowerCase();
 }
 
 function normalizeKieModel(model: string): string {
