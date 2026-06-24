@@ -43,15 +43,15 @@ async function sendAiText(sessionId: string, userId: string, phone: string, text
   });
 }
 
-async function markSessionNeedsReconnect(userId: string, err: unknown) {
+async function markSessionNeedsReconnect(userId: string, sessionId: string, err: unknown) {
   const message = err instanceof Error ? err.message : String(err ?? "");
   const status = typeof err === "object" && err && "status" in err ? Number((err as { status?: unknown }).status) : 0;
   if (status !== 404 && !/(session|جلسة|الجلسة).*(not.?found|غير موجودة)|not.?found/i.test(message)) return;
-  const { error } = await supabaseAdmin
-    .from("wa_sessions")
-    .update({ status: "qr", qr_data_url: null, last_seen_at: new Date().toISOString() })
-    .eq("user_id", userId);
-  if (error) console.error("[wa-ai] failed to mark session for reconnect:", error.message);
+  const update = { status: "qr", qr_data_url: null, last_seen_at: new Date().toISOString() };
+  const bySession = await supabaseAdmin.from("wa_sessions").update(update).eq("session_id", sessionId);
+  if (bySession.error) console.error("[wa-ai] failed to mark session by session_id:", bySession.error.message);
+  const byUser = await supabaseAdmin.from("wa_sessions").update(update).eq("user_id", userId);
+  if (byUser.error) console.error("[wa-ai] failed to mark session by user_id:", byUser.error.message);
 }
 
 /**
@@ -146,7 +146,7 @@ export async function handleAiAutoReply(opts: {
           messageAt: welcomeAt,
         });
       } catch (err) {
-        await markSessionNeedsReconnect(userId, err);
+        await markSessionNeedsReconnect(userId, sessionId, err);
         console.error("[wa-ai] welcome send failed:", err);
       }
     }
@@ -234,7 +234,7 @@ export async function handleAiAutoReply(opts: {
         });
       } catch (err) {
         errMsg = err instanceof Error ? err.message : "Bridge send failed";
-        await markSessionNeedsReconnect(userId, err);
+        await markSessionNeedsReconnect(userId, sessionId, err);
         aiText = "";
       }
     }
