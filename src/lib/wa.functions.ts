@@ -257,6 +257,123 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
   });
 
 
+export interface WaWebhookTestResult {
+  ok: boolean;
+  httpStatus: number;
+  responseBody: string;
+  saved: number;
+  sessionId: string | null;
+  messageStored: boolean;
+  error: string | null;
+}
+
+/**
+ * Sends a synthetic inbound message to our own /api/public/wa-webhook handler
+ * so the user can verify reception end-to-end. Signs the payload with the
+ * configured WA_BRIDGE_WEBHOOK_SECRET and returns the handler response plus
+ * whether a wa_messages row was actually persisted.
+ */
+export const testWaWebhook = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<WaWebhookTestResult> => {
+    const { supabase, userId } = context;
+
+    const { data: sess } = await supabase
+      .from("wa_sessions")
+      .select("session_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const sessionId = sess?.session_id ?? null;
+    if (!sessionId) {
+      return {
+        ok: false, httpStatus: 0, responseBody: "", saved: 0,
+        sessionId: null, messageStored: false,
+        error: "no_session: اربط واتساب أولًا قبل تشغيل الاختبار.",
+      };
+    }
+
+    const secret = process.env.WA_BRIDGE_WEBHOOK_SECRET;
+    if (!secret) {
+      return {
+        ok: false, httpStatus: 0, responseBody: "", saved: 0,
+        sessionId, messageStored: false,
+        error: "missing_secret: WA_BRIDGE_WEBHOOK_SECRET غير مهيّأ على الخادم.",
+      };
+    }
+
+    const providerMessageId = `TEST_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const payload = {
+      event: "message",
+      sessionId,
+      messages: [{
+        id: providerMessageId,
+        messageId: providerMessageId,
+        from: "201000000000",
+        fromMe: false,
+        pushName: "Webhook Test",
+        type: "text",
+        text: "🔧 رسالة اختبار من Flowtix Webhook",
+        messageTimestamp: Math.floor(Date.now() / 1000),
+      }],
+    };
+    const raw = JSON.stringify(payload);
+
+    const { createHmac } = await import("crypto");
+    const sig = createHmac("sha256", secret).update(raw, "utf8").digest("hex");
+
+    try {
+      const { handleWaWebhook } = await import("./wa-webhook.server");
+      const req = new Request("http://internal.local/api/public/wa-webhook", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-bridge-signature": `sha256=${sig}`,
+        },
+        body: raw,
+      });
+      const res = await handleWaWebhook(req);
+      const body = await res.text();
+      let saved = 0;
+      try {
+        const parsed = JSON.parse(body);
+        if (typeof parsed?.saved === "number") saved = parsed.saved;
+      } catch { /* non-JSON */ }
+
+      const { data: stored } = await supabase
+        .from("wa_messages")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("provider_message_id", providerMessageId)
+        .maybeSingle();
+
+      const messageStored = Boolean(stored?.id);
+      const ok = res.status >= 200 && res.status < 300 && messageStored;
+      return {
+        ok,
+        httpStatus: res.status,
+        responseBody: body.slice(0, 500),
+        saved,
+        sessionId,
+        messageStored,
+        error: ok
+          ? null
+          : res.status >= 400
+            ? `webhook_rejected: HTTP ${res.status} — ${body.slice(0, 200)}`
+            : !messageStored
+              ? "not_persisted: الـ webhook ردّ بنجاح لكن لم يتم تخزين الرسالة (تأكد إن session_id مسجّل على الخادم)."
+              : null,
+      };
+    } catch (err) {
+      return {
+        ok: false, httpStatus: 0, responseBody: "", saved: 0,
+        sessionId, messageStored: false,
+        error: `internal_error: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  });
+
+
 // ── helpers ────────────────────────────────────────────────────────────────
 
 async function readState(
