@@ -172,7 +172,7 @@ export async function handleAiAutoReply(opts: {
       .maybeSingle();
 
     const result = await callKieChat({
-      model: result.model || model,
+      model,
       messages,
       maxTokens: tierRow?.max_tokens ?? 1024,
       temperature: tierRow?.temperature ?? 0.7,
@@ -199,7 +199,7 @@ export async function handleAiAutoReply(opts: {
           status: "sent",
           provider_message_id: providerMessageId,
           wa_timestamp: aiAt,
-          raw: { ai: true, tier, model, providerMessageId } as never,
+          raw: { ai: true, tier, model: result.model || model, providerMessageId } as never,
         });
         await upsertConversationFromMessage({
           userId,
@@ -222,7 +222,7 @@ export async function handleAiAutoReply(opts: {
       user_id: userId,
       conversation_id: conversationId,
       remote_jid: remoteJid,
-      model,
+      model: result.model || model,
       prompt_excerpt: inboundText.slice(0, 500),
       response_text: aiText || null,
       tokens_in: result.tokensIn,
