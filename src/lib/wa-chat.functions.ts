@@ -50,12 +50,8 @@ export const listConversations = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<ConversationRow[]> => {
     const { supabase, userId } = context;
-    const { data: sess } = await supabase
-      .from("wa_sessions")
-      .select("session_id")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!sess?.session_id) return [];
+
+
 
     const { data, error } = await supabase
       .from("wa_conversations")
@@ -63,7 +59,6 @@ export const listConversations = createServerFn({ method: "POST" })
         "id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled",
       )
       .eq("user_id", userId)
-      .eq("session_id", sess.session_id)
       .eq("is_archived", false)
       .order("last_message_at", { ascending: false })
       .limit(200);
@@ -76,11 +71,11 @@ export const listConversations = createServerFn({ method: "POST" })
       .from("wa_messages")
       .select("remote_jid, text_body, msg_type, raw, wa_timestamp, created_at")
       .eq("user_id", userId)
-      .eq("session_id", sess.session_id)
       .in("remote_jid", remoteJids)
       .not("raw", "is", null)
       .order("wa_timestamp", { ascending: false })
       .limit(1000);
+
 
 
     const metaByJid = new Map<string, { phone: string | null; profile: string | null; preview: string | null }>();
