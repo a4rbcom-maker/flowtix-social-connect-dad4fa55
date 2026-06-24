@@ -95,11 +95,34 @@ export function extractEgyptPhone(text: string): string | null {
   const cleaned = text.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
   const m = cleaned.match(PHONE_RX);
   if (!m || m.length === 0) return null;
-  let raw = m[0].replace(/[\s-]/g, "");
-  if (raw.startsWith("+20")) raw = "0" + raw.slice(3);
-  else if (raw.startsWith("20") && raw.length === 12) raw = "0" + raw.slice(2);
-  return raw;
+  return normalizePhone(m[0]);
 }
+
+function normalizePhone(raw: string): string {
+  let r = raw.replace(/[\s-]/g, "");
+  if (r.startsWith("+20")) r = "0" + r.slice(3);
+  else if (r.startsWith("20") && r.length === 12) r = "0" + r.slice(2);
+  return r;
+}
+
+/** Extract ALL unique Egyptian mobile numbers found in arbitrary text. */
+export function extractAllEgyptPhones(text: string): string[] {
+  if (!text) return [];
+  const cleaned = text.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
+  const matches = cleaned.match(PHONE_RX);
+  if (!matches) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of matches) {
+    const n = normalizePhone(m);
+    if (!seen.has(n)) {
+      seen.add(n);
+      out.push(n);
+    }
+  }
+  return out;
+}
+
 
 export function detectLocation(text: string): EgyptLocation | null {
   if (!cachedNorm || !text) return null;
