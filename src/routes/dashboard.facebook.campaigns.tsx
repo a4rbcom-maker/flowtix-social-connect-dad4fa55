@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, Link, useRouter } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link, useRouter, Outlet, useLocation } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Plus, Play, Pause, Trash2, Megaphone, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
@@ -37,9 +37,15 @@ function CampaignsErrorComponent({ error, reset }: { error: Error; reset: () => 
 
 export const Route = createFileRoute("/dashboard/facebook/campaigns")({
   ssr: false,
-  component: CampaignsPage,
+  component: CampaignsRouteShell,
   errorComponent: CampaignsErrorComponent,
 });
+
+function CampaignsRouteShell() {
+  const location = useLocation();
+  const isIndex = location.pathname === "/dashboard/facebook/campaigns" || location.pathname === "/dashboard/facebook/campaigns/";
+  return isIndex ? <CampaignsPage /> : <Outlet />;
+}
 
 type CampaignRow = {
   id: string;
