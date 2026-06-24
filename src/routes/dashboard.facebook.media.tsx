@@ -34,6 +34,12 @@ function MediaPage() {
   const [items, setItems] = useState<Asset[]>([]);
   const [uploading, setUploading] = useState(false);
 
+  const RETENTION_DAYS = 15;
+  const daysLeft = (createdAt: string) => {
+    const ageMs = Date.now() - new Date(createdAt).getTime();
+    return Math.max(0, RETENTION_DAYS - Math.floor(ageMs / (24 * 60 * 60 * 1000)));
+  };
+
   const t = lang === "ar"
     ? {
         title: "مكتبة الوسائط",
@@ -45,6 +51,8 @@ function MediaPage() {
         uploaded: "تم الرفع",
         deleted: "تم الحذف",
         tooBig: "الملف كبير جداً (الحد الأقصى 50 ميجا)",
+        retentionNotice: `تنبيه: يتم حذف جميع ملفات الوسائط تلقائيًا من الخادم بعد ${RETENTION_DAYS} يومًا من تاريخ الرفع لتوفير المساحة. احفظ نسخة محليًا إذا كنت بحاجة لها.`,
+        daysLeft: (n: number) => (n === 0 ? "سيُحذف قريبًا" : `${n} يوم متبقي`),
       }
     : {
         title: "Media Library",
@@ -56,6 +64,8 @@ function MediaPage() {
         uploaded: "Uploaded",
         deleted: "Deleted",
         tooBig: "File too large (max 50 MB)",
+        retentionNotice: `Notice: all media is automatically deleted from the server ${RETENTION_DAYS} days after upload to save space. Keep a local copy if needed.`,
+        daysLeft: (n: number) => (n === 0 ? "deleting soon" : `${n} day${n === 1 ? "" : "s"} left`),
       };
 
   useEffect(() => { if (!loading && !user) navigate({ to: "/login" }); }, [user, loading, navigate]);
