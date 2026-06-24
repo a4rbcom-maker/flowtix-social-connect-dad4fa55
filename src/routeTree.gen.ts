@@ -56,6 +56,7 @@ import { Route as ApiPublicWaWebhookRouteImport } from './routes/api/public/wa-w
 import { Route as ApiPublicWaClientRouteImport } from './routes/api/public/wa-client'
 import { Route as ApiPublicWaBridgeHealthRouteImport } from './routes/api/public/wa-bridge-health'
 import { Route as ApiPublicHealthRouteImport } from './routes/api/public/health'
+import { Route as DashboardFacebookCampaignsIndexRouteImport } from './routes/dashboard.facebook.campaigns.index'
 import { Route as DashboardFacebookCampaignsNewRouteImport } from './routes/dashboard.facebook.campaigns.new'
 import { Route as DashboardFacebookCampaignsIdRouteImport } from './routes/dashboard.facebook.campaigns.$id'
 import { Route as ApiPublicWebhooksFacebookRouteImport } from './routes/api/public/webhooks/facebook'
@@ -309,6 +310,12 @@ const ApiPublicHealthRoute = ApiPublicHealthRouteImport.update({
   path: '/api/public/health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DashboardFacebookCampaignsIndexRoute =
+  DashboardFacebookCampaignsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => DashboardFacebookCampaignsRoute,
+  } as any)
 const DashboardFacebookCampaignsNewRoute =
   DashboardFacebookCampaignsNewRouteImport.update({
     id: '/new',
@@ -404,6 +411,7 @@ export interface FileRoutesByFullPath {
   '/api/public/webhooks/facebook': typeof ApiPublicWebhooksFacebookRoute
   '/dashboard/facebook/campaigns/$id': typeof DashboardFacebookCampaignsIdRoute
   '/dashboard/facebook/campaigns/new': typeof DashboardFacebookCampaignsNewRoute
+  '/dashboard/facebook/campaigns/': typeof DashboardFacebookCampaignsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -438,7 +446,6 @@ export interface FileRoutesByTo {
   '/api/public/wa-webhook': typeof ApiPublicWaWebhookRoute
   '/dashboard/facebook/autoreply': typeof DashboardFacebookAutoreplyRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
-  '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/history': typeof DashboardFacebookHistoryRoute
   '/dashboard/facebook/insights': typeof DashboardFacebookInsightsRoute
@@ -460,6 +467,7 @@ export interface FileRoutesByTo {
   '/api/public/webhooks/facebook': typeof ApiPublicWebhooksFacebookRoute
   '/dashboard/facebook/campaigns/$id': typeof DashboardFacebookCampaignsIdRoute
   '/dashboard/facebook/campaigns/new': typeof DashboardFacebookCampaignsNewRoute
+  '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -517,6 +525,7 @@ export interface FileRoutesById {
   '/api/public/webhooks/facebook': typeof ApiPublicWebhooksFacebookRoute
   '/dashboard/facebook/campaigns/$id': typeof DashboardFacebookCampaignsIdRoute
   '/dashboard/facebook/campaigns/new': typeof DashboardFacebookCampaignsNewRoute
+  '/dashboard/facebook/campaigns/': typeof DashboardFacebookCampaignsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -575,6 +584,7 @@ export interface FileRouteTypes {
     | '/api/public/webhooks/facebook'
     | '/dashboard/facebook/campaigns/$id'
     | '/dashboard/facebook/campaigns/new'
+    | '/dashboard/facebook/campaigns/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -609,7 +619,6 @@ export interface FileRouteTypes {
     | '/api/public/wa-webhook'
     | '/dashboard/facebook/autoreply'
     | '/dashboard/facebook/bot'
-    | '/dashboard/facebook/campaigns'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/history'
     | '/dashboard/facebook/insights'
@@ -631,6 +640,7 @@ export interface FileRouteTypes {
     | '/api/public/webhooks/facebook'
     | '/dashboard/facebook/campaigns/$id'
     | '/dashboard/facebook/campaigns/new'
+    | '/dashboard/facebook/campaigns'
   id:
     | '__root__'
     | '/'
@@ -687,6 +697,7 @@ export interface FileRouteTypes {
     | '/api/public/webhooks/facebook'
     | '/dashboard/facebook/campaigns/$id'
     | '/dashboard/facebook/campaigns/new'
+    | '/dashboard/facebook/campaigns/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1049,6 +1060,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dashboard/facebook/campaigns/': {
+      id: '/dashboard/facebook/campaigns/'
+      path: '/'
+      fullPath: '/dashboard/facebook/campaigns/'
+      preLoaderRoute: typeof DashboardFacebookCampaignsIndexRouteImport
+      parentRoute: typeof DashboardFacebookCampaignsRoute
+    }
     '/dashboard/facebook/campaigns/new': {
       id: '/dashboard/facebook/campaigns/new'
       path: '/new'
@@ -1104,12 +1122,14 @@ declare module '@tanstack/react-router' {
 interface DashboardFacebookCampaignsRouteChildren {
   DashboardFacebookCampaignsIdRoute: typeof DashboardFacebookCampaignsIdRoute
   DashboardFacebookCampaignsNewRoute: typeof DashboardFacebookCampaignsNewRoute
+  DashboardFacebookCampaignsIndexRoute: typeof DashboardFacebookCampaignsIndexRoute
 }
 
 const DashboardFacebookCampaignsRouteChildren: DashboardFacebookCampaignsRouteChildren =
   {
     DashboardFacebookCampaignsIdRoute: DashboardFacebookCampaignsIdRoute,
     DashboardFacebookCampaignsNewRoute: DashboardFacebookCampaignsNewRoute,
+    DashboardFacebookCampaignsIndexRoute: DashboardFacebookCampaignsIndexRoute,
   }
 
 const DashboardFacebookCampaignsRouteWithChildren =
