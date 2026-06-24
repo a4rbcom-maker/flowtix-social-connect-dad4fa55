@@ -30,3 +30,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Worker (run locally, never commit)
+worker/node_modules
+worker/.env
