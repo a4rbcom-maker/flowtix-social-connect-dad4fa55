@@ -45,11 +45,13 @@ async function sendAiText(sessionId: string, userId: string, phone: string, text
 
 async function markSessionNeedsReconnect(userId: string, err: unknown) {
   const message = err instanceof Error ? err.message : String(err ?? "");
-  if (!/session.*not.?found|الجلسة غير موجودة/i.test(message)) return;
-  await supabaseAdmin
+  const status = typeof err === "object" && err && "status" in err ? Number((err as { status?: unknown }).status) : 0;
+  if (status !== 404 && !/(session|جلسة|الجلسة).*(not.?found|غير موجودة)|not.?found/i.test(message)) return;
+  const { error } = await supabaseAdmin
     .from("wa_sessions")
     .update({ status: "qr", qr_data_url: null, last_seen_at: new Date().toISOString() })
     .eq("user_id", userId);
+  if (error) console.error("[wa-ai] failed to mark session for reconnect:", error.message);
 }
 
 /**
