@@ -8,11 +8,16 @@ const KIE_BASE_URL = "https://api.kie.ai";
 const KIE_CREDIT_URL = `${KIE_BASE_URL}/api/v1/chat/credit`;
 
 const KIE_MODEL_ALIASES: Record<string, string> = {
+  "gpt-4o": "gemini-2.5-flash",
+  "gpt-4o-mini": "gemini-2.5-flash",
+  "gemini-2.0-flash": "gemini-2.5-flash",
+  "claude-3-5-sonnet": "gemini-2.5-pro",
   "google/gemini-2.5-flash": "gemini-2.5-flash",
   "google/gemini-2.5-pro": "gemini-2.5-pro",
   "google/gemini-3-flash-preview": "gemini-3-flash",
   "google/gemini-3-flash": "gemini-3-flash",
   "google/gemini-3.1-pro-preview": "gemini-3-1-pro",
+  "openai/gpt-5.2": "gpt-5-2",
   "openai/gpt-5": "gpt-5-2",
   "openai/gpt-5-mini": "gpt-5-2",
 };
