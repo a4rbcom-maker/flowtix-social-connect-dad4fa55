@@ -575,7 +575,7 @@ function ModelForm({ initial, onSubmit, loading }: { initial: Partial<ModelTierR
         </div>
         <div>
           <Label>{lang === "ar" ? "اسم الموديل (kie.ai)" : "Model name (kie.ai)"}</Label>
-          <Input value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder="gpt-4o-mini" required />
+          <Input value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder="gemini-2.5-flash" required />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">

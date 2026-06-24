@@ -160,7 +160,7 @@ export async function handleAiAutoReply(opts: {
         : tier === "negotiation"
           ? settings.ai_tier_negotiation
           : settings.ai_tier_smart;
-    const model = settings.ai_model || tierModel || "google/gemini-3-flash-preview";
+    const model = settings.ai_model || tierModel || "gemini-2.5-flash";
 
     // Look up tier defaults for max_tokens/temperature
     const { data: tierRow } = await supabaseAdmin
