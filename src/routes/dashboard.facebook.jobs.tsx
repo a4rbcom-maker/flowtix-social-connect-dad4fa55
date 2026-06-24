@@ -227,7 +227,11 @@ function JobsHubPage() {
     try {
       const res = await createExtractCommentersJobFn({ data: { accountId, postUrl: postUrl.trim() } });
       console.log("[extract-commenters] job created:", res);
-      toast.success(`${t.created} — تم إنشاء المهمة (id: ${(res as { id?: string })?.id ?? "?"}). تنبيه: لن تُنفَّذ حتى يكون VPS Worker شغّالاً.`);
+      toast.success(`${t.created}`, {
+        description: "ستُنفَّذ تلقائيًا فور تشغيل برنامج الـ Worker على جهازك. شغّله من مجلد /worker (راجع worker/README.md).",
+        duration: 8000,
+      });
+
       setPostUrl("");
     } catch (e) {
       console.error("[extract-commenters] failed:", e);
