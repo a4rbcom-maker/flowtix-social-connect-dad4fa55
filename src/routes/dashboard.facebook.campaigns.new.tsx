@@ -75,6 +75,8 @@ function NewCampaignPage() {
 
   const [saving, setSaving] = useState(false);
   const [savingAndStart, setSavingAndStart] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   // Manual Group IDs entry (bot mode)
   const [manualOpen, setManualOpen] = useState(false);
