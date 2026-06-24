@@ -199,18 +199,46 @@ export const waBridge = {
       {
         method: "POST",
         body: JSON.stringify({
-          to: jid,
-          jid,
-          phone,
-          type: "text",
-          text,
-          message: text,
-          body: text,
+          to: jid, jid, phone, type: "text", text, message: text, body: text,
         }),
       },
     );
   },
 };
+
+/**
+ * Resilient send: on a persistent 401 / disconnected error (session vanished
+ * on the bridge), recreate the session with the supplied webhookUrl+tenantId
+ * and retry sendText once. Use this instead of waBridge.sendText anywhere a
+ * dropped session must auto-recover without user action.
+ */
+export async function sendTextWithReconnect(
+  id: string,
+  to: string,
+  text: string,
+  recover: { webhookUrl?: string; tenantId?: string },
+): Promise<{ id?: string; ok?: boolean; error?: string; message?: string }> {
+  try {
+    return await waBridge.sendText(id, to, text);
+  } catch (err) {
+    if (!(err instanceof BridgeError)) throw err;
+    const needsReauth =
+      err.status === 401 ||
+      err.status === 404 ||
+      /session.*(not.?found|disconnected|closed|logged.?out)/i.test(err.message);
+    if (!needsReauth) throw err;
+    console.warn(`[wa-bridge] session ${id} unauthorized (${err.status}); attempting auto-reconnect`);
+    try { await waBridge.deleteSession(id); } catch { /* ignore */ }
+    try {
+      await waBridge.createSession(id, recover);
+    } catch (createErr) {
+      console.error("[wa-bridge] auto-reconnect createSession failed:", createErr);
+      throw err; // surface original send failure to caller
+    }
+    return waBridge.sendText(id, to, text);
+  }
+}
+
 
 /**
  * Infer canonical status from the Bot-Xtra bridge status payload.
