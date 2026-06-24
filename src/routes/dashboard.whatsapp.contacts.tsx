@@ -1,19 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Download, Copy, Loader2, Users, Search, Phone } from "lucide-react";
+import { Download, Copy, Loader2, Users, Search, Phone, FileText, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useI18n } from "@/lib/i18n";
 import { extractInboundContacts, type ExtractedContact } from "@/lib/wa-chat.functions";
+import { extractAllEgyptPhones } from "@/lib/egypt-enrich";
 
 export const Route = createFileRoute("/dashboard/whatsapp/contacts")({
   ssr: false,
   component: ContactsPage,
 });
+
 
 function isoStart(date: string) {
   return new Date(`${date}T00:00:00`).toISOString();
