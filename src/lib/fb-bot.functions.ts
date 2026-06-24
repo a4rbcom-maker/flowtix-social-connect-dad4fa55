@@ -256,7 +256,10 @@ export const addBotAccount = createServerFn({ method: "POST" })
           display_name: data.displayName,
           auth_method: data.method,
           encrypted_payload: encrypted,
-          status: "untested",
+          // Cookies passing structural validation are considered active immediately.
+          // Real liveness check runs later via the VPS Worker on a residential IP.
+          status: data.method === "cookies" ? "active" : "untested",
+          last_check_at: data.method === "cookies" ? new Date().toISOString() : null,
           cookie_expires_at: cookieExpiresAt,
         })
         .select(
