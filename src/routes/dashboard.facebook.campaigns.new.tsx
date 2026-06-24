@@ -251,8 +251,8 @@ function NewCampaignPage() {
     if (!accountId) { toast.error(t.needAccount); return false; }
     if (selectedTargets.size === 0) { toast.error(t.needTargets); return false; }
     if (delayMax < delayMin) { toast.error(t.delayErr); return false; }
-    if (contentType === "text" && !templateId && !customText.trim()) { toast.error(t.needContent); return false; }
-    if (contentType === "media" && mediaIds.size === 0 && !customText.trim()) { toast.error(t.needContent); return false; }
+    if (!templateId && !customText.trim() && mediaIds.size === 0) { toast.error(t.needContent); return false; }
+
     return true;
   };
 
