@@ -2,34 +2,34 @@
 // Manages multiple API keys with automatic rotation on failure.
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { generateText, type ModelMessage } from "ai";
 import crypto from "crypto";
-import { createLovableAiGatewayProvider } from "./ai-gateway.server";
 
 const KIE_BASE_URL = "https://api.kie.ai";
 const KIE_CREDIT_URL = `${KIE_BASE_URL}/api/v1/chat/credit`;
-const LOVABLE_FALLBACK_MODEL = "google/gemini-3-flash-preview";
 
-function isLovableGatewayModel(model: string): boolean {
-  return /^(google|openai)\//.test(model);
-}
-
-function toModelMessages(messages: ChatMessage[]): { system?: string; messages: ModelMessage[] } {
-  const system = messages.find((m) => m.role === "system")?.content;
-  return {
-    system,
-    messages: messages
-      .filter((m) => m.role !== "system")
-      .map((m) => ({ role: m.role, content: m.content }) as ModelMessage),
-  };
-}
+const KIE_MODEL_ALIASES: Record<string, string> = {
+  "google/gemini-2.5-flash": "gemini-2.5-flash",
+  "google/gemini-2.5-pro": "gemini-2.5-pro",
+  "google/gemini-3-flash-preview": "gemini-3-flash",
+  "google/gemini-3-flash": "gemini-3-flash",
+  "google/gemini-3.1-pro-preview": "gemini-3-1-pro",
+  "openai/gpt-5": "gpt-5-2",
+  "openai/gpt-5-mini": "gpt-5-2",
+};
 
 // kie.ai uses model-scoped chat endpoints, e.g. `/gpt-5-2/v1/chat/completions`.
 // Normalize a model id to its URL slug (drop provider prefix, replace dots).
 function modelToSlug(model: string): string {
-  const tail = model.includes("/") ? model.split("/").pop()! : model;
+  const normalized = normalizeKieModel(model);
+  const tail = normalized.includes("/") ? normalized.split("/").pop()! : normalized;
   return tail.replace(/\./g, "-").toLowerCase();
 }
+
+function normalizeKieModel(model: string): string {
+  const trimmed = model.trim();
+  return KIE_MODEL_ALIASES[trimmed] ?? trimmed.replace(/^kie\//, "");
+}
+
 function chatUrlFor(model: string): string {
   return `${KIE_BASE_URL}/${modelToSlug(model)}/v1/chat/completions`;
 }
@@ -165,15 +165,22 @@ export async function callKieChat(opts: {
   tier?: "simple" | "smart" | "negotiation";
 }): Promise<KieResult> {
   const started = Date.now();
-
-  if (isLovableGatewayModel(opts.model)) {
-    return callLovableChat(opts, started);
-  }
+  const model = normalizeKieModel(opts.model || "gemini-2.5-flash");
 
   const accounts = await pickAvailableAccounts();
 
   if (accounts.length === 0) {
-    return callLovableChat(opts, started, "no active kie.ai accounts in pool");
+    const result: KieResult = {
+      text: "",
+      model,
+      accountId: null,
+      tokensIn: null,
+      tokensOut: null,
+      latencyMs: Date.now() - started,
+      error: "no active kie.ai accounts in pool",
+    };
+    await logUsage({ ...opts, result });
+    return result;
   }
 
   let lastError = "unknown";
@@ -197,10 +204,11 @@ export async function callKieChat(opts: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: opts.model,
+          model,
           messages: opts.messages,
           max_tokens: opts.maxTokens ?? 1024,
           temperature: opts.temperature ?? 0.7,
+          stream: false,
         }),
       });
 
@@ -248,7 +256,7 @@ export async function callKieChat(opts: {
 
       const result: KieResult = {
         text,
-        model: opts.model,
+        model,
         accountId: account.id,
         tokensIn: j.usage?.prompt_tokens ?? null,
         tokensOut: j.usage?.completion_tokens ?? null,
@@ -263,74 +271,17 @@ export async function callKieChat(opts: {
     }
   }
 
-  return callLovableChat(opts, started, lastError || (lastStatus ? `kie ${lastStatus}` : undefined));
-}
-
-async function callLovableChat(
-  opts: {
-    model: string;
-    messages: ChatMessage[];
-    maxTokens?: number;
-    temperature?: number;
-    userId: string;
-    tier?: "simple" | "smart" | "negotiation";
-  },
-  started = Date.now(),
-  previousError?: string,
-): Promise<KieResult> {
-  const model = isLovableGatewayModel(opts.model) ? opts.model : LOVABLE_FALLBACK_MODEL;
-  const key = process.env.LOVABLE_API_KEY;
-  if (!key) {
-    const result: KieResult = {
-      text: "",
-      model,
-      accountId: null,
-      tokensIn: null,
-      tokensOut: null,
-      latencyMs: Date.now() - started,
-      error: previousError ? `${previousError}; LOVABLE_API_KEY missing` : "LOVABLE_API_KEY missing",
-    };
-    await logUsage({ ...opts, result });
-    return result;
-  }
-
-  try {
-    const gateway = createLovableAiGatewayProvider(key);
-    const prompt = toModelMessages(opts.messages);
-    const response = await generateText({
-      model: gateway(model),
-      ...prompt,
-      maxOutputTokens: Math.min(Math.max(opts.maxTokens ?? 1024, 64), 2048),
-      temperature: opts.temperature ?? 0.7,
-      maxRetries: 1,
-      timeout: { totalMs: 25_000 },
-    });
-    const text = response.text.trim();
-    const result: KieResult = {
-      text,
-      model,
-      accountId: null,
-      tokensIn: response.usage.inputTokens ?? null,
-      tokensOut: response.usage.outputTokens ?? null,
-      latencyMs: Date.now() - started,
-      error: text ? null : previousError ? `${previousError}; lovable empty response` : "lovable empty response",
-    };
-    await logUsage({ ...opts, result });
-    return result;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Lovable AI request failed";
-    const result: KieResult = {
-      text: "",
-      model,
-      accountId: null,
-      tokensIn: null,
-      tokensOut: null,
-      latencyMs: Date.now() - started,
-      error: previousError ? `${previousError}; ${message}` : message,
-    };
-    await logUsage({ ...opts, result });
-    return result;
-  }
+  const result: KieResult = {
+    text: "",
+    model,
+    accountId: null,
+    tokensIn: null,
+    tokensOut: null,
+    latencyMs: Date.now() - started,
+    error: lastError || (lastStatus ? `kie ${lastStatus}` : "kie request failed"),
+  };
+  await logUsage({ ...opts, result });
+  return result;
 }
 
 async function logUsage(opts: {
