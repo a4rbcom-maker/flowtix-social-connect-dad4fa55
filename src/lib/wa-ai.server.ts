@@ -160,7 +160,7 @@ export async function handleAiAutoReply(opts: {
         : tier === "negotiation"
           ? settings.ai_tier_negotiation
           : settings.ai_tier_smart;
-    const model = tierModel || settings.ai_model || "gpt-4o-mini";
+    const model = settings.ai_model || tierModel || "google/gemini-3-flash-preview";
 
     // Look up tier defaults for max_tokens/temperature
     const { data: tierRow } = await supabaseAdmin
@@ -172,7 +172,7 @@ export async function handleAiAutoReply(opts: {
       .maybeSingle();
 
     const result = await callKieChat({
-      model,
+      model: result.model || model,
       messages,
       maxTokens: tierRow?.max_tokens ?? 1024,
       temperature: tierRow?.temperature ?? 0.7,
