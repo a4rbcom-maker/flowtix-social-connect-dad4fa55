@@ -13,12 +13,9 @@ export const Route = createFileRoute("/admin/settings")({ ssr: false, component:
 
 const PLANS = ["free", "starter", "pro", "business", "enterprise"];
 const MODELS = [
-  "google/gemini-2.5-flash",
-  "google/gemini-2.5-flash-lite",
-  "google/gemini-2.5-pro",
-  "openai/gpt-5-mini",
-  "openai/gpt-5",
-  "openai/gpt-5-nano",
+  "gemini-2.5-flash",
+  "gemini-2.5-pro",
+  "gpt-5-2",
 ];
 
 const META: Record<string, { icon: typeof SettingsIcon; type: "bool" | "plan" | "model"; ar: string; en: string; descAr: string; descEn: string }> = {

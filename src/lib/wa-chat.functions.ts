@@ -300,7 +300,7 @@ export interface WaAiSettings {
 
 const DEFAULTS: WaAiSettings = {
   ai_enabled: false,
-  ai_model: "google/gemini-2.5-flash",
+  ai_model: "gemini-2.5-flash",
   ai_tier_simple: null,
   ai_tier_smart: null,
   ai_tier_negotiation: null,
