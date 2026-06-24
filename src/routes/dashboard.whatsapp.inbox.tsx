@@ -453,22 +453,13 @@ function InboxPage() {
             {connQuery.data?.status === "connected" ? (
               <>
                 <p className="px-6 text-sm font-medium">
-                  {isAr ? "الجلسة متصلة لكن لم تُسجَّل لاستقبال الرسائل بعد." : "Connected, but the receiver isn't wired up yet."}
+                  {isAr ? "لا توجد محادثات بعد." : "No conversations yet."}
                 </p>
                 <p className="px-6 text-xs text-muted-foreground">
                   {isAr
-                    ? "اضغط الزر للحصول على رمز QR جديد. الرسائل القديمة لن تظهر، لكن أي رسالة بعد إعادة الربط ستصلك فورًا هنا."
-                    : "Get a fresh QR to bind the inbox to this app. Old messages won't appear, but every new message will land here in real time."}
+                    ? "بمجرد وصول رسالة جديدة على رقم واتساب المرتبط، ستظهر هنا تلقائيًا."
+                    : "As soon as a new message arrives on the linked WhatsApp number, it will show up here automatically."}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => resetMut.mutate()}
-                  disabled={resetMut.isPending}
-                  className="mt-1 inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
-                >
-                  {resetMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  {isAr ? "إعادة تأسيس الاستقبال" : "Re-bind receiver"}
-                </button>
               </>
             ) : (
               <>
@@ -482,6 +473,7 @@ function InboxPage() {
                 </Link>
               </>
             )}
+
           </div>
         ) : (
           <ul className="divide-y divide-border/30">
