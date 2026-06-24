@@ -25,6 +25,7 @@ import {
   getWaConnectionState,
   disconnectWaSession,
   pingWaBridgeUser,
+  resetWaReceiver,
   type WaConnectionState,
   type WaBridgeHealth,
 } from "@/lib/wa.functions";
@@ -40,7 +41,7 @@ const WA_CLOUD_API_BASE = (
 ).replace(/\/+$/, "");
 const WA_BRIDGE_MODE_STORAGE_KEY = "flowtix-wa-bridge-mode";
 
-type WaCloudAction = "state" | "connect" | "disconnect" | "ping";
+type WaCloudAction = "state" | "connect" | "disconnect" | "ping" | "reset";
 
 function isBridgeConfigMissing(message?: string | null) {
   return /WA_BRIDGE_API_KEY|BOTXTRA_API_KEY|WHATSAPP_BRIDGE_API_KEY|not configured/i.test(message ?? "");
@@ -70,6 +71,7 @@ function WhatsAppPage() {
   const ar = lang === "ar";
   const qc = useQueryClient();
   const connectFn = useServerFn(connectWaSession);
+  const resetFn = useServerFn(resetWaReceiver);
   const statusFn = useServerFn(getWaConnectionState);
   const disconnectFn = useServerFn(disconnectWaSession);
   const pingFn = useServerFn(pingWaBridgeUser);
@@ -240,6 +242,23 @@ function WhatsAppPage() {
     onError: (err: Error) => toast.error(t.errorTitle, { description: err.message }),
   });
 
+  const resetMut = useMutation({
+    mutationFn: async () => {
+      if (useCloudBridge) return callCloud<WaConnectionState>("reset");
+      return resetFn();
+    },
+    onSuccess: (data) => {
+      qc.setQueryData(["wa-state", useCloudBridge ? "cloud" : "local"], data);
+      if (data.error) {
+        toast.error(t.errorTitle, { description: data.error });
+        return;
+      }
+      setPolling(true);
+      setShowQr(true);
+    },
+    onError: (err: Error) => toast.error(t.errorTitle, { description: err.message }),
+  });
+
   const disconnectMut = useMutation({
     mutationFn: () => useCloudBridge ? callCloud<{ ok: boolean }>("disconnect") : disconnectFn(),
     onSuccess: () => {
@@ -377,11 +396,11 @@ function WhatsAppPage() {
 
                       <button
                         type="button"
-                        onClick={() => connectMut.mutate()}
-                        disabled={connectMut.isPending}
+                        onClick={() => resetMut.mutate()}
+                        disabled={resetMut.isPending}
                         className="inline-flex h-10 items-center gap-2 rounded-xl bg-muted px-4 text-sm font-semibold text-foreground hover:bg-muted/80 disabled:opacity-60"
                       >
-                        {connectMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                        {resetMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                         {t.reconnect}
                       </button>
 
