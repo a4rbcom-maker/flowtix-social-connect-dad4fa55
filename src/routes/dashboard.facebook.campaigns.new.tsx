@@ -264,7 +264,8 @@ function NewCampaignPage() {
     return {
       name: name.trim(),
       accountId,
-      contentType,
+      contentType: mediaIds.size > 0 ? "media" : "text",
+
       templateId: templateId || null,
       customText: customText.trim() || null,
       mediaIds: Array.from(mediaIds),
