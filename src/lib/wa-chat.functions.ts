@@ -2,7 +2,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { waBridge, BridgeError } from "./wa-bridge.server";
+import { waBridge, BridgeError, sendTextWithReconnect } from "./wa-bridge.server";
+import { deriveWebhookUrl } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
 import {
   asRecord,
