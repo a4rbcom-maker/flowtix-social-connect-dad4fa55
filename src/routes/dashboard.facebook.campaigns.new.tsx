@@ -299,7 +299,7 @@ function NewCampaignPage() {
       });
       setMedia((prev) => [row, ...prev]);
       setMediaIds((prev) => { const n = new Set(prev); n.add(row.id); return n; });
-      setContentType("media");
+      
       toast.success(lang === "ar" ? "تم الرفع" : "Uploaded");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
