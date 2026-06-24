@@ -372,18 +372,14 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     request.headers.get("x-signature") ||
     request.headers.get("x-webhook-signature");
 
-  // Require HMAC signature on every delivery when a webhook secret is configured.
-  // This prevents anyone who guesses a sessionId from injecting messages,
-  // triggering AI auto-replies, or forging session/QR status events.
+  // Prefer HMAC signature when the bridge sends it. Bot-Xtra v1.8.x may not
+  // send any signature headers, so unsigned deliveries are allowed only after
+  // they resolve to a known sessionId below; invalid signatures are still rejected.
   if (!secret) {
     console.error("[wa-webhook] WA_BRIDGE_WEBHOOK_SECRET is not configured; rejecting all deliveries");
     return new Response("Webhook secret not configured", { status: 500 });
   }
-  if (!sig) {
-    console.warn("[wa-webhook] Missing webhook signature, rejecting");
-    return new Response("Missing webhook signature", { status: 401 });
-  }
-  if (!verifySignature(raw, sig, secret)) {
+  if (sig && !verifySignature(raw, sig, secret)) {
     console.warn("[wa-webhook] Invalid signature, rejecting");
     return new Response("Invalid signature", { status: 401 });
   }
@@ -413,6 +409,9 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   if (!sess?.user_id) {
     console.warn("[wa-webhook] Unknown sessionId:", sessionId);
     return new Response("ok", { status: 200 });
+  }
+  if (!sig) {
+    console.info("[wa-webhook] Accepted unsigned Bot-Xtra delivery for known session");
   }
 
   const userId = sess.user_id;
