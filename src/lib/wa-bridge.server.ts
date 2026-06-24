@@ -46,10 +46,10 @@ function getConfig() {
   return { url, apiKey: apiKey.value };
 }
 
-// Transient errors we auto-retry. 401 is included because Bot-Xtra
-// occasionally returns it on cold sessions before the session is fully
-// (re-)registered; a short retry usually succeeds.
-const RETRYABLE_STATUSES = new Set([401, 408, 425, 429, 500, 502, 503, 504]);
+// Transient errors we auto-retry. 401/403 are NOT retried: they indicate
+// a config/permission problem and retrying just delays the real failure
+// (and used to trigger an unnecessary session rebuild upstream).
+const RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const MAX_ATTEMPTS = 3;
 
 async function bridgeFetch<T>(path: string, init: RequestInit = {}, attempt = 1): Promise<T> {
