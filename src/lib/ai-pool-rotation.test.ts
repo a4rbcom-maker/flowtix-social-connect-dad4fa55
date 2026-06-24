@@ -117,6 +117,7 @@ describe("ai-pool rotation", () => {
     state.accounts = [
       {
         id: "acc-1",
+        provider: "kie",
         api_key_encrypted: encryptKey("key-one-secret"),
         priority: 1,
         status: "active",
@@ -127,6 +128,7 @@ describe("ai-pool rotation", () => {
       },
       {
         id: "acc-2",
+        provider: "kie",
         api_key_encrypted: encryptKey("key-two-secret"),
         priority: 2,
         status: "active",
