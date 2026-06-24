@@ -537,10 +537,18 @@ function NewCampaignPage() {
 
           {contentType === "media" && (
             <div className="mt-4 space-y-2">
-              <p className="text-xs font-medium text-foreground">{t.chooseMedia}</p>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <p className="text-xs font-medium text-foreground">{t.chooseMedia}</p>
+                <label className={`inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 cursor-pointer ${uploading ? "opacity-60 cursor-not-allowed" : ""}`}>
+                  {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  {lang === "ar" ? "رفع صورة / فيديو" : "Upload image / video"}
+                  <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleUpload} disabled={uploading} />
+                </label>
+              </div>
               {media.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
-                  {t.noMedia} <Link to="/dashboard/facebook/media" className="text-primary hover:underline">→</Link>
+                  {lang === "ar" ? "لا توجد وسائط بعد — ارفع ملفًا الآن أو من " : "No media yet — upload now or from "}
+                  <Link to="/dashboard/facebook/media" className="text-primary hover:underline">{lang === "ar" ? "المكتبة" : "library"}</Link>
                 </div>
               ) : (
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
