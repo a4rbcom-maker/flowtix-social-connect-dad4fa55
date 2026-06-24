@@ -160,7 +160,7 @@ export async function handleAiAutoReply(opts: {
         : tier === "negotiation"
           ? settings.ai_tier_negotiation
           : settings.ai_tier_smart;
-    const model = tierModel || settings.ai_model || "gpt-4o-mini";
+    const model = settings.ai_model || tierModel || "google/gemini-3-flash-preview";
 
     // Look up tier defaults for max_tokens/temperature
     const { data: tierRow } = await supabaseAdmin
@@ -199,7 +199,7 @@ export async function handleAiAutoReply(opts: {
           status: "sent",
           provider_message_id: providerMessageId,
           wa_timestamp: aiAt,
-          raw: { ai: true, tier, model, providerMessageId } as never,
+          raw: { ai: true, tier, model: result.model || model, providerMessageId } as never,
         });
         await upsertConversationFromMessage({
           userId,
@@ -222,7 +222,7 @@ export async function handleAiAutoReply(opts: {
       user_id: userId,
       conversation_id: conversationId,
       remote_jid: remoteJid,
-      model,
+      model: result.model || model,
       prompt_excerpt: inboundText.slice(0, 500),
       response_text: aiText || null,
       tokens_in: result.tokensIn,

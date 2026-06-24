@@ -2,10 +2,27 @@
 // Manages multiple API keys with automatic rotation on failure.
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { generateText, type ModelMessage } from "ai";
 import crypto from "crypto";
+import { createLovableAiGatewayProvider } from "./ai-gateway.server";
 
 const KIE_BASE_URL = "https://api.kie.ai";
 const KIE_CREDIT_URL = `${KIE_BASE_URL}/api/v1/chat/credit`;
+const LOVABLE_FALLBACK_MODEL = "google/gemini-3-flash-preview";
+
+function isLovableGatewayModel(model: string): boolean {
+  return /^(google|openai)\//.test(model);
+}
+
+function toModelMessages(messages: ChatMessage[]): { system?: string; messages: ModelMessage[] } {
+  const system = messages.find((m) => m.role === "system")?.content;
+  return {
+    system,
+    messages: messages
+      .filter((m) => m.role !== "system")
+      .map((m) => ({ role: m.role, content: m.content }) as ModelMessage),
+  };
+}
 
 // kie.ai uses model-scoped chat endpoints, e.g. `/gpt-5-2/v1/chat/completions`.
 // Normalize a model id to its URL slug (drop provider prefix, replace dots).
@@ -148,20 +165,15 @@ export async function callKieChat(opts: {
   tier?: "simple" | "smart" | "negotiation";
 }): Promise<KieResult> {
   const started = Date.now();
+
+  if (isLovableGatewayModel(opts.model)) {
+    return callLovableChat(opts, started);
+  }
+
   const accounts = await pickAvailableAccounts();
 
   if (accounts.length === 0) {
-    const result: KieResult = {
-      text: "",
-      model: opts.model,
-      accountId: null,
-      tokensIn: null,
-      tokensOut: null,
-      latencyMs: 0,
-      error: "no active kie.ai accounts in pool",
-    };
-    await logUsage({ ...opts, result });
-    return result;
+    return callLovableChat(opts, started, "no active kie.ai accounts in pool");
   }
 
   let lastError = "unknown";
@@ -207,6 +219,12 @@ export async function callKieChat(opts: {
       };
 
       const text = j.choices?.[0]?.message?.content?.trim() ?? "";
+      if (!text) {
+        lastError = "empty response";
+        await markFailure(account.id, 0, lastError);
+        continue;
+      }
+
       await markSuccess(account.id);
 
       const result: KieResult = {
@@ -226,17 +244,74 @@ export async function callKieChat(opts: {
     }
   }
 
-  const result: KieResult = {
-    text: "",
-    model: opts.model,
-    accountId: null,
-    tokensIn: null,
-    tokensOut: null,
-    latencyMs: Date.now() - started,
-    error: lastError,
-  };
-  await logUsage({ ...opts, result });
-  return result;
+  return callLovableChat(opts, started, lastError || (lastStatus ? `kie ${lastStatus}` : undefined));
+}
+
+async function callLovableChat(
+  opts: {
+    model: string;
+    messages: ChatMessage[];
+    maxTokens?: number;
+    temperature?: number;
+    userId: string;
+    tier?: "simple" | "smart" | "negotiation";
+  },
+  started = Date.now(),
+  previousError?: string,
+): Promise<KieResult> {
+  const model = isLovableGatewayModel(opts.model) ? opts.model : LOVABLE_FALLBACK_MODEL;
+  const key = process.env.LOVABLE_API_KEY;
+  if (!key) {
+    const result: KieResult = {
+      text: "",
+      model,
+      accountId: null,
+      tokensIn: null,
+      tokensOut: null,
+      latencyMs: Date.now() - started,
+      error: previousError ? `${previousError}; LOVABLE_API_KEY missing` : "LOVABLE_API_KEY missing",
+    };
+    await logUsage({ ...opts, result });
+    return result;
+  }
+
+  try {
+    const gateway = createLovableAiGatewayProvider(key);
+    const prompt = toModelMessages(opts.messages);
+    const response = await generateText({
+      model: gateway(model),
+      ...prompt,
+      maxOutputTokens: Math.min(Math.max(opts.maxTokens ?? 1024, 64), 2048),
+      temperature: opts.temperature ?? 0.7,
+      maxRetries: 1,
+      timeout: { totalMs: 25_000 },
+    });
+    const text = response.text.trim();
+    const result: KieResult = {
+      text,
+      model,
+      accountId: null,
+      tokensIn: response.usage.inputTokens ?? null,
+      tokensOut: response.usage.outputTokens ?? null,
+      latencyMs: Date.now() - started,
+      error: text ? null : previousError ? `${previousError}; lovable empty response` : "lovable empty response",
+    };
+    await logUsage({ ...opts, result });
+    return result;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Lovable AI request failed";
+    const result: KieResult = {
+      text: "",
+      model,
+      accountId: null,
+      tokensIn: null,
+      tokensOut: null,
+      latencyMs: Date.now() - started,
+      error: previousError ? `${previousError}; ${message}` : message,
+    };
+    await logUsage({ ...opts, result });
+    return result;
+  }
 }
 
 async function logUsage(opts: {
