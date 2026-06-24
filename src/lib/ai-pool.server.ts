@@ -20,7 +20,6 @@ const KIE_MODEL_ALIASES: Record<string, string> = {
   "google/gemini-3-flash": "gemini-3-flash",
   "google/gemini-3.1-pro-preview": "gemini-3-1-pro",
   "openai/gpt-5.2": "gpt-5-2",
-  "openai/gpt-5.2": "gpt-5-2",
   "openai/gpt-5": "gpt-5-2",
   "openai/gpt-5-mini": "gpt-5-2",
   "gpt-5": "gpt-5-2",
