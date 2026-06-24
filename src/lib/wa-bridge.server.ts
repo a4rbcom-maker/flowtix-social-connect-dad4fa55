@@ -46,10 +46,10 @@ function getConfig() {
   return { url, apiKey: apiKey.value };
 }
 
-// Transient errors we auto-retry. 401 is included because Bot-Xtra
-// occasionally returns it on cold sessions before the session is fully
-// (re-)registered; a short retry usually succeeds.
-const RETRYABLE_STATUSES = new Set([401, 408, 425, 429, 500, 502, 503, 504]);
+// Transient errors we auto-retry. 401/403 are NOT retried: they indicate
+// a config/permission problem and retrying just delays the real failure
+// (and used to trigger an unnecessary session rebuild upstream).
+const RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const MAX_ATTEMPTS = 3;
 
 async function bridgeFetch<T>(path: string, init: RequestInit = {}, attempt = 1): Promise<T> {
@@ -222,22 +222,52 @@ export async function sendTextWithReconnect(
     return await waBridge.sendText(id, to, text);
   } catch (err) {
     if (!(err instanceof BridgeError)) throw err;
-    const needsReauth =
-      err.status === 401 ||
-      err.status === 404 ||
+
+    // Only consider rebuilding the session for hard "session-gone" signals.
+    // A bare 401 from a transient bridge hiccup is NOT a reason to delete a
+    // healthy session — doing so would force the user to re-scan the QR.
+    const sessionGoneByMessage =
       /session.*(not.?found|disconnected|closed|logged.?out)/i.test(err.message);
-    if (!needsReauth) throw err;
-    console.warn(`[wa-bridge] session ${id} unauthorized (${err.status}); attempting auto-reconnect`);
+    const maybeGone = err.status === 404 || err.status === 401 || sessionGoneByMessage;
+    if (!maybeGone) throw err;
+
+    // Confirm the session is actually dead before recreating.
+    let confirmedDead = sessionGoneByMessage || err.status === 404;
+    if (!confirmedDead) {
+      try {
+        const s = await waBridge.getStatus(id);
+        const status = inferStatus(s);
+        if (status === "connected" || status === "qr" || status === "connecting") {
+          // Session is alive on the bridge — original error was transient.
+          console.warn(`[wa-bridge] sendText failed but session ${id} is "${status}"; not recreating`);
+          throw err;
+        }
+        confirmedDead = true;
+      } catch (statusErr) {
+        if (statusErr instanceof BridgeError && (statusErr.status === 404 || /not.?found/i.test(statusErr.message))) {
+          confirmedDead = true;
+        } else {
+          // Can't confirm — fail safe, don't destroy a possibly-healthy session.
+          throw err;
+        }
+      }
+    }
+    if (!confirmedDead) throw err;
+
+    console.warn(`[wa-bridge] session ${id} confirmed dead; recreating (user will need to re-scan QR)`);
     try { await waBridge.deleteSession(id); } catch { /* ignore */ }
     try {
       await waBridge.createSession(id, recover);
     } catch (createErr) {
       console.error("[wa-bridge] auto-reconnect createSession failed:", createErr);
-      throw err; // surface original send failure to caller
+      throw err;
     }
-    return waBridge.sendText(id, to, text);
+    // After recreate, the session is in QR state — sending now will fail until
+    // the user re-pairs. Surface the original error so the UI shows it.
+    throw err;
   }
 }
+
 
 
 /**
