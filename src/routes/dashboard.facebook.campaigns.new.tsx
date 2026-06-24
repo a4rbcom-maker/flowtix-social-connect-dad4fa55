@@ -64,7 +64,7 @@ function NewCampaignPage() {
   // Form
   const [name, setName] = useState("");
   const [accountId, setAccountId] = useState("");
-  const [contentType, setContentType] = useState<"text" | "media">("text");
+  
   const [templateId, setTemplateId] = useState("");
   const [customText, setCustomText] = useState("");
   const [mediaIds, setMediaIds] = useState<Set<string>>(new Set());
