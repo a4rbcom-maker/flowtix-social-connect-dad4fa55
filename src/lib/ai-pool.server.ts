@@ -6,11 +6,13 @@ import crypto from "crypto";
 
 const KIE_BASE_URL = "https://api.kie.ai";
 const KIE_CREDIT_URL = `${KIE_BASE_URL}/api/v1/chat/credit`;
+const DEFAULT_KIE_MODEL = "gemini-2.5-flash";
 
 const KIE_MODEL_ALIASES: Record<string, string> = {
   "gpt-4o": "gemini-2.5-flash",
   "gpt-4o-mini": "gemini-2.5-flash",
   "gemini-2.0-flash": "gemini-2.5-flash",
+  "gemini-2.5-flash-preview": "gemini-2.5-flash",
   "claude-3-5-sonnet": "gemini-2.5-pro",
   "google/gemini-2.5-flash": "gemini-2.5-flash",
   "google/gemini-2.5-pro": "gemini-2.5-pro",
@@ -20,7 +22,11 @@ const KIE_MODEL_ALIASES: Record<string, string> = {
   "openai/gpt-5.2": "gpt-5-2",
   "openai/gpt-5": "gpt-5-2",
   "openai/gpt-5-mini": "gpt-5-2",
+  "gpt-5": "gpt-5-2",
+  "gpt-5.2": "gpt-5-2",
 };
+
+const KIE_MODEL_FALLBACKS = [DEFAULT_KIE_MODEL, "gemini-2.5-pro", "gpt-5-2"];
 
 // kie.ai uses model-scoped chat endpoints, e.g. `/gemini-2.5-flash/v1/chat/completions`.
 // Normalize a model id to its URL slug (drop provider prefix, keep documented punctuation).
@@ -33,6 +39,10 @@ function modelToSlug(model: string): string {
 function normalizeKieModel(model: string): string {
   const trimmed = model.trim();
   return KIE_MODEL_ALIASES[trimmed] ?? trimmed.replace(/^kie\//, "");
+}
+
+function modelCandidates(requested: string): string[] {
+  return [...new Set([normalizeKieModel(requested || DEFAULT_KIE_MODEL), ...KIE_MODEL_FALLBACKS])];
 }
 
 function chatUrlFor(model: string): string {
@@ -95,6 +105,7 @@ async function pickAvailableAccounts(): Promise<PoolAccount[]> {
   const { data } = await supabaseAdmin
     .from("ai_provider_accounts")
     .select("id, api_key_encrypted, priority, status, cooldown_until")
+    .eq("provider", "kie")
     .eq("status", "active")
     .order("priority", { ascending: true })
     .order("last_used_at", { ascending: true, nullsFirst: true });
@@ -105,7 +116,6 @@ async function pickAvailableAccounts(): Promise<PoolAccount[]> {
 }
 
 async function markSuccess(accountId: string) {
-  await supabaseAdmin.rpc as never; // noop placeholder
   await supabaseAdmin
     .from("ai_provider_accounts")
     .update({
@@ -161,6 +171,52 @@ export interface KieResult {
   error: string | null;
 }
 
+type KieResponse = {
+  code?: number;
+  msg?: string;
+  message?: string;
+  output_text?: string;
+  response?: string;
+  text?: string;
+  data?: unknown;
+  choices?: Array<{
+    text?: string;
+    message?: { content?: string | Array<{ text?: string; content?: string }> };
+    delta?: { content?: string };
+  }>;
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+};
+
+function firstText(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (!value || typeof value !== "object") return "";
+  const obj = value as KieResponse;
+  const direct = obj.output_text || obj.response || obj.text || obj.message;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+
+  const choice = obj.choices?.[0];
+  const content = choice?.message?.content;
+  if (typeof content === "string" && content.trim()) return content.trim();
+  if (Array.isArray(content)) {
+    const joined = content.map((part) => part.text || part.content || "").join(" ").trim();
+    if (joined) return joined;
+  }
+  const choiceText = choice?.text || choice?.delta?.content;
+  if (typeof choiceText === "string" && choiceText.trim()) return choiceText.trim();
+
+  return firstText(obj.data);
+}
+
+function usageFrom(value: unknown): { prompt_tokens?: number; completion_tokens?: number } | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const obj = value as KieResponse;
+  return obj.usage ?? usageFrom(obj.data);
+}
+
+function isModelLevelFailure(statusOrCode: number, message: string): boolean {
+  return [404, 410, 422].includes(statusOrCode) || /model.*(not supported|unavailable|not found)|unsupported model/i.test(message);
+}
+
 export async function callKieChat(opts: {
   model: string;
   messages: ChatMessage[];
@@ -170,14 +226,15 @@ export async function callKieChat(opts: {
   tier?: "simple" | "smart" | "negotiation";
 }): Promise<KieResult> {
   const started = Date.now();
-  const model = normalizeKieModel(opts.model || "gemini-2.5-flash");
+  const requestedModel = normalizeKieModel(opts.model || DEFAULT_KIE_MODEL);
+  const candidates = modelCandidates(requestedModel);
 
   const accounts = await pickAvailableAccounts();
 
   if (accounts.length === 0) {
     const result: KieResult = {
       text: "",
-      model,
+      model: requestedModel,
       accountId: null,
       tokensIn: null,
       tokensOut: null,
@@ -190,95 +247,97 @@ export async function callKieChat(opts: {
 
   let lastError = "unknown";
   let lastStatus = 0;
+  let lastModel = requestedModel;
 
-  for (const account of accounts.slice(0, 3)) {
-    let apiKey: string;
-    try {
-      apiKey = decryptKey(account.api_key_encrypted);
-    } catch (err) {
-      lastError = `decrypt failed: ${err instanceof Error ? err.message : "?"}`;
-      await markFailure(account.id, 0, lastError);
-      continue;
-    }
-
-    try {
-      const res = await fetch(chatUrlFor(model), {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          messages: opts.messages,
-          max_tokens: opts.maxTokens ?? 1024,
-          temperature: opts.temperature ?? 0.7,
-          stream: false,
-        }),
-      });
-
-      if (!res.ok) {
-        lastStatus = res.status;
-        lastError = `kie ${res.status}: ${(await res.text()).slice(0, 200)}`;
-        await markFailure(account.id, res.status, lastError);
-        // 401/402/429/5xx → try next account
-        continue;
-      }
-
-
-      const j = (await res.json()) as {
-        code?: number;
-        msg?: string;
-        choices?: Array<{ message?: { content?: string } }>;
-        usage?: { prompt_tokens?: number; completion_tokens?: number };
-      };
-
-      // kie.ai sometimes returns provider/application errors as HTTP 200
-      // with { code, msg, data:null }. Treat those as real failures instead
-      // of logging a vague "empty response".
-      if (typeof j.code === "number" && j.code !== 200) {
-        lastStatus = j.code;
-        lastError = `kie ${j.code}: ${j.msg || "provider rejected request"}`;
-
-        if ([401, 402, 403, 429].includes(j.code) || j.code >= 500) {
-          await markFailure(account.id, j.code, lastError);
-          continue;
-        }
-
-        // Non-account failures such as unsupported model are not fixed by
-        // rotating keys.
-        break;
-      }
-
-      const text = j.choices?.[0]?.message?.content?.trim() ?? "";
-      if (!text) {
-        lastError = "empty response";
+  for (const model of candidates) {
+    lastModel = model;
+    for (const account of accounts.slice(0, 3)) {
+      let apiKey: string;
+      try {
+        apiKey = decryptKey(account.api_key_encrypted);
+      } catch (err) {
+        lastError = `decrypt failed: ${err instanceof Error ? err.message : "?"}`;
         await markFailure(account.id, 0, lastError);
         continue;
       }
 
-      await markSuccess(account.id);
+      try {
+        const res = await fetch(chatUrlFor(model), {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model,
+            messages: opts.messages,
+            max_tokens: opts.maxTokens ?? 1024,
+            temperature: opts.temperature ?? 0.7,
+            stream: false,
+          }),
+        });
 
-      const result: KieResult = {
-        text,
-        model,
-        accountId: account.id,
-        tokensIn: j.usage?.prompt_tokens ?? null,
-        tokensOut: j.usage?.completion_tokens ?? null,
-        latencyMs: Date.now() - started,
-        error: text ? null : "empty response",
-      };
-      await logUsage({ ...opts, result });
-      return result;
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : "network failure";
-      await markFailure(account.id, 0, lastError);
+        const rawBody = await res.text();
+        if (!res.ok) {
+          lastStatus = res.status;
+          lastError = `kie ${res.status}: ${rawBody.slice(0, 200)}`;
+          if (isModelLevelFailure(res.status, rawBody)) break;
+          await markFailure(account.id, res.status, lastError);
+          continue;
+        }
+
+        let j: KieResponse = {};
+        try {
+          j = rawBody ? (JSON.parse(rawBody) as KieResponse) : {};
+        } catch {
+          j = { text: rawBody };
+        }
+
+        // kie.ai sometimes returns provider/application errors as HTTP 200
+        // with { code, msg, data:null }. Treat those as real failures instead
+        // of logging a vague "empty response".
+        if (typeof j.code === "number" && j.code !== 200) {
+          lastStatus = j.code;
+          lastError = `kie ${j.code}: ${j.msg || "provider rejected request"}`;
+
+          if (isModelLevelFailure(j.code, j.msg || "")) break;
+          if ([401, 402, 403, 429].includes(j.code) || j.code >= 500) {
+            await markFailure(account.id, j.code, lastError);
+            continue;
+          }
+          continue;
+        }
+
+        const text = firstText(j);
+        if (!text) {
+          lastError = `empty response from ${model}`;
+          continue;
+        }
+
+        await markSuccess(account.id);
+        const usage = usageFrom(j);
+
+        const result: KieResult = {
+          text,
+          model,
+          accountId: account.id,
+          tokensIn: usage?.prompt_tokens ?? null,
+          tokensOut: usage?.completion_tokens ?? null,
+          latencyMs: Date.now() - started,
+          error: null,
+        };
+        await logUsage({ ...opts, result });
+        return result;
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : "network failure";
+        await markFailure(account.id, 0, lastError);
+      }
     }
   }
 
   const result: KieResult = {
     text: "",
-    model,
+    model: lastModel,
     accountId: null,
     tokensIn: null,
     tokensOut: null,
