@@ -552,7 +552,10 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       });
 
       if (!matched) {
-        handleAiAutoReply({
+        // IMPORTANT: must await — on Cloudflare Workers, detached promises
+        // are cancelled the moment the Response is returned, so a fire-and-forget
+        // handleAiAutoReply() never actually runs (no wa_ai_logs row, no reply).
+        await handleAiAutoReply({
           userId,
           sessionId,
           conversationId,
