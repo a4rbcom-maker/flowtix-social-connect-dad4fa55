@@ -1,7 +1,8 @@
 // Server-only: AI reply generation for WhatsApp using kie.ai (multi-key pool).
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { waBridge } from "./wa-bridge.server";
+import { sendTextWithReconnect } from "./wa-bridge.server";
+import { deriveWebhookUrl } from "./wa-helpers.server";
 import { callKieChat, type ChatMessage } from "./ai-pool.server";
 
 interface AiSettings {
@@ -32,6 +33,23 @@ function isWithinWorkingHours(start?: string | null, end?: string | null): boole
   const s = sh * 60 + (sm || 0);
   const e = eh * 60 + (em || 0);
   return s <= e ? cur >= s && cur <= e : cur >= s || cur <= e;
+}
+
+async function sendAiText(sessionId: string, userId: string, phone: string, text: string) {
+  const webhookUrl = await deriveWebhookUrl();
+  return sendTextWithReconnect(sessionId, phone, text, {
+    webhookUrl: webhookUrl ?? undefined,
+    tenantId: userId,
+  });
+}
+
+async function markSessionNeedsReconnect(userId: string, err: unknown) {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  if (!/session.*not.?found|الجلسة غير موجودة/i.test(message)) return;
+  await supabaseAdmin
+    .from("wa_sessions")
+    .update({ status: "qr", qr_data_url: null, last_seen_at: new Date().toISOString() })
+    .eq("user_id", userId);
 }
 
 /**
@@ -99,7 +117,7 @@ export async function handleAiAutoReply(opts: {
     // Welcome message for first-ever inbound
     if (isFirstMessage && settings.ai_welcome_message?.trim()) {
       try {
-        const welcomeRes = await waBridge.sendText(sessionId, phone, settings.ai_welcome_message);
+        const welcomeRes = await sendAiText(sessionId, userId, phone, settings.ai_welcome_message);
         const providerMessageId = typeof welcomeRes?.id === "string" ? welcomeRes.id : null;
         const welcomeAt = new Date().toISOString();
         await supabaseAdmin.from("wa_messages").insert({
@@ -126,6 +144,7 @@ export async function handleAiAutoReply(opts: {
           messageAt: welcomeAt,
         });
       } catch (err) {
+        await markSessionNeedsReconnect(userId, err);
         console.error("[wa-ai] welcome send failed:", err);
       }
     }
@@ -185,7 +204,7 @@ export async function handleAiAutoReply(opts: {
 
     if (aiText) {
       try {
-        const sendRes = await waBridge.sendText(sessionId, phone, aiText);
+        const sendRes = await sendAiText(sessionId, userId, phone, aiText);
         const providerMessageId = typeof sendRes?.id === "string" ? sendRes.id : null;
         const aiAt = new Date().toISOString();
         await supabaseAdmin.from("wa_messages").insert({
@@ -213,6 +232,7 @@ export async function handleAiAutoReply(opts: {
         });
       } catch (err) {
         errMsg = err instanceof Error ? err.message : "Bridge send failed";
+        await markSessionNeedsReconnect(userId, err);
         aiText = "";
       }
     }
