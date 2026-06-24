@@ -325,7 +325,14 @@ export const connectFacebook = createServerFn({ method: "POST" })
       };
     } catch (err) {
       console.error("[connectFacebook] failed:", err);
-      if (isFacebookErrorOfType(err, "app_rate_limited")) {
+      // Save-only fallback: persist the token even when Meta's verification
+      // fails (rate limit, permission denied, network blip, page tokens that
+      // don't return /me?fields=name, etc.). The token is still useful for
+      // later Graph calls (extract comments, fetch posts, ...). The only
+      // hard-block case is a token Meta rejects outright as invalid/expired.
+      const isHardInvalid =
+        isFacebookErrorOfType(err, "invalid_token") || isFacebookErrorOfType(err, "auth_expired");
+      if (!isHardInvalid) {
         const { error: dbError } = await supabase.from("facebook_connections").upsert(
           {
             user_id: userId,
