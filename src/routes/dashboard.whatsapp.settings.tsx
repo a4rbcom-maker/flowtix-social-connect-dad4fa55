@@ -38,7 +38,30 @@ function WaSettingsPage() {
   const [sound, setSound] = useState(true);
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const [bridgeOk, setBridgeOk] = useState<boolean | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<WaWebhookTestResult | null>(null);
   const ping = useServerFn(pingWaBridgeUser);
+  const runTest = useServerFn(testWaWebhook);
+
+  const onRunTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await runTest({ data: {} as any });
+      setTestResult(r);
+      if (r.ok) toast.success(lang === "ar" ? "تم استلام الرسالة بنجاح" : "Webhook delivery succeeded");
+      else toast.error(lang === "ar" ? "فشل اختبار الـ webhook" : "Webhook test failed");
+    } catch (e) {
+      setTestResult({
+        ok: false, httpStatus: 0, responseBody: "", saved: 0,
+        sessionId: null, messageStored: false,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      toast.error(lang === "ar" ? "خطأ في تشغيل الاختبار" : "Test failed to run");
+    } finally {
+      setTesting(false);
+    }
+  };
 
   useEffect(() => {
     setOrigin(typeof window !== "undefined" ? window.location.origin : "");
