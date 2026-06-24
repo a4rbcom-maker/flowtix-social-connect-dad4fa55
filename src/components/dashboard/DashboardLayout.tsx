@@ -96,6 +96,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     const canStayOnDashboard = adminAllowedDashboardPaths.some((path) =>
       location.pathname === path || location.pathname.startsWith(`${path}/`),
     );
+    console.log("[DashLayout] admin gate", { path: location.pathname, isAdmin, isAdminLoading, canStayOnDashboard });
     if (!isAdminLoading && isAdmin && !canStayOnDashboard) {
       navigate({ to: "/admin", replace: true });
     }
