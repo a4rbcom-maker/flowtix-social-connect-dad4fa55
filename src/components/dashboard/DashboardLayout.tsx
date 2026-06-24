@@ -81,7 +81,13 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     "/dashboard/facebook/campaigns",
     "/dashboard/facebook/jobs",
     "/dashboard/facebook/history",
+    "/dashboard/whatsapp",
     "/dashboard/whatsapp/accounts",
+    "/dashboard/whatsapp/inbox",
+    "/dashboard/whatsapp/bot",
+    "/dashboard/whatsapp/automation",
+    "/dashboard/whatsapp/contacts",
+    "/dashboard/whatsapp/settings",
   ];
 
   // Admins use the admin panel by default, but can open the Facebook bot flow
