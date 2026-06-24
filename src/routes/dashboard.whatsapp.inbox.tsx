@@ -232,14 +232,8 @@ function InboxPage() {
     enabled: !!user?.id,
   });
 
-  const resetMut = useMutation({
-    mutationFn: () => resetReceiverFn(),
-    onSuccess: () => {
-      toast.success(isAr ? "تم تجهيز جلسة جديدة. امسح رمز QR لإكمال الربط." : "New session prepared. Scan QR to finish pairing.");
-      navigate({ to: "/dashboard/whatsapp/accounts" });
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
+
+
 
   // Realtime
   useEffect(() => {
