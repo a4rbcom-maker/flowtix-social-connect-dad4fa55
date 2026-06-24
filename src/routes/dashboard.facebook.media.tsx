@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Upload, Trash2, Image as ImageIcon, Video, Loader2 } from "lucide-react";
+import { Upload, Trash2, Image as ImageIcon, Video, Loader2, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -34,6 +34,12 @@ function MediaPage() {
   const [items, setItems] = useState<Asset[]>([]);
   const [uploading, setUploading] = useState(false);
 
+  const RETENTION_DAYS = 15;
+  const daysLeft = (createdAt: string) => {
+    const ageMs = Date.now() - new Date(createdAt).getTime();
+    return Math.max(0, RETENTION_DAYS - Math.floor(ageMs / (24 * 60 * 60 * 1000)));
+  };
+
   const t = lang === "ar"
     ? {
         title: "مكتبة الوسائط",
@@ -45,6 +51,8 @@ function MediaPage() {
         uploaded: "تم الرفع",
         deleted: "تم الحذف",
         tooBig: "الملف كبير جداً (الحد الأقصى 50 ميجا)",
+        retentionNotice: `تنبيه: يتم حذف جميع ملفات الوسائط تلقائيًا من الخادم بعد ${RETENTION_DAYS} يومًا من تاريخ الرفع لتوفير المساحة. احفظ نسخة محليًا إذا كنت بحاجة لها.`,
+        daysLeft: (n: number) => (n === 0 ? "سيُحذف قريبًا" : `${n} يوم متبقي`),
       }
     : {
         title: "Media Library",
@@ -56,6 +64,8 @@ function MediaPage() {
         uploaded: "Uploaded",
         deleted: "Deleted",
         tooBig: "File too large (max 50 MB)",
+        retentionNotice: `Notice: all media is automatically deleted from the server ${RETENTION_DAYS} days after upload to save space. Keep a local copy if needed.`,
+        daysLeft: (n: number) => (n === 0 ? "deleting soon" : `${n} day${n === 1 ? "" : "s"} left`),
       };
 
   useEffect(() => { if (!loading && !user) navigate({ to: "/login" }); }, [user, loading, navigate]);
@@ -133,6 +143,11 @@ function MediaPage() {
           </label>
         </div>
 
+        <div className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
+          <Clock className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{t.retentionNotice}</span>
+        </div>
+
         {items.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border p-10 text-center text-muted-foreground">
             <ImageIcon className="w-10 h-10 mx-auto mb-3 opacity-40" />
@@ -140,7 +155,9 @@ function MediaPage() {
           </div>
         ) : (
           <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-            {items.map((a) => (
+            {items.map((a) => {
+              const left = daysLeft(a.created_at);
+              return (
               <div key={a.id} className="group relative rounded-xl border border-border bg-card overflow-hidden hover:shadow-md transition-shadow">
                 <div className="aspect-square bg-muted flex items-center justify-center overflow-hidden">
                   {a.kind === "image" ? (
@@ -154,7 +171,12 @@ function MediaPage() {
                 </div>
                 <div className="p-2">
                   <p className="text-xs text-foreground line-clamp-1">{a.name}</p>
-                  <p className="text-[10px] text-muted-foreground">{(a.size_bytes / 1024).toFixed(0)} KB</p>
+                  <div className="flex items-center justify-between gap-1 mt-0.5">
+                    <p className="text-[10px] text-muted-foreground">{(a.size_bytes / 1024).toFixed(0)} KB</p>
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-medium ${left <= 3 ? "text-destructive" : "text-muted-foreground"}`}>
+                      <Clock className="w-3 h-3" /> {t.daysLeft(left)}
+                    </span>
+                  </div>
                 </div>
                 <button
                   onClick={() => handleDelete(a)}
@@ -164,7 +186,8 @@ function MediaPage() {
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
