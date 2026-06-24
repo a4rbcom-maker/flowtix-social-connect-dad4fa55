@@ -221,7 +221,67 @@ function ContactsPage() {
           </div>
         </div>
 
+        {/* Extract from text */}
+        <div className="rounded-2xl border border-border/50 bg-card p-5 shadow-sm">
+          <div className="mb-3 flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <FileText className="h-5 w-5" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-foreground">{T.textTitle}</h3>
+              <p className="text-xs text-muted-foreground">{T.textSubtitle}</p>
+            </div>
+          </div>
+          <Textarea
+            value={textInput}
+            onChange={(e) => setTextInput(e.target.value)}
+            placeholder={T.textPlaceholder}
+            rows={6}
+            className="resize-y font-mono text-sm"
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button onClick={runTextExtract} disabled={!textInput.trim()}>
+              <Wand2 className="h-4 w-4" />
+              {T.textRun}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => { setTextInput(""); setTextPhones([]); }}
+              disabled={!textInput && !textPhones.length}
+            >
+              {T.clear}
+            </Button>
+            {textPhones.length > 0 && (
+              <>
+                <span className="text-xs text-muted-foreground">
+                  {textPhones.length} {T.textFound}
+                </span>
+                <Button size="sm" variant="outline" onClick={copyTextPhones}>
+                  <Copy className="h-4 w-4" />
+                  {T.copyAll}
+                </Button>
+              </>
+            )}
+          </div>
+          {textPhones.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2 rounded-xl border border-border/40 bg-muted/30 p-3">
+              {textPhones.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => { navigator.clipboard.writeText(p); toast.success(T.copied); }}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-background px-3 py-1 font-mono text-xs text-foreground shadow-sm transition hover:bg-primary/10"
+                >
+                  <Phone className="h-3 w-3 text-primary" />
+                  {p}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Filters */}
+
         <div className="rounded-2xl border border-border/50 bg-card p-5 shadow-sm">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1.5">
