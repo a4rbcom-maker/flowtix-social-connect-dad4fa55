@@ -11,7 +11,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-type Action = "state" | "connect" | "disconnect" | "ping";
+type Action = "state" | "connect" | "disconnect" | "ping" | "reset";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: corsHeaders });
@@ -47,6 +47,7 @@ export async function handleWaClientApi(request: Request) {
     if (action === "ping") return json(await doPing());
     if (action === "state") return json(await getState(supabase, userId));
     if (action === "connect") return json(await connect(supabase, userId));
+    if (action === "reset") return json(await reset(supabase, userId));
     if (action === "disconnect") return json(await disconnect(supabase, userId));
     return json({ error: "Invalid action" }, 400);
   } catch (err) {
@@ -112,6 +113,36 @@ async function disconnect(supabase: ReturnType<typeof getSupabaseForToken>, user
     await supabase.from("wa_sessions").delete().eq("user_id", userId);
   }
   return { ok: true };
+}
+
+async function reset(supabase: ReturnType<typeof getSupabaseForToken>, userId: string) {
+  const { data: existing } = await supabase
+    .from("wa_sessions")
+    .select("session_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (existing?.session_id) {
+    try { await waBridge.deleteSession(existing.session_id); } catch { /* best effort */ }
+  }
+
+  const sessionId = `flowtix-${userId.replace(/-/g, "").slice(0, 16)}-${Date.now().toString(36)}`;
+  await waBridge.createSession(sessionId, {
+    webhookUrl: (await deriveWebhookUrl()) ?? undefined,
+    tenantId: userId,
+  });
+
+  const now = new Date().toISOString();
+  if (existing) {
+    await supabase
+      .from("wa_sessions")
+      .update({ session_id: sessionId, status: "qr", qr_data_url: null, phone_number: null, last_seen_at: now })
+      .eq("user_id", userId);
+  } else {
+    await supabase.from("wa_sessions").insert({ user_id: userId, session_id: sessionId, status: "qr" });
+  }
+
+  return readState(supabase, userId, sessionId);
 }
 
 async function readState(supabase: ReturnType<typeof getSupabaseForToken>, userId: string, sessionId: string) {

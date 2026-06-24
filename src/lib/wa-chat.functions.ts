@@ -5,6 +5,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { waBridge, BridgeError, sendTextWithReconnect } from "./wa-bridge.server";
 import { deriveWebhookUrl } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
+import { isBridgeSessionMissingError, resetWaSessionAfterBridgeLoss } from "./wa-session-repair.server";
 import {
   asRecord,
   cleanMessageText,
@@ -121,7 +122,6 @@ export const getConversationMessages = createServerFn({ method: "POST" })
       .from("wa_messages")
       .select("id, remote_jid, direction, status, text_body, msg_type, media_url, wa_timestamp, created_at, raw")
       .eq("user_id", userId)
-      .eq("session_id", sess.session_id)
       .eq("remote_jid", data.remoteJid)
       .order("wa_timestamp", { ascending: true })
       .limit(1000);
@@ -258,6 +258,13 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         raw: providerMessageId ? ({ bridgeMessageId: providerMessageId } as never) : null,
       });
     } catch (err) {
+      if (isBridgeSessionMissingError(err)) {
+        await resetWaSessionAfterBridgeLoss({
+          userId,
+          oldSessionId: sess.session_id,
+          reason: "manual chat send failed",
+        });
+      }
       const msg =
         err instanceof BridgeError ? err.message : err instanceof Error ? err.message : "Bridge error";
       console.error("[wa-chat] sendText failed:", msg, "to=", to);

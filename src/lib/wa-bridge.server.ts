@@ -165,6 +165,10 @@ export interface BridgeQrResponse {
 
 export const waBridge = {
   health: () => bridgeFetch<{ status: string; version?: string }>("/api/health"),
+  listSessions: () =>
+    bridgeFetch<{ sessions?: Array<{ id?: string; connected?: boolean; tenantId?: string; phone?: string; phoneNumber?: string }> }>(
+      "/api/sessions",
+    ),
   // Bot-Xtra: POST /api/sessions creates a session bound to a tenantId+webhookUrl.
   // For an existing session it returns { status: "already_connected" } and does NOT
   // update webhook/tenant — you must DELETE then recreate to change them.
@@ -223,11 +227,13 @@ export async function sendTextWithReconnect(
   } catch (err) {
     if (!(err instanceof BridgeError)) throw err;
 
-    // Only consider rebuilding the session for hard "session-gone" signals.
-    // A bare 401 from a transient bridge hiccup is NOT a reason to delete a
-    // healthy session — doing so would force the user to re-scan the QR.
+    // Only consider hard "session-gone" signals. Do NOT delete/recreate the
+    // same session id here: Bot-Xtra keeps deleted ids in a short release
+    // window, and immediate reuse can create orphan bridge sessions while our
+    // DB still points at the dead id. Callers that know the user id reset the
+    // DB to a fresh QR session instead.
     const sessionGoneByMessage =
-      /session.*(not.?found|disconnected|closed|logged.?out)/i.test(err.message);
+      /session.*(not.?found|closed|logged.?out)/i.test(err.message);
     const maybeGone = err.status === 404 || err.status === 401 || sessionGoneByMessage;
     if (!maybeGone) throw err;
 
@@ -252,18 +258,7 @@ export async function sendTextWithReconnect(
         }
       }
     }
-    if (!confirmedDead) throw err;
-
-    console.warn(`[wa-bridge] session ${id} confirmed dead; recreating (user will need to re-scan QR)`);
-    try { await waBridge.deleteSession(id); } catch { /* ignore */ }
-    try {
-      await waBridge.createSession(id, recover);
-    } catch (createErr) {
-      console.error("[wa-bridge] auto-reconnect createSession failed:", createErr);
-      throw err;
-    }
-    // After recreate, the session is in QR state — sending now will fail until
-    // the user re-pairs. Surface the original error so the UI shows it.
+    if (confirmedDead) console.warn(`[wa-bridge] session ${id} confirmed dead; fresh QR session required`);
     throw err;
   }
 }

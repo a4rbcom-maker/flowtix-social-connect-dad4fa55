@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendTextWithReconnect } from "./wa-bridge.server";
 import { deriveWebhookUrl } from "./wa-helpers.server";
 import { callKieChat, type ChatMessage } from "./ai-pool.server";
+import { isBridgeSessionMissingError, resetWaSessionAfterBridgeLoss } from "./wa-session-repair.server";
 
 interface AiSettings {
   ai_enabled: boolean;
@@ -44,14 +45,12 @@ async function sendAiText(sessionId: string, userId: string, phone: string, text
 }
 
 async function markSessionNeedsReconnect(userId: string, sessionId: string, err: unknown) {
-  const message = err instanceof Error ? err.message : String(err ?? "");
-  const status = typeof err === "object" && err && "status" in err ? Number((err as { status?: unknown }).status) : 0;
-  if (status !== 404 && !/(session|جلسة|الجلسة).*(not.?found|غير موجودة)|not.?found/i.test(message)) return;
-  const update = { status: "qr", qr_data_url: null, last_seen_at: new Date().toISOString() };
-  const bySession = await supabaseAdmin.from("wa_sessions").update(update).eq("session_id", sessionId);
-  if (bySession.error) console.error("[wa-ai] failed to mark session by session_id:", bySession.error.message);
-  const byUser = await supabaseAdmin.from("wa_sessions").update(update).eq("user_id", userId);
-  if (byUser.error) console.error("[wa-ai] failed to mark session by user_id:", byUser.error.message);
+  if (!isBridgeSessionMissingError(err)) return;
+  await resetWaSessionAfterBridgeLoss({
+    userId,
+    oldSessionId: sessionId,
+    reason: "AI reply send failed",
+  });
 }
 
 /**
