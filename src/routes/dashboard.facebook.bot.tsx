@@ -1682,8 +1682,35 @@ function BotAccountsPage() {
           </DialogHeader>
           <div className="max-h-[420px] overflow-y-auto">
             {!groupsResult || groupsResult.groups.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">{t.groupsEmpty}</p>
+              <div className="space-y-4 py-4">
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-200">
+                  <p className="font-semibold mb-1">
+                    {lang === "ar" ? "لماذا لم تظهر الجروبات؟" : "Why no groups?"}
+                  </p>
+                  <p className="leading-relaxed">
+                    {lang === "ar"
+                      ? "فيسبوك يحجب طلبات استخراج الجروبات القادمة من مراكز البيانات (Cloudflare/Workers). الكوكيز سليمة لكن قائمة الجروبات تحتاج متصفح حقيقي على IP منزلي عبر VPS Worker (المرحلة 4)."
+                      : "Facebook blocks group-list requests from datacenters (Cloudflare/Workers). Your cookies are valid, but reading the groups list needs a real browser on a residential IP via the VPS Worker (Phase 4)."}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
+                  <p className="font-semibold mb-2 text-foreground">
+                    {lang === "ar" ? "الحل الآن — أضف الجروبات يدويًا" : "Solution now — add groups manually"}
+                  </p>
+                  <ol className="list-decimal space-y-1 ps-5 text-muted-foreground leading-relaxed">
+                    <li>{lang === "ar" ? "افتح صفحة «جروباتي المرتبطة»." : "Open \"My Linked Groups\" page."}</li>
+                    <li>{lang === "ar" ? "الصق رابط الجروب أو معرّفه (Group ID)." : "Paste the group URL or its ID."}</li>
+                    <li>{lang === "ar" ? "سيتم استخدامها مباشرة في الحملات والإرسال." : "It will be used immediately in campaigns and posting."}</li>
+                  </ol>
+                  <Button asChild size="sm" className="mt-3">
+                    <Link to="/dashboard/facebook/groups" onClick={() => setGroupsResult(null)}>
+                      {lang === "ar" ? "إدارة الجروبات يدويًا" : "Manage groups manually"}
+                    </Link>
+                  </Button>
+                </div>
+              </div>
             ) : (
+
               <ul className="divide-y divide-border/50">
                 {groupsResult.groups.map((g) => (
                   <li key={g.id} className="flex items-center justify-between gap-3 py-2.5">
