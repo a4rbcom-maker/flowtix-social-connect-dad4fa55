@@ -214,9 +214,28 @@ export async function callKieChat(opts: {
 
 
       const j = (await res.json()) as {
+        code?: number;
+        msg?: string;
         choices?: Array<{ message?: { content?: string } }>;
         usage?: { prompt_tokens?: number; completion_tokens?: number };
       };
+
+      // kie.ai sometimes returns provider/application errors as HTTP 200
+      // with { code, msg, data:null }. Treat those as real failures so the
+      // Lovable AI fallback runs instead of logging a vague "empty response".
+      if (typeof j.code === "number" && j.code !== 200) {
+        lastStatus = j.code;
+        lastError = `kie ${j.code}: ${j.msg || "provider rejected request"}`;
+
+        if ([401, 402, 403, 429].includes(j.code) || j.code >= 500) {
+          await markFailure(account.id, j.code, lastError);
+          continue;
+        }
+
+        // Non-account failures such as unsupported model are not fixed by
+        // rotating keys, so jump straight to the Gateway fallback.
+        break;
+      }
 
       const text = j.choices?.[0]?.message?.content?.trim() ?? "";
       if (!text) {
