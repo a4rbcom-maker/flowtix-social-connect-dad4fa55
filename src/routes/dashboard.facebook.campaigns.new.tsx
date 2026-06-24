@@ -276,6 +276,39 @@ function NewCampaignPage() {
     };
   };
 
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    if (file.size > 50 * 1024 * 1024) {
+      toast.error(lang === "ar" ? "حجم الملف أكبر من 50MB" : "File exceeds 50MB");
+      return;
+    }
+    const kind: "image" | "video" = file.type.startsWith("video/") ? "video" : "image";
+    setUploading(true);
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
+      const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`;
+      const { error: upErr } = await supabase.storage.from("fb-media").upload(path, file, {
+        contentType: file.type, upsert: false,
+      });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("fb-media").getPublicUrl(path);
+      const row = await callFn<Media>(recordMediaAsset, {
+        kind, storagePath: path, publicUrl: pub.publicUrl,
+        name: file.name, sizeBytes: file.size, mimeType: file.type,
+      });
+      setMedia((prev) => [row, ...prev]);
+      setMediaIds((prev) => { const n = new Set(prev); n.add(row.id); return n; });
+      setContentType("media");
+      toast.success(lang === "ar" ? "تم الرفع" : "Uploaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
   const handleSave = async (startNow: boolean) => {
     if (!validate()) return;
     startNow ? setSavingAndStart(true) : setSaving(true);
