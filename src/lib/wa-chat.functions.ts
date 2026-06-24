@@ -50,12 +50,8 @@ export const listConversations = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<ConversationRow[]> => {
     const { supabase, userId } = context;
-    const { data: sess } = await supabase
-      .from("wa_sessions")
-      .select("session_id")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!sess?.session_id) return [];
+
+
 
     const { data, error } = await supabase
       .from("wa_conversations")
