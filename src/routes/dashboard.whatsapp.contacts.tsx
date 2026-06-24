@@ -1,19 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Download, Copy, Loader2, Users, Search, Phone } from "lucide-react";
+import { Download, Copy, Loader2, Users, Search, Phone, FileText, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useI18n } from "@/lib/i18n";
 import { extractInboundContacts, type ExtractedContact } from "@/lib/wa-chat.functions";
+import { extractAllEgyptPhones } from "@/lib/egypt-enrich";
 
 export const Route = createFileRoute("/dashboard/whatsapp/contacts")({
   ssr: false,
   component: ContactsPage,
 });
+
 
 function isoStart(date: string) {
   return new Date(`${date}T00:00:00`).toISOString();
@@ -40,6 +43,8 @@ function ContactsPage() {
   const [rows, setRows] = useState<ExtractedContact[]>([]);
   const [searched, setSearched] = useState(false);
   const [q, setQ] = useState("");
+  const [textInput, setTextInput] = useState("");
+  const [textPhones, setTextPhones] = useState<string[]>([]);
 
   const T = lang === "ar"
     ? {
@@ -70,6 +75,13 @@ function ContactsPage() {
         first: "أول رسالة",
         last: "آخر رسالة",
         copyOne: "نسخ",
+        textTitle: "استخراج الأرقام من نص",
+        textSubtitle: "الصق أي نص (تعليقات، رسائل، قوائم) واستخرج كل أرقام واتساب المصرية تلقائياً",
+        textPlaceholder: "الصق النص هنا...",
+        textRun: "استخراج الأرقام",
+        textEmpty: "لم يتم العثور على أي رقم مصري في النص.",
+        textFound: "رقم تم استخراجه",
+        clear: "مسح",
       }
     : {
         title: "Extract WhatsApp Numbers",
@@ -99,7 +111,32 @@ function ContactsPage() {
         first: "First message",
         last: "Last message",
         copyOne: "Copy",
+        textTitle: "Extract numbers from text",
+        textSubtitle: "Paste any text (comments, messages, lists) and pull out all Egyptian WhatsApp numbers",
+        textPlaceholder: "Paste text here...",
+        textRun: "Extract numbers",
+        textEmpty: "No Egyptian phone numbers found in this text.",
+        textFound: "numbers extracted",
+        clear: "Clear",
       };
+
+  const runTextExtract = () => {
+    const found = extractAllEgyptPhones(textInput);
+    setTextPhones(found);
+    if (found.length === 0) {
+      toast.info(T.textEmpty);
+    } else {
+      toast.success(`${found.length} ${T.textFound}`);
+    }
+  };
+
+  const copyTextPhones = async () => {
+    if (!textPhones.length) return;
+    await navigator.clipboard.writeText(textPhones.join("\n"));
+    toast.success(T.copied + ` (${textPhones.length})`);
+  };
+
+
 
   const setRange = (days: number) => {
     setFrom(daysAgoStr(days));
@@ -184,7 +221,67 @@ function ContactsPage() {
           </div>
         </div>
 
+        {/* Extract from text */}
+        <div className="rounded-2xl border border-border/50 bg-card p-5 shadow-sm">
+          <div className="mb-3 flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <FileText className="h-5 w-5" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-foreground">{T.textTitle}</h3>
+              <p className="text-xs text-muted-foreground">{T.textSubtitle}</p>
+            </div>
+          </div>
+          <Textarea
+            value={textInput}
+            onChange={(e) => setTextInput(e.target.value)}
+            placeholder={T.textPlaceholder}
+            rows={6}
+            className="resize-y font-mono text-sm"
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button onClick={runTextExtract} disabled={!textInput.trim()}>
+              <Wand2 className="h-4 w-4" />
+              {T.textRun}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => { setTextInput(""); setTextPhones([]); }}
+              disabled={!textInput && !textPhones.length}
+            >
+              {T.clear}
+            </Button>
+            {textPhones.length > 0 && (
+              <>
+                <span className="text-xs text-muted-foreground">
+                  {textPhones.length} {T.textFound}
+                </span>
+                <Button size="sm" variant="outline" onClick={copyTextPhones}>
+                  <Copy className="h-4 w-4" />
+                  {T.copyAll}
+                </Button>
+              </>
+            )}
+          </div>
+          {textPhones.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2 rounded-xl border border-border/40 bg-muted/30 p-3">
+              {textPhones.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => { navigator.clipboard.writeText(p); toast.success(T.copied); }}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-background px-3 py-1 font-mono text-xs text-foreground shadow-sm transition hover:bg-primary/10"
+                >
+                  <Phone className="h-3 w-3 text-primary" />
+                  {p}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Filters */}
+
         <div className="rounded-2xl border border-border/50 bg-card p-5 shadow-sm">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1.5">
