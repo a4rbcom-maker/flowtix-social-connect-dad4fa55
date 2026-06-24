@@ -79,8 +79,8 @@ function InboxPage() {
   const isMobile = useIsMobile();
   const sendFn = useServerFn(sendChatMessage);
   const markReadFn = useServerFn(markConversationRead);
-  const resetReceiverFn = useServerFn(resetWaReceiver);
-  const navigate = useNavigate();
+
+
 
   const [activeJid, setActiveJid] = useState<string | null>(null);
   const [search, setSearch] = useState("");
