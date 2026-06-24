@@ -143,6 +143,11 @@ function MediaPage() {
           </label>
         </div>
 
+        <div className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
+          <Clock className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{t.retentionNotice}</span>
+        </div>
+
         {items.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border p-10 text-center text-muted-foreground">
             <ImageIcon className="w-10 h-10 mx-auto mb-3 opacity-40" />
@@ -150,7 +155,9 @@ function MediaPage() {
           </div>
         ) : (
           <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-            {items.map((a) => (
+            {items.map((a) => {
+              const left = daysLeft(a.created_at);
+              return (
               <div key={a.id} className="group relative rounded-xl border border-border bg-card overflow-hidden hover:shadow-md transition-shadow">
                 <div className="aspect-square bg-muted flex items-center justify-center overflow-hidden">
                   {a.kind === "image" ? (
@@ -164,7 +171,12 @@ function MediaPage() {
                 </div>
                 <div className="p-2">
                   <p className="text-xs text-foreground line-clamp-1">{a.name}</p>
-                  <p className="text-[10px] text-muted-foreground">{(a.size_bytes / 1024).toFixed(0)} KB</p>
+                  <div className="flex items-center justify-between gap-1 mt-0.5">
+                    <p className="text-[10px] text-muted-foreground">{(a.size_bytes / 1024).toFixed(0)} KB</p>
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-medium ${left <= 3 ? "text-destructive" : "text-muted-foreground"}`}>
+                      <Clock className="w-3 h-3" /> {t.daysLeft(left)}
+                    </span>
+                  </div>
                 </div>
                 <button
                   onClick={() => handleDelete(a)}
