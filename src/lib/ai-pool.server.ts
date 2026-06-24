@@ -197,7 +197,7 @@ export async function callKieChat(opts: {
     }
 
     try {
-      const res = await fetch(chatUrlFor(opts.model), {
+      const res = await fetch(chatUrlFor(model), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -229,8 +229,8 @@ export async function callKieChat(opts: {
       };
 
       // kie.ai sometimes returns provider/application errors as HTTP 200
-      // with { code, msg, data:null }. Treat those as real failures so the
-      // Lovable AI fallback runs instead of logging a vague "empty response".
+      // with { code, msg, data:null }. Treat those as real failures instead
+      // of logging a vague "empty response".
       if (typeof j.code === "number" && j.code !== 200) {
         lastStatus = j.code;
         lastError = `kie ${j.code}: ${j.msg || "provider rejected request"}`;
@@ -241,7 +241,7 @@ export async function callKieChat(opts: {
         }
 
         // Non-account failures such as unsupported model are not fixed by
-        // rotating keys, so jump straight to the Gateway fallback.
+        // rotating keys.
         break;
       }
 
