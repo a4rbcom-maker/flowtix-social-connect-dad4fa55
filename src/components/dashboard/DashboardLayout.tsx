@@ -77,6 +77,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
 
   const adminAllowedDashboardPaths = [
     "/dashboard/facebook/bot",
+    "/dashboard/facebook/campaigns",
     "/dashboard/facebook/jobs",
     "/dashboard/facebook/history",
     "/dashboard/whatsapp/accounts",
