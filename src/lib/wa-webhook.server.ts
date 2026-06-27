@@ -267,6 +267,59 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     }
 
     const waTimestamp = m.waTimestamp ?? new Date().toISOString();
+
+    if (m.fromMe && m.providerMessageId && text) {
+      const { data: pendingAi } = await supabaseAdmin
+        .from("wa_messages")
+        .select("id, raw")
+        .eq("user_id", userId)
+        .eq("session_id", sessionId)
+        .eq("remote_jid", m.remoteJid)
+        .eq("direction", "out")
+        .eq("status", "pending")
+        .eq("text_body", text)
+        .is("provider_message_id", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (pendingAi?.id) {
+        await supabaseAdmin
+          .from("wa_messages")
+          .update({
+            status: m.status === "received" ? "sent" : m.status,
+            provider_message_id: m.providerMessageId,
+            wa_timestamp: waTimestamp,
+            raw: {
+              ...(asObj(pendingAi.raw) as Record<string, unknown>),
+              ...entry,
+              ai: asObj(pendingAi.raw).ai === true,
+              providerMessageId: m.providerMessageId,
+              normalizedRemoteJid: m.remoteJid,
+              normalizedContactPhone: m.fromPhone,
+              normalizedStatus: m.status,
+              normalizedWaTimestamp: waTimestamp,
+              delivery: "whatsapp_acknowledged",
+              storedMediaUrl: mediaUrl?.startsWith("wa-media:") ? mediaUrl : null,
+            } as never,
+          })
+          .eq("id", pendingAi.id);
+        saved++;
+
+        await upsertConversationFromMessage({
+          userId,
+          sessionId,
+          remoteJid: m.remoteJid,
+          contactName: m.contactName,
+          contactPhone: m.isGroup ? null : m.fromPhone,
+          text: text ?? (msgType !== "text" ? `[${msgType}]` : null),
+          direction: "out",
+          messageAt: waTimestamp,
+        });
+        continue;
+      }
+    }
+
     const { error: insErr } = await supabaseAdmin.from("wa_messages").insert({
       user_id: userId,
       session_id: sessionId,
