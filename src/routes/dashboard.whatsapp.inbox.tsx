@@ -488,7 +488,7 @@ function InboxPage() {
   );
 
   const ChatPane = (
-    <section dir={isAr ? "rtl" : "ltr"} className="relative flex h-full min-h-0 flex-col bg-gradient-to-br from-primary/[0.04] via-background to-primary/[0.06]">
+    <section dir={isAr ? "rtl" : "ltr"} className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-gradient-to-br from-primary/[0.04] via-background to-primary/[0.06]">
       {!activeJid ? (
         <EmptyChat
           isAr={isAr}
@@ -499,13 +499,13 @@ function InboxPage() {
       ) : (
         <>
           {/* Chat Header */}
-          <div className="flex items-center justify-between gap-3 border-b border-border/60 bg-card/80 px-4 py-3 backdrop-blur">
-            <div className="flex min-w-0 items-center gap-3">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/60 bg-card/80 px-3 py-3 backdrop-blur sm:px-4">
+            <div className="flex min-w-0 items-center gap-3 overflow-hidden">
               {isMobile && (
                 <button
                   type="button"
                   onClick={() => setActiveJid(null)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-muted"
                   aria-label={t.backToList}
                 >
                   <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
@@ -516,7 +516,7 @@ function InboxPage() {
                 src={activeConv?.profile_pic_url ?? null}
                 size="md"
               />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1 overflow-hidden">
                 <p className="truncate text-sm font-bold">
                   {activeConv?.contact_name ?? activeJid.replace(/@.*/, "")}
                 </p>
@@ -526,7 +526,7 @@ function InboxPage() {
               </div>
             </div>
             {activeConv && (
-              <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-background/60 px-3 py-1.5">
+              <div className="flex max-w-[46vw] shrink-0 items-center gap-2 rounded-2xl border border-border/60 bg-background/60 px-2.5 py-1.5 sm:max-w-none sm:px-3">
                 <Bot
                   className={`h-4 w-4 ${activeConv.ai_enabled ? "text-primary" : "text-muted-foreground"}`}
                 />
@@ -556,7 +556,7 @@ function InboxPage() {
           {/* Messages */}
           <div
             ref={scrollRef}
-            className="relative flex-1 space-y-1 overflow-y-auto px-3 py-4 sm:px-6"
+            className="relative min-w-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-6"
             style={{
               backgroundImage:
                 "radial-gradient(circle at 20% 0%, oklch(0.62 0.27 295 / 0.06), transparent 40%), radial-gradient(circle at 80% 100%, oklch(0.52 0.28 290 / 0.05), transparent 40%)",
@@ -578,9 +578,9 @@ function InboxPage() {
               if (!draft.trim() || sendMut.isPending) return;
               sendMut.mutate(draft.trim());
             }}
-            className="border-t border-border/60 bg-card/80 p-3 backdrop-blur"
+            className="min-w-0 border-t border-border/60 bg-card/80 p-2.5 backdrop-blur sm:p-3"
           >
-            <div className="flex items-end gap-2 rounded-2xl border border-input bg-background px-2.5 py-1.5 shadow-sm transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+            <div className="flex min-w-0 items-end gap-1.5 rounded-2xl border border-input bg-background px-2 py-1.5 shadow-sm transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 sm:gap-2 sm:px-2.5">
               <button
                 type="button"
                 onClick={() => toast.info(t.soon)}
@@ -601,7 +601,7 @@ function InboxPage() {
                 <PopoverTrigger asChild>
                   <button
                     type="button"
-                    className="relative flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-2.5 text-xs font-semibold text-primary transition hover:bg-primary/10"
+                    className="relative flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-2 text-xs font-semibold text-primary transition hover:bg-primary/10 sm:px-2.5"
                     aria-label={isAr ? "ردود جاهزة" : "Quick replies"}
                     title={isAr ? "ردود جاهزة" : "Quick replies"}
                   >
@@ -639,7 +639,7 @@ function InboxPage() {
                 }}
                 placeholder={t.typeMessage}
                 rows={1}
-                className="max-h-32 flex-1 resize-none bg-transparent px-1 py-2 text-sm outline-none placeholder:text-muted-foreground"
+                className="max-h-32 min-w-0 flex-1 resize-none bg-transparent px-1 py-2 text-sm outline-none placeholder:text-muted-foreground"
               />
               <button
                 type="submit"
