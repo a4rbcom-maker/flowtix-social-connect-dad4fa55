@@ -353,10 +353,10 @@ function InboxPage() {
   };
 
   const Sidebar = (
-    <aside dir={isAr ? "rtl" : "ltr"} className="flex h-full min-h-0 flex-col bg-card/60 backdrop-blur-sm">
+    <aside dir={isAr ? "rtl" : "ltr"} className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card/60 backdrop-blur-sm">
       {/* Header */}
       <div className="border-b border-border/60 p-4">
-        <div className="flex items-center gap-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-white shadow-lg shadow-primary/20">
             <InboxIcon className="h-5 w-5" strokeWidth={2.5} />
           </div>
@@ -371,7 +371,7 @@ function InboxPage() {
             </div>
             <p className="truncate text-xs text-muted-foreground">{t.subtitle}</p>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
               onClick={() => qc.invalidateQueries({ queryKey: ["wa-conversations"] })}
@@ -406,7 +406,7 @@ function InboxPage() {
         </div>
 
         {/* Filters */}
-        <div className="mt-3 flex items-center gap-1.5">
+        <div className="mt-3 flex max-w-full items-center gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {([
             { k: "all" as FilterKey, label: t.all },
             { k: "unread" as FilterKey, label: t.filterUnread },
@@ -418,7 +418,7 @@ function InboxPage() {
                 key={f.k}
                 type="button"
                 onClick={() => setFilter(f.k)}
-                className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${
+                className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition ${
                   active
                     ? "bg-gradient-to-r from-primary to-[oklch(0.52_0.28_290)] text-primary-foreground shadow-sm"
                     : "bg-muted/60 text-muted-foreground hover:bg-muted"
