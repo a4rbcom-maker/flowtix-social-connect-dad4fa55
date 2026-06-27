@@ -152,6 +152,25 @@ async function deliverAiTextWithRetry(opts: {
       lastError = errorText(err);
       responses.push({ error: lastError, status: err instanceof BridgeError ? err.status : null });
       console.warn(`[wa-ai] delivery attempt ${attempt}/${AI_DELIVERY_ATTEMPTS} failed:`, lastError);
+      if (messageRowId) {
+        await supabaseAdmin
+          .from("wa_messages")
+          .update({
+            status: attempt === AI_DELIVERY_ATTEMPTS || !shouldRetryAiSend(err) ? "failed" : "pending",
+            raw: {
+              ai: true,
+              kind,
+              tier,
+              model,
+              providerMessageId,
+              delivery: attempt === AI_DELIVERY_ATTEMPTS || !shouldRetryAiSend(err) ? "failed" : "retrying",
+              attempts: attempt,
+              error: lastError,
+              bridgeResponses: responses,
+            } as never,
+          })
+          .eq("id", messageRowId);
+      }
       await markSessionNeedsReconnect(userId, sessionId, err);
       if (!shouldRetryAiSend(err) || attempt === AI_DELIVERY_ATTEMPTS) break;
       await wait(retryDelayMs(attempt));
