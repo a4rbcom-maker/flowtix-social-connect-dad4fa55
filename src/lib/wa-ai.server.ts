@@ -109,6 +109,16 @@ async function deliverAiTextWithRetry(opts: {
     console.error("[wa-ai] failed to store pending delivery attempt:", insertRes.error.message);
   }
   const messageRowId = insertRes.data?.id ?? null;
+  await upsertConversationFromMessage({
+    userId,
+    sessionId,
+    remoteJid,
+    contactName: null,
+    contactPhone: phone,
+    text,
+    direction: "out",
+    messageAt: sentAt,
+  });
 
   let providerMessageId: string | null = null;
   let lastError: string | null = null;
@@ -137,16 +147,6 @@ async function deliverAiTextWithRetry(opts: {
           .update({ status: "sent", provider_message_id: providerMessageId, raw })
           .eq("id", messageRowId);
       }
-      await upsertConversationFromMessage({
-        userId,
-        sessionId,
-        remoteJid,
-        contactName: null,
-        contactPhone: phone,
-        text,
-        direction: "out",
-        messageAt: sentAt,
-      });
       return { providerMessageId, status: "sent", attempts, lastError: null, responses };
     } catch (err) {
       lastError = errorText(err);
