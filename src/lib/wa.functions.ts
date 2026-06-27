@@ -17,7 +17,7 @@ import {
   type WaBridgeHealth,
 } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
-import { isHardSessionGoneError, updateWaSessionStatus } from "./wa-session-events.server";
+import { isHardSessionGoneError, logWaSessionEvent, updateWaSessionStatus } from "./wa-session-events.server";
 
 export type { WaBridgeHealth };
 
@@ -228,6 +228,14 @@ export const disconnectWaSession = createServerFn({ method: "POST" })
       } catch {
         // best-effort; we still clear our row
       }
+      await logWaSessionEvent(supabase, {
+        userId,
+        sessionId: row.session_id,
+        fromStatus: null,
+        toStatus: "disconnected",
+        source: "disconnect",
+        reason: "manual_disconnect",
+      });
       await supabase.from("wa_sessions").delete().eq("user_id", userId);
     }
     return { ok: true };
