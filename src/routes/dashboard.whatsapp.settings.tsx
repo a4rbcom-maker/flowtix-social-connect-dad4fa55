@@ -224,8 +224,8 @@ function WaSettingsPage() {
                 </h2>
                 <p className="mt-0.5 text-sm text-muted-foreground">
                   {lang === "ar"
-                    ? "ابعت رسالة تجريبية موقّعة للـ webhook بتاعك واتأكد إنها وصلت وتم تخزينها."
-                    : "Send a signed synthetic message to your webhook and verify it was received and stored."}
+                    ? "ابعت رسالة تجريبية موقّعة للـ webhook واتأكد إنها اتخزنت وشغّلت وكيل AI أو اعرف سبب الفشل."
+                    : "Send a signed synthetic message to the webhook and verify storage plus AI execution or the failure reason."}
                 </p>
               </div>
             </div>
