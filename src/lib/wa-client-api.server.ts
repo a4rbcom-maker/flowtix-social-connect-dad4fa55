@@ -180,6 +180,7 @@ async function readState(supabase: ReturnType<typeof getSupabaseForToken>, userI
   };
   if (phoneNumber) update.phone_number = phoneNumber;
   await supabase.from("wa_sessions").update(update).eq("user_id", userId);
+  await supabase.from("wa_sessions").update(update).eq("user_id", userId).eq("session_id", sessionId);
 
   let surfacedPhone = phoneNumber;
   if (!surfacedPhone) {
