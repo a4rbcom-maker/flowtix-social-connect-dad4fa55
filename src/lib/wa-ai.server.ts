@@ -447,6 +447,7 @@ export async function handleAiAutoReply(opts: {
         userId,
         remoteJid,
         phone: target.jid,
+        contactPhone: phone,
         text: settings.ai_welcome_message,
         kind: "welcome",
       });
@@ -513,6 +514,7 @@ export async function handleAiAutoReply(opts: {
         userId,
         remoteJid,
         phone: target.jid,
+        contactPhone: phone,
         text: aiText,
         tier,
         model: result.model || model,
