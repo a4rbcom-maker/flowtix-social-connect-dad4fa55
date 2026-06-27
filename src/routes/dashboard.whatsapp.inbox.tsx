@@ -960,16 +960,16 @@ function ContactInfoPanel({
   const name = conv.contact_name ?? jid.replace(/@.*/, "");
   const phone = conv.contact_phone ? `+${conv.contact_phone}` : jid;
   return (
-    <aside dir={isAr ? "rtl" : "ltr"} className="flex h-full min-h-0 flex-col bg-card/40 backdrop-blur-sm">
+    <aside dir={isAr ? "rtl" : "ltr"} className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card/40 backdrop-blur-sm">
       {/* Contact header */}
       <div className="flex flex-col items-center gap-3 border-b border-border/60 p-5 text-center">
         <div className="relative">
           <ContactAvatar name={name} src={conv.profile_pic_url ?? null} size="lg" />
           <span className="absolute bottom-1 right-1 h-4 w-4 rounded-full border-2 border-card bg-emerald-500" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 max-w-full overflow-hidden">
           <h2 className="truncate text-base font-bold">{name}</h2>
-          <p className="mt-0.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground" dir="ltr">
+          <p className="mt-0.5 inline-flex max-w-full items-center gap-1.5 truncate text-xs text-muted-foreground" dir="ltr">
             <Phone className="h-3 w-3" />
             {phone}
           </p>
@@ -1027,7 +1027,7 @@ function ContactInfoPanel({
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-y-auto p-4 text-sm">
+      <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 text-sm">
         {tab === "info" && (
           <div className="space-y-3">
             <InfoRow label={isAr ? "الاسم" : "Name"} value={name} />
@@ -1065,9 +1065,9 @@ function ContactInfoPanel({
 
 function InfoRow({ label, value, ltr }: { label: string; value: string; ltr?: boolean }) {
   return (
-    <div className="rounded-xl border border-border/60 bg-background/40 px-3 py-2">
+    <div className="min-w-0 rounded-xl border border-border/60 bg-background/40 px-3 py-2">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-1 truncate text-sm font-medium" dir={ltr ? "ltr" : undefined}>{value}</p>
+      <p className="mt-1 min-w-0 truncate text-sm font-medium" dir={ltr ? "ltr" : undefined}>{value}</p>
     </div>
   );
 }
