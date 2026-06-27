@@ -11,6 +11,7 @@ import {
   Smartphone,
   QrCode,
   AlertCircle,
+  History,
   Plus,
   Wifi,
   WifiOff,
@@ -23,11 +24,13 @@ import { useI18n } from "@/lib/i18n";
 import {
   connectWaSession,
   getWaConnectionState,
+  getWaSessionEvents,
   disconnectWaSession,
   pingWaBridgeUser,
   resetWaReceiver,
   type WaConnectionState,
   type WaBridgeHealth,
+  type WaSessionEventRow,
 } from "@/lib/wa.functions";
 
 export const Route = createFileRoute("/dashboard/whatsapp/accounts")({
@@ -73,6 +76,7 @@ function WhatsAppPage() {
   const connectFn = useServerFn(connectWaSession);
   const resetFn = useServerFn(resetWaReceiver);
   const statusFn = useServerFn(getWaConnectionState);
+  const eventsFn = useServerFn(getWaSessionEvents);
   const disconnectFn = useServerFn(disconnectWaSession);
   const pingFn = useServerFn(pingWaBridgeUser);
   const [polling, setPolling] = useState(false);
@@ -97,6 +101,12 @@ function WhatsAppPage() {
         phoneLabel: "رقم الهاتف",
         sessionLabel: "معرّف الجلسة",
         lastSeenLabel: "آخر نشاط",
+        diagnosticsTitle: "سبب فصل الجلسات",
+        diagnosticsDesc: "آخر تغييرات حالة واتساب المسجلة من Bot‑Xtra أو فحص الحالة. الأخطاء المؤقتة مثل Timeout/502 لا تُفصل الجلسة الآن إلا لو Bot‑Xtra أكد أن الجلسة انتهت.",
+        noDiagnostics: "لا يوجد سبب فصل مسجل حتى الآن.",
+        reasonLabel: "السبب",
+        sourceLabel: "المصدر",
+        statusChangeLabel: "تغيير الحالة",
         bridgeLabel: "خادم الربط",
         actions: "الإجراءات",
         connect: "ربط رقم جديد",
@@ -135,6 +145,12 @@ function WhatsAppPage() {
         phoneLabel: "Phone number",
         sessionLabel: "Session ID",
         lastSeenLabel: "Last seen",
+        diagnosticsTitle: "Session disconnect reason",
+        diagnosticsDesc: "Latest WhatsApp status changes recorded from Bot‑Xtra or status checks. Transient Timeout/502 errors no longer disconnect the session unless Bot‑Xtra explicitly confirms it is gone.",
+        noDiagnostics: "No disconnect reason has been recorded yet.",
+        reasonLabel: "Reason",
+        sourceLabel: "Source",
+        statusChangeLabel: "Status change",
         bridgeLabel: "Bridge server",
         actions: "Actions",
         connect: "Link new number",
@@ -185,6 +201,13 @@ function WhatsAppPage() {
       return data;
     },
     refetchInterval: polling ? 3000 : false,
+  });
+
+  const eventsQuery = useQuery<WaSessionEventRow[]>({
+    queryKey: ["wa-session-events"],
+    enabled: !!session?.access_token,
+    queryFn: () => eventsFn(),
+    refetchInterval: 30000,
   });
 
   const state = stateQuery.data;
@@ -370,6 +393,14 @@ function WhatsAppPage() {
                         </div>
                       </div>
                     )}
+
+                    <SessionDiagnostics
+                      events={eventsQuery.data ?? []}
+                      loading={eventsQuery.isLoading}
+                      ar={ar}
+                      t={t}
+                      fmtTime={fmtTime}
+                    />
 
                     {/* Actions */}
                     <div className="mt-5 flex flex-wrap gap-2">
