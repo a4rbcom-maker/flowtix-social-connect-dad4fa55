@@ -112,6 +112,21 @@ const BOTXTRA_V18_FLAT_DATA_MESSAGE = {
   },
 };
 
+const BOTXTRA_V18_LID_INBOUND_MESSAGE = {
+  event: "message",
+  sessionId: "flowtix-abcdef0123456789-l4k2j",
+  data: {
+    id: "3EB0BX1.8.LID001",
+    from: "182239858000081",
+    senderPn: "201273747262@s.whatsapp.net",
+    body: "مرحبا",
+    type: "text",
+    fromMe: false,
+    isGroup: false,
+    timestamp: 1_730_000_040,
+  },
+};
+
 // ── Session id discovery ────────────────────────────────────────────────────
 
 describe("Bot-Xtra v1.8.x: sessionId discovery", () => {
@@ -207,6 +222,16 @@ describe("Bot-Xtra v1.8.x: parseMessageEntry", () => {
     expect(m.remoteJid).toBe("201273747262@s.whatsapp.net");
     expect(m.providerMessageId).toBe("3EB0BX1.8.FLAT001");
     expect(m.contactName).toBe("Customer");
+  });
+
+  it("preserves inbound WhatsApp LID as the chat address while keeping senderPn as phone", () => {
+    const [entry] = collectMessageEntries(BOTXTRA_V18_LID_INBOUND_MESSAGE);
+    const m = parseMessageEntry(entry)!;
+    expect(m).not.toBeNull();
+    expect(m.text).toBe("مرحبا");
+    expect(m.fromPhone).toBe("201273747262");
+    expect(m.remoteJid).toBe("182239858000081@lid");
+    expect(m.providerMessageId).toBe("3EB0BX1.8.LID001");
   });
 });
 
