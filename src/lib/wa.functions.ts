@@ -83,7 +83,8 @@ export const connectWaSession = createServerFn({ method: "POST" })
         await supabase
           .from("wa_sessions")
           .update({ status: "disconnected", qr_data_url: null, last_seen_at: now })
-          .eq("user_id", userId);
+          .eq("user_id", userId)
+          .eq("session_id", sessionId);
         return {
           status: "disconnected",
           sessionId,
