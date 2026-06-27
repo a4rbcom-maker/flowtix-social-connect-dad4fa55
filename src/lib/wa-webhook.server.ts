@@ -271,10 +271,9 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     if (m.fromMe && m.providerMessageId && text) {
       const { data: pendingAi } = await supabaseAdmin
         .from("wa_messages")
-        .select("id, raw")
+        .select("id, raw, remote_jid")
         .eq("user_id", userId)
         .eq("session_id", sessionId)
-        .eq("remote_jid", m.remoteJid)
         .eq("direction", "out")
         .eq("status", "pending")
         .eq("text_body", text)
@@ -295,6 +294,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
               ...entry,
               ai: asObj(pendingAi.raw).ai === true,
               providerMessageId: m.providerMessageId,
+              bridgeAckRemoteJid: m.remoteJid,
               normalizedRemoteJid: m.remoteJid,
               normalizedContactPhone: m.fromPhone,
               normalizedStatus: m.status,
@@ -309,7 +309,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         await upsertConversationFromMessage({
           userId,
           sessionId,
-          remoteJid: m.remoteJid,
+          remoteJid: pendingAi.remote_jid || m.remoteJid,
           contactName: m.contactName,
           contactPhone: m.isGroup ? null : m.fromPhone,
           text: text ?? (msgType !== "text" ? `[${msgType}]` : null),
