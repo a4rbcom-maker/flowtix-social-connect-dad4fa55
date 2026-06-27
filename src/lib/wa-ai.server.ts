@@ -72,11 +72,18 @@ function shouldRetryAiSend(err: unknown): boolean {
   return true;
 }
 
-async function sendAiTextOnce(sessionId: string, userId: string, phone: string, text: string): Promise<BridgeSendResponse> {
+async function sendAiTextOnce(
+  sessionId: string,
+  userId: string,
+  phone: string,
+  text: string,
+  recipientPhone?: string | null,
+): Promise<BridgeSendResponse> {
   const webhookUrl = await deriveWebhookUrl();
   const res = await sendTextWithReconnect(sessionId, phone, text, {
     webhookUrl: webhookUrl ?? undefined,
     tenantId: userId,
+    recipientPhone: recipientPhone || phone,
   });
   // Log full bridge response so we can diagnose silent delivery failures.
   console.log("[wa-ai] bridge sendText response:", JSON.stringify(res));
@@ -104,7 +111,10 @@ async function findConfirmedOutbound(params: {
     .order("created_at", { ascending: false })
     .limit(5);
 
-  const row = (data ?? []).find((item) => item.id !== params.excludeMessageId && item.provider_message_id);
+  // The webhook confirmation intentionally updates the pre-created pending AI
+  // row in-place. Do not exclude that row; it only appears here after it has a
+  // real provider_message_id, so matching it is the exact delivery confirmation.
+  const row = (data ?? []).find((item) => item.provider_message_id);
   if (!row?.provider_message_id) return null;
   return { id: row.id, providerMessageId: row.provider_message_id, status: row.status ?? "sent" };
 }
@@ -128,7 +138,7 @@ async function findConfirmedOutboundLoose(params: {
     .order("created_at", { ascending: false })
     .limit(5);
 
-  const row = (data ?? []).find((item) => item.id !== params.excludeMessageId && item.provider_message_id);
+  const row = (data ?? []).find((item) => item.provider_message_id);
   if (!row?.provider_message_id) return null;
   return { id: row.id, providerMessageId: row.provider_message_id, status: row.status ?? "sent" };
 }
@@ -211,7 +221,7 @@ async function deliverAiTextWithRetry(opts: {
   for (let attempt = 1; attempt <= AI_DELIVERY_ATTEMPTS; attempt++) {
     attempts = attempt;
     try {
-      const res = await sendAiTextOnce(sessionId, userId, phone, text);
+      const res = await sendAiTextOnce(sessionId, userId, phone, text, contactPhone);
       responses.push(res);
       const queuedId = bridgeSendQueuedMessage(res);
       try {

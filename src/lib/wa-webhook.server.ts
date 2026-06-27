@@ -31,8 +31,16 @@ const WA_MEDIA_BUCKET = "wa-media";
 
 function attachBackgroundTask(request: Request, task: Promise<unknown>, label: string): boolean {
   const waitUntil = (request as Request & { waitUntil?: (promise: Promise<unknown>) => void }).waitUntil;
-  if (typeof waitUntil !== "function") return false;
-  waitUntil.call(request, task.catch((err) => console.error(`[wa-webhook] ${label} background task failed:`, err)));
+  const guarded = task.catch((err) => console.error(`[wa-webhook] ${label} background task failed:`, err));
+  if (typeof waitUntil === "function") {
+    waitUntil.call(request, guarded);
+  } else {
+    // TanStack/Node Request does not expose Cloudflare waitUntil. Do NOT await
+    // AI sending inside the inbound webhook: Bot-Xtra only drains its outbound
+    // queue after we answer the inbound webhook. Awaiting here makes the AI
+    // message sit forever as { queued: true, queuedId } without reaching WhatsApp.
+    void guarded;
+  }
   return true;
 }
 
