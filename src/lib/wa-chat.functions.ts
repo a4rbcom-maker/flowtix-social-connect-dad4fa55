@@ -59,10 +59,10 @@ export const listConversations = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data: sess } = await supabase
       .from("wa_sessions")
-      .select("status")
+      .select("session_id, status")
       .eq("user_id", userId)
       .maybeSingle();
-    if (sess?.status !== "connected") return [];
+    if (!sess?.session_id || sess.status !== "connected") return [];
 
 
 
