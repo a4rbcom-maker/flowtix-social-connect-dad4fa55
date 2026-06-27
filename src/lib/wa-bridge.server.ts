@@ -149,6 +149,15 @@ export interface BridgeSendResponse {
   msgId?: string;
   msg_id?: string;
   wamid?: string;
+  queuedId?: string;
+  queued_id?: string;
+  queueId?: string;
+  queue_id?: string;
+  requestId?: string;
+  request_id?: string;
+  jobId?: string;
+  job_id?: string;
+  queued?: boolean;
   ok?: boolean;
   success?: boolean;
   status?: string;
@@ -184,6 +193,30 @@ export function extractBridgeMessageId(res: unknown, depth = 0): string | null {
     if (nested) return nested;
   }
   return null;
+}
+
+export function extractBridgeQueuedId(res: unknown, depth = 0): string | null {
+  if (!res || depth > 3) return null;
+  const obj = asRecord(res);
+  const direct = pickString(obj, "queuedId", "queued_id", "queueId", "queue_id", "requestId", "request_id", "jobId", "job_id");
+  if (direct) return direct;
+  for (const key of ["data", "result", "payload", "message"]) {
+    const nested = extractBridgeQueuedId(obj[key], depth + 1);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+export function bridgeSendQueuedMessage(res: unknown, depth = 0): string | null {
+  if (!res || depth > 3) return null;
+  const obj = asRecord(res);
+  const status = String(obj.status ?? "").toLowerCase();
+  const queuedId = extractBridgeQueuedId(obj);
+  if (obj.queued === true || status === "queued" || queuedId) {
+    return queuedId || "queued";
+  }
+  const nested = bridgeSendQueuedMessage(obj.data ?? obj.result ?? obj.payload, depth + 1);
+  return nested;
 }
 
 export function bridgeSendFailureMessage(res: unknown, depth = 0): string | null {
