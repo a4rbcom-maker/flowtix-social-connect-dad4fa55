@@ -1,121 +1,29 @@
 // Shared inbound webhook handler for the BotXtra/Baileys WhatsApp bridge.
 // Mounted at /api/public/wa-webhook (canonical) and /api/public/wa/webhook (alias).
 // Designed to be tolerant of different bridge payload shapes.
-import { createHmac, randomUUID, timingSafeEqual } from "crypto";
+//
+// NOTE: All pure parsing/normalization logic lives in ./wa-webhook-parsers and
+// is covered by wa-webhook-contract.test.ts to lock the Bot-Xtra v1.8.x
+// payload contract. Do NOT inline parsing here — extend the parsers module
+// (and its tests) instead.
+import { randomUUID } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { handleAiAutoReply, upsertConversationFromMessage } from "./wa-ai.server";
 import { cleanMessageText, mediaTypeFromRaw, mediaUrlFromRaw } from "./wa-chat-helpers.server";
 import { tryKeywordAutoReply } from "./wa-keyword.server";
-
-function verifySignature(rawBody: string, header: string | null, secret: string): boolean {
-  if (!header) return false;
-  const received = header.startsWith("sha256=") ? header.slice(7) : header;
-  const expected = createHmac("sha256", secret).update(rawBody, "utf8").digest("hex");
-  const a = Buffer.from(expected, "hex");
-  let b: Buffer;
-  try {
-    b = Buffer.from(received, "hex");
-  } catch {
-    return false;
-  }
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
-
-function digits(s: unknown): string | null {
-  if (typeof s !== "string") return null;
-  const d = s.replace(/[^0-9]/g, "");
-  return d || null;
-}
-
-function pickStr(obj: unknown, ...keys: string[]): string | null {
-  if (!obj || typeof obj !== "object") return null;
-  const rec = obj as Record<string, unknown>;
-  for (const k of keys) {
-    const v = rec[k];
-    if (typeof v === "string" && v.length > 0) return v;
-  }
-  return null;
-}
-
-function asObj(v: unknown): Record<string, unknown> {
-  return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
-}
-
-function normalizeRemoteJid(remoteJid: string | null, phone: string | null, isGroup = false): string {
-  const jid = remoteJid || "";
-  if (jid.includes("@")) return jid;
-  const d = digits(jid) || phone;
-  return d ? `${d}@${isGroup ? "g.us" : "s.whatsapp.net"}` : "unknown";
-}
-
-function isTruthy(v: unknown): boolean {
-  return v === true || String(v ?? "").toLowerCase() === "true";
-}
-
-function normalizeMessageStatus(value: unknown, fromMe: boolean): string {
-  const raw = String(value ?? "").toLowerCase();
-  if (["read", "played"].includes(raw)) return "read";
-  if (["delivered", "delivery", "server_ack", "device_ack"].includes(raw)) return "delivered";
-  if (["sent", "pending", "queued"].includes(raw)) return raw;
-  if (["failed", "error", "undelivered"].includes(raw)) return "failed";
-  return fromMe ? "sent" : "received";
-}
-
-function messageIdFrom(entry: Record<string, unknown>): string | null {
-  return (
-    pickStr(entry, "messageId", "message_id", "msgId", "msg_id", "id", "wamid") ||
-    pickStr(asObj(entry.key), "id") ||
-    pickStr(asObj(entry.message), "id")
-  );
-}
-
-function findSessionId(payload: Record<string, unknown>, headers: Headers): string | null {
-  return (
-    pickStr(payload, "sessionId", "session_id", "session", "instanceId", "instance_id") ||
-    pickStr(asObj(payload.data), "sessionId", "session_id", "instanceId") ||
-    pickStr(asObj(payload.instance), "instanceId", "id", "name") ||
-    pickStr(asObj(payload.session), "id", "sessionId") ||
-    headers.get("x-session-id") ||
-    headers.get("x-instance-id") ||
-    null
-  );
-}
-
-function parseWaTimestamp(entry: Record<string, unknown>): string | null {
-  const candidates: unknown[] = [
-    entry.messageTimestamp,
-    entry.timestamp,
-    entry.t,
-    asObj(entry.key).timestamp,
-    asObj(entry.message).messageTimestamp,
-    asObj(entry.data).timestamp,
-  ];
-  for (const raw of candidates) {
-    if (raw == null) continue;
-    const num = typeof raw === "number" ? raw : Number(String(raw).trim());
-    if (!Number.isFinite(num) || num <= 0) continue;
-    // Heuristic: < 10^12 => seconds; otherwise milliseconds
-    const ms = num < 1_000_000_000_000 ? num * 1000 : num;
-    const d = new Date(ms);
-    if (!Number.isNaN(d.getTime())) return d.toISOString();
-  }
-  return null;
-}
-
-interface ParsedMessage {
-  remoteJid: string;
-  fromPhone: string | null;
-  text: string | null;
-  msgType: string;
-  mediaUrl: string | null;
-  contactName: string | null;
-  fromMe: boolean;
-  isGroup: boolean;
-  providerMessageId: string | null;
-  status: string;
-  waTimestamp: string | null;
-}
+import {
+  asObj,
+  collectMessageEntries,
+  digits,
+  findSessionId,
+  messageIdFrom,
+  normalizeMessageStatus,
+  parseMessageEntry,
+  pickStr,
+  SESSION_STATUS_MAP,
+  verifySignature,
+  type ParsedMessage,
+} from "./wa-webhook-parsers";
 
 
 const WA_MEDIA_BUCKET = "wa-media";
@@ -199,159 +107,10 @@ async function persistWaMedia(params: {
   return `wa-media:${path}`;
 }
 
-function extractTextFromMessage(m: Record<string, unknown>): { text: string | null; type: string; mediaUrl: string | null } {
-  // ── BotXtra flat shape: entry.type + entry.mediaData ──
-  const flatType = String(m.type ?? "").toLowerCase();
-  const mediaData = asObj(m.mediaData);
-  const contentData = asObj(m.content);
-  const contentText =
-    typeof m.content === "string"
-      ? m.content
-      : pickStr(contentData, "text", "body", "caption", "message", "content");
-  const hasMediaData = Object.keys(mediaData).length > 0;
-  const flatMediaUrl =
-    pickStr(mediaData, "url", "directPath", "fileUrl", "downloadUrl", "mediaUrl") ||
-    pickStr(contentData, "url", "directPath", "fileUrl", "downloadUrl", "mediaUrl") ||
-    pickStr(m, "mediaUrl", "fileUrl", "url");
-  const flatCaption =
-    pickStr(m, "caption", "body", "text", "content") ||
-    contentText ||
-    pickStr(mediaData, "caption", "fileName");
-
-  if (["image", "video", "audio", "document", "sticker", "voice", "ptt"].includes(flatType) || hasMediaData) {
-    const norm =
-      flatType === "voice" || flatType === "ptt"
-        ? "audio"
-        : flatType && flatType !== "text"
-          ? flatType
-          : "document";
-    return {
-      text: norm === "audio" || norm === "sticker" ? null : flatCaption,
-      type: norm,
-      mediaUrl: flatMediaUrl,
-    };
-  }
-
-  // Direct text fields
-  const direct = pickStr(m, "text", "body", "message", "caption", "content") || contentText;
-  if (direct) return { text: direct, type: "text", mediaUrl: null };
-
-  // Baileys-style nested `message`
-  const msg = asObj(m.message);
-  const conv = pickStr(msg, "conversation");
-  if (conv) return { text: conv, type: "text", mediaUrl: null };
-
-  const ext = asObj(msg.extendedTextMessage);
-  const extText = pickStr(ext, "text");
-  if (extText) return { text: extText, type: "text", mediaUrl: null };
-
-  const img = asObj(msg.imageMessage);
-  if (Object.keys(img).length) {
-    return { text: pickStr(img, "caption"), type: "image", mediaUrl: pickStr(img, "url", "directPath") };
-  }
-  const vid = asObj(msg.videoMessage);
-  if (Object.keys(vid).length) {
-    return { text: pickStr(vid, "caption"), type: "video", mediaUrl: pickStr(vid, "url", "directPath") };
-  }
-  const aud = asObj(msg.audioMessage);
-  if (Object.keys(aud).length) return { text: null, type: "audio", mediaUrl: pickStr(aud, "url", "directPath") };
-  const doc = asObj(msg.documentMessage);
-  if (Object.keys(doc).length) {
-    return { text: pickStr(doc, "fileName", "caption"), type: "document", mediaUrl: pickStr(doc, "url", "directPath") };
-  }
-  const sticker = asObj(msg.stickerMessage);
-  if (Object.keys(sticker).length) return { text: null, type: "sticker", mediaUrl: pickStr(sticker, "url", "directPath") };
-
-  return { text: null, type: "unknown", mediaUrl: null };
-}
+// Re-export type for downstream files that imported it from here historically.
+export type { ParsedMessage };
 
 
-function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null {
-  const key = asObj(entry.key);
-  const fromMe =
-    entry.fromMe === true ||
-    entry.fromme === true ||
-    (key.fromMe as boolean | undefined) === true;
-  const isGroup =
-    isTruthy(entry.isGroup) ||
-    Boolean(pickStr(entry, "groupJid", "groupId")) ||
-    Boolean(pickStr(key, "remoteJid")?.endsWith("@g.us"));
-  const realPhone =
-    digits(pickStr(entry, "senderPn", "participantPn", "phoneNumber", "phone")) ||
-    digits(pickStr(asObj(entry.participant), "id", "phone", "jid"));
-  const keyRemote = pickStr(key, "remoteJid");
-  const groupJid = pickStr(entry, "groupJid", "groupId") || (keyRemote?.endsWith("@g.us") ? keyRemote : null);
-  const directChatJid = pickStr(entry, "remoteJid", "remote_jid", "jid", "chatId");
-  const recipientJid = pickStr(entry, "to", "recipient", "recipientJid", "targetJid", "toJid");
-  const senderJid = pickStr(entry, "from", "sender", "senderJid", "participantJid");
-  const remoteJid = isGroup
-    ? groupJid
-    : fromMe
-      ? (recipientJid || directChatJid || keyRemote)
-      : (realPhone || directChatJid || keyRemote || senderJid);
-
-  const fromPhone = isGroup
-    ? realPhone || digits(senderJid)
-    : fromMe
-      ? digits(recipientJid || directChatJid || keyRemote || remoteJid) || realPhone
-      : realPhone || digits(senderJid) || digits(remoteJid);
-
-  const { text, type, mediaUrl } = extractTextFromMessage(entry);
-
-  // Skip status broadcast and pure system events
-  const jid = remoteJid || fromPhone || "";
-  if (jid.endsWith("@broadcast") || jid === "status@broadcast") return null;
-  if (!text && type === "unknown" && !mediaUrl) return null;
-  if (!remoteJid && !fromPhone) return null;
-
-  // Skip orphan outbound echoes from the bridge: when fromMe is true but the
-  // payload doesn't include a real recipient (only the user's own LID in
-  // `from`/`sender`), we can't attribute the message to its conversation.
-  // Storing it would create a fake conversation under the LID and hide the
-  // user's reply from the real chat. Outbound messages sent through our UI
-  // are stored directly by sendChatMessage with the correct remote_jid.
-  if (!isGroup && fromMe) {
-    const hasRealRecipient = Boolean(recipientJid || directChatJid || keyRemote);
-    if (!hasRealRecipient) return null;
-  }
-
-
-  return {
-    remoteJid: normalizeRemoteJid(remoteJid, isGroup ? digits(groupJid) : fromPhone, isGroup),
-    fromPhone,
-    text,
-    msgType: type,
-    mediaUrl,
-    contactName: isGroup
-      ? pickStr(entry, "groupSubject", "groupName")
-      : pickStr(entry, "pushName", "contactName", "senderName", "name", "notifyName", "notify"),
-    fromMe,
-    isGroup,
-    providerMessageId: messageIdFrom(entry),
-    status: normalizeMessageStatus(pickStr(entry, "status", "ack", "messageStatus"), fromMe),
-    waTimestamp: parseWaTimestamp(entry),
-  };
-}
-
-
-function collectMessageEntries(payload: Record<string, unknown>): Record<string, unknown>[] {
-  const out: Record<string, unknown>[] = [];
-  const push = (v: unknown) => {
-    if (Array.isArray(v)) v.forEach((x) => x && typeof x === "object" && out.push(x as Record<string, unknown>));
-    else if (v && typeof v === "object") out.push(v as Record<string, unknown>);
-  };
-  const data = asObj(payload.data);
-  push(payload.messages);
-  push(data.messages);
-  push(payload.message);
-  // The data object itself may BE the message
-  if (!out.length) push(data);
-  // The payload itself may be the message
-  if (!out.length && (payload.from || payload.sender || payload.text || payload.body || payload.message || payload.key)) {
-    out.push(payload);
-  }
-  return out;
-}
 
 async function updateMessageStatuses(userId: string, payload: Record<string, unknown>): Promise<number> {
   const entries = collectMessageEntries(payload);
@@ -430,19 +189,8 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   // ── status update ──
   if (event === "status" || event === "connection.update" || event === "session.status") {
     const rawStatus = String(data.status ?? data.state ?? payload.status ?? "").toLowerCase();
-    const map: Record<string, string> = {
-      open: "connected",
-      ready: "connected",
-      connected: "connected",
-      qr: "qr",
-      scan: "qr",
-      connecting: "connecting",
-      starting: "connecting",
-      disconnected: "disconnected",
-      closed: "disconnected",
-      logged_out: "disconnected",
-    };
-    const next = map[rawStatus] ?? "unknown";
+    const next = SESSION_STATUS_MAP[rawStatus] ?? "unknown";
+
     const phoneNumber = digits(data.phoneNumber ?? data.phone ?? payload.phoneNumber);
     await supabaseAdmin
       .from("wa_sessions")

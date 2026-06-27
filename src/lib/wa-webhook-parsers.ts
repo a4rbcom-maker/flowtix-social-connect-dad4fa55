@@ -1,0 +1,273 @@
+// Pure parsers for the Bot-Xtra / Baileys WhatsApp bridge webhook payloads.
+// Extracted from wa-webhook.server.ts so they can be unit-tested without
+// pulling in Supabase admin / Node crypto / Cloudflare runtime dependencies.
+//
+// CONTRACT: These functions implement the Bot-Xtra v1.8.x payload contract.
+// Do NOT modify them in ways that change accepted payload shapes without
+// updating the matching tests in wa-webhook-contract.test.ts.
+
+import { createHmac, timingSafeEqual } from "crypto";
+
+export function verifySignature(rawBody: string, header: string | null, secret: string): boolean {
+  if (!header) return false;
+  const received = header.startsWith("sha256=") ? header.slice(7) : header;
+  const expected = createHmac("sha256", secret).update(rawBody, "utf8").digest("hex");
+  const a = Buffer.from(expected, "hex");
+  let b: Buffer;
+  try {
+    b = Buffer.from(received, "hex");
+  } catch {
+    return false;
+  }
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+export function digits(s: unknown): string | null {
+  if (typeof s !== "string") return null;
+  const d = s.replace(/[^0-9]/g, "");
+  return d || null;
+}
+
+export function pickStr(obj: unknown, ...keys: string[]): string | null {
+  if (!obj || typeof obj !== "object") return null;
+  const rec = obj as Record<string, unknown>;
+  for (const k of keys) {
+    const v = rec[k];
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return null;
+}
+
+export function asObj(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+}
+
+export function normalizeRemoteJid(remoteJid: string | null, phone: string | null, isGroup = false): string {
+  const jid = remoteJid || "";
+  if (jid.includes("@")) return jid;
+  const d = digits(jid) || phone;
+  return d ? `${d}@${isGroup ? "g.us" : "s.whatsapp.net"}` : "unknown";
+}
+
+export function isTruthy(v: unknown): boolean {
+  return v === true || String(v ?? "").toLowerCase() === "true";
+}
+
+export function normalizeMessageStatus(value: unknown, fromMe: boolean): string {
+  const raw = String(value ?? "").toLowerCase();
+  if (["read", "played"].includes(raw)) return "read";
+  if (["delivered", "delivery", "server_ack", "device_ack"].includes(raw)) return "delivered";
+  if (["sent", "pending", "queued"].includes(raw)) return raw;
+  if (["failed", "error", "undelivered"].includes(raw)) return "failed";
+  return fromMe ? "sent" : "received";
+}
+
+export function messageIdFrom(entry: Record<string, unknown>): string | null {
+  return (
+    pickStr(entry, "messageId", "message_id", "msgId", "msg_id", "id", "wamid") ||
+    pickStr(asObj(entry.key), "id") ||
+    pickStr(asObj(entry.message), "id")
+  );
+}
+
+export function findSessionId(payload: Record<string, unknown>, headers: Headers): string | null {
+  return (
+    pickStr(payload, "sessionId", "session_id", "session", "instanceId", "instance_id") ||
+    pickStr(asObj(payload.data), "sessionId", "session_id", "instanceId") ||
+    pickStr(asObj(payload.instance), "instanceId", "id", "name") ||
+    pickStr(asObj(payload.session), "id", "sessionId") ||
+    headers.get("x-session-id") ||
+    headers.get("x-instance-id") ||
+    null
+  );
+}
+
+export function parseWaTimestamp(entry: Record<string, unknown>): string | null {
+  const candidates: unknown[] = [
+    entry.messageTimestamp,
+    entry.timestamp,
+    entry.t,
+    asObj(entry.key).timestamp,
+    asObj(entry.message).messageTimestamp,
+    asObj(entry.data).timestamp,
+  ];
+  for (const raw of candidates) {
+    if (raw == null) continue;
+    const num = typeof raw === "number" ? raw : Number(String(raw).trim());
+    if (!Number.isFinite(num) || num <= 0) continue;
+    const ms = num < 1_000_000_000_000 ? num * 1000 : num;
+    const d = new Date(ms);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  return null;
+}
+
+export interface ParsedMessage {
+  remoteJid: string;
+  fromPhone: string | null;
+  text: string | null;
+  msgType: string;
+  mediaUrl: string | null;
+  contactName: string | null;
+  fromMe: boolean;
+  isGroup: boolean;
+  providerMessageId: string | null;
+  status: string;
+  waTimestamp: string | null;
+}
+
+export function extractTextFromMessage(m: Record<string, unknown>): { text: string | null; type: string; mediaUrl: string | null } {
+  // ── BotXtra flat shape: entry.type + entry.mediaData ──
+  const flatType = String(m.type ?? "").toLowerCase();
+  const mediaData = asObj(m.mediaData);
+  const contentData = asObj(m.content);
+  const contentText =
+    typeof m.content === "string"
+      ? m.content
+      : pickStr(contentData, "text", "body", "caption", "message", "content");
+  const hasMediaData = Object.keys(mediaData).length > 0;
+  const flatMediaUrl =
+    pickStr(mediaData, "url", "directPath", "fileUrl", "downloadUrl", "mediaUrl") ||
+    pickStr(contentData, "url", "directPath", "fileUrl", "downloadUrl", "mediaUrl") ||
+    pickStr(m, "mediaUrl", "fileUrl", "url");
+  const flatCaption =
+    pickStr(m, "caption", "body", "text", "content") ||
+    contentText ||
+    pickStr(mediaData, "caption", "fileName");
+
+  if (["image", "video", "audio", "document", "sticker", "voice", "ptt"].includes(flatType) || hasMediaData) {
+    const norm =
+      flatType === "voice" || flatType === "ptt"
+        ? "audio"
+        : flatType && flatType !== "text"
+          ? flatType
+          : "document";
+    return {
+      text: norm === "audio" || norm === "sticker" ? null : flatCaption,
+      type: norm,
+      mediaUrl: flatMediaUrl,
+    };
+  }
+
+  // Direct text fields
+  const direct = pickStr(m, "text", "body", "message", "caption", "content") || contentText;
+  if (direct) return { text: direct, type: "text", mediaUrl: null };
+
+  // Baileys-style nested `message`
+  const msg = asObj(m.message);
+  const conv = pickStr(msg, "conversation");
+  if (conv) return { text: conv, type: "text", mediaUrl: null };
+
+  const ext = asObj(msg.extendedTextMessage);
+  const extText = pickStr(ext, "text");
+  if (extText) return { text: extText, type: "text", mediaUrl: null };
+
+  const img = asObj(msg.imageMessage);
+  if (Object.keys(img).length) {
+    return { text: pickStr(img, "caption"), type: "image", mediaUrl: pickStr(img, "url", "directPath") };
+  }
+  const vid = asObj(msg.videoMessage);
+  if (Object.keys(vid).length) {
+    return { text: pickStr(vid, "caption"), type: "video", mediaUrl: pickStr(vid, "url", "directPath") };
+  }
+  const aud = asObj(msg.audioMessage);
+  if (Object.keys(aud).length) return { text: null, type: "audio", mediaUrl: pickStr(aud, "url", "directPath") };
+  const doc = asObj(msg.documentMessage);
+  if (Object.keys(doc).length) {
+    return { text: pickStr(doc, "fileName", "caption"), type: "document", mediaUrl: pickStr(doc, "url", "directPath") };
+  }
+  const sticker = asObj(msg.stickerMessage);
+  if (Object.keys(sticker).length) return { text: null, type: "sticker", mediaUrl: pickStr(sticker, "url", "directPath") };
+
+  return { text: null, type: "unknown", mediaUrl: null };
+}
+
+export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null {
+  const key = asObj(entry.key);
+  const fromMe =
+    entry.fromMe === true ||
+    entry.fromme === true ||
+    (key.fromMe as boolean | undefined) === true;
+  const isGroup =
+    isTruthy(entry.isGroup) ||
+    Boolean(pickStr(entry, "groupJid", "groupId")) ||
+    Boolean(pickStr(key, "remoteJid")?.endsWith("@g.us"));
+  const realPhone =
+    digits(pickStr(entry, "senderPn", "participantPn", "phoneNumber", "phone")) ||
+    digits(pickStr(asObj(entry.participant), "id", "phone", "jid"));
+  const keyRemote = pickStr(key, "remoteJid");
+  const groupJid = pickStr(entry, "groupJid", "groupId") || (keyRemote?.endsWith("@g.us") ? keyRemote : null);
+  const directChatJid = pickStr(entry, "remoteJid", "remote_jid", "jid", "chatId");
+  const recipientJid = pickStr(entry, "to", "recipient", "recipientJid", "targetJid", "toJid");
+  const senderJid = pickStr(entry, "from", "sender", "senderJid", "participantJid");
+  const remoteJid = isGroup
+    ? groupJid
+    : fromMe
+      ? (recipientJid || directChatJid || keyRemote)
+      : (realPhone || directChatJid || keyRemote || senderJid);
+
+  const fromPhone = isGroup
+    ? realPhone || digits(senderJid)
+    : fromMe
+      ? digits(recipientJid || directChatJid || keyRemote || remoteJid) || realPhone
+      : realPhone || digits(senderJid) || digits(remoteJid);
+
+  const { text, type, mediaUrl } = extractTextFromMessage(entry);
+
+  const jid = remoteJid || fromPhone || "";
+  if (jid.endsWith("@broadcast") || jid === "status@broadcast") return null;
+  if (!text && type === "unknown" && !mediaUrl) return null;
+  if (!remoteJid && !fromPhone) return null;
+
+  if (!isGroup && fromMe) {
+    const hasRealRecipient = Boolean(recipientJid || directChatJid || keyRemote);
+    if (!hasRealRecipient) return null;
+  }
+
+  return {
+    remoteJid: normalizeRemoteJid(remoteJid, isGroup ? digits(groupJid) : fromPhone, isGroup),
+    fromPhone,
+    text,
+    msgType: type,
+    mediaUrl,
+    contactName: isGroup
+      ? pickStr(entry, "groupSubject", "groupName")
+      : pickStr(entry, "pushName", "contactName", "senderName", "name", "notifyName", "notify"),
+    fromMe,
+    isGroup,
+    providerMessageId: messageIdFrom(entry),
+    status: normalizeMessageStatus(pickStr(entry, "status", "ack", "messageStatus"), fromMe),
+    waTimestamp: parseWaTimestamp(entry),
+  };
+}
+
+export function collectMessageEntries(payload: Record<string, unknown>): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  const push = (v: unknown) => {
+    if (Array.isArray(v)) v.forEach((x) => x && typeof x === "object" && out.push(x as Record<string, unknown>));
+    else if (v && typeof v === "object") out.push(v as Record<string, unknown>);
+  };
+  const data = asObj(payload.data);
+  push(payload.messages);
+  push(data.messages);
+  push(payload.message);
+  if (!out.length) push(data);
+  if (!out.length && (payload.from || payload.sender || payload.text || payload.body || payload.message || payload.key)) {
+    out.push(payload);
+  }
+  return out;
+}
+
+export const SESSION_STATUS_MAP: Record<string, string> = {
+  open: "connected",
+  ready: "connected",
+  connected: "connected",
+  qr: "qr",
+  scan: "qr",
+  connecting: "connecting",
+  starting: "connecting",
+  disconnected: "disconnected",
+  closed: "disconnected",
+  logged_out: "disconnected",
+};
