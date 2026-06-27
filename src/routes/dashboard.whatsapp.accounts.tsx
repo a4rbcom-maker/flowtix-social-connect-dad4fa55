@@ -287,6 +287,11 @@ function WhatsAppPage() {
     onSuccess: () => {
       qc.setQueryData(["wa-state", "local"], null);
       qc.setQueryData(["wa-state", "cloud"], null);
+      qc.setQueryData(["wa-connection-state", session?.user?.id], null);
+      qc.setQueryData(["wa-conversations", session?.user?.id], []);
+      qc.invalidateQueries({ queryKey: ["wa-conversations"] });
+      qc.invalidateQueries({ queryKey: ["wa-messages"] });
+      qc.invalidateQueries({ queryKey: ["wa-connection-state"] });
       setPolling(false);
       setShowQr(false);
       toast.success(t.successDisc);

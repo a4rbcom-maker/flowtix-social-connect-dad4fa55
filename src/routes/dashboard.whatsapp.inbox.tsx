@@ -1227,6 +1227,14 @@ function EmptyChat({
 // ──────────────────────────────────────────────────────────────────────────
 
 async function fetchInboxConversations(userId: string): Promise<ConversationRow[]> {
+  const { data: sessionRow, error: sessionError } = await supabase
+    .from("wa_sessions")
+    .select("session_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (sessionError) throw new Error(sessionError.message);
+  if (!sessionRow?.session_id) return [];
+
   const { data, error } = await supabase
     .from("wa_conversations")
     .select("id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")

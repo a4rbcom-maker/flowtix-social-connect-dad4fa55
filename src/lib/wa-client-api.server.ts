@@ -111,12 +111,20 @@ async function disconnect(supabase: ReturnType<typeof getSupabaseForToken>, user
     .maybeSingle();
   if (row?.session_id) {
     try { await waBridge.deleteSession(row.session_id); } catch { /* best effort */ }
-    await supabase.from("wa_sessions").delete().eq("user_id", userId);
   }
   // Clear conversations + messages so disconnecting truly wipes the inbox.
   // RLS scopes both tables to the current user.
-  await supabase.from("wa_messages").delete().eq("user_id", userId);
-  await supabase.from("wa_conversations").delete().eq("user_id", userId);
+  const { error: msgErr } = await supabase.from("wa_messages").delete().eq("user_id", userId);
+  if (msgErr) throw new Error(`Failed to clear WhatsApp messages: ${msgErr.message}`);
+  const { error: convErr } = await supabase.from("wa_conversations").delete().eq("user_id", userId);
+  if (convErr) throw new Error(`Failed to clear WhatsApp conversations: ${convErr.message}`);
+  const { error: sessErr } = await supabase.from("wa_sessions").delete().eq("user_id", userId);
+  if (sessErr) throw new Error(`Failed to clear WhatsApp session: ${sessErr.message}`);
+  const { error: settingsErr } = await supabase
+    .from("whatsapp_settings")
+    .update({ is_connected: false, last_connected_at: null })
+    .eq("user_id", userId);
+  if (settingsErr) throw new Error(`Failed to update WhatsApp settings: ${settingsErr.message}`);
   return { ok: true };
 }
 
