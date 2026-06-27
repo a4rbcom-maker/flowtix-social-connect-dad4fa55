@@ -1575,7 +1575,7 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
     <div dir="ltr" className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
       <div
         dir={isAr ? "rtl" : "ltr"}
-        className={`group min-w-0 max-w-[min(86%,680px)] overflow-hidden px-3.5 py-2 text-sm shadow-sm sm:max-w-[min(72%,760px)] ${
+        className={`group min-w-0 max-w-[86%] overflow-hidden px-3.5 py-2 text-sm shadow-sm sm:max-w-[72%] ${
           isFailed
             ? "rounded-2xl rounded-br-md border border-destructive/35 bg-destructive/10 text-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
             : isPending
