@@ -1,7 +1,7 @@
 // Server-only: AI reply generation for WhatsApp using kie.ai (multi-key pool).
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { sendTextWithReconnect } from "./wa-bridge.server";
+import { BridgeError, sendTextWithReconnect } from "./wa-bridge.server";
 import { deriveWebhookUrl } from "./wa-helpers.server";
 import { callKieChat, type ChatMessage } from "./ai-pool.server";
 import { isBridgeSessionMissingError, resetWaSessionAfterBridgeLoss } from "./wa-session-repair.server";
@@ -38,10 +38,14 @@ function isWithinWorkingHours(start?: string | null, end?: string | null): boole
 
 async function sendAiText(sessionId: string, userId: string, phone: string, text: string) {
   const webhookUrl = await deriveWebhookUrl();
-  return sendTextWithReconnect(sessionId, phone, text, {
+  const res = await sendTextWithReconnect(sessionId, phone, text, {
     webhookUrl: webhookUrl ?? undefined,
     tenantId: userId,
   });
+  if (res?.ok === false || res?.error) {
+    throw new BridgeError(res.error || res.message || "Bridge send returned ok:false", 200, res);
+  }
+  return res;
 }
 
 async function markSessionNeedsReconnect(userId: string, sessionId: string, err: unknown) {
@@ -319,6 +323,19 @@ export async function handleAiAutoReply(opts: {
     });
   } catch (err) {
     console.error("[wa-ai] handler crashed:", err);
+    await supabaseAdmin.from("wa_ai_logs").insert({
+      user_id: opts.userId,
+      conversation_id: opts.conversationId,
+      remote_jid: opts.remoteJid,
+      model: "not-run",
+      prompt_excerpt: opts.inboundText.slice(0, 500),
+      response_text: null,
+      tokens_in: null,
+      tokens_out: null,
+      latency_ms: 0,
+      status: "error",
+      error_message: `handler_crashed: ${err instanceof Error ? err.message : "unknown error"}`,
+    });
   }
 }
 
