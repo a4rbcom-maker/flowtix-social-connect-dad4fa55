@@ -2,7 +2,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { assertBridgeSendQueued, waBridge, BridgeError, sendTextWithReconnect } from "./wa-bridge.server";
+import { assertBridgeSendQueued, bridgeSendQueuedMessage, waBridge, BridgeError, sendTextWithReconnect } from "./wa-bridge.server";
 import { deriveWebhookUrl } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
 import { isBridgeSessionMissingError, resetWaSessionAfterBridgeLoss } from "./wa-session-repair.server";
@@ -44,6 +44,10 @@ export interface ChatMessageRow {
   is_ai: boolean;
   sender_name: string | null;
   sender_phone: string | null;
+  delivery_state?: string | null;
+  queued_id?: string | null;
+  delivery_error?: string | null;
+  is_stale_pending?: boolean;
 }
 
 
@@ -241,7 +245,20 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         recipientPhone: phoneDigits,
       });
       // Bridge may return 200 with ok:false / error message — surface it.
-      const providerMessageId = assertBridgeSendQueued(res);
+      const queuedId = bridgeSendQueuedMessage(res);
+      let providerMessageId: string | null = null;
+      let status = "sent";
+      let delivery = "whatsapp_acknowledged";
+      try {
+        providerMessageId = assertBridgeSendQueued(res);
+      } catch (err) {
+        // Bot-Xtra v1.8.x can accept a message into its internal queue and only
+        // return { queued: true, queuedId }. That is NOT proof that WhatsApp
+        // received it, so store it as pending instead of showing a false sent tick.
+        if (!queuedId) throw err;
+        status = "pending";
+        delivery = "bridge_queued_waiting_for_whatsapp_ack";
+      }
       await supabase.from("wa_messages").insert({
         user_id: userId,
         session_id: sess.session_id,
@@ -250,10 +267,17 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         to_phone: phoneDigits || to,
         msg_type: "text",
         text_body: data.text,
-        status: "sent",
+        status,
         provider_message_id: providerMessageId,
         wa_timestamp: sentAt,
-        raw: { bridgeMessageId: providerMessageId, delivery: "whatsapp_acknowledged", targetJid: to, usedLid: target.usedLid } as never,
+        raw: {
+          bridgeMessageId: providerMessageId,
+          queuedId,
+          delivery,
+          targetJid: to,
+          usedLid: target.usedLid,
+          bridgeResponse: res,
+        } as never,
       });
     } catch (err) {
       if (isBridgeSessionMissingError(err)) {
