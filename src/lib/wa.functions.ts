@@ -442,7 +442,8 @@ async function readState(
   await supabase
     .from("wa_sessions")
     .update(update)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .eq("session_id", sessionId);
 
 
   // If bridge didn't give us a number, surface the last-known one from DB.
@@ -452,6 +453,7 @@ async function readState(
       .from("wa_sessions")
       .select("phone_number")
       .eq("user_id", userId)
+      .eq("session_id", sessionId)
       .maybeSingle();
     surfacedPhone = row?.phone_number ?? null;
   }
