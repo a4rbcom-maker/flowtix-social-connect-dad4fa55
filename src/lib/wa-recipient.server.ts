@@ -51,6 +51,7 @@ function pickNestedJid(raw: Record<string, unknown>, phoneDigits: string | null)
 
 export async function resolveOutgoingWhatsappTarget(params: {
   userId: string;
+  sessionId?: string | null;
   remoteJid: string;
   fallbackPhoneOrJid: string | null;
 }): Promise<{ jid: string; phoneDigits: string | null; usedLid: boolean }> {
@@ -59,15 +60,15 @@ export async function resolveOutgoingWhatsappTarget(params: {
     return { jid: params.remoteJid, phoneDigits: fallbackPhoneDigits, usedLid: false };
   }
 
-  const { data } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("wa_messages")
     .select("raw, from_phone, remote_jid")
     .eq("user_id", params.userId)
     .eq("remote_jid", params.remoteJid)
     .eq("direction", "in")
-    .not("raw", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(20);
+    .not("raw", "is", null);
+  if (params.sessionId) query = query.eq("session_id", params.sessionId);
+  const { data } = await query.order("created_at", { ascending: false }).limit(20);
 
   let bestPhone = fallbackPhoneDigits;
   for (const row of data ?? []) {
