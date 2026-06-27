@@ -562,6 +562,94 @@ function StatusBadge({
   );
 }
 
+function SessionDiagnostics({
+  events,
+  loading,
+  ar,
+  t,
+  fmtTime,
+}: {
+  events: WaSessionEventRow[];
+  loading: boolean;
+  ar: boolean;
+  t: {
+    diagnosticsTitle: string;
+    diagnosticsDesc: string;
+    noDiagnostics: string;
+    reasonLabel: string;
+    sourceLabel: string;
+    statusChangeLabel: string;
+  };
+  fmtTime: (s: string | null) => string;
+}) {
+  const importantEvents = events.filter((event) => event.toStatus === "disconnected" || event.reason || event.bridgeEvent).slice(0, 5);
+
+  const sourceLabel = (source: string) => {
+    const map: Record<string, string> = ar
+      ? {
+          webhook_status: "Webhook من Bot‑Xtra",
+          webhook_qr: "QR من Bot‑Xtra",
+          bridge_status: "فحص حالة الجسر",
+          connect: "طلب ربط",
+          disconnect: "قطع يدوي",
+          reset: "إعادة ربط",
+        }
+      : {
+          webhook_status: "Bot‑Xtra webhook",
+          webhook_qr: "Bot‑Xtra QR",
+          bridge_status: "Bridge status check",
+          connect: "Connect request",
+          disconnect: "Manual disconnect",
+          reset: "Reconnect",
+        };
+    return map[source] ?? source;
+  };
+
+  return (
+    <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-sm">
+      <div className="flex items-start gap-2">
+        <History className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
+        <div className="min-w-0 flex-1">
+          <div className="font-bold text-foreground">{t.diagnosticsTitle}</div>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{t.diagnosticsDesc}</p>
+
+          {loading ? (
+            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {ar ? "جارٍ تحميل سجل الأسباب…" : "Loading diagnostics…"}
+            </div>
+          ) : importantEvents.length === 0 ? (
+            <p className="mt-3 rounded-lg bg-background/70 px-3 py-2 text-xs text-muted-foreground">{t.noDiagnostics}</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {importantEvents.map((event, index) => (
+                <div key={`${event.createdAt}-${index}`} className="rounded-lg bg-background/80 px-3 py-2 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-semibold text-foreground">{fmtTime(event.createdAt)}</span>
+                    <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground" dir="ltr">
+                      {event.fromStatus ?? "—"} → {event.toStatus}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 grid gap-1 text-muted-foreground sm:grid-cols-2">
+                    <div>
+                      <span className="font-medium text-foreground">{t.sourceLabel}: </span>
+                      {sourceLabel(event.source)}
+                    </div>
+                    <div>
+                      <span className="font-medium text-foreground">{t.reasonLabel}: </span>
+                      {event.reason || event.bridgeEvent || event.rawStatus || (ar ? "غير محدد" : "Not specified")}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StatusDot({ status }: { status: string }) {
   const color =
     status === "connected" ? "bg-emerald-500" :
