@@ -412,6 +412,20 @@ export const saveAiSettings = createServerFn({ method: "POST" })
         .insert({ ...payload, user_id: userId, connection_type: "qr_code" });
       if (error) throw new Error(error.message);
     }
+
+    // When the global AI Agent is switched on, make that state effective for
+    // existing customers too. Old conversations may carry ai_enabled=false from
+    // a previous UI toggle, which made users think the package-level AI was on
+    // while some customers were silently skipped.
+    if (data.ai_enabled) {
+      const { error: convErr } = await supabase
+        .from("wa_conversations")
+        .update({ ai_enabled: true })
+        .eq("user_id", userId)
+        .eq("ai_enabled", false);
+      if (convErr) throw new Error(convErr.message);
+    }
+
     const { data: saved, error: readErr } = await supabase
       .from("whatsapp_settings")
       .select("ai_enabled")
