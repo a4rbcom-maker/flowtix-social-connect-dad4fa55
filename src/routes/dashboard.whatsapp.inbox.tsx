@@ -1580,8 +1580,9 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
   const isPending = isOut && m.status === "pending";
   const isFailed = isOut && m.status === "failed";
   return (
-    <div className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
+    <div dir="ltr" className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
       <div
+        dir={isAr ? "rtl" : "ltr"}
         className={`group max-w-[78%] overflow-hidden px-3.5 py-2 text-sm shadow-sm sm:max-w-[70%] ${
           isFailed
             ? "rounded-2xl rounded-br-md border border-destructive/35 bg-destructive/10 text-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
