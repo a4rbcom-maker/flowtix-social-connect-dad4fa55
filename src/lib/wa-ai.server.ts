@@ -213,13 +213,32 @@ async function deliverAiTextWithRetry(opts: {
           excludeMessageId: messageRowId,
         });
         if (!confirmed) {
-          return {
-            providerMessageId: null,
-            status: "queued",
-            attempts,
-            lastError: `bridge_queued_without_whatsapp_ack:${queuedId}`,
-            responses,
-          };
+          lastError = `bridge_queued_without_whatsapp_ack:${queuedId}`;
+          responses.push({ queuedId, status: "queued_without_whatsapp_ack", attempt });
+          if (messageRowId) {
+            await supabaseAdmin
+              .from("wa_messages")
+              .update({
+                status: attempt === AI_DELIVERY_ATTEMPTS ? "failed" : "pending",
+                raw: {
+                  ai: true,
+                  kind,
+                  tier,
+                  model,
+                  queuedId,
+                  delivery: attempt === AI_DELIVERY_ATTEMPTS ? "failed_missing_whatsapp_ack" : "retrying_after_missing_whatsapp_ack",
+                  attempts,
+                  error: lastError,
+                  bridgeResponses: responses,
+                } as never,
+              })
+              .eq("id", messageRowId);
+          }
+          if (attempt < AI_DELIVERY_ATTEMPTS) {
+            await wait(retryDelayMs(attempt));
+            continue;
+          }
+          break;
         }
         providerMessageId = confirmed.providerMessageId;
       }
