@@ -43,6 +43,40 @@ export function asObj(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
 }
 
+function hasKeys(v: unknown): v is Record<string, unknown> {
+  return Boolean(v && typeof v === "object" && Object.keys(v as Record<string, unknown>).length > 0);
+}
+
+function looksLikeMessage(v: unknown): v is Record<string, unknown> {
+  if (!hasKeys(v)) return false;
+  const rec = v as Record<string, unknown>;
+  return Boolean(
+    rec.messages ||
+      rec.message ||
+      rec.key ||
+      rec.messageId ||
+      rec.msgId ||
+      rec.id ||
+      rec.wamid ||
+      rec.from ||
+      rec.sender ||
+      rec.senderJid ||
+      rec.remoteJid ||
+      rec.chatId ||
+      rec.body ||
+      rec.text ||
+      rec.content ||
+      rec.caption ||
+      rec.mediaData,
+  );
+}
+
+function pickContactRef(value: unknown): string | null {
+  if (typeof value === "string" && value.length > 0) return value;
+  const obj = asObj(value);
+  return pickStr(obj, "jid", "id", "remoteJid", "phoneNumber", "phone", "number", "user", "pn");
+}
+
 export function normalizeRemoteJid(remoteJid: string | null, phone: string | null, isGroup = false): string {
   const jid = remoteJid || "";
   if (jid.includes("@")) return jid;
@@ -185,6 +219,11 @@ export function extractTextFromMessage(m: Record<string, unknown>): { text: stri
 
 export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage | null {
   const key = asObj(entry.key);
+  const senderObj = asObj(entry.sender);
+  const fromObj = asObj(entry.from);
+  const participantObj = asObj(entry.participant);
+  const recipientObj = asObj(entry.recipient);
+  const toObj = asObj(entry.to);
   const fromMe =
     entry.fromMe === true ||
     entry.fromme === true ||
@@ -195,12 +234,24 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
     Boolean(pickStr(key, "remoteJid")?.endsWith("@g.us"));
   const realPhone =
     digits(pickStr(entry, "senderPn", "participantPn", "phoneNumber", "phone")) ||
-    digits(pickStr(asObj(entry.participant), "id", "phone", "jid"));
+    digits(pickContactRef(senderObj)) ||
+    digits(pickContactRef(participantObj)) ||
+    digits(pickContactRef(fromObj));
   const keyRemote = pickStr(key, "remoteJid");
   const groupJid = pickStr(entry, "groupJid", "groupId") || (keyRemote?.endsWith("@g.us") ? keyRemote : null);
   const directChatJid = pickStr(entry, "remoteJid", "remote_jid", "jid", "chatId");
-  const recipientJid = pickStr(entry, "to", "recipient", "recipientJid", "targetJid", "toJid");
-  const senderJid = pickStr(entry, "from", "sender", "senderJid", "participantJid");
+  const recipientJid =
+    pickStr(entry, "recipientJid", "targetJid", "toJid") ||
+    pickContactRef(entry.to) ||
+    pickContactRef(entry.recipient) ||
+    pickContactRef(toObj) ||
+    pickContactRef(recipientObj);
+  const senderJid =
+    pickStr(entry, "senderJid", "participantJid") ||
+    pickContactRef(entry.sender) ||
+    pickContactRef(entry.from) ||
+    pickContactRef(senderObj) ||
+    pickContactRef(fromObj);
   const remoteJid = isGroup
     ? groupJid
     : fromMe
@@ -233,7 +284,9 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
     mediaUrl,
     contactName: isGroup
       ? pickStr(entry, "groupSubject", "groupName")
-      : pickStr(entry, "pushName", "contactName", "senderName", "name", "notifyName", "notify"),
+      : pickStr(entry, "pushName", "contactName", "senderName", "name", "notifyName", "notify") ||
+        pickStr(senderObj, "pushName", "name", "shortName", "verifiedName") ||
+        pickStr(fromObj, "pushName", "name", "shortName", "verifiedName"),
     fromMe,
     isGroup,
     providerMessageId: messageIdFrom(entry),
@@ -245,17 +298,16 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
 export function collectMessageEntries(payload: Record<string, unknown>): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = [];
   const push = (v: unknown) => {
-    if (Array.isArray(v)) v.forEach((x) => x && typeof x === "object" && out.push(x as Record<string, unknown>));
-    else if (v && typeof v === "object") out.push(v as Record<string, unknown>);
+    if (Array.isArray(v)) v.forEach((x) => looksLikeMessage(x) && out.push(x));
+    else if (looksLikeMessage(v)) out.push(v);
   };
   const data = asObj(payload.data);
   push(payload.messages);
   push(data.messages);
   push(payload.message);
+  push(data.message);
+  if (!out.length) push(payload);
   if (!out.length) push(data);
-  if (!out.length && (payload.from || payload.sender || payload.text || payload.body || payload.message || payload.key)) {
-    out.push(payload);
-  }
   return out;
 }
 
