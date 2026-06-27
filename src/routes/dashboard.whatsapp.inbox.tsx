@@ -672,16 +672,16 @@ function InboxPage() {
     <DashboardLayout title={t.title}>
       <div
         dir={isAr ? "rtl" : "ltr"}
-        className="-m-4 md:-m-6 h-[calc(100vh-65px)] overflow-hidden bg-card"
+        className="h-[calc(100dvh-97px)] min-h-[520px] w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-border/60 bg-card md:h-[calc(100dvh-113px)]"
       >
         {isMobile ? (
-          <div className="h-full">
+          <div className="h-full min-w-0 overflow-hidden">
             {activeJid ? ChatPane : Sidebar}
           </div>
         ) : (
           <ResizablePanelGroup
             orientation="horizontal"
-            className="h-full w-full"
+            className="h-full w-full min-w-0 overflow-hidden"
             id="wa-inbox-layout-v2"
             dir="ltr"
           >
