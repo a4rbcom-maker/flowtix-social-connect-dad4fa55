@@ -77,6 +77,7 @@ async function sendAiTextOnce(sessionId: string, userId: string, phone: string, 
   const res = await sendTextWithReconnect(sessionId, phone, text, {
     webhookUrl: webhookUrl ?? undefined,
     tenantId: userId,
+    recipientPhone: phone.includes("@lid") ? undefined : phone,
   });
   // Log full bridge response so we can diagnose silent delivery failures.
   console.log("[wa-ai] bridge sendText response:", JSON.stringify(res));
