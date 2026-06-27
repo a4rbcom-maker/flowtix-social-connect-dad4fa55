@@ -142,6 +142,74 @@ export class BridgeError extends Error {
   }
 }
 
+export interface BridgeSendResponse {
+  id?: string;
+  messageId?: string;
+  message_id?: string;
+  msgId?: string;
+  msg_id?: string;
+  wamid?: string;
+  ok?: boolean;
+  success?: boolean;
+  status?: string;
+  error?: string;
+  message?: string;
+  data?: unknown;
+  result?: unknown;
+  payload?: unknown;
+  [key: string]: unknown;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function pickString(obj: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+export function extractBridgeMessageId(res: unknown, depth = 0): string | null {
+  if (!res || depth > 3) return null;
+  const obj = asRecord(res);
+  const direct = pickString(obj, "id", "messageId", "message_id", "msgId", "msg_id", "wamid");
+  if (direct) return direct;
+  const keyId = pickString(asRecord(obj.key), "id");
+  if (keyId) return keyId;
+  for (const key of ["data", "result", "payload", "message"]) {
+    const nested = extractBridgeMessageId(obj[key], depth + 1);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+export function bridgeSendFailureMessage(res: unknown): string | null {
+  const obj = asRecord(res);
+  const status = String(obj.status ?? "").toLowerCase();
+  if (obj.ok === false || obj.success === false || status === "failed" || status === "error") {
+    return pickString(obj, "error", "message", "reason") || `Bridge send failed${status ? ` (${status})` : ""}`;
+  }
+  const nested = bridgeSendFailureMessage(obj.data ?? obj.result ?? obj.payload);
+  return nested;
+}
+
+export function assertBridgeSendQueued(res: BridgeSendResponse | null | undefined): string {
+  const failure = bridgeSendFailureMessage(res);
+  if (failure) throw new BridgeError(failure, 200, res ?? null);
+  const messageId = extractBridgeMessageId(res);
+  if (!messageId) {
+    throw new BridgeError(
+      `Bridge accepted request but returned no message id (response: ${JSON.stringify(res ?? null).slice(0, 240)})`,
+      200,
+      res ?? null,
+    );
+  }
+  return messageId;
+}
+
 export type BridgeSessionStatus = "connected" | "qr" | "disconnected" | "connecting" | "unknown";
 
 export interface BridgeStatusResponse {
@@ -198,7 +266,7 @@ export const waBridge = {
   sendText: (id: string, to: string, text: string) => {
     const phone = to.replace(/[^0-9]/g, "");
     const jid = to.includes("@") ? to : `${phone}@s.whatsapp.net`;
-    return bridgeFetch<{ id?: string; ok?: boolean; error?: string; message?: string }>(
+    return bridgeFetch<BridgeSendResponse>(
       `/api/sessions/${encodeURIComponent(id)}/send`,
       {
         method: "POST",
@@ -221,7 +289,7 @@ export async function sendTextWithReconnect(
   to: string,
   text: string,
   recover: { webhookUrl?: string; tenantId?: string },
-): Promise<{ id?: string; ok?: boolean; error?: string; message?: string }> {
+): Promise<BridgeSendResponse> {
   try {
     return await waBridge.sendText(id, to, text);
   } catch (err) {
