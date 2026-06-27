@@ -468,25 +468,36 @@ function WhatsAppPage() {
                   )}
                 </>
               ) : (
-                /* Empty state */
-                <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border/60 bg-muted/20 px-6 py-16 text-center">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-primary/10">
-                    <Smartphone className="h-10 w-10 text-primary" />
+                <>
+                  {/* Empty state */}
+                  <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border/60 bg-muted/20 px-6 py-16 text-center">
+                    <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-primary/10">
+                      <Smartphone className="h-10 w-10 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-foreground">{t.noAccount}</h2>
+                      <p className="mt-1 max-w-sm text-sm text-muted-foreground">{t.noAccountDesc}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => connectMut.mutate()}
+                      disabled={connectMut.isPending}
+                      className="inline-flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-6 text-sm font-semibold text-primary-foreground shadow-md hover:opacity-95 disabled:opacity-60"
+                    >
+                      {connectMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      {t.connect}
+                    </button>
                   </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-foreground">{t.noAccount}</h2>
-                    <p className="mt-1 max-w-sm text-sm text-muted-foreground">{t.noAccountDesc}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => connectMut.mutate()}
-                    disabled={connectMut.isPending}
-                    className="inline-flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-6 text-sm font-semibold text-primary-foreground shadow-md hover:opacity-95 disabled:opacity-60"
-                  >
-                    {connectMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                    {t.connect}
-                  </button>
-                </div>
+                  {(eventsQuery.isLoading || (eventsQuery.data?.length ?? 0) > 0) && (
+                    <SessionDiagnostics
+                      events={eventsQuery.data ?? []}
+                      loading={eventsQuery.isLoading}
+                      ar={ar}
+                      t={t}
+                      fmtTime={fmtTime}
+                    />
+                  )}
+                </>
               )}
             </div>
 
