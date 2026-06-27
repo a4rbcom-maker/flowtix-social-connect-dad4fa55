@@ -125,7 +125,7 @@ export const getWaConnectionState = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data: row } = await supabase
       .from("wa_sessions")
-      .select("session_id")
+      .select("session_id, status")
       .eq("user_id", userId)
       .maybeSingle();
     if (!row?.session_id) return null;
@@ -231,7 +231,7 @@ export const disconnectWaSession = createServerFn({ method: "POST" })
       await logWaSessionEvent(supabase, {
         userId,
         sessionId: row.session_id,
-        fromStatus: null,
+        fromStatus: row.status ?? null,
         toStatus: "disconnected",
         source: "disconnect",
         reason: "manual_disconnect",
