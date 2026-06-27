@@ -93,6 +93,25 @@ const BOTXTRA_STATUS_BROADCAST = {
   },
 };
 
+const BOTXTRA_V18_FLAT_DATA_MESSAGE = {
+  event: "message",
+  sessionId: "flowtix-abcdef0123456789-l4k2j",
+  data: {
+    tenantId: "4f4b101d-b785-4719-82a3-6f378584739e",
+    from: "201273747262",
+    fromMe: false,
+    pushName: "Customer",
+    senderName: "Customer",
+    notifyName: "Customer",
+    body: "مرحبا",
+    type: "text",
+    id: "3EB0BX1.8.FLAT001",
+    isGroup: false,
+    sender: "201273747262@s.whatsapp.net",
+    timestamp: 1_730_000_030,
+  },
+};
+
 // ── Session id discovery ────────────────────────────────────────────────────
 
 describe("Bot-Xtra v1.8.x: sessionId discovery", () => {
@@ -130,6 +149,12 @@ describe("Bot-Xtra v1.8.x: message collection", () => {
   it("handles top-level messages array (legacy)", () => {
     const entries = collectMessageEntries({ messages: [{ id: "a", text: "x" }] });
     expect(entries).toHaveLength(1);
+  });
+
+  it("extracts Bot-Xtra v1.8.x flat message object from data", () => {
+    const entries = collectMessageEntries(BOTXTRA_V18_FLAT_DATA_MESSAGE);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].id).toBe("3EB0BX1.8.FLAT001");
   });
 });
 
@@ -169,6 +194,19 @@ describe("Bot-Xtra v1.8.x: parseMessageEntry", () => {
   it("rejects status@broadcast entries", () => {
     const [entry] = collectMessageEntries(BOTXTRA_STATUS_BROADCAST);
     expect(parseMessageEntry(entry)).toBeNull();
+  });
+
+  it("parses Bot-Xtra v1.8.x flat data message shape", () => {
+    const [entry] = collectMessageEntries(BOTXTRA_V18_FLAT_DATA_MESSAGE);
+    const m = parseMessageEntry(entry)!;
+    expect(m).not.toBeNull();
+    expect(m.text).toBe("مرحبا");
+    expect(m.msgType).toBe("text");
+    expect(m.fromMe).toBe(false);
+    expect(m.fromPhone).toBe("201273747262");
+    expect(m.remoteJid).toBe("201273747262@s.whatsapp.net");
+    expect(m.providerMessageId).toBe("3EB0BX1.8.FLAT001");
+    expect(m.contactName).toBe("Customer");
   });
 });
 
