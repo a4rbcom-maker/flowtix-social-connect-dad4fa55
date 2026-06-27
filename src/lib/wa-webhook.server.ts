@@ -140,6 +140,7 @@ async function updateMessageStatuses(userId: string, sessionId: string, payload:
       .from("wa_messages")
       .update({ status })
       .eq("user_id", userId)
+      .eq("session_id", sessionId)
       .eq("provider_message_id", providerMessageId)
       .select("id");
     if (error) console.error("[wa-webhook] status update failed:", error.message);
@@ -361,6 +362,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         .from("wa_messages")
         .select("id")
         .eq("user_id", userId)
+        .eq("session_id", sessionId)
         .eq("provider_message_id", m.providerMessageId)
         .maybeSingle();
       if (existing?.id) {
