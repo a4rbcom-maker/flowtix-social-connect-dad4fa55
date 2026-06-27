@@ -42,8 +42,26 @@ async function sendAiText(sessionId: string, userId: string, phone: string, text
     webhookUrl: webhookUrl ?? undefined,
     tenantId: userId,
   });
+  // Log full bridge response so we can diagnose silent delivery failures.
+  console.log("[wa-ai] bridge sendText response:", JSON.stringify(res));
   if (res?.ok === false || res?.error) {
     throw new BridgeError(res.error || res.message || "Bridge send returned ok:false", 200, res);
+  }
+  // Bot-Xtra v1.8.x returns a message id on successful queue. No id usually
+  // means the bridge accepted the HTTP call but did NOT actually deliver
+  // (offline session, invalid jid, throttled). Treat as failure so the user
+  // sees an explicit error in wa_ai_logs instead of a phantom "sent".
+  const hasId =
+    (typeof res?.id === "string" && res.id.length > 0) ||
+    (typeof (res as Record<string, unknown> | null)?.messageId === "string" && ((res as Record<string, unknown>).messageId as string).length > 0) ||
+    res?.ok === true ||
+    (res as Record<string, unknown> | null)?.success === true;
+  if (!hasId) {
+    throw new BridgeError(
+      `Bridge accepted request but returned no message id (response: ${JSON.stringify(res).slice(0, 200)})`,
+      200,
+      res,
+    );
   }
   return res;
 }
