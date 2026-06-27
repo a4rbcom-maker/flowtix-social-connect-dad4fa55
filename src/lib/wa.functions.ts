@@ -362,10 +362,20 @@ export const testWaWebhook = createServerFn({ method: "POST" })
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
+      const { data: settings } = await supabase
+        .from("whatsapp_settings")
+        .select("ai_enabled")
+        .eq("user_id", userId)
+        .maybeSingle();
       const aiLogStatus = aiLog?.status ?? null;
-      const aiError = aiLog?.error_message ?? null;
+      const aiError = aiLog?.error_message ?? (settings?.ai_enabled === false
+        ? "ai_disabled: وكيل AI غير مفعّل لهذا الحساب. فعّله من صفحة وكيل AI ثم احفظ."
+        : aiLogStatus
+          ? null
+          : "no_ai_log: تم تخزين الرسالة لكن لم يظهر أي تشغيل للـ AI. راجع إعدادات الوكيل ومفاتيح Kie.");
       const aiResponseStored = Boolean(aiLog?.response_text);
-      const ok = res.status >= 200 && res.status < 300 && messageStored;
+      const aiOk = aiLogStatus === "success" && aiResponseStored;
+      const ok = res.status >= 200 && res.status < 300 && messageStored && aiOk;
       return {
         ok,
         httpStatus: res.status,
@@ -382,6 +392,8 @@ export const testWaWebhook = createServerFn({ method: "POST" })
             ? `webhook_rejected: HTTP ${res.status} — ${body.slice(0, 200)}`
             : !messageStored
               ? "not_persisted: الـ webhook ردّ بنجاح لكن لم يتم تخزين الرسالة (تأكد إن session_id مسجّل على الخادم)."
+              : !aiOk
+                ? `ai_not_replied: ${aiError || "لم يتم حفظ رد AI."}`
               : null,
       };
     } catch (err) {

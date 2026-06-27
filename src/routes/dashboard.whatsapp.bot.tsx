@@ -154,6 +154,11 @@ function BotPage() {
   }
 
   const update = (patch: Partial<WaAiSettings>) => setForm({ ...form, ...patch });
+  const toggleAiEnabled = (enabled: boolean) => {
+    const next = { ...form, ai_enabled: enabled };
+    setForm(next);
+    saveMut.mutate(next);
+  };
 
   return (
     <DashboardLayout title={t.title}>
@@ -172,7 +177,8 @@ function BotPage() {
               <input
                 type="checkbox"
                 checked={form.ai_enabled}
-                onChange={(e) => update({ ai_enabled: e.target.checked })}
+                onChange={(e) => toggleAiEnabled(e.target.checked)}
+                disabled={saveMut.isPending}
                 className="peer sr-only"
               />
               <div className="h-7 w-12 rounded-full bg-muted transition peer-checked:bg-primary" />
