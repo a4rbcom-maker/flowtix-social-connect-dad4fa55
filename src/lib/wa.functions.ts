@@ -17,6 +17,7 @@ import {
   type WaBridgeHealth,
 } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
+import { isHardSessionGoneError, updateWaSessionStatus } from "./wa-session-events.server";
 
 export type { WaBridgeHealth };
 
@@ -80,11 +81,16 @@ export const connectWaSession = createServerFn({ method: "POST" })
         const now = new Date().toISOString();
         const errMsg = describeBridgeError(err);
         console.warn("[wa] createSession bridge error:", errMsg);
-        await supabase
-          .from("wa_sessions")
-          .update({ status: "disconnected", qr_data_url: null, last_seen_at: now })
-          .eq("user_id", userId)
-          .eq("session_id", sessionId);
+        await updateWaSessionStatus(supabase, {
+          userId,
+          sessionId,
+          nextStatus: "disconnected",
+          source: "connect_error",
+          reason: errMsg,
+          rawStatus: err instanceof BridgeError ? `http_${err.status}` : null,
+          qrDataUrl: null,
+          logEvenIfUnchanged: true,
+        });
         return {
           status: "disconnected",
           sessionId,
@@ -429,7 +435,23 @@ async function readState(
   } catch (err) {
     error = describeBridgeError(err);
     console.warn("[wa] readState bridge error:", error);
-    status = "disconnected";
+    if (isHardSessionGoneError(err)) {
+      status = "disconnected";
+    } else {
+      // A timeout/502/temporary bridge failure is not proof that the WhatsApp
+      // device logged out. Preserve the last DB status so polling cannot
+      // accidentally mark a healthy Bot-Xtra session as disconnected.
+      const { data: current } = await supabase
+        .from("wa_sessions")
+        .select("status")
+        .eq("user_id", userId)
+        .eq("session_id", sessionId)
+        .maybeSingle();
+      const existingStatus = current?.status as BridgeSessionStatus | undefined;
+      status = existingStatus && ["connected", "qr", "connecting", "disconnected", "unknown"].includes(existingStatus)
+        ? existingStatus
+        : "unknown";
+    }
   }
 
   // Fallback: poll dedicated /qr endpoint if status didn't include one.
@@ -446,17 +468,17 @@ async function readState(
   const now = new Date().toISOString();
   // Preserve last-known phone_number when bridge transiently reports null
   // (e.g. session re-paired). Only overwrite when we actually got a number.
-  const update: Record<string, unknown> = {
-    status,
-    qr_data_url: null,
-    last_seen_at: now,
-  };
-  if (phoneNumber) update.phone_number = phoneNumber;
-  await supabase
-    .from("wa_sessions")
-    .update(update)
-    .eq("user_id", userId)
-    .eq("session_id", sessionId);
+  await updateWaSessionStatus(supabase, {
+    userId,
+    sessionId,
+    nextStatus: status,
+    source: error ? "poll_error" : "poll",
+    reason: error,
+    rawStatus: status,
+    phoneNumber,
+    qrDataUrl: null,
+    logEvenIfUnchanged: Boolean(error),
+  });
 
 
   // If bridge didn't give us a number, surface the last-known one from DB.
