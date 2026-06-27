@@ -186,13 +186,15 @@ export function extractBridgeMessageId(res: unknown, depth = 0): string | null {
   return null;
 }
 
-export function bridgeSendFailureMessage(res: unknown): string | null {
+export function bridgeSendFailureMessage(res: unknown, depth = 0): string | null {
+  if (!res || depth > 3) return null;
   const obj = asRecord(res);
+  if (!Object.keys(obj).length) return null;
   const status = String(obj.status ?? "").toLowerCase();
   if (obj.ok === false || obj.success === false || status === "failed" || status === "error") {
     return pickString(obj, "error", "message", "reason") || `Bridge send failed${status ? ` (${status})` : ""}`;
   }
-  const nested = bridgeSendFailureMessage(obj.data ?? obj.result ?? obj.payload);
+  const nested = bridgeSendFailureMessage(obj.data ?? obj.result ?? obj.payload, depth + 1);
   return nested;
 }
 
