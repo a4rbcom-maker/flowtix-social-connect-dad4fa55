@@ -6,6 +6,7 @@ import { assertBridgeSendQueued, waBridge, BridgeError, sendTextWithReconnect } 
 import { deriveWebhookUrl } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
 import { isBridgeSessionMissingError, resetWaSessionAfterBridgeLoss } from "./wa-session-repair.server";
+import { resolveOutgoingWhatsappTarget } from "./wa-recipient.server";
 import {
   asRecord,
   cleanMessageText,
@@ -224,14 +225,13 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       .order("created_at", { ascending: false })
       .limit(20);
     const rawPhone = (recentRaw ?? []).map((msg) => phoneFromRaw(msg.raw)).find(Boolean) ?? null;
-    const phoneDigits = (rawPhone || conv?.contact_phone || data.remoteJid.replace(/[^0-9]/g, "")).replace(/[^0-9]/g, "");
-    const to = data.remoteJid.endsWith("@g.us")
-      ? data.remoteJid
-      : data.remoteJid.includes("@")
-        ? data.remoteJid
-        : phoneDigits
-          ? `${phoneDigits}@s.whatsapp.net`
-          : data.remoteJid;
+    const target = await resolveOutgoingWhatsappTarget({
+      userId,
+      remoteJid: data.remoteJid,
+      fallbackPhoneOrJid: rawPhone || conv?.contact_phone || data.remoteJid,
+    });
+    const phoneDigits = target.phoneDigits || data.remoteJid.replace(/[^0-9]/g, "");
+    const to = target.jid;
     const sentAt = new Date().toISOString();
     try {
       const webhookUrl = await deriveWebhookUrl().catch(() => null);
@@ -252,7 +252,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         status: "sent",
         provider_message_id: providerMessageId,
         wa_timestamp: sentAt,
-        raw: { bridgeMessageId: providerMessageId, delivery: "queued" } as never,
+        raw: { bridgeMessageId: providerMessageId, delivery: "whatsapp_acknowledged", targetJid: to, usedLid: target.usedLid } as never,
       });
     } catch (err) {
       if (isBridgeSessionMissingError(err)) {
