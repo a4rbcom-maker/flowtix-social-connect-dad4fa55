@@ -322,6 +322,8 @@ export const waBridge = {
           text,
           message: text,
           body: text,
+          content: text,
+          caption: text,
         }),
       },
     );
