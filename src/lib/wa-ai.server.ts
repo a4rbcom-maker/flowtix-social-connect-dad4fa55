@@ -406,7 +406,9 @@ export async function handleAiAutoReply(opts: {
     });
 
     let aiText = result.text;
+    const generatedText = aiText;
     let errMsg = result.error;
+    let deliveredOk = false;
 
     if (aiText) {
       const delivery = await deliverAiTextWithRetry({
@@ -421,6 +423,8 @@ export async function handleAiAutoReply(opts: {
       if (delivery.status !== "sent") {
         errMsg = `delivery_failed_after_${delivery.attempts}_attempts: ${delivery.lastError ?? "unknown"}`;
         aiText = "";
+      } else {
+        deliveredOk = true;
       }
     }
 
@@ -431,11 +435,11 @@ export async function handleAiAutoReply(opts: {
       remote_jid: remoteJid,
       model: result.model || model,
       prompt_excerpt: inboundText.slice(0, 500),
-      response_text: aiText || null,
+      response_text: generatedText || null,
       tokens_in: result.tokensIn,
       tokens_out: result.tokensOut,
       latency_ms: result.latencyMs,
-      status: aiText ? "success" : "error",
+      status: deliveredOk ? "success" : "error",
       error_message: errMsg,
     });
   } catch (err) {
