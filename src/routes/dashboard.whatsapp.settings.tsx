@@ -54,7 +54,7 @@ function WaSettingsPage() {
     } catch (e) {
       setTestResult({
         ok: false, httpStatus: 0, responseBody: "", saved: 0,
-        sessionId: null, messageStored: false,
+        sessionId: null, messageStored: false, aiLogStatus: null, aiError: null, aiResponseStored: false,
         error: e instanceof Error ? e.message : String(e),
       });
       toast.error(lang === "ar" ? "خطأ في تشغيل الاختبار" : "Test failed to run");
@@ -224,8 +224,8 @@ function WaSettingsPage() {
                 </h2>
                 <p className="mt-0.5 text-sm text-muted-foreground">
                   {lang === "ar"
-                    ? "ابعت رسالة تجريبية موقّعة للـ webhook بتاعك واتأكد إنها وصلت وتم تخزينها."
-                    : "Send a signed synthetic message to your webhook and verify it was received and stored."}
+                    ? "ابعت رسالة تجريبية موقّعة للـ webhook واتأكد إنها اتخزنت وشغّلت وكيل AI أو اعرف سبب الفشل."
+                    : "Send a signed synthetic message to the webhook and verify storage plus AI execution or the failure reason."}
                 </p>
               </div>
             </div>
@@ -267,7 +267,17 @@ function WaSettingsPage() {
                 <dd className="font-mono text-foreground">{testResult.saved}</dd>
                 <dt>Session</dt>
                 <dd className="truncate font-mono text-foreground">{testResult.sessionId ?? "—"}</dd>
+                <dt>{lang === "ar" ? "تشغيل AI" : "AI run"}</dt>
+                <dd className="font-mono text-foreground">{testResult.aiLogStatus ?? "—"}</dd>
+                <dt>{lang === "ar" ? "رد AI محفوظ" : "AI response stored"}</dt>
+                <dd className="font-mono text-foreground">{testResult.aiResponseStored ? "✓" : "✗"}</dd>
               </dl>
+              {testResult.aiError && (
+                <div className="mt-3 rounded-lg bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+                  <div className="font-semibold mb-1">{lang === "ar" ? "سبب فشل AI" : "AI failure reason"}</div>
+                  <div className="font-mono break-all whitespace-pre-wrap">{testResult.aiError}</div>
+                </div>
+              )}
               {testResult.error && (
                 <div className="mt-3 rounded-lg bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-300">
                   <div className="font-semibold mb-1">{lang === "ar" ? "سبب الفشل" : "Failure reason"}</div>

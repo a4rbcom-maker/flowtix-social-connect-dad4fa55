@@ -84,7 +84,8 @@ async function connect(supabase: ReturnType<typeof getSupabaseForToken>, userId:
       await supabase
         .from("wa_sessions")
         .update({ status: "disconnected", qr_data_url: null, last_seen_at: now })
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .eq("session_id", sessionId);
       return stateDto("disconnected", sessionId, null, null, existing?.phone_number ?? null, now, msg);
     }
   }
@@ -179,7 +180,7 @@ async function readState(supabase: ReturnType<typeof getSupabaseForToken>, userI
     last_seen_at: now,
   };
   if (phoneNumber) update.phone_number = phoneNumber;
-  await supabase.from("wa_sessions").update(update).eq("user_id", userId);
+  await supabase.from("wa_sessions").update(update).eq("user_id", userId).eq("session_id", sessionId);
 
   let surfacedPhone = phoneNumber;
   if (!surfacedPhone) {
@@ -187,6 +188,7 @@ async function readState(supabase: ReturnType<typeof getSupabaseForToken>, userI
       .from("wa_sessions")
       .select("phone_number")
       .eq("user_id", userId)
+      .eq("session_id", sessionId)
       .maybeSingle();
     surfacedPhone = data?.phone_number ?? null;
   }

@@ -39,7 +39,8 @@ export async function resetWaSessionAfterBridgeLoss(params: {
     await supabaseAdmin
       .from("wa_sessions")
       .update({ status: "disconnected", qr_data_url: null, last_seen_at: now })
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .eq("session_id", oldSessionId);
     console.error("[wa-session-repair] create fresh session failed:", message);
     return { sessionId: oldSessionId, error: message };
   }
@@ -53,7 +54,8 @@ export async function resetWaSessionAfterBridgeLoss(params: {
       phone_number: null,
       last_seen_at: now,
     })
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .eq("session_id", oldSessionId);
 
   if (error) {
     console.error("[wa-session-repair] DB update failed:", error.message);

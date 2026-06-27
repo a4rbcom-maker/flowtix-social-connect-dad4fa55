@@ -83,7 +83,8 @@ export const connectWaSession = createServerFn({ method: "POST" })
         await supabase
           .from("wa_sessions")
           .update({ status: "disconnected", qr_data_url: null, last_seen_at: now })
-          .eq("user_id", userId);
+          .eq("user_id", userId)
+          .eq("session_id", sessionId);
         return {
           status: "disconnected",
           sessionId,
@@ -264,6 +265,9 @@ export interface WaWebhookTestResult {
   saved: number;
   sessionId: string | null;
   messageStored: boolean;
+  aiLogStatus: string | null;
+  aiError: string | null;
+  aiResponseStored: boolean;
   error: string | null;
 }
 
@@ -288,7 +292,7 @@ export const testWaWebhook = createServerFn({ method: "POST" })
     if (!sessionId) {
       return {
         ok: false, httpStatus: 0, responseBody: "", saved: 0,
-        sessionId: null, messageStored: false,
+        sessionId: null, messageStored: false, aiLogStatus: null, aiError: null, aiResponseStored: false,
         error: "no_session: اربط واتساب أولًا قبل تشغيل الاختبار.",
       };
     }
@@ -297,25 +301,26 @@ export const testWaWebhook = createServerFn({ method: "POST" })
     if (!secret) {
       return {
         ok: false, httpStatus: 0, responseBody: "", saved: 0,
-        sessionId, messageStored: false,
+        sessionId, messageStored: false, aiLogStatus: null, aiError: null, aiResponseStored: false,
         error: "missing_secret: WA_BRIDGE_WEBHOOK_SECRET غير مهيّأ على الخادم.",
       };
     }
 
     const providerMessageId = `TEST_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const testText = `🔧 رسالة اختبار AI/Webhook ${providerMessageId}`;
     const payload = {
       event: "message",
       sessionId,
-      messages: [{
+      data: {
         id: providerMessageId,
         messageId: providerMessageId,
         from: "201000000000",
         fromMe: false,
         pushName: "Webhook Test",
         type: "text",
-        text: "🔧 رسالة اختبار من Flowtix Webhook",
+        content: testText,
         messageTimestamp: Math.floor(Date.now() / 1000),
-      }],
+      },
     };
     const raw = JSON.stringify(payload);
 
@@ -348,6 +353,18 @@ export const testWaWebhook = createServerFn({ method: "POST" })
         .maybeSingle();
 
       const messageStored = Boolean(stored?.id);
+      const { data: aiLog } = await supabase
+        .from("wa_ai_logs")
+        .select("status, error_message, response_text")
+        .eq("user_id", userId)
+        .eq("remote_jid", "201000000000@s.whatsapp.net")
+        .eq("prompt_excerpt", testText.slice(0, 500))
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const aiLogStatus = aiLog?.status ?? null;
+      const aiError = aiLog?.error_message ?? null;
+      const aiResponseStored = Boolean(aiLog?.response_text);
       const ok = res.status >= 200 && res.status < 300 && messageStored;
       return {
         ok,
@@ -356,6 +373,9 @@ export const testWaWebhook = createServerFn({ method: "POST" })
         saved,
         sessionId,
         messageStored,
+        aiLogStatus,
+        aiError,
+        aiResponseStored,
         error: ok
           ? null
           : res.status >= 400
@@ -367,7 +387,7 @@ export const testWaWebhook = createServerFn({ method: "POST" })
     } catch (err) {
       return {
         ok: false, httpStatus: 0, responseBody: "", saved: 0,
-        sessionId, messageStored: false,
+        sessionId, messageStored: false, aiLogStatus: null, aiError: null, aiResponseStored: false,
         error: `internal_error: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
@@ -423,7 +443,8 @@ async function readState(
   await supabase
     .from("wa_sessions")
     .update(update)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .eq("session_id", sessionId);
 
 
   // If bridge didn't give us a number, surface the last-known one from DB.
@@ -433,6 +454,7 @@ async function readState(
       .from("wa_sessions")
       .select("phone_number")
       .eq("user_id", userId)
+      .eq("session_id", sessionId)
       .maybeSingle();
     surfacedPhone = row?.phone_number ?? null;
   }
