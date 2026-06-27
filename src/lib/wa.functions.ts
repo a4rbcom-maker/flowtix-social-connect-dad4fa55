@@ -92,6 +92,26 @@ export const connectWaSession = createServerFn({ method: "POST" })
         const now = new Date().toISOString();
         const errMsg = describeBridgeError(err);
         console.warn("[wa] createSession bridge error:", errMsg);
+        if (existing?.session_id && !isHardSessionGoneError(err)) {
+          await updateWaSessionStatus(supabase, {
+            userId,
+            sessionId,
+            nextStatus: (existing.status as BridgeSessionStatus) || "unknown",
+            source: "connect_error",
+            reason: errMsg,
+            rawStatus: err instanceof BridgeError ? `http_${err.status}` : null,
+            logEvenIfUnchanged: true,
+          });
+          return {
+            status: (existing.status as BridgeSessionStatus) || "unknown",
+            sessionId,
+            qrDataUrl: existing.qr_data_url ?? null,
+            qrRaw: null,
+            phoneNumber: existing.phone_number ?? null,
+            lastSeenAt: existing.last_seen_at ?? now,
+            error: errMsg,
+          };
+        }
         await updateWaSessionStatus(supabase, {
           userId,
           sessionId,
