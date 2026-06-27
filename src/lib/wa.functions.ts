@@ -256,7 +256,7 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
 
     const { data: existing } = await supabase
       .from("wa_sessions")
-      .select("session_id")
+      .select("session_id, status")
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -286,6 +286,14 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
     // 3) Persist new session id and reset row to QR state
     const now = new Date().toISOString();
     if (existing) {
+      await logWaSessionEvent(supabase, {
+        userId,
+        sessionId: existing.session_id,
+        fromStatus: existing.status ?? null,
+        toStatus: "disconnected",
+        source: "reset",
+        reason: "manual_reset_new_qr",
+      });
       await supabase
         .from("wa_sessions")
         .update({
@@ -301,6 +309,15 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
         .from("wa_sessions")
         .insert({ user_id: userId, session_id: newSessionId, status: "qr" });
     }
+
+    await logWaSessionEvent(supabase, {
+      userId,
+      sessionId: newSessionId,
+      fromStatus: null,
+      toStatus: "qr",
+      source: "reset",
+      reason: "new_qr_session_created",
+    });
 
     return readState(supabase, userId, newSessionId);
   });
