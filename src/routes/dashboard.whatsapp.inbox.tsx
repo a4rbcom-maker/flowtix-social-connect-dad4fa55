@@ -1650,6 +1650,8 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
           <span>{formatTime(m.created_at, isAr)}</span>
           {isPending ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : isFailed ? (
+            <X className="h-3.5 w-3.5 text-destructive" />
           ) : isOut && (
             <CheckCheck className={`h-3.5 w-3.5 ${m.status === "read" ? "text-emerald-200" : "opacity-90"}`} />
           )}
