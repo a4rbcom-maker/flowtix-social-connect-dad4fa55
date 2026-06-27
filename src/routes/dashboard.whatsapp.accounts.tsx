@@ -590,7 +590,10 @@ function SessionDiagnostics({
           webhook_status: "Webhook من Bot‑Xtra",
           webhook_qr: "QR من Bot‑Xtra",
           bridge_status: "فحص حالة الجسر",
+          poll: "فحص الحالة",
+          poll_error: "خطأ مؤقت أثناء فحص الحالة",
           connect: "طلب ربط",
+          connect_error: "فشل إنشاء الجلسة",
           disconnect: "قطع يدوي",
           reset: "إعادة ربط",
         }
@@ -598,7 +601,10 @@ function SessionDiagnostics({
           webhook_status: "Bot‑Xtra webhook",
           webhook_qr: "Bot‑Xtra QR",
           bridge_status: "Bridge status check",
+          poll: "Status check",
+          poll_error: "Temporary status-check error",
           connect: "Connect request",
+          connect_error: "Create-session failure",
           disconnect: "Manual disconnect",
           reset: "Reconnect",
         };
@@ -627,7 +633,7 @@ function SessionDiagnostics({
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-semibold text-foreground">{fmtTime(event.createdAt)}</span>
                     <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground" dir="ltr">
-                      {event.fromStatus ?? "—"} → {event.toStatus}
+                      {t.statusChangeLabel}: {event.fromStatus ?? "—"} → {event.toStatus}
                     </span>
                   </div>
                   <div className="mt-1.5 grid gap-1 text-muted-foreground sm:grid-cols-2">
