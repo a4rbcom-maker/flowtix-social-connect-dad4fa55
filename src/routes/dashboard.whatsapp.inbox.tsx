@@ -1290,7 +1290,7 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
 
   const { data, error } = await supabase
     .from("wa_messages")
-    .select("id, remote_jid, direction, status, text_body, msg_type, media_url, wa_timestamp, created_at, raw")
+    .select("id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw")
     .eq("user_id", userId)
     .eq("remote_jid", remoteJid)
     .order("wa_timestamp", { ascending: true })
@@ -1303,16 +1303,24 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     const storedMediaUrl = typeof row.media_url === "string" && row.media_url.trim() ? row.media_url.trim() : null;
     const rawMediaUrl = mediaUrlFromRaw(raw, msgType);
     const mediaUrl = await resolveInboxMediaUrl(preferInboxMediaUrl(storedMediaUrl, rawMediaUrl));
+    const isAi = raw.ai === true;
+    const missingConfirmedDelivery =
+      row.direction === "out" &&
+      isAi &&
+      row.status === "sent" &&
+      !row.provider_message_id &&
+      !pickString(raw, "providerMessageId", "bridgeMessageId", "messageId", "id") &&
+      raw.delivery !== "queued";
     return {
       id: row.id,
       remote_jid: row.remote_jid,
       direction: row.direction as "in" | "out",
-      status: row.status ?? (row.direction === "out" ? "sent" : "received"),
+      status: missingConfirmedDelivery ? "failed" : (row.status ?? (row.direction === "out" ? "sent" : "received")),
       text_body: cleanMessageText(row.text_body, raw, msgType),
       msg_type: msgType,
       media_url: mediaUrl,
       created_at: row.wa_timestamp ?? row.created_at,
-      is_ai: raw.ai === true,
+      is_ai: isAi,
       sender_name: pickString(raw, "pushName", "senderName", "notifyName", "contactName"),
       sender_phone: digits(pickString(raw, "participantPn", "senderPn", "phoneNumber")),
     };

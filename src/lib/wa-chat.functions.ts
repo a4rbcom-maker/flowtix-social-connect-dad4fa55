@@ -240,9 +240,6 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         tenantId: userId,
       });
       // Bridge may return 200 with ok:false / error message — surface it.
-      if (res && (res.ok === false || res.error)) {
-        throw new Error(res.error || res.message || "Bridge refused to deliver");
-      }
       const providerMessageId = assertBridgeSendQueued(res);
       await supabase.from("wa_messages").insert({
         user_id: userId,
