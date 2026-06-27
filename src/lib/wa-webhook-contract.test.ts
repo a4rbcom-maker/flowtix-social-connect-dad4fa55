@@ -83,6 +83,12 @@ const BOTXTRA_STATUS_UPDATE = {
   data: { status: "open", phoneNumber: "201001234567" },
 };
 
+const BOTXTRA_MESSAGE_STATUS_UPDATE = {
+  event: "status",
+  sessionId: "flowtix-abcdef0123456789-l4k2j",
+  data: { status: "delivered", messageId: "3EB0BX1.8.ACK001" },
+};
+
 const BOTXTRA_STATUS_BROADCAST = {
   event: "message",
   sessionId: "flowtix-abcdef0123456789-l4k2j",
@@ -170,6 +176,13 @@ describe("Bot-Xtra v1.8.x: message collection", () => {
     const entries = collectMessageEntries(BOTXTRA_V18_FLAT_DATA_MESSAGE);
     expect(entries).toHaveLength(1);
     expect(entries[0].id).toBe("3EB0BX1.8.FLAT001");
+  });
+
+  it("extracts overloaded status events that carry message delivery ACKs", () => {
+    const entries = collectMessageEntries(BOTXTRA_MESSAGE_STATUS_UPDATE);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].messageId).toBe("3EB0BX1.8.ACK001");
+    expect(normalizeMessageStatus(entries[0].status, true)).toBe("delivered");
   });
 });
 

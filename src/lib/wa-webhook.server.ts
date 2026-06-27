@@ -260,6 +260,16 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   const event = String(payload.event || payload.type || "").toLowerCase();
   const data = asObj(payload.data);
 
+  // Bot-Xtra overloads event="status": it can mean either a WhatsApp session
+  // state (open/qr/disconnected) or a message delivery ACK
+  // (sent/delivered/read + messageId). Handle message ACKs first so confirmed
+  // AI deliveries are attached to the pending outbound message instead of being
+  // swallowed as a session status="unknown" update.
+  if (isMessageStatusOnlyEvent(event, payload, data)) {
+    await updateMessageStatuses(userId, sessionId, payload);
+    return new Response("ok");
+  }
+
   // ── status update ──
   if (event === "status" || event === "connection.update" || event === "session.status") {
     const rawStatus = String(data.status ?? data.state ?? payload.status ?? "").toLowerCase();
@@ -304,7 +314,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     return new Response("ok");
   }
 
-  const statusUpdates = await updateMessageStatuses(userId, payload);
+  const statusUpdates = await updateMessageStatuses(userId, sessionId, payload);
 
   // ── inbound/outbound messages ──
   const entries = collectMessageEntries(payload);
