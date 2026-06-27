@@ -1291,6 +1291,8 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     const mediaUrl = await resolveInboxMediaUrl(preferInboxMediaUrl(storedMediaUrl, rawMediaUrl));
     const isAi = raw.ai === true;
     const rawDelivery = String(raw.delivery ?? "").toLowerCase();
+    const queuedId = pickString(raw, "queuedId", "queued_id", "queueId", "queue_id", "requestId", "jobId");
+    const deliveryError = pickString(raw, "error", "deliveryError", "lastError");
     const hasConfirmedDelivery = Boolean(
       row.provider_message_id || pickString(raw, "providerMessageId", "bridgeMessageId", "messageId", "id"),
     );
@@ -1303,6 +1305,15 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
         ? "pending"
         : "failed"
       : (row.status ?? (row.direction === "out" ? "sent" : "received"));
+    const messageTime = new Date(row.wa_timestamp ?? row.created_at).getTime();
+    const isStalePending = Boolean(
+      row.direction === "out" &&
+      visibleStatus === "pending" &&
+      !hasConfirmedDelivery &&
+      queuedId &&
+      Number.isFinite(messageTime) &&
+      Date.now() - messageTime > 120_000,
+    );
     return {
       id: row.id,
       remote_jid: row.remote_jid,
@@ -1315,6 +1326,10 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
       is_ai: isAi,
       sender_name: pickString(raw, "pushName", "senderName", "notifyName", "contactName"),
       sender_phone: digits(pickString(raw, "participantPn", "senderPn", "phoneNumber")),
+      delivery_state: rawDelivery || null,
+      queued_id: queuedId,
+      delivery_error: deliveryError,
+      is_stale_pending: isStalePending,
     };
   }));
 }
@@ -1571,6 +1586,7 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
   const showSender = isGroup && !isOut && (m.sender_name || m.sender_phone);
   const isPending = isOut && m.status === "pending";
   const isFailed = isOut && m.status === "failed";
+  const isStalePending = isPending && m.is_stale_pending;
   return (
     <div dir="ltr" className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
       <div
@@ -1641,6 +1657,10 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
               ? isAr
                 ? "فشل التسليم بعد إعادة المحاولة"
                 : "Delivery failed after retries"
+              : isStalePending
+                ? isAr
+                  ? `معلّقة داخل طابور Bot‑Xtra ولم تغادر للواتساب${m.queued_id ? ` — ${m.queued_id}` : ""}`
+                  : `Stuck in Bot‑Xtra queue, not delivered to WhatsApp${m.queued_id ? ` — ${m.queued_id}` : ""}`
               : isAr
                 ? "جارٍ تأكيد التسليم…"
                 : "Confirming delivery…"}
