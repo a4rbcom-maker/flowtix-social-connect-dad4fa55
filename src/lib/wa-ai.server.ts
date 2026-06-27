@@ -470,6 +470,7 @@ export async function handleAiAutoReply(opts: {
     // to senderPn can make Bot-Xtra return queuedId without actual delivery.
     const target = await resolveOutgoingWhatsappTarget({
       userId,
+      sessionId,
       remoteJid,
       fallbackPhoneOrJid: fromPhone || remoteJid,
     });
@@ -507,6 +508,7 @@ export async function handleAiAutoReply(opts: {
       .from("wa_messages")
       .select("direction, text_body, msg_type, wa_timestamp, created_at")
       .eq("user_id", userId)
+      .eq("session_id", sessionId)
       .eq("remote_jid", remoteJid)
       .order("wa_timestamp", { ascending: false })
       .limit(ctxLimit);
@@ -660,6 +662,7 @@ export async function upsertConversationFromMessage(opts: {
     .from("wa_conversations")
     .select("id, unread_count, contact_name, contact_phone, last_message_at")
     .eq("user_id", userId)
+    .eq("session_id", sessionId)
     .eq("remote_jid", remoteJid)
     .maybeSingle();
 

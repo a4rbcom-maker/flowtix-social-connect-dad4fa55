@@ -1237,8 +1237,9 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
 
   const { data, error } = await supabase
     .from("wa_conversations")
-    .select("id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
+    .select("id, session_id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
     .eq("user_id", userId)
+    .eq("session_id", sessionRow.session_id)
     .eq("is_archived", false)
     .order("last_message_at", { ascending: false })
     .limit(200);
@@ -1251,6 +1252,7 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
     .from("wa_messages")
     .select("remote_jid, text_body, msg_type, raw, wa_timestamp, created_at")
     .eq("user_id", userId)
+    .eq("session_id", sessionRow.session_id)
     .in("remote_jid", rows.map((row) => row.remote_jid))
     .not("raw", "is", null)
     .order("wa_timestamp", { ascending: false })
@@ -1294,6 +1296,7 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     .from("wa_messages")
     .select("id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw")
     .eq("user_id", userId)
+    .eq("session_id", sessionRow.session_id)
     .eq("remote_jid", remoteJid)
     .order("wa_timestamp", { ascending: true })
     .limit(1000);
