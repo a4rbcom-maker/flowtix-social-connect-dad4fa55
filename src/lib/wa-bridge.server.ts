@@ -301,12 +301,20 @@ export const waBridge = {
   sendText: (id: string, to: string, text: string) => {
     const phone = to.replace(/[^0-9]/g, "");
     const jid = to.includes("@") ? to : `${phone}@s.whatsapp.net`;
+    const isLid = jid.endsWith("@lid");
     return bridgeFetch<BridgeSendResponse>(
       `/api/sessions/${encodeURIComponent(id)}/send`,
       {
         method: "POST",
         body: JSON.stringify({
-          to: jid, jid, phone, type: "text", text, message: text, body: text,
+          to: jid,
+          jid,
+          chatId: jid,
+          ...(isLid ? {} : { phone }),
+          type: "text",
+          text,
+          message: text,
+          body: text,
         }),
       },
     );
