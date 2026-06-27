@@ -113,6 +113,10 @@ async function disconnect(supabase: ReturnType<typeof getSupabaseForToken>, user
     try { await waBridge.deleteSession(row.session_id); } catch { /* best effort */ }
     await supabase.from("wa_sessions").delete().eq("user_id", userId);
   }
+  // Clear conversations + messages so disconnecting truly wipes the inbox.
+  // RLS scopes both tables to the current user.
+  await supabase.from("wa_messages").delete().eq("user_id", userId);
+  await supabase.from("wa_conversations").delete().eq("user_id", userId);
   return { ok: true };
 }
 
