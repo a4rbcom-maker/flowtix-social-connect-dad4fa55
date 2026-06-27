@@ -189,19 +189,8 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   // ── status update ──
   if (event === "status" || event === "connection.update" || event === "session.status") {
     const rawStatus = String(data.status ?? data.state ?? payload.status ?? "").toLowerCase();
-    const map: Record<string, string> = {
-      open: "connected",
-      ready: "connected",
-      connected: "connected",
-      qr: "qr",
-      scan: "qr",
-      connecting: "connecting",
-      starting: "connecting",
-      disconnected: "disconnected",
-      closed: "disconnected",
-      logged_out: "disconnected",
-    };
-    const next = map[rawStatus] ?? "unknown";
+    const next = SESSION_STATUS_MAP[rawStatus] ?? "unknown";
+
     const phoneNumber = digits(data.phoneNumber ?? data.phone ?? payload.phoneNumber);
     await supabaseAdmin
       .from("wa_sessions")
