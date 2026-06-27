@@ -219,7 +219,7 @@ export const disconnectWaSession = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data: row } = await supabase
       .from("wa_sessions")
-      .select("session_id")
+      .select("session_id, status")
       .eq("user_id", userId)
       .maybeSingle();
     if (row?.session_id) {
