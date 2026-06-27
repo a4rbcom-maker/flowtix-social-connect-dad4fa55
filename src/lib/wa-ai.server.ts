@@ -511,8 +511,12 @@ export async function handleAiAutoReply(opts: {
         model: result.model || model,
       });
       if (delivery.status !== "sent") {
-        errMsg = `delivery_failed_after_${delivery.attempts}_attempts: ${delivery.lastError ?? "unknown"}`;
-        aiText = "";
+        if (delivery.status === "queued") {
+          errMsg = `delivery_queued_waiting_for_whatsapp_ack: ${delivery.lastError ?? "queued"}`;
+        } else {
+          errMsg = `delivery_failed_after_${delivery.attempts}_attempts: ${delivery.lastError ?? "unknown"}`;
+          aiText = "";
+        }
       } else {
         deliveredOk = true;
       }
