@@ -274,6 +274,11 @@ export async function callKieChat(opts: {
             max_tokens: opts.maxTokens ?? 1024,
             temperature: opts.temperature ?? 0.7,
             stream: false,
+            // Gemini 2.5/3.x on kie.ai default to include_thoughts:true which
+            // returns reasoning tokens and leaves message.content empty,
+            // causing "empty response" failures. Disable thoughts to get
+            // actual chat output back.
+            include_thoughts: false,
           }),
         });
 
