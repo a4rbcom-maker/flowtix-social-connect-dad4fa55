@@ -443,14 +443,16 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       logged_out: "disconnected",
     };
     const next = map[rawStatus] ?? "unknown";
+    const phoneNumber = digits(data.phoneNumber ?? data.phone ?? payload.phoneNumber);
     await supabaseAdmin
       .from("wa_sessions")
       .update({
         status: next,
-        phone_number: digits(data.phoneNumber ?? data.phone ?? payload.phoneNumber),
+        ...(phoneNumber ? { phone_number: phoneNumber } : {}),
         last_seen_at: new Date().toISOString(),
       })
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .eq("session_id", sessionId);
     return new Response("ok");
   }
 
@@ -470,7 +472,8 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         qr_data_url: qrDataUrl,
         last_seen_at: new Date().toISOString(),
       })
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .eq("session_id", sessionId);
     return new Response("ok");
   }
 
