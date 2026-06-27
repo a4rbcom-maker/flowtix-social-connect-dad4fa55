@@ -459,6 +459,9 @@ export async function handleAiAutoReply(opts: {
     }
 
     // Blacklist
+    // Critical delivery fix: modern WhatsApp/Baileys often identifies the real
+    // chat by @lid while senderPn only contains the public phone number. Sending
+    // to senderPn can make Bot-Xtra return queuedId without actual delivery.
     const target = await resolveOutgoingWhatsappTarget({
       userId,
       remoteJid,
