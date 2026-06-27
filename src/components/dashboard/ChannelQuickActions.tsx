@@ -4,12 +4,12 @@
 // useChannelStatus in the parent layout.
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { LinkIcon, LogOut, RefreshCw, AlertTriangle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { disconnectFacebook } from "@/lib/facebook.functions";
+import { disconnectWaSession } from "@/lib/wa.functions";
 import { useFacebookApi, describeFbError } from "@/features/facebook/api";
-import { useAuth } from "@/lib/auth";
 import type { ChannelState } from "@/hooks/useChannelStatus";
 
 type Channel = "facebook" | "whatsapp";
@@ -28,8 +28,8 @@ const ROUTE: Record<Channel, "/dashboard/facebook" | "/dashboard/whatsapp/accoun
 };
 
 export function ChannelQuickActions({ channel, state, lang, onChanged, onNavigate }: Props) {
-  const { user } = useAuth();
   const { call: fbCall } = useFacebookApi();
+  const disconnectWa = useServerFn(disconnectWaSession);
   const [pending, setPending] = useState<null | "refresh" | "disconnect">(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -79,12 +79,7 @@ export function ChannelQuickActions({ channel, state, lang, onChanged, onNavigat
       if (channel === "facebook") {
         await fbCall(disconnectFacebook);
       } else {
-        if (!user) throw new Error("Not authenticated");
-        const { error } = await supabase
-          .from("whatsapp_settings")
-          .update({ is_connected: false, last_connected_at: null })
-          .eq("user_id", user.id);
-        if (error) throw error;
+        await disconnectWa();
       }
       toast.success(L.successDisc);
       setConfirmOpen(false);

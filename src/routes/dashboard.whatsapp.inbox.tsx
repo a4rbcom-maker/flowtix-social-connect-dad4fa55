@@ -1227,6 +1227,14 @@ function EmptyChat({
 // ──────────────────────────────────────────────────────────────────────────
 
 async function fetchInboxConversations(userId: string): Promise<ConversationRow[]> {
+  const { data: sessionRow, error: sessionError } = await supabase
+    .from("wa_sessions")
+    .select("session_id, status")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (sessionError) throw new Error(sessionError.message);
+  if (!sessionRow?.session_id || sessionRow.status !== "connected") return [];
+
   const { data, error } = await supabase
     .from("wa_conversations")
     .select("id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
@@ -1274,6 +1282,14 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
 }
 
 async function fetchInboxMessages(userId: string, remoteJid: string): Promise<ChatMessageRow[]> {
+  const { data: sessionRow, error: sessionError } = await supabase
+    .from("wa_sessions")
+    .select("session_id, status")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (sessionError) throw new Error(sessionError.message);
+  if (!sessionRow?.session_id || sessionRow.status !== "connected") return [];
+
   const { data, error } = await supabase
     .from("wa_messages")
     .select("id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw")
