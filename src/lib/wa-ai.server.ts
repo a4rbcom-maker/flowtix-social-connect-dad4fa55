@@ -11,6 +11,7 @@ import {
 import { deriveWebhookUrl } from "./wa-helpers.server";
 import { callKieChat, type ChatMessage } from "./ai-pool.server";
 import { isBridgeSessionMissingError, resetWaSessionAfterBridgeLoss } from "./wa-session-repair.server";
+import { resolveOutgoingWhatsappTarget } from "./wa-recipient.server";
 
 interface AiSettings {
   ai_enabled: boolean;
@@ -391,7 +392,12 @@ export async function handleAiAutoReply(opts: {
     }
 
     // Blacklist
-    const phone = fromPhone || remoteJid.replace(/[^0-9]/g, "");
+    const target = await resolveOutgoingWhatsappTarget({
+      userId,
+      remoteJid,
+      fallbackPhoneOrJid: fromPhone || remoteJid,
+    });
+    const phone = target.phoneDigits || fromPhone || remoteJid.replace(/[^0-9]/g, "");
     if (settings.ai_blacklist?.some((p) => phone.includes(p.replace(/[^0-9]/g, "")))) {
       await logAiSkip({
         userId,
@@ -439,7 +445,7 @@ export async function handleAiAutoReply(opts: {
         sessionId,
         userId,
         remoteJid,
-        phone,
+        phone: target.jid,
         text: settings.ai_welcome_message,
         kind: "welcome",
       });
@@ -505,7 +511,7 @@ export async function handleAiAutoReply(opts: {
         sessionId,
         userId,
         remoteJid,
-        phone,
+        phone: target.jid,
         text: aiText,
         tier,
         model: result.model || model,
