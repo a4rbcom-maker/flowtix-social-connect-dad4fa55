@@ -105,6 +105,9 @@ async function deliverAiTextWithRetry(opts: {
     })
     .select("id")
     .maybeSingle();
+  if (insertRes.error) {
+    console.error("[wa-ai] failed to store pending delivery attempt:", insertRes.error.message);
+  }
   const messageRowId = insertRes.data?.id ?? null;
 
   let providerMessageId: string | null = null;
