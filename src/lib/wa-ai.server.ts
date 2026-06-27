@@ -109,6 +109,30 @@ async function findConfirmedOutbound(params: {
   return { id: row.id, providerMessageId: row.provider_message_id, status: row.status ?? "sent" };
 }
 
+async function findConfirmedOutboundLoose(params: {
+  userId: string;
+  sessionId: string;
+  text: string;
+  sinceIso: string;
+  excludeMessageId: string | null;
+}): Promise<{ id: string; providerMessageId: string; status: string } | null> {
+  const { data } = await supabaseAdmin
+    .from("wa_messages")
+    .select("id, provider_message_id, status")
+    .eq("user_id", params.userId)
+    .eq("session_id", params.sessionId)
+    .eq("direction", "out")
+    .eq("text_body", params.text)
+    .not("provider_message_id", "is", null)
+    .gte("created_at", params.sinceIso)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  const row = (data ?? []).find((item) => item.id !== params.excludeMessageId && item.provider_message_id);
+  if (!row?.provider_message_id) return null;
+  return { id: row.id, providerMessageId: row.provider_message_id, status: row.status ?? "sent" };
+}
+
 async function waitForConfirmedOutbound(params: {
   userId: string;
   sessionId: string;
@@ -119,7 +143,15 @@ async function waitForConfirmedOutbound(params: {
 }): Promise<{ providerMessageId: string; status: string } | null> {
   const deadline = Date.now() + AI_QUEUE_SETTLE_MS;
   while (Date.now() < deadline) {
-    const confirmed = await findConfirmedOutbound(params);
+    const confirmed =
+      (await findConfirmedOutbound(params)) ||
+      (await findConfirmedOutboundLoose({
+        userId: params.userId,
+        sessionId: params.sessionId,
+        text: params.text,
+        sinceIso: params.sinceIso,
+        excludeMessageId: params.excludeMessageId,
+      }));
     if (confirmed) return confirmed;
     await wait(1_500);
   }
