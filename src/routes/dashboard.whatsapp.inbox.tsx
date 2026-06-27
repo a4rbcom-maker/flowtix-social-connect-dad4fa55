@@ -1238,7 +1238,6 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
     .from("wa_conversations")
     .select("id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
     .eq("user_id", userId)
-    .eq("session_id", sess.session_id)
     .eq("is_archived", false)
     .order("last_message_at", { ascending: false })
     .limit(200);
@@ -1251,7 +1250,6 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
     .from("wa_messages")
     .select("remote_jid, text_body, msg_type, raw, wa_timestamp, created_at")
     .eq("user_id", userId)
-    .eq("session_id", sess.session_id)
     .in("remote_jid", rows.map((row) => row.remote_jid))
     .not("raw", "is", null)
     .order("wa_timestamp", { ascending: false })
@@ -1294,7 +1292,6 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     .from("wa_messages")
     .select("id, remote_jid, direction, status, text_body, msg_type, media_url, wa_timestamp, created_at, raw")
     .eq("user_id", userId)
-    .eq("session_id", sess.session_id)
     .eq("remote_jid", remoteJid)
     .order("wa_timestamp", { ascending: true })
     .limit(1000);
@@ -1572,13 +1569,19 @@ function renderMessagesWithDays(
 function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; isGroup: boolean }) {
   const isOut = m.direction === "out";
   const showSender = isGroup && !isOut && (m.sender_name || m.sender_phone);
+  const isPending = isOut && m.status === "pending";
+  const isFailed = isOut && m.status === "failed";
   return (
     <div className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
       <div
-        className={`group max-w-[78%] px-3.5 py-2 text-sm shadow-sm sm:max-w-[70%] ${
-          isOut
-            ? "rounded-2xl rounded-br-md bg-gradient-to-br from-primary to-[oklch(0.55_0.28_295)] text-primary-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
-            : "rounded-2xl rounded-bl-md border border-border/60 bg-card text-foreground rtl:rounded-bl-2xl rtl:rounded-br-md"
+        className={`group max-w-[78%] overflow-hidden px-3.5 py-2 text-sm shadow-sm sm:max-w-[70%] ${
+          isFailed
+            ? "rounded-2xl rounded-br-md border border-destructive/35 bg-destructive/10 text-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
+            : isPending
+              ? "rounded-2xl rounded-br-md border border-primary/25 bg-primary/10 text-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
+              : isOut
+                ? "rounded-2xl rounded-br-md bg-gradient-to-br from-primary to-[oklch(0.55_0.28_295)] text-primary-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
+                : "rounded-2xl rounded-bl-md border border-border/60 bg-card text-foreground rtl:rounded-bl-2xl rtl:rounded-br-md"
         }`}
       >
         {showSender && (
@@ -1627,19 +1630,32 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
           </button>
         )}
         {m.text_body ? (
-          <p className="whitespace-pre-wrap break-words leading-relaxed">{m.text_body}</p>
+          <p className="max-w-full whitespace-pre-wrap break-words text-start leading-relaxed [overflow-wrap:anywhere]">{m.text_body}</p>
         ) : !m.media_url ? (
           <p className="italic opacity-75">[{m.msg_type}]</p>
         ) : null}
+        {(isPending || isFailed) && (
+          <p className={`mt-1 text-[10px] font-semibold ${isFailed ? "text-destructive" : "text-muted-foreground"}`}>
+            {isFailed
+              ? isAr
+                ? "فشل التسليم بعد إعادة المحاولة"
+                : "Delivery failed after retries"
+              : isAr
+                ? "جارٍ تأكيد التسليم…"
+                : "Confirming delivery…"}
+          </p>
+        )}
         <div
           className={`mt-1 flex items-center gap-1 text-[10px] ${
-            isOut ? "justify-end text-primary-foreground/80" : "text-muted-foreground"
+            isOut && !isPending && !isFailed ? "justify-end text-primary-foreground/80" : "justify-end text-muted-foreground"
           }`}
           dir="ltr"
         >
           {m.is_ai && <Bot className="h-3 w-3" />}
           <span>{formatTime(m.created_at, isAr)}</span>
-          {isOut && (
+          {isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : isOut && (
             <CheckCheck className={`h-3.5 w-3.5 ${m.status === "read" ? "text-emerald-200" : "opacity-90"}`} />
           )}
         </div>
