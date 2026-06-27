@@ -388,6 +388,12 @@ export const saveAiSettings = createServerFn({ method: "POST" })
   .inputValidator((input) => aiSettingsSchema.parse(input))
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
+    const payload = {
+      ...data,
+      ai_provider: "kie",
+      ai_model: data.ai_model || DEFAULTS.ai_model,
+      updated_at: new Date().toISOString(),
+    };
     // Ensure a row exists (whatsapp_settings has connection_type NOT NULL default)
     const { data: existing } = await supabase
       .from("whatsapp_settings")
@@ -397,16 +403,22 @@ export const saveAiSettings = createServerFn({ method: "POST" })
     if (existing) {
       const { error } = await supabase
         .from("whatsapp_settings")
-        .update(data)
+        .update(payload)
         .eq("user_id", userId);
       if (error) throw new Error(error.message);
     } else {
       const { error } = await supabase
         .from("whatsapp_settings")
-        .insert({ ...data, user_id: userId, connection_type: "qr_code" });
+        .insert({ ...payload, user_id: userId, connection_type: "qr_code" });
       if (error) throw new Error(error.message);
     }
-    return { ok: true };
+    const { data: saved, error: readErr } = await supabase
+      .from("whatsapp_settings")
+      .select("ai_enabled")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (readErr) throw new Error(readErr.message);
+    return { ok: true, ai_enabled: saved?.ai_enabled === true };
   });
 
 export const listAiLogs = createServerFn({ method: "POST" })

@@ -53,6 +53,29 @@ async function markSessionNeedsReconnect(userId: string, sessionId: string, err:
   });
 }
 
+async function logAiSkip(opts: {
+  userId: string;
+  conversationId: string | null;
+  remoteJid: string;
+  inboundText: string;
+  model?: string | null;
+  reason: string;
+}) {
+  await supabaseAdmin.from("wa_ai_logs").insert({
+    user_id: opts.userId,
+    conversation_id: opts.conversationId,
+    remote_jid: opts.remoteJid,
+    model: opts.model || "not-run",
+    prompt_excerpt: opts.inboundText.slice(0, 500),
+    response_text: null,
+    tokens_in: null,
+    tokens_out: null,
+    latency_ms: 0,
+    status: "skipped",
+    error_message: opts.reason,
+  });
+}
+
 /**
  * Handle an inbound message: maybe generate AI reply, send via bridge,
  * log to wa_ai_logs and persist as outbound wa_messages.
@@ -80,7 +103,19 @@ export async function handleAiAutoReply(opts: {
       .eq("user_id", userId)
       .maybeSingle<AiSettings>();
 
-    if (!settings?.ai_enabled) return;
+    if (!settings?.ai_enabled) {
+      await logAiSkip({
+        userId,
+        conversationId,
+        remoteJid,
+        inboundText,
+        model: settings?.ai_model,
+        reason: settings
+          ? "ai_disabled: وكيل AI غير مفعّل في إعدادات هذا الحساب. فعّله من صفحة وكيل AI ثم احفظ."
+          : "missing_settings: لا توجد إعدادات وكيل AI لهذا الحساب.",
+      });
+      return;
+    }
 
     // Per-conversation toggle
     if (conversationId) {
@@ -89,16 +124,46 @@ export async function handleAiAutoReply(opts: {
         .select("ai_enabled")
         .eq("id", conversationId)
         .maybeSingle();
-      if (conv && conv.ai_enabled === false) return;
+      if (conv && conv.ai_enabled === false) {
+        await logAiSkip({
+          userId,
+          conversationId,
+          remoteJid,
+          inboundText,
+          model: settings.ai_model,
+          reason: "conversation_ai_disabled: وكيل AI متوقف لهذه المحادثة تحديداً.",
+        });
+        return;
+      }
     }
 
     // Blacklist
     const phone = fromPhone || remoteJid.replace(/[^0-9]/g, "");
-    if (settings.ai_blacklist?.some((p) => phone.includes(p.replace(/[^0-9]/g, "")))) return;
+    if (settings.ai_blacklist?.some((p) => phone.includes(p.replace(/[^0-9]/g, "")))) {
+      await logAiSkip({
+        userId,
+        conversationId,
+        remoteJid,
+        inboundText,
+        model: settings.ai_model,
+        reason: "blacklisted_phone: رقم العميل موجود في القائمة السوداء للوكيل.",
+      });
+      return;
+    }
 
     // Working hours
     if (settings.ai_business_hours_only) {
-      if (!isWithinWorkingHours(settings.ai_working_hours_start, settings.ai_working_hours_end)) return;
+      if (!isWithinWorkingHours(settings.ai_working_hours_start, settings.ai_working_hours_end)) {
+        await logAiSkip({
+          userId,
+          conversationId,
+          remoteJid,
+          inboundText,
+          model: settings.ai_model,
+          reason: "outside_working_hours: الرسالة خارج ساعات عمل وكيل AI المحددة.",
+        });
+        return;
+      }
     }
 
     // Build context: last N messages from this conversation
