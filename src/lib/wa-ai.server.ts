@@ -1,7 +1,7 @@
 // Server-only: AI reply generation for WhatsApp using kie.ai (multi-key pool).
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { BridgeError, sendTextWithReconnect } from "./wa-bridge.server";
+import { assertBridgeSendQueued, BridgeError, sendTextWithReconnect, type BridgeSendResponse } from "./wa-bridge.server";
 import { deriveWebhookUrl } from "./wa-helpers.server";
 import { callKieChat, type ChatMessage } from "./ai-pool.server";
 import { isBridgeSessionMissingError, resetWaSessionAfterBridgeLoss } from "./wa-session-repair.server";
@@ -24,6 +24,16 @@ interface AiSettings {
   ai_max_context_messages: number | null;
 }
 
+interface AiDeliveryResult {
+  providerMessageId: string | null;
+  status: "sent" | "pending" | "failed";
+  attempts: number;
+  lastError: string | null;
+  responses: unknown[];
+}
+
+const AI_DELIVERY_ATTEMPTS = 3;
+
 
 function isWithinWorkingHours(start?: string | null, end?: string | null): boolean {
   if (!start || !end) return true;
@@ -36,7 +46,25 @@ function isWithinWorkingHours(start?: string | null, end?: string | null): boole
   return s <= e ? cur >= s && cur <= e : cur >= s || cur <= e;
 }
 
-async function sendAiText(sessionId: string, userId: string, phone: string, text: string) {
+function retryDelayMs(attempt: number) {
+  return Math.min(900 * Math.pow(2, attempt - 1), 4_000);
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : "Bridge send failed";
+}
+
+function shouldRetryAiSend(err: unknown): boolean {
+  if (!(err instanceof BridgeError)) return true;
+  if (err.status === 401 || err.status === 403 || err.status === 404) return false;
+  return true;
+}
+
+async function sendAiTextOnce(sessionId: string, userId: string, phone: string, text: string): Promise<BridgeSendResponse> {
   const webhookUrl = await deriveWebhookUrl();
   const res = await sendTextWithReconnect(sessionId, phone, text, {
     webhookUrl: webhookUrl ?? undefined,
@@ -44,26 +72,117 @@ async function sendAiText(sessionId: string, userId: string, phone: string, text
   });
   // Log full bridge response so we can diagnose silent delivery failures.
   console.log("[wa-ai] bridge sendText response:", JSON.stringify(res));
-  if (res?.ok === false || res?.error) {
-    throw new BridgeError(res.error || res.message || "Bridge send returned ok:false", 200, res);
-  }
-  // Bot-Xtra v1.8.x returns a message id on successful queue. No id usually
-  // means the bridge accepted the HTTP call but did NOT actually deliver
-  // (offline session, invalid jid, throttled). Treat as failure so the user
-  // sees an explicit error in wa_ai_logs instead of a phantom "sent".
-  const hasId =
-    (typeof res?.id === "string" && res.id.length > 0) ||
-    (typeof (res as Record<string, unknown> | null)?.messageId === "string" && ((res as Record<string, unknown>).messageId as string).length > 0) ||
-    res?.ok === true ||
-    (res as Record<string, unknown> | null)?.success === true;
-  if (!hasId) {
-    throw new BridgeError(
-      `Bridge accepted request but returned no message id (response: ${JSON.stringify(res).slice(0, 200)})`,
-      200,
-      res,
-    );
-  }
+  assertBridgeSendQueued(res);
   return res;
+}
+
+async function deliverAiTextWithRetry(opts: {
+  sessionId: string;
+  userId: string;
+  remoteJid: string;
+  phone: string;
+  text: string;
+  tier?: string | null;
+  model?: string | null;
+  kind?: "ai" | "welcome";
+}): Promise<AiDeliveryResult> {
+  const { sessionId, userId, remoteJid, phone, text, tier, model, kind = "ai" } = opts;
+  const sentAt = new Date().toISOString();
+  const insertRes = await supabaseAdmin
+    .from("wa_messages")
+    .insert({
+      user_id: userId,
+      session_id: sessionId,
+      direction: "out",
+      remote_jid: remoteJid,
+      to_phone: phone,
+      msg_type: "text",
+      text_body: text,
+      status: "pending",
+      provider_message_id: null,
+      wa_timestamp: sentAt,
+      raw: { ai: true, kind, tier, model, delivery: "pending", attempts: [] } as never,
+    })
+    .select("id")
+    .maybeSingle();
+  const messageRowId = insertRes.data?.id ?? null;
+
+  let providerMessageId: string | null = null;
+  let lastError: string | null = null;
+  const responses: unknown[] = [];
+  let attempts = 0;
+
+  for (let attempt = 1; attempt <= AI_DELIVERY_ATTEMPTS; attempt++) {
+    attempts = attempt;
+    try {
+      const res = await sendAiTextOnce(sessionId, userId, phone, text);
+      responses.push(res);
+      providerMessageId = assertBridgeSendQueued(res);
+      const raw = {
+        ai: true,
+        kind,
+        tier,
+        model,
+        providerMessageId,
+        delivery: "queued",
+        attempts,
+        bridgeResponses: responses,
+      } as never;
+      if (messageRowId) {
+        await supabaseAdmin
+          .from("wa_messages")
+          .update({ status: "sent", provider_message_id: providerMessageId, raw })
+          .eq("id", messageRowId);
+      }
+      await upsertConversationFromMessage({
+        userId,
+        sessionId,
+        remoteJid,
+        contactName: null,
+        contactPhone: phone,
+        text,
+        direction: "out",
+        messageAt: sentAt,
+      });
+      return { providerMessageId, status: "sent", attempts, lastError: null, responses };
+    } catch (err) {
+      lastError = errorText(err);
+      responses.push({ error: lastError, status: err instanceof BridgeError ? err.status : null });
+      console.warn(`[wa-ai] delivery attempt ${attempt}/${AI_DELIVERY_ATTEMPTS} failed:`, lastError);
+      await markSessionNeedsReconnect(userId, sessionId, err);
+      if (!shouldRetryAiSend(err) || attempt === AI_DELIVERY_ATTEMPTS) break;
+      await wait(retryDelayMs(attempt));
+    }
+  }
+
+  const raw = {
+    ai: true,
+    kind,
+    tier,
+    model,
+    providerMessageId,
+    delivery: "failed",
+    attempts,
+    error: lastError,
+    bridgeResponses: responses,
+  } as never;
+  if (messageRowId) {
+    await supabaseAdmin
+      .from("wa_messages")
+      .update({ status: "failed", provider_message_id: providerMessageId, raw })
+      .eq("id", messageRowId);
+  }
+  await upsertConversationFromMessage({
+    userId,
+    sessionId,
+    remoteJid,
+    contactName: null,
+    contactPhone: phone,
+    text: `${text}\n\n⚠️ لم يتم تأكيد تسليم الرد للعميل. آخر خطأ: ${lastError ?? "unknown"}`,
+    direction: "out",
+    messageAt: sentAt,
+  });
+  return { providerMessageId, status: "failed", attempts, lastError, responses };
 }
 
 async function markSessionNeedsReconnect(userId: string, sessionId: string, err: unknown) {
@@ -204,37 +323,14 @@ export async function handleAiAutoReply(opts: {
 
     // Welcome message for first-ever inbound
     if (isFirstMessage && settings.ai_welcome_message?.trim()) {
-      try {
-        const welcomeRes = await sendAiText(sessionId, userId, phone, settings.ai_welcome_message);
-        const providerMessageId = typeof welcomeRes?.id === "string" ? welcomeRes.id : null;
-        const welcomeAt = new Date().toISOString();
-        await supabaseAdmin.from("wa_messages").insert({
-          user_id: userId,
-          session_id: sessionId,
-          direction: "out",
-          remote_jid: remoteJid,
-          to_phone: phone,
-          msg_type: "text",
-          text_body: settings.ai_welcome_message,
-          status: "sent",
-          provider_message_id: providerMessageId,
-          wa_timestamp: welcomeAt,
-          raw: { ai: true, kind: "welcome", providerMessageId } as never,
-        });
-        await upsertConversationFromMessage({
-          userId,
-          sessionId,
-          remoteJid,
-          contactName: null,
-          contactPhone: fromPhone,
-          text: settings.ai_welcome_message,
-          direction: "out",
-          messageAt: welcomeAt,
-        });
-      } catch (err) {
-        await markSessionNeedsReconnect(userId, sessionId, err);
-        console.error("[wa-ai] welcome send failed:", err);
-      }
+      await deliverAiTextWithRetry({
+        sessionId,
+        userId,
+        remoteJid,
+        phone,
+        text: settings.ai_welcome_message,
+        kind: "welcome",
+      });
     }
 
 
@@ -291,36 +387,17 @@ export async function handleAiAutoReply(opts: {
     let errMsg = result.error;
 
     if (aiText) {
-      try {
-        const sendRes = await sendAiText(sessionId, userId, phone, aiText);
-        const providerMessageId = typeof sendRes?.id === "string" ? sendRes.id : null;
-        const aiAt = new Date().toISOString();
-        await supabaseAdmin.from("wa_messages").insert({
-          user_id: userId,
-          session_id: sessionId,
-          direction: "out",
-          remote_jid: remoteJid,
-          to_phone: phone,
-          msg_type: "text",
-          text_body: aiText,
-          status: "sent",
-          provider_message_id: providerMessageId,
-          wa_timestamp: aiAt,
-          raw: { ai: true, tier, model: result.model || model, providerMessageId } as never,
-        });
-        await upsertConversationFromMessage({
-          userId,
-          sessionId,
-          remoteJid,
-          contactName: null,
-          contactPhone: fromPhone,
-          text: aiText,
-          direction: "out",
-          messageAt: aiAt,
-        });
-      } catch (err) {
-        errMsg = err instanceof Error ? err.message : "Bridge send failed";
-        await markSessionNeedsReconnect(userId, sessionId, err);
+      const delivery = await deliverAiTextWithRetry({
+        sessionId,
+        userId,
+        remoteJid,
+        phone,
+        text: aiText,
+        tier,
+        model: result.model || model,
+      });
+      if (delivery.status !== "sent") {
+        errMsg = `delivery_failed_after_${delivery.attempts}_attempts: ${delivery.lastError ?? "unknown"}`;
         aiText = "";
       }
     }
