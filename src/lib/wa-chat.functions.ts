@@ -238,6 +238,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       const res = await sendTextWithReconnect(sess.session_id, to, data.text, {
         webhookUrl: webhookUrl ?? undefined,
         tenantId: userId,
+        recipientPhone: phoneDigits,
       });
       // Bridge may return 200 with ok:false / error message — surface it.
       const providerMessageId = assertBridgeSendQueued(res);
