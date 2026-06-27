@@ -298,10 +298,12 @@ export const waBridge = {
     bridgeFetch<{ ok?: boolean }>(`/api/sessions/${encodeURIComponent(id)}`, {
       method: "DELETE",
     }),
-  sendText: (id: string, to: string, text: string) => {
-    const phone = to.replace(/[^0-9]/g, "");
+  sendText: (id: string, to: string, text: string, opts: { phone?: string | null } = {}) => {
+    const explicitPhone = opts.phone?.replace(/[^0-9]/g, "") || "";
+    const phone = explicitPhone || to.replace(/[^0-9]/g, "");
     const jid = to.includes("@") ? to : `${phone}@s.whatsapp.net`;
     const isLid = jid.endsWith("@lid");
+    const publicJid = explicitPhone ? `${explicitPhone}@s.whatsapp.net` : null;
     return bridgeFetch<BridgeSendResponse>(
       `/api/sessions/${encodeURIComponent(id)}/send`,
       {
@@ -310,7 +312,12 @@ export const waBridge = {
           to: jid,
           jid,
           chatId: jid,
-          ...(isLid ? {} : { phone }),
+          // For modern WhatsApp contacts Bot-Xtra/Baileys may require the LID
+          // chat id for routing, while still needing the public phone as PN
+          // metadata. Supplying both is backward compatible and prevents sends
+          // from staying forever in the bridge queue with only queuedId.
+          ...(phone && (!isLid || explicitPhone) ? { phone } : {}),
+          ...(publicJid ? { recipientPn: publicJid, senderPn: publicJid, phoneNumber: explicitPhone } : {}),
           type: "text",
           text,
           message: text,
@@ -331,10 +338,10 @@ export async function sendTextWithReconnect(
   id: string,
   to: string,
   text: string,
-  recover: { webhookUrl?: string; tenantId?: string },
+  recover: { webhookUrl?: string; tenantId?: string; recipientPhone?: string | null },
 ): Promise<BridgeSendResponse> {
   try {
-    return await waBridge.sendText(id, to, text);
+    return await waBridge.sendText(id, to, text, { phone: recover.recipientPhone });
   } catch (err) {
     if (!(err instanceof BridgeError)) throw err;
 
