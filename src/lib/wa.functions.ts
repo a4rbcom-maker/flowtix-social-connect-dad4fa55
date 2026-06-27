@@ -40,6 +40,17 @@ export interface WaConnectionState {
   error: string | null;
 }
 
+export interface WaSessionEventRow {
+  createdAt: string;
+  sessionId: string;
+  fromStatus: string | null;
+  toStatus: string;
+  source: string;
+  reason: string | null;
+  rawStatus: string | null;
+  bridgeEvent: string | null;
+}
+
 
 
 /**
@@ -119,6 +130,29 @@ export const getWaConnectionState = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!row?.session_id) return null;
     return readState(supabase, userId, row.session_id);
+  });
+
+export const getWaSessionEvents = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<WaSessionEventRow[]> => {
+    const { supabase, userId } = context;
+    const { data, error } = await supabase
+      .from("wa_session_events")
+      .select("created_at, session_id, from_status, to_status, source, reason, raw_status, bridge_event")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((row: any) => ({
+      createdAt: row.created_at,
+      sessionId: row.session_id,
+      fromStatus: row.from_status,
+      toStatus: row.to_status,
+      source: row.source,
+      reason: row.reason,
+      rawStatus: row.raw_status,
+      bridgeEvent: row.bridge_event,
+    }));
   });
 
 export const sendWaMessage = createServerFn({ method: "POST" })
