@@ -1133,7 +1133,7 @@ function ConversationRow({
       <button
         type="button"
         onClick={onClick}
-        className={`flex w-full items-center gap-3 overflow-hidden px-3 py-3 text-start transition ${
+        className={`flex w-full min-w-0 items-center gap-3 overflow-hidden px-3 py-3 text-start transition ${
           active
             ? "bg-primary/10"
             : "hover:bg-muted/50"
@@ -1144,8 +1144,8 @@ function ConversationRow({
         )}
         <ContactAvatar name={conv.contact_name ?? conv.remote_jid} src={conv.profile_pic_url ?? null} size="sm" />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2">
-            <span className={`truncate text-sm ${conv.unread_count > 0 ? "font-bold" : "font-semibold"}`}>
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            <span className={`min-w-0 flex-1 truncate text-sm ${conv.unread_count > 0 ? "font-bold" : "font-semibold"}`}>
               {conv.contact_name ?? conv.remote_jid.replace(/@.*/, "")}
             </span>
             <span className="shrink-0 text-[10px] text-muted-foreground" dir="ltr">
@@ -1575,7 +1575,7 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
     <div dir="ltr" className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
       <div
         dir={isAr ? "rtl" : "ltr"}
-        className={`group max-w-[78%] overflow-hidden px-3.5 py-2 text-sm shadow-sm sm:max-w-[70%] ${
+        className={`group min-w-0 max-w-[min(86%,680px)] overflow-hidden px-3.5 py-2 text-sm shadow-sm sm:max-w-[min(72%,760px)] ${
           isFailed
             ? "rounded-2xl rounded-br-md border border-destructive/35 bg-destructive/10 text-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
             : isPending
