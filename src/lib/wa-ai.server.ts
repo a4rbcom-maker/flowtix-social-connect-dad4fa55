@@ -248,13 +248,13 @@ async function deliverAiTextWithRetry(opts: {
           excludeMessageId: messageRowId,
         });
         if (!confirmed) {
-          lastError = `bridge_queued_without_whatsapp_ack:${queuedId}`;
-          responses.push({ queuedId, status: "queued_without_whatsapp_ack", attempt });
+          lastError = `bridge_queued_pending_whatsapp_ack:${queuedId}`;
+          responses.push({ queuedId, status: "queued_pending_whatsapp_ack", attempt });
           if (messageRowId) {
             await supabaseAdmin
               .from("wa_messages")
               .update({
-                status: attempt === AI_DELIVERY_ATTEMPTS ? "failed" : "pending",
+                status: "pending",
                 raw: {
                   ai: true,
                   kind,
@@ -264,7 +264,7 @@ async function deliverAiTextWithRetry(opts: {
                   contactPhone,
                   usedLid: phone.endsWith("@lid"),
                   queuedId,
-                  delivery: attempt === AI_DELIVERY_ATTEMPTS ? "failed_missing_whatsapp_ack" : "retrying_after_missing_whatsapp_ack",
+                  delivery: "bridge_queued_pending_whatsapp_ack",
                   attempts,
                   error: lastError,
                   bridgeResponses: responses,
@@ -272,11 +272,7 @@ async function deliverAiTextWithRetry(opts: {
               })
               .eq("id", messageRowId);
           }
-          if (attempt < AI_DELIVERY_ATTEMPTS) {
-            await wait(retryDelayMs(attempt));
-            continue;
-          }
-          break;
+          return { providerMessageId: null, status: "pending", attempts, lastError, responses };
         }
         providerMessageId = confirmed.providerMessageId;
       }
@@ -589,7 +585,7 @@ export async function handleAiAutoReply(opts: {
         model: result.model || model,
       });
       if (delivery.status !== "sent") {
-        if (delivery.status === "queued") {
+        if (delivery.status === "queued" || delivery.status === "pending") {
           errMsg = `delivery_queued_waiting_for_whatsapp_ack: ${delivery.lastError ?? "queued"}`;
         } else {
           errMsg = `delivery_failed_after_${delivery.attempts}_attempts: ${delivery.lastError ?? "unknown"}`;

@@ -29,6 +29,13 @@ import {
 
 const WA_MEDIA_BUCKET = "wa-media";
 
+function attachBackgroundTask(request: Request, task: Promise<unknown>, label: string): boolean {
+  const waitUntil = (request as Request & { waitUntil?: (promise: Promise<unknown>) => void }).waitUntil;
+  if (typeof waitUntil !== "function") return false;
+  waitUntil.call(request, task.catch((err) => console.error(`[wa-webhook] ${label} background task failed:`, err)));
+  return true;
+}
+
 function mediaDataFromEntry(entry: Record<string, unknown>): Record<string, unknown> {
   return asObj(entry.mediaData);
 }
@@ -273,6 +280,11 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   // ── status update ──
   if (event === "status" || event === "connection.update" || event === "session.status") {
     const rawStatus = String(data.status ?? data.state ?? payload.status ?? "").toLowerCase();
+    if (!SESSION_STATUS_MAP[rawStatus]) {
+      const updated = await updateMessageStatuses(userId, sessionId, payload);
+      console.info("[wa-webhook] ignored non-session status event", { rawStatus, statusUpdates: updated });
+      return new Response("ok");
+    }
     const next = SESSION_STATUS_MAP[rawStatus] ?? "unknown";
     const reason = extractSessionReason(payload, data);
 
@@ -458,10 +470,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       });
 
       if (!matched) {
-        // IMPORTANT: must await — on Cloudflare Workers, detached promises
-        // are cancelled the moment the Response is returned, so a fire-and-forget
-        // handleAiAutoReply() never actually runs (no wa_ai_logs row, no reply).
-        await handleAiAutoReply({
+        const aiTask = handleAiAutoReply({
           userId,
           sessionId,
           conversationId,
@@ -469,6 +478,9 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
           fromPhone: m.fromPhone,
           inboundText: text,
         }).catch((err) => console.error("[wa-webhook] AI handler error:", err));
+        if (!attachBackgroundTask(request, aiTask, "AI handler")) {
+          await aiTask;
+        }
       }
     }
   }
