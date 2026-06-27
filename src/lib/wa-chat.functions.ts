@@ -2,7 +2,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { waBridge, BridgeError, sendTextWithReconnect } from "./wa-bridge.server";
+import { assertBridgeSendQueued, waBridge, BridgeError, sendTextWithReconnect } from "./wa-bridge.server";
 import { deriveWebhookUrl } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
 import { isBridgeSessionMissingError, resetWaSessionAfterBridgeLoss } from "./wa-session-repair.server";
@@ -243,7 +243,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       if (res && (res.ok === false || res.error)) {
         throw new Error(res.error || res.message || "Bridge refused to deliver");
       }
-      const providerMessageId = typeof res?.id === "string" ? res.id : null;
+      const providerMessageId = assertBridgeSendQueued(res);
       await supabase.from("wa_messages").insert({
         user_id: userId,
         session_id: sess.session_id,
@@ -255,7 +255,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         status: "sent",
         provider_message_id: providerMessageId,
         wa_timestamp: sentAt,
-        raw: providerMessageId ? ({ bridgeMessageId: providerMessageId } as never) : null,
+        raw: { bridgeMessageId: providerMessageId, delivery: "queued" } as never,
       });
     } catch (err) {
       if (isBridgeSessionMissingError(err)) {
