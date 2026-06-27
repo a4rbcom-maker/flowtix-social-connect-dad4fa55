@@ -203,11 +203,20 @@ function extractTextFromMessage(m: Record<string, unknown>): { text: string | nu
   // ── BotXtra flat shape: entry.type + entry.mediaData ──
   const flatType = String(m.type ?? "").toLowerCase();
   const mediaData = asObj(m.mediaData);
+  const contentData = asObj(m.content);
+  const contentText =
+    typeof m.content === "string"
+      ? m.content
+      : pickStr(contentData, "text", "body", "caption", "message", "content");
   const hasMediaData = Object.keys(mediaData).length > 0;
   const flatMediaUrl =
     pickStr(mediaData, "url", "directPath", "fileUrl", "downloadUrl", "mediaUrl") ||
+    pickStr(contentData, "url", "directPath", "fileUrl", "downloadUrl", "mediaUrl") ||
     pickStr(m, "mediaUrl", "fileUrl", "url");
-  const flatCaption = pickStr(m, "caption", "body", "text") || pickStr(mediaData, "caption", "fileName");
+  const flatCaption =
+    pickStr(m, "caption", "body", "text", "content") ||
+    contentText ||
+    pickStr(mediaData, "caption", "fileName");
 
   if (["image", "video", "audio", "document", "sticker", "voice", "ptt"].includes(flatType) || hasMediaData) {
     const norm =
@@ -224,7 +233,7 @@ function extractTextFromMessage(m: Record<string, unknown>): { text: string | nu
   }
 
   // Direct text fields
-  const direct = pickStr(m, "text", "body", "message", "caption");
+  const direct = pickStr(m, "text", "body", "message", "caption", "content") || contentText;
   if (direct) return { text: direct, type: "text", mediaUrl: null };
 
   // Baileys-style nested `message`
@@ -475,9 +484,13 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   }
 
   let saved = 0;
+  let skipped = 0;
   for (const entry of entries) {
     const m = parseMessageEntry(entry);
-    if (!m) continue;
+    if (!m) {
+      skipped++;
+      continue;
+    }
     const msgType = mediaTypeFromRaw(entry, m.msgType);
     const rawMediaUrl = m.mediaUrl ?? mediaUrlFromRaw(entry, msgType);
     const mediaUrl = await persistWaMedia({ userId, sessionId, entry, msgType, mediaUrl: rawMediaUrl });
@@ -567,7 +580,15 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     }
   }
 
-  return new Response(JSON.stringify({ ok: true, saved, statusUpdates }), {
+  if (saved === 0 && skipped > 0) {
+    console.warn("[wa-webhook] Message entries were received but none were saved", {
+      event,
+      skipped,
+      entryKeys: entries.map((entry) => Object.keys(entry).slice(0, 12)),
+    });
+  }
+
+  return new Response(JSON.stringify({ ok: true, saved, skipped, statusUpdates }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
