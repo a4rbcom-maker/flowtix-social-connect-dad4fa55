@@ -469,7 +469,7 @@ function InboxPage() {
 
           </div>
         ) : (
-          <ul className="divide-y divide-border/30">
+          <ul className="divide-y divide-border/30 overflow-hidden">
             {filtered.map((c) => (
               <ConversationRow
                 key={c.id}
@@ -1133,7 +1133,7 @@ function ConversationRow({
       <button
         type="button"
         onClick={onClick}
-        className={`flex w-full items-center gap-3 px-3 py-3 text-left transition ${
+        className={`flex w-full items-center gap-3 overflow-hidden px-3 py-3 text-start transition ${
           active
             ? "bg-primary/10"
             : "hover:bg-muted/50"
@@ -1153,7 +1153,7 @@ function ConversationRow({
             </span>
           </div>
           <div className="mt-0.5 flex items-center gap-1.5">
-            <p className={`min-w-0 flex-1 truncate text-xs ${conv.unread_count > 0 ? "text-foreground" : "text-muted-foreground"}`}>
+            <p className={`block min-w-0 flex-1 truncate text-xs ${conv.unread_count > 0 ? "text-foreground" : "text-muted-foreground"}`}>
               {conv.last_direction === "out" && (
                 <span className="font-medium text-primary">{youLabel}: </span>
               )}
@@ -1227,18 +1227,10 @@ function EmptyChat({
 // ──────────────────────────────────────────────────────────────────────────
 
 async function fetchInboxConversations(userId: string): Promise<ConversationRow[]> {
-  const { data: sess } = await supabase
-    .from("wa_sessions")
-    .select("session_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (!sess?.session_id) return [];
-
   const { data, error } = await supabase
     .from("wa_conversations")
     .select("id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
     .eq("user_id", userId)
-    .eq("session_id", sess.session_id)
     .eq("is_archived", false)
     .order("last_message_at", { ascending: false })
     .limit(200);
@@ -1251,7 +1243,6 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
     .from("wa_messages")
     .select("remote_jid, text_body, msg_type, raw, wa_timestamp, created_at")
     .eq("user_id", userId)
-    .eq("session_id", sess.session_id)
     .in("remote_jid", rows.map((row) => row.remote_jid))
     .not("raw", "is", null)
     .order("wa_timestamp", { ascending: false })
@@ -1283,18 +1274,10 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
 }
 
 async function fetchInboxMessages(userId: string, remoteJid: string): Promise<ChatMessageRow[]> {
-  const { data: sess } = await supabase
-    .from("wa_sessions")
-    .select("session_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (!sess?.session_id) return [];
-
   const { data, error } = await supabase
     .from("wa_messages")
-    .select("id, remote_jid, direction, status, text_body, msg_type, media_url, wa_timestamp, created_at, raw")
+    .select("id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw")
     .eq("user_id", userId)
-    .eq("session_id", sess.session_id)
     .eq("remote_jid", remoteJid)
     .order("wa_timestamp", { ascending: true })
     .limit(1000);
@@ -1306,16 +1289,24 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     const storedMediaUrl = typeof row.media_url === "string" && row.media_url.trim() ? row.media_url.trim() : null;
     const rawMediaUrl = mediaUrlFromRaw(raw, msgType);
     const mediaUrl = await resolveInboxMediaUrl(preferInboxMediaUrl(storedMediaUrl, rawMediaUrl));
+    const isAi = raw.ai === true;
+    const missingConfirmedDelivery =
+      row.direction === "out" &&
+      isAi &&
+      row.status === "sent" &&
+      !row.provider_message_id &&
+      !pickString(raw, "providerMessageId", "bridgeMessageId", "messageId", "id") &&
+      raw.delivery !== "queued";
     return {
       id: row.id,
       remote_jid: row.remote_jid,
       direction: row.direction as "in" | "out",
-      status: row.status ?? (row.direction === "out" ? "sent" : "received"),
+      status: missingConfirmedDelivery ? "failed" : (row.status ?? (row.direction === "out" ? "sent" : "received")),
       text_body: cleanMessageText(row.text_body, raw, msgType),
       msg_type: msgType,
       media_url: mediaUrl,
       created_at: row.wa_timestamp ?? row.created_at,
-      is_ai: raw.ai === true,
+      is_ai: isAi,
       sender_name: pickString(raw, "pushName", "senderName", "notifyName", "contactName"),
       sender_phone: digits(pickString(raw, "participantPn", "senderPn", "phoneNumber")),
     };
@@ -1572,13 +1563,20 @@ function renderMessagesWithDays(
 function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; isGroup: boolean }) {
   const isOut = m.direction === "out";
   const showSender = isGroup && !isOut && (m.sender_name || m.sender_phone);
+  const isPending = isOut && m.status === "pending";
+  const isFailed = isOut && m.status === "failed";
   return (
-    <div className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
+    <div dir="ltr" className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
       <div
-        className={`group max-w-[78%] px-3.5 py-2 text-sm shadow-sm sm:max-w-[70%] ${
-          isOut
-            ? "rounded-2xl rounded-br-md bg-gradient-to-br from-primary to-[oklch(0.55_0.28_295)] text-primary-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
-            : "rounded-2xl rounded-bl-md border border-border/60 bg-card text-foreground rtl:rounded-bl-2xl rtl:rounded-br-md"
+        dir={isAr ? "rtl" : "ltr"}
+        className={`group max-w-[78%] overflow-hidden px-3.5 py-2 text-sm shadow-sm sm:max-w-[70%] ${
+          isFailed
+            ? "rounded-2xl rounded-br-md border border-destructive/35 bg-destructive/10 text-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
+            : isPending
+              ? "rounded-2xl rounded-br-md border border-primary/25 bg-primary/10 text-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
+              : isOut
+                ? "rounded-2xl rounded-br-md bg-gradient-to-br from-primary to-[oklch(0.55_0.28_295)] text-primary-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
+                : "rounded-2xl rounded-bl-md border border-border/60 bg-card text-foreground rtl:rounded-bl-2xl rtl:rounded-br-md"
         }`}
       >
         {showSender && (
@@ -1627,19 +1625,34 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
           </button>
         )}
         {m.text_body ? (
-          <p className="whitespace-pre-wrap break-words leading-relaxed">{m.text_body}</p>
+          <p className="max-w-full whitespace-pre-wrap break-words text-start leading-relaxed [overflow-wrap:anywhere]">{m.text_body}</p>
         ) : !m.media_url ? (
           <p className="italic opacity-75">[{m.msg_type}]</p>
         ) : null}
+        {(isPending || isFailed) && (
+          <p className={`mt-1 text-[10px] font-semibold ${isFailed ? "text-destructive" : "text-muted-foreground"}`}>
+            {isFailed
+              ? isAr
+                ? "فشل التسليم بعد إعادة المحاولة"
+                : "Delivery failed after retries"
+              : isAr
+                ? "جارٍ تأكيد التسليم…"
+                : "Confirming delivery…"}
+          </p>
+        )}
         <div
           className={`mt-1 flex items-center gap-1 text-[10px] ${
-            isOut ? "justify-end text-primary-foreground/80" : "text-muted-foreground"
+            isOut && !isPending && !isFailed ? "justify-end text-primary-foreground/80" : "justify-end text-muted-foreground"
           }`}
           dir="ltr"
         >
           {m.is_ai && <Bot className="h-3 w-3" />}
           <span>{formatTime(m.created_at, isAr)}</span>
-          {isOut && (
+          {isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : isFailed ? (
+            <X className="h-3.5 w-3.5 text-destructive" />
+          ) : isOut && (
             <CheckCheck className={`h-3.5 w-3.5 ${m.status === "read" ? "text-emerald-200" : "opacity-90"}`} />
           )}
         </div>
