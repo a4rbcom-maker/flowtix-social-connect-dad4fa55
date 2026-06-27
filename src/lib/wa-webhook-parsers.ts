@@ -232,11 +232,30 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
     isTruthy(entry.isGroup) ||
     Boolean(pickStr(entry, "groupJid", "groupId")) ||
     Boolean(pickStr(key, "remoteJid")?.endsWith("@g.us"));
-  const realPhone =
+
+  // Bot-Xtra v1.8.x / Baileys can deliver modern WhatsApp chats with two IDs:
+  //   from:     "182239858000081"            ← real chat address (LID)
+  //   senderPn: "201273747262@s.whatsapp.net" ← public phone number
+  // If we normalize the chat to senderPn, Bot-Xtra may accept outgoing sends as
+  // queued but never deliver them. Preserve the LID as remoteJid while keeping
+  // senderPn as fromPhone/contact_phone.
+  const rawFromRef = pickContactRef(entry.from);
+  const rawFromDigits = digits(rawFromRef);
+  const explicitPhone =
     digits(pickStr(entry, "senderPn", "participantPn", "phoneNumber", "phone")) ||
     digits(pickContactRef(senderObj)) ||
     digits(pickContactRef(participantObj)) ||
     digits(pickContactRef(fromObj));
+  const rawFromLidJid =
+    !isGroup &&
+    !fromMe &&
+    rawFromDigits &&
+    explicitPhone &&
+    rawFromDigits !== explicitPhone
+      ? `${rawFromDigits}@lid`
+      : null;
+  const realPhone =
+    explicitPhone || (!rawFromLidJid ? rawFromDigits : null);
   const keyRemote = pickStr(key, "remoteJid");
   const groupJid = pickStr(entry, "groupJid", "groupId") || (keyRemote?.endsWith("@g.us") ? keyRemote : null);
   const directChatJid = pickStr(entry, "remoteJid", "remote_jid", "jid", "chatId");
@@ -252,11 +271,12 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
     pickContactRef(entry.from) ||
     pickContactRef(senderObj) ||
     pickContactRef(fromObj);
+  const inboundLidJid = [rawFromLidJid, senderJid, directChatJid, keyRemote].find((jid) => jid?.endsWith("@lid")) || null;
   const remoteJid = isGroup
     ? groupJid
     : fromMe
       ? (recipientJid || directChatJid || keyRemote)
-      : (realPhone || directChatJid || keyRemote || senderJid);
+      : (inboundLidJid || directChatJid || keyRemote || senderJid || realPhone);
 
   const fromPhone = isGroup
     ? realPhone || digits(senderJid)

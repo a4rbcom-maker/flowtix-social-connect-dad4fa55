@@ -83,6 +83,12 @@ const BOTXTRA_STATUS_UPDATE = {
   data: { status: "open", phoneNumber: "201001234567" },
 };
 
+const BOTXTRA_MESSAGE_STATUS_UPDATE = {
+  event: "status",
+  sessionId: "flowtix-abcdef0123456789-l4k2j",
+  data: { status: "delivered", messageId: "3EB0BX1.8.ACK001" },
+};
+
 const BOTXTRA_STATUS_BROADCAST = {
   event: "message",
   sessionId: "flowtix-abcdef0123456789-l4k2j",
@@ -109,6 +115,21 @@ const BOTXTRA_V18_FLAT_DATA_MESSAGE = {
     isGroup: false,
     sender: { jid: "201273747262@s.whatsapp.net", phone: "201273747262" },
     timestamp: 1_730_000_030,
+  },
+};
+
+const BOTXTRA_V18_LID_INBOUND_MESSAGE = {
+  event: "message",
+  sessionId: "flowtix-abcdef0123456789-l4k2j",
+  data: {
+    id: "3EB0BX1.8.LID001",
+    from: "182239858000081",
+    senderPn: "201273747262@s.whatsapp.net",
+    body: "مرحبا",
+    type: "text",
+    fromMe: false,
+    isGroup: false,
+    timestamp: 1_730_000_040,
   },
 };
 
@@ -155,6 +176,13 @@ describe("Bot-Xtra v1.8.x: message collection", () => {
     const entries = collectMessageEntries(BOTXTRA_V18_FLAT_DATA_MESSAGE);
     expect(entries).toHaveLength(1);
     expect(entries[0].id).toBe("3EB0BX1.8.FLAT001");
+  });
+
+  it("extracts overloaded status events that carry message delivery ACKs", () => {
+    const entries = collectMessageEntries(BOTXTRA_MESSAGE_STATUS_UPDATE);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].messageId).toBe("3EB0BX1.8.ACK001");
+    expect(normalizeMessageStatus(entries[0].status, true)).toBe("delivered");
   });
 });
 
@@ -207,6 +235,16 @@ describe("Bot-Xtra v1.8.x: parseMessageEntry", () => {
     expect(m.remoteJid).toBe("201273747262@s.whatsapp.net");
     expect(m.providerMessageId).toBe("3EB0BX1.8.FLAT001");
     expect(m.contactName).toBe("Customer");
+  });
+
+  it("preserves inbound WhatsApp LID as the chat address while keeping senderPn as phone", () => {
+    const [entry] = collectMessageEntries(BOTXTRA_V18_LID_INBOUND_MESSAGE);
+    const m = parseMessageEntry(entry)!;
+    expect(m).not.toBeNull();
+    expect(m.text).toBe("مرحبا");
+    expect(m.fromPhone).toBe("201273747262");
+    expect(m.remoteJid).toBe("182239858000081@lid");
+    expect(m.providerMessageId).toBe("3EB0BX1.8.LID001");
   });
 });
 

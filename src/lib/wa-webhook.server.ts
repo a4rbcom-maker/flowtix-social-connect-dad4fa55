@@ -113,7 +113,7 @@ export type { ParsedMessage };
 
 
 
-async function updateMessageStatuses(userId: string, payload: Record<string, unknown>): Promise<number> {
+async function updateMessageStatuses(userId: string, sessionId: string, payload: Record<string, unknown>): Promise<number> {
   const entries = collectMessageEntries(payload);
   let updated = 0;
   for (const entry of entries) {
@@ -121,15 +121,88 @@ async function updateMessageStatuses(userId: string, payload: Record<string, unk
     const rawStatus = pickStr(entry, "status", "ack", "messageStatus", "deliveryStatus");
     if (!providerMessageId || !rawStatus) continue;
     const status = normalizeMessageStatus(rawStatus, true);
-    const { error } = await supabaseAdmin
+    const { data: matchedRows, error } = await supabaseAdmin
       .from("wa_messages")
       .update({ status })
       .eq("user_id", userId)
-      .eq("provider_message_id", providerMessageId);
+      .eq("provider_message_id", providerMessageId)
+      .select("id");
     if (error) console.error("[wa-webhook] status update failed:", error.message);
-    else updated++;
+    else if (matchedRows?.length) {
+      updated += matchedRows.length;
+      continue;
+    }
+
+    // Bot-Xtra v1.8.x may acknowledge queued sends with a later webhook shaped as:
+    //   { event: "status", data: { messageId, status: "delivered" } }
+    // That payload has no text/target/queuedId, so it cannot be parsed as a normal
+    // message. Match it to the newest pending outbound row for this session. This
+    // is the missing link that makes queued AI sends become confirmed deliveries
+    // instead of timing out as "accepted by bridge but not sent".
+    if (!["sent", "delivered", "read"].includes(status)) continue;
+    const { data: pendingAi, error: pendingErr } = await supabaseAdmin
+      .from("wa_messages")
+      .select("id, raw, remote_jid, text_body, to_phone, created_at")
+      .eq("user_id", userId)
+      .eq("session_id", sessionId)
+      .eq("direction", "out")
+      .eq("status", "pending")
+      .is("provider_message_id", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (pendingErr) {
+      console.error("[wa-webhook] pending status match failed:", pendingErr.message);
+      continue;
+    }
+    if (!pendingAi?.id) continue;
+
+    const raw = asObj(pendingAi.raw);
+    const nextStatus = status === "read" ? "read" : status === "delivered" ? "delivered" : "sent";
+    const { error: updErr } = await supabaseAdmin
+      .from("wa_messages")
+      .update({
+        status: nextStatus,
+        provider_message_id: providerMessageId,
+        raw: {
+          ...raw,
+          ...entry,
+          ai: raw.ai === true,
+          providerMessageId,
+          normalizedStatus: nextStatus,
+          delivery: "whatsapp_status_acknowledged",
+        } as never,
+      })
+      .eq("id", pendingAi.id);
+    if (updErr) {
+      console.error("[wa-webhook] pending delivery confirmation failed:", updErr.message);
+      continue;
+    }
+    updated++;
+    await upsertConversationFromMessage({
+      userId,
+      sessionId,
+      remoteJid: pendingAi.remote_jid,
+      contactName: null,
+      contactPhone: pendingAi.to_phone,
+      text: pendingAi.text_body,
+      direction: "out",
+    });
   }
   return updated;
+}
+
+function isMessageStatusOnlyEvent(event: string, payload: Record<string, unknown>, data: Record<string, unknown>): boolean {
+  if (event !== "status" && event !== "message.status" && event !== "messages.update") return false;
+  const providerMessageId = messageIdFrom(data) || messageIdFrom(payload);
+  const rawStatus = pickStr(data, "status", "ack", "messageStatus", "deliveryStatus") ||
+    pickStr(payload, "status", "ack", "messageStatus", "deliveryStatus");
+  if (!providerMessageId || !rawStatus) return false;
+
+  // If the status value is not a session state, it is an outbound message ACK,
+  // not a WhatsApp session status. Never let "delivered" turn the session into
+  // "unknown" again.
+  return !SESSION_STATUS_MAP[String(rawStatus).toLowerCase()];
 }
 
 export async function handleWaWebhook(request: Request): Promise<Response> {
@@ -187,6 +260,16 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   const event = String(payload.event || payload.type || "").toLowerCase();
   const data = asObj(payload.data);
 
+  // Bot-Xtra overloads event="status": it can mean either a WhatsApp session
+  // state (open/qr/disconnected) or a message delivery ACK
+  // (sent/delivered/read + messageId). Handle message ACKs first so confirmed
+  // AI deliveries are attached to the pending outbound message instead of being
+  // swallowed as a session status="unknown" update.
+  if (isMessageStatusOnlyEvent(event, payload, data)) {
+    await updateMessageStatuses(userId, sessionId, payload);
+    return new Response("ok");
+  }
+
   // ── status update ──
   if (event === "status" || event === "connection.update" || event === "session.status") {
     const rawStatus = String(data.status ?? data.state ?? payload.status ?? "").toLowerCase();
@@ -231,7 +314,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     return new Response("ok");
   }
 
-  const statusUpdates = await updateMessageStatuses(userId, payload);
+  const statusUpdates = await updateMessageStatuses(userId, sessionId, payload);
 
   // ── inbound/outbound messages ──
   const entries = collectMessageEntries(payload);
