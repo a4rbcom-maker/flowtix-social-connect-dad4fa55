@@ -131,12 +131,13 @@ async function deliverAiTextWithRetry(opts: {
   userId: string;
   remoteJid: string;
   phone: string;
+  contactPhone?: string | null;
   text: string;
   tier?: string | null;
   model?: string | null;
   kind?: "ai" | "welcome";
 }): Promise<AiDeliveryResult> {
-  const { sessionId, userId, remoteJid, phone, text, tier, model, kind = "ai" } = opts;
+  const { sessionId, userId, remoteJid, phone, contactPhone, text, tier, model, kind = "ai" } = opts;
   const sentAt = new Date().toISOString();
   const insertRes = await supabaseAdmin
     .from("wa_messages")
@@ -145,7 +146,7 @@ async function deliverAiTextWithRetry(opts: {
       session_id: sessionId,
       direction: "out",
       remote_jid: remoteJid,
-      to_phone: phone,
+      to_phone: contactPhone || phone,
       msg_type: "text",
       text_body: text,
       status: "pending",
@@ -164,7 +165,7 @@ async function deliverAiTextWithRetry(opts: {
     sessionId,
     remoteJid,
     contactName: null,
-    contactPhone: phone,
+    contactPhone: contactPhone || phone.replace(/[^0-9]/g, "") || phone,
     text,
     direction: "out",
     messageAt: sentAt,
@@ -290,7 +291,7 @@ async function deliverAiTextWithRetry(opts: {
     sessionId,
     remoteJid,
     contactName: null,
-    contactPhone: phone,
+    contactPhone: contactPhone || phone.replace(/[^0-9]/g, "") || phone,
     text: `${text}\n\n⚠️ لم يتم تأكيد تسليم الرد للعميل. آخر خطأ: ${lastError ?? "unknown"}`,
     direction: "out",
     messageAt: sentAt,
