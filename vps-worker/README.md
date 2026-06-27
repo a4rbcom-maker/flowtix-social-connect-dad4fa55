@@ -1,9 +1,9 @@
 # Flowtix VPS Worker — دليل التشغيل
 
-Worker مستقل تمامًا، يعمل في مجلده الخاص بـ Node.js + Playwright. لا يلامس Nginx ولا أي موقع آخر على السيرفر.
+Worker مستقل تمامًا، يعمل في مجلده الخاص بـ Node.js + Playwright. لا يلامس Nginx ولا أي موقع آخر على السيرفر، ولا يلمس Bot‑Xtra Bridge نهائياً.
 
 ## ما يفعله
-- يستدعي `https://flowtixtools.com/api/public/bot/next-job` كل 5 ثوانٍ.
+- يستدعي `https://flowtix-social-connect.lovable.app/api/public/bot/next-job` كل 5 ثوانٍ.
 - عند استلام مهمة: يفتح Chromium بكوكيز الحساب، ينفّذ المهمة، ويرسل النتائج إلى `/api/public/bot/job-update`.
 - مدعوم حاليًا: **استخراج المعلقين من بوست (`extract_commenters`)**. باقي الأنواع تُعلَّم كـ "غير مدعومة" مع رسالة واضحة (يمكن تطويرها لاحقًا).
 
@@ -45,9 +45,11 @@ exit
 sudo -u flowtix cp /home/flowtix/vps-worker/.env.example /home/flowtix/vps-worker/.env
 sudo -u flowtix nano /home/flowtix/vps-worker/.env
 ```
-عدّل القيمتين:
-- `API_BASE_URL=https://flowtixtools.com`
-- `BOT_WORKER_SECRET=` — نفس القيمة الموجودة في Lovable Cloud (أنا أمتلكها لكن لا أستطيع إظهارها لك؛ افتح Project Settings → Secrets في Lovable لتأخذ نسخة، أو اطلب مني تدويرها).
+عدّل القيمتين فقط:
+- `API_BASE_URL=https://flowtix-social-connect.lovable.app`
+- `BOT_WORKER_SECRET=` — نفس قيمة السر الموجود في إعدادات المشروع باسم `BOT_WORKER_SECRET`.
+
+> لا تستخدم هنا `WA_BRIDGE_URL` أو `WA_BRIDGE_API_KEY` أو `WA_BRIDGE_WEBHOOK_SECRET`؛ هذه تخص Bot‑Xtra فقط وليست مطلوبة لفيسبوك.
 
 ### 6) تثبيت السيرفس
 ```bash
@@ -73,6 +75,23 @@ cd /home/flowtix/vps-worker
 sudo -u flowtix git pull   # لو الفولدر نفسه فيه .git، أو انسخ يدويًا من ريبو aaPanel
 sudo -u flowtix npm install
 sudo systemctl restart flowtix-worker
+```
+
+## ممنوعات مهمة حتى لا تتأثر Bot‑Xtra
+- لا تعمل restart لأي خدمة Bot‑Xtra أو WhatsApp bridge عند تحديث Facebook Worker.
+- لا تغيّر متغيرات `WA_BRIDGE_*` على السيرفر.
+- لا تغيّر Nginx أو aaPanel أو أي proxy خاص بواتساب.
+- الخدمة الوحيدة المسموح بإعادة تشغيلها لفيسبوك هي: `flowtix-worker` فقط.
+
+أوامر آمنة للتحديث بدون لمس Bot‑Xtra:
+```bash
+cd /path/to/your/repo
+git pull
+sudo rsync -a --delete vps-worker/ /home/flowtix/vps-worker/
+sudo chown -R flowtix:flowtix /home/flowtix/vps-worker
+sudo -u flowtix bash -lc 'cd /home/flowtix/vps-worker && npm install'
+sudo systemctl restart flowtix-worker
+sudo systemctl status flowtix-worker --no-pager
 ```
 
 ## إيقاف مؤقت
