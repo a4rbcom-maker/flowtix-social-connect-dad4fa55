@@ -1290,18 +1290,24 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     const rawMediaUrl = mediaUrlFromRaw(raw, msgType);
     const mediaUrl = await resolveInboxMediaUrl(preferInboxMediaUrl(storedMediaUrl, rawMediaUrl));
     const isAi = raw.ai === true;
+    const rawDelivery = String(raw.delivery ?? "").toLowerCase();
+    const hasConfirmedDelivery = Boolean(
+      row.provider_message_id || pickString(raw, "providerMessageId", "bridgeMessageId", "messageId", "id"),
+    );
     const missingConfirmedDelivery =
       row.direction === "out" &&
-      isAi &&
       row.status === "sent" &&
-      !row.provider_message_id &&
-      !pickString(raw, "providerMessageId", "bridgeMessageId", "messageId", "id") &&
-      raw.delivery !== "queued";
+      !hasConfirmedDelivery;
+    const visibleStatus = missingConfirmedDelivery
+      ? rawDelivery.includes("queued") || rawDelivery.includes("pending") || rawDelivery.includes("retrying")
+        ? "pending"
+        : "failed"
+      : (row.status ?? (row.direction === "out" ? "sent" : "received"));
     return {
       id: row.id,
       remote_jid: row.remote_jid,
       direction: row.direction as "in" | "out",
-      status: missingConfirmedDelivery ? "failed" : (row.status ?? (row.direction === "out" ? "sent" : "received")),
+      status: visibleStatus,
       text_body: cleanMessageText(row.text_body, raw, msgType),
       msg_type: msgType,
       media_url: mediaUrl,
