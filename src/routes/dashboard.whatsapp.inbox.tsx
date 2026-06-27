@@ -469,7 +469,7 @@ function InboxPage() {
 
           </div>
         ) : (
-          <ul className="divide-y divide-border/30">
+          <ul className="divide-y divide-border/30 overflow-hidden">
             {filtered.map((c) => (
               <ConversationRow
                 key={c.id}
@@ -1133,7 +1133,7 @@ function ConversationRow({
       <button
         type="button"
         onClick={onClick}
-        className={`flex w-full items-center gap-3 px-3 py-3 text-left transition ${
+        className={`flex w-full items-center gap-3 overflow-hidden px-3 py-3 text-start transition ${
           active
             ? "bg-primary/10"
             : "hover:bg-muted/50"
@@ -1153,7 +1153,7 @@ function ConversationRow({
             </span>
           </div>
           <div className="mt-0.5 flex items-center gap-1.5">
-            <p className={`min-w-0 flex-1 truncate text-xs ${conv.unread_count > 0 ? "text-foreground" : "text-muted-foreground"}`}>
+            <p className={`block min-w-0 flex-1 truncate text-xs ${conv.unread_count > 0 ? "text-foreground" : "text-muted-foreground"}`}>
               {conv.last_direction === "out" && (
                 <span className="font-medium text-primary">{youLabel}: </span>
               )}
