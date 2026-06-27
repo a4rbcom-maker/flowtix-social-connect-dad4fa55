@@ -1,10 +1,17 @@
 // Server-only: AI reply generation for WhatsApp using kie.ai (multi-key pool).
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { assertBridgeSendQueued, BridgeError, sendTextWithReconnect, type BridgeSendResponse } from "./wa-bridge.server";
+import {
+  assertBridgeSendQueued,
+  bridgeSendQueuedMessage,
+  BridgeError,
+  sendTextWithReconnect,
+  type BridgeSendResponse,
+} from "./wa-bridge.server";
 import { deriveWebhookUrl } from "./wa-helpers.server";
 import { callKieChat, type ChatMessage } from "./ai-pool.server";
 import { isBridgeSessionMissingError, resetWaSessionAfterBridgeLoss } from "./wa-session-repair.server";
+import { resolveOutgoingWhatsappTarget } from "./wa-recipient.server";
 
 interface AiSettings {
   ai_enabled: boolean;
@@ -26,13 +33,14 @@ interface AiSettings {
 
 interface AiDeliveryResult {
   providerMessageId: string | null;
-  status: "sent" | "pending" | "failed";
+  status: "sent" | "queued" | "pending" | "failed";
   attempts: number;
   lastError: string | null;
   responses: unknown[];
 }
 
 const AI_DELIVERY_ATTEMPTS = 3;
+const AI_QUEUE_SETTLE_MS = 20_000;
 
 
 function isWithinWorkingHours(start?: string | null, end?: string | null): boolean {
@@ -72,8 +80,82 @@ async function sendAiTextOnce(sessionId: string, userId: string, phone: string, 
   });
   // Log full bridge response so we can diagnose silent delivery failures.
   console.log("[wa-ai] bridge sendText response:", JSON.stringify(res));
-  assertBridgeSendQueued(res);
   return res;
+}
+
+async function findConfirmedOutbound(params: {
+  userId: string;
+  sessionId: string;
+  remoteJid: string;
+  text: string;
+  sinceIso: string;
+  excludeMessageId: string | null;
+}): Promise<{ id: string; providerMessageId: string; status: string } | null> {
+  const { data } = await supabaseAdmin
+    .from("wa_messages")
+    .select("id, provider_message_id, status")
+    .eq("user_id", params.userId)
+    .eq("session_id", params.sessionId)
+    .eq("remote_jid", params.remoteJid)
+    .eq("direction", "out")
+    .eq("text_body", params.text)
+    .not("provider_message_id", "is", null)
+    .gte("created_at", params.sinceIso)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  const row = (data ?? []).find((item) => item.id !== params.excludeMessageId && item.provider_message_id);
+  if (!row?.provider_message_id) return null;
+  return { id: row.id, providerMessageId: row.provider_message_id, status: row.status ?? "sent" };
+}
+
+async function findConfirmedOutboundLoose(params: {
+  userId: string;
+  sessionId: string;
+  text: string;
+  sinceIso: string;
+  excludeMessageId: string | null;
+}): Promise<{ id: string; providerMessageId: string; status: string } | null> {
+  const { data } = await supabaseAdmin
+    .from("wa_messages")
+    .select("id, provider_message_id, status")
+    .eq("user_id", params.userId)
+    .eq("session_id", params.sessionId)
+    .eq("direction", "out")
+    .eq("text_body", params.text)
+    .not("provider_message_id", "is", null)
+    .gte("created_at", params.sinceIso)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  const row = (data ?? []).find((item) => item.id !== params.excludeMessageId && item.provider_message_id);
+  if (!row?.provider_message_id) return null;
+  return { id: row.id, providerMessageId: row.provider_message_id, status: row.status ?? "sent" };
+}
+
+async function waitForConfirmedOutbound(params: {
+  userId: string;
+  sessionId: string;
+  remoteJid: string;
+  text: string;
+  sinceIso: string;
+  excludeMessageId: string | null;
+}): Promise<{ providerMessageId: string; status: string } | null> {
+  const deadline = Date.now() + AI_QUEUE_SETTLE_MS;
+  while (Date.now() < deadline) {
+    const confirmed =
+      (await findConfirmedOutbound(params)) ||
+      (await findConfirmedOutboundLoose({
+        userId: params.userId,
+        sessionId: params.sessionId,
+        text: params.text,
+        sinceIso: params.sinceIso,
+        excludeMessageId: params.excludeMessageId,
+      }));
+    if (confirmed) return confirmed;
+    await wait(1_500);
+  }
+  return null;
 }
 
 async function deliverAiTextWithRetry(opts: {
@@ -81,12 +163,13 @@ async function deliverAiTextWithRetry(opts: {
   userId: string;
   remoteJid: string;
   phone: string;
+  contactPhone?: string | null;
   text: string;
   tier?: string | null;
   model?: string | null;
   kind?: "ai" | "welcome";
 }): Promise<AiDeliveryResult> {
-  const { sessionId, userId, remoteJid, phone, text, tier, model, kind = "ai" } = opts;
+  const { sessionId, userId, remoteJid, phone, contactPhone, text, tier, model, kind = "ai" } = opts;
   const sentAt = new Date().toISOString();
   const insertRes = await supabaseAdmin
     .from("wa_messages")
@@ -95,7 +178,7 @@ async function deliverAiTextWithRetry(opts: {
       session_id: sessionId,
       direction: "out",
       remote_jid: remoteJid,
-      to_phone: phone,
+      to_phone: contactPhone || phone,
       msg_type: "text",
       text_body: text,
       status: "pending",
@@ -114,7 +197,7 @@ async function deliverAiTextWithRetry(opts: {
     sessionId,
     remoteJid,
     contactName: null,
-    contactPhone: phone,
+    contactPhone: contactPhone || phone.replace(/[^0-9]/g, "") || phone,
     text,
     direction: "out",
     messageAt: sentAt,
@@ -130,14 +213,83 @@ async function deliverAiTextWithRetry(opts: {
     try {
       const res = await sendAiTextOnce(sessionId, userId, phone, text);
       responses.push(res);
-      providerMessageId = assertBridgeSendQueued(res);
+      const queuedId = bridgeSendQueuedMessage(res);
+      try {
+        providerMessageId = assertBridgeSendQueued(res);
+      } catch (err) {
+        if (!queuedId) throw err;
+        if (messageRowId) {
+          await supabaseAdmin
+            .from("wa_messages")
+            .update({
+              status: "pending",
+              raw: {
+                ai: true,
+                kind,
+                tier,
+                model,
+                targetJid: phone,
+                contactPhone,
+                usedLid: phone.endsWith("@lid"),
+                queuedId,
+                delivery: "bridge_queued_waiting_for_whatsapp_ack",
+                attempts,
+                bridgeResponses: responses,
+              } as never,
+            })
+            .eq("id", messageRowId);
+        }
+        const confirmed = await waitForConfirmedOutbound({
+          userId,
+          sessionId,
+          remoteJid,
+          text,
+          sinceIso: sentAt,
+          excludeMessageId: messageRowId,
+        });
+        if (!confirmed) {
+          lastError = `bridge_queued_without_whatsapp_ack:${queuedId}`;
+          responses.push({ queuedId, status: "queued_without_whatsapp_ack", attempt });
+          if (messageRowId) {
+            await supabaseAdmin
+              .from("wa_messages")
+              .update({
+                status: attempt === AI_DELIVERY_ATTEMPTS ? "failed" : "pending",
+                raw: {
+                  ai: true,
+                  kind,
+                  tier,
+                  model,
+                  targetJid: phone,
+                  contactPhone,
+                  usedLid: phone.endsWith("@lid"),
+                  queuedId,
+                  delivery: attempt === AI_DELIVERY_ATTEMPTS ? "failed_missing_whatsapp_ack" : "retrying_after_missing_whatsapp_ack",
+                  attempts,
+                  error: lastError,
+                  bridgeResponses: responses,
+                } as never,
+              })
+              .eq("id", messageRowId);
+          }
+          if (attempt < AI_DELIVERY_ATTEMPTS) {
+            await wait(retryDelayMs(attempt));
+            continue;
+          }
+          break;
+        }
+        providerMessageId = confirmed.providerMessageId;
+      }
       const raw = {
         ai: true,
         kind,
         tier,
         model,
         providerMessageId,
-        delivery: "queued",
+        targetJid: phone,
+        contactPhone,
+        usedLid: phone.endsWith("@lid"),
+        delivery: "whatsapp_acknowledged",
         attempts,
         bridgeResponses: responses,
       } as never;
@@ -163,6 +315,9 @@ async function deliverAiTextWithRetry(opts: {
               tier,
               model,
               providerMessageId,
+              targetJid: phone,
+              contactPhone,
+              usedLid: phone.endsWith("@lid"),
               delivery: attempt === AI_DELIVERY_ATTEMPTS || !shouldRetryAiSend(err) ? "failed" : "retrying",
               attempts: attempt,
               error: lastError,
@@ -183,6 +338,9 @@ async function deliverAiTextWithRetry(opts: {
     tier,
     model,
     providerMessageId,
+    targetJid: phone,
+    contactPhone,
+    usedLid: phone.endsWith("@lid"),
     delivery: "failed",
     attempts,
     error: lastError,
@@ -199,7 +357,7 @@ async function deliverAiTextWithRetry(opts: {
     sessionId,
     remoteJid,
     contactName: null,
-    contactPhone: phone,
+    contactPhone: contactPhone || phone.replace(/[^0-9]/g, "") || phone,
     text: `${text}\n\n⚠️ لم يتم تأكيد تسليم الرد للعميل. آخر خطأ: ${lastError ?? "unknown"}`,
     direction: "out",
     messageAt: sentAt,
@@ -301,7 +459,15 @@ export async function handleAiAutoReply(opts: {
     }
 
     // Blacklist
-    const phone = fromPhone || remoteJid.replace(/[^0-9]/g, "");
+    // Critical delivery fix: modern WhatsApp/Baileys often identifies the real
+    // chat by @lid while senderPn only contains the public phone number. Sending
+    // to senderPn can make Bot-Xtra return queuedId without actual delivery.
+    const target = await resolveOutgoingWhatsappTarget({
+      userId,
+      remoteJid,
+      fallbackPhoneOrJid: fromPhone || remoteJid,
+    });
+    const phone = target.phoneDigits || fromPhone || remoteJid.replace(/[^0-9]/g, "");
     if (settings.ai_blacklist?.some((p) => phone.includes(p.replace(/[^0-9]/g, "")))) {
       await logAiSkip({
         userId,
@@ -349,7 +515,8 @@ export async function handleAiAutoReply(opts: {
         sessionId,
         userId,
         remoteJid,
-        phone,
+        phone: target.jid,
+        contactPhone: phone,
         text: settings.ai_welcome_message,
         kind: "welcome",
       });
@@ -415,14 +582,19 @@ export async function handleAiAutoReply(opts: {
         sessionId,
         userId,
         remoteJid,
-        phone,
+        phone: target.jid,
+        contactPhone: phone,
         text: aiText,
         tier,
         model: result.model || model,
       });
       if (delivery.status !== "sent") {
-        errMsg = `delivery_failed_after_${delivery.attempts}_attempts: ${delivery.lastError ?? "unknown"}`;
-        aiText = "";
+        if (delivery.status === "queued") {
+          errMsg = `delivery_queued_waiting_for_whatsapp_ack: ${delivery.lastError ?? "queued"}`;
+        } else {
+          errMsg = `delivery_failed_after_${delivery.attempts}_attempts: ${delivery.lastError ?? "unknown"}`;
+          aiText = "";
+        }
       } else {
         deliveredOk = true;
       }
@@ -439,7 +611,7 @@ export async function handleAiAutoReply(opts: {
       tokens_in: result.tokensIn,
       tokens_out: result.tokensOut,
       latency_ms: result.latencyMs,
-      status: deliveredOk ? "success" : "error",
+      status: deliveredOk ? "success" : errMsg?.startsWith("delivery_queued") ? "pending" : "error",
       error_message: errMsg,
     });
   } catch (err) {
