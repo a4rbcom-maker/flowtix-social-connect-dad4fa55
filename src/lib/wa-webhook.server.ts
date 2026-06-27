@@ -1,107 +1,30 @@
 // Shared inbound webhook handler for the BotXtra/Baileys WhatsApp bridge.
 // Mounted at /api/public/wa-webhook (canonical) and /api/public/wa/webhook (alias).
 // Designed to be tolerant of different bridge payload shapes.
-import { createHmac, randomUUID, timingSafeEqual } from "crypto";
+//
+// NOTE: All pure parsing/normalization logic lives in ./wa-webhook-parsers and
+// is covered by wa-webhook-contract.test.ts to lock the Bot-Xtra v1.8.x
+// payload contract. Do NOT inline parsing here — extend the parsers module
+// (and its tests) instead.
+import { randomUUID } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { handleAiAutoReply, upsertConversationFromMessage } from "./wa-ai.server";
 import { cleanMessageText, mediaTypeFromRaw, mediaUrlFromRaw } from "./wa-chat-helpers.server";
 import { tryKeywordAutoReply } from "./wa-keyword.server";
+import {
+  asObj,
+  collectMessageEntries,
+  digits,
+  findSessionId,
+  messageIdFrom,
+  normalizeMessageStatus,
+  parseMessageEntry,
+  pickStr,
+  SESSION_STATUS_MAP,
+  verifySignature,
+  type ParsedMessage,
+} from "./wa-webhook-parsers";
 
-function verifySignature(rawBody: string, header: string | null, secret: string): boolean {
-  if (!header) return false;
-  const received = header.startsWith("sha256=") ? header.slice(7) : header;
-  const expected = createHmac("sha256", secret).update(rawBody, "utf8").digest("hex");
-  const a = Buffer.from(expected, "hex");
-  let b: Buffer;
-  try {
-    b = Buffer.from(received, "hex");
-  } catch {
-    return false;
-  }
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
-
-function digits(s: unknown): string | null {
-  if (typeof s !== "string") return null;
-  const d = s.replace(/[^0-9]/g, "");
-  return d || null;
-}
-
-function pickStr(obj: unknown, ...keys: string[]): string | null {
-  if (!obj || typeof obj !== "object") return null;
-  const rec = obj as Record<string, unknown>;
-  for (const k of keys) {
-    const v = rec[k];
-    if (typeof v === "string" && v.length > 0) return v;
-  }
-  return null;
-}
-
-function asObj(v: unknown): Record<string, unknown> {
-  return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
-}
-
-function normalizeRemoteJid(remoteJid: string | null, phone: string | null, isGroup = false): string {
-  const jid = remoteJid || "";
-  if (jid.includes("@")) return jid;
-  const d = digits(jid) || phone;
-  return d ? `${d}@${isGroup ? "g.us" : "s.whatsapp.net"}` : "unknown";
-}
-
-function isTruthy(v: unknown): boolean {
-  return v === true || String(v ?? "").toLowerCase() === "true";
-}
-
-function normalizeMessageStatus(value: unknown, fromMe: boolean): string {
-  const raw = String(value ?? "").toLowerCase();
-  if (["read", "played"].includes(raw)) return "read";
-  if (["delivered", "delivery", "server_ack", "device_ack"].includes(raw)) return "delivered";
-  if (["sent", "pending", "queued"].includes(raw)) return raw;
-  if (["failed", "error", "undelivered"].includes(raw)) return "failed";
-  return fromMe ? "sent" : "received";
-}
-
-function messageIdFrom(entry: Record<string, unknown>): string | null {
-  return (
-    pickStr(entry, "messageId", "message_id", "msgId", "msg_id", "id", "wamid") ||
-    pickStr(asObj(entry.key), "id") ||
-    pickStr(asObj(entry.message), "id")
-  );
-}
-
-function findSessionId(payload: Record<string, unknown>, headers: Headers): string | null {
-  return (
-    pickStr(payload, "sessionId", "session_id", "session", "instanceId", "instance_id") ||
-    pickStr(asObj(payload.data), "sessionId", "session_id", "instanceId") ||
-    pickStr(asObj(payload.instance), "instanceId", "id", "name") ||
-    pickStr(asObj(payload.session), "id", "sessionId") ||
-    headers.get("x-session-id") ||
-    headers.get("x-instance-id") ||
-    null
-  );
-}
-
-function parseWaTimestamp(entry: Record<string, unknown>): string | null {
-  const candidates: unknown[] = [
-    entry.messageTimestamp,
-    entry.timestamp,
-    entry.t,
-    asObj(entry.key).timestamp,
-    asObj(entry.message).messageTimestamp,
-    asObj(entry.data).timestamp,
-  ];
-  for (const raw of candidates) {
-    if (raw == null) continue;
-    const num = typeof raw === "number" ? raw : Number(String(raw).trim());
-    if (!Number.isFinite(num) || num <= 0) continue;
-    // Heuristic: < 10^12 => seconds; otherwise milliseconds
-    const ms = num < 1_000_000_000_000 ? num * 1000 : num;
-    const d = new Date(ms);
-    if (!Number.isNaN(d.getTime())) return d.toISOString();
-  }
-  return null;
-}
 
 interface ParsedMessage {
   remoteJid: string;
