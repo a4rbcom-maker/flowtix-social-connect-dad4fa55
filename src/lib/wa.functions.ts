@@ -445,6 +445,7 @@ export const testWaWebhook = createServerFn({ method: "POST" })
         .from("wa_messages")
         .select("id")
         .eq("user_id", userId)
+        .eq("session_id", sessionId)
         .eq("provider_message_id", providerMessageId)
         .maybeSingle();
 
