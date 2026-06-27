@@ -1501,6 +1501,48 @@ export type Database = {
         }
         Relationships: []
       }
+      wa_session_events: {
+        Row: {
+          bridge_event: string | null
+          bridge_payload: Json | null
+          created_at: string
+          from_status: string | null
+          id: string
+          raw_status: string | null
+          reason: string | null
+          session_id: string
+          source: string
+          to_status: string
+          user_id: string
+        }
+        Insert: {
+          bridge_event?: string | null
+          bridge_payload?: Json | null
+          created_at?: string
+          from_status?: string | null
+          id?: string
+          raw_status?: string | null
+          reason?: string | null
+          session_id: string
+          source: string
+          to_status: string
+          user_id: string
+        }
+        Update: {
+          bridge_event?: string | null
+          bridge_payload?: Json | null
+          created_at?: string
+          from_status?: string | null
+          id?: string
+          raw_status?: string | null
+          reason?: string | null
+          session_id?: string
+          source?: string
+          to_status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       wa_sessions: {
         Row: {
           created_at: string

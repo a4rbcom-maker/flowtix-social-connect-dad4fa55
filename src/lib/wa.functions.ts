@@ -17,6 +17,7 @@ import {
   type WaBridgeHealth,
 } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
+import { isHardSessionGoneError, logWaSessionEvent, updateWaSessionStatus } from "./wa-session-events.server";
 
 export type { WaBridgeHealth };
 
@@ -37,6 +38,17 @@ export interface WaConnectionState {
   phoneNumber: string | null;
   lastSeenAt: string | null;
   error: string | null;
+}
+
+export interface WaSessionEventRow {
+  createdAt: string;
+  sessionId: string;
+  fromStatus: string | null;
+  toStatus: string;
+  source: string;
+  reason: string | null;
+  rawStatus: string | null;
+  bridgeEvent: string | null;
 }
 
 
@@ -80,11 +92,36 @@ export const connectWaSession = createServerFn({ method: "POST" })
         const now = new Date().toISOString();
         const errMsg = describeBridgeError(err);
         console.warn("[wa] createSession bridge error:", errMsg);
-        await supabase
-          .from("wa_sessions")
-          .update({ status: "disconnected", qr_data_url: null, last_seen_at: now })
-          .eq("user_id", userId)
-          .eq("session_id", sessionId);
+        if (existing?.session_id && !isHardSessionGoneError(err)) {
+          await updateWaSessionStatus(supabase, {
+            userId,
+            sessionId,
+            nextStatus: (existing.status as BridgeSessionStatus) || "unknown",
+            source: "connect_error",
+            reason: errMsg,
+            rawStatus: err instanceof BridgeError ? `http_${err.status}` : null,
+            logEvenIfUnchanged: true,
+          });
+          return {
+            status: (existing.status as BridgeSessionStatus) || "unknown",
+            sessionId,
+            qrDataUrl: existing.qr_data_url ?? null,
+            qrRaw: null,
+            phoneNumber: existing.phone_number ?? null,
+            lastSeenAt: existing.last_seen_at ?? now,
+            error: errMsg,
+          };
+        }
+        await updateWaSessionStatus(supabase, {
+          userId,
+          sessionId,
+          nextStatus: "disconnected",
+          source: "connect_error",
+          reason: errMsg,
+          rawStatus: err instanceof BridgeError ? `http_${err.status}` : null,
+          qrDataUrl: null,
+          logEvenIfUnchanged: true,
+        });
         return {
           status: "disconnected",
           sessionId,
@@ -108,11 +145,34 @@ export const getWaConnectionState = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data: row } = await supabase
       .from("wa_sessions")
-      .select("session_id")
+      .select("session_id, status")
       .eq("user_id", userId)
       .maybeSingle();
     if (!row?.session_id) return null;
     return readState(supabase, userId, row.session_id);
+  });
+
+export const getWaSessionEvents = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<WaSessionEventRow[]> => {
+    const { supabase, userId } = context;
+    const { data, error } = await supabase
+      .from("wa_session_events")
+      .select("created_at, session_id, from_status, to_status, source, reason, raw_status, bridge_event")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((row: any) => ({
+      createdAt: row.created_at,
+      sessionId: row.session_id,
+      fromStatus: row.from_status,
+      toStatus: row.to_status,
+      source: row.source,
+      reason: row.reason,
+      rawStatus: row.raw_status,
+      bridgeEvent: row.bridge_event,
+    }));
   });
 
 export const sendWaMessage = createServerFn({ method: "POST" })
@@ -179,7 +239,7 @@ export const disconnectWaSession = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data: row } = await supabase
       .from("wa_sessions")
-      .select("session_id")
+      .select("session_id, status")
       .eq("user_id", userId)
       .maybeSingle();
     if (row?.session_id) {
@@ -188,6 +248,14 @@ export const disconnectWaSession = createServerFn({ method: "POST" })
       } catch {
         // best-effort; we still clear our row
       }
+      await logWaSessionEvent(supabase, {
+        userId,
+        sessionId: row.session_id,
+        fromStatus: row.status ?? null,
+        toStatus: "disconnected",
+        source: "disconnect",
+        reason: "manual_disconnect",
+      });
       await supabase.from("wa_sessions").delete().eq("user_id", userId);
     }
     return { ok: true };
@@ -208,7 +276,7 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
 
     const { data: existing } = await supabase
       .from("wa_sessions")
-      .select("session_id")
+      .select("session_id, status")
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -238,6 +306,14 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
     // 3) Persist new session id and reset row to QR state
     const now = new Date().toISOString();
     if (existing) {
+      await logWaSessionEvent(supabase, {
+        userId,
+        sessionId: existing.session_id,
+        fromStatus: existing.status ?? null,
+        toStatus: "disconnected",
+        source: "reset",
+        reason: "manual_reset_new_qr",
+      });
       await supabase
         .from("wa_sessions")
         .update({
@@ -253,6 +329,15 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
         .from("wa_sessions")
         .insert({ user_id: userId, session_id: newSessionId, status: "qr" });
     }
+
+    await logWaSessionEvent(supabase, {
+      userId,
+      sessionId: newSessionId,
+      fromStatus: null,
+      toStatus: "qr",
+      source: "reset",
+      reason: "new_qr_session_created",
+    });
 
     return readState(supabase, userId, newSessionId);
   });
@@ -429,7 +514,23 @@ async function readState(
   } catch (err) {
     error = describeBridgeError(err);
     console.warn("[wa] readState bridge error:", error);
-    status = "disconnected";
+    if (isHardSessionGoneError(err)) {
+      status = "disconnected";
+    } else {
+      // A timeout/502/temporary bridge failure is not proof that the WhatsApp
+      // device logged out. Preserve the last DB status so polling cannot
+      // accidentally mark a healthy Bot-Xtra session as disconnected.
+      const { data: current } = await supabase
+        .from("wa_sessions")
+        .select("status")
+        .eq("user_id", userId)
+        .eq("session_id", sessionId)
+        .maybeSingle();
+      const existingStatus = current?.status as BridgeSessionStatus | undefined;
+      status = existingStatus && ["connected", "qr", "connecting", "disconnected", "unknown"].includes(existingStatus)
+        ? existingStatus
+        : "unknown";
+    }
   }
 
   // Fallback: poll dedicated /qr endpoint if status didn't include one.
@@ -446,17 +547,17 @@ async function readState(
   const now = new Date().toISOString();
   // Preserve last-known phone_number when bridge transiently reports null
   // (e.g. session re-paired). Only overwrite when we actually got a number.
-  const update: Record<string, unknown> = {
-    status,
-    qr_data_url: null,
-    last_seen_at: now,
-  };
-  if (phoneNumber) update.phone_number = phoneNumber;
-  await supabase
-    .from("wa_sessions")
-    .update(update)
-    .eq("user_id", userId)
-    .eq("session_id", sessionId);
+  await updateWaSessionStatus(supabase, {
+    userId,
+    sessionId,
+    nextStatus: status,
+    source: error ? "poll_error" : "poll",
+    reason: error,
+    rawStatus: status,
+    phoneNumber,
+    qrDataUrl: null,
+    logEvenIfUnchanged: Boolean(error),
+  });
 
 
   // If bridge didn't give us a number, surface the last-known one from DB.

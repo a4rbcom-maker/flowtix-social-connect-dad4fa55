@@ -11,6 +11,7 @@ import {
   Smartphone,
   QrCode,
   AlertCircle,
+  History,
   Plus,
   Wifi,
   WifiOff,
@@ -23,11 +24,13 @@ import { useI18n } from "@/lib/i18n";
 import {
   connectWaSession,
   getWaConnectionState,
+  getWaSessionEvents,
   disconnectWaSession,
   pingWaBridgeUser,
   resetWaReceiver,
   type WaConnectionState,
   type WaBridgeHealth,
+  type WaSessionEventRow,
 } from "@/lib/wa.functions";
 
 export const Route = createFileRoute("/dashboard/whatsapp/accounts")({
@@ -73,6 +76,7 @@ function WhatsAppPage() {
   const connectFn = useServerFn(connectWaSession);
   const resetFn = useServerFn(resetWaReceiver);
   const statusFn = useServerFn(getWaConnectionState);
+  const eventsFn = useServerFn(getWaSessionEvents);
   const disconnectFn = useServerFn(disconnectWaSession);
   const pingFn = useServerFn(pingWaBridgeUser);
   const [polling, setPolling] = useState(false);
@@ -97,6 +101,12 @@ function WhatsAppPage() {
         phoneLabel: "رقم الهاتف",
         sessionLabel: "معرّف الجلسة",
         lastSeenLabel: "آخر نشاط",
+        diagnosticsTitle: "سبب فصل الجلسات",
+        diagnosticsDesc: "آخر تغييرات حالة واتساب المسجلة من Bot‑Xtra أو فحص الحالة. الأخطاء المؤقتة مثل Timeout/502 لا تُفصل الجلسة الآن إلا لو Bot‑Xtra أكد أن الجلسة انتهت.",
+        noDiagnostics: "لا يوجد سبب فصل مسجل حتى الآن.",
+        reasonLabel: "السبب",
+        sourceLabel: "المصدر",
+        statusChangeLabel: "تغيير الحالة",
         bridgeLabel: "خادم الربط",
         actions: "الإجراءات",
         connect: "ربط رقم جديد",
@@ -135,6 +145,12 @@ function WhatsAppPage() {
         phoneLabel: "Phone number",
         sessionLabel: "Session ID",
         lastSeenLabel: "Last seen",
+        diagnosticsTitle: "Session disconnect reason",
+        diagnosticsDesc: "Latest WhatsApp status changes recorded from Bot‑Xtra or status checks. Transient Timeout/502 errors no longer disconnect the session unless Bot‑Xtra explicitly confirms it is gone.",
+        noDiagnostics: "No disconnect reason has been recorded yet.",
+        reasonLabel: "Reason",
+        sourceLabel: "Source",
+        statusChangeLabel: "Status change",
         bridgeLabel: "Bridge server",
         actions: "Actions",
         connect: "Link new number",
@@ -185,6 +201,13 @@ function WhatsAppPage() {
       return data;
     },
     refetchInterval: polling ? 3000 : false,
+  });
+
+  const eventsQuery = useQuery<WaSessionEventRow[]>({
+    queryKey: ["wa-session-events"],
+    enabled: !!session?.access_token,
+    queryFn: () => eventsFn(),
+    refetchInterval: 30000,
   });
 
   const state = stateQuery.data;
@@ -371,6 +394,14 @@ function WhatsAppPage() {
                       </div>
                     )}
 
+                    <SessionDiagnostics
+                      events={eventsQuery.data ?? []}
+                      loading={eventsQuery.isLoading}
+                      ar={ar}
+                      t={t}
+                      fmtTime={fmtTime}
+                    />
+
                     {/* Actions */}
                     <div className="mt-5 flex flex-wrap gap-2">
                       <button
@@ -437,25 +468,36 @@ function WhatsAppPage() {
                   )}
                 </>
               ) : (
-                /* Empty state */
-                <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border/60 bg-muted/20 px-6 py-16 text-center">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-primary/10">
-                    <Smartphone className="h-10 w-10 text-primary" />
+                <>
+                  {/* Empty state */}
+                  <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border/60 bg-muted/20 px-6 py-16 text-center">
+                    <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-primary/10">
+                      <Smartphone className="h-10 w-10 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-foreground">{t.noAccount}</h2>
+                      <p className="mt-1 max-w-sm text-sm text-muted-foreground">{t.noAccountDesc}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => connectMut.mutate()}
+                      disabled={connectMut.isPending}
+                      className="inline-flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-6 text-sm font-semibold text-primary-foreground shadow-md hover:opacity-95 disabled:opacity-60"
+                    >
+                      {connectMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      {t.connect}
+                    </button>
                   </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-foreground">{t.noAccount}</h2>
-                    <p className="mt-1 max-w-sm text-sm text-muted-foreground">{t.noAccountDesc}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => connectMut.mutate()}
-                    disabled={connectMut.isPending}
-                    className="inline-flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-6 text-sm font-semibold text-primary-foreground shadow-md hover:opacity-95 disabled:opacity-60"
-                  >
-                    {connectMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                    {t.connect}
-                  </button>
-                </div>
+                  {(eventsQuery.isLoading || (eventsQuery.data?.length ?? 0) > 0) && (
+                    <SessionDiagnostics
+                      events={eventsQuery.data ?? []}
+                      loading={eventsQuery.isLoading}
+                      ar={ar}
+                      t={t}
+                      fmtTime={fmtTime}
+                    />
+                  )}
+                </>
               )}
             </div>
 
@@ -528,6 +570,100 @@ function StatusBadge({
       <Icon className={`h-3.5 w-3.5 ${status === "connecting" ? "animate-spin" : ""}`} />
       {s.label}
     </span>
+  );
+}
+
+function SessionDiagnostics({
+  events,
+  loading,
+  ar,
+  t,
+  fmtTime,
+}: {
+  events: WaSessionEventRow[];
+  loading: boolean;
+  ar: boolean;
+  t: {
+    diagnosticsTitle: string;
+    diagnosticsDesc: string;
+    noDiagnostics: string;
+    reasonLabel: string;
+    sourceLabel: string;
+    statusChangeLabel: string;
+  };
+  fmtTime: (s: string | null) => string;
+}) {
+  const importantEvents = events.filter((event) => event.toStatus === "disconnected" || event.reason || event.bridgeEvent).slice(0, 5);
+
+  const sourceLabel = (source: string) => {
+    const map: Record<string, string> = ar
+      ? {
+          webhook_status: "Webhook من Bot‑Xtra",
+          webhook_qr: "QR من Bot‑Xtra",
+          bridge_status: "فحص حالة الجسر",
+          poll: "فحص الحالة",
+          poll_error: "خطأ مؤقت أثناء فحص الحالة",
+          connect: "طلب ربط",
+          connect_error: "فشل إنشاء الجلسة",
+          disconnect: "قطع يدوي",
+          reset: "إعادة ربط",
+        }
+      : {
+          webhook_status: "Bot‑Xtra webhook",
+          webhook_qr: "Bot‑Xtra QR",
+          bridge_status: "Bridge status check",
+          poll: "Status check",
+          poll_error: "Temporary status-check error",
+          connect: "Connect request",
+          connect_error: "Create-session failure",
+          disconnect: "Manual disconnect",
+          reset: "Reconnect",
+        };
+    return map[source] ?? source;
+  };
+
+  return (
+    <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-sm">
+      <div className="flex items-start gap-2">
+        <History className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
+        <div className="min-w-0 flex-1">
+          <div className="font-bold text-foreground">{t.diagnosticsTitle}</div>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{t.diagnosticsDesc}</p>
+
+          {loading ? (
+            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {ar ? "جارٍ تحميل سجل الأسباب…" : "Loading diagnostics…"}
+            </div>
+          ) : importantEvents.length === 0 ? (
+            <p className="mt-3 rounded-lg bg-background/70 px-3 py-2 text-xs text-muted-foreground">{t.noDiagnostics}</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {importantEvents.map((event, index) => (
+                <div key={`${event.createdAt}-${index}`} className="rounded-lg bg-background/80 px-3 py-2 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-semibold text-foreground">{fmtTime(event.createdAt)}</span>
+                    <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground" dir="ltr">
+                      {t.statusChangeLabel}: {event.fromStatus ?? "—"} → {event.toStatus}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 grid gap-1 text-muted-foreground sm:grid-cols-2">
+                    <div>
+                      <span className="font-medium text-foreground">{t.sourceLabel}: </span>
+                      {sourceLabel(event.source)}
+                    </div>
+                    <div>
+                      <span className="font-medium text-foreground">{t.reasonLabel}: </span>
+                      {event.reason || event.bridgeEvent || event.rawStatus || (ar ? "غير محدد" : "Not specified")}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
