@@ -353,10 +353,10 @@ function InboxPage() {
   };
 
   const Sidebar = (
-    <aside dir={isAr ? "rtl" : "ltr"} className="flex h-full min-h-0 flex-col bg-card/60 backdrop-blur-sm">
+    <aside dir={isAr ? "rtl" : "ltr"} className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card/60 backdrop-blur-sm">
       {/* Header */}
       <div className="border-b border-border/60 p-4">
-        <div className="flex items-center gap-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-white shadow-lg shadow-primary/20">
             <InboxIcon className="h-5 w-5" strokeWidth={2.5} />
           </div>
@@ -371,7 +371,7 @@ function InboxPage() {
             </div>
             <p className="truncate text-xs text-muted-foreground">{t.subtitle}</p>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
               onClick={() => qc.invalidateQueries({ queryKey: ["wa-conversations"] })}
@@ -406,7 +406,7 @@ function InboxPage() {
         </div>
 
         {/* Filters */}
-        <div className="mt-3 flex items-center gap-1.5">
+        <div className="mt-3 flex max-w-full items-center gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {([
             { k: "all" as FilterKey, label: t.all },
             { k: "unread" as FilterKey, label: t.filterUnread },
@@ -418,7 +418,7 @@ function InboxPage() {
                 key={f.k}
                 type="button"
                 onClick={() => setFilter(f.k)}
-                className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${
+                className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition ${
                   active
                     ? "bg-gradient-to-r from-primary to-[oklch(0.52_0.28_290)] text-primary-foreground shadow-sm"
                     : "bg-muted/60 text-muted-foreground hover:bg-muted"
@@ -488,7 +488,7 @@ function InboxPage() {
   );
 
   const ChatPane = (
-    <section dir={isAr ? "rtl" : "ltr"} className="relative flex h-full min-h-0 flex-col bg-gradient-to-br from-primary/[0.04] via-background to-primary/[0.06]">
+    <section dir={isAr ? "rtl" : "ltr"} className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-gradient-to-br from-primary/[0.04] via-background to-primary/[0.06]">
       {!activeJid ? (
         <EmptyChat
           isAr={isAr}
@@ -499,13 +499,13 @@ function InboxPage() {
       ) : (
         <>
           {/* Chat Header */}
-          <div className="flex items-center justify-between gap-3 border-b border-border/60 bg-card/80 px-4 py-3 backdrop-blur">
-            <div className="flex min-w-0 items-center gap-3">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/60 bg-card/80 px-3 py-3 backdrop-blur sm:px-4">
+            <div className="flex min-w-0 items-center gap-3 overflow-hidden">
               {isMobile && (
                 <button
                   type="button"
                   onClick={() => setActiveJid(null)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-muted"
                   aria-label={t.backToList}
                 >
                   <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
@@ -516,7 +516,7 @@ function InboxPage() {
                 src={activeConv?.profile_pic_url ?? null}
                 size="md"
               />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1 overflow-hidden">
                 <p className="truncate text-sm font-bold">
                   {activeConv?.contact_name ?? activeJid.replace(/@.*/, "")}
                 </p>
@@ -526,7 +526,7 @@ function InboxPage() {
               </div>
             </div>
             {activeConv && (
-              <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-background/60 px-3 py-1.5">
+              <div className="flex max-w-[46vw] shrink-0 items-center gap-2 rounded-2xl border border-border/60 bg-background/60 px-2.5 py-1.5 sm:max-w-none sm:px-3">
                 <Bot
                   className={`h-4 w-4 ${activeConv.ai_enabled ? "text-primary" : "text-muted-foreground"}`}
                 />
@@ -556,7 +556,7 @@ function InboxPage() {
           {/* Messages */}
           <div
             ref={scrollRef}
-            className="relative flex-1 space-y-1 overflow-y-auto px-3 py-4 sm:px-6"
+            className="relative min-w-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-6"
             style={{
               backgroundImage:
                 "radial-gradient(circle at 20% 0%, oklch(0.62 0.27 295 / 0.06), transparent 40%), radial-gradient(circle at 80% 100%, oklch(0.52 0.28 290 / 0.05), transparent 40%)",
@@ -578,9 +578,9 @@ function InboxPage() {
               if (!draft.trim() || sendMut.isPending) return;
               sendMut.mutate(draft.trim());
             }}
-            className="border-t border-border/60 bg-card/80 p-3 backdrop-blur"
+            className="min-w-0 border-t border-border/60 bg-card/80 p-2.5 backdrop-blur sm:p-3"
           >
-            <div className="flex items-end gap-2 rounded-2xl border border-input bg-background px-2.5 py-1.5 shadow-sm transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+            <div className="flex min-w-0 items-end gap-1.5 rounded-2xl border border-input bg-background px-2 py-1.5 shadow-sm transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 sm:gap-2 sm:px-2.5">
               <button
                 type="button"
                 onClick={() => toast.info(t.soon)}
@@ -601,7 +601,7 @@ function InboxPage() {
                 <PopoverTrigger asChild>
                   <button
                     type="button"
-                    className="relative flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-2.5 text-xs font-semibold text-primary transition hover:bg-primary/10"
+                    className="relative flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-2 text-xs font-semibold text-primary transition hover:bg-primary/10 sm:px-2.5"
                     aria-label={isAr ? "ردود جاهزة" : "Quick replies"}
                     title={isAr ? "ردود جاهزة" : "Quick replies"}
                   >
@@ -639,7 +639,7 @@ function InboxPage() {
                 }}
                 placeholder={t.typeMessage}
                 rows={1}
-                className="max-h-32 flex-1 resize-none bg-transparent px-1 py-2 text-sm outline-none placeholder:text-muted-foreground"
+                className="max-h-32 min-w-0 flex-1 resize-none bg-transparent px-1 py-2 text-sm outline-none placeholder:text-muted-foreground"
               />
               <button
                 type="submit"
@@ -672,16 +672,16 @@ function InboxPage() {
     <DashboardLayout title={t.title}>
       <div
         dir={isAr ? "rtl" : "ltr"}
-        className="-m-4 md:-m-6 h-[calc(100vh-65px)] overflow-hidden bg-card"
+        className="h-[calc(100dvh-97px)] min-h-[520px] w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-border/60 bg-card md:h-[calc(100dvh-113px)]"
       >
         {isMobile ? (
-          <div className="h-full">
+          <div className="h-full min-w-0 overflow-hidden">
             {activeJid ? ChatPane : Sidebar}
           </div>
         ) : (
           <ResizablePanelGroup
             orientation="horizontal"
-            className="h-full w-full"
+            className="h-full w-full min-w-0 overflow-hidden"
             id="wa-inbox-layout-v2"
             dir="ltr"
           >
@@ -960,16 +960,16 @@ function ContactInfoPanel({
   const name = conv.contact_name ?? jid.replace(/@.*/, "");
   const phone = conv.contact_phone ? `+${conv.contact_phone}` : jid;
   return (
-    <aside dir={isAr ? "rtl" : "ltr"} className="flex h-full min-h-0 flex-col bg-card/40 backdrop-blur-sm">
+    <aside dir={isAr ? "rtl" : "ltr"} className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card/40 backdrop-blur-sm">
       {/* Contact header */}
       <div className="flex flex-col items-center gap-3 border-b border-border/60 p-5 text-center">
         <div className="relative">
           <ContactAvatar name={name} src={conv.profile_pic_url ?? null} size="lg" />
           <span className="absolute bottom-1 right-1 h-4 w-4 rounded-full border-2 border-card bg-emerald-500" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 max-w-full overflow-hidden">
           <h2 className="truncate text-base font-bold">{name}</h2>
-          <p className="mt-0.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground" dir="ltr">
+          <p className="mt-0.5 inline-flex max-w-full items-center gap-1.5 truncate text-xs text-muted-foreground" dir="ltr">
             <Phone className="h-3 w-3" />
             {phone}
           </p>
@@ -1027,7 +1027,7 @@ function ContactInfoPanel({
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-y-auto p-4 text-sm">
+      <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 text-sm">
         {tab === "info" && (
           <div className="space-y-3">
             <InfoRow label={isAr ? "الاسم" : "Name"} value={name} />
@@ -1065,9 +1065,9 @@ function ContactInfoPanel({
 
 function InfoRow({ label, value, ltr }: { label: string; value: string; ltr?: boolean }) {
   return (
-    <div className="rounded-xl border border-border/60 bg-background/40 px-3 py-2">
+    <div className="min-w-0 rounded-xl border border-border/60 bg-background/40 px-3 py-2">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-1 truncate text-sm font-medium" dir={ltr ? "ltr" : undefined}>{value}</p>
+      <p className="mt-1 min-w-0 truncate text-sm font-medium" dir={ltr ? "ltr" : undefined}>{value}</p>
     </div>
   );
 }
@@ -1133,7 +1133,7 @@ function ConversationRow({
       <button
         type="button"
         onClick={onClick}
-        className={`flex w-full items-center gap-3 overflow-hidden px-3 py-3 text-start transition ${
+        className={`flex w-full min-w-0 items-center gap-3 overflow-hidden px-3 py-3 text-start transition ${
           active
             ? "bg-primary/10"
             : "hover:bg-muted/50"
@@ -1144,8 +1144,8 @@ function ConversationRow({
         )}
         <ContactAvatar name={conv.contact_name ?? conv.remote_jid} src={conv.profile_pic_url ?? null} size="sm" />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2">
-            <span className={`truncate text-sm ${conv.unread_count > 0 ? "font-bold" : "font-semibold"}`}>
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            <span className={`min-w-0 flex-1 truncate text-sm ${conv.unread_count > 0 ? "font-bold" : "font-semibold"}`}>
               {conv.contact_name ?? conv.remote_jid.replace(/@.*/, "")}
             </span>
             <span className="shrink-0 text-[10px] text-muted-foreground" dir="ltr">
@@ -1575,7 +1575,7 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
     <div dir="ltr" className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
       <div
         dir={isAr ? "rtl" : "ltr"}
-        className={`group max-w-[78%] overflow-hidden px-3.5 py-2 text-sm shadow-sm sm:max-w-[70%] ${
+        className={`group min-w-0 max-w-[86%] overflow-hidden px-3.5 py-2 text-sm shadow-sm sm:max-w-[72%] ${
           isFailed
             ? "rounded-2xl rounded-br-md border border-destructive/35 bg-destructive/10 text-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
             : isPending
