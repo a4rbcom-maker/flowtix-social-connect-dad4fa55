@@ -56,6 +56,12 @@ export const listConversations = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<ConversationRow[]> => {
     const { supabase, userId } = context;
+    const { data: sess } = await supabase
+      .from("wa_sessions")
+      .select("status")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (sess?.status !== "connected") return [];
 
 
 
@@ -118,10 +124,10 @@ export const getConversationMessages = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data: sess } = await supabase
       .from("wa_sessions")
-      .select("session_id")
+      .select("session_id, status")
       .eq("user_id", userId)
       .maybeSingle();
-    if (!sess?.session_id) return [];
+    if (!sess?.session_id || sess.status !== "connected") return [];
 
     const { data: rows, error } = await supabase
       .from("wa_messages")
