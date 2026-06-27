@@ -11,6 +11,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { handleAiAutoReply, upsertConversationFromMessage } from "./wa-ai.server";
 import { cleanMessageText, mediaTypeFromRaw, mediaUrlFromRaw } from "./wa-chat-helpers.server";
 import { tryKeywordAutoReply } from "./wa-keyword.server";
+import { extractSessionReason, updateWaSessionStatus } from "./wa-session-events.server";
 import {
   asObj,
   collectMessageEntries,
@@ -190,17 +191,20 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   if (event === "status" || event === "connection.update" || event === "session.status") {
     const rawStatus = String(data.status ?? data.state ?? payload.status ?? "").toLowerCase();
     const next = SESSION_STATUS_MAP[rawStatus] ?? "unknown";
+    const reason = extractSessionReason(payload, data);
 
     const phoneNumber = digits(data.phoneNumber ?? data.phone ?? payload.phoneNumber);
-    await supabaseAdmin
-      .from("wa_sessions")
-      .update({
-        status: next,
-        ...(phoneNumber ? { phone_number: phoneNumber } : {}),
-        last_seen_at: new Date().toISOString(),
-      })
-      .eq("user_id", userId)
-      .eq("session_id", sessionId);
+    await updateWaSessionStatus(supabaseAdmin, {
+      userId,
+      sessionId,
+      nextStatus: next,
+      source: "webhook_status",
+      reason,
+      rawStatus,
+      bridgeEvent: event,
+      phoneNumber,
+      payload,
+    });
     return new Response("ok");
   }
 
@@ -213,15 +217,17 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
           ? qr
           : `data:image/png;base64,${qr}`
         : null;
-    await supabaseAdmin
-      .from("wa_sessions")
-      .update({
-        status: "qr",
-        qr_data_url: qrDataUrl,
-        last_seen_at: new Date().toISOString(),
-      })
-      .eq("user_id", userId)
-      .eq("session_id", sessionId);
+    await updateWaSessionStatus(supabaseAdmin, {
+      userId,
+      sessionId,
+      nextStatus: "qr",
+      source: "webhook_qr",
+      reason: extractSessionReason(payload, data),
+      rawStatus: "qr",
+      bridgeEvent: event,
+      qrDataUrl,
+      payload,
+    });
     return new Response("ok");
   }
 
