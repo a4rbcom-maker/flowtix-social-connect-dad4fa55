@@ -98,7 +98,7 @@ const BOTXTRA_V18_FLAT_DATA_MESSAGE = {
   sessionId: "flowtix-abcdef0123456789-l4k2j",
   data: {
     tenantId: "4f4b101d-b785-4719-82a3-6f378584739e",
-    from: "201273747262",
+    from: { id: "201273747262@s.whatsapp.net", name: "Customer" },
     fromMe: false,
     pushName: "Customer",
     senderName: "Customer",
@@ -107,7 +107,7 @@ const BOTXTRA_V18_FLAT_DATA_MESSAGE = {
     type: "text",
     id: "3EB0BX1.8.FLAT001",
     isGroup: false,
-    sender: "201273747262@s.whatsapp.net",
+    sender: { jid: "201273747262@s.whatsapp.net", phone: "201273747262" },
     timestamp: 1_730_000_030,
   },
 };
