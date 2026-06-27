@@ -316,8 +316,8 @@ export const waBridge = {
           // chat id for routing, while still needing the public phone as PN
           // metadata. Supplying both is backward compatible and prevents sends
           // from staying forever in the bridge queue with only queuedId.
-          ...(phone && (!isLid || explicitPhone) ? { phone } : {}),
-          ...(publicJid ? { recipientPn: publicJid, senderPn: publicJid, phoneNumber: explicitPhone } : {}),
+          ...(phone && !isLid ? { phone } : {}),
+          ...(isLid && publicJid ? { recipientPn: publicJid, participantPn: publicJid } : {}),
           type: "text",
           text,
           message: text,
