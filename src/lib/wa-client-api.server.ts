@@ -84,7 +84,8 @@ async function connect(supabase: ReturnType<typeof getSupabaseForToken>, userId:
       await supabase
         .from("wa_sessions")
         .update({ status: "disconnected", qr_data_url: null, last_seen_at: now })
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .eq("session_id", sessionId);
       return stateDto("disconnected", sessionId, null, null, existing?.phone_number ?? null, now, msg);
     }
   }
