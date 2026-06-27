@@ -72,12 +72,18 @@ function shouldRetryAiSend(err: unknown): boolean {
   return true;
 }
 
-async function sendAiTextOnce(sessionId: string, userId: string, phone: string, text: string): Promise<BridgeSendResponse> {
+async function sendAiTextOnce(
+  sessionId: string,
+  userId: string,
+  phone: string,
+  text: string,
+  recipientPhone?: string | null,
+): Promise<BridgeSendResponse> {
   const webhookUrl = await deriveWebhookUrl();
   const res = await sendTextWithReconnect(sessionId, phone, text, {
     webhookUrl: webhookUrl ?? undefined,
     tenantId: userId,
-    recipientPhone: phone.includes("@lid") ? undefined : phone,
+    recipientPhone: recipientPhone || phone,
   });
   // Log full bridge response so we can diagnose silent delivery failures.
   console.log("[wa-ai] bridge sendText response:", JSON.stringify(res));
@@ -212,7 +218,7 @@ async function deliverAiTextWithRetry(opts: {
   for (let attempt = 1; attempt <= AI_DELIVERY_ATTEMPTS; attempt++) {
     attempts = attempt;
     try {
-      const res = await sendAiTextOnce(sessionId, userId, phone, text);
+      const res = await sendAiTextOnce(sessionId, userId, phone, text, contactPhone);
       responses.push(res);
       const queuedId = bridgeSendQueuedMessage(res);
       try {
