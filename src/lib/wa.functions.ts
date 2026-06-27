@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requireAdmin } from "./admin-middleware";
 import {
+  assertBridgeSendQueued,
   waBridge,
   inferStatus,
   BridgeError,
@@ -200,7 +201,7 @@ export const sendWaMessage = createServerFn({ method: "POST" })
     let providerMessageId: string | null = null;
     try {
       const res = await waBridge.sendText(row.session_id, phone, data.text);
-      providerMessageId = typeof res?.id === "string" ? res.id : null;
+      providerMessageId = assertBridgeSendQueued(res);
     } catch (err) {
       throw new Error(describeBridgeError(err));
     }
