@@ -1165,11 +1165,43 @@ export const testBotAccount = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: acc, error } = await supabaseAdmin
       .from("fb_bot_accounts")
-      .select("id, auth_method, encrypted_payload")
+      .select("id, auth_method, encrypted_payload, status, last_error")
       .eq("id", data.id)
       .eq("user_id", userId)
       .single();
     if (error || !acc) throw new Error(error?.message ?? "Account not found");
+
+    const { data: latestJob } = await supabaseAdmin
+      .from("fb_jobs")
+      .select("status, error_message, completed_at, created_at")
+      .eq("account_id", data.id)
+      .eq("user_id", userId)
+      .in("status", ["completed", "failed"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const latestError = typeof latestJob?.error_message === "string" ? latestJob.error_message : "";
+    const storedError = typeof acc.last_error === "string" ? acc.last_error : "";
+    const rejectedSessionError = isFacebookSessionRejectedError(latestError)
+      ? latestError
+      : isFacebookSessionRejectedError(storedError)
+        ? storedError
+        : null;
+    if ((latestJob?.status === "failed" && rejectedSessionError) || acc.status === "invalid" && rejectedSessionError) {
+      const checkedAt = (latestJob?.completed_at as string | null) ?? (latestJob?.created_at as string | null) ?? new Date().toISOString();
+      const { data: updated, error: upErr } = await supabase
+        .from("fb_bot_accounts")
+        .update({
+          status: "invalid",
+          last_check_at: checkedAt,
+          last_error: rejectedSessionError,
+        })
+        .eq("id", data.id)
+        .select(BOT_ACCOUNT_SAFE_SELECT)
+        .single();
+      if (upErr) throw new Error(upErr.message);
+      return { ...updated, groups: [] as { id: string; name: string }[] };
+    }
 
     let status: "active" | "invalid" | "checkpoint" = "invalid";
     let lastError: string | null = null;
