@@ -92,9 +92,9 @@ function PagesTab({ ar }: { ar: boolean }) {
   });
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
+    <Card dir={ar ? "rtl" : "ltr"}>
+      <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <div className={ar ? "text-right" : "text-left"}>
           <CardTitle>{ar ? "الصفحات المربوطة" : "Connected pages"}</CardTitle>
           <CardDescription>{ar ? "أضف صفحات فيسبوك ترغب في تشغيل الرد التلقائي عليها." : "Add Facebook pages for auto-reply."}</CardDescription>
         </div>
@@ -104,6 +104,7 @@ function PagesTab({ ar }: { ar: boolean }) {
         </Dialog>
       </CardHeader>
       <CardContent>
+
         {isLoading ? <Loader2 className="animate-spin"/> : !pages?.length ? (
           <p className="text-muted-foreground text-sm">{ar ? "لا توجد صفحات مربوطة بعد." : "No pages connected yet."}</p>
         ) : (
