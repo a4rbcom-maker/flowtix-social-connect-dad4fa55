@@ -314,24 +314,39 @@ function JobsHistoryPage() {
         }
       }
 
-      // ---- Messenger: create fb_jobs send_messenger_dm
+      // ---- Messenger: create one fb_jobs send_messenger_dm per selected account.
+      // Round-robin recipients across accounts so each account stays under FB's
+      // per-account rate. Per-account interval is N× the global interval so the
+      // *combined* throughput matches the chosen rate-per-hour.
       if (msgChannels.messenger) {
         const fbRecipients = enrichedRows
           .map((e) => ({ profile: e.profile || e.row.target || "", name: e.name || "" }))
-          .filter((r) => !!r.profile);
-        if (fbRecipients.length > 0 && selected.account_id) {
-          await call(createSendMessengerDmJob, {
-            accountId: selected.account_id,
-            recipients: fbRecipients.slice(0, 500),
-            message,
-            intervalSeconds: intervalSec,
-            label: msgTitle.trim() || undefined,
-          });
-          fbCount = fbRecipients.length;
-        } else if (msgChannels.messenger && !selected.account_id) {
-          toast.error(lang === "ar" ? "لا يوجد حساب فيسبوك مرتبط بهذه المهمة" : "No FB account linked to this job");
+          .filter((r) => !!r.profile)
+          .slice(0, 500);
+        const accountIds = Array.from(msgSelectedAccounts);
+        if (fbRecipients.length > 0 && accountIds.length === 0) {
+          toast.error(lang === "ar" ? "اختر حساب فيسبوك واحد على الأقل" : "Select at least one Facebook account");
+        } else if (fbRecipients.length > 0) {
+          const N = accountIds.length;
+          const buckets: Record<string, typeof fbRecipients> = Object.fromEntries(accountIds.map((id) => [id, []]));
+          fbRecipients.forEach((r, i) => buckets[accountIds[i % N]].push(r));
+          const perAccountInterval = Math.max(36, intervalSec * N);
+          for (const accId of accountIds) {
+            const slice = buckets[accId];
+            if (slice.length === 0) continue;
+            await call(createSendMessengerDmJob, {
+              accountId: accId,
+              recipients: slice,
+              message,
+              intervalSeconds: perAccountInterval,
+              imageUrls: msgImages.length ? msgImages : undefined,
+              label: msgTitle.trim() || undefined,
+            });
+            fbCount += slice.length;
+          }
         }
       }
+
 
       toast.success(
         lang === "ar"
