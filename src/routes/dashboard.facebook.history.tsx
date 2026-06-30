@@ -373,15 +373,13 @@ function JobsHistoryPage() {
                       variant="secondary"
                       onClick={async () => {
                         if (!selected?.id) return;
-                        const accountId = selected.account_id;
-                        const profiles = enrichedRows
-                          .map((e) => e.profile || e.row.target)
-                          .filter((v): v is string => !!v);
-                        if (!accountId) { toast.error(lang === "ar" ? "تعذّر تحديد الحساب" : "Account missing"); return; }
-                        if (profiles.length === 0) { toast.error(lang === "ar" ? "لا توجد بروفايلات" : "No profiles"); return; }
                         try {
-                          await call(createDeepProfileScrapeJob, { accountId, profiles });
-                          toast.success(lang === "ar" ? "تم إنشاء مهمة فحص عميق" : "Deep scrape job queued");
+                          const res = await call(createDeepProfileScrapeFromJob, { sourceJobId: selected.id });
+                          toast.success(
+                            lang === "ar"
+                              ? `تم إنشاء مهمة فحص عميق لـ ${res.count} بروفايل`
+                              : `Deep scrape queued for ${res.count} profiles`,
+                          );
                           setSelected(null);
                           load();
                         } catch (e) { toast.error(String(e)); }
