@@ -793,3 +793,45 @@ html {
   content-visibility: visible;
   contain: layout style;
 }
+
+/* ===== RTL form-controls alignment =====
+   Browsers ignore `text-align: start` on input[type=number] and on native
+   <select> controls in some engines, so force right-alignment under RTL. */
+[dir="rtl"] input[type="number"],
+[dir="rtl"] input[type="tel"],
+[dir="rtl"] input[type="text"],
+[dir="rtl"] input[type="search"],
+[dir="rtl"] input[type="url"],
+[dir="rtl"] input[type="email"],
+[dir="rtl"] textarea {
+  text-align: right;
+  direction: rtl;
+}
+
+/* Native <select> + shadcn SelectTrigger */
+[dir="rtl"] select,
+[dir="rtl"] [data-slot="select-trigger"],
+[dir="rtl"] [role="combobox"] {
+  text-align: right;
+  direction: rtl;
+}
+
+/* Select dropdown items */
+[dir="rtl"] [data-slot="select-content"],
+[dir="rtl"] [data-slot="select-item"],
+[dir="rtl"] [role="listbox"],
+[dir="rtl"] [role="option"] {
+  text-align: right;
+  direction: rtl;
+}
+
+/* Labels above the fields */
+[dir="rtl"] label {
+  text-align: right;
+}
+
+/* Keep placeholder right-aligned */
+[dir="rtl"] input::placeholder,
+[dir="rtl"] textarea::placeholder {
+  text-align: right;
+}
