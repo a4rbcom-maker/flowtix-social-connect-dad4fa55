@@ -365,7 +365,7 @@ function JobsHistoryPage() {
 
       // ---- WhatsApp: create a bulk_jobs row + recipients (only those with phone)
       if (msgChannels.whatsapp) {
-        const waRecipients = enrichedRows
+        const waRecipients = filteredRows
           .filter((e) => !!e.phone)
           .map((e) => ({ name: e.name || "", phone: String(e.phone) }));
         if (waRecipients.length > 0) {
@@ -397,11 +397,10 @@ function JobsHistoryPage() {
       // per-account rate. Per-account interval is N× the global interval so the
       // *combined* throughput matches the chosen rate-per-hour.
       if (msgChannels.messenger) {
-        const FB_SYSTEM = /\/(business|help|policies|terms|privacy|ads|adsmanager|careers|about|settings|login|recover|gaming|creator|creators|fundraisers|jobs|messages|notifications|saved|memories|friends|games|weather|crisisresponse|lite|mobile|support|legal|brand|newsroom|community|ai|meta|sharer|plugins|dialog|oauth|l\.php|tr|tr\.php)(\/|$|\?)/i;
-        const fbRecipients = enrichedRows
+        const FB_SYSTEM = FB_SYSTEM_RE;
+        const fbRecipients = filteredRows
           .map((e) => ({ profile: e.profile || e.row.target || "", name: e.name || "" }))
-          .filter((r) => !!r.profile && !FB_SYSTEM.test(r.profile))
-          .slice(0, 500);
+          .filter((r) => !!r.profile && !FB_SYSTEM.test(r.profile));
         const skipped = enrichedRows.filter((e) => {
           const p = e.profile || e.row.target || "";
           return !!p && FB_SYSTEM.test(p);
