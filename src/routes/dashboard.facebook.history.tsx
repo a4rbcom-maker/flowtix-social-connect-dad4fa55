@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2, Trash2, RefreshCw, Download, Sparkles, Send, KeyRound, AlertTriangle, Image as ImageIcon, X, Clock } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -69,6 +69,13 @@ function JobsHistoryPage() {
   const [msgUploading, setMsgUploading] = useState(false);
   const [msgAccounts, setMsgAccounts] = useState<Array<{ id: string; display_name: string; status: string }>>([]);
   const [msgSelectedAccounts, setMsgSelectedAccounts] = useState<Set<string>>(new Set());
+  // Recipient filters
+  const [msgFilterCity, setMsgFilterCity] = useState("");
+  const [msgFilterKeyword, setMsgFilterKeyword] = useState("");
+  const [msgRequirePhone, setMsgRequirePhone] = useState(false);
+  const [msgRequireProfile, setMsgRequireProfile] = useState(false);
+  const [msgDedupe, setMsgDedupe] = useState(true);
+  const [msgLimit, setMsgLimit] = useState(500);
 
   const t = lang === "ar" ? {
     title: "سجل المهام",
@@ -243,6 +250,54 @@ function JobsHistoryPage() {
   const phoneCount = enrichedRows.filter((e) => !!e.phone).length;
   const profileCount = enrichedRows.filter((e) => !!(e.profile || e.row.target)).length;
 
+  // ---- Recipient filtering (applied inside the messaging dialog) ----
+  const FB_SYSTEM_RE = /\/(business|help|policies|terms|privacy|ads|adsmanager|careers|about|settings|login|recover|gaming|creator|creators|fundraisers|jobs|messages|notifications|saved|memories|friends|games|weather|crisisresponse|lite|mobile|support|legal|brand|newsroom|community|ai|meta|sharer|plugins|dialog|oauth|l\.php|tr|tr\.php)(\/|$|\?)/i;
+  const filteredRows = useMemo(() => {
+    const cityQ = msgFilterCity.trim().toLowerCase();
+    const kwList = msgFilterKeyword.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const seenPhones = new Set<string>();
+    const seenProfiles = new Set<string>();
+    const out: typeof enrichedRows = [];
+    for (const e of enrichedRows) {
+      const profile = e.profile || e.row.target || "";
+      const hasPhone = !!e.phone;
+      const hasProfile = !!profile && !FB_SYSTEM_RE.test(profile);
+      if (msgRequirePhone && !hasPhone) continue;
+      if (msgRequireProfile && !hasProfile) continue;
+      if (!hasPhone && !hasProfile) continue;
+      if (cityQ) {
+        const cityBlob = `${e.city ?? ""} ${e.gov ?? ""} ${e.declared ?? ""}`.toLowerCase();
+        if (!cityBlob.includes(cityQ)) continue;
+      }
+      if (kwList.length > 0) {
+        const blob = `${e.name ?? ""} ${e.work ?? ""}`.toLowerCase();
+        if (!kwList.some((k) => blob.includes(k))) continue;
+      }
+      if (msgDedupe) {
+        if (hasPhone) {
+          const key = String(e.phone).replace(/\D/g, "");
+          if (seenPhones.has(key)) continue;
+          seenPhones.add(key);
+        }
+        if (hasProfile) {
+          const key = profile.toLowerCase();
+          if (seenProfiles.has(key)) continue;
+          seenProfiles.add(key);
+        }
+      }
+      out.push(e);
+      if (out.length >= msgLimit) break;
+    }
+    return out;
+  }, [enrichedRows, msgFilterCity, msgFilterKeyword, msgRequirePhone, msgRequireProfile, msgDedupe, msgLimit]);
+
+  const filteredWaCount = filteredRows.filter((e) => !!e.phone).length;
+  const filteredFbCount = filteredRows.filter((e) => {
+    const p = e.profile || e.row.target || "";
+    return !!p && !FB_SYSTEM_RE.test(p);
+  }).length;
+
+
   const openMessenger = async () => {
     if (!selected) return;
     const groupLabel = selected ? t.types[selected.job_type] : "";
@@ -251,6 +306,12 @@ function JobsHistoryPage() {
     setMsgPerHour(20);
     setMsgImages([]);
     setMsgChannels({ whatsapp: phoneCount > 0, messenger: profileCount > 0 });
+    setMsgFilterCity("");
+    setMsgFilterKeyword("");
+    setMsgRequirePhone(false);
+    setMsgRequireProfile(false);
+    setMsgDedupe(true);
+    setMsgLimit(500);
     setMsgOpen(true);
     // Load active bot accounts (for multi-account rotation)
     try {
@@ -304,7 +365,7 @@ function JobsHistoryPage() {
 
       // ---- WhatsApp: create a bulk_jobs row + recipients (only those with phone)
       if (msgChannels.whatsapp) {
-        const waRecipients = enrichedRows
+        const waRecipients = filteredRows
           .filter((e) => !!e.phone)
           .map((e) => ({ name: e.name || "", phone: String(e.phone) }));
         if (waRecipients.length > 0) {
@@ -336,11 +397,10 @@ function JobsHistoryPage() {
       // per-account rate. Per-account interval is N× the global interval so the
       // *combined* throughput matches the chosen rate-per-hour.
       if (msgChannels.messenger) {
-        const FB_SYSTEM = /\/(business|help|policies|terms|privacy|ads|adsmanager|careers|about|settings|login|recover|gaming|creator|creators|fundraisers|jobs|messages|notifications|saved|memories|friends|games|weather|crisisresponse|lite|mobile|support|legal|brand|newsroom|community|ai|meta|sharer|plugins|dialog|oauth|l\.php|tr|tr\.php)(\/|$|\?)/i;
-        const fbRecipients = enrichedRows
+        const FB_SYSTEM = FB_SYSTEM_RE;
+        const fbRecipients = filteredRows
           .map((e) => ({ profile: e.profile || e.row.target || "", name: e.name || "" }))
-          .filter((r) => !!r.profile && !FB_SYSTEM.test(r.profile))
-          .slice(0, 500);
+          .filter((r) => !!r.profile && !FB_SYSTEM.test(r.profile));
         const skipped = enrichedRows.filter((e) => {
           const p = e.profile || e.row.target || "";
           return !!p && FB_SYSTEM.test(p);
@@ -690,6 +750,109 @@ function JobsHistoryPage() {
               />
             </div>
 
+            {/* ───── Recipient filters ───── */}
+            <div dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-3 rounded-lg border border-border bg-muted/30 p-3 text-start">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="block font-semibold">
+                  {lang === "ar" ? "فلترة المستلمين" : "Recipient filters"}
+                </Label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMsgFilterCity("");
+                    setMsgFilterKeyword("");
+                    setMsgRequirePhone(false);
+                    setMsgRequireProfile(false);
+                    setMsgDedupe(true);
+                    setMsgLimit(500);
+                  }}
+                  className="text-xs text-muted-foreground hover:text-foreground underline"
+                >
+                  {lang === "ar" ? "إعادة ضبط" : "Reset"}
+                </button>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="block text-start text-xs">
+                    {lang === "ar" ? "المدينة / المحافظة" : "City / Governorate"}
+                  </Label>
+                  <Input
+                    dir="auto"
+                    value={msgFilterCity}
+                    onChange={(e) => setMsgFilterCity(e.target.value)}
+                    placeholder={lang === "ar" ? "مثال: القاهرة" : "e.g. Cairo"}
+                    className="h-9 text-start"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="block text-start text-xs">
+                    {lang === "ar" ? "كلمات في الاسم/العمل (مفصولة بفاصلة)" : "Keywords in name/work (comma separated)"}
+                  </Label>
+                  <Input
+                    dir="auto"
+                    value={msgFilterKeyword}
+                    onChange={(e) => setMsgFilterKeyword(e.target.value)}
+                    placeholder={lang === "ar" ? "محمد, دكتور, مهندس" : "ahmed, doctor, engineer"}
+                    className="h-9 text-start"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-4 text-sm">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox checked={msgRequirePhone} onCheckedChange={(v) => setMsgRequirePhone(!!v)} />
+                  <span>{lang === "ar" ? "لديه رقم موبايل فقط" : "Has phone only"}</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox checked={msgRequireProfile} onCheckedChange={(v) => setMsgRequireProfile(!!v)} />
+                  <span>{lang === "ar" ? "لديه بروفايل فيسبوك فقط" : "Has FB profile only"}</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox checked={msgDedupe} onCheckedChange={(v) => setMsgDedupe(!!v)} />
+                  <span>{lang === "ar" ? "حذف المكرر" : "Dedupe"}</span>
+                </label>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="block text-start text-xs">
+                  {lang === "ar" ? `الحد الأقصى للمستلمين: ${msgLimit}` : `Recipient cap: ${msgLimit}`}
+                </Label>
+                <Slider value={[msgLimit]} min={10} max={2000} step={10} onValueChange={(v) => setMsgLimit(v[0])} />
+              </div>
+
+              {/* Preview */}
+              <div className="grid grid-cols-3 gap-2 rounded-md border border-primary/20 bg-primary/5 p-2 text-center">
+                <div>
+                  <div className="text-[10px] uppercase text-muted-foreground">
+                    {lang === "ar" ? "المستلمون بعد الفلترة" : "After filters"}
+                  </div>
+                  <div className="text-lg font-bold tabular-nums text-primary">{filteredRows.length}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {lang === "ar" ? `من ${enrichedRows.length}` : `of ${enrichedRows.length}`}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase text-muted-foreground">
+                    {lang === "ar" ? "واتساب" : "WhatsApp"}
+                  </div>
+                  <div className="text-lg font-bold tabular-nums text-foreground">{filteredWaCount}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {lang === "ar" ? `من ${phoneCount}` : `of ${phoneCount}`}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase text-muted-foreground">
+                    {lang === "ar" ? "ماسنجر" : "Messenger"}
+                  </div>
+                  <div className="text-lg font-bold tabular-nums text-foreground">{filteredFbCount}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {lang === "ar" ? `من ${profileCount}` : `of ${profileCount}`}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label className="block text-start">
                 {lang === "ar" ? "القنوات" : "Channels"}
@@ -700,17 +863,18 @@ function JobsHistoryPage() {
                     checked={msgChannels.whatsapp}
                     onCheckedChange={(v) => setMsgChannels((s) => ({ ...s, whatsapp: !!v }))}
                   />
-                  <span>{lang === "ar" ? `واتساب (${phoneCount})` : `WhatsApp (${phoneCount})`}</span>
+                  <span>{lang === "ar" ? `واتساب (${filteredWaCount})` : `WhatsApp (${filteredWaCount})`}</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <Checkbox
                     checked={msgChannels.messenger}
                     onCheckedChange={(v) => setMsgChannels((s) => ({ ...s, messenger: !!v }))}
                   />
-                  <span>{lang === "ar" ? `ماسنجر (${profileCount})` : `Messenger (${profileCount})`}</span>
+                  <span>{lang === "ar" ? `ماسنجر (${filteredFbCount})` : `Messenger (${filteredFbCount})`}</span>
                 </label>
               </div>
             </div>
+
 
             <div className="space-y-2">
               <Label className="block text-start">
