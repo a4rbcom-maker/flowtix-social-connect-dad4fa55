@@ -12,6 +12,7 @@ const { runExtractCommenters } = require("./actions/extract-commenters");
 const { runExtractGroupMembers } = require("./actions/extract-group-members");
 const { runExtractPageAudience } = require("./actions/extract-page-audience");
 const { runListMyGroups } = require("./actions/list-my-groups");
+const { runDeepProfileScrape } = require("./actions/deep-profile-scrape");
 const { ensureLogin } = require("./actions/login");
 
 const API = process.env.API_BASE_URL;
@@ -19,7 +20,7 @@ const SECRET = process.env.BOT_WORKER_SECRET;
 const MIN_INT = Math.max(5, parseInt(process.env.POLL_INTERVAL_SEC || "15", 10)) * 1000;
 const MAX_INT = Math.max(MIN_INT, parseInt(process.env.POLL_MAX_INTERVAL_SEC || "60", 10) * 1000);
 const HEADLESS = process.env.HEADLESS !== "false";
-const WORKER_VERSION = "bot-worker-2026-06-30-group-members";
+const WORKER_VERSION = "bot-worker-2026-06-30-deep-profile";
 const WORKER_CAPABILITIES = [
   "post_to_groups",
   "extract_pages",
@@ -27,6 +28,7 @@ const WORKER_CAPABILITIES = [
   "extract_group_members",
   "extract_page_audience",
   "list_my_groups",
+  "deep_profile_scrape",
 ].join(",");
 
 if (!API || !SECRET) {
@@ -105,6 +107,7 @@ async function runJob(job) {
     else if (job.type === "extract_group_members") await runExtractGroupMembers(ctx);
     else if (job.type === "extract_page_audience") await runExtractPageAudience(ctx);
     else if (job.type === "list_my_groups") await runListMyGroups(ctx);
+    else if (job.type === "deep_profile_scrape") await runDeepProfileScrape(ctx);
     else await reportUpdate({ jobId: job.id, status: "failed", errorMessage: `Unknown job type: ${job.type}` });
 
   } catch (err) {

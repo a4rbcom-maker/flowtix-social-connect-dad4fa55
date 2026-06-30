@@ -25,6 +25,7 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
           .map((item) => item.trim())
           .filter(Boolean);
         const supportsGroupMembers = workerCapabilities.includes("extract_group_members");
+        const supportsDeepProfile = workerCapabilities.includes("deep_profile_scrape");
 
         const [{ supabaseAdmin }, { decryptJson }] = await Promise.all([
           import("@/integrations/supabase/client.server"),
@@ -46,6 +47,9 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         // "not implemented". Never let those stale workers claim this job type.
         if (!supportsGroupMembers) {
           candidateQuery = candidateQuery.neq("job_type", "extract_group_members");
+        }
+        if (!supportsDeepProfile) {
+          candidateQuery = candidateQuery.neq("job_type", "deep_profile_scrape");
         }
 
         const { data: candidate, error: selErr } = await candidateQuery
