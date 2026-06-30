@@ -1689,11 +1689,7 @@ function BotAccountsPage() {
               <div className="space-y-4 py-4">
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-200">
                   <p className="font-semibold mb-1">
-                    {lang === "ar" ? "لماذا لم تظهر الجروبات؟" : "Why no groups?"}
-                  </p>
-                  <p className="leading-relaxed">
-                    {lang === "ar"
-                  <p className="font-semibold mb-1">
+
                     {lang === "ar" ? "لماذا لم تظهر الجروبات هنا؟" : "Why no groups here?"}
                   </p>
                   <p className="leading-relaxed">
