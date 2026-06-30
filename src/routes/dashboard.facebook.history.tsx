@@ -358,10 +358,14 @@ function JobsHistoryPage() {
     paused: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
   }[s]);
 
-  // Detect session-expired failures so we surface a clear reconnect CTA
-  // instead of a generic "failed" status the user can't act on.
-  const isSessionExpired = (j: { status?: string; error_message?: string | null }) =>
-    j.status === "failed" && !!j.error_message && /SESSION_EXPIRED|session lost|cookies?\s+(rejected|invalid|expired)|c_user/i.test(j.error_message);
+  const isSessionExpired = (j: { status?: string; error_message?: string | null; account_id?: string | null }) => {
+    if (j.status !== "failed" || !j.error_message) return false;
+    if (!/SESSION_EXPIRED|session lost|cookies?\s+(rejected|invalid|expired)|c_user/i.test(j.error_message)) return false;
+    // Hide reconnect CTA if the underlying account is already reconnected/active now.
+    if (j.account_id && activeAccountIds.has(j.account_id)) return false;
+    return true;
+  };
+
 
   // Counts for the messaging wizard preview
   const phoneCount = enrichedRows.filter((e) => !!e.phone).length;
