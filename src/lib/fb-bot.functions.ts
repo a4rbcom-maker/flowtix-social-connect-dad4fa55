@@ -823,6 +823,7 @@ export const createSendMessengerDmJob = createServerFn({ method: "POST" })
           .max(500),
         message: z.string().trim().min(2).max(2000),
         intervalSeconds: z.number().int().min(30).max(3600).default(180),
+        imageUrls: z.array(z.string().url()).max(10).optional(),
         label: z.string().trim().max(120).optional(),
       })
       .parse(d),
