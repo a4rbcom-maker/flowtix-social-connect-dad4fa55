@@ -35,9 +35,23 @@ async function fetchNextJob() {
   return data.job; // null when nothing
 }
 
+class JobCancelledError extends Error {
+  constructor(jobId) { super(`Job ${jobId} cancelled by user`); this.name = "JobCancelledError"; this.cancelled = true; }
+}
+
 async function reportUpdate(payload) {
-  try { await http.post("/api/public/bot/job-update", payload); }
-  catch (e) { console.error("[update fail]", e.message); }
+  try {
+    const { data } = await http.post("/api/public/bot/job-update", payload);
+    // Server signals user-initiated cancellation — abort the running action immediately.
+    if (data && data.cancelled) {
+      console.log(`[job ${payload.jobId}] cancellation signal received — aborting`);
+      throw new JobCancelledError(payload.jobId);
+    }
+    return data;
+  } catch (e) {
+    if (e instanceof JobCancelledError) throw e;
+    console.error("[update fail]", e.message);
+  }
 }
 
 async function runJob(job) {
