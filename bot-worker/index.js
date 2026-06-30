@@ -19,6 +19,15 @@ const SECRET = process.env.BOT_WORKER_SECRET;
 const MIN_INT = Math.max(5, parseInt(process.env.POLL_INTERVAL_SEC || "15", 10)) * 1000;
 const MAX_INT = Math.max(MIN_INT, parseInt(process.env.POLL_MAX_INTERVAL_SEC || "60", 10) * 1000);
 const HEADLESS = process.env.HEADLESS !== "false";
+const WORKER_VERSION = "bot-worker-2026-06-30-group-members";
+const WORKER_CAPABILITIES = [
+  "post_to_groups",
+  "extract_pages",
+  "extract_commenters",
+  "extract_group_members",
+  "extract_page_audience",
+  "list_my_groups",
+].join(",");
 
 if (!API || !SECRET) {
   console.error("Missing API_BASE_URL or BOT_WORKER_SECRET in .env");
@@ -27,7 +36,12 @@ if (!API || !SECRET) {
 
 const http = axios.create({
   baseURL: API,
-  headers: { Authorization: `Bearer ${SECRET}`, "Content-Type": "application/json" },
+  headers: {
+    Authorization: `Bearer ${SECRET}`,
+    "Content-Type": "application/json",
+    "X-Flowtix-Worker-Version": WORKER_VERSION,
+    "X-Flowtix-Worker-Capabilities": WORKER_CAPABILITIES,
+  },
   timeout: 30_000,
 });
 
@@ -107,7 +121,7 @@ async function runJob(job) {
 
 async function loop() {
   let interval = MIN_INT;
-  console.log(`[worker] started — polling ${API} every ${MIN_INT/1000}s (max ${MAX_INT/1000}s on idle)`);
+  console.log(`[worker] started — ${WORKER_VERSION} pid=${process.pid} cwd=${process.cwd()} polling ${API} every ${MIN_INT/1000}s (max ${MAX_INT/1000}s on idle)`);
   while (true) {
     try {
       const job = await fetchNextJob();
