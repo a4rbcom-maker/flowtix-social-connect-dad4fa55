@@ -662,12 +662,12 @@ function JobsHistoryPage() {
       </div>
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="max-h-[92dvh] w-[calc(100vw-1rem)] max-w-5xl overflow-y-auto sm:w-[min(1100px,calc(100vw-2rem))] sm:max-w-5xl">
-          <DialogHeader>
-            <DialogTitle className="flex flex-wrap items-center justify-between gap-2">
-              <span>{selected && t.types[selected.job_type]}</span>
+        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="flex max-h-[92dvh] w-[min(calc(100dvw-0.75rem),1040px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:w-[min(calc(100dvw-2rem),1040px)] sm:rounded-xl">
+          <DialogHeader className="border-b px-4 py-4 sm:px-6">
+            <DialogTitle className="flex flex-col gap-3 text-start sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-xl font-bold leading-tight">{selected && t.types[selected.job_type]}</span>
               {results.length > 0 && (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 sm:justify-end">
                   {/* Deep profile scrape hidden */}
                   {isGroupsList && (
                     <Button size="sm" variant="default" asChild className="gap-2">
@@ -707,46 +707,47 @@ function JobsHistoryPage() {
               )}
             </DialogTitle>
           </DialogHeader>
-          {selected && isSessionExpired(selected) && (
-            <div className="mb-3 flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
-              <div className="flex-1 space-y-2">
-                <p className="font-medium text-amber-900 dark:text-amber-200">
-                  {lang === "ar" ? "انتهت صلاحية جلسة حساب فيسبوك" : "Facebook account session expired"}
-                </p>
-                <p className="text-amber-800/90 dark:text-amber-300/90">
-                  {lang === "ar"
-                    ? "هذه ليست مشكلة في المنصة. فيسبوك أنهى جلسة الحساب المستخدم. أعد تصدير الكوكيز وحدّث الحساب ثم أعد تشغيل المهمة."
-                    : "This is not a platform issue. Facebook ended the bot account session. Re-export cookies, update the account, then re-run the job."}
-                </p>
-                <Link to="/dashboard/facebook/bot">
-                  <Button size="sm" className="gap-1.5">
-                    <KeyRound className="h-3.5 w-3.5" />
-                    {lang === "ar" ? "إعادة ربط الحساب الآن" : "Reconnect account now"}
-                  </Button>
-                </Link>
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6">
+            {selected && isSessionExpired(selected) && (
+              <div className="mb-3 flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div className="flex-1 space-y-2">
+                  <p className="font-medium text-amber-900 dark:text-amber-200">
+                    {lang === "ar" ? "انتهت صلاحية جلسة حساب فيسبوك" : "Facebook account session expired"}
+                  </p>
+                  <p className="text-amber-800/90 dark:text-amber-300/90">
+                    {lang === "ar"
+                      ? "هذه ليست مشكلة في المنصة. فيسبوك أنهى جلسة الحساب المستخدم. أعد تصدير الكوكيز وحدّث الحساب ثم أعد تشغيل المهمة."
+                      : "This is not a platform issue. Facebook ended the bot account session. Re-export cookies, update the account, then re-run the job."}
+                  </p>
+                  <Link to="/dashboard/facebook/bot">
+                    <Button size="sm" className="gap-1.5">
+                      <KeyRound className="h-3.5 w-3.5" />
+                      {lang === "ar" ? "إعادة ربط الحساب الآن" : "Reconnect account now"}
+                    </Button>
+                  </Link>
+                </div>
               </div>
-            </div>
-          )}
-          {selected?.status === "failed" && !isSessionExpired(selected) && selected.error_message && (
-            <div className="mb-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
-              {selected.error_message}
-            </div>
-          )}
-          {resultsLoading ? (
-            <div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
-          ) : results.length === 0 ? (
-            <div className="py-6 text-center text-sm text-muted-foreground">
-              <p>{t.none}</p>
-              {selected?.job_type === "list_my_groups" && selected.status === "completed" && (
-                <p className="mt-2">
-                  {lang === "ar"
-                    ? "لم يعثر الـ Worker على جروبات مرئية لهذا الحساب. تأكد أن الحساب عضو فعلاً في جروبات وأن صفحة الجروبات تفتح له داخل فيسبوك."
-                    : "The Worker found no visible groups for this account. Make sure the account is actually joined to groups and can open the groups page in Facebook."}
-                </p>
-              )}
-            </div>
-          ) : isPeople ? (
+            )}
+            {selected?.status === "failed" && !isSessionExpired(selected) && selected.error_message && (
+              <div className="mb-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+                {selected.error_message}
+              </div>
+            )}
+            {resultsLoading ? (
+              <div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+            ) : results.length === 0 ? (
+              <div className="py-6 text-center text-sm text-muted-foreground">
+                <p>{t.none}</p>
+                {selected?.job_type === "list_my_groups" && selected.status === "completed" && (
+                  <p className="mt-2">
+                    {lang === "ar"
+                      ? "لم يعثر الـ Worker على جروبات مرئية لهذا الحساب. تأكد أن الحساب عضو فعلاً في جروبات وأن صفحة الجروبات تفتح له داخل فيسبوك."
+                      : "The Worker found no visible groups for this account. Make sure the account is actually joined to groups and can open the groups page in Facebook."}
+                  </p>
+                )}
+              </div>
+            ) : isPeople ? (
             <div className="max-h-[60vh] overflow-auto">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-muted/40 text-muted-foreground">
