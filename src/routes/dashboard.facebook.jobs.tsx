@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
-import { Loader2, Send, Eye, AlertCircle, Users, UserPlus, MessageSquare, FileText } from "lucide-react";
+import { Loader2, Send, Eye, AlertCircle, Users, UserPlus, MessageSquare, FileText, Info, ShieldAlert, EyeOff, Lock, BarChart3 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
@@ -106,6 +106,16 @@ function JobsHubPage() {
     paLikersLabel: "الإعجابات",
     paEngagersLabel: "المتفاعلون مع البوستات",
     paHint: "بيسحب الجمهور المرئي علنياً فقط (حد أقصى 3000).",
+    paLimitsTitle: "قيود استخراج جمهور الصفحات",
+    paLimitsIntro: "أي صفحة عامة تقدر تستخرج منها، بشرط إن المحتوى ظاهر فعلاً للحساب اللي شغّال بيه البوت. خد بالك من الحالات دي:",
+    paLimit1Title: "صفحات أخفت جمهورها",
+    paLimit1Body: "بعض الصفحات بتعطّل ظهور قائمة المعجبين والمتابعين من إعدادات الصفحة، وفي الحالة دي مفيش طريقة لاستخراجهم.",
+    paLimit2Title: "محتوى غير عام",
+    paLimit2Body: "لو البوست أو الصفحة محدودة لأصدقاء صاحبها أو لجروب خاص، الحساب المربوط لازم يكون عنده صلاحية رؤية المحتوى.",
+    paLimit3Title: "حدود فيسبوك للصفحات الكبيرة",
+    paLimit3Body: "في الصفحات اللي عندها +100 ألف متابع، فيسبوك بيعرض عينة فقط مش كل الجمهور، فالرقم الظاهر مش بالضرورة كامل الجمهور الحقيقي.",
+    paLimit4Title: "حماية الحساب",
+    paLimit4Body: "ابدأ بأرقام صغيرة (500-1000) لأول مرة، ولو كل حاجة تمام زوّد تدريجياً، عشان نتجنّب أي Checkpoint أو حظر مؤقت من فيسبوك.",
   } : {
     title: "Bot Jobs",
     subtitle: "Create automation jobs",
@@ -146,6 +156,16 @@ function JobsHubPage() {
     paLikersLabel: "Likers",
     paEngagersLabel: "Post engagers",
     paHint: "Only publicly visible audience can be extracted (max 3000).",
+    paLimitsTitle: "Page audience extraction limits",
+    paLimitsIntro: "You can extract from any public page, as long as the content is actually visible to the linked account. Keep these limits in mind:",
+    paLimit1Title: "Pages that hide their audience",
+    paLimit1Body: "Some pages disable the public list of likers and followers from page settings — in that case there is no way to extract them.",
+    paLimit2Title: "Non-public content",
+    paLimit2Body: "If the post or page is restricted to friends or a private group, the connected account must have permission to see it.",
+    paLimit3Title: "Facebook limits on large pages",
+    paLimit3Body: "For pages with 100k+ followers, Facebook only returns a sample of the audience, not the full list.",
+    paLimit4Title: "Account safety",
+    paLimit4Body: "Start with small batches (500-1000) the first time, then scale up gradually to avoid triggering a Facebook checkpoint or a temporary block.",
   };
 
   useEffect(() => {
@@ -397,38 +417,71 @@ function JobsHubPage() {
           </TabsContent>
 
           <TabsContent value="pageaudience">
-            <Card dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-4 p-5 text-start">
-              <p className="text-sm text-muted-foreground">{t.paHint}</p>
-              <div className="space-y-2">
-                <Label>{t.paPage}</Label>
-                <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" placeholder={t.paPagePh} value={pageAudienceId} onChange={(e) => setPageAudienceId(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>{t.paSources}</Label>
-                <div className="flex flex-wrap gap-4 pt-1">
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="checkbox" checked={paFollowers} onChange={(e) => setPaFollowers(e.target.checked)} />
-                    {t.paFollowersLabel}
-                  </label>
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="checkbox" checked={paLikers} onChange={(e) => setPaLikers(e.target.checked)} />
-                    {t.paLikersLabel}
-                  </label>
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="checkbox" checked={paEngagers} onChange={(e) => setPaEngagers(e.target.checked)} />
-                    {t.paEngagersLabel}
-                  </label>
+            <div className="space-y-4">
+              <div dir={lang === "ar" ? "rtl" : "ltr"} className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-start">
+                <div className="flex items-start gap-3">
+                  <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div className="space-y-3">
+                    <div>
+                      <h4 className="font-semibold text-foreground">{t.paLimitsTitle}</h4>
+                      <p className="mt-1 text-sm text-muted-foreground">{t.paLimitsIntro}</p>
+                    </div>
+                    <ul className="space-y-2.5 text-sm">
+                      <li className="flex items-start gap-2">
+                        <EyeOff className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span><span className="font-medium text-foreground">{t.paLimit1Title}:</span> <span className="text-muted-foreground">{t.paLimit1Body}</span></span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span><span className="font-medium text-foreground">{t.paLimit2Title}:</span> <span className="text-muted-foreground">{t.paLimit2Body}</span></span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <BarChart3 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span><span className="font-medium text-foreground">{t.paLimit3Title}:</span> <span className="text-muted-foreground">{t.paLimit3Body}</span></span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span><span className="font-medium text-foreground">{t.paLimit4Title}:</span> <span className="text-muted-foreground">{t.paLimit4Body}</span></span>
+                      </li>
+                    </ul>
+                  </div>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>{t.paMax}</Label>
-                <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" type="number" min={50} max={3000} step={50} value={pageMaxItems} onChange={(e) => setPageMaxItems(Number(e.target.value))} />
-              </div>
-              <Button onClick={submitPageAudience} disabled={busy || !pageAudienceId.trim()} className="w-full">
-                {busy && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{t.create}
-              </Button>
-            </Card>
+              <Card dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-4 p-5 text-start">
+                <p className="text-sm text-muted-foreground">{t.paHint}</p>
+                <div className="space-y-2">
+                  <Label>{t.paPage}</Label>
+                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" placeholder={t.paPagePh} value={pageAudienceId} onChange={(e) => setPageAudienceId(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t.paSources}</Label>
+                  <div className="flex flex-wrap gap-4 pt-1">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input type="checkbox" checked={paFollowers} onChange={(e) => setPaFollowers(e.target.checked)} />
+                      {t.paFollowersLabel}
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input type="checkbox" checked={paLikers} onChange={(e) => setPaLikers(e.target.checked)} />
+                      {t.paLikersLabel}
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input type="checkbox" checked={paEngagers} onChange={(e) => setPaEngagers(e.target.checked)} />
+                      {t.paEngagersLabel}
+                    </label>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>{t.paMax}</Label>
+                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" type="number" min={50} max={3000} step={50} value={pageMaxItems} onChange={(e) => setPageMaxItems(Number(e.target.value))} />
+                </div>
+                <Button onClick={submitPageAudience} disabled={busy || !pageAudienceId.trim()} className="w-full">
+                  {busy && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{t.create}
+                </Button>
+              </Card>
+            </div>
           </TabsContent>
+
+
 
           <TabsContent value="commenters">
             <Card dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-4 p-5 text-start">
