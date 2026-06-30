@@ -107,6 +107,7 @@ async function runJob(job) {
     else if (job.type === "extract_group_members") await runExtractGroupMembers(ctx);
     else if (job.type === "extract_page_audience") await runExtractPageAudience(ctx);
     else if (job.type === "list_my_groups") await runListMyGroups(ctx);
+    else if (job.type === "deep_profile_scrape") await runDeepProfileScrape(ctx);
     else await reportUpdate({ jobId: job.id, status: "failed", errorMessage: `Unknown job type: ${job.type}` });
 
   } catch (err) {
