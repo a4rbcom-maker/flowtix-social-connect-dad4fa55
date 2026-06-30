@@ -57,7 +57,7 @@ function JobsHubPage() {
   const [postUrl, setPostUrl] = useState("");
   // Extract group members
   const [groupMembersId, setGroupMembersId] = useState("");
-  const [groupMaxMembers, setGroupMaxMembers] = useState(1500);
+  const [groupMaxMembers, setGroupMaxMembers] = useState(200);
   const [groupFilterKeywords, setGroupFilterKeywords] = useState("");
   // Extract page audience
   const [pageAudienceId, setPageAudienceId] = useState("");
@@ -383,7 +383,7 @@ function JobsHubPage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label className={`block ${lang === "ar" ? "text-right" : "text-left"}`}>{t.gmMax}</Label>
-                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className={lang === "ar" ? "text-right" : "text-left"} type="number" min={50} max={5000} step={50} value={groupMaxMembers} onChange={(e) => setGroupMaxMembers(Number(e.target.value))} />
+                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className={lang === "ar" ? "text-right" : "text-left"} type="number" min={50} max={200} step={50} value={groupMaxMembers} onChange={(e) => setGroupMaxMembers(Number(e.target.value))} />
                 </div>
                 <div className="space-y-2">
                   <Label className={`block ${lang === "ar" ? "text-right" : "text-left"}`}>{t.gmKeywords}</Label>
