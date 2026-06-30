@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Loader2, Trash2, RefreshCw, Download, Sparkles, Send, KeyRound, AlertTriangle, Image as ImageIcon, X } from "lucide-react";
+import { Loader2, Trash2, RefreshCw, Download, Sparkles, Send, KeyRound, AlertTriangle, Image as ImageIcon, X, Clock } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
@@ -807,10 +807,69 @@ function JobsHistoryPage() {
                         ? `سيتم توزيع المستلمين بالتناوب (رسالة من كل حساب). المحدد: ${msgSelectedAccounts.size}/${msgAccounts.length}`
                         : `Recipients will round-robin across accounts. Selected: ${msgSelectedAccounts.size}/${msgAccounts.length}`}
                     </p>
+
+                    {msgSelectedAccounts.size > 0 && (() => {
+                      const globalSec = Math.max(36, Math.round(3600 / Math.max(1, msgPerHour)));
+                      const N = msgSelectedAccounts.size;
+                      const perAccountSec = Math.max(36, globalSec * N);
+                      const perAccountMin = Math.floor(perAccountSec / 60);
+                      const perAccountRem = perAccountSec % 60;
+                      const selected = msgAccounts.filter((a) => msgSelectedAccounts.has(a.id));
+                      return (
+                        <div dir={lang === "ar" ? "rtl" : "ltr"} className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-start">
+                          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+                            <Clock className="h-4 w-4 text-primary" />
+                            {lang === "ar" ? "توقيت الإرسال لكل حساب" : "Per-account send timing"}
+                          </div>
+                          <div className="mb-2 grid grid-cols-3 gap-2 text-center">
+                            <div className="rounded bg-background/60 p-2">
+                              <div className="text-[10px] uppercase text-muted-foreground">{lang === "ar" ? "الفاصل العام" : "Global interval"}</div>
+                              <div className="text-sm font-bold tabular-nums text-foreground">{globalSec}s</div>
+                            </div>
+                            <div className="rounded bg-background/60 p-2">
+                              <div className="text-[10px] uppercase text-muted-foreground">{lang === "ar" ? "حسابات نشطة" : "Active accounts"}</div>
+                              <div className="text-sm font-bold tabular-nums text-foreground">{N}</div>
+                            </div>
+                            <div className="rounded bg-background/60 p-2">
+                              <div className="text-[10px] uppercase text-muted-foreground">{lang === "ar" ? "كل حساب يرسل كل" : "Each account every"}</div>
+                              <div className="text-sm font-bold tabular-nums text-primary">{perAccountSec}s</div>
+                            </div>
+                          </div>
+                          <ul className="space-y-1.5 text-xs">
+                            {selected.map((a, idx) => {
+                              const firstSendSec = idx * globalSec;
+                              return (
+                                <li key={a.id} className="flex items-center justify-between gap-2 rounded border border-border/50 bg-background/40 px-2 py-1.5">
+                                  <span className="flex items-center gap-2 truncate">
+                                    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">{idx + 1}</span>
+                                    <span className="truncate font-medium text-foreground">{a.display_name}</span>
+                                  </span>
+                                  <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
+                                    <span title={lang === "ar" ? "أول رسالة بعد بدء الحملة" : "First send after launch"}>
+                                      ▶ {firstSendSec}s
+                                    </span>
+                                    <span className="text-border">·</span>
+                                    <span className="font-medium text-foreground tabular-nums" title={lang === "ar" ? "الفاصل بين رسائل هذا الحساب" : "Interval between this account's messages"}>
+                                      ⏱ {perAccountSec}s
+                                    </span>
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                          <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                            {lang === "ar"
+                              ? `كل حساب ينتظر ${perAccountMin > 0 ? `${perAccountMin}د ${perAccountRem}ث` : `${perAccountSec}ث`} بين رسائله، والمجموع يساوي ${msgPerHour} رسالة/ساعة موزّعة على كل الحسابات.`
+                              : `Each account waits ${perAccountMin > 0 ? `${perAccountMin}m ${perAccountRem}s` : `${perAccountSec}s`} between its messages; combined throughput stays at ${msgPerHour} msg/hour across all accounts.`}
+                          </p>
+                        </div>
+                      );
+                    })()}
                   </>
                 )}
               </div>
             )}
+
 
 
             <div className="space-y-2">
