@@ -671,6 +671,82 @@ export const createDeepProfileScrapeJob = createServerFn({ method: "POST" })
     return row;
   });
 
+// ---------- createDeepProfileScrapeFromJob ----------
+// Builds a deep-scrape job using ALL results from a source job (paginated),
+// not just the first page the UI shows. Avoids the 1000-row cap.
+export const createDeepProfileScrapeFromJob = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        sourceJobId: z.string().uuid(),
+        accountId: z.string().uuid().optional(),
+        label: z.string().trim().max(120).optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    // Resolve source job + fall back to its account if none supplied.
+    const { data: srcJob, error: srcErr } = await supabase
+      .from("fb_jobs")
+      .select("id, account_id, user_id")
+      .eq("id", data.sourceJobId)
+      .eq("user_id", userId)
+      .single();
+    if (srcErr || !srcJob) throw new Error(srcErr?.message || "Source job not found");
+    const accountId = data.accountId ?? srcJob.account_id;
+    if (!accountId) throw new Error("No account linked");
+
+    // Paginate through fb_job_results — Supabase default cap is 1000 per page.
+    const profiles = new Set<string>();
+    const pageSize = 1000;
+    let from = 0;
+    // Hard upper bound to keep memory sane.
+    const HARD_CAP = 5000;
+    while (profiles.size < HARD_CAP) {
+      const { data: rows, error } = await supabase
+        .from("fb_job_results")
+        .select("target, data")
+        .eq("job_id", data.sourceJobId)
+        .eq("status", "success")
+        .range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+      if (!rows || rows.length === 0) break;
+      for (const r of rows as Array<{ target: string | null; data: unknown }>) {
+        const d = (r.data ?? {}) as { profile_url?: string; profile?: string };
+        const candidate = d.profile_url || d.profile || r.target || "";
+        const clean = String(candidate).trim().replace(/\?.*$/, "").replace(/\/$/, "");
+        if (clean) profiles.add(clean);
+        if (profiles.size >= HARD_CAP) break;
+      }
+      if (rows.length < pageSize) break;
+      from += pageSize;
+    }
+
+    const list = Array.from(profiles);
+    if (list.length === 0) throw new Error("No profiles found in source job");
+
+    const { data: row, error } = await supabase
+      .from("fb_jobs")
+      .insert({
+        user_id: userId,
+        account_id: accountId,
+        job_type: "deep_profile_scrape",
+        payload: { profiles: list, label: data.label ?? null, sourceJobId: data.sourceJobId },
+        total_items: list.length,
+        scheduled_at: new Date().toISOString(),
+        status: "pending",
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    return { id: row.id, count: list.length };
+  });
+
+
+
 // ---------- createSendMessengerDmJob ----------
 // Sends a Messenger DM to a list of recipients via the bot account.
 // Throttled by intervalSeconds between sends (default 180s = ~20/hr).
