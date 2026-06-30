@@ -40,6 +40,7 @@ import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
+import { buildRow } from "@/lib/customer-db";
 import {
   ResizableHandle,
   ResizablePanel,
