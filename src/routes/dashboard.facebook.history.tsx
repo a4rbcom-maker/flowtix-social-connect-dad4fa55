@@ -333,6 +333,30 @@ function JobsHistoryPage() {
     return !!p && !FB_SYSTEM_RE.test(p);
   }).length;
 
+  // Prune selection to only keys that still exist in filtered rows
+  useEffect(() => {
+    if (msgSelectedRecipients.size === 0) return;
+    const valid = new Set(filteredRows.map(recipientKey));
+    let changed = false;
+    const next = new Set<string>();
+    for (const k of msgSelectedRecipients) {
+      if (valid.has(k)) next.add(k);
+      else changed = true;
+    }
+    if (changed) setMsgSelectedRecipients(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredRows]);
+
+  // Rows that will actually be sent (selection-aware)
+  const sendRows = msgSelectedRecipients.size > 0
+    ? filteredRows.filter((e) => msgSelectedRecipients.has(recipientKey(e)))
+    : filteredRows;
+  const sendWaCount = sendRows.filter((e) => !!e.phone).length;
+  const sendFbCount = sendRows.filter((e) => {
+    const p = e.profile || e.row.target || "";
+    return !!p && !FB_SYSTEM_RE.test(p);
+  }).length;
+
 
   const openMessenger = async () => {
     if (!selected) return;
