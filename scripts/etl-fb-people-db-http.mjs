@@ -35,6 +35,7 @@ const START_ID = Number(args.start || 1);
 const END_ID = args.end ? Number(args.end) : Infinity;
 const CONCURRENCY = Number(args.concurrency || 3);
 const CORRUPT_CHUNK = Number(args["corrupt-chunk"] || 100);
+const SKIP_LOG_LIMIT = Number(args["skip-log-limit"] || 10);
 
 const INGEST_URL = env.FB_INGEST_URL;
 const INGEST_SECRET = env.FB_INGEST_SECRET;
@@ -169,13 +170,21 @@ console.log(
   `[import] country=${COUNTRY} sqlite=${SQLITE_PATH} ids=${START_ID}..${maxId} batch=${BATCH} concurrency=${CONCURRENCY} corrupt_chunk=${CORRUPT_CHUNK}`,
 );
 
+let skipLogCount = 0;
+
 function readRange(lo, hi) {
   try {
     return { rows: sqlite.prepare("SELECT * FROM data WHERE id BETWEEN ? AND ?").all(lo, hi), skipped: 0 };
   } catch (err) {
     if (hi - lo + 1 <= CORRUPT_CHUNK) {
       const count = hi - lo + 1;
-      console.warn(`\n  [skip] ids=${lo}..${hi} (${count}) corrupt: ${err.message}`);
+      if (skipLogCount < SKIP_LOG_LIMIT) {
+        console.warn(`\n  [skip] ids=${lo}..${hi} (${count}) corrupt: ${err.message}`);
+        skipLogCount += 1;
+        if (skipLogCount === SKIP_LOG_LIMIT) {
+          console.warn("\n  [skip] too many corrupt ranges; hiding details and showing per-batch summaries only...");
+        }
+      }
       return { rows: [], skipped: count };
     }
     const mid = Math.floor((lo + hi) / 2);
@@ -211,7 +220,16 @@ for (let lo = START_ID; lo <= maxId; lo += BATCH) {
   const hi = Math.min(lo + BATCH - 1, maxId);
   const { rows: raw, skipped } = readRange(lo, hi);
   totalSkipped += skipped;
+  if (skipped) {
+    console.warn(`\n  [corrupt-summary] ids=${lo}..${hi} skipped=${skipped} readable=${raw.length}`);
+  }
   if (raw.length === 0) {
+    const dt = (performance.now() - startWall) / 1000;
+    const pct = ((hi / maxId) * 100).toFixed(2);
+    const rate = (totalRead / Math.max(dt, 1)).toFixed(0);
+    stdout.write(
+      `\r[${pct}%] id=${hi}/${maxId}  read=${totalRead}  inserted=${totalInserted}  skipped=${totalSkipped}  rate=${rate}/s  flushed_to=${lastFlushedId}    `,
+    );
     continue;
   }
   const rows = raw.map((r) => toRow(COUNTRY, r));
@@ -222,7 +240,7 @@ for (let lo = START_ID; lo <= maxId; lo += BATCH) {
   const pct = ((hi / maxId) * 100).toFixed(2);
   const rate = (totalRead / dt).toFixed(0);
   stdout.write(
-    `\r[${pct}%] id=${hi}/${maxId}  read=${totalRead}  inserted=${totalInserted}  rate=${rate}/s  flushed_to=${lastFlushedId}    `,
+    `\r[${pct}%] id=${hi}/${maxId}  read=${totalRead}  inserted=${totalInserted}  skipped=${totalSkipped}  rate=${rate}/s  flushed_to=${lastFlushedId}    `,
   );
 }
 
