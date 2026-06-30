@@ -835,3 +835,91 @@ html {
 [dir="rtl"] textarea::placeholder {
   text-align: right;
 }
+
+/* =====================================================================
+   Dark mode + RTL readability — scoped to /dashboard/facebook/*
+   Goals: brighter foreground text, stronger borders/dividers, higher
+   contrast for muted text, table rows, badges, code/mono fields, and
+   placeholders. Tokens stay default; only the facebook surface tunes up.
+   ===================================================================== */
+
+.dark [data-dashboard-section="facebook"][dir="rtl"] {
+  /* Lift muted text from ~0.65 lightness to ~0.78 → readable on dark cards */
+  --muted-foreground: oklch(0.82 0.02 270);
+  /* Bolder dividers/inputs so cards and tables don't bleed together */
+  --border: oklch(0.34 0.03 270);
+  --input: oklch(0.34 0.03 270);
+}
+
+/* Table rows: stronger separators + slightly brighter cell text */
+.dark [data-dashboard-section="facebook"][dir="rtl"] table {
+  color: oklch(0.96 0.005 270);
+}
+.dark [data-dashboard-section="facebook"][dir="rtl"] table thead {
+  color: oklch(0.86 0.015 270);
+}
+.dark [data-dashboard-section="facebook"][dir="rtl"] table tbody > tr {
+  border-color: oklch(0.32 0.025 270);
+}
+.dark [data-dashboard-section="facebook"][dir="rtl"] table tbody > tr:hover {
+  background-color: oklch(0.24 0.03 270 / 0.6);
+}
+
+/* Cards/dialogs: slightly lighter surface and crisper outline */
+.dark [data-dashboard-section="facebook"][dir="rtl"] [data-slot="card"],
+.dark [data-dashboard-section="facebook"][dir="rtl"] [data-slot="dialog-content"],
+.dark [data-dashboard-section="facebook"][dir="rtl"] [data-slot="popover-content"] {
+  background-color: oklch(0.2 0.028 270);
+  border-color: oklch(0.34 0.03 270);
+}
+
+/* Inputs/textarea/select: brighter text, visible border, calmer placeholder */
+.dark [data-dashboard-section="facebook"][dir="rtl"] input,
+.dark [data-dashboard-section="facebook"][dir="rtl"] textarea,
+.dark [data-dashboard-section="facebook"][dir="rtl"] select,
+.dark [data-dashboard-section="facebook"][dir="rtl"] [data-slot="select-trigger"] {
+  color: oklch(0.97 0.005 270);
+  border-color: oklch(0.36 0.03 270);
+}
+.dark [data-dashboard-section="facebook"][dir="rtl"] input::placeholder,
+.dark [data-dashboard-section="facebook"][dir="rtl"] textarea::placeholder {
+  color: oklch(0.62 0.02 270);
+}
+
+/* Monospace cells (IDs, URLs, payloads) — fight RTL bidi mirroring */
+.dark [data-dashboard-section="facebook"][dir="rtl"] .font-mono,
+.dark [data-dashboard-section="facebook"][dir="rtl"] code,
+.dark [data-dashboard-section="facebook"][dir="rtl"] pre {
+  direction: ltr;
+  unicode-bidi: isolate;
+  color: oklch(0.92 0.01 270);
+}
+/* Mono cells in tables stay right-anchored visually under RTL */
+.dark [data-dashboard-section="facebook"][dir="rtl"] td.font-mono,
+[data-dashboard-section="facebook"][dir="rtl"] td.font-mono {
+  text-align: right;
+}
+
+/* Badges/outline pills: stronger ring so they don't disappear on dark */
+.dark [data-dashboard-section="facebook"][dir="rtl"] [data-slot="badge"] {
+  border-color: oklch(0.42 0.04 270);
+}
+
+/* Divide-y utilities: brighter line on dark */
+.dark [data-dashboard-section="facebook"][dir="rtl"] .divide-y > * + *,
+.dark [data-dashboard-section="facebook"][dir="rtl"] .divide-border\/50 > * + * {
+  border-color: oklch(0.32 0.025 270);
+}
+
+/* Headings stay crisp white-ish; body text follows --foreground */
+.dark [data-dashboard-section="facebook"][dir="rtl"] h1,
+.dark [data-dashboard-section="facebook"][dir="rtl"] h2,
+.dark [data-dashboard-section="facebook"][dir="rtl"] h3,
+.dark [data-dashboard-section="facebook"][dir="rtl"] h4 {
+  color: oklch(0.98 0.005 270);
+}
+
+/* RTL-aware focus ring stays inside scrolling tables */
+.dark [data-dashboard-section="facebook"][dir="rtl"] :focus-visible {
+  outline-color: oklch(0.72 0.22 295);
+}
