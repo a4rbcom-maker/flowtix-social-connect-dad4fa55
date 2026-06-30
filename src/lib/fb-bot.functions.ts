@@ -98,6 +98,13 @@ function errorMessage(value: unknown) {
   return value instanceof Error ? value.message : String(value);
 }
 
+const FACEBOOK_SESSION_REJECTED_RE =
+  /SESSION_EXPIRED|session lost|Facebook rejected the stored session cookies|cookies?\s+(?:rejected|invalid|expired)|c_user/i;
+
+function isFacebookSessionRejectedError(value: unknown) {
+  return typeof value === "string" && FACEBOOK_SESSION_REJECTED_RE.test(value);
+}
+
 // ---------- addBotAccount ----------
 export const addBotAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -373,8 +380,41 @@ export const listBotAccounts = createServerFn({ method: "GET" })
           debugCode: "DB_READ_FAILED",
         };
       }
+      const rows = (data ?? []) as Array<BotAccountRow & { encrypted_payload?: string }>;
+      const accountIds = rows.map((row) => row.id).filter(Boolean);
+      const latestSessionFailures = new Map<string, { error: string; at: string | null }>();
+
+      if (accountIds.length > 0) {
+        const { data: recentJobs, error: jobsError } = await supabaseAdmin
+          .from("fb_jobs")
+          .select("account_id, status, error_message, created_at, completed_at")
+          .eq("user_id", userId)
+          .in("account_id", accountIds)
+          .in("status", ["completed", "failed"])
+          .order("created_at", { ascending: false })
+          .limit(Math.max(100, accountIds.length * 5));
+
+        if (jobsError) {
+          console.warn("[listBotAccounts] recent job scan skipped:", jobsError);
+        } else {
+          const seenLatestTerminal = new Set<string>();
+          for (const job of recentJobs ?? []) {
+            const accountId = typeof job.account_id === "string" ? job.account_id : null;
+            if (!accountId || seenLatestTerminal.has(accountId)) continue;
+            seenLatestTerminal.add(accountId);
+            const errorMessage = typeof job.error_message === "string" ? job.error_message : "";
+            if (job.status === "failed" && isFacebookSessionRejectedError(errorMessage)) {
+              latestSessionFailures.set(accountId, {
+                error: errorMessage,
+                at: (job.completed_at as string | null) ?? (job.created_at as string | null) ?? null,
+              });
+            }
+          }
+        }
+      }
+
       const accounts: BotAccountRow[] = [];
-      for (const row of (data ?? []) as Array<BotAccountRow & { encrypted_payload?: string }>) {
+      for (const row of rows) {
         const safe: BotAccountRow = {
           id: row.id,
           display_name: row.display_name,
@@ -385,7 +425,23 @@ export const listBotAccounts = createServerFn({ method: "GET" })
           created_at: row.created_at,
           cookie_expires_at: row.cookie_expires_at,
         };
-        if (row.auth_method === "cookies" && row.status !== "active" && row.encrypted_payload) {
+        const latestSessionFailure = latestSessionFailures.get(row.id);
+        if (latestSessionFailure) {
+          safe.status = "invalid";
+          safe.last_check_at = latestSessionFailure.at ?? row.last_check_at;
+          safe.last_error = latestSessionFailure.error;
+          if (row.status !== "invalid" || row.last_error !== latestSessionFailure.error) {
+            await supabase
+              .from("fb_bot_accounts")
+              .update({
+                status: "invalid",
+                last_check_at: safe.last_check_at,
+                last_error: latestSessionFailure.error,
+              })
+              .eq("id", row.id)
+              .eq("user_id", userId);
+          }
+        } else if (row.auth_method === "cookies" && row.status !== "active" && row.encrypted_payload) {
           try {
             const { decryptJson } = await import("@/server/crypto.server");
             const cookies = normalizeStoredCookies(decryptJson<unknown>(row.encrypted_payload));
