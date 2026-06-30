@@ -2314,12 +2314,12 @@ function FacebookPage() {
                         setTestErrorType(null);
                       }}
                       placeholder={t.tokenPlaceholder}
-                      className="w-full rounded-xl border border-border bg-background px-4 py-2.5 pr-20 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      className="w-full rounded-xl border border-border bg-background px-4 py-2.5 pe-20 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                     />
                     <button
                       type="button"
                       onClick={() => setShowToken(!showToken)}
-                      className="absolute inset-y-0 right-2 my-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-accent"
+                      className="absolute inset-y-0 end-2 my-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-accent"
                     >
                       {showToken ? t.hide : t.show}
                     </button>

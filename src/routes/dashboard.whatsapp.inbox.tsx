@@ -965,7 +965,7 @@ function ContactInfoPanel({
       <div className="flex flex-col items-center gap-3 border-b border-border/60 p-5 text-center">
         <div className="relative">
           <ContactAvatar name={name} src={conv.profile_pic_url ?? null} size="lg" />
-          <span className="absolute bottom-1 right-1 h-4 w-4 rounded-full border-2 border-card bg-emerald-500" />
+          <span className="absolute bottom-1 end-1 h-4 w-4 rounded-full border-2 border-card bg-emerald-500" />
         </div>
         <div className="min-w-0 max-w-full overflow-hidden">
           <h2 className="truncate text-base font-bold">{name}</h2>
@@ -1198,7 +1198,7 @@ function EmptyChat({
     <div className="flex h-full flex-col items-center justify-center gap-5 p-8 text-center">
       <div className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-primary/15 to-primary/5 ring-1 ring-primary/20">
         <Sparkles className="h-9 w-9 text-primary" />
-        <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground shadow">
+        <span className="absolute -end-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground shadow">
           ✦
         </span>
       </div>

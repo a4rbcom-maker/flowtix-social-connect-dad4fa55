@@ -180,7 +180,7 @@ function MediaPage() {
                 </div>
                 <button
                   onClick={() => handleDelete(a)}
-                  className="absolute top-1.5 right-1.5 p-1.5 rounded-md bg-background/90 border border-border opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:bg-destructive/10"
+                  className="absolute top-1.5 end-1.5 p-1.5 rounded-md bg-background/90 border border-border opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:bg-destructive/10"
                   title={t.delete}
                 >
                   <Trash2 className="w-3.5 h-3.5" />

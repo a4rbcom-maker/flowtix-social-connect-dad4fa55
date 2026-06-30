@@ -553,7 +553,7 @@ function NewCampaignPage() {
                       ) : (
                         <div className="w-full h-full bg-muted flex items-center justify-center"><ImageIcon className="w-6 h-6 text-muted-foreground" /></div>
                       )}
-                      {sel && <span className="absolute top-1 right-1 w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center"><Check className="w-3 h-3" /></span>}
+                      {sel && <span className="absolute top-1 end-1 w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center"><Check className="w-3 h-3" /></span>}
                     </button>
                   );
                 })}
