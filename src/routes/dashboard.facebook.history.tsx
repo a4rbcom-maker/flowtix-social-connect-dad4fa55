@@ -511,7 +511,7 @@ function JobsHistoryPage() {
 
   return (
     <DashboardLayout title={t.title}>
-      <div className="space-y-6">
+      <div dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-2xl font-bold">{t.title}</h2>
