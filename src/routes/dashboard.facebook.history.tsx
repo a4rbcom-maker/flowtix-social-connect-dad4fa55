@@ -824,7 +824,27 @@ function JobsHistoryPage() {
                       <div className="flex items-center gap-2 text-sm text-muted-foreground"><MessageCircle className="h-4 w-4 text-primary" />{lang === "ar" ? "الإجمالي" : "Total"}</div>
                       <div className="mt-1 text-2xl font-bold tabular-nums">{results.length}</div>
                       {skip > 0 && <div className="mt-1 text-xs text-muted-foreground">{lang === "ar" ? `متخطّى: ${skip}` : `Skipped: ${skip}`}</div>}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-xs">
+                    <div className="text-muted-foreground">
+                      {compactView
+                        ? (lang === "ar" ? "وضع القراءة السريعة: الاسم + الحالة + السبب فقط." : "Quick read: name, status, reason only.")
+                        : (lang === "ar" ? "العرض الكامل: كل التفاصيل والأكواد التقنية." : "Full view: all details and technical codes.")}
                     </div>
+                    <Button
+                      size="sm"
+                      variant={compactView ? "default" : "outline"}
+                      onClick={() => setCompactView((v) => !v)}
+                      className="h-8 shrink-0 gap-1.5"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {compactView
+                        ? (lang === "ar" ? "عرض كامل" : "Full view")
+                        : (lang === "ar" ? "قراءة سريعة" : "Quick read")}
+                    </Button>
+                  </div>
+
                   </div>
 
                   {fail > 0 && (
