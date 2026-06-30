@@ -409,6 +409,12 @@ function JobsHistoryPage() {
                       {lang === "ar" ? "إثراء بداتا مصر" : "Enrich with Egypt data"}
                     </Button>
                   )}
+                  {isPeople && (
+                    <Button size="sm" variant="default" onClick={openMessenger} className="gap-2">
+                      <Send className="h-4 w-4" />
+                      {lang === "ar" ? "إرسال رسائل" : "Send messages"}
+                    </Button>
+                  )}
                   <Button size="sm" variant="outline" onClick={downloadCsv}>
                     <Download className="me-2 h-4 w-4" />{t.download}
                   </Button>
