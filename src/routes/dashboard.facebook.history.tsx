@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Trash2, RefreshCw, Download, Sparkles, Send, KeyRound, AlertTriangle, Image as ImageIcon, X, Clock, Pause, Play } from "lucide-react";
+import { Loader2, Trash2, RefreshCw, Download, Sparkles, Send, KeyRound, AlertTriangle, Image as ImageIcon, X, Clock, Pause, Play, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
