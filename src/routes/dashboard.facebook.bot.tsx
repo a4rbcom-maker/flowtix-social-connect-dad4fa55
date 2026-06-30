@@ -1236,7 +1236,7 @@ function BotAccountsPage() {
                   {lang === "ar" ? "مسح" : "Clear"}
                 </Button>
               </div>
-              <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+              <div className="max-h-56 space-y-2 overflow-y-auto pe-1">
                 {saveLogs.map((log, index) => (
                   <div key={`${log.at}-${index}`} className={`rounded-md border px-3 py-2 text-xs ${saveLogTone(log.level)}`}>
                     <div className="mb-1 flex items-center justify-between gap-3 font-mono">
