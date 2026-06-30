@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { Download, Sparkles, Loader2, Upload, MapPin, Database } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
@@ -10,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { enrichLines, type EnrichedLead } from "@/lib/egypt-enrich";
 import { matchLeadsAgainstCustomers, type MatchResult } from "@/lib/customer-db";
+import { enrichFbPeople, type EnrichedPerson } from "@/lib/fb-people-enrich.functions";
 
 export const Route = createFileRoute("/dashboard/enrich")({
   ssr: false,
@@ -21,7 +23,9 @@ function EnrichPage() {
   const [input, setInput] = useState("");
   const [rows, setRows] = useState<EnrichedLead[]>([]);
   const [matches, setMatches] = useState<Map<number, MatchResult>>(new Map());
+  const [dbMatches, setDbMatches] = useState<Map<number, EnrichedPerson>>(new Map());
   const [busy, setBusy] = useState(false);
+  const enrichFromDb = useServerFn(enrichFbPeople);
 
   const runMatching = async (data: EnrichedLead[]) => {
     try {
@@ -34,6 +38,31 @@ function EnrichPage() {
       }
     } catch { /* silent */ }
   };
+
+  const runDbEnrichment = async (data: EnrichedLead[]) => {
+    try {
+      const leads = data.map((r) => ({
+        name: r.name,
+        phone: r.phone,
+        email: r.email,
+      }));
+      const res = await enrichFromDb({ data: { leads } });
+      const m = new Map<number, EnrichedPerson>();
+      res.results.forEach((it, i) => { if (it.match) m.set(i, it.match); });
+      setDbMatches(m);
+      if (res.found > 0) {
+        toast.success(
+          lang === "ar"
+            ? `🔍 ${res.found} نتيجة من قاعدة بيانات فيسبوك`
+            : `🔍 Enriched ${res.found} from FB database`,
+        );
+      }
+    } catch (e) {
+      // Database may be empty during initial setup — keep silent.
+      console.warn("[fb-people enrich] skipped:", e);
+    }
+  };
+
 
 
   // Auto-fill from a job's results when navigated from history page.
