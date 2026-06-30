@@ -164,6 +164,27 @@ async function waitForComposer(page, timeoutMs = 12000) {
   return false;
 }
 
+async function clickVisibleMessageAction(page) {
+  const locators = [
+    page.getByRole("button", { name: /^(مراسلة|رسالة|إرسال رسالة|Message|Send message)$/i }),
+    page.getByText(/^(مراسلة|رسالة|إرسال رسالة|Message|Send message)$/i),
+    page.locator('[aria-label*="مراسلة"], [aria-label*="رسالة"], [aria-label*="Message" i], [title*="مراسلة"], [title*="Message" i]'),
+  ];
+  for (const locator of locators) {
+    try {
+      const count = Math.min(await locator.count(), 5);
+      for (let i = 0; i < count; i += 1) {
+        const item = locator.nth(i);
+        if (await item.isVisible({ timeout: 1000 }).catch(() => false)) {
+          await item.click({ timeout: 5000 });
+          return true;
+        }
+      }
+    } catch (_) { /* try next locator */ }
+  }
+  return false;
+}
+
 async function openViaProfile(page, profile) {
   const url = toProfileUrl(profile);
   if (!url) return { ok: false, reason: "NO_PROFILE_URL" };
@@ -172,7 +193,7 @@ async function openViaProfile(page, profile) {
   } catch (_) { return { ok: false, reason: "PROFILE_NAV_FAILED" }; }
   await new Promise((r) => setTimeout(r, 3500));
   if (/\/login|checkpoint/i.test(page.url())) return { ok: false, reason: "SESSION_EXPIRED" };
-  const clicked = await page.evaluate(async () => {
+  let clicked = await page.evaluate(async () => {
     const normalize = (v) => String(v || "").replace(/\s+/g, " ").trim();
     const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const isMessageAction = (el) => {
@@ -204,6 +225,7 @@ async function openViaProfile(page, profile) {
     }
     return false;
   });
+  if (!clicked) clicked = await clickVisibleMessageAction(page);
   if (!clicked) return { ok: false, reason: "PROFILE_MESSAGE_BUTTON_MISSING" };
   await waitForComposer(page, 12000);
   return await diagnoseDmPage(page);
