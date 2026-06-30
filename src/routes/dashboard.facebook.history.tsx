@@ -504,8 +504,8 @@ function JobsHistoryPage() {
               {phoneCount === 0 && (
                 <p className="mt-2 text-xs text-muted-foreground">
                   {lang === "ar"
-                    ? "💡 لا توجد أرقام؟ شغّل «إثراء بداتا مصر» أو «فحص عميق للبروفايلات» أولاً."
-                    : "💡 No phones? Run “Enrich with Egypt data” or “Deep profile scrape” first."}
+                    ? "💡 لا توجد أرقام؟ شغّل «إثراء بداتا مصر» أولاً."
+                    : "💡 No phones? Run “Enrich with Egypt data” first."}
                 </p>
               )}
             </div>
