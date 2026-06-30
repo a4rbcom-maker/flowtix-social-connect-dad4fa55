@@ -1517,10 +1517,12 @@ function PreviewList({
                           )}
                         </div>
                       </td>
-                      <td className="px-2 py-1.5 tabular-nums" dir="ltr">{e.phone || <span className="text-muted-foreground">—</span>}</td>
-                      <td className="px-2 py-1.5 max-w-[200px] truncate" dir="ltr">
+                      <td className="px-2 py-1.5 tabular-nums text-start">
+                        {e.phone ? <bdi dir="ltr">{e.phone}</bdi> : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-2 py-1.5 max-w-[200px] truncate text-start">
                         {hasProfile ? (
-                          <a href={profile} target="_blank" rel="noreferrer" className="text-primary hover:underline">{profile}</a>
+                          <bdi dir="ltr"><a href={profile} target="_blank" rel="noreferrer" className="text-primary hover:underline">{profile}</a></bdi>
                         ) : <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="px-2 py-1.5">{e.city || <span className="text-muted-foreground">—</span>}</td>
