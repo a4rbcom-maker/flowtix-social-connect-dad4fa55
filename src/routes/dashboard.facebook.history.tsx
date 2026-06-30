@@ -197,7 +197,23 @@ function JobsHistoryPage() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { if (user) load(); }, [user]);
+  const [activeAccountIds, setActiveAccountIds] = useState<Set<string>>(new Set());
+  const loadActiveAccounts = async () => {
+    try {
+      const res = await call(listBotAccounts);
+      const ids = new Set<string>((res?.accounts ?? []).filter((a: { status: string }) => a.status === "active").map((a: { id: string }) => a.id));
+      setActiveAccountIds(ids);
+    } catch (_) { /* ignore */ }
+  };
+
+  useEffect(() => { if (user) { load(); loadActiveAccounts(); } }, [user]);
+  // Re-check account status when the tab regains focus (after user finishes reconnecting in another tab)
+  useEffect(() => {
+    const onFocus = () => { if (user) loadActiveAccounts(); };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [user]);
+
 
   // Realtime: merge changes into local state to avoid full reloads (which feel like a page refresh)
   useEffect(() => {
@@ -342,10 +358,14 @@ function JobsHistoryPage() {
     paused: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
   }[s]);
 
-  // Detect session-expired failures so we surface a clear reconnect CTA
-  // instead of a generic "failed" status the user can't act on.
-  const isSessionExpired = (j: { status?: string; error_message?: string | null }) =>
-    j.status === "failed" && !!j.error_message && /SESSION_EXPIRED|session lost|cookies?\s+(rejected|invalid|expired)|c_user/i.test(j.error_message);
+  const isSessionExpired = (j: { status?: string; error_message?: string | null; account_id?: string | null }) => {
+    if (j.status !== "failed" || !j.error_message) return false;
+    if (!/SESSION_EXPIRED|session lost|cookies?\s+(rejected|invalid|expired)|c_user/i.test(j.error_message)) return false;
+    // Hide reconnect CTA if the underlying account is already reconnected/active now.
+    if (j.account_id && activeAccountIds.has(j.account_id)) return false;
+    return true;
+  };
+
 
   // Counts for the messaging wizard preview
   const phoneCount = enrichedRows.filter((e) => !!e.phone).length;
