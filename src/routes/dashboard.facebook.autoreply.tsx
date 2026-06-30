@@ -479,10 +479,11 @@ function LogTab({ ar }: { ar: boolean }) {
     <Card dir={ar ? "rtl" : "ltr"}>
       <CardHeader><CardTitle className={ar ? "text-right" : "text-left"}>{ar ? "سجل التنفيذ" : "Execution log"}</CardTitle></CardHeader>
 
-      <CardContent>
+      <CardContent className="overflow-x-auto">
         {isLoading ? <Loader2 className="animate-spin"/> : !rows?.length ? (
           <p className="text-muted-foreground text-sm">{ar ? "لا يوجد سجلات." : "No log entries."}</p>
         ) : (
+
           <Table>
             <TableHeader><TableRow>
               <TableHead>{ar ? "الوقت" : "Time"}</TableHead>
