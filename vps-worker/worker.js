@@ -381,6 +381,142 @@ async function handleDeepProfileScrape(job) {
   }
 }
 
+/** extract_group_members — scrape visible members from a group members page */
+async function handleExtractGroupMembers(job) {
+  const payload = job.payload || {};
+  const groupRef = payload.groupUrl || payload.groupId;
+  if (!groupRef) throw new Error("payload.groupId or payload.groupUrl is required");
+
+  const maxMembers = Math.min(Math.max(50, Number(payload.maxMembers) || 1500), 5000);
+  const keywords = (Array.isArray(payload.filterKeywords) ? payload.filterKeywords : [])
+    .map((k) => String(k).trim().toLowerCase())
+    .filter(Boolean);
+
+  const groupId = (() => {
+    const raw = String(groupRef).trim();
+    const urlMatch = raw.match(/facebook\.com\/groups\/([^/?#]+)/i);
+    if (urlMatch) return urlMatch[1];
+    return raw.replace(/^groups\//i, "").replace(/^\//, "").replace(/\/$/, "");
+  })();
+
+  const membersUrl = `https://www.facebook.com/groups/${groupId}/members`;
+  const context = await openContext(job.account?.id, job.account?.credentials);
+  const page = await context.newPage();
+  const seen = new Set();
+  let extracted = 0;
+  let emptyScrolls = 0;
+
+  const emit = async (member) => {
+    if (!member?.fbId || seen.has(member.fbId)) return;
+    if (keywords.length > 0) {
+      const blob = `${member.name || ""} ${member.bio || ""}`.toLowerCase();
+      if (!keywords.some((k) => blob.includes(k))) return;
+    }
+
+    seen.add(member.fbId);
+    extracted++;
+    await postUpdate({
+      jobId: job.id,
+      result: {
+        target: member.fbId,
+        status: "success",
+        data: {
+          fb_user_id: member.fbId,
+          name: member.name,
+          profile_url: member.profile_url,
+          bio_snippet: member.bio || "",
+          source: "group_member",
+          source_id: groupId,
+        },
+      },
+    });
+  };
+
+  try {
+    await page.goto(membersUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.waitForTimeout(5000);
+
+    if (page.url().includes("/login") || page.url().includes("/checkpoint")) {
+      await postUpdate({
+        jobId: job.id,
+        accountStatus: {
+          accountId: job.account.id,
+          status: page.url().includes("checkpoint") ? "checkpoint" : "invalid",
+          error: "Session expired or checkpoint required",
+        },
+      });
+      throw new Error("Session invalid (login/checkpoint). Re-export cookies.");
+    }
+
+    // If Facebook shows a generic unavailable page, the account is not a member or cannot access the group.
+    const pageText = await page.locator("body").innerText({ timeout: 5000 }).catch(() => "");
+    if (/content isn't available|this content isn't available|هذا المحتوى غير متوفر|لا يتوفر هذا المحتوى/i.test(pageText)) {
+      throw new Error("Group members page is not accessible. Make sure the Facebook account is a member of this group.");
+    }
+
+    for (let i = 0; i < 220 && extracted < maxMembers && emptyScrolls < 6; i++) {
+      const batch = await page.$$eval(
+        'a[role="link"][href*="/groups/"][href*="/user/"], a[role="link"][href*="facebook.com/profile.php"], a[role="link"][href*="facebook.com/people/"], a[role="link"][href^="/"]',
+        (anchors) => {
+          const out = [];
+          const localSeen = new Set();
+
+          for (const a of anchors) {
+            const href = a.href || a.getAttribute("href") || "";
+            const name = (a.innerText || a.textContent || "").trim().replace(/\s+/g, " ");
+            if (!name || name.length < 2 || name.length > 90) continue;
+            if (/^(Home|Groups|Facebook|الصفحة الرئيسية|المجموعات|إشعارات|Notifications)$/i.test(name)) continue;
+
+            let fbId = null;
+            const userMatch = href.match(/\/groups\/[^/]+\/user\/(\d+)/i);
+            const profileMatch = href.match(/profile\.php\?id=(\d+)/i);
+            const peopleMatch = href.match(/\/people\/[^/]+\/(\d+)/i);
+            const slugMatch = href.match(/facebook\.com\/([A-Za-z0-9._-]+)(?:[/?#]|$)/i);
+
+            if (userMatch) fbId = userMatch[1];
+            else if (profileMatch) fbId = profileMatch[1];
+            else if (peopleMatch) fbId = peopleMatch[1];
+            else if (slugMatch && !["groups", "pages", "events", "watch", "marketplace", "profile.php", "login"].includes(slugMatch[1])) fbId = slugMatch[1];
+            if (!fbId || localSeen.has(fbId)) continue;
+
+            const card = a.closest('[role="listitem"], [data-visualcompletion], li, div');
+            const cardText = (card?.textContent || "").trim().replace(/\s+/g, " ");
+            const bio = cardText.startsWith(name) ? cardText.slice(name.length).trim().slice(0, 180) : cardText.slice(0, 180);
+            const profileUrl = href.startsWith("http") ? href.split("?")[0] : `https://www.facebook.com${href.split("?")[0]}`;
+
+            localSeen.add(fbId);
+            out.push({ fbId, name, profile_url: profileUrl, bio });
+          }
+          return out;
+        }
+      );
+
+      const before = extracted;
+      for (const member of batch) {
+        if (extracted >= maxMembers) break;
+        await emit(member);
+      }
+
+      emptyScrolls = extracted === before ? emptyScrolls + 1 : 0;
+
+      await postUpdate({
+        jobId: job.id,
+        progress: Math.min(99, Math.round((extracted / maxMembers) * 100)),
+        processedItems: extracted,
+        totalItems: maxMembers,
+        status: "running",
+      });
+
+      await page.evaluate(() => window.scrollBy(0, Math.max(1200, window.innerHeight * 1.6)));
+      await page.waitForTimeout(1600 + Math.floor(Math.random() * 2200));
+    }
+
+    return { extracted };
+  } finally {
+    await context.close().catch(() => {});
+  }
+}
+
 /** Placeholder for jobs not yet implemented in this worker version */
 async function handleNotImplemented(job) {
   throw new Error(`Job type "${job.type}" is not implemented in this worker yet.`);
@@ -593,7 +729,7 @@ async function handleExtractPageAudience(job) {
 const HANDLERS = {
   extract_commenters: handleExtractCommenters,
   deep_profile_scrape: handleDeepProfileScrape,
-  extract_group_members: handleNotImplemented,
+  extract_group_members: handleExtractGroupMembers,
   extract_page_audience: handleExtractPageAudience,
   extract_pages: handleNotImplemented,
   post_to_groups: handleNotImplemented,
