@@ -1463,7 +1463,7 @@ function PreviewList({
         </div>
       )}
 
-      {filtered.length === 0 ? (
+      {visible.length === 0 ? (
         <div className="py-6 text-center text-sm text-muted-foreground">
           {lang === "ar" ? "لا يوجد مستلمون مطابقون" : "No matching recipients"}
         </div>
