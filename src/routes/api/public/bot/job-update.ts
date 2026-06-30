@@ -57,7 +57,8 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
           return Response.json({ ok: false, staleWorker: true, message: "Stale worker ignored; job requeued" });
         }
         const terminal = current && (current.status === "cancelled" || current.status === "completed" || current.status === "failed");
-        if (terminal) {
+        const paused = current?.status === "paused";
+        if (terminal || paused) {
           // Still allow account-status writes (those are about the FB account, not the job).
           if (body.accountStatus) {
             await supabaseAdmin
@@ -69,7 +70,23 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
               })
               .eq("id", body.accountStatus.accountId);
           }
-          return Response.json({ ok: true, cancelled: current.status === "cancelled", jobStatus: current.status });
+          // For paused jobs we still want any in-flight result row that the
+          // worker just produced to be saved, so it isn't re-sent on resume.
+          if (paused && body.result) {
+            await supabaseAdmin.from("fb_job_results").insert([{
+              job_id: body.jobId,
+              target: body.result.target ?? null,
+              status: body.result.status,
+              data: (body.result.data ?? null) as never,
+              error: body.result.error ?? null,
+            }]);
+          }
+          return Response.json({
+            ok: true,
+            cancelled: current?.status === "cancelled",
+            paused,
+            jobStatus: current?.status,
+          });
         }
 
         // Optional: insert a result row
