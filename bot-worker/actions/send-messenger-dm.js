@@ -32,6 +32,12 @@ function extractFbUserId(input) {
 function toProfileUrl(input) {
   const s = String(input || "").trim();
   if (!s) return null;
+  // Keep group-member URLs intact. Facebook often shows the Message action
+  // on /groups/<groupId>/user/<userId> while the normalized profile.php?id=
+  // page hides it or renders a different action set.
+  if (/^https?:\/\/[^/]*facebook\.com\/groups\/[^/]+\/user\/\d{5,}/i.test(s)) {
+    return s.split("?")[0].replace(/\/$/, "");
+  }
   const id = extractFbUserId(s);
   if (id) return `https://www.facebook.com/profile.php?id=${id}`;
   if (/^https?:\/\//i.test(s)) return s.split("?")[0].replace(/\/$/, "");
@@ -151,9 +157,30 @@ async function openViaProfile(page, profile) {
   await new Promise((r) => setTimeout(r, 3500));
   if (/\/login|checkpoint/i.test(page.url())) return { ok: false, reason: "SESSION_EXPIRED" };
   const clicked = await page.evaluate(() => {
-    const btns = Array.from(document.querySelectorAll('[role="button"], a[role="link"]'));
-    const target = btns.find((b) => /^\s*(Message|رسالة|إرسال رسالة)\s*$/i.test((b.textContent || "").trim()));
+    const normalize = (v) => String(v || "").replace(/\s+/g, " ").trim();
+    const isMessageAction = (el) => {
+      const text = normalize(el.textContent);
+      const aria = normalize(el.getAttribute("aria-label") || el.getAttribute("title"));
+      const label = `${text} ${aria}`;
+      return /(^|\s)(Message|Messenger|Send message|رسالة|مراسلة|إرسال رسالة)(\s|$)/i.test(label);
+    };
+    const btns = Array.from(document.querySelectorAll('[role="button"], a[role="link"], a[href*="/messages/"], a[href*="m.me/"]'));
+    const target = btns.find(isMessageAction);
     if (target) { target.click(); return true; }
+
+    // Some profile/group-member pages hide the Message action under an actions
+    // menu. Open likely menus, then search again.
+    const menus = btns.filter((b) => {
+      const text = normalize(b.textContent);
+      const aria = normalize(b.getAttribute("aria-label") || b.getAttribute("title"));
+      return /^(More|Menu|المزيد|خيارات|More options)$/i.test(text) || /More|Menu|المزيد|خيارات/i.test(aria);
+    });
+    for (const menu of menus.slice(0, 3)) {
+      menu.click();
+      const menuItems = Array.from(document.querySelectorAll('[role="menuitem"], [role="button"], a[role="link"]'));
+      const item = menuItems.find(isMessageAction);
+      if (item) { item.click(); return true; }
+    }
     return false;
   });
   if (!clicked) return { ok: false, reason: "PROFILE_MESSAGE_BUTTON_MISSING" };
