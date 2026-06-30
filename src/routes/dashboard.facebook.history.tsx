@@ -978,7 +978,7 @@ function JobsHistoryPage() {
                                 {!compactView && (
                                   <td className="px-3 py-2.5 text-start">
                                     {profileUrl ? (
-                                      <Button size="sm" variant="outline" asChild className="h-8 max-w-full gap-1.5">
+                                      <Button size="sm" variant="outline" asChild className="h-8 max-w-full gap-1.5" onClick={(e) => e.stopPropagation()}>
                                         <a href={profileUrl} target="_blank" rel="noreferrer" className="min-w-0">
                                           <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                                           <bdi dir="ltr" className="truncate">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
