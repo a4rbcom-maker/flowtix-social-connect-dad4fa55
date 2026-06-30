@@ -1368,14 +1368,45 @@ function PreviewList({
               {lang === "ar" ? "مسح التحديد" : "Clear selection"}
             </Button>
           )}
+          <div className="flex items-center gap-1 rounded-md border border-border bg-background p-0.5">
+            <button
+              type="button"
+              onClick={() => setMatchMode("all")}
+              className={`px-2 py-1 text-xs rounded ${matchMode === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              title={lang === "ar" ? "كل الكلمات يجب أن تتطابق" : "All terms must match"}
+            >
+              {lang === "ar" ? "كل الكلمات" : "AND"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMatchMode("any")}
+              className={`px-2 py-1 text-xs rounded ${matchMode === "any" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              title={lang === "ar" ? "أي كلمة تتطابق" : "Any term matches"}
+            >
+              {lang === "ar" ? "أي كلمة" : "OR"}
+            </button>
+          </div>
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={lang === "ar" ? "ابحث في النتائج..." : "Search results..."}
-            className="h-8 max-w-xs text-sm"
+            placeholder={lang === "ar" ? 'بحث متقدم: كلمات، "عبارة"، -استبعاد، city:القاهرة' : 'Advanced: words, "phrase", -exclude, city:Cairo'}
+            className="h-8 w-72 max-w-full text-sm"
           />
         </div>
       </div>
+      {tokens.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+          <span>{lang === "ar" ? "المرشحات:" : "Filters:"}</span>
+          {tokens.map((t, i) => (
+            <span
+              key={i}
+              className={`px-1.5 py-0.5 rounded border ${t.negate ? "border-destructive/40 text-destructive" : "border-border"}`}
+            >
+              {t.negate ? "−" : ""}{t.field !== "any" ? `${t.field}:` : ""}{t.text}
+            </span>
+          ))}
+        </div>
+      )}
 
       {filtered.length === 0 ? (
         <div className="py-6 text-center text-sm text-muted-foreground">
