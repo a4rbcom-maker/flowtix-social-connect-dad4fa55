@@ -15,11 +15,13 @@ import {
   Play,
   CalendarClock,
   ListChecks,
-  AlertCircle,
   FileSpreadsheet,
   Download,
-  Sparkles,
   Megaphone,
+  Image as ImageIcon,
+  X,
+  FolderOpen,
+  Tag,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -36,7 +38,9 @@ export const Route = createFileRoute("/dashboard/bulk")({
 type Contact = Tables<"contacts">;
 type BulkJob = Tables<"bulk_jobs">;
 
-type Tab = "compose" | "contacts" | "jobs";
+type Tab = "compose" | "lists" | "jobs";
+
+const UNTAGGED = "__untagged__";
 
 function BulkSendPage() {
   const { user, loading: authLoading } = useAuth();
@@ -47,8 +51,6 @@ function BulkSendPage() {
   const [tab, setTab] = useState<Tab>("compose");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [jobs, setJobs] = useState<BulkJob[]>([]);
-  const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // Compose form
   const [title, setTitle] = useState("");
@@ -58,123 +60,15 @@ function BulkSendPage() {
   const [scheduleNow, setScheduleNow] = useState(true);
   const [scheduleAt, setScheduleAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [pickedList, setPickedList] = useState<string | null>(null);
+  const [extraContactIds, setExtraContactIds] = useState<Set<string>>(new Set());
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
 
-  // Contact form
-  const [newName, setNewName] = useState("");
-  const [newPhone, setNewPhone] = useState("");
-  const [adding, setAdding] = useState(false);
-
-  const t = lang === "ar"
-    ? {
-        title: "الإرسال الجماعي",
-        subtitle: "أرسل رسائل واتساب لقوائمك مع فاصل زمني وجدولة في الخلفية",
-        tabs: { compose: "إنشاء حملة", contacts: "جهات الاتصال", jobs: "المهام" },
-        targets: "اختيار جهات الاستهداف",
-        searchContacts: "ابحث بالاسم أو الرقم...",
-        selectAll: "تحديد الكل",
-        clearAll: "إلغاء التحديد",
-        selected: "محدد",
-        noContacts: "لا توجد جهات اتصال — أضف جهات أولاً من تبويب \"جهات الاتصال\"",
-        addContact: "إضافة جهة اتصال",
-        name: "الاسم",
-        phone: "رقم الهاتف",
-        phonePlaceholder: "مثال: 201001234567",
-        add: "إضافة",
-        delete: "حذف",
-        compose: "نص الرسالة",
-        msgPlaceholder: "اكتب الرسالة التي ستُرسل لكل جهة...",
-        intervalLabel: "الفاصل الزمني بين كل دفعتين (ثوانٍ)",
-        intervalHelp: "كلما زاد الفاصل قلّ احتمال حظر رقمك وقلّ الضغط على الخادم",
-        batchLabel: "عدد الأرقام في كل دفعة",
-        batchHelp: "موصى به: 10 أرقام كل 30 ثانية للخوادم الضعيفة",
-        scheduling: "وقت التشغيل",
-        runNow: "تشغيل فوري",
-        runLater: "جدولة لاحقاً",
-        scheduledAt: "موعد التشغيل",
-        launch: "إطلاق الحملة",
-        launching: "جاري الإنشاء...",
-        emptyMsg: "اكتب نص الرسالة",
-        emptyTitle: "أضف عنواناً للحملة",
-        noTargets: "حدد جهة اتصال واحدة على الأقل",
-        characters: "حرف",
-        jobs: "مهام الإرسال",
-        noJobs: "لم تُنشأ أي حملة بعد",
-        statuses: { scheduled: "مجدولة", running: "تعمل الآن", completed: "اكتملت", failed: "فشلت", cancelled: "ملغاة", paused: "متوقفة" } as Record<string, string>,
-        sent: "أُرسلت",
-        progress: "التقدم",
-        cancel: "إلغاء الحملة",
-        confirmCancel: "هل تريد إلغاء هذه الحملة؟ لن يكتمل الإرسال للمتبقّين.",
-        cancelled: "تم الإلغاء",
-        importHint: "أضف الأرقام يدوياً، أو ارفع ملف CSV / Excel، أو الصق قائمة جاهزة.",
-        importPaste: "الصق أرقاماً (سطر لكل رقم بصيغة: الاسم,الرقم)",
-        importBtn: "استيراد من النص",
-        uploadTitle: "رفع ملف جهات اتصال",
-        uploadDesc: "اسحب ملف CSV هنا أو اضغط للاختيار — يدعم Excel/CSV/TXT.",
-        uploadBtn: "اختر ملف",
-        uploadProcessing: "جاري المعالجة...",
-        uploadFormat: "الصيغة المطلوبة: عمودان — الاسم في الأول والرقم في الثاني",
-        downloadSample: "تحميل ملف نموذجي",
-        importSuccess: (n: number) => `تم استيراد ${n} جهة اتصال`,
-        importInvalid: "الملف فارغ أو غير صالح",
-        of: "من",
-        contactsCount: "جهات اتصال",
-        bgInfo: "تعمل المهمة في الخلفية: المعالج يدور كل دقيقة ويرسل دفعات بحسب الفاصل الزمني الذي اخترته.",
-      }
-    : {
-        title: "Bulk Send",
-        subtitle: "Send WhatsApp messages to your lists with throttling and background scheduling",
-        tabs: { compose: "New campaign", contacts: "Contacts", jobs: "Jobs" },
-        targets: "Pick target contacts",
-        searchContacts: "Search by name or number...",
-        selectAll: "Select all",
-        clearAll: "Clear",
-        selected: "selected",
-        noContacts: "No contacts yet — add contacts from the \"Contacts\" tab first",
-        addContact: "Add contact",
-        name: "Name",
-        phone: "Phone",
-        phonePlaceholder: "e.g. 201001234567",
-        add: "Add",
-        delete: "Delete",
-        compose: "Message text",
-        msgPlaceholder: "Type the message that will be sent to every contact...",
-        intervalLabel: "Delay between batches (seconds)",
-        intervalHelp: "A larger delay reduces ban risk and load on your server",
-        batchLabel: "Numbers per batch",
-        batchHelp: "Recommended: 10 numbers every 30s for weaker servers",
-        scheduling: "Run time",
-        runNow: "Run immediately",
-        runLater: "Schedule for later",
-        scheduledAt: "Scheduled at",
-        launch: "Launch campaign",
-        launching: "Creating...",
-        emptyMsg: "Write a message first",
-        emptyTitle: "Give the campaign a title",
-        noTargets: "Select at least one contact",
-        characters: "characters",
-        jobs: "Send jobs",
-        noJobs: "No campaigns yet",
-        statuses: { scheduled: "Scheduled", running: "Running", completed: "Completed", failed: "Failed", cancelled: "Cancelled", paused: "Paused" } as Record<string, string>,
-        sent: "sent",
-        progress: "Progress",
-        cancel: "Cancel campaign",
-        confirmCancel: "Cancel this campaign? Remaining sends will not be processed.",
-        cancelled: "Cancelled",
-        importHint: "Add numbers manually, upload a CSV/Excel file, or paste a list.",
-        importPaste: "Paste lines (one per row, format: name,phone)",
-        importBtn: "Import from text",
-        uploadTitle: "Upload contacts file",
-        uploadDesc: "Drag a CSV file here or click to choose — supports Excel/CSV/TXT.",
-        uploadBtn: "Choose file",
-        uploadProcessing: "Processing...",
-        uploadFormat: "Required format: two columns — name in the first, phone in the second",
-        downloadSample: "Download sample file",
-        importSuccess: (n: number) => `Imported ${n} contacts`,
-        importInvalid: "File is empty or invalid",
-        of: "of",
-        contactsCount: "contacts",
-        bgInfo: "Jobs run in the background: the worker ticks every minute and sends batches respecting your interval.",
-      };
+  // Lists tab
+  const [listName, setListName] = useState("");
+  const [search, setSearch] = useState("");
+  const [openListView, setOpenListView] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) navigate({ to: "/login" });
@@ -192,7 +86,6 @@ function BulkSendPage() {
 
   useEffect(() => { loadAll(); /* eslint-disable-next-line */ }, [user]);
 
-  // Realtime job + recipient updates
   useEffect(() => {
     if (!user) return;
     const ch = supabase
@@ -203,88 +96,74 @@ function BulkSendPage() {
     // eslint-disable-next-line
   }, [user]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return contacts;
-    return contacts.filter((c) => c.name.toLowerCase().includes(q) || c.phone.includes(q));
-  }, [contacts, search]);
+  // Build named lists from contacts.tags
+  const lists = useMemo(() => {
+    const map = new Map<string, Contact[]>();
+    for (const c of contacts) {
+      const tags = (c.tags && c.tags.length ? c.tags : [UNTAGGED]) as string[];
+      for (const t of tags) {
+        if (!map.has(t)) map.set(t, []);
+        map.get(t)!.push(c);
+      }
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => (a[0] === UNTAGGED ? 1 : b[0] === UNTAGGED ? -1 : a[0].localeCompare(b[0])));
+  }, [contacts]);
 
-  const toggle = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
+  const selectedRecipients = useMemo(() => {
+    if (!pickedList) return contacts.filter((c) => extraContactIds.has(c.id));
+    const inList = contacts.filter((c) => {
+      const tags = (c.tags && c.tags.length ? c.tags : [UNTAGGED]) as string[];
+      return tags.includes(pickedList);
     });
-  };
+    const extras = contacts.filter((c) => extraContactIds.has(c.id) && !inList.find((x) => x.id === c.id));
+    return [...inList, ...extras];
+  }, [contacts, pickedList, extraContactIds]);
 
-  const addContact = async () => {
-    if (!user || !newName.trim() || !newPhone.trim()) return;
-    setAdding(true);
-    const { error } = await supabase.from("contacts").insert({
-      user_id: user.id,
-      name: newName.trim(),
-      phone: newPhone.trim(),
-    });
-    setAdding(false);
-    if (error) { toast.error(error.message); return; }
-    setNewName(""); setNewPhone("");
-    toast.success(lang === "ar" ? "تمت الإضافة" : "Added");
-    loadAll();
-  };
-
-  const deleteContact = async (id: string) => {
-    const { error } = await supabase.from("contacts").delete().eq("id", id);
-    if (error) { toast.error(error.message); return; }
-    setSelected((prev) => { const n = new Set(prev); n.delete(id); return n; });
-    loadAll();
-  };
-
-  // Parse CSV/TXT line: handles "name","phone" with quotes, commas, tabs, semicolons.
-  const parseRows = (text: string) => {
+  // ---- CSV parse ----
+  const parseRows = (text: string, tag: string | null) => {
     if (!user) return [];
     const rows = text
-      .replace(/^\uFEFF/, "") // strip BOM
+      .replace(/^\uFEFF/, "")
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean);
     return rows
       .map((r, idx) => {
-        // Strip quotes, split by , ; or tab
-        const parts = r
-          .split(/[,;\t]/)
-          .map((s) => s.replace(/^["']|["']$/g, "").trim());
+        const parts = r.split(/[,;\t]/).map((s) => s.replace(/^["']|["']$/g, "").trim());
         let [name, phone] = parts;
-        if (!name || !phone) return null;
-        // Skip header row
-        if (idx === 0 && /^(name|الاسم)$/i.test(name) && /^(phone|number|mobile|الرقم|الهاتف)$/i.test(phone)) {
-          return null;
+        if (!phone && name && /\d{6,}/.test(name)) {
+          // single column = phone only
+          phone = name; name = "—";
         }
-        // Keep only digits + leading + in phone
+        if (!name || !phone) return null;
+        if (idx === 0 && /^(name|الاسم)$/i.test(name) && /^(phone|number|mobile|الرقم|الهاتف)$/i.test(phone)) return null;
         phone = phone.replace(/[^\d+]/g, "");
         if (phone.length < 6) return null;
-        return { user_id: user.id, name, phone };
+        return { user_id: user.id, name, phone, tags: tag ? [tag] : null };
       })
-      .filter(Boolean) as { user_id: string; name: string; phone: string }[];
+      .filter(Boolean) as { user_id: string; name: string; phone: string; tags: string[] | null }[];
   };
 
-  const importFromText = async (text: string) => {
-    const parsed = parseRows(text);
-    if (parsed.length === 0) { toast.error(t.importInvalid); return; }
-    const { error } = await supabase.from("contacts").insert(parsed);
-    if (error) toast.error(error.message);
-    else { toast.success(t.importSuccess(parsed.length)); loadAll(); }
-  };
-
-  const [uploading, setUploading] = useState(false);
-  const importFromFile = async (file: File) => {
-    setUploading(true);
+  const importFromFile = async (file: File, tag: string) => {
+    if (!tag.trim()) {
+      toast.error(isAr ? "أدخل اسم القائمة أولاً" : "Enter list name first");
+      return;
+    }
     try {
       const text = await file.text();
-      await importFromText(text);
+      const parsed = parseRows(text, tag.trim());
+      if (parsed.length === 0) {
+        toast.error(isAr ? "الملف فارغ أو غير صالح" : "File is empty or invalid");
+        return;
+      }
+      const { error } = await supabase.from("contacts").insert(parsed);
+      if (error) { toast.error(error.message); return; }
+      toast.success(isAr ? `تم استيراد ${parsed.length} رقم في قائمة "${tag}"` : `Imported ${parsed.length} into "${tag}"`);
+      setListName("");
+      await loadAll();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setUploading(false);
     }
   };
 
@@ -292,20 +171,64 @@ function BulkSendPage() {
     const csv = "name,phone\nAhmed,201001234567\nMona,201112345678\n";
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
-    a.href = url; a.download = "contacts-sample.csv"; a.click();
+    a.href = url; a.download = "list-sample.csv"; a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const deleteList = async (tag: string) => {
+    if (!user) return;
+    if (!confirm(isAr ? `حذف قائمة "${tag}" بكل أرقامها؟` : `Delete list "${tag}" and all its contacts?`)) return;
+    const ids = contacts.filter((c) => (c.tags ?? []).includes(tag)).map((c) => c.id);
+    if (ids.length === 0) return;
+    const { error } = await supabase.from("contacts").delete().in("id", ids);
+    if (error) toast.error(error.message);
+    else { toast.success(isAr ? "تم الحذف" : "Deleted"); loadAll(); if (pickedList === tag) setPickedList(null); }
+  };
+
+  const deleteContact = async (id: string) => {
+    const { error } = await supabase.from("contacts").delete().eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    setExtraContactIds((p) => { const n = new Set(p); n.delete(id); return n; });
+    loadAll();
+  };
+
+  // ---- Image upload ----
+  const uploadImage = async (file: File) => {
+    if (!user) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error(isAr ? "اختر ملف صورة" : "Choose an image file");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error(isAr ? "الحجم الأقصى 8MB" : "Max 8MB");
+      return;
+    }
+    setImageUploading(true);
+    try {
+      const ext = file.name.split(".").pop() || "jpg";
+      const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("bulk-media").upload(path, file, { upsert: false, contentType: file.type });
+      if (upErr) throw upErr;
+      const { data: signed, error: sErr } = await supabase.storage.from("bulk-media").createSignedUrl(path, 60 * 60 * 24 * 30);
+      if (sErr || !signed) throw sErr ?? new Error("sign failed");
+      setImageUrl(signed.signedUrl);
+      toast.success(isAr ? "تم رفع الصورة" : "Image uploaded");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setImageUploading(false);
+    }
   };
 
   const launchCampaign = async () => {
     if (!user) return;
-    if (!title.trim()) { toast.error(t.emptyTitle); return; }
-    if (!message.trim()) { toast.error(t.emptyMsg); return; }
-    if (selected.size === 0) { toast.error(t.noTargets); return; }
-    if (!scheduleNow && !scheduleAt) { toast.error(t.scheduledAt); return; }
+    if (!title.trim()) { toast.error(isAr ? "أضف عنواناً للحملة" : "Add a title"); return; }
+    if (!message.trim() && !imageUrl) { toast.error(isAr ? "أضف رسالة أو صورة" : "Add a message or image"); return; }
+    if (selectedRecipients.length === 0) { toast.error(isAr ? "اختر قائمة أو جهة اتصال" : "Pick a list or contacts"); return; }
+    if (!scheduleNow && !scheduleAt) { toast.error(isAr ? "حدد موعد التشغيل" : "Pick a schedule"); return; }
 
     setSubmitting(true);
     try {
-      const recipients = contacts.filter((c) => selected.has(c.id));
       const scheduledAt = scheduleNow ? new Date().toISOString() : new Date(scheduleAt).toISOString();
       const { data: job, error } = await supabase
         .from("bulk_jobs")
@@ -314,17 +237,19 @@ function BulkSendPage() {
           channel: "bulk",
           title: title.trim(),
           message: message.trim(),
+          image_url: imageUrl,
           interval_seconds: Math.max(1, Math.min(intervalSec, 3600)),
           batch_size: Math.max(1, Math.min(batchSize, 100)),
           scheduled_at: scheduledAt,
           status: "scheduled",
-          total_recipients: recipients.length,
+          total_recipients: selectedRecipients.length,
+          metadata: { list_name: pickedList, has_image: !!imageUrl },
         })
         .select("*")
         .single();
       if (error || !job) throw new Error(error?.message ?? "Insert failed");
 
-      const rows = recipients.map((r) => ({
+      const rows = selectedRecipients.map((r) => ({
         job_id: job.id,
         user_id: user.id,
         contact_id: r.id,
@@ -334,13 +259,9 @@ function BulkSendPage() {
       const { error: rErr } = await supabase.from("bulk_job_recipients").insert(rows);
       if (rErr) throw new Error(rErr.message);
 
-      toast.success(
-        lang === "ar"
-          ? `تم إنشاء الحملة (${recipients.length} مستلم)`
-          : `Campaign created (${recipients.length} recipients)`,
-      );
-      // Reset compose
-      setTitle(""); setMessage(""); setSelected(new Set()); setScheduleAt("");
+      toast.success(isAr ? `تم إنشاء الحملة (${selectedRecipients.length} مستلم)` : `Campaign created (${selectedRecipients.length} recipients)`);
+      setTitle(""); setMessage(""); setScheduleAt(""); setImageUrl(null);
+      setPickedList(null); setExtraContactIds(new Set());
       setTab("jobs");
       loadAll();
     } catch (err: unknown) {
@@ -351,18 +272,22 @@ function BulkSendPage() {
   };
 
   const cancelJob = async (id: string) => {
-    if (!confirm(t.confirmCancel)) return;
+    if (!confirm(isAr ? "إلغاء هذه الحملة؟" : "Cancel this campaign?")) return;
     const { error } = await supabase.from("bulk_jobs").update({ status: "cancelled" }).eq("id", id);
     if (error) toast.error(error.message);
-    else { toast.success(t.cancelled); loadAll(); }
+    else { toast.success(isAr ? "تم الإلغاء" : "Cancelled"); loadAll(); }
   };
 
   if (authLoading || !user) return null;
 
+  const statusLabels: Record<string, string> = isAr
+    ? { scheduled: "مجدولة", running: "تعمل الآن", completed: "اكتملت", failed: "فشلت", cancelled: "ملغاة", paused: "متوقفة" }
+    : { scheduled: "Scheduled", running: "Running", completed: "Completed", failed: "Failed", cancelled: "Cancelled", paused: "Paused" };
+
   return (
-    <DashboardLayout title={t.title}>
+    <DashboardLayout title={isAr ? "الإرسال الجماعي" : "Bulk Send"}>
       <div dir={dir} className="mx-auto max-w-6xl space-y-6">
-        {/* Premium hero header */}
+        {/* Hero */}
         <section className="relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-l from-primary via-primary/70 to-primary/20" />
           <div className="absolute -end-12 -top-12 h-44 w-44 rounded-full bg-primary/15 blur-3xl" />
@@ -373,213 +298,201 @@ function BulkSendPage() {
               </span>
               <div className="max-w-3xl">
                 <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
-                  {lang === "ar" ? "حملات الإرسال" : "Bulk Campaigns"}
+                  {isAr ? "حملات الإرسال" : "Bulk Campaigns"}
                 </p>
-                <h1 className="text-2xl font-bold text-foreground sm:text-3xl">{t.title}</h1>
-                <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">{t.subtitle}</p>
+                <h1 className="text-2xl font-bold text-foreground sm:text-3xl">{isAr ? "الإرسال الجماعي" : "Bulk Send"}</h1>
+                <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
+                  {isAr
+                    ? "ارفع قوائم أرقام بأسماء (قائمة 1، قائمة 2...)، اختر قائمة وأرسل لها نص أو صورة بفاصل زمني آمن."
+                    : "Upload named contact lists, pick one, and send a message or image with safe throttling."}
+                </p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 self-start">
-              <div className="rounded-xl border border-border bg-background/60 px-3 py-2 text-center">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t.contactsCount}</p>
-                <p className="text-lg font-bold text-foreground">{contacts.length}</p>
-              </div>
-              <div className="rounded-xl border border-border bg-background/60 px-3 py-2 text-center">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{lang === "ar" ? "حملات" : "Campaigns"}</p>
-                <p className="text-lg font-bold text-foreground">{jobs.length}</p>
-              </div>
+              <Stat label={isAr ? "قوائم" : "Lists"} value={lists.filter((l) => l[0] !== UNTAGGED).length} />
+              <Stat label={isAr ? "أرقام" : "Contacts"} value={contacts.length} />
+              <Stat label={isAr ? "حملات" : "Campaigns"} value={jobs.length} />
             </div>
           </div>
         </section>
 
-        {/* Background notice */}
-        <div className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3 text-sm">
-          <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          <p className="text-foreground">{t.bgInfo}</p>
-        </div>
-
-        {/* Tabs — pill style */}
+        {/* Tabs */}
         <div className="inline-flex w-full max-w-xl rounded-2xl border border-border bg-muted/60 p-1.5 shadow-sm">
-          {(["compose", "contacts", "jobs"] as const).map((k) => {
-            const Icon = k === "compose" ? Send : k === "contacts" ? Users : ListChecks;
+          {(["compose", "lists", "jobs"] as const).map((k) => {
+            const Icon = k === "compose" ? Send : k === "lists" ? FolderOpen : ListChecks;
+            const label = k === "compose" ? (isAr ? "إنشاء حملة" : "New campaign")
+              : k === "lists" ? (isAr ? "القوائم" : "Lists")
+              : (isAr ? "المهام" : "Jobs");
             return (
               <button
                 key={k}
                 onClick={() => setTab(k)}
                 className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${
-                  tab === k
-                    ? "bg-primary text-primary-foreground shadow-md"
-                    : "text-muted-foreground hover:text-foreground"
+                  tab === k ? "bg-primary text-primary-foreground shadow-md" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <Icon className="h-4 w-4" />
-                {t.tabs[k]}
+                {label}
               </button>
             );
           })}
         </div>
 
-        {/* Compose tab */}
+        {/* ============================ COMPOSE ============================ */}
         {tab === "compose" && (
-          <div className="grid gap-6 lg:grid-cols-2">
-            {/* Targets */}
-            <div className="rounded-2xl border border-border bg-card p-5">
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="font-semibold text-foreground">{t.targets}</h3>
-                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-                  {selected.size} / {contacts.length}
+          <div className="grid gap-6 lg:grid-cols-5">
+            {/* List picker (left) */}
+            <div className="rounded-2xl border border-border bg-card p-5 lg:col-span-2">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="flex items-center gap-2 font-semibold text-foreground">
+                  <Tag className="h-4 w-4 text-primary" />
+                  {isAr ? "اختر قائمة الاستهداف" : "Pick a target list"}
+                </h3>
+                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary">
+                  {selectedRecipients.length} {isAr ? "مستلم" : "to send"}
                 </span>
               </div>
 
-              <div className={`relative mb-3`}>
-                <Search className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground ${dir === "rtl" ? "right-3" : "left-3"}`} />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={t.searchContacts}
-                  className={`w-full rounded-xl border border-border bg-background py-2 text-sm focus:border-primary focus:outline-none ${dir === "rtl" ? "pr-10 pl-3" : "pl-10 pr-3"}`}
-                />
-              </div>
-
-              {contacts.length === 0 ? (
+              {lists.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-border bg-background/40 p-6 text-center text-sm text-muted-foreground">
-                  {t.noContacts}
+                  {isAr ? "لا توجد قوائم — أنشئ قائمة من تبويب \"القوائم\"" : "No lists — create one from the Lists tab"}
+                  <div className="mt-3">
+                    <button onClick={() => setTab("lists")} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground">
+                      {isAr ? "إنشاء قائمة" : "Create list"}
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <>
-                  <div className="mb-2 flex gap-2">
-                    <button onClick={() => setSelected(new Set(filtered.map((c) => c.id)))} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-accent">{t.selectAll}</button>
-                    <button onClick={() => setSelected(new Set())} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-accent">{t.clearAll}</button>
-                  </div>
-                  <div className="max-h-80 space-y-1.5 overflow-y-auto">
-                    {filtered.map((c) => {
-                      const isSel = selected.has(c.id);
-                      return (
-                        <button
-                          key={c.id}
-                          onClick={() => toggle(c.id)}
-                          className={`flex w-full items-center gap-3 rounded-lg border p-2.5 text-start transition-all ${
-                            isSel ? "border-primary bg-primary/5" : "border-border bg-background/50 hover:border-primary/40"
-                          }`}
-                        >
-                          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${isSel ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-                            {isSel ? <CheckCircle2 className="h-4 w-4" /> : c.name.charAt(0).toUpperCase()}
+                <div className="space-y-2">
+                  {lists.map(([name, items]) => {
+                    const isPicked = pickedList === name;
+                    const display = name === UNTAGGED ? (isAr ? "(بدون قائمة)" : "(no list)") : name;
+                    return (
+                      <button
+                        key={name}
+                        onClick={() => setPickedList(isPicked ? null : name)}
+                        className={`flex w-full items-center justify-between rounded-xl border p-3 text-start transition-all ${
+                          isPicked ? "border-primary bg-primary/10 ring-2 ring-primary/30" : "border-border bg-background/50 hover:border-primary/40"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-sm font-bold ${
+                            isPicked ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                          }`}>
+                            {isPicked ? <CheckCircle2 className="h-5 w-5" /> : <FolderOpen className="h-4 w-4" />}
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-foreground">{c.name}</p>
-                            <p className="text-xs text-muted-foreground" dir="ltr">{c.phone}</p>
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-foreground">{display}</p>
+                            <p className="text-xs text-muted-foreground">{items.length} {isAr ? "رقم" : "contacts"}</p>
                           </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
+                        </div>
+                        {isPicked && <Play className="h-4 w-4 text-primary" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {pickedList && (
+                <p className="mt-3 rounded-lg bg-emerald-500/10 p-2 text-center text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                  {isAr
+                    ? `سيتم الإرسال إلى ${selectedRecipients.length} رقم من قائمة "${pickedList === UNTAGGED ? "بدون" : pickedList}"`
+                    : `Will send to ${selectedRecipients.length} contacts in "${pickedList === UNTAGGED ? "no list" : pickedList}"`}
+                </p>
               )}
             </div>
 
-            {/* Compose form */}
-            <div className="space-y-4 rounded-2xl border border-border bg-card p-5">
+            {/* Compose form (right) */}
+            <div className="space-y-4 rounded-2xl border border-border bg-card p-5 lg:col-span-3">
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">{lang === "ar" ? "عنوان الحملة" : "Campaign title"}</label>
+                <label className="mb-1.5 block text-sm font-medium text-foreground">{isAr ? "عنوان الحملة" : "Campaign title"}</label>
                 <input
-                  type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder={lang === "ar" ? "مثلاً: عرض الجمعة" : "e.g. Friday offer"}
+                  placeholder={isAr ? "مثلاً: عرض الجمعة" : "e.g. Friday offer"}
                   className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">{t.compose}</label>
+                <label className="mb-1.5 block text-sm font-medium text-foreground">{isAr ? "نص الرسالة" : "Message text"}</label>
                 <textarea
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  placeholder={t.msgPlaceholder}
-                  rows={6}
+                  placeholder={isAr ? "اكتب الرسالة..." : "Type the message..."}
+                  rows={5}
                   className="w-full resize-none rounded-xl border border-border bg-background p-3 text-sm focus:border-primary focus:outline-none"
                 />
-                <p className="mt-1 text-end text-xs text-muted-foreground">{message.length} {t.characters}</p>
+                <p className="mt-1 text-end text-xs text-muted-foreground">{message.length} {isAr ? "حرف" : "chars"}</p>
+              </div>
+
+              {/* Image attach */}
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-foreground">
+                  {isAr ? "إرفاق صورة (اختياري)" : "Attach image (optional)"}
+                </label>
+                {imageUrl ? (
+                  <div className="relative inline-block rounded-xl border border-border bg-background p-2">
+                    <img src={imageUrl} alt="attached" className="h-32 w-auto rounded-lg object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setImageUrl(null)}
+                      className="absolute -end-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-destructive text-destructive-foreground shadow"
+                      title={isAr ? "إزالة" : "Remove"}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border-2 border-dashed border-border bg-background/60 px-4 py-3 text-sm font-semibold text-muted-foreground transition hover:border-primary/40 hover:text-primary">
+                    {imageUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
+                    {imageUploading ? (isAr ? "جاري الرفع..." : "Uploading...") : (isAr ? "اختر صورة (≤ 8MB)" : "Choose image (≤ 8MB)")}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={imageUploading}
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f); e.target.value = ""; }}
+                    />
+                  </label>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-foreground">{t.batchLabel}</label>
+                  <label className="mb-1.5 block text-sm font-medium text-foreground">{isAr ? "أرقام كل دفعة" : "Per batch"}</label>
                   <div className="flex items-center gap-3">
-                    <input
-                      type="range"
-                      min={1}
-                      max={50}
-                      value={batchSize}
-                      onChange={(e) => setBatchSize(Number(e.target.value))}
-                      className="flex-1 accent-primary"
-                    />
-                    <input
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={batchSize}
-                      onChange={(e) => setBatchSize(Number(e.target.value) || 1)}
-                      className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-center text-sm focus:border-primary focus:outline-none"
-                    />
+                    <input type="range" min={1} max={50} value={batchSize} onChange={(e) => setBatchSize(Number(e.target.value))} className="flex-1 accent-primary" />
+                    <input type="number" min={1} max={100} value={batchSize} onChange={(e) => setBatchSize(Number(e.target.value) || 1)} className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-center text-sm focus:border-primary focus:outline-none" />
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{t.batchHelp}</p>
                 </div>
-
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-foreground">{t.intervalLabel}</label>
+                  <label className="mb-1.5 block text-sm font-medium text-foreground">{isAr ? "ثواني بين الدفعات" : "Seconds between batches"}</label>
                   <div className="flex items-center gap-3">
-                    <input
-                      type="range"
-                      min={5}
-                      max={300}
-                      value={intervalSec}
-                      onChange={(e) => setIntervalSec(Number(e.target.value))}
-                      className="flex-1 accent-primary"
-                    />
-                    <input
-                      type="number"
-                      min={1}
-                      max={3600}
-                      value={intervalSec}
-                      onChange={(e) => setIntervalSec(Number(e.target.value) || 1)}
-                      className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-center text-sm focus:border-primary focus:outline-none"
-                    />
+                    <input type="range" min={5} max={300} value={intervalSec} onChange={(e) => setIntervalSec(Number(e.target.value))} className="flex-1 accent-primary" />
+                    <input type="number" min={1} max={3600} value={intervalSec} onChange={(e) => setIntervalSec(Number(e.target.value) || 1)} className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-center text-sm focus:border-primary focus:outline-none" />
                     <span className="text-xs text-muted-foreground">s</span>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{t.intervalHelp}</p>
                 </div>
               </div>
-
+              <p className="rounded-lg bg-muted/60 p-2 text-xs text-muted-foreground">
+                {isAr ? "موصى به: 10 أرقام كل 30 ثانية لتجنّب الحظر." : "Recommended: 10 numbers every 30s to avoid bans."}
+              </p>
 
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">{t.scheduling}</label>
+                <label className="mb-1.5 block text-sm font-medium text-foreground">{isAr ? "وقت التشغيل" : "Run time"}</label>
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setScheduleNow(true)}
-                    className={`flex-1 rounded-xl border p-3 text-sm font-medium transition-all ${scheduleNow ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/40"}`}
-                  >
+                  <button type="button" onClick={() => setScheduleNow(true)} className={`flex-1 rounded-xl border p-3 text-sm font-medium transition-all ${scheduleNow ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/40"}`}>
                     <Play className="mx-auto mb-1 h-4 w-4" />
-                    {t.runNow}
+                    {isAr ? "تشغيل فوري" : "Run now"}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setScheduleNow(false)}
-                    className={`flex-1 rounded-xl border p-3 text-sm font-medium transition-all ${!scheduleNow ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/40"}`}
-                  >
+                  <button type="button" onClick={() => setScheduleNow(false)} className={`flex-1 rounded-xl border p-3 text-sm font-medium transition-all ${!scheduleNow ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/40"}`}>
                     <Clock className="mx-auto mb-1 h-4 w-4" />
-                    {t.runLater}
+                    {isAr ? "جدولة لاحقاً" : "Schedule later"}
                   </button>
                 </div>
                 {!scheduleNow && (
-                  <input
-                    type="datetime-local"
-                    value={scheduleAt}
-                    onChange={(e) => setScheduleAt(e.target.value)}
-                    className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                  />
+                  <input type="datetime-local" value={scheduleAt} onChange={(e) => setScheduleAt(e.target.value)} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
                 )}
               </div>
 
@@ -589,105 +502,129 @@ function BulkSendPage() {
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 hover:opacity-95 disabled:opacity-60"
               >
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                {submitting ? t.launching : t.launch}
+                {submitting ? (isAr ? "جاري الإنشاء..." : "Creating...") : (isAr ? "إطلاق الحملة" : "Launch campaign")}
               </button>
             </div>
           </div>
         )}
 
-        {/* Contacts tab */}
-        {tab === "contacts" && (
+        {/* ============================ LISTS ============================ */}
+        {tab === "lists" && (
           <div className="space-y-6">
-            {/* Hero: bulk upload — primary action */}
-            <FileDropzone
+            <UploadListCard
               isAr={isAr}
-              uploading={uploading}
-              onFile={importFromFile}
+              listName={listName}
+              setListName={setListName}
+              onFile={(f) => importFromFile(f, listName)}
               onSample={downloadSample}
-              labels={{
-                title: t.uploadTitle,
-                desc: t.uploadDesc,
-                btn: t.uploadBtn,
-                processing: t.uploadProcessing,
-                format: t.uploadFormat,
-                sample: t.downloadSample,
-              }}
             />
 
-            <div className="grid gap-6 lg:grid-cols-3">
-              {/* Manual + paste */}
-              <div className="space-y-5 rounded-2xl border border-border bg-card p-5 lg:col-span-1">
-                <div>
-                  <h3 className="flex items-center gap-2 text-sm font-bold text-foreground">
-                    <Plus className="h-4 w-4 text-primary" />
-                    {t.addContact}
-                  </h3>
-                  <p className="mt-1 text-xs text-muted-foreground">{t.importHint}</p>
-                </div>
-                <div className="space-y-3">
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold text-muted-foreground">{t.name}</label>
-                    <input value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold text-muted-foreground">{t.phone}</label>
-                    <input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder={t.phonePlaceholder} dir="ltr" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
-                  </div>
-                  <button onClick={addContact} disabled={adding || !newName || !newPhone} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-60">
-                    {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                    {t.add}
-                  </button>
-                </div>
-
-                <div className="border-t border-border pt-4">
-                  <p className="mb-2 text-xs font-semibold text-foreground">{t.importPaste}</p>
-                  <BulkPaste onImport={importFromText} label={t.importBtn} />
+            <div className="rounded-2xl border border-border bg-card p-5">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h3 className="flex items-center gap-2 text-sm font-bold text-foreground">
+                  <FolderOpen className="h-4 w-4 text-primary" />
+                  {isAr ? "قوائمك" : "Your lists"}
+                </h3>
+                <div className="relative">
+                  <Search className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground ${dir === "rtl" ? "right-3" : "left-3"}`} />
+                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={isAr ? "ابحث..." : "Search..."}
+                    className={`rounded-lg border border-border bg-background py-1.5 text-sm focus:border-primary focus:outline-none ${dir === "rtl" ? "pr-9 pl-3" : "pl-9 pr-3"}`} />
                 </div>
               </div>
 
-              {/* Contacts list */}
-              <div className="rounded-2xl border border-border bg-card p-5 lg:col-span-2">
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="flex items-center gap-2 text-sm font-bold text-foreground">
-                    <Users className="h-4 w-4 text-primary" />
-                    {contacts.length} {t.contactsCount}
-                  </h3>
+              {lists.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border bg-background/40 p-10 text-center">
+                  <FolderOpen className="mx-auto mb-3 h-10 w-10 text-muted-foreground/60" />
+                  <p className="text-sm text-muted-foreground">{isAr ? "لا توجد قوائم بعد — ارفع ملفك الأول بالأعلى" : "No lists yet — upload your first file above"}</p>
                 </div>
-                {contacts.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border bg-background/40 p-10 text-center">
-                    <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground/60" />
-                    <p className="text-sm text-muted-foreground">{t.noContacts}</p>
-                  </div>
-                ) : (
-                  <div className="max-h-[500px] space-y-1.5 overflow-y-auto pe-1">
-                    {contacts.map((c) => (
-                      <div key={c.id} className="flex items-center gap-3 rounded-xl border border-border bg-background/50 p-2.5 transition-colors hover:border-primary/40">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-primary/5 text-sm font-bold text-primary">
-                          {c.name.charAt(0).toUpperCase()}
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {lists
+                    .filter(([name]) => !search || name.toLowerCase().includes(search.toLowerCase()))
+                    .map(([name, items]) => {
+                      const display = name === UNTAGGED ? (isAr ? "بدون قائمة" : "No list") : name;
+                      return (
+                        <div key={name} className="group rounded-xl border border-border bg-background/60 p-4 transition-colors hover:border-primary/40">
+                          <div className="flex items-start justify-between">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-bold text-foreground">{display}</p>
+                              <p className="mt-0.5 text-xs text-muted-foreground">{items.length} {isAr ? "رقم" : "contacts"}</p>
+                            </div>
+                            <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary/10 text-primary">
+                              <Users className="h-4 w-4" />
+                            </div>
+                          </div>
+                          <div className="mt-3 flex gap-2">
+                            <button onClick={() => setOpenListView(name)} className="flex-1 rounded-lg border border-border px-2 py-1.5 text-xs font-semibold hover:bg-accent">
+                              {isAr ? "عرض" : "View"}
+                            </button>
+                            <button onClick={() => { setPickedList(name); setTab("compose"); }} className="flex-1 rounded-lg bg-primary px-2 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90">
+                              {isAr ? "إرسال" : "Send"}
+                            </button>
+                            {name !== UNTAGGED && (
+                              <button onClick={() => deleteList(name)} className="rounded-lg border border-border px-2 py-1.5 text-xs text-destructive hover:bg-destructive/10">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-foreground">{c.name}</p>
-                          <p className="text-xs text-muted-foreground" dir="ltr">{c.phone}</p>
-                        </div>
-                        <button onClick={() => deleteContact(c.id)} className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                      );
+                    })}
+                </div>
+              )}
             </div>
+
+            {/* List drawer */}
+            {openListView && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setOpenListView(null)}>
+                <div className="max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl" onClick={(e) => e.stopPropagation()} dir={dir}>
+                  <div className="flex items-center justify-between border-b border-border p-4">
+                    <h3 className="font-bold text-foreground">
+                      {openListView === UNTAGGED ? (isAr ? "بدون قائمة" : "No list") : openListView}
+                    </h3>
+                    <button onClick={() => setOpenListView(null)} className="rounded-lg p-1.5 hover:bg-accent">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="max-h-[60vh] space-y-1 overflow-y-auto p-3">
+                    {contacts
+                      .filter((c) => (c.tags && c.tags.length ? c.tags : [UNTAGGED]).includes(openListView))
+                      .map((c) => (
+                        <div key={c.id} className="flex items-center gap-3 rounded-lg border border-border bg-background/50 p-2">
+                          <div className="grid h-8 w-8 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                            {c.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">{c.name}</p>
+                            <p className="text-xs text-muted-foreground" dir="ltr">{c.phone}</p>
+                          </div>
+                          <button onClick={() => deleteContact(c.id)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Jobs tab */}
+        {/* ============================ JOBS ============================ */}
         {tab === "jobs" && (
           <div className="space-y-3">
+            <div className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3 text-sm">
+              <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <p className="text-foreground">
+                {isAr
+                  ? "تعمل المهمة في الخلفية: المعالج يدور كل دقيقة ويرسل دفعات بحسب الفاصل الزمني الذي اخترته."
+                  : "Jobs run in the background. The worker ticks every minute and sends batches respecting your interval."}
+              </p>
+            </div>
             {jobs.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border bg-card/40 p-10 text-center">
                 <ListChecks className="mx-auto h-10 w-10 text-muted-foreground" />
-                <p className="mt-3 text-sm text-muted-foreground">{t.noJobs}</p>
+                <p className="mt-3 text-sm text-muted-foreground">{isAr ? "لم تُنشأ أي حملة بعد" : "No campaigns yet"}</p>
               </div>
             ) : (
               jobs.map((j) => {
@@ -705,8 +642,13 @@ function BulkSendPage() {
                         <div className="flex items-center gap-2">
                           <h4 className="truncate font-semibold text-foreground">{j.title}</h4>
                           <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusClass}`}>
-                            {t.statuses[j.status] ?? j.status}
+                            {statusLabels[j.status] ?? j.status}
                           </span>
+                          {j.image_url && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                              <ImageIcon className="h-3 w-3" /> {isAr ? "صورة" : "Image"}
+                            </span>
+                          )}
                         </div>
                         <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{j.message}</p>
                         <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
@@ -718,14 +660,14 @@ function BulkSendPage() {
                       </div>
                       {(j.status === "scheduled" || j.status === "running") && (
                         <button onClick={() => cancelJob(j.id)} className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10">
-                          <Pause className="h-3 w-3" /> {t.cancel}
+                          <Pause className="h-3 w-3" /> {isAr ? "إلغاء" : "Cancel"}
                         </button>
                       )}
                     </div>
                     <div className="mt-3">
                       <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-                        <span>{t.progress}</span>
-                        <span>{j.sent_count + j.failed_count} {t.of} {j.total_recipients} • {pct}%</span>
+                        <span>{isAr ? "التقدم" : "Progress"}</span>
+                        <span>{j.sent_count + j.failed_count} {isAr ? "من" : "of"} {j.total_recipients} • {pct}%</span>
                       </div>
                       <div className="h-2 overflow-hidden rounded-full bg-muted">
                         <div className="h-full bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] transition-all" style={{ width: `${pct}%` }} />
@@ -736,7 +678,7 @@ function BulkSendPage() {
               })
             )}
             <Link to="/dashboard/activity" className="inline-block text-xs font-semibold text-primary hover:underline">
-              {lang === "ar" ? "عرض السجل الكامل لكل الإرسالات →" : "View full activity log →"}
+              {isAr ? "عرض السجل الكامل لكل الإرسالات →" : "View full activity log →"}
             </Link>
           </div>
         )}
@@ -745,106 +687,109 @@ function BulkSendPage() {
   );
 }
 
-function BulkPaste({ onImport, label }: { onImport: (t: string) => void; label: string }) {
-  const [text, setText] = useState("");
+function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="space-y-2">
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={3}
-        placeholder={"Ahmed,201001234567\nMona,201112345678"}
-        className="w-full resize-none rounded-lg border border-border bg-background p-2 text-xs focus:border-primary focus:outline-none"
-        dir="ltr"
-      />
-      <button
-        onClick={() => { onImport(text); setText(""); }}
-        disabled={!text.trim()}
-        className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-accent disabled:opacity-50"
-      >
-        <Upload className="h-3 w-3" /> {label}
-      </button>
+    <div className="rounded-xl border border-border bg-background/60 px-3 py-2 text-center">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="text-lg font-bold text-foreground">{value}</p>
     </div>
   );
 }
 
-// Suppress unused-icon warnings for icons used conditionally
-void AlertCircle;
-void Sparkles;
-
-function FileDropzone({
+function UploadListCard({
   isAr,
-  uploading,
+  listName,
+  setListName,
   onFile,
   onSample,
-  labels,
 }: {
   isAr: boolean;
-  uploading: boolean;
+  listName: string;
+  setListName: (v: string) => void;
   onFile: (f: File) => void;
   onSample: () => void;
-  labels: { title: string; desc: string; btn: string; processing: string; format: string; sample: string };
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [uploading, setUploading] = useState(false);
   return (
-    <div
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setDragOver(false);
-        const f = e.dataTransfer.files?.[0];
-        if (f) onFile(f);
-      }}
-      className={`relative overflow-hidden rounded-2xl border-2 border-dashed p-6 transition-all sm:p-8 ${
-        dragOver
-          ? "border-primary bg-primary/10"
-          : "border-border bg-gradient-to-br from-primary/5 via-card to-card hover:border-primary/40"
-      }`}
-    >
-      <div className="absolute -end-10 -top-10 h-32 w-32 rounded-full bg-primary/10 blur-3xl" />
-      <div className="relative flex flex-col items-center gap-4 text-center sm:flex-row sm:items-center sm:gap-6 sm:text-start">
-        <div className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-primary-foreground shadow-lg shadow-primary/25">
-          {uploading ? <Loader2 className="h-7 w-7 animate-spin" /> : <FileSpreadsheet className="h-7 w-7" />}
+    <div className="rounded-2xl border border-border bg-card p-5">
+      <div className="mb-4 flex items-start gap-4">
+        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-primary-foreground shadow-lg shadow-primary/25">
+          <FileSpreadsheet className="h-6 w-6" />
         </div>
         <div className="flex-1">
-          <h3 className="text-base font-bold text-foreground sm:text-lg">{labels.title}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">{labels.desc}</p>
-          <p className="mt-1 text-xs text-muted-foreground/80">{labels.format}</p>
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".csv,.txt,.tsv,text/csv,text/plain"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) onFile(f);
-              e.target.value = "";
-            }}
-          />
-          <button
-            type="button"
-            disabled={uploading}
-            onClick={() => inputRef.current?.click()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-md shadow-primary/20 transition hover:opacity-90 disabled:opacity-60"
-          >
-            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {uploading ? labels.processing : labels.btn}
-          </button>
-          <button
-            type="button"
-            onClick={onSample}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-background/60 px-4 py-2.5 text-xs font-semibold text-foreground transition hover:bg-accent"
-          >
-            <Download className="h-3.5 w-3.5" />
-            {labels.sample}
-          </button>
+          <h3 className="text-base font-bold text-foreground">{isAr ? "رفع قائمة جديدة" : "Upload a new list"}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {isAr
+              ? "اكتب اسم القائمة (مثل: قائمة 1، عملاء القاهرة)، ثم ارفع ملف CSV يحتوي عمودين: الاسم، الرقم."
+              : "Name your list (e.g. List 1, Cairo customers), then upload a CSV with two columns: name, phone."}
+          </p>
         </div>
       </div>
-      {isAr ? null : null}
+
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-muted-foreground">{isAr ? "اسم القائمة" : "List name"}</label>
+          <input
+            value={listName}
+            onChange={(e) => setListName(e.target.value)}
+            placeholder={isAr ? "مثلاً: قائمة 1" : "e.g. List 1"}
+            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={onSample}
+          className="inline-flex items-end justify-center gap-2 rounded-xl border border-border bg-background/60 px-4 py-2 text-xs font-semibold text-foreground transition hover:bg-accent self-end"
+        >
+          <Download className="h-3.5 w-3.5" />
+          {isAr ? "ملف نموذجي" : "Sample"}
+        </button>
+      </div>
+
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={async (e) => {
+          e.preventDefault(); setDragOver(false);
+          const f = e.dataTransfer.files?.[0];
+          if (!f) return;
+          if (!listName.trim()) { toast.error(isAr ? "أدخل اسم القائمة أولاً" : "Enter list name first"); return; }
+          setUploading(true); await onFile(f); setUploading(false);
+        }}
+        className={`mt-3 rounded-2xl border-2 border-dashed p-6 text-center transition-all ${
+          dragOver ? "border-primary bg-primary/10" : "border-border bg-background/40 hover:border-primary/40"
+        }`}
+      >
+        <Upload className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
+        <p className="text-sm text-foreground">
+          {isAr ? "اسحب الملف هنا أو" : "Drag a file here or"}{" "}
+          <button
+            type="button"
+            onClick={() => {
+              if (!listName.trim()) { toast.error(isAr ? "أدخل اسم القائمة أولاً" : "Enter list name first"); return; }
+              inputRef.current?.click();
+            }}
+            className="font-bold text-primary underline-offset-2 hover:underline"
+          >
+            {isAr ? "اختر ملفاً" : "browse"}
+          </button>
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">{isAr ? "يدعم CSV / TXT / TSV (≤ 50,000 رقم)" : "CSV / TXT / TSV (≤ 50,000 rows)"}</p>
+        {uploading && <p className="mt-2 inline-flex items-center gap-1 text-xs text-primary"><Loader2 className="h-3 w-3 animate-spin" /> {isAr ? "جاري المعالجة..." : "Processing..."}</p>}
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".csv,.txt,.tsv,text/csv,text/plain"
+          className="hidden"
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            if (f) { setUploading(true); await onFile(f); setUploading(false); }
+            e.target.value = "";
+          }}
+        />
+      </div>
     </div>
   );
 }
