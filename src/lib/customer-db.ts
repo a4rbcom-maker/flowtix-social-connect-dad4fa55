@@ -83,12 +83,12 @@ const HEADER_HINTS: Record<MappableField, string[]> = {
   notes: ["note", "ملاحظات", "ملاحظة", "comment"],
 };
 
-export function autoMapHeaders(headers: string[]): Partial<Record<keyof CustomerRow, string>> {
-  const map: Partial<Record<keyof CustomerRow, string>> = {};
+export function autoMapHeaders(headers: string[]): Partial<Record<MappableField, string>> {
+  const map: Partial<Record<MappableField, string>> = {};
   const normHeaders = headers.map((h) => ({ raw: h, norm: normalizeArabic(String(h)) }));
-  (Object.keys(HEADER_HINTS) as (keyof CustomerRow)[]).forEach((field) => {
+  (Object.keys(HEADER_HINTS) as MappableField[]).forEach((field) => {
     const hints = HEADER_HINTS[field].map(normalizeArabic);
-    const hit = normHeaders.find((h) => hints.some((k) => h.norm.includes(k)));
+    const hit = normHeaders.find((h) => hints.some((k: string) => h.norm.includes(k)));
     if (hit && !Object.values(map).includes(hit.raw)) map[field] = hit.raw;
   });
   return map;
