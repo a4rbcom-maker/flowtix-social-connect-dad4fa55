@@ -244,14 +244,15 @@ function RulesTab({ ar }: { ar: boolean }) {
 
   return (
     <Card dir={ar ? "rtl" : "ltr"}>
-      <CardHeader className={`flex flex-row items-center justify-between gap-3 ${ar ? "flex-row-reverse" : ""}`}>
-        <div className={ar ? "text-right" : "text-left"}>
+      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className={`min-w-0 ${ar ? "text-right" : "text-left"}`}>
           <CardTitle>{ar ? "قواعد الرد التلقائي" : "Auto-reply rules"}</CardTitle>
           <CardDescription>{ar ? "كل قاعدة تطابق التعليقات وفقاً للنطاق والكلمات." : "Each rule matches comments by scope and keywords."}</CardDescription>
         </div>
-        <Button onClick={openNew}><Plus className="w-4 h-4 me-2"/>{ar ? "قاعدة جديدة" : "New rule"}</Button>
+        <Button onClick={openNew} className="w-full sm:w-auto shrink-0"><Plus className="w-4 h-4 me-2"/>{ar ? "قاعدة جديدة" : "New rule"}</Button>
       </CardHeader>
-      <CardContent>
+      <CardContent className="overflow-x-auto">
+
 
         {!rules?.length ? (
           <p className="text-muted-foreground text-sm">{ar ? "لا توجد قواعد بعد." : "No rules yet."}</p>
