@@ -86,9 +86,11 @@ async function runJob(job) {
     await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
     if (job.account) {
-      let loginFailureReason = "Login failed (check credentials/cookies)";
+      let loginFailureReason = "SESSION_EXPIRED: انتهت صلاحية جلسة حساب فيسبوك — أعد ربط الحساب من صفحة حسابات البوت.";
       const ok = await ensureLogin(page, job.account, async (status, error) => {
-        if (error) loginFailureReason = error;
+        if (error) loginFailureReason = /session|cookie|login|auth|c_user/i.test(error)
+          ? `SESSION_EXPIRED: ${error}`
+          : error;
         await reportUpdate({ jobId: job.id, accountStatus: { accountId: job.account.id, status, error } });
       });
       if (!ok) {
