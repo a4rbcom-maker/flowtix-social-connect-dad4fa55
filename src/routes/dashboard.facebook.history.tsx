@@ -754,8 +754,8 @@ function JobsHistoryPage() {
               />
               <p className="text-xs text-muted-foreground">
                 {lang === "ar"
-                  ? "كل ما قلّت السرعة كل ما قلّ احتمال الحظر."
-                  : "Lower rates reduce the risk of being blocked."}
+                  ? `≈ رسالة كل ${Math.round(3600 / Math.max(1, msgPerHour))} ثانية${msgSelectedAccounts.size > 1 ? ` (موزّعة على ${msgSelectedAccounts.size} حسابات → كل حساب يرسل كل ${Math.round((3600 / Math.max(1, msgPerHour)) * msgSelectedAccounts.size)} ثانية)` : ""}. كل ما قلّت السرعة كل ما قلّ احتمال الحظر.`
+                  : `≈ one message every ${Math.round(3600 / Math.max(1, msgPerHour))}s${msgSelectedAccounts.size > 1 ? ` (split across ${msgSelectedAccounts.size} accounts → each waits ${Math.round((3600 / Math.max(1, msgPerHour)) * msgSelectedAccounts.size)}s)` : ""}. Lower rates reduce block risk.`}
               </p>
             </div>
           </div>
