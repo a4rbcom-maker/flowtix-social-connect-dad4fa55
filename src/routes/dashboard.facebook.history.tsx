@@ -372,6 +372,7 @@ function JobsHistoryPage() {
     setMsgRequireProfile(false);
     setMsgDedupe(true);
     setMsgLimit(500);
+    setMsgSelectedRecipients(new Set());
     setMsgOpen(true);
     // Load active bot accounts (for multi-account rotation)
     try {
