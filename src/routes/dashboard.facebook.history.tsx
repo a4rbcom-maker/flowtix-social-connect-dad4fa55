@@ -898,7 +898,7 @@ function JobsHistoryPage() {
                               <div className="flex flex-wrap items-center gap-2 pt-1">
                                 {!ok && <span className="inline-flex rounded-md bg-muted/70 px-2 py-0.5 text-[10px] text-muted-foreground">{lang === "ar" ? "كود" : "Code"}: <bdi dir="ltr" className="ms-1">{msg.code}</bdi></span>}
                                 {profileUrl && (
-                                  <Button size="sm" variant="outline" asChild className="h-8 gap-1.5">
+                                  <Button size="sm" variant="outline" asChild className="h-8 gap-1.5" onClick={(e) => e.stopPropagation()}>
                                     <a href={profileUrl} target="_blank" rel="noreferrer">
                                       <ExternalLink className="h-3.5 w-3.5" />
                                       <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
