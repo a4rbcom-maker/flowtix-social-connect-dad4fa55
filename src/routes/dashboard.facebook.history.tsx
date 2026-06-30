@@ -1523,8 +1523,8 @@ function PreviewList({
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>
               {lang === "ar"
-                ? `عرض ${start + 1}-${Math.min(start + pageSize, filtered.length)} من ${filtered.length}`
-                : `Showing ${start + 1}-${Math.min(start + pageSize, filtered.length)} of ${filtered.length}`}
+                ? `عرض ${start + 1}-${Math.min(start + pageSize, visible.length)} من ${visible.length}`
+                : `Showing ${start + 1}-${Math.min(start + pageSize, visible.length)} of ${visible.length}`}
             </span>
             <div className="flex items-center gap-2">
               <Button type="button" size="sm" variant="outline" className="h-7" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>
