@@ -632,12 +632,13 @@ function JobsHistoryPage() {
       </AlertDialog>
 
       <Dialog open={msgOpen} onOpenChange={(o) => !msgSubmitting && setMsgOpen(o)}>
-        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="max-w-xl">
+        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-start">
               {lang === "ar" ? "إرسال رسائل للمستخرجين" : "Send messages to extracted people"}
             </DialogTitle>
           </DialogHeader>
+
 
           <div className="space-y-4 text-start">
             <div className="rounded-lg border bg-muted/40 p-3 text-sm leading-relaxed">
