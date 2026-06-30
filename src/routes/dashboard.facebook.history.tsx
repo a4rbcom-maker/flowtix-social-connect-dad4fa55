@@ -1204,19 +1204,57 @@ function PreviewList({
   pageSize: number;
   isSystem: (p: string) => boolean;
 }) {
+  type SortKey = "name" | "city" | "gov";
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const toggleSort = (k: SortKey) => {
+    if (sortKey !== k) { setSortKey(k); setSortDir("asc"); }
+    else if (sortDir === "asc") setSortDir("desc");
+    else { setSortKey(null); setSortDir("asc"); }
+  };
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((e) => {
+    const base = !q ? rows : rows.filter((e) => {
       const blob = `${e.name ?? ""} ${e.phone ?? ""} ${e.profile ?? e.row.target ?? ""} ${e.city ?? ""} ${e.gov ?? ""} ${e.work ?? ""}`.toLowerCase();
       return blob.includes(q);
     });
-  }, [rows, search]);
+    if (!sortKey) return base;
+    const collator = new Intl.Collator(lang === "ar" ? "ar" : "en", { sensitivity: "base", numeric: true });
+    const sorted = [...base].sort((a, b) => {
+      const av = (a[sortKey] ?? "").toString();
+      const bv = (b[sortKey] ?? "").toString();
+      if (!av && !bv) return 0;
+      if (!av) return 1;
+      if (!bv) return -1;
+      return collator.compare(av, bv);
+    });
+    return sortDir === "desc" ? sorted.reverse() : sorted;
+  }, [rows, search, sortKey, sortDir, lang]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const start = (safePage - 1) * pageSize;
   const slice = filtered.slice(start, start + pageSize);
+
+  const SortIcon = ({ k }: { k: SortKey }) => {
+    if (sortKey !== k) return <ArrowUpDown className="w-3 h-3 opacity-50" />;
+    return sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />;
+  };
+
+  const SortableTh = ({ k, label }: { k: SortKey; label: string }) => (
+    <th className="px-2 py-1.5 text-start">
+      <button
+        type="button"
+        onClick={() => toggleSort(k)}
+        className={`inline-flex items-center gap-1 hover:text-foreground ${sortKey === k ? "text-foreground font-medium" : ""}`}
+      >
+        <span>{label}</span>
+        <SortIcon k={k} />
+      </button>
+    </th>
+  );
 
   return (
     <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
@@ -1243,10 +1281,11 @@ function PreviewList({
               <thead className="sticky top-0 bg-muted/80 text-muted-foreground">
                 <tr>
                   <th className="px-2 py-1.5 text-start">#</th>
-                  <th className="px-2 py-1.5 text-start">{lang === "ar" ? "الاسم" : "Name"}</th>
+                  <SortableTh k="name" label={lang === "ar" ? "الاسم" : "Name"} />
                   <th className="px-2 py-1.5 text-start">{lang === "ar" ? "الهاتف" : "Phone"}</th>
                   <th className="px-2 py-1.5 text-start">{lang === "ar" ? "البروفايل" : "Profile"}</th>
-                  <th className="px-2 py-1.5 text-start">{lang === "ar" ? "المدينة" : "City"}</th>
+                  <SortableTh k="city" label={lang === "ar" ? "المدينة" : "City"} />
+                  <SortableTh k="gov" label={lang === "ar" ? "المحافظة" : "Governorate"} />
                 </tr>
               </thead>
               <tbody>
@@ -1263,13 +1302,15 @@ function PreviewList({
                           <a href={profile} target="_blank" rel="noreferrer" className="text-primary hover:underline">{profile}</a>
                         ) : <span className="text-muted-foreground">—</span>}
                       </td>
-                      <td className="px-2 py-1.5">{e.city || e.gov || <span className="text-muted-foreground">—</span>}</td>
+                      <td className="px-2 py-1.5">{e.city || <span className="text-muted-foreground">—</span>}</td>
+                      <td className="px-2 py-1.5">{e.gov || <span className="text-muted-foreground">—</span>}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
+
 
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>
