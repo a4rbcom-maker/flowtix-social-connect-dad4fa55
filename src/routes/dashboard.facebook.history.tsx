@@ -1583,6 +1583,15 @@ function JobsHistoryPage() {
   );
 }
 
+function DetailField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-sm">{children}</div>
+    </div>
+  );
+}
+
 type PreviewRow = {
   name?: string | null;
   phone?: string | null;
