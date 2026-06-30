@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Trash2, RefreshCw, Download, Sparkles, Send, KeyRound, AlertTriangle, Image as ImageIcon, X, Clock } from "lucide-react";
+import { Loader2, Trash2, RefreshCw, Download, Sparkles, Send, KeyRound, AlertTriangle, Image as ImageIcon, X, Clock, Pause, Play } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,7 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
-import { listJobs, getJob, cancelJob, createSendMessengerDmJob, listBotAccounts } from "@/lib/fb-bot.functions";
+import { listJobs, getJob, cancelJob, pauseJob, resumeJob, createSendMessengerDmJob, listBotAccounts } from "@/lib/fb-bot.functions";
 import { loadEgyptData, extractEgyptPhone, detectLocation } from "@/lib/egypt-enrich";
 
 export const Route = createFileRoute("/dashboard/facebook/history")({
@@ -34,7 +34,7 @@ export const Route = createFileRoute("/dashboard/facebook/history")({
 type JobRow = {
   id: string;
   job_type: "post_to_groups" | "extract_pages" | "extract_commenters" | "extract_group_members" | "extract_page_audience" | "list_my_groups" | "deep_profile_scrape" | "send_messenger_dm";
-  status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  status: "pending" | "running" | "completed" | "failed" | "cancelled" | "paused";
   progress: number;
   total_items: number;
   processed_items: number;
@@ -58,6 +58,7 @@ function JobsHistoryPage() {
   const [resultsLoading, setResultsLoading] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<JobRow | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [pausingId, setPausingId] = useState<string | null>(null);
   // Messaging wizard state
   const [msgOpen, setMsgOpen] = useState(false);
   const [msgChannels, setMsgChannels] = useState<{ whatsapp: boolean; messenger: boolean }>({ whatsapp: true, messenger: true });
@@ -96,7 +97,11 @@ function JobsHistoryPage() {
     results: "النتائج",
     download: "تنزيل CSV",
     types: { post_to_groups: "نشر", extract_pages: "صفحات", extract_commenters: "معلقين", extract_group_members: "أعضاء جروب", extract_page_audience: "جمهور صفحة", list_my_groups: "جروباتي", deep_profile_scrape: "فحص عميق للبروفايل", send_messenger_dm: "رسائل ماسنجر" },
-    statuses: { pending: "معلّقة", running: "جارية", completed: "مكتملة", failed: "فشلت", cancelled: "ملغاة" },
+    statuses: { pending: "معلّقة", running: "جارية", completed: "مكتملة", failed: "فشلت", cancelled: "ملغاة", paused: "متوقفة مؤقتاً" },
+    pause: "إيقاف مؤقت",
+    resume: "استئناف",
+    pauseDone: "تم إيقاف المهمة مؤقتاً — اضغط استئناف لإكمالها من نفس المكان",
+    resumeDone: "تمت إعادة تشغيل المهمة — ستكمل من حيث توقفت",
   } : {
     title: "Jobs History",
     subtitle: "All jobs with live progress",
@@ -116,7 +121,11 @@ function JobsHistoryPage() {
     results: "Results",
     download: "Download CSV",
     types: { post_to_groups: "Post", extract_pages: "Pages", extract_commenters: "Commenters", extract_group_members: "Group Members", extract_page_audience: "Page Audience", list_my_groups: "My Groups", deep_profile_scrape: "Deep Profile Scrape", send_messenger_dm: "Messenger DMs" },
-    statuses: { pending: "Pending", running: "Running", completed: "Completed", failed: "Failed", cancelled: "Cancelled" },
+    statuses: { pending: "Pending", running: "Running", completed: "Completed", failed: "Failed", cancelled: "Cancelled", paused: "Paused" },
+    pause: "Pause",
+    resume: "Resume",
+    pauseDone: "Job paused — click Resume to continue from the same point",
+    resumeDone: "Job resumed — it will continue from where it stopped",
   };
 
   const load = async () => {
@@ -170,6 +179,26 @@ function JobsHistoryPage() {
       setCancelTarget(null);
     } catch (e) { toast.error(String(e)); }
     finally { setCancelling(false); }
+  };
+
+  const handlePause = async (j: JobRow) => {
+    setPausingId(j.id);
+    try {
+      await call(pauseJob, { id: j.id });
+      setJobs((prev) => prev.map((x) => (x.id === j.id ? { ...x, status: "paused" } : x)));
+      toast.success(t.pauseDone);
+    } catch (e) { toast.error(String(e)); }
+    finally { setPausingId(null); }
+  };
+
+  const handleResume = async (j: JobRow) => {
+    setPausingId(j.id);
+    try {
+      await call(resumeJob, { id: j.id });
+      setJobs((prev) => prev.map((x) => (x.id === j.id ? { ...x, status: "pending", error_message: null } : x)));
+      toast.success(t.resumeDone);
+    } catch (e) { toast.error(String(e)); }
+    finally { setPausingId(null); }
   };
 
   const isPeople = selected?.job_type === "extract_commenters"
@@ -239,6 +268,7 @@ function JobsHistoryPage() {
     completed: "bg-green-500/15 text-green-700 dark:text-green-400",
     failed: "bg-red-500/15 text-red-700 dark:text-red-400",
     cancelled: "bg-muted text-muted-foreground",
+    paused: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
   }[s]);
 
   // Detect session-expired failures so we surface a clear reconnect CTA
@@ -511,7 +541,29 @@ function JobsHistoryPage() {
                               <Send className="h-4 w-4 text-primary" />
                             </Button>
                           )}
-                          {(j.status === "pending" || j.status === "running") && (
+                          {j.job_type === "send_messenger_dm" && (j.status === "pending" || j.status === "running") && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              title={t.pause}
+                              disabled={pausingId === j.id}
+                              onClick={(e) => { e.stopPropagation(); handlePause(j); }}
+                            >
+                              {pausingId === j.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4 text-amber-600" />}
+                            </Button>
+                          )}
+                          {j.status === "paused" && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              title={t.resume}
+                              disabled={pausingId === j.id}
+                              onClick={(e) => { e.stopPropagation(); handleResume(j); }}
+                            >
+                              {pausingId === j.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 text-primary" />}
+                            </Button>
+                          )}
+                          {(j.status === "pending" || j.status === "running" || j.status === "paused") && (
                             <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setCancelTarget(j); }}>
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>

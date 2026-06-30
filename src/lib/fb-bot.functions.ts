@@ -937,7 +937,76 @@ export const cancelJob = createServerFn({ method: "POST" })
       .from("fb_jobs")
       .update({ status: "cancelled", completed_at: new Date().toISOString() })
       .eq("id", data.id)
+      .in("status", ["pending", "running", "paused"]);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+// ---------- pauseJob ----------
+// Marks the job as paused. On the next `job-update` ping from the worker the
+// API responds with `paused: true` so the worker aborts the current run
+// without reporting failure. Already-persisted progress / results are kept.
+export const pauseJob = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { error } = await supabase
+      .from("fb_jobs")
+      .update({ status: "paused" } as never)
+      .eq("id", data.id)
       .in("status", ["pending", "running"]);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+// ---------- resumeJob ----------
+// Re-queues a paused job. For messenger-DM jobs we rebuild the recipients
+// list, removing anyone that was already attempted (any result row exists)
+// so the worker continues from the exact point it stopped.
+export const resumeJob = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { data: job, error: jErr } = await supabase
+      .from("fb_jobs")
+      .select("id, job_type, payload, status")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (jErr) throw new Error(jErr.message);
+    if (!job) throw new Error("Job not found");
+    if (job.status !== "paused") throw new Error("Job is not paused");
+
+    let newPayload: unknown = job.payload;
+    if (
+      job.job_type === "send_messenger_dm" &&
+      job.payload &&
+      Array.isArray((job.payload as { recipients?: unknown }).recipients)
+    ) {
+      const { data: done } = await supabase
+        .from("fb_job_results")
+        .select("target")
+        .eq("job_id", data.id);
+      const doneSet = new Set((done ?? []).map((r) => String(r.target || "")));
+      const p = job.payload as { recipients: Array<{ profile: string }> } & Record<string, unknown>;
+      newPayload = {
+        ...p,
+        recipients: p.recipients.filter((r) => !doneSet.has(String(r.profile || ""))),
+      };
+    }
+
+    const { error } = await supabase
+      .from("fb_jobs")
+      .update({
+        status: "pending",
+        started_at: null,
+        scheduled_at: new Date().toISOString(),
+        payload: newPayload,
+        error_message: null,
+      } as never)
+      .eq("id", data.id)
+      .eq("status", "paused");
     if (error) throw new Error(error.message);
     return { ok: true };
   });

@@ -57,6 +57,9 @@ async function fetchNextJob() {
 class JobCancelledError extends Error {
   constructor(jobId) { super(`Job ${jobId} cancelled by user`); this.name = "JobCancelledError"; this.cancelled = true; }
 }
+class JobPausedError extends Error {
+  constructor(jobId) { super(`Job ${jobId} paused by user`); this.name = "JobPausedError"; this.paused = true; }
+}
 
 async function reportUpdate(payload) {
   try {
@@ -66,9 +69,14 @@ async function reportUpdate(payload) {
       console.log(`[job ${payload.jobId}] cancellation signal received — aborting`);
       throw new JobCancelledError(payload.jobId);
     }
+    // Server signals user-initiated pause — abort and DO NOT mark failed.
+    if (data && data.paused) {
+      console.log(`[job ${payload.jobId}] pause signal received — stopping (will resume from same point)`);
+      throw new JobPausedError(payload.jobId);
+    }
     return data;
   } catch (e) {
-    if (e instanceof JobCancelledError) throw e;
+    if (e instanceof JobCancelledError || e instanceof JobPausedError) throw e;
     console.error("[update fail]", e.message);
   }
 }
@@ -118,6 +126,8 @@ async function runJob(job) {
   } catch (err) {
     if (err && err.cancelled) {
       console.log(`[job ${job.id}] cancelled — closing browser and skipping failure report`);
+    } else if (err && err.paused) {
+      console.log(`[job ${job.id}] paused — closing browser; status stays 'paused' for resume`);
     } else {
       console.error(`[job ${job.id}] error`, err);
       await reportUpdate({ jobId: job.id, status: "failed", errorMessage: String(err.message || err) }).catch(() => {});
