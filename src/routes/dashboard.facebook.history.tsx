@@ -120,7 +120,11 @@ function JobsHistoryPage() {
     results: "Results",
     download: "Download CSV",
     types: { post_to_groups: "Post", extract_pages: "Pages", extract_commenters: "Commenters", extract_group_members: "Group Members", extract_page_audience: "Page Audience", list_my_groups: "My Groups", deep_profile_scrape: "Deep Profile Scrape", send_messenger_dm: "Messenger DMs" },
-    statuses: { pending: "Pending", running: "Running", completed: "Completed", failed: "Failed", cancelled: "Cancelled" },
+    statuses: { pending: "Pending", running: "Running", completed: "Completed", failed: "Failed", cancelled: "Cancelled", paused: "Paused" },
+    pause: "Pause",
+    resume: "Resume",
+    pauseDone: "Job paused — click Resume to continue from the same point",
+    resumeDone: "Job resumed — it will continue from where it stopped",
   };
 
   const load = async () => {
