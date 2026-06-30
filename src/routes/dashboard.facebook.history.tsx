@@ -336,10 +336,18 @@ function JobsHistoryPage() {
       // per-account rate. Per-account interval is N× the global interval so the
       // *combined* throughput matches the chosen rate-per-hour.
       if (msgChannels.messenger) {
+        const FB_SYSTEM = /\/(business|help|policies|terms|privacy|ads|adsmanager|careers|about|settings|login|recover|gaming|creator|creators|fundraisers|jobs|messages|notifications|saved|memories|friends|games|weather|crisisresponse|lite|mobile|support|legal|brand|newsroom|community|ai|meta|sharer|plugins|dialog|oauth|l\.php|tr|tr\.php)(\/|$|\?)/i;
         const fbRecipients = enrichedRows
           .map((e) => ({ profile: e.profile || e.row.target || "", name: e.name || "" }))
-          .filter((r) => !!r.profile)
+          .filter((r) => !!r.profile && !FB_SYSTEM.test(r.profile))
           .slice(0, 500);
+        const skipped = enrichedRows.filter((e) => {
+          const p = e.profile || e.row.target || "";
+          return !!p && FB_SYSTEM.test(p);
+        }).length;
+        if (skipped > 0) {
+          toast.info(lang === "ar" ? `تم استبعاد ${skipped} رابط ليس بروفايل مستخدم (صفحات نظامية).` : `Skipped ${skipped} non-user URLs (system pages).`);
+        }
         const accountIds = Array.from(msgSelectedAccounts);
         if (fbRecipients.length > 0 && accountIds.length === 0) {
           toast.error(lang === "ar" ? "اختر حساب فيسبوك واحد على الأقل" : "Select at least one Facebook account");
@@ -363,6 +371,7 @@ function JobsHistoryPage() {
           }
         }
       }
+
 
 
       toast.success(
