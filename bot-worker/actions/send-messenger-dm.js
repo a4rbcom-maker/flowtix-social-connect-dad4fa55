@@ -9,13 +9,40 @@ const fs = require("fs");
 const https = require("https");
 const http = require("http");
 
+// Extract a numeric Facebook user ID from any of the URL shapes we see
+// (profile.php?id=, /groups/<gid>/user/<uid>/, raw numeric, m.me/<id>).
+function extractFbUserId(input) {
+  const s = String(input || "").trim();
+  if (!s) return null;
+  if (/^\d{5,}$/.test(s)) return s;
+  const patterns = [
+    /\/groups\/[^/]+\/user\/(\d{5,})/i,
+    /profile\.php\?id=(\d{5,})/i,
+    /\/user\/(\d{5,})/i,
+    /messages\/t\/(\d{5,})/i,
+    /m\.me\/(\d{5,})/i,
+  ];
+  for (const re of patterns) {
+    const m = s.match(re);
+    if (m) return m[1];
+  }
+  return null;
+}
+
 function toProfileUrl(input) {
   const s = String(input || "").trim();
   if (!s) return null;
+  const id = extractFbUserId(s);
+  if (id) return `https://www.facebook.com/profile.php?id=${id}`;
   if (/^https?:\/\//i.test(s)) return s.split("?")[0].replace(/\/$/, "");
-  if (/^\d{5,}$/.test(s)) return `https://www.facebook.com/profile.php?id=${s}`;
   return `https://www.facebook.com/${s.replace(/^\/+/, "").replace(/\/$/, "")}`;
 }
+
+function toMessengerUrl(input) {
+  const id = extractFbUserId(input);
+  return id ? `https://www.facebook.com/messages/t/${id}` : null;
+}
+
 
 function downloadToTmp(url) {
   return new Promise((resolve, reject) => {
@@ -44,37 +71,77 @@ async function attachImage(page, localPath) {
   return true;
 }
 
-async function sendToOne(page, profile, message, imagePath) {
+async function findComposer(page) {
+  return page.evaluate(() => {
+    const sel = [
+      '[contenteditable="true"][role="textbox"]',
+      'div[aria-label*="message" i][contenteditable="true"]',
+      'div[aria-label*="رسالة"][contenteditable="true"]',
+      'div[aria-label*="Aa"][contenteditable="true"]',
+    ];
+    for (const s of sel) {
+      const el = document.querySelector(s);
+      if (el) return true;
+    }
+    return false;
+  });
+}
+
+async function openViaMessenger(page, profile) {
+  const mUrl = toMessengerUrl(profile);
+  if (!mUrl) return false;
+  try {
+    await page.goto(mUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  } catch (_) { return false; }
+  await new Promise((r) => setTimeout(r, 4000));
+  if (/\/login|checkpoint/i.test(page.url())) return false;
+  // If FB blocked the DM (e.g. "You can't message this person"), bail.
+  const blocked = await page.evaluate(() => {
+    const t = document.body?.innerText || "";
+    return /can't message|can’t message|لا يمكنك مراسلة|غير متاح|This person isn't available/i.test(t);
+  });
+  if (blocked) return false;
+  return await findComposer(page);
+}
+
+async function openViaProfile(page, profile) {
   const url = toProfileUrl(profile);
-  if (!url) return { status: "failed", error: "invalid profile" };
-
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  if (!url) return false;
+  try {
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  } catch (_) { return false; }
   await new Promise((r) => setTimeout(r, 3500));
-
-  if (/\/login|checkpoint/i.test(page.url())) {
-    return { status: "failed", error: "session lost" };
-  }
-
-  // Click "Message" button (English/Arabic)
+  if (/\/login|checkpoint/i.test(page.url())) return false;
   const clicked = await page.evaluate(() => {
     const btns = Array.from(document.querySelectorAll('[role="button"], a[role="link"]'));
     const target = btns.find((b) => /^\s*(Message|رسالة|إرسال رسالة)\s*$/i.test((b.textContent || "").trim()));
     if (target) { target.click(); return true; }
     return false;
   });
-  if (!clicked) return { status: "failed", error: "Message button not visible (not friends / closed DMs)" };
-
+  if (!clicked) return false;
   await new Promise((r) => setTimeout(r, 3000));
+  return await findComposer(page);
+}
 
-  if (imagePath) {
-    try { await attachImage(page, imagePath); } catch (e) { /* fall through, send text only */ }
+async function sendToOne(page, profile, message, imagePath) {
+  // 1) Preferred: open Messenger thread directly (works for /groups/.../user/<id>/ too).
+  let ready = await openViaMessenger(page, profile);
+  // 2) Fallback: visit the profile and click the Message button.
+  if (!ready) ready = await openViaProfile(page, profile);
+  if (!ready) {
+    if (/\/login|checkpoint/i.test(page.url())) return { status: "failed", error: "session lost" };
+    return { status: "failed", error: "Cannot open DM (recipient blocks non-friend messages or DMs closed)" };
   }
 
-  // Find the message composer (contenteditable)
+  if (imagePath) {
+    try { await attachImage(page, imagePath); } catch (_) { /* send text only */ }
+  }
+
   const typed = await page.evaluate((msg) => {
     const editor = document.querySelector('[contenteditable="true"][role="textbox"]')
       || document.querySelector('div[aria-label*="message" i][contenteditable="true"]')
-      || document.querySelector('div[aria-label*="رسالة"][contenteditable="true"]');
+      || document.querySelector('div[aria-label*="رسالة"][contenteditable="true"]')
+      || document.querySelector('div[aria-label*="Aa"][contenteditable="true"]');
     if (!editor) return false;
     editor.focus();
     document.execCommand("insertText", false, msg);
@@ -88,6 +155,7 @@ async function sendToOne(page, profile, message, imagePath) {
 
   return { status: "success" };
 }
+
 
 async function runSendMessengerDm({ page, job, report }) {
   const { recipients = [], message = "", intervalSeconds = 180, imageUrls = [] } = job.payload || {};
