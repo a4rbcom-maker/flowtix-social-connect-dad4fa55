@@ -909,13 +909,14 @@ function JobsHistoryPage() {
                     <div className="overflow-hidden rounded-lg border">
                       <table className="w-full table-fixed text-sm">
                         <colgroup>
-                          <col className="w-12" />
-                          <col className={compactView ? "w-[34%]" : "w-[28%]"} />
+                          <col className="w-10" />
+                          <col className={compactView ? "w-[34%]" : "w-[26%]"} />
                           <col className="w-24" />
                           <col />
-                          {!compactView && <col className="w-28" />}
-                          {!compactView && <col className="w-28" />}
+                          {!compactView && <col className="w-32" />}
+                          {!compactView && <col className="w-40" />}
                         </colgroup>
+
                         <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                           <tr>
                             <th className="px-3 py-2.5 text-start">#</th>
