@@ -79,17 +79,27 @@ async function attachImage(page, localPath) {
 
 async function findComposer(page) {
   return page.evaluate(() => {
-    const sel = [
-      '[contenteditable="true"][role="textbox"]',
-      'div[aria-label*="message" i][contenteditable="true"]',
-      'div[aria-label*="رسالة"][contenteditable="true"]',
-      'div[aria-label*="Aa"][contenteditable="true"]',
-    ];
-    for (const s of sel) {
-      const el = document.querySelector(s);
-      if (el) return true;
-    }
-    return false;
+    const normalize = (v) => String(v || "").replace(/\s+/g, " ").trim();
+    const isVisible = (el) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 40 && r.height > 12 && r.bottom > 0 && r.right > 0;
+    };
+    const isMessengerComposer = (el) => {
+      const label = normalize([
+        el.getAttribute("aria-label"),
+        el.getAttribute("aria-placeholder"),
+        el.getAttribute("placeholder"),
+        el.getAttribute("data-testid"),
+        el.getAttribute("role"),
+      ].filter(Boolean).join(" "));
+      if (/search|بحث|comment|تعليق|post|منشور/i.test(label)) return false;
+      if (/(^|\s)(Aa|Message|Type a message|Write a message|رسالة|اكتب رسالة|اكتب رسالتك)(\s|$)/i.test(label)) return true;
+      const r = el.getBoundingClientRect();
+      const inChatArea = r.top > window.innerHeight * 0.35 && r.height <= 90;
+      const hasMessengerUi = /Messenger|ماسنجر|الدردشات|الرسائل والمكالمات/i.test(document.body?.innerText || "");
+      return hasMessengerUi && inChatArea;
+    };
+    return Array.from(document.querySelectorAll('[contenteditable="true"]')).some((el) => isVisible(el) && isMessengerComposer(el));
   });
 }
 
@@ -102,12 +112,21 @@ async function diagnoseDmPage(page) {
   return await page.evaluate(() => {
     const text = document.body?.innerText || "";
     const lower = text.toLowerCase();
-    const hasComposer = !!(
-      document.querySelector('[contenteditable="true"][role="textbox"]') ||
-      document.querySelector('div[aria-label*="message" i][contenteditable="true"]') ||
-      document.querySelector('div[aria-label*="رسالة"][contenteditable="true"]') ||
-      document.querySelector('div[aria-label*="Aa"][contenteditable="true"]')
-    );
+    const normalize = (v) => String(v || "").replace(/\s+/g, " ").trim();
+    const hasComposer = Array.from(document.querySelectorAll('[contenteditable="true"]')).some((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.width <= 40 || r.height <= 12 || r.bottom <= 0 || r.right <= 0) return false;
+      const label = normalize([
+        el.getAttribute("aria-label"),
+        el.getAttribute("aria-placeholder"),
+        el.getAttribute("placeholder"),
+        el.getAttribute("data-testid"),
+        el.getAttribute("role"),
+      ].filter(Boolean).join(" "));
+      if (/search|بحث|comment|تعليق|post|منشور/i.test(label)) return false;
+      if (/(^|\s)(Aa|Message|Type a message|Write a message|رسالة|اكتب رسالة|اكتب رسالتك)(\s|$)/i.test(label)) return true;
+      return /Messenger|ماسنجر|الدردشات|الرسائل والمكالمات/i.test(text) && r.top > window.innerHeight * 0.35 && r.height <= 90;
+    });
     if (hasComposer) return { ok: true, reason: null };
 
     if (/can(?:not|'t|’t) message|can't reply|you can no longer send messages|this person isn't available|recipient unavailable/i.test(text)) {
@@ -148,6 +167,36 @@ async function openViaMessenger(page, profile) {
   return await diagnoseDmPage(page);
 }
 
+async function waitForComposer(page, timeoutMs = 12000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (await findComposer(page)) return true;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
+}
+
+async function clickVisibleMessageAction(page) {
+  const locators = [
+    page.getByRole("button", { name: /^(مراسلة|رسالة|إرسال رسالة|Message|Send message)$/i }),
+    page.getByText(/^(مراسلة|رسالة|إرسال رسالة|Message|Send message)$/i),
+    page.locator('[aria-label*="مراسلة"], [aria-label*="رسالة"], [aria-label*="Message" i], [title*="مراسلة"], [title*="Message" i]'),
+  ];
+  for (const locator of locators) {
+    try {
+      const count = Math.min(await locator.count(), 5);
+      for (let i = 0; i < count; i += 1) {
+        const item = locator.nth(i);
+        if (await item.isVisible({ timeout: 1000 }).catch(() => false)) {
+          await item.click({ timeout: 5000 });
+          return true;
+        }
+      }
+    } catch (_) { /* try next locator */ }
+  }
+  return false;
+}
+
 async function openViaProfile(page, profile) {
   const url = toProfileUrl(profile);
   if (!url) return { ok: false, reason: "NO_PROFILE_URL" };
@@ -156,35 +205,41 @@ async function openViaProfile(page, profile) {
   } catch (_) { return { ok: false, reason: "PROFILE_NAV_FAILED" }; }
   await new Promise((r) => setTimeout(r, 3500));
   if (/\/login|checkpoint/i.test(page.url())) return { ok: false, reason: "SESSION_EXPIRED" };
-  const clicked = await page.evaluate(() => {
+  let clicked = await page.evaluate(async () => {
     const normalize = (v) => String(v || "").replace(/\s+/g, " ").trim();
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const isMessageAction = (el) => {
       const text = normalize(el.textContent);
       const aria = normalize(el.getAttribute("aria-label") || el.getAttribute("title"));
       const label = `${text} ${aria}`;
-      return /(^|\s)(Message|Messenger|Send message|رسالة|مراسلة|إرسال رسالة)(\s|$)/i.test(label);
+      if (/^(إضافة صديق|Add friend|تعرف على الإسهامات|View profile|عرض الملف الشخصي)$/i.test(text)) return false;
+      return /(Message|Messenger|Send message|رسالة|مراسلة|إرسال رسالة)/i.test(label);
     };
-    const btns = Array.from(document.querySelectorAll('[role="button"], a[role="link"], a[href*="/messages/"], a[href*="m.me/"]'));
-    const target = btns.find(isMessageAction);
+    const getActions = () => Array.from(document.querySelectorAll('[role="button"], a[role="link"], a[href*="/messages/"], a[href*="m.me/"]'));
+    const directLink = getActions().find((el) => /\/messages\/|m\.me\//i.test(el.getAttribute("href") || ""));
+    if (directLink) { directLink.click(); return true; }
+    const target = getActions().find(isMessageAction);
     if (target) { target.click(); return true; }
 
     // Some profile/group-member pages hide the Message action under an actions
     // menu. Open likely menus, then search again.
-    const menus = btns.filter((b) => {
+    const menus = getActions().filter((b) => {
       const text = normalize(b.textContent);
       const aria = normalize(b.getAttribute("aria-label") || b.getAttribute("title"));
-      return /^(More|Menu|المزيد|خيارات|More options)$/i.test(text) || /More|Menu|المزيد|خيارات/i.test(aria);
+      return /^(More|Menu|المزيد|خيارات|More options|⋯|\.\.\.)$/i.test(text) || /More|Menu|المزيد|خيارات|See more/i.test(aria);
     });
     for (const menu of menus.slice(0, 3)) {
       menu.click();
-      const menuItems = Array.from(document.querySelectorAll('[role="menuitem"], [role="button"], a[role="link"]'));
+      await wait(800);
+      const menuItems = getActions().concat(Array.from(document.querySelectorAll('[role="menuitem"], [role="menuitemradio"]')));
       const item = menuItems.find(isMessageAction);
       if (item) { item.click(); return true; }
     }
     return false;
   });
+  if (!clicked) clicked = await clickVisibleMessageAction(page);
   if (!clicked) return { ok: false, reason: "PROFILE_MESSAGE_BUTTON_MISSING" };
-  await new Promise((r) => setTimeout(r, 3000));
+  await waitForComposer(page, 12000);
   return await diagnoseDmPage(page);
 }
 
@@ -205,10 +260,23 @@ async function sendToOne(page, profile, message, imagePath) {
   }
 
   const typed = await page.evaluate((msg) => {
-    const editor = document.querySelector('[contenteditable="true"][role="textbox"]')
-      || document.querySelector('div[aria-label*="message" i][contenteditable="true"]')
-      || document.querySelector('div[aria-label*="رسالة"][contenteditable="true"]')
-      || document.querySelector('div[aria-label*="Aa"][contenteditable="true"]');
+    const normalize = (v) => String(v || "").replace(/\s+/g, " ").trim();
+    const candidates = Array.from(document.querySelectorAll('[contenteditable="true"]'));
+    const editor = candidates.find((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.width <= 40 || r.height <= 12 || r.bottom <= 0 || r.right <= 0) return false;
+      const label = normalize([
+        el.getAttribute("aria-label"),
+        el.getAttribute("aria-placeholder"),
+        el.getAttribute("placeholder"),
+        el.getAttribute("data-testid"),
+        el.getAttribute("role"),
+      ].filter(Boolean).join(" "));
+      if (/search|بحث|comment|تعليق|post|منشور/i.test(label)) return false;
+      if (/(^|\s)(Aa|Message|Type a message|Write a message|رسالة|اكتب رسالة|اكتب رسالتك)(\s|$)/i.test(label)) return true;
+      const hasMessengerUi = /Messenger|ماسنجر|الدردشات|الرسائل والمكالمات/i.test(document.body?.innerText || "");
+      return hasMessengerUi && r.top > window.innerHeight * 0.35 && r.height <= 90;
+    });
     if (!editor) return false;
     editor.focus();
     document.execCommand("insertText", false, msg);
@@ -218,6 +286,16 @@ async function sendToOne(page, profile, message, imagePath) {
 
   await new Promise((r) => setTimeout(r, 1500));
   await page.keyboard.press("Enter");
+  await new Promise((r) => setTimeout(r, 1200));
+  await page.evaluate(() => {
+    const normalize = (v) => String(v || "").replace(/\s+/g, " ").trim();
+    const buttons = Array.from(document.querySelectorAll('[role="button"], [aria-label], [data-testid]'));
+    const send = buttons.find((el) => {
+      const label = `${normalize(el.textContent)} ${normalize(el.getAttribute("aria-label") || el.getAttribute("title") || el.getAttribute("data-testid"))}`;
+      return /(Send|إرسال)/i.test(label);
+    });
+    if (send) send.click();
+  });
   await new Promise((r) => setTimeout(r, 2500));
 
   return { status: "success" };
