@@ -986,6 +986,9 @@ function JobsHistoryPage() {
               setPage={setPreviewPage}
               pageSize={PREVIEW_PAGE_SIZE}
               isSystem={(p: string) => FB_SYSTEM_RE.test(p)}
+              selectedKeys={msgSelectedRecipients}
+              setSelectedKeys={setMsgSelectedRecipients}
+              keyFor={recipientKey}
             />
 
 
