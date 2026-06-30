@@ -846,6 +846,7 @@ export const createSendMessengerDmJob = createServerFn({ method: "POST" })
           recipients,
           message: data.message,
           intervalSeconds: data.intervalSeconds,
+          imageUrls: data.imageUrls ?? [],
           label: data.label ?? null,
         },
         total_items: recipients.length,
