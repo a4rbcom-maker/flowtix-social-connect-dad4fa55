@@ -172,6 +172,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
             { kind: "subheader", label: lang === "ar" ? "استخراج جهات الاتصال" : "Extract Contacts" },
             { kind: "leaf", icon: MessageSquareQuote, label: lang === "ar" ? "استخراج المعلقين على منشور" : "Extract post commenters", to: "/dashboard/facebook/jobs", search: { tab: "commenters" } },
             { kind: "leaf", icon: UsersRound, label: lang === "ar" ? "استخراج أعضاء جروب" : "Extract group members", to: "/dashboard/facebook/jobs", search: { tab: "groupmembers" } },
+            { kind: "leaf", icon: Activity, label: lang === "ar" ? "حالة استخراج أعضاء الجروبات" : "Group extraction status", to: "/dashboard/facebook/group-extraction" },
             { kind: "leaf", icon: Target, label: lang === "ar" ? "استخراج متابعي صفحة" : "Extract page followers", to: "/dashboard/facebook/jobs", search: { tab: "pageaudience" } },
 
             { kind: "subheader", label: lang === "ar" ? "الرسائل والإحصائيات" : "Messages & Stats" },
