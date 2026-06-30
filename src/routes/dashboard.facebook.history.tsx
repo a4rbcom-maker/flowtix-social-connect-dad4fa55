@@ -213,6 +213,94 @@ function JobsHistoryPage() {
     cancelled: "bg-muted text-muted-foreground",
   }[s]);
 
+  // Counts for the messaging wizard preview
+  const phoneCount = enrichedRows.filter((e) => !!e.phone).length;
+  const profileCount = enrichedRows.filter((e) => !!(e.profile || e.row.target)).length;
+
+  const openMessenger = () => {
+    if (!selected) return;
+    const groupLabel = selected ? t.types[selected.job_type] : "";
+    setMsgTitle(lang === "ar" ? `حملة - ${groupLabel}` : `Campaign - ${groupLabel}`);
+    setMsgText("");
+    setMsgPerHour(20);
+    setMsgChannels({ whatsapp: phoneCount > 0, messenger: profileCount > 0 });
+    setMsgOpen(true);
+  };
+
+  const launchMessaging = async () => {
+    if (!user || !selected) return;
+    const message = msgText.trim();
+    if (message.length < 2) { toast.error(lang === "ar" ? "اكتب نص الرسالة" : "Enter message text"); return; }
+    if (!msgChannels.whatsapp && !msgChannels.messenger) { toast.error(lang === "ar" ? "اختر قناة واحدة على الأقل" : "Pick at least one channel"); return; }
+
+    const intervalSec = Math.max(36, Math.round(3600 / Math.max(1, msgPerHour)));
+    setMsgSubmitting(true);
+    try {
+      let waCount = 0;
+      let fbCount = 0;
+
+      // ---- WhatsApp: create a bulk_jobs row + recipients (only those with phone)
+      if (msgChannels.whatsapp) {
+        const waRecipients = enrichedRows
+          .filter((e) => !!e.phone)
+          .map((e) => ({ name: e.name || "", phone: String(e.phone) }));
+        if (waRecipients.length > 0) {
+          const { data: job, error } = await supabase
+            .from("bulk_jobs")
+            .insert({
+              user_id: user.id,
+              channel: "bulk",
+              title: msgTitle.trim() || (lang === "ar" ? "حملة واتساب" : "WhatsApp campaign"),
+              message,
+              interval_seconds: intervalSec,
+              batch_size: 1,
+              scheduled_at: new Date().toISOString(),
+              status: "scheduled",
+              total_recipients: waRecipients.length,
+            })
+            .select("id")
+            .single();
+          if (error || !job) throw new Error(error?.message || "WhatsApp campaign insert failed");
+          const rows = waRecipients.map((r) => ({ job_id: job.id, user_id: user.id, name: r.name, phone: r.phone }));
+          const { error: rErr } = await supabase.from("bulk_job_recipients").insert(rows);
+          if (rErr) throw new Error(rErr.message);
+          waCount = waRecipients.length;
+        }
+      }
+
+      // ---- Messenger: create fb_jobs send_messenger_dm
+      if (msgChannels.messenger) {
+        const fbRecipients = enrichedRows
+          .map((e) => ({ profile: e.profile || e.row.target || "", name: e.name || "" }))
+          .filter((r) => !!r.profile);
+        if (fbRecipients.length > 0 && selected.account_id) {
+          await call(createSendMessengerDmJob, {
+            accountId: selected.account_id,
+            recipients: fbRecipients.slice(0, 500),
+            message,
+            intervalSeconds: intervalSec,
+            label: msgTitle.trim() || undefined,
+          });
+          fbCount = fbRecipients.length;
+        } else if (msgChannels.messenger && !selected.account_id) {
+          toast.error(lang === "ar" ? "لا يوجد حساب فيسبوك مرتبط بهذه المهمة" : "No FB account linked to this job");
+        }
+      }
+
+      toast.success(
+        lang === "ar"
+          ? `تم: واتساب ${waCount} · ماسنجر ${fbCount}`
+          : `Queued: WhatsApp ${waCount} · Messenger ${fbCount}`,
+      );
+      setMsgOpen(false);
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setMsgSubmitting(false);
+    }
+  };
+
+
   return (
     <DashboardLayout title={t.title}>
       <div className="space-y-6">
