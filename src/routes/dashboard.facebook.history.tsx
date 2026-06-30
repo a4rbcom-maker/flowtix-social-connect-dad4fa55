@@ -890,15 +890,15 @@ function JobsHistoryPage() {
       </AlertDialog>
 
       <Dialog open={msgOpen} onOpenChange={(o) => !msgSubmitting && setMsgOpen(o)}>
-        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="flex max-h-[92dvh] w-[calc(100vw-1rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:w-[min(920px,calc(100vw-2rem))] sm:max-w-4xl">
+          <DialogHeader className="shrink-0 border-b px-4 py-4 sm:px-5">
             <DialogTitle className="text-start">
               {lang === "ar" ? "إرسال رسائل للمستخرجين" : "Send messages to extracted people"}
             </DialogTitle>
           </DialogHeader>
 
 
-          <div className="space-y-4 text-start">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 text-start sm:px-5">
             <div className="rounded-lg border bg-muted/40 p-3 text-sm leading-relaxed">
               <div className="font-semibold mb-1">
                 {lang === "ar" ? "ملخّص المستلمين" : "Recipient summary"}
@@ -1301,11 +1301,11 @@ function JobsHistoryPage() {
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setMsgOpen(false)} disabled={msgSubmitting}>
+          <DialogFooter className="shrink-0 gap-2 border-t bg-background px-4 py-4 sm:px-5">
+            <Button variant="outline" onClick={() => setMsgOpen(false)} disabled={msgSubmitting} className="w-full sm:w-auto">
               {lang === "ar" ? "إلغاء" : "Cancel"}
             </Button>
-            <Button onClick={launchMessaging} disabled={msgSubmitting || sendRows.length === 0} className="gap-2">
+            <Button onClick={launchMessaging} disabled={msgSubmitting || sendRows.length === 0} className="w-full min-w-0 justify-center gap-2 whitespace-normal sm:w-auto">
               {msgSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
               <Send className="h-4 w-4" />
               {msgSelectedRecipients.size > 0
