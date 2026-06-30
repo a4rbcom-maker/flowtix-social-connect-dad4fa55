@@ -250,6 +250,54 @@ function JobsHistoryPage() {
   const phoneCount = enrichedRows.filter((e) => !!e.phone).length;
   const profileCount = enrichedRows.filter((e) => !!(e.profile || e.row.target)).length;
 
+  // ---- Recipient filtering (applied inside the messaging dialog) ----
+  const FB_SYSTEM_RE = /\/(business|help|policies|terms|privacy|ads|adsmanager|careers|about|settings|login|recover|gaming|creator|creators|fundraisers|jobs|messages|notifications|saved|memories|friends|games|weather|crisisresponse|lite|mobile|support|legal|brand|newsroom|community|ai|meta|sharer|plugins|dialog|oauth|l\.php|tr|tr\.php)(\/|$|\?)/i;
+  const filteredRows = useMemo(() => {
+    const cityQ = msgFilterCity.trim().toLowerCase();
+    const kwList = msgFilterKeyword.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const seenPhones = new Set<string>();
+    const seenProfiles = new Set<string>();
+    const out: typeof enrichedRows = [];
+    for (const e of enrichedRows) {
+      const profile = e.profile || e.row.target || "";
+      const hasPhone = !!e.phone;
+      const hasProfile = !!profile && !FB_SYSTEM_RE.test(profile);
+      if (msgRequirePhone && !hasPhone) continue;
+      if (msgRequireProfile && !hasProfile) continue;
+      if (!hasPhone && !hasProfile) continue;
+      if (cityQ) {
+        const cityBlob = `${e.city ?? ""} ${e.gov ?? ""} ${e.declared ?? ""}`.toLowerCase();
+        if (!cityBlob.includes(cityQ)) continue;
+      }
+      if (kwList.length > 0) {
+        const blob = `${e.name ?? ""} ${e.work ?? ""}`.toLowerCase();
+        if (!kwList.some((k) => blob.includes(k))) continue;
+      }
+      if (msgDedupe) {
+        if (hasPhone) {
+          const key = String(e.phone).replace(/\D/g, "");
+          if (seenPhones.has(key)) continue;
+          seenPhones.add(key);
+        }
+        if (hasProfile) {
+          const key = profile.toLowerCase();
+          if (seenProfiles.has(key)) continue;
+          seenProfiles.add(key);
+        }
+      }
+      out.push(e);
+      if (out.length >= msgLimit) break;
+    }
+    return out;
+  }, [enrichedRows, msgFilterCity, msgFilterKeyword, msgRequirePhone, msgRequireProfile, msgDedupe, msgLimit]);
+
+  const filteredWaCount = filteredRows.filter((e) => !!e.phone).length;
+  const filteredFbCount = filteredRows.filter((e) => {
+    const p = e.profile || e.row.target || "";
+    return !!p && !FB_SYSTEM_RE.test(p);
+  }).length;
+
+
   const openMessenger = async () => {
     if (!selected) return;
     const groupLabel = selected ? t.types[selected.job_type] : "";
