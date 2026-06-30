@@ -459,7 +459,7 @@ function JobsHistoryPage() {
       // *combined* throughput matches the chosen rate-per-hour.
       if (msgChannels.messenger) {
         const FB_SYSTEM = FB_SYSTEM_RE;
-        const fbRecipients = filteredRows
+        const fbRecipients = sendRows
           .map((e) => ({ profile: e.profile || e.row.target || "", name: e.name || "" }))
           .filter((r) => !!r.profile && !FB_SYSTEM.test(r.profile));
         const skipped = enrichedRows.filter((e) => {
