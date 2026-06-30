@@ -47,10 +47,10 @@ function AutoReplyPage() {
   return (
     <DashboardLayout title={ar ? "الرد التلقائي" : "Auto-Reply"}>
       <div className="container mx-auto p-6 space-y-6" dir={ar ? "rtl" : "ltr"}>
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-3">
-            <Sparkles className="w-8 h-8 text-primary" />
-            {ar ? "الرد التلقائي على تعليقات الفيسبوك" : "Facebook Auto-Reply"}
+        <div className={ar ? "text-right" : "text-left"}>
+          <h1 className={`text-3xl font-bold flex items-center gap-3 ${ar ? "justify-end flex-row-reverse" : "justify-start"}`}>
+            <Sparkles className="w-8 h-8 text-primary shrink-0" />
+            <span>{ar ? "الرد التلقائي على تعليقات الفيسبوك" : "Facebook Auto-Reply"}</span>
           </h1>
           <p className="text-muted-foreground mt-1">
             {ar
@@ -59,8 +59,8 @@ function AutoReplyPage() {
           </p>
         </div>
 
-        <Tabs defaultValue="rules" className="space-y-4">
-          <TabsList>
+        <Tabs defaultValue="rules" className="space-y-4" dir={ar ? "rtl" : "ltr"}>
+          <TabsList className={ar ? "flex-row-reverse" : ""}>
             <TabsTrigger value="rules"><Sparkles className="w-4 h-4 me-2"/>{ar ? "القواعد" : "Rules"}</TabsTrigger>
             <TabsTrigger value="pages"><Settings className="w-4 h-4 me-2"/>{ar ? "الصفحات المربوطة" : "Connected pages"}</TabsTrigger>
             <TabsTrigger value="log"><Activity className="w-4 h-4 me-2"/>{ar ? "السجل" : "Log"}</TabsTrigger>
@@ -74,6 +74,7 @@ function AutoReplyPage() {
     </DashboardLayout>
   );
 }
+
 
 /* ====================== PAGES TAB ====================== */
 function PagesTab({ ar }: { ar: boolean }) {
