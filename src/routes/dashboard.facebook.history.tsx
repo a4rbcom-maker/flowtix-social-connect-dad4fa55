@@ -897,6 +897,7 @@ function JobsHistoryPage() {
               </table>
             </div>
           )}
+          </div>
         </DialogContent>
       </Dialog>
 
