@@ -659,6 +659,88 @@ function JobsHistoryPage() {
               </p>
             </div>
 
+            {/* Image attachments (optional) */}
+            {msgChannels.messenger && (
+              <div className="space-y-2">
+                <Label className="block text-start">
+                  {lang === "ar" ? "صور مرفقة (اختياري)" : "Attached images (optional)"}
+                </Label>
+                <div className="flex flex-wrap items-center gap-2">
+                  {msgImages.map((url) => (
+                    <div key={url} className="relative h-16 w-16 overflow-hidden rounded-md border">
+                      <img src={url} alt="" className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setMsgImages((p) => p.filter((u) => u !== url))}
+                        className="absolute top-0 end-0 rounded-bl bg-black/60 p-0.5 text-white hover:bg-black/80"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <label className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-md border border-dashed text-muted-foreground hover:bg-muted/50">
+                    {msgUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleMsgImageUpload} disabled={msgUploading} />
+                  </label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {lang === "ar"
+                    ? "لو رفعت أكتر من صورة، البوت بيدوّر عليها لتجنّب الحظر."
+                    : "If you upload multiple images, the bot rotates between them to reduce blocks."}
+                </p>
+              </div>
+            )}
+
+            {/* Multi-account selector for Messenger */}
+            {msgChannels.messenger && (
+              <div className="space-y-2">
+                <Label className="block text-start">
+                  {lang === "ar" ? "حسابات فيسبوك للإرسال (تدوير تلقائي)" : "Facebook accounts (auto-rotation)"}
+                </Label>
+                {msgAccounts.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    {lang === "ar" ? "لا توجد حسابات نشطة. أضف حساب من صفحة حسابات البوت." : "No active accounts. Add one from the Bot Accounts page."}
+                  </p>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      <Button type="button" size="sm" variant="outline" onClick={() => setMsgSelectedAccounts(new Set(msgAccounts.map((a) => a.id)))}>
+                        {lang === "ar" ? "اختر الكل" : "Select all"}
+                      </Button>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => setMsgSelectedAccounts(new Set())}>
+                        {lang === "ar" ? "مسح" : "Clear"}
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {msgAccounts.map((a) => {
+                        const on = msgSelectedAccounts.has(a.id);
+                        return (
+                          <button
+                            type="button"
+                            key={a.id}
+                            onClick={() => setMsgSelectedAccounts((prev) => {
+                              const n = new Set(prev);
+                              if (n.has(a.id)) n.delete(a.id); else n.add(a.id);
+                              return n;
+                            })}
+                            className={`rounded-full border px-3 py-1 text-xs transition ${on ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
+                          >
+                            {on ? "✓ " : ""}{a.display_name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {lang === "ar"
+                        ? `سيتم توزيع المستلمين بالتناوب (رسالة من كل حساب). المحدد: ${msgSelectedAccounts.size}/${msgAccounts.length}`
+                        : `Recipients will round-robin across accounts. Selected: ${msgSelectedAccounts.size}/${msgAccounts.length}`}
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+
+
             <div className="space-y-2">
               <Label className="block text-start">
                 {lang === "ar" ? `سرعة الإرسال: ${msgPerHour} / ساعة` : `Send rate: ${msgPerHour} / hour`}
