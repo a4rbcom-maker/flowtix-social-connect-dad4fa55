@@ -417,38 +417,71 @@ function JobsHubPage() {
           </TabsContent>
 
           <TabsContent value="pageaudience">
-            <Card dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-4 p-5 text-start">
-              <p className="text-sm text-muted-foreground">{t.paHint}</p>
-              <div className="space-y-2">
-                <Label>{t.paPage}</Label>
-                <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" placeholder={t.paPagePh} value={pageAudienceId} onChange={(e) => setPageAudienceId(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>{t.paSources}</Label>
-                <div className="flex flex-wrap gap-4 pt-1">
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="checkbox" checked={paFollowers} onChange={(e) => setPaFollowers(e.target.checked)} />
-                    {t.paFollowersLabel}
-                  </label>
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="checkbox" checked={paLikers} onChange={(e) => setPaLikers(e.target.checked)} />
-                    {t.paLikersLabel}
-                  </label>
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="checkbox" checked={paEngagers} onChange={(e) => setPaEngagers(e.target.checked)} />
-                    {t.paEngagersLabel}
-                  </label>
+            <div className="space-y-4">
+              <div dir={lang === "ar" ? "rtl" : "ltr"} className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-start">
+                <div className="flex items-start gap-3">
+                  <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div className="space-y-3">
+                    <div>
+                      <h4 className="font-semibold text-foreground">{t.paLimitsTitle}</h4>
+                      <p className="mt-1 text-sm text-muted-foreground">{t.paLimitsIntro}</p>
+                    </div>
+                    <ul className="space-y-2.5 text-sm">
+                      <li className="flex items-start gap-2">
+                        <EyeOff className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span><span className="font-medium text-foreground">{t.paLimit1Title}:</span> <span className="text-muted-foreground">{t.paLimit1Body}</span></span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span><span className="font-medium text-foreground">{t.paLimit2Title}:</span> <span className="text-muted-foreground">{t.paLimit2Body}</span></span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <BarChart3 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span><span className="font-medium text-foreground">{t.paLimit3Title}:</span> <span className="text-muted-foreground">{t.paLimit3Body}</span></span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span><span className="font-medium text-foreground">{t.paLimit4Title}:</span> <span className="text-muted-foreground">{t.paLimit4Body}</span></span>
+                      </li>
+                    </ul>
+                  </div>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>{t.paMax}</Label>
-                <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" type="number" min={50} max={3000} step={50} value={pageMaxItems} onChange={(e) => setPageMaxItems(Number(e.target.value))} />
-              </div>
-              <Button onClick={submitPageAudience} disabled={busy || !pageAudienceId.trim()} className="w-full">
-                {busy && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{t.create}
-              </Button>
-            </Card>
+              <Card dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-4 p-5 text-start">
+                <p className="text-sm text-muted-foreground">{t.paHint}</p>
+                <div className="space-y-2">
+                  <Label>{t.paPage}</Label>
+                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" placeholder={t.paPagePh} value={pageAudienceId} onChange={(e) => setPageAudienceId(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t.paSources}</Label>
+                  <div className="flex flex-wrap gap-4 pt-1">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input type="checkbox" checked={paFollowers} onChange={(e) => setPaFollowers(e.target.checked)} />
+                      {t.paFollowersLabel}
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input type="checkbox" checked={paLikers} onChange={(e) => setPaLikers(e.target.checked)} />
+                      {t.paLikersLabel}
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input type="checkbox" checked={paEngagers} onChange={(e) => setPaEngagers(e.target.checked)} />
+                      {t.paEngagersLabel}
+                    </label>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>{t.paMax}</Label>
+                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" type="number" min={50} max={3000} step={50} value={pageMaxItems} onChange={(e) => setPageMaxItems(Number(e.target.value))} />
+                </div>
+                <Button onClick={submitPageAudience} disabled={busy || !pageAudienceId.trim()} className="w-full">
+                  {busy && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{t.create}
+                </Button>
+              </Card>
+            </div>
           </TabsContent>
+
+
 
           <TabsContent value="commenters">
             <Card dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-4 p-5 text-start">
