@@ -126,6 +126,8 @@ async function runJob(job) {
   } catch (err) {
     if (err && err.cancelled) {
       console.log(`[job ${job.id}] cancelled — closing browser and skipping failure report`);
+    } else if (err && err.paused) {
+      console.log(`[job ${job.id}] paused — closing browser; status stays 'paused' for resume`);
     } else {
       console.error(`[job ${job.id}] error`, err);
       await reportUpdate({ jobId: job.id, status: "failed", errorMessage: String(err.message || err) }).catch(() => {});
