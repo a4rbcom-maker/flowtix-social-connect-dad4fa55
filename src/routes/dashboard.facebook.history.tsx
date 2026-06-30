@@ -1180,3 +1180,116 @@ function JobsHistoryPage() {
 
   );
 }
+
+type PreviewRow = {
+  name?: string | null;
+  phone?: string | null;
+  profile?: string | null;
+  city?: string | null;
+  gov?: string | null;
+  declared?: string | null;
+  work?: string | null;
+  row: { target?: string | null };
+};
+
+function PreviewList({
+  lang, rows, search, setSearch, page, setPage, pageSize, isSystem,
+}: {
+  lang: string;
+  rows: PreviewRow[];
+  search: string;
+  setSearch: (v: string) => void;
+  page: number;
+  setPage: (n: number) => void;
+  pageSize: number;
+  isSystem: (p: string) => boolean;
+}) {
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((e) => {
+      const blob = `${e.name ?? ""} ${e.phone ?? ""} ${e.profile ?? e.row.target ?? ""} ${e.city ?? ""} ${e.gov ?? ""} ${e.work ?? ""}`.toLowerCase();
+      return blob.includes(q);
+    });
+  }, [rows, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const start = (safePage - 1) * pageSize;
+  const slice = filtered.slice(start, start + pageSize);
+
+  return (
+    <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <Label className="block text-start text-sm font-medium">
+          {lang === "ar" ? `معاينة المستلمين (${filtered.length})` : `Recipients preview (${filtered.length})`}
+        </Label>
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={lang === "ar" ? "ابحث في النتائج..." : "Search results..."}
+          className="h-8 max-w-xs text-sm"
+        />
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="py-6 text-center text-sm text-muted-foreground">
+          {lang === "ar" ? "لا يوجد مستلمون مطابقون" : "No matching recipients"}
+        </div>
+      ) : (
+        <>
+          <div className="max-h-72 overflow-auto rounded-md border border-border bg-background">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-muted/80 text-muted-foreground">
+                <tr>
+                  <th className="px-2 py-1.5 text-start">#</th>
+                  <th className="px-2 py-1.5 text-start">{lang === "ar" ? "الاسم" : "Name"}</th>
+                  <th className="px-2 py-1.5 text-start">{lang === "ar" ? "الهاتف" : "Phone"}</th>
+                  <th className="px-2 py-1.5 text-start">{lang === "ar" ? "البروفايل" : "Profile"}</th>
+                  <th className="px-2 py-1.5 text-start">{lang === "ar" ? "المدينة" : "City"}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {slice.map((e, i) => {
+                  const profile = e.profile || e.row.target || "";
+                  const hasProfile = !!profile && !isSystem(profile);
+                  return (
+                    <tr key={start + i} className="border-t border-border/60 hover:bg-muted/30">
+                      <td className="px-2 py-1.5 tabular-nums text-muted-foreground">{start + i + 1}</td>
+                      <td className="px-2 py-1.5">{e.name || <span className="text-muted-foreground">—</span>}</td>
+                      <td className="px-2 py-1.5 tabular-nums" dir="ltr">{e.phone || <span className="text-muted-foreground">—</span>}</td>
+                      <td className="px-2 py-1.5 max-w-[200px] truncate" dir="ltr">
+                        {hasProfile ? (
+                          <a href={profile} target="_blank" rel="noreferrer" className="text-primary hover:underline">{profile}</a>
+                        ) : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-2 py-1.5">{e.city || e.gov || <span className="text-muted-foreground">—</span>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              {lang === "ar"
+                ? `عرض ${start + 1}-${Math.min(start + pageSize, filtered.length)} من ${filtered.length}`
+                : `Showing ${start + 1}-${Math.min(start + pageSize, filtered.length)} of ${filtered.length}`}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button type="button" size="sm" variant="outline" className="h-7" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>
+                {lang === "ar" ? "السابق" : "Prev"}
+              </Button>
+              <span className="tabular-nums">{safePage} / {totalPages}</span>
+              <Button type="button" size="sm" variant="outline" className="h-7" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>
+                {lang === "ar" ? "التالي" : "Next"}
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
