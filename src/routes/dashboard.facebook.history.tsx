@@ -77,6 +77,9 @@ function JobsHistoryPage() {
   const [msgRequireProfile, setMsgRequireProfile] = useState(false);
   const [msgDedupe, setMsgDedupe] = useState(true);
   const [msgLimit, setMsgLimit] = useState(500);
+  const [previewSearch, setPreviewSearch] = useState("");
+  const [previewPage, setPreviewPage] = useState(1);
+  const PREVIEW_PAGE_SIZE = 25;
 
   const t = lang === "ar" ? {
     title: "سجل المهام",
