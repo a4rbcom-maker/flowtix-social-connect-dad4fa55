@@ -903,7 +903,48 @@ function JobsHistoryPage() {
                   </div>
                 </div>
               </div>
+
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={filteredRows.length === 0}
+                  onClick={() => {
+                    const headers = ["name","phone","profile","city","gov","declared","work"];
+                    const esc = (v: any) => {
+                      const s = v == null ? "" : String(v);
+                      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+                    };
+                    const lines = [headers.join(",")];
+                    for (const e of filteredRows) {
+                      lines.push([
+                        e.name ?? "",
+                        e.phone ?? "",
+                        e.profile || e.row.target || "",
+                        e.city ?? "",
+                        e.gov ?? "",
+                        e.declared ?? "",
+                        e.work ?? "",
+                      ].map(esc).join(","));
+                    }
+                    const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `recipients_${Date.now()}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  <Download className="me-2 h-4 w-4" />
+                  {lang === "ar" ? `تصدير المستلمين (${filteredRows.length})` : `Export recipients (${filteredRows.length})`}
+                </Button>
+              </div>
             </div>
+
 
             <div className="space-y-2">
               <Label className="block text-start">
