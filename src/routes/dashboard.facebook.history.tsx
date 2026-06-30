@@ -125,6 +125,16 @@ function JobsHistoryPage() {
   const [msgSelectedRecipients, setMsgSelectedRecipients] = useState<Set<string>>(new Set());
   const [compactView, setCompactView] = useState(false);
   const PREVIEW_PAGE_SIZE = 25;
+  const JOBS_PAGE_SIZE = 15;
+  type JobsSortKey = "type" | "status" | "progress" | "created";
+  const [jobsSortKey, setJobsSortKey] = useState<JobsSortKey>("created");
+  const [jobsSortDir, setJobsSortDir] = useState<"asc" | "desc">("desc");
+  const [jobsPage, setJobsPage] = useState(1);
+  const toggleJobsSort = (k: JobsSortKey) => {
+    if (jobsSortKey !== k) { setJobsSortKey(k); setJobsSortDir("asc"); }
+    else setJobsSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    setJobsPage(1);
+  };
   const recipientKey = (e: { name?: string | null; phone?: string | null; profile?: string | null; row: { target?: string | null } }) =>
     `${(e.profile || e.row.target || "").toLowerCase()}::${(e.phone || "").toString().replace(/\D/g, "")}::${(e.name || "").toLowerCase()}`;
 
@@ -584,83 +594,120 @@ function JobsHistoryPage() {
           ) : jobs.length === 0 ? (
             <div className="p-12 text-center text-muted-foreground">{t.none}</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3 text-start">{t.type}</th>
-                    <th className="px-4 py-3 text-start">{t.status}</th>
-                    <th className="px-4 py-3 text-start">{t.progress}</th>
-                    <th className="px-4 py-3 text-start">{t.created}</th>
-                    <th className="px-4 py-3 text-end">{t.actions}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/50">
-                  {jobs.map((j) => (
-                    <tr key={j.id} className="cursor-pointer hover:bg-muted/30" onClick={() => openDetails(j)}>
-                      <td className="px-4 py-3"><Badge variant="outline">{t.types[j.job_type]}</Badge></td>
-                      <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusColor(j.status)}`}>{t.statuses[j.status]}</span></td>
-                      <td className="px-4 py-3">
-                        <div className="flex w-48 items-center gap-2">
-                          <Progress value={j.progress} className="h-1.5" />
-                          <span className="text-xs text-muted-foreground">{j.processed_items}/{j.total_items || "—"}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{new Date(j.created_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</td>
-                      <td className="px-4 py-3 text-end">
-                        <div className="flex items-center justify-end gap-1">
-                          {isSessionExpired(j) && (
-                            <Link to="/dashboard/facebook/bot" onClick={(e) => e.stopPropagation()}>
-                              <Button size="sm" variant="outline" className="h-7 gap-1 border-amber-500/40 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400" title={lang === "ar" ? "إعادة ربط حساب فيسبوك" : "Reconnect Facebook account"}>
-                                <KeyRound className="h-3.5 w-3.5" />
-                                <span className="text-xs">{lang === "ar" ? "إعادة ربط" : "Reconnect"}</span>
-                              </Button>
-                            </Link>
-                          )}
-                           {j.status === "completed" && (j.processed_items > 0) && ["extract_commenters","extract_group_members","extract_page_audience","deep_profile_scrape"].includes(j.job_type) && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              title={lang === "ar" ? "إرسال رسائل" : "Send messages"}
-                              onClick={(e) => { e.stopPropagation(); openDetails(j).then(() => openMessenger()); }}
-                            >
-                              <Send className="h-4 w-4 text-primary" />
-                            </Button>
-                          )}
-                          {j.job_type === "send_messenger_dm" && (j.status === "pending" || j.status === "running") && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              title={t.pause}
-                              disabled={pausingId === j.id}
-                              onClick={(e) => { e.stopPropagation(); handlePause(j); }}
-                            >
-                              {pausingId === j.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4 text-amber-600" />}
-                            </Button>
-                          )}
-                          {j.status === "paused" && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              title={t.resume}
-                              disabled={pausingId === j.id}
-                              onClick={(e) => { e.stopPropagation(); handleResume(j); }}
-                            >
-                              {pausingId === j.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 text-primary" />}
-                            </Button>
-                          )}
-                          {(j.status === "pending" || j.status === "running" || j.status === "paused") && (
-                            <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setCancelTarget(j); }}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+            {(() => {
+              const sortedJobs = [...jobs].sort((a, b) => {
+                let av: string | number = "", bv: string | number = "";
+                if (jobsSortKey === "type") { av = t.types[a.job_type]; bv = t.types[b.job_type]; }
+                else if (jobsSortKey === "status") { av = t.statuses[a.status]; bv = t.statuses[b.status]; }
+                else if (jobsSortKey === "progress") { av = a.progress ?? 0; bv = b.progress ?? 0; }
+                else { av = new Date(a.created_at).getTime(); bv = new Date(b.created_at).getTime(); }
+                const cmp = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv), lang === "ar" ? "ar" : "en");
+                return jobsSortDir === "asc" ? cmp : -cmp;
+              });
+              const totalPages = Math.max(1, Math.ceil(sortedJobs.length / JOBS_PAGE_SIZE));
+              const safePage = Math.min(jobsPage, totalPages);
+              const startIdx = (safePage - 1) * JOBS_PAGE_SIZE;
+              const pageJobs = sortedJobs.slice(startIdx, startIdx + JOBS_PAGE_SIZE);
+              const SortIcon = ({ k }: { k: JobsSortKey }) => jobsSortKey !== k
+                ? <ArrowUpDown className="h-3 w-3 opacity-50" />
+                : jobsSortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
+              const HeaderBtn = ({ k, label, align = "start" }: { k: JobsSortKey; label: string; align?: "start" | "end" }) => (
+                <button type="button" onClick={() => toggleJobsSort(k)} className={`inline-flex items-center gap-1 hover:text-foreground ${jobsSortKey === k ? "text-foreground font-medium" : ""} ${align === "end" ? "ms-auto" : ""}`}>
+                  <span>{label}</span><SortIcon k={k} />
+                </button>
+              );
+              return (
+                <>
+                  <div className="overflow-hidden">
+                    <table className="w-full table-fixed text-sm">
+                      <colgroup>
+                        <col className="w-[20%]" />
+                        <col className="w-[15%]" />
+                        <col className="w-[27%]" />
+                        <col className="w-[22%]" />
+                        <col className="w-[16%]" />
+                      </colgroup>
+                      <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
+                        <tr>
+                          <th className="px-4 py-3 text-start"><HeaderBtn k="type" label={t.type} /></th>
+                          <th className="px-4 py-3 text-start"><HeaderBtn k="status" label={t.status} /></th>
+                          <th className="px-4 py-3 text-start"><HeaderBtn k="progress" label={t.progress} /></th>
+                          <th className="px-4 py-3 text-start"><HeaderBtn k="created" label={t.created} /></th>
+                          <th className="px-4 py-3 text-end"><span className="inline-block">{t.actions}</span></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/50">
+                        {pageJobs.map((j) => (
+                          <tr key={j.id} className="cursor-pointer hover:bg-muted/30" onClick={() => openDetails(j)}>
+                            <td className="px-4 py-3"><div className="truncate"><Badge variant="outline" className="max-w-full truncate">{t.types[j.job_type]}</Badge></div></td>
+                            <td className="px-4 py-3"><div className="truncate"><span className={`inline-block max-w-full truncate rounded-full px-2.5 py-1 text-xs font-medium ${statusColor(j.status)}`}>{t.statuses[j.status]}</span></div></td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Progress value={j.progress} className="h-1.5 flex-1 min-w-0" />
+                                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{j.processed_items}/{j.total_items || "—"}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-muted-foreground"><div className="truncate text-xs sm:text-sm">{new Date(j.created_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</div></td>
+                            <td className="px-4 py-3 text-end">
+                              <div className="flex items-center justify-end gap-1 flex-nowrap">
+                                {isSessionExpired(j) && (
+                                  <Link to="/dashboard/facebook/bot" onClick={(e) => e.stopPropagation()}>
+                                    <Button size="sm" variant="outline" className="h-7 w-7 p-0 border-amber-500/40 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400" title={lang === "ar" ? "إعادة ربط حساب فيسبوك" : "Reconnect Facebook account"}>
+                                      <KeyRound className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </Link>
+                                )}
+                                {j.status === "completed" && (j.processed_items > 0) && ["extract_commenters","extract_group_members","extract_page_audience","deep_profile_scrape"].includes(j.job_type) && (
+                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title={lang === "ar" ? "إرسال رسائل" : "Send messages"} onClick={(e) => { e.stopPropagation(); openDetails(j).then(() => openMessenger()); }}>
+                                    <Send className="h-4 w-4 text-primary" />
+                                  </Button>
+                                )}
+                                {j.job_type === "send_messenger_dm" && (j.status === "pending" || j.status === "running") && (
+                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title={t.pause} disabled={pausingId === j.id} onClick={(e) => { e.stopPropagation(); handlePause(j); }}>
+                                    {pausingId === j.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4 text-amber-600" />}
+                                  </Button>
+                                )}
+                                {j.status === "paused" && (
+                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title={t.resume} disabled={pausingId === j.id} onClick={(e) => { e.stopPropagation(); handleResume(j); }}>
+                                    {pausingId === j.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 text-primary" />}
+                                  </Button>
+                                )}
+                                {(j.status === "pending" || j.status === "running" || j.status === "paused") && (
+                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={(e) => { e.stopPropagation(); setCancelTarget(j); }}>
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {sortedJobs.length > JOBS_PAGE_SIZE && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground">
+                      <span className="tabular-nums">
+                        {lang === "ar"
+                          ? `عرض ${startIdx + 1}-${Math.min(startIdx + JOBS_PAGE_SIZE, sortedJobs.length)} من ${sortedJobs.length}`
+                          : `Showing ${startIdx + 1}-${Math.min(startIdx + JOBS_PAGE_SIZE, sortedJobs.length)} of ${sortedJobs.length}`}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <Button size="sm" variant="outline" className="h-7 px-2" disabled={safePage <= 1} onClick={() => setJobsPage((p) => Math.max(1, p - 1))}>
+                          {lang === "ar" ? "السابق" : "Prev"}
+                        </Button>
+                        <span className="px-2 tabular-nums">{safePage} / {totalPages}</span>
+                        <Button size="sm" variant="outline" className="h-7 px-2" disabled={safePage >= totalPages} onClick={() => setJobsPage((p) => Math.min(totalPages, p + 1))}>
+                          {lang === "ar" ? "التالي" : "Next"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+            </>
+
           )}
         </Card>
       </div>
