@@ -77,7 +77,7 @@ function EnrichPage() {
       `${n} سطر • ${w} باسم • ${p} برقم • ${e} بإيميل • ${c} بمحافظة`,
     cols: { name: "الاسم", phone: "موبايل", email: "إيميل", city: "المدينة", gov: "المحافظة", raw: "النص الأصلي" },
     matched: "تم التعرف",
-    emptyHint: "النتائج بدون أرقام/مدن؟ ده طبيعي مع أعضاء الجروبات لأن فيسبوك بيرجّع الاسم بس. شغّل «فحص عميق للبروفايلات» من سجل المهام عشان نفتح كل بروفايل ونسحب البيو والمدينة والشغل، وبعدها اعمل إثراء تاني.",
+    emptyHint: "النتائج بدون أرقام/مدن؟ ده طبيعي مع أعضاء الجروبات لأن فيسبوك بيرجّع الاسم بس. جرّب رفع ملف عملائك في «قاعدة عملائي» للمطابقة التلقائية.",
   } : {
     title: "Enrich leads",
     subtitle: "Paste text or a list (one lead per line) and we'll extract name, mobile, email, city and governorate using the Egypt locations dataset.",
