@@ -293,24 +293,12 @@ function JobsHistoryPage() {
         ...enrichedRows.map((e) => [e.name, e.row.target ?? "", e.profile, e.phone ?? "", e.city ?? "", e.gov ?? "", e.source]),
       ];
     } else if (isMessenger) {
-      const reason = (err: string | null) => {
-        if (!err) return lang === "ar" ? "تم الإرسال" : "Delivered";
-        const e = err.toLowerCase();
-        if (e.includes("recipient_privacy") || e.includes("message button not visible") || e.includes("cannot open dm") || e.includes("closed dms") || e.includes("not friends")) return lang === "ar" ? "المستلم قافل رسائل الغرباء" : "Recipient blocks non-friend DMs";
-        if (e.includes("account_rate_limit")) return lang === "ar" ? "الحساب اتقيّد مؤقتاً" : "Account temporarily limited";
-        if (e.includes("session")) return lang === "ar" ? "جلسة الحساب انتهت" : "Session expired";
-        if (e.includes("composer") || e.includes("thread_not_available") || e.includes("profile_message_button_missing")) return lang === "ar" ? "محادثة ماسنجر غير متاحة" : "Messenger chat unavailable";
-        return err;
-      };
-      const profile = (target: string | null) => {
-        const id = target?.match(/(?:user\/|profile\.php\?id=|messages\/t\/|m\.me\/)(\d{5,})/)?.[1];
-        return id ? `https://www.facebook.com/profile.php?id=${id}` : (target ?? "");
-      };
       rows = [
-        ["name", "status", "reason", "profile", "raw_error", "created_at"],
+        ["name", "status", "reason", "hint", "profile", "technical_code", "created_at"],
         ...results.map((r) => {
           const d = (r.data ?? {}) as { name?: string | null };
-          return [d.name ?? "", r.status, reason(r.error), profile(r.target), r.error ?? "", r.created_at];
+          const reason = messengerFriendlyReason(r.error, r.status, lang);
+          return [d.name ?? "", r.status, reason.title, reason.hint, messengerProfileUrl(r.target), reason.code, r.created_at];
         }),
       ];
     } else if (isGroupsList) {
