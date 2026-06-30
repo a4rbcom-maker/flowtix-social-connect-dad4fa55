@@ -351,6 +351,14 @@ function JobsHistoryPage() {
                       <td className="px-4 py-3 text-muted-foreground">{new Date(j.created_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</td>
                       <td className="px-4 py-3 text-end">
                         <div className="flex items-center justify-end gap-1">
+                          {isSessionExpired(j) && (
+                            <Link to="/dashboard/facebook/bot" onClick={(e) => e.stopPropagation()}>
+                              <Button size="sm" variant="outline" className="h-7 gap-1 border-amber-500/40 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400" title={lang === "ar" ? "إعادة ربط حساب فيسبوك" : "Reconnect Facebook account"}>
+                                <KeyRound className="h-3.5 w-3.5" />
+                                <span className="text-xs">{lang === "ar" ? "إعادة ربط" : "Reconnect"}</span>
+                              </Button>
+                            </Link>
+                          )}
                           {j.status === "completed" && (j.processed_items > 0) && ["extract_commenters","extract_group_members","extract_page_audience","deep_profile_scrape"].includes(j.job_type) && (
                             <Button
                               size="sm"
