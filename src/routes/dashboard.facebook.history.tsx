@@ -660,6 +660,12 @@ function JobsHistoryPage() {
                     : "💡 No phones? Run “Enrich with Egypt data” first."}
                 </p>
               )}
+              <p className="mt-2 text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+                {lang === "ar"
+                  ? "⚠️ ماسنجر يتطلب أن يقبل الطرف الآخر الرسائل من الغرباء. الصفحات الرسمية (مثل /business و /help) لن تستقبل DM وستظهر كـ «فشل». هذا طبيعي وليس عطل بالنظام."
+                  : "⚠️ Messenger requires the recipient to accept DMs from strangers. Official Pages (e.g. /business, /help) won't accept DMs and will appear as 'failed'. That's normal, not a bug."}
+              </p>
+
             </div>
 
             <div className="space-y-2">
