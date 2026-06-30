@@ -1249,6 +1249,15 @@ function PreviewList({
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [matchMode, setMatchMode] = useState<"any" | "all">("all");
+  const [uniqueOnly, setUniqueOnly] = useState(false);
+
+  const dupKeyFor = (e: PreviewRow) => {
+    const phone = (e.phone ?? "").replace(/\D+/g, "");
+    if (phone) return `p:${phone}`;
+    const prof = (e.profile ?? e.row.target ?? "").trim().toLowerCase();
+    if (prof) return `u:${prof}`;
+    return `n:${(e.name ?? "").trim().toLowerCase()}`;
+  };
 
   const toggleSort = (k: SortKey) => {
     if (sortKey !== k) { setSortKey(k); setSortDir("asc"); }
