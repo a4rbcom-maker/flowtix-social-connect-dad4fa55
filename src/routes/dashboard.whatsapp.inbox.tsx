@@ -251,12 +251,21 @@ function InboxPage() {
         (payload) => {
           // Always refresh the conversation list so the new chat appears
           qc.invalidateQueries({ queryKey: ["wa-conversations"] });
-          const row = payload.new as { remote_jid?: string };
+          const row = payload.new as { remote_jid?: string; direction?: string; raw?: { is_historical?: boolean } | null };
           if (activeJid && row.remote_jid === activeJid) {
             qc.invalidateQueries({ queryKey: ["wa-messages", user.id, activeJid] });
           }
+          // Notification beep for new INCOMING messages only (skip outbound and historical sync)
+          if (
+            payload.eventType === "INSERT" &&
+            row.direction === "in" &&
+            !row.raw?.is_historical
+          ) {
+            playBeep();
+          }
         },
       )
+
       .subscribe();
     return () => {
       supabase.removeChannel(ch);
