@@ -1583,7 +1583,7 @@ function JobsHistoryPage() {
   );
 }
 
-function DetailField({ label, children }: { label: string; children: React.ReactNode }) {
+function DetailField({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
       <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
