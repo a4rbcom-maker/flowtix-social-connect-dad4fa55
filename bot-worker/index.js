@@ -92,8 +92,12 @@ async function runJob(job) {
     else await reportUpdate({ jobId: job.id, status: "failed", errorMessage: `Unknown job type: ${job.type}` });
 
   } catch (err) {
-    console.error(`[job ${job.id}] error`, err);
-    await reportUpdate({ jobId: job.id, status: "failed", errorMessage: String(err.message || err) });
+    if (err && err.cancelled) {
+      console.log(`[job ${job.id}] cancelled — closing browser and skipping failure report`);
+    } else {
+      console.error(`[job ${job.id}] error`, err);
+      await reportUpdate({ jobId: job.id, status: "failed", errorMessage: String(err.message || err) }).catch(() => {});
+    }
   } finally {
     if (browser) await browser.close().catch(() => {});
   }
