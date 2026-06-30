@@ -836,7 +836,8 @@ function JobsHistoryPage() {
                     </div>
                   )}
 
-                  <div className="space-y-2">
+                  {/* Mobile: cards */}
+                  <div className="space-y-2 md:hidden">
                     {results.map((r, i) => {
                       const d = (r.data ?? {}) as { name?: string | null };
                       const name = d.name?.trim() || (lang === "ar" ? "بدون اسم" : "Unknown");
@@ -846,17 +847,12 @@ function JobsHistoryPage() {
                       const msg = messengerFriendlyReason(r.error, r.status, lang);
                       return (
                         <div key={r.id} className={`rounded-lg border p-3 ${ok ? "bg-primary/[0.03]" : r.status === "failed" ? "bg-destructive/[0.03]" : "bg-muted/20"}`}>
-                          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
-                            <div className="min-w-0 space-y-2 text-start">
-                              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                                <span className="rounded-md bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">#{i + 1}</span>
-                                <span className="min-w-0 break-words font-semibold">{name}</span>
+                          <div className="space-y-2 text-start">
+                            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">#{i + 1}</span>
+                                <span className="min-w-0 break-words text-sm font-semibold">{name}</span>
                               </div>
-                              <div className="text-sm font-semibold">{msg.title}</div>
-                              <div className="text-xs leading-relaxed text-muted-foreground">{msg.hint}</div>
-                              {!ok && <div className="inline-flex rounded-md bg-muted/70 px-2 py-1 text-[11px] text-muted-foreground">{lang === "ar" ? "كود السبب" : "Reason code"}: <bdi dir="ltr" className="ms-1">{msg.code}</bdi></div>}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                               {ok ? (
                                 <Badge className="border-primary/30 bg-primary/10 text-primary" variant="outline"><CheckCircle2 className="me-1 h-3 w-3" />{lang === "ar" ? "نجح" : "Sent"}</Badge>
                               ) : r.status === "failed" ? (
@@ -864,11 +860,16 @@ function JobsHistoryPage() {
                               ) : (
                                 <Badge variant="outline">{r.status}</Badge>
                               )}
+                            </div>
+                            <div className="text-sm font-semibold leading-snug">{msg.title}</div>
+                            <div className="text-xs leading-relaxed text-muted-foreground">{msg.hint}</div>
+                            <div className="flex flex-wrap items-center gap-2 pt-1">
+                              {!ok && <span className="inline-flex rounded-md bg-muted/70 px-2 py-0.5 text-[10px] text-muted-foreground">{lang === "ar" ? "كود" : "Code"}: <bdi dir="ltr" className="ms-1">{msg.code}</bdi></span>}
                               {profileUrl && (
                                 <Button size="sm" variant="outline" asChild className="h-8 gap-1.5">
                                   <a href={profileUrl} target="_blank" rel="noreferrer">
                                     <ExternalLink className="h-3.5 w-3.5" />
-                                    <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح البروفايل" : "Open")}</bdi>
+                                    <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
                                   </a>
                                 </Button>
                               )}
@@ -877,6 +878,78 @@ function JobsHistoryPage() {
                         </div>
                       );
                     })}
+                  </div>
+
+                  {/* Desktop/tablet: table */}
+                  <div className="hidden md:block">
+                    <div className="overflow-hidden rounded-lg border">
+                      <table className="w-full table-fixed text-sm">
+                        <colgroup>
+                          <col className="w-12" />
+                          <col className="w-[28%]" />
+                          <col className="w-24" />
+                          <col />
+                          <col className="w-28" />
+                          <col className="w-28" />
+                        </colgroup>
+                        <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2.5 text-start">#</th>
+                            <th className="px-3 py-2.5 text-start">{lang === "ar" ? "الاسم" : "Name"}</th>
+                            <th className="px-3 py-2.5 text-start">{lang === "ar" ? "الحالة" : "Status"}</th>
+                            <th className="px-3 py-2.5 text-start">{lang === "ar" ? "السبب" : "Reason"}</th>
+                            <th className="px-3 py-2.5 text-start">{lang === "ar" ? "الكود" : "Code"}</th>
+                            <th className="px-3 py-2.5 text-start">{lang === "ar" ? "البروفايل" : "Profile"}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/60">
+                          {results.map((r, i) => {
+                            const d = (r.data ?? {}) as { name?: string | null };
+                            const name = d.name?.trim() || (lang === "ar" ? "بدون اسم" : "Unknown");
+                            const id = extractMessengerTargetId(r.target);
+                            const profileUrl = messengerProfileUrl(r.target);
+                            const ok = r.status === "success";
+                            const msg = messengerFriendlyReason(r.error, r.status, lang);
+                            return (
+                              <tr key={r.id} className={ok ? "bg-primary/[0.025]" : r.status === "failed" ? "bg-destructive/[0.025]" : ""}>
+                                <td className="px-3 py-2.5 text-start text-xs tabular-nums text-muted-foreground">{i + 1}</td>
+                                <td className="px-3 py-2.5 text-start font-semibold">
+                                  <div className="truncate" title={name}>{name}</div>
+                                </td>
+                                <td className="px-3 py-2.5 text-start">
+                                  {ok ? (
+                                    <Badge className="border-primary/30 bg-primary/10 text-primary" variant="outline"><CheckCircle2 className="me-1 h-3 w-3" />{lang === "ar" ? "نجح" : "Sent"}</Badge>
+                                  ) : r.status === "failed" ? (
+                                    <Badge className="border-destructive/30 bg-destructive/10 text-destructive" variant="outline"><XCircle className="me-1 h-3 w-3" />{lang === "ar" ? "فشل" : "Failed"}</Badge>
+                                  ) : (
+                                    <Badge variant="outline">{r.status}</Badge>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2.5 text-start align-top">
+                                  <div className="text-sm font-medium leading-snug">{msg.title}</div>
+                                  <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{msg.hint}</div>
+                                </td>
+                                <td className="px-3 py-2.5 text-start">
+                                  {!ok ? (
+                                    <bdi dir="ltr" className="rounded-md bg-muted/70 px-2 py-0.5 text-[11px] text-muted-foreground">{msg.code}</bdi>
+                                  ) : <span className="text-muted-foreground">—</span>}
+                                </td>
+                                <td className="px-3 py-2.5 text-start">
+                                  {profileUrl ? (
+                                    <Button size="sm" variant="outline" asChild className="h-8 gap-1.5">
+                                      <a href={profileUrl} target="_blank" rel="noreferrer">
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                        <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
+                                      </a>
+                                    </Button>
+                                  ) : <span className="text-muted-foreground">—</span>}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               );
