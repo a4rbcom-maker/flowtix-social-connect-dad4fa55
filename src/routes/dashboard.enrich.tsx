@@ -52,6 +52,7 @@ function EnrichPage() {
               .then((data) => {
                 setRows(data);
                 toast.success(lang === "ar" ? `تم إثراء ${data.length} سطر` : `Enriched ${data.length} rows`);
+                void runMatching(data);
               })
               .catch((e) => toast.error(String(e)))
               .finally(() => setBusy(false));
