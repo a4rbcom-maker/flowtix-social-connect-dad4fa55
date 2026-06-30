@@ -24,18 +24,28 @@ import {
 } from "@/lib/fb-autoreply.functions";
 
 export const Route = createFileRoute("/dashboard/facebook/autoreply")({
+  ssr: false,
+  beforeLoad: async () => {
+    if (typeof window === "undefined") return;
+    const { supabase } = await import("@/integrations/supabase/client");
+    await supabase.auth.getSession();
+  },
   component: AutoReplyPage,
   errorComponent: ({ error, reset }) => {
     const router = useRouter();
+    const msg = error instanceof Response
+      ? (error.status === 401 ? "يلزم تسجيل الدخول" : `خطأ HTTP ${error.status}`)
+      : (error?.message ?? "حدث خطأ غير متوقع");
     return (
-      <div className="p-6">
-        <p className="text-destructive">حدث خطأ: {error.message}</p>
+      <div className="p-6 space-y-3">
+        <p className="text-destructive">حدث خطأ: {msg}</p>
         <Button onClick={() => { reset(); router.invalidate(); }}>إعادة المحاولة</Button>
       </div>
     );
   },
   notFoundComponent: () => <div>غير موجود</div>,
 });
+
 
 type RuleRow = Awaited<ReturnType<typeof listRules>>[number];
 type PageRow = Awaited<ReturnType<typeof listPages>>[number];
