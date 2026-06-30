@@ -909,13 +909,14 @@ function JobsHistoryPage() {
                     <div className="overflow-hidden rounded-lg border">
                       <table className="w-full table-fixed text-sm">
                         <colgroup>
-                          <col className="w-12" />
-                          <col className={compactView ? "w-[34%]" : "w-[28%]"} />
+                          <col className="w-10" />
+                          <col className={compactView ? "w-[34%]" : "w-[26%]"} />
                           <col className="w-24" />
                           <col />
-                          {!compactView && <col className="w-28" />}
-                          {!compactView && <col className="w-28" />}
+                          {!compactView && <col className="w-32" />}
+                          {!compactView && <col className="w-40" />}
                         </colgroup>
+
                         <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                           <tr>
                             <th className="px-3 py-2.5 text-start">#</th>
@@ -956,22 +957,23 @@ function JobsHistoryPage() {
                                 {!compactView && (
                                   <td className="px-3 py-2.5 text-start">
                                     {!ok ? (
-                                      <bdi dir="ltr" className="rounded-md bg-muted/70 px-2 py-0.5 text-[11px] text-muted-foreground">{msg.code}</bdi>
+                                      <bdi dir="ltr" className="block max-w-full truncate rounded-md bg-muted/70 px-2 py-0.5 text-[11px] text-muted-foreground" title={msg.code}>{msg.code}</bdi>
                                     ) : <span className="text-muted-foreground">—</span>}
                                   </td>
                                 )}
                                 {!compactView && (
                                   <td className="px-3 py-2.5 text-start">
                                     {profileUrl ? (
-                                      <Button size="sm" variant="outline" asChild className="h-8 gap-1.5">
-                                        <a href={profileUrl} target="_blank" rel="noreferrer">
-                                          <ExternalLink className="h-3.5 w-3.5" />
-                                          <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
+                                      <Button size="sm" variant="outline" asChild className="h-8 max-w-full gap-1.5">
+                                        <a href={profileUrl} target="_blank" rel="noreferrer" className="min-w-0">
+                                          <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                                          <bdi dir="ltr" className="truncate">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
                                         </a>
                                       </Button>
                                     ) : <span className="text-muted-foreground">—</span>}
                                   </td>
                                 )}
+
                               </tr>
                             );
                           })}
