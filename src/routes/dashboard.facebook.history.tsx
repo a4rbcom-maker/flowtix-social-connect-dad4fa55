@@ -956,22 +956,23 @@ function JobsHistoryPage() {
                                 {!compactView && (
                                   <td className="px-3 py-2.5 text-start">
                                     {!ok ? (
-                                      <bdi dir="ltr" className="rounded-md bg-muted/70 px-2 py-0.5 text-[11px] text-muted-foreground">{msg.code}</bdi>
+                                      <bdi dir="ltr" className="block max-w-full truncate rounded-md bg-muted/70 px-2 py-0.5 text-[11px] text-muted-foreground" title={msg.code}>{msg.code}</bdi>
                                     ) : <span className="text-muted-foreground">—</span>}
                                   </td>
                                 )}
                                 {!compactView && (
                                   <td className="px-3 py-2.5 text-start">
                                     {profileUrl ? (
-                                      <Button size="sm" variant="outline" asChild className="h-8 gap-1.5">
-                                        <a href={profileUrl} target="_blank" rel="noreferrer">
-                                          <ExternalLink className="h-3.5 w-3.5" />
-                                          <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
+                                      <Button size="sm" variant="outline" asChild className="h-8 max-w-full gap-1.5">
+                                        <a href={profileUrl} target="_blank" rel="noreferrer" className="min-w-0">
+                                          <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                                          <bdi dir="ltr" className="truncate">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
                                         </a>
                                       </Button>
                                     ) : <span className="text-muted-foreground">—</span>}
                                   </td>
                                 )}
+
                               </tr>
                             );
                           })}
