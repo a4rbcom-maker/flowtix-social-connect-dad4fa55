@@ -343,7 +343,7 @@ function RuleDialog({ ar, pages, rule, onDone }: { ar: boolean; pages: PageRow[]
   };
 
   return (
-    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    <DialogContent dir={ar ? "rtl" : "ltr"} className={`max-w-2xl max-h-[90vh] overflow-y-auto ${ar ? "text-right" : ""}`}>
       <DialogHeader>
         <DialogTitle>{rule ? (ar ? "تعديل القاعدة" : "Edit rule") : (ar ? "قاعدة جديدة" : "New rule")}</DialogTitle>
       </DialogHeader>
