@@ -1850,6 +1850,33 @@ export type Database = {
         }[]
       }
       admin_kpi_snapshot: { Args: never; Returns: Json }
+      fb_enrichment_record: {
+        Args: { _hits: number; _lookups: number; _user_id: string }
+        Returns: undefined
+      }
+      fb_people_fuzzy_name: {
+        Args: { min_sim?: number; q: string }
+        Returns: {
+          birthday: string
+          country: string
+          education: string
+          email: string
+          fbid: string
+          first_name: string
+          full_name: string
+          gender: string
+          hometown: string
+          last_name: string
+          locale: string
+          location: string
+          name_norm: string
+          phone_raw: string
+          relationship: string
+          religion: string
+          sim: number
+          work: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
