@@ -192,11 +192,20 @@ fi
 __BUNDLE_PROMOTED=1
 
 cd "$DEPLOY_PATH" || fail_deploy "deploy-path-cd-failed"
-SSR_ENTRY_CANDIDATES="dist/server/server.js dist/server/server.mjs dist/server/index.js dist/server/index.mjs"
+if [ ! -d dist ] && [ -d .output ]; then
+  echo "Normalizing Nitro output from .output to dist"
+  mkdir -p dist
+  [ -d .output/server ] && cp -r .output/server dist/server
+  [ -d .output/public ] && cp -r .output/public dist/client
+  [ -f .output/nitro.json ] && cp .output/nitro.json dist/nitro.json
+  [ -f .output/package.json ] && cp .output/package.json dist/package.json
+fi
+SSR_ENTRY_CANDIDATES="dist/server/server.js dist/server/server.mjs dist/server/index.js dist/server/index.mjs .output/server/server.js .output/server/server.mjs .output/server/index.js .output/server/index.mjs"
 [ -n "${SERVER_ENTRY:-}" ] && [ -f "$SERVER_ENTRY" ] || {
   echo "ERROR: SSR entry missing: ${SERVER_ENTRY:-<unset>}"
   echo "Expected one of: $SSR_ENTRY_CANDIDATES"
   find dist/server -maxdepth 2 -type f 2>/dev/null | LC_ALL=C sort | sed -n '1,80p' || true
+  find .output/server -maxdepth 2 -type f 2>/dev/null | LC_ALL=C sort | sed -n '1,80p' || true
   fail_deploy "ssr-entry-missing"
 }
 [ -f deploy-version.json ] || fail_deploy "deploy-version-missing"

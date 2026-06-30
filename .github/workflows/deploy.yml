@@ -87,6 +87,17 @@ jobs:
       - name: Prepare SSR deploy bundle
         run: |
           set -eu
+
+          # Normalize Nitro/TanStack output. Some CI environments emit
+          # `.output/{server,public}` instead of `dist/{server,client}`.
+          if [ ! -d dist ] && [ -d .output ]; then
+            mkdir -p dist
+            [ -d .output/server ] && cp -r .output/server dist/server
+            [ -d .output/public ] && cp -r .output/public dist/client
+            [ -f .output/nitro.json ] && cp .output/nitro.json dist/nitro.json
+            [ -f .output/package.json ] && cp .output/package.json dist/package.json
+          fi
+
           SERVER_ENTRY=""
           for c in dist/server/server.js dist/server/server.mjs dist/server/index.js dist/server/index.mjs; do
             [ -f "$c" ] && { SERVER_ENTRY="$c"; break; }
@@ -95,6 +106,7 @@ jobs:
             echo "::error::SSR entry missing. Expected one of: dist/server/server.js, dist/server/server.mjs, dist/server/index.js, dist/server/index.mjs"
             echo "Build output snapshot:"
             find dist -maxdepth 3 -type f | LC_ALL=C sort | sed -n '1,120p' || true
+            find .output -maxdepth 3 -type f | LC_ALL=C sort | sed -n '1,120p' || true
             exit 1
           fi
 

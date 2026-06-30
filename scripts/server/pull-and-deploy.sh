@@ -69,6 +69,15 @@ else
 fi
 
 # ─── 4. Locate the SSR entry the build produced ─────────────────────────────
+if [ ! -d dist ] && [ -d .output ]; then
+  log "Normalizing Nitro output from .output to dist"
+  mkdir -p dist
+  [ -d .output/server ] && cp -r .output/server dist/server
+  [ -d .output/public ] && cp -r .output/public dist/client
+  [ -f .output/nitro.json ] && cp .output/nitro.json dist/nitro.json
+  [ -f .output/package.json ] && cp .output/package.json dist/package.json
+fi
+
 SERVER_ENTRY=""
 for c in dist/server/server.js dist/server/server.mjs dist/server/index.js dist/server/index.mjs; do
   [ -f "$c" ] && { SERVER_ENTRY="$c"; break; }
