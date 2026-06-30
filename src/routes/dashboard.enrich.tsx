@@ -248,16 +248,23 @@ function EnrichPage() {
                 <tbody className="divide-y divide-border/50">
                   {rows.map((r, i) => {
                     const m = matches.get(i);
-                    const name = m?.full_name ?? r.name;
-                    const phone = m?.phone ?? r.phone;
-                    const email = m?.email ?? r.email;
-                    const city = m?.city ?? r.city;
-                    const gov = m?.governorate ?? r.governorate;
+                    const db = dbMatches.get(i);
+                    // priority: customer DB match > FB DB match > regex
+                    const name = m?.full_name ?? db?.full_name ?? r.name;
+                    const phone = m?.phone ?? db?.phone ?? r.phone;
+                    const email = m?.email ?? db?.email ?? r.email;
+                    const city = m?.city ?? db?.location ?? r.city;
+                    const gov = m?.governorate ?? db?.hometown ?? r.governorate;
+                    const rowBg = m
+                      ? "bg-emerald-500/[0.06]"
+                      : db
+                      ? "bg-violet-500/[0.06]"
+                      : r.governorate ? "bg-primary/[0.03]" : "";
                     return (
-                      <tr key={i} className={m ? "bg-emerald-500/[0.06]" : r.governorate ? "bg-primary/[0.03]" : ""}>
+                      <tr key={i} className={rowBg}>
                         <td className="px-4 py-2 font-mono text-muted-foreground">{i + 1}</td>
                         <td className="px-4 py-2 font-medium">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span>{name ?? "—"}</span>
                             {m && (
                               <Badge className="gap-1 bg-emerald-500/15 px-1.5 py-0 text-[10px] text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300">
@@ -265,8 +272,15 @@ function EnrichPage() {
                                 {t.matched}
                               </Badge>
                             )}
+                            {!m && db && (
+                              <Badge className="gap-1 bg-violet-500/15 px-1.5 py-0 text-[10px] text-violet-700 hover:bg-violet-500/15 dark:text-violet-300" title={`${db.match_source}${db.match_score ? ` (${db.match_score.toFixed(2)})` : ""}`}>
+                                <Sparkles className="h-2.5 w-2.5" />
+                                {lang === "ar" ? "قاعدة فيسبوك" : "FB DB"}
+                              </Badge>
+                            )}
                           </div>
                           {m?.notes && <div className="text-[11px] text-muted-foreground line-clamp-1">{m.notes}</div>}
+                          {!m && db?.work && <div className="text-[11px] text-muted-foreground line-clamp-1">{db.work}</div>}
                         </td>
                         <td className="px-4 py-2 font-mono">{phone ?? "—"}</td>
                         <td className="px-4 py-2 font-mono text-xs">{email ?? "—"}</td>
