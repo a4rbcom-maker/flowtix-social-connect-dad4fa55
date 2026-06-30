@@ -1318,12 +1318,40 @@ function PreviewList({
     return sortDir === "desc" ? sorted.reverse() : sorted;
   }, [rows, tokens, matchMode, sortKey, sortDir, lang]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  // Duplicate detection over the filtered list (by phone, then profile, then name).
+  const dupCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const e of filtered) {
+      const k = dupKeyFor(e);
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return m;
+  }, [filtered]);
+  const duplicatesCount = useMemo(() => {
+    let n = 0;
+    for (const c of dupCounts.values()) if (c > 1) n += c - 1;
+    return n;
+  }, [dupCounts]);
+
+  const visible = useMemo(() => {
+    if (!uniqueOnly) return filtered;
+    const seen = new Set<string>();
+    const out: PreviewRow[] = [];
+    for (const e of filtered) {
+      const k = dupKeyFor(e);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(e);
+    }
+    return out;
+  }, [filtered, uniqueOnly]);
+
+  const totalPages = Math.max(1, Math.ceil(visible.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const start = (safePage - 1) * pageSize;
-  const slice = filtered.slice(start, start + pageSize);
+  const slice = visible.slice(start, start + pageSize);
 
-  const filteredKeys = useMemo(() => filtered.map(keyFor), [filtered, keyFor]);
+  const filteredKeys = useMemo(() => visible.map(keyFor), [visible, keyFor]);
   const allFilteredSelected = filteredKeys.length > 0 && filteredKeys.every((k) => selectedKeys.has(k));
   const someFilteredSelected = filteredKeys.some((k) => selectedKeys.has(k));
 
