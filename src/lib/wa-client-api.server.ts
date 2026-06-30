@@ -76,6 +76,7 @@ async function connect(supabase: ReturnType<typeof getSupabaseForToken>, userId:
     await waBridge.createSession(sessionId, {
       webhookUrl: (await deriveWebhookUrl()) ?? undefined,
       tenantId: userId,
+      syncFullHistory: true,
     });
   } catch (err) {
     if (!(err instanceof BridgeError && (err.status === 409 || err.status === 400))) {
