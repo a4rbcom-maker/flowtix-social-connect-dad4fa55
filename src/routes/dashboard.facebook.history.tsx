@@ -65,6 +65,10 @@ function JobsHistoryPage() {
   const [msgTitle, setMsgTitle] = useState("");
   const [msgPerHour, setMsgPerHour] = useState(20);
   const [msgSubmitting, setMsgSubmitting] = useState(false);
+  const [msgImages, setMsgImages] = useState<string[]>([]);
+  const [msgUploading, setMsgUploading] = useState(false);
+  const [msgAccounts, setMsgAccounts] = useState<Array<{ id: string; display_name: string; status: string }>>([]);
+  const [msgSelectedAccounts, setMsgSelectedAccounts] = useState<Set<string>>(new Set());
 
   const t = lang === "ar" ? {
     title: "سجل المهام",
