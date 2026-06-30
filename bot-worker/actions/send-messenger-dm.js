@@ -79,21 +79,27 @@ async function attachImage(page, localPath) {
 
 async function findComposer(page) {
   return page.evaluate(() => {
-    const sel = [
-      '[contenteditable="true"][role="textbox"]',
-      '[contenteditable="true"][aria-label]',
-      '[contenteditable="true"][data-lexical-editor="true"]',
-      'div[aria-label*="message" i][contenteditable="true"]',
-      'div[aria-label*="رسالة"][contenteditable="true"]',
-      'div[aria-label*="Aa"][contenteditable="true"]',
-      'div[aria-placeholder*="Aa"][contenteditable="true"]',
-      'div[aria-label*="Aa"][contenteditable="true"]',
-    ];
-    for (const s of sel) {
-      const el = document.querySelector(s);
-      if (el) return true;
-    }
-    return false;
+    const normalize = (v) => String(v || "").replace(/\s+/g, " ").trim();
+    const isVisible = (el) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 40 && r.height > 12 && r.bottom > 0 && r.right > 0;
+    };
+    const isMessengerComposer = (el) => {
+      const label = normalize([
+        el.getAttribute("aria-label"),
+        el.getAttribute("aria-placeholder"),
+        el.getAttribute("placeholder"),
+        el.getAttribute("data-testid"),
+        el.getAttribute("role"),
+      ].filter(Boolean).join(" "));
+      if (/search|بحث|comment|تعليق|post|منشور/i.test(label)) return false;
+      if (/(^|\s)(Aa|Message|Type a message|Write a message|رسالة|اكتب رسالة|اكتب رسالتك)(\s|$)/i.test(label)) return true;
+      const r = el.getBoundingClientRect();
+      const inChatArea = r.top > window.innerHeight * 0.35 && r.height <= 90;
+      const hasMessengerUi = /Messenger|ماسنجر|الدردشات|الرسائل والمكالمات/i.test(document.body?.innerText || "");
+      return hasMessengerUi && inChatArea;
+    };
+    return Array.from(document.querySelectorAll('[contenteditable="true"]')).some((el) => isVisible(el) && isMessengerComposer(el));
   });
 }
 
@@ -106,15 +112,21 @@ async function diagnoseDmPage(page) {
   return await page.evaluate(() => {
     const text = document.body?.innerText || "";
     const lower = text.toLowerCase();
-    const hasComposer = !!(
-      document.querySelector('[contenteditable="true"][role="textbox"]') ||
-      document.querySelector('[contenteditable="true"][aria-label]') ||
-      document.querySelector('[contenteditable="true"][data-lexical-editor="true"]') ||
-      document.querySelector('div[aria-label*="message" i][contenteditable="true"]') ||
-      document.querySelector('div[aria-label*="رسالة"][contenteditable="true"]') ||
-      document.querySelector('div[aria-label*="Aa"][contenteditable="true"]') ||
-      document.querySelector('div[aria-placeholder*="Aa"][contenteditable="true"]')
-    );
+    const normalize = (v) => String(v || "").replace(/\s+/g, " ").trim();
+    const hasComposer = Array.from(document.querySelectorAll('[contenteditable="true"]')).some((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.width <= 40 || r.height <= 12 || r.bottom <= 0 || r.right <= 0) return false;
+      const label = normalize([
+        el.getAttribute("aria-label"),
+        el.getAttribute("aria-placeholder"),
+        el.getAttribute("placeholder"),
+        el.getAttribute("data-testid"),
+        el.getAttribute("role"),
+      ].filter(Boolean).join(" "));
+      if (/search|بحث|comment|تعليق|post|منشور/i.test(label)) return false;
+      if (/(^|\s)(Aa|Message|Type a message|Write a message|رسالة|اكتب رسالة|اكتب رسالتك)(\s|$)/i.test(label)) return true;
+      return /Messenger|ماسنجر|الدردشات|الرسائل والمكالمات/i.test(text) && r.top > window.innerHeight * 0.35 && r.height <= 90;
+    });
     if (hasComposer) return { ok: true, reason: null };
 
     if (/can(?:not|'t|’t) message|can't reply|you can no longer send messages|this person isn't available|recipient unavailable/i.test(text)) {
@@ -248,13 +260,23 @@ async function sendToOne(page, profile, message, imagePath) {
   }
 
   const typed = await page.evaluate((msg) => {
-    const editor = document.querySelector('[contenteditable="true"][role="textbox"]')
-      || document.querySelector('[contenteditable="true"][aria-label]')
-      || document.querySelector('[contenteditable="true"][data-lexical-editor="true"]')
-      || document.querySelector('div[aria-label*="message" i][contenteditable="true"]')
-      || document.querySelector('div[aria-label*="رسالة"][contenteditable="true"]')
-      || document.querySelector('div[aria-label*="Aa"][contenteditable="true"]')
-      || document.querySelector('div[aria-placeholder*="Aa"][contenteditable="true"]');
+    const normalize = (v) => String(v || "").replace(/\s+/g, " ").trim();
+    const candidates = Array.from(document.querySelectorAll('[contenteditable="true"]'));
+    const editor = candidates.find((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.width <= 40 || r.height <= 12 || r.bottom <= 0 || r.right <= 0) return false;
+      const label = normalize([
+        el.getAttribute("aria-label"),
+        el.getAttribute("aria-placeholder"),
+        el.getAttribute("placeholder"),
+        el.getAttribute("data-testid"),
+        el.getAttribute("role"),
+      ].filter(Boolean).join(" "));
+      if (/search|بحث|comment|تعليق|post|منشور/i.test(label)) return false;
+      if (/(^|\s)(Aa|Message|Type a message|Write a message|رسالة|اكتب رسالة|اكتب رسالتك)(\s|$)/i.test(label)) return true;
+      const hasMessengerUi = /Messenger|ماسنجر|الدردشات|الرسائل والمكالمات/i.test(document.body?.innerText || "");
+      return hasMessengerUi && r.top > window.innerHeight * 0.35 && r.height <= 90;
+    });
     if (!editor) return false;
     editor.focus();
     document.execCommand("insertText", false, msg);
