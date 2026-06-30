@@ -21,7 +21,7 @@ const SECRET = process.env.BOT_WORKER_SECRET;
 const MIN_INT = Math.max(5, parseInt(process.env.POLL_INTERVAL_SEC || "15", 10)) * 1000;
 const MAX_INT = Math.max(MIN_INT, parseInt(process.env.POLL_MAX_INTERVAL_SEC || "60", 10) * 1000);
 const HEADLESS = process.env.HEADLESS !== "false";
-const WORKER_VERSION = "bot-worker-2026-06-30-messenger-dm";
+const WORKER_VERSION = "bot-worker-2026-06-30-deep-profile-resilient";
 const WORKER_CAPABILITIES = [
   "post_to_groups",
   "extract_pages",
