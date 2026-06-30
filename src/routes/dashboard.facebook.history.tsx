@@ -97,6 +97,8 @@ function JobsHistoryPage() {
   const [selected, setSelected] = useState<JobRow | null>(null);
   const [results, setResults] = useState<JobResult[]>([]);
   const [resultsLoading, setResultsLoading] = useState(false);
+  const [selectedJobPayload, setSelectedJobPayload] = useState<Record<string, unknown> | null>(null);
+  const [detailRow, setDetailRow] = useState<{ row: JobResult; index: number; name: string; profileUrl: string | null; targetId: string | null } | null>(null);
   const [cancelTarget, setCancelTarget] = useState<JobRow | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [pausingId, setPausingId] = useState<string | null>(null);
