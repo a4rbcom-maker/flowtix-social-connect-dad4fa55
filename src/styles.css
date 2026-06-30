@@ -968,4 +968,28 @@ html {
   text-align: right;
 }
 
+/*
+ * Table action cells in RTL:
+ * Push the last-column action buttons to the inline-end (the LEFT in RTL)
+ * so they mirror CardHeader/Dialog-footer behaviour, while column widths
+ * stay driven by content. We only flip alignment — never width/padding —
+ * so column gutters and the overall table layout don't shift.
+ */
+[dir="rtl"] table th:last-child,
+[dir="rtl"] table td:last-child {
+  text-align: end;
+}
+
+[dir="rtl"] table td:last-child > .flex,
+[dir="rtl"] table td:last-child > div:has(> button),
+[dir="rtl"] table td:last-child > div:has(> a[role="button"]) {
+  justify-content: flex-end;
+}
+
+/* A single bare button in the last cell: nudge it to the inline-end. */
+[dir="rtl"] table td:last-child > button:only-child,
+[dir="rtl"] table td:last-child > a:only-child {
+  margin-inline-start: auto;
+  display: inline-flex;
+}
 
