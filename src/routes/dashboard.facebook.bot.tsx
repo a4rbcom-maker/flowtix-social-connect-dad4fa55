@@ -423,9 +423,12 @@ function BotAccountsPage() {
   });
   const [retryCounts, setRetryCounts] = useState<Record<string, number>>({});
   const [groupsResult, setGroupsResult] = useState<{
+    accountId: string;
     accountName: string;
     groups: { id: string; name: string }[];
   } | null>(null);
+  const [listGroupsLoading, setListGroupsLoading] = useState(false);
+  const listMyGroupsFn = useServerFn(createListMyGroupsJob);
   const [reloginFor, setReloginFor] = useState<{ id: string; name: string } | null>(null);
   const [checkpointFor, setCheckpointFor] = useState<{
     id: string;
