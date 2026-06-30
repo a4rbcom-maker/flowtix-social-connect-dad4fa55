@@ -212,6 +212,7 @@ function JobsHistoryPage() {
     || selected?.job_type === "extract_page_audience"
     || selected?.job_type === "deep_profile_scrape";
   const isGroupsList = selected?.job_type === "list_my_groups";
+  const isMessenger = selected?.job_type === "send_messenger_dm";
   const groupRows = isGroupsList
     ? results.map((r) => {
         const d = (r.data ?? {}) as { name?: string; url?: string; group_id?: string; id?: string };
@@ -747,6 +748,93 @@ function JobsHistoryPage() {
                 </tbody>
               </table>
             </div>
+          ) : isMessenger ? (
+            (() => {
+              const succ = results.filter((r) => r.status === "success").length;
+              const fail = results.filter((r) => r.status === "failed").length;
+              const skip = results.filter((r) => r.status === "skipped").length;
+              const friendly = (err: string | null): string => {
+                if (!err) return lang === "ar" ? "تم الإرسال" : "Delivered";
+                const e = err.toLowerCase();
+                if (e.includes("message button not visible") || e.includes("cannot open dm") || e.includes("closed dms") || e.includes("not friends"))
+                  return lang === "ar" ? "المستلم لا يستقبل رسائل من غير الأصدقاء" : "Recipient blocks non-friend DMs";
+                if (e.includes("composer")) return lang === "ar" ? "تعذّر فتح نافذة المحادثة" : "Could not open composer";
+                if (e.includes("session")) return lang === "ar" ? "انتهت جلسة الحساب — أعد الربط" : "Session expired — reconnect";
+                if (e.includes("blocked") || e.includes("can't message")) return lang === "ar" ? "فيسبوك منع إرسال رسالة لهذا الحساب" : "Facebook blocked this DM";
+                return err;
+              };
+              const extractId = (url: string | null) => {
+                if (!url) return null;
+                const m = url.match(/(?:user\/|profile\.php\?id=|messages\/t\/|m\.me\/)(\d{5,})/) || url.match(/^(\d{5,})$/);
+                return m ? m[1] : null;
+              };
+              return (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2 px-1">
+                    <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" variant="outline">
+                      ✅ {lang === "ar" ? `ناجح: ${succ}` : `Sent: ${succ}`}
+                    </Badge>
+                    <Badge className="bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30" variant="outline">
+                      ❌ {lang === "ar" ? `فاشل: ${fail}` : `Failed: ${fail}`}
+                    </Badge>
+                    {skip > 0 && (
+                      <Badge variant="outline">⏭ {lang === "ar" ? `متخطّى: ${skip}` : `Skipped: ${skip}`}</Badge>
+                    )}
+                  </div>
+                  <div className="max-h-[55vh] overflow-auto rounded-lg border">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-muted/50 text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 text-start">{lang === "ar" ? "#" : "#"}</th>
+                          <th className="px-3 py-2 text-start">{lang === "ar" ? "الاسم" : "Name"}</th>
+                          <th className="px-3 py-2 text-start">{lang === "ar" ? "الحالة" : "Status"}</th>
+                          <th className="px-3 py-2 text-start">{lang === "ar" ? "السبب / التفاصيل" : "Reason / Details"}</th>
+                          <th className="px-3 py-2 text-start">{lang === "ar" ? "البروفايل" : "Profile"}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/50">
+                        {results.map((r, i) => {
+                          const d = (r.data ?? {}) as { name?: string | null };
+                          const name = d.name?.trim() || (lang === "ar" ? "بدون اسم" : "Unknown");
+                          const id = extractId(r.target);
+                          const profileUrl = id ? `https://www.facebook.com/profile.php?id=${id}` : r.target;
+                          const ok = r.status === "success";
+                          return (
+                            <tr key={r.id} className={ok ? "bg-emerald-500/[0.04]" : r.status === "failed" ? "bg-rose-500/[0.03]" : ""}>
+                              <td className="px-3 py-2 text-muted-foreground text-start">{i + 1}</td>
+                              <td className="px-3 py-2 font-medium text-start">{name}</td>
+                              <td className="px-3 py-2 text-start">
+                                {ok ? (
+                                  <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" variant="outline">
+                                    ✅ {lang === "ar" ? "نجح" : "Sent"}
+                                  </Badge>
+                                ) : r.status === "failed" ? (
+                                  <Badge className="bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30" variant="outline">
+                                    ❌ {lang === "ar" ? "فشل" : "Failed"}
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline">{r.status}</Badge>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-start text-muted-foreground">{friendly(r.error)}</td>
+                              <td className="px-3 py-2 text-start">
+                                {profileUrl ? (
+                                  <bdi dir="ltr">
+                                    <a href={profileUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                                      {id ? `#${id}` : "↗"}
+                                    </a>
+                                  </bdi>
+                                ) : "—"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()
           ) : (
             <div className="max-h-[60vh] overflow-auto">
               <table className="w-full text-xs">
