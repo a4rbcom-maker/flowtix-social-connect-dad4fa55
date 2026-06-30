@@ -1494,16 +1494,29 @@ function PreviewList({
                   const hasProfile = !!profile && !isSystem(profile);
                   const k = keyFor(e);
                   const checked = selectedKeys.has(k);
+                  const dupCount = dupCounts.get(dupKeyFor(e)) ?? 1;
                   return (
                     <tr
                       key={start + i}
-                      className={`border-t border-border/60 hover:bg-muted/30 ${checked ? "bg-primary/5" : ""}`}
+                      className={`border-t border-border/60 hover:bg-muted/30 ${checked ? "bg-primary/5" : ""} ${dupCount > 1 ? "bg-amber-500/5" : ""}`}
                     >
                       <td className="px-2 py-1.5">
                         <Checkbox checked={checked} onCheckedChange={() => toggleOne(k)} aria-label={e.name || ""} />
                       </td>
                       <td className="px-2 py-1.5 tabular-nums text-muted-foreground">{start + i + 1}</td>
-                      <td className="px-2 py-1.5">{e.name || <span className="text-muted-foreground">—</span>}</td>
+                      <td className="px-2 py-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <span>{e.name || <span className="text-muted-foreground">—</span>}</span>
+                          {dupCount > 1 && (
+                            <span
+                              className="inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-1 py-0 text-[10px] text-amber-700 dark:text-amber-300"
+                              title={lang === "ar" ? `يظهر ${dupCount} مرات` : `Appears ${dupCount} times`}
+                            >
+                              ×{dupCount}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-2 py-1.5 tabular-nums" dir="ltr">{e.phone || <span className="text-muted-foreground">—</span>}</td>
                       <td className="px-2 py-1.5 max-w-[200px] truncate" dir="ltr">
                         {hasProfile ? (
