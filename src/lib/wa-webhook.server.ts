@@ -416,30 +416,44 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         }
       }
 
-      const { error: insErr } = await supabaseAdmin.from("wa_messages").insert({
-        user_id: userId,
-        session_id: sessionId,
-        direction: fromMe ? "out" : "in",
-        remote_jid: remoteJid,
-        from_phone: fromMe ? null : (isGroup ? senderPhone || null : phone || null),
-        to_phone: fromMe ? (phone || null) : null,
-        msg_type: msgType,
-        text_body: text,
-        media_url: null,
-        status: fromMe ? "sent" : "received",
-        provider_message_id: providerMessageId,
-        wa_timestamp: waTimestamp,
-        raw: {
-          ...h,
-          is_historical: true,
-          normalizedRemoteJid: remoteJid,
-          normalizedWaTimestamp: waTimestamp,
-        } as never,
-      });
+      const { error: insErr, data: insData } = await supabaseAdmin
+        .from("wa_messages")
+        .upsert(
+          {
+            user_id: userId,
+            session_id: sessionId,
+            direction: fromMe ? "out" : "in",
+            remote_jid: remoteJid,
+            from_phone: fromMe ? null : (isGroup ? senderPhone || null : phone || null),
+            to_phone: fromMe ? (phone || null) : null,
+            msg_type: msgType,
+            text_body: text,
+            media_url: null,
+            status: fromMe ? "sent" : "received",
+            provider_message_id: providerMessageId,
+            wa_timestamp: waTimestamp,
+            raw: {
+              ...h,
+              is_historical: true,
+              normalizedRemoteJid: remoteJid,
+              normalizedWaTimestamp: waTimestamp,
+            } as never,
+          },
+          {
+            onConflict: "user_id,session_id,provider_message_id",
+            ignoreDuplicates: true,
+          },
+        )
+        .select("id");
       if (insErr) {
         console.error("[wa-webhook] history_messages insert failed:", insErr.message);
         continue;
       }
+      if (!insData || insData.length === 0) {
+        dup++;
+        continue;
+      }
+
       saved++;
 
       await upsertConversationFromMessage({
