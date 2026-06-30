@@ -752,6 +752,36 @@ export type Database = {
           },
         ]
       }
+      fb_enrichment_usage: {
+        Row: {
+          created_at: string
+          day: string
+          hits: number
+          id: number
+          lookups: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          day?: string
+          hits?: number
+          id?: number
+          lookups?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          day?: string
+          hits?: number
+          id?: number
+          lookups?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       fb_job_results: {
         Row: {
           created_at: string
@@ -953,6 +983,81 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      fb_people_db: {
+        Row: {
+          about_me: string | null
+          birthday: string | null
+          birthday_year: string | null
+          country: string
+          created_at: string
+          education: string | null
+          email: string | null
+          fbid: string | null
+          first_name: string | null
+          full_name: string | null
+          gender: string | null
+          hometown: string | null
+          id: number
+          last_name: string | null
+          locale: string | null
+          location: string | null
+          name_norm: string | null
+          phone_norm: string | null
+          phone_raw: string | null
+          relationship: string | null
+          religion: string | null
+          work: string | null
+        }
+        Insert: {
+          about_me?: string | null
+          birthday?: string | null
+          birthday_year?: string | null
+          country: string
+          created_at?: string
+          education?: string | null
+          email?: string | null
+          fbid?: string | null
+          first_name?: string | null
+          full_name?: string | null
+          gender?: string | null
+          hometown?: string | null
+          id?: number
+          last_name?: string | null
+          locale?: string | null
+          location?: string | null
+          name_norm?: string | null
+          phone_norm?: string | null
+          phone_raw?: string | null
+          relationship?: string | null
+          religion?: string | null
+          work?: string | null
+        }
+        Update: {
+          about_me?: string | null
+          birthday?: string | null
+          birthday_year?: string | null
+          country?: string
+          created_at?: string
+          education?: string | null
+          email?: string | null
+          fbid?: string | null
+          first_name?: string | null
+          full_name?: string | null
+          gender?: string | null
+          hometown?: string | null
+          id?: number
+          last_name?: string | null
+          locale?: string | null
+          location?: string | null
+          name_norm?: string | null
+          phone_norm?: string | null
+          phone_raw?: string | null
+          relationship?: string | null
+          religion?: string | null
+          work?: string | null
+        }
+        Relationships: []
       }
       fb_text_templates: {
         Row: {
@@ -1752,6 +1857,8 @@ export type Database = {
         }
         Returns: boolean
       }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
       ai_account_status: "active" | "exhausted" | "disabled" | "error"
