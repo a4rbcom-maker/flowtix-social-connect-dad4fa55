@@ -332,23 +332,6 @@ function JobsHubPage() {
           )}
         </Card>
 
-        <Card className="p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-muted-foreground me-1">{lang === "ar" ? "وصول سريع:" : "Quick access:"}</span>
-            <Button size="sm" variant={activeTab === "groupmembers" ? "default" : "outline"} onClick={() => navigate({ search: { tab: "groupmembers" }, replace: true })} className="gap-2">
-              <Users className="h-4 w-4" />{t.tabGroupMembers}
-            </Button>
-            <Button size="sm" variant={activeTab === "pageaudience" ? "default" : "outline"} onClick={() => navigate({ search: { tab: "pageaudience" }, replace: true })} className="gap-2">
-              <UserPlus className="h-4 w-4" />{t.tabPageAudience}
-            </Button>
-            <Button size="sm" variant={activeTab === "commenters" ? "default" : "outline"} onClick={() => navigate({ search: { tab: "commenters" }, replace: true })} className="gap-2">
-              <MessageSquare className="h-4 w-4" />{t.tabExtractCommenters}
-            </Button>
-            <Button size="sm" variant={activeTab === "post" ? "default" : "outline"} onClick={() => navigate({ search: { tab: "post" }, replace: true })} className="gap-2">
-              <FileText className="h-4 w-4" />{t.tabPost}
-            </Button>
-          </div>
-        </Card>
 
         <Tabs value={activeTab} onValueChange={(v) => navigate({ search: { tab: v as typeof activeTab }, replace: true })}>
           <TabsList className="grid w-full grid-cols-5">
