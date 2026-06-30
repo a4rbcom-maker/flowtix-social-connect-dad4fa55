@@ -948,6 +948,19 @@ function JobsHistoryPage() {
               </div>
             </div>
 
+            {/* Recipients preview list */}
+            <PreviewList
+              lang={lang}
+              rows={filteredRows}
+              search={previewSearch}
+              setSearch={(v) => { setPreviewSearch(v); setPreviewPage(1); }}
+              page={previewPage}
+              setPage={setPreviewPage}
+              pageSize={PREVIEW_PAGE_SIZE}
+              isSystem={(p: string) => FB_SYSTEM_RE.test(p)}
+            />
+
+
 
             <div className="space-y-2">
               <Label className="block text-start">
