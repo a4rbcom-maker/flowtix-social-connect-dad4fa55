@@ -541,7 +541,29 @@ function JobsHistoryPage() {
                               <Send className="h-4 w-4 text-primary" />
                             </Button>
                           )}
-                          {(j.status === "pending" || j.status === "running") && (
+                          {j.job_type === "send_messenger_dm" && (j.status === "pending" || j.status === "running") && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              title={t.pause}
+                              disabled={pausingId === j.id}
+                              onClick={(e) => { e.stopPropagation(); handlePause(j); }}
+                            >
+                              {pausingId === j.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4 text-amber-600" />}
+                            </Button>
+                          )}
+                          {j.status === "paused" && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              title={t.resume}
+                              disabled={pausingId === j.id}
+                              onClick={(e) => { e.stopPropagation(); handleResume(j); }}
+                            >
+                              {pausingId === j.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 text-primary" />}
+                            </Button>
+                          )}
+                          {(j.status === "pending" || j.status === "running" || j.status === "paused") && (
                             <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setCancelTarget(j); }}>
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
