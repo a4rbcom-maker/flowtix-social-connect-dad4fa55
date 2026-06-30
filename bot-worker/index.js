@@ -11,6 +11,7 @@ const { runExtractPages } = require("./actions/extract-pages");
 const { runExtractCommenters } = require("./actions/extract-commenters");
 const { runExtractGroupMembers } = require("./actions/extract-group-members");
 const { runExtractPageAudience } = require("./actions/extract-page-audience");
+const { runListMyGroups } = require("./actions/list-my-groups");
 const { ensureLogin } = require("./actions/login");
 
 const API = process.env.API_BASE_URL;
@@ -89,6 +90,7 @@ async function runJob(job) {
     else if (job.type === "extract_commenters") await runExtractCommenters(ctx);
     else if (job.type === "extract_group_members") await runExtractGroupMembers(ctx);
     else if (job.type === "extract_page_audience") await runExtractPageAudience(ctx);
+    else if (job.type === "list_my_groups") await runListMyGroups(ctx);
     else await reportUpdate({ jobId: job.id, status: "failed", errorMessage: `Unknown job type: ${job.type}` });
 
   } catch (err) {
