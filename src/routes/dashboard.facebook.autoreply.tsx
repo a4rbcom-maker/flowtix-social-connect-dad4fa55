@@ -166,7 +166,7 @@ function AddPageDialog({ ar, onDone, addFn }: { ar: boolean; onDone: () => void;
   };
 
   return (
-    <DialogContent>
+    <DialogContent dir={ar ? "rtl" : "ltr"} className={ar ? "text-right" : ""}>
       <DialogHeader>
         <DialogTitle>{ar ? "ربط صفحة فيسبوك" : "Connect Facebook page"}</DialogTitle>
         <DialogDescription>
