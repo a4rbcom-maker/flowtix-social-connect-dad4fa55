@@ -250,7 +250,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   };
 
   return (
-    <div dir={dir} className="flex min-h-screen bg-background">
+    <div dir={dir} data-dashboard-section={location.pathname.split("/")[2] ?? ""} className="flex min-h-screen bg-background">
       {/* Mobile overlay backdrop */}
       {sidebarOpen && (
         <button
