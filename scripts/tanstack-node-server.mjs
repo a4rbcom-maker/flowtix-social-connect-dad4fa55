@@ -43,7 +43,9 @@ loadDotEnv();
 
 const port = Number(process.env.PORT || process.env.APP_PORT || 3100);
 const root = process.cwd();
-const clientRoot = resolve(root, "dist/client");
+const clientRoot = ["dist/client", ".output/public"]
+  .map((candidate) => resolve(root, candidate))
+  .find((candidate) => existsSync(candidate)) || resolve(root, "dist/client");
 const versionFilePath = resolve(root, "deploy-version.json");
 const alerts = createAlertManager({ root });
 let ssrHandlerPromise;
@@ -123,6 +125,10 @@ async function getSsrHandler() {
       "dist/server/server.mjs",
       "dist/server/index.js",
       "dist/server/index.mjs",
+      ".output/server/server.js",
+      ".output/server/server.mjs",
+      ".output/server/index.js",
+      ".output/server/index.mjs",
     ].filter(Boolean);
     const entry = candidates.find((candidate) => existsSync(resolve(root, candidate)));
     if (!entry) {
