@@ -993,3 +993,34 @@ html {
   display: inline-flex;
 }
 
+/* ============================================================
+   Mobile: stack action buttons cleanly without breaking RTL
+   - CardHeader collapses to 1 column on narrow screens; title stays
+     on top (still right-aligned in RTL), action drops to its own row
+     aligned to the inline-end (left in RTL, right in LTR).
+   - Action group wraps with a small gap so 2-3 buttons don't overflow
+     horizontally on phones.
+   ============================================================ */
+@media (max-width: 640px) {
+  [data-slot="card-header"]:has([data-slot="card-action"]) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  [data-slot="card-action"] {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    justify-self: stretch;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-inline: 0;
+    justify-content: flex-end; /* inline-end = left in RTL, right in LTR */
+  }
+
+  [data-slot="card-action"] > button,
+  [data-slot="card-action"] > a {
+    max-width: 100%;
+  }
+}
+
+
