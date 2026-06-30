@@ -371,20 +371,20 @@ function JobsHubPage() {
           </TabsContent>
 
           <TabsContent value="groupmembers">
-            <Card dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-4 p-5 text-start">
-              <p className="text-sm text-muted-foreground">{t.gmHint}</p>
+            <Card dir={lang === "ar" ? "rtl" : "ltr"} className={`space-y-4 p-5 ${lang === "ar" ? "text-right" : "text-left"}`}>
+              <p className={`text-sm text-muted-foreground ${lang === "ar" ? "text-right" : "text-left"}`}>{t.gmHint}</p>
               <div className="space-y-2">
-                <Label>{t.gmGroup}</Label>
-                <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" placeholder={t.gmGroupPh} value={groupMembersId} onChange={(e) => setGroupMembersId(e.target.value)} />
+                <Label className={`block ${lang === "ar" ? "text-right" : "text-left"}`}>{t.gmGroup}</Label>
+                <Input dir={lang === "ar" ? "rtl" : "ltr"} className={lang === "ar" ? "text-right" : "text-left"} placeholder={t.gmGroupPh} value={groupMembersId} onChange={(e) => setGroupMembersId(e.target.value)} />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>{t.gmMax}</Label>
-                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" type="number" min={50} max={5000} step={50} value={groupMaxMembers} onChange={(e) => setGroupMaxMembers(Number(e.target.value))} />
+                  <Label className={`block ${lang === "ar" ? "text-right" : "text-left"}`}>{t.gmMax}</Label>
+                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className={lang === "ar" ? "text-right" : "text-left"} type="number" min={50} max={5000} step={50} value={groupMaxMembers} onChange={(e) => setGroupMaxMembers(Number(e.target.value))} />
                 </div>
                 <div className="space-y-2">
-                  <Label>{t.gmKeywords}</Label>
-                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" placeholder={t.gmKeywordsPh} value={groupFilterKeywords} onChange={(e) => setGroupFilterKeywords(e.target.value)} />
+                  <Label className={`block ${lang === "ar" ? "text-right" : "text-left"}`}>{t.gmKeywords}</Label>
+                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className={lang === "ar" ? "text-right" : "text-left"} placeholder={t.gmKeywordsPh} value={groupFilterKeywords} onChange={(e) => setGroupFilterKeywords(e.target.value)} />
                 </div>
               </div>
               <Button onClick={submitGroupMembers} disabled={busy || !groupMembersId.trim()} className="w-full">
