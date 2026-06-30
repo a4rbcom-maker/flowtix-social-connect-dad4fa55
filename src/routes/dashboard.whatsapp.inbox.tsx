@@ -40,6 +40,7 @@ import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
+import { buildRow } from "@/lib/customer-db";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -957,8 +958,49 @@ function ContactInfoPanel({
   isAr: boolean;
 }) {
   const [tab, setTab] = useState<"info" | "notes" | "media">("info");
+  const [saving, setSaving] = useState(false);
   const name = conv.contact_name ?? jid.replace(/@.*/, "");
   const phone = conv.contact_phone ? `+${conv.contact_phone}` : jid;
+
+  async function handleSaveCustomer() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error(isAr ? "يجب تسجيل الدخول" : "Login required");
+        return;
+      }
+      const rawPhone = conv.contact_phone ?? jid.replace(/@.*/, "");
+      const row = buildRow({
+        user_id: user.id,
+        full_name: conv.contact_name ?? null,
+        phone: rawPhone,
+        notes: isAr ? "تم الحفظ من المحادثات" : "Saved from inbox",
+      });
+      if (row.phone_norm) {
+        const { data: existing } = await supabase
+          .from("customer_database")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("phone_norm", row.phone_norm)
+          .maybeSingle();
+        if (existing) {
+          toast.info(isAr ? "العميل محفوظ بالفعل" : "Already saved");
+          return;
+        }
+      }
+      const { error } = await supabase.from("customer_database").insert(row);
+      if (error) throw error;
+      toast.success(isAr ? "تم حفظ العميل في قاعدة بياناتك" : "Customer saved");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error((isAr ? "فشل الحفظ: " : "Save failed: ") + msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <aside dir={isAr ? "rtl" : "ltr"} className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card/40 backdrop-blur-sm">
       {/* Contact header */}
@@ -981,10 +1023,11 @@ function ContactInfoPanel({
         <div className="grid w-full grid-cols-2 gap-2">
           <button
             type="button"
-            onClick={() => toast.info(isAr ? "قريباً" : "Soon")}
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-border bg-background/60 px-2 py-2 text-[11px] font-semibold transition hover:border-primary/40 hover:bg-primary/5"
+            onClick={handleSaveCustomer}
+            disabled={saving}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-border bg-background/60 px-2 py-2 text-[11px] font-semibold transition hover:border-primary/40 hover:bg-primary/5 disabled:opacity-60"
           >
-            <UserPlus className="h-3.5 w-3.5 text-primary" />
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> : <UserPlus className="h-3.5 w-3.5 text-primary" />}
             {isAr ? "حفظ" : "Save"}
           </button>
           <button
@@ -995,6 +1038,7 @@ function ContactInfoPanel({
             <Sparkles className="h-3.5 w-3.5 text-primary" />
             {isAr ? "تلخيص" : "Summary"}
           </button>
+
         </div>
       </div>
 
