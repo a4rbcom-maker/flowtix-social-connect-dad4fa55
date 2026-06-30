@@ -5,6 +5,16 @@ const FB_HOME = "https://www.facebook.com/";
 async function ensureLogin(page, account, reportStatus) {
   try {
     if (account.authMethod === "cookies" && account.credentials?.cookies) {
+      const sourceCookies = Array.isArray(account.credentials.cookies) ? account.credentials.cookies : [];
+      const cookieNames = new Set(sourceCookies.map((c) => String(c?.name || "")));
+      const missingRequired = ["c_user", "xs"].filter((name) => !cookieNames.has(name));
+      if (missingRequired.length > 0) {
+        await reportStatus(
+          "invalid",
+          `Stored Facebook cookies are incomplete; missing ${missingRequired.join(", ")}. Re-export cookies while logged into Facebook.`,
+        );
+        return false;
+      }
       const cookies = account.credentials.cookies.map((c) => ({
         name: c.name,
         value: c.value,
@@ -57,7 +67,7 @@ async function ensureLogin(page, account, reportStatus) {
     const browserCookies = await page.cookies("https://www.facebook.com");
     const cUser = browserCookies.find((c) => c.name === "c_user");
     if (!cUser || !cUser.value) {
-      await reportStatus("invalid", "c_user cookie missing after navigation — session was rejected by Facebook");
+      await reportStatus("invalid", "Facebook rejected the stored session cookies after navigation. Re-export fresh cookies from the same logged-in browser, then update the bot account.");
       return false;
     }
 

@@ -53,11 +53,13 @@ async function runJob(job) {
     await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
     if (job.account) {
+      let loginFailureReason = "Login failed (check credentials/cookies)";
       const ok = await ensureLogin(page, job.account, async (status, error) => {
+        if (error) loginFailureReason = error;
         await reportUpdate({ jobId: job.id, accountStatus: { accountId: job.account.id, status, error } });
       });
       if (!ok) {
-        await reportUpdate({ jobId: job.id, status: "failed", errorMessage: "Login failed (check credentials/cookies)" });
+        await reportUpdate({ jobId: job.id, status: "failed", errorMessage: loginFailureReason });
         return;
       }
     }
