@@ -18,7 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
-import { listJobs, getJob, cancelJob, createDeepProfileScrapeJob, createSendMessengerDmJob } from "@/lib/fb-bot.functions";
+import { listJobs, getJob, cancelJob, createDeepProfileScrapeJob, createDeepProfileScrapeFromJob, createSendMessengerDmJob } from "@/lib/fb-bot.functions";
 import { loadEgyptData, extractEgyptPhone, detectLocation } from "@/lib/egypt-enrich";
 
 export const Route = createFileRoute("/dashboard/facebook/history")({
