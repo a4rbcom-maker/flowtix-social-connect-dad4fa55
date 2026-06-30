@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2, Trash2, RefreshCw, Download, Sparkles, Send, KeyRound, AlertTriangle, Image as ImageIcon, X, Clock } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -69,6 +69,13 @@ function JobsHistoryPage() {
   const [msgUploading, setMsgUploading] = useState(false);
   const [msgAccounts, setMsgAccounts] = useState<Array<{ id: string; display_name: string; status: string }>>([]);
   const [msgSelectedAccounts, setMsgSelectedAccounts] = useState<Set<string>>(new Set());
+  // Recipient filters
+  const [msgFilterCity, setMsgFilterCity] = useState("");
+  const [msgFilterKeyword, setMsgFilterKeyword] = useState("");
+  const [msgRequirePhone, setMsgRequirePhone] = useState(false);
+  const [msgRequireProfile, setMsgRequireProfile] = useState(false);
+  const [msgDedupe, setMsgDedupe] = useState(true);
+  const [msgLimit, setMsgLimit] = useState(500);
 
   const t = lang === "ar" ? {
     title: "سجل المهام",
