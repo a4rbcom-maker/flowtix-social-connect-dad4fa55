@@ -147,59 +147,47 @@ export const enrichFbPeople = createServerFn({ method: "POST" })
     });
 
     // ---- Step 2: bulk-fetch the cheap exact-match buckets in parallel ----
-    const queries: Array<Promise<{ kind: string; rows: Record<string, unknown>[] }>> = [];
-    if (wantFbids.size) {
-      queries.push(
-        supabaseAdmin
-          .from("fb_people_db")
-          .select(FIELDS)
-          .in("fbid", Array.from(wantFbids))
-          .then(({ data: rows }) => ({ kind: "fbid", rows: (rows as unknown[]) as Record<string, unknown>[] })),
-      );
-    }
-    if (wantPhonesEG.size) {
-      queries.push(
-        supabaseAdmin
-          .from("fb_people_db")
-          .select(FIELDS + ", phone_norm")
-          .eq("country", "EG")
-          .in("phone_norm", Array.from(wantPhonesEG))
-          .then(({ data: rows }) => ({ kind: "phone_eg", rows: (rows as unknown[]) as Record<string, unknown>[] })),
-      );
-    }
-    if (wantPhonesIQ.size) {
-      queries.push(
-        supabaseAdmin
-          .from("fb_people_db")
-          .select(FIELDS + ", phone_norm")
-          .eq("country", "IQ")
-          .in("phone_norm", Array.from(wantPhonesIQ))
-          .then(({ data: rows }) => ({ kind: "phone_iq", rows: (rows as unknown[]) as Record<string, unknown>[] })),
-      );
-    }
-    if (wantEmails.size) {
-      // No direct ilike-in; use OR filter. Cap to keep URL short.
+    type Bucket = { kind: string; rows: Record<string, unknown>[] };
+    const runFbid = async (): Promise<Bucket> => {
+      const { data: rows } = await supabaseAdmin
+        .from("fb_people_db")
+        .select(FIELDS)
+        .in("fbid", Array.from(wantFbids));
+      return { kind: "fbid", rows: (rows ?? []) as unknown as Record<string, unknown>[] };
+    };
+    const runPhone = async (country: "EG" | "IQ", phones: Set<string>): Promise<Bucket> => {
+      const { data: rows } = await supabaseAdmin
+        .from("fb_people_db")
+        .select(FIELDS + ", phone_norm")
+        .eq("country", country)
+        .in("phone_norm", Array.from(phones));
+      return { kind: country === "EG" ? "phone_eg" : "phone_iq", rows: (rows ?? []) as unknown as Record<string, unknown>[] };
+    };
+    const runEmail = async (): Promise<Bucket> => {
       const emails = Array.from(wantEmails).slice(0, 200);
       const orExpr = emails.map((e) => `email.eq.${e}`).join(",");
-      queries.push(
-        supabaseAdmin
-          .from("fb_people_db")
-          .select(FIELDS)
-          .or(orExpr)
-          .then(({ data: rows }) => ({ kind: "email", rows: (rows as unknown[]) as Record<string, unknown>[] })),
-      );
-    }
-    if (wantNames.size) {
+      const { data: rows } = await supabaseAdmin
+        .from("fb_people_db")
+        .select(FIELDS)
+        .or(orExpr);
+      return { kind: "email", rows: (rows ?? []) as unknown as Record<string, unknown>[] };
+    };
+    const runName = async (): Promise<Bucket> => {
       const names = Array.from(wantNames).slice(0, 200);
-      queries.push(
-        supabaseAdmin
-          .from("fb_people_db")
-          .select(FIELDS + ", name_norm")
-          .in("name_norm", names)
-          .limit(1000)
-          .then(({ data: rows }) => ({ kind: "name_exact", rows: (rows as unknown[]) as Record<string, unknown>[] })),
-      );
-    }
+      const { data: rows } = await supabaseAdmin
+        .from("fb_people_db")
+        .select(FIELDS + ", name_norm")
+        .in("name_norm", names)
+        .limit(1000);
+      return { kind: "name_exact", rows: (rows ?? []) as unknown as Record<string, unknown>[] };
+    };
+
+    const queries: Promise<Bucket>[] = [];
+    if (wantFbids.size) queries.push(runFbid());
+    if (wantPhonesEG.size) queries.push(runPhone("EG", wantPhonesEG));
+    if (wantPhonesIQ.size) queries.push(runPhone("IQ", wantPhonesIQ));
+    if (wantEmails.size) queries.push(runEmail());
+    if (wantNames.size) queries.push(runName());
 
     const settled = await Promise.all(queries);
 
