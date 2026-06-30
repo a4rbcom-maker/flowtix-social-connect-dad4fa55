@@ -164,9 +164,17 @@ function GroupExtractionStatusPage() {
     finally { setResultsLoading(false); }
   };
 
-  const handleCancel = async (id: string) => {
-    try { await call(cancelJob, { id }); toast.success(t.cancel); }
-    catch (e) { toast.error(String(e)); }
+  const confirmCancel = async () => {
+    if (!cancelTarget) return;
+    setCancelling(true);
+    try {
+      await call(cancelJob, { id: cancelTarget.id });
+      // Reflect immediately in UI; realtime will also update
+      setJobs((prev) => prev.map((j) => (j.id === cancelTarget.id ? { ...j, status: "cancelled", completed_at: new Date().toISOString() } : j)));
+      toast.success(t.cancelDone);
+      setCancelTarget(null);
+    } catch (e) { toast.error(String(e)); }
+    finally { setCancelling(false); }
   };
 
   const active = useMemo(() => jobs.filter((j) => j.status === "running" || j.status === "pending"), [jobs]);
