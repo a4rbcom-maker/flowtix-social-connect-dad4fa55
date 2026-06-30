@@ -343,24 +343,24 @@ function JobsHubPage() {
           </TabsList>
 
           <TabsContent value="post">
-            <Card className="space-y-4 p-5">
+            <Card dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-4 p-5 text-start">
               <div className="space-y-2">
                 <Label>{t.content}</Label>
-                <Textarea rows={5} placeholder={t.contentPh} value={content} onChange={(e) => setContent(e.target.value)} />
+                <Textarea dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" rows={5} placeholder={t.contentPh} value={content} onChange={(e) => setContent(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label>{t.groupIds}</Label>
-                <Textarea rows={4} placeholder={t.groupIdsPh} className="font-mono text-sm" value={groupIds} onChange={(e) => setGroupIds(e.target.value)} />
+                <Textarea dir={lang === "ar" ? "rtl" : "ltr"} rows={4} placeholder={t.groupIdsPh} className="font-mono text-sm text-start" value={groupIds} onChange={(e) => setGroupIds(e.target.value)} />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>{t.intervalMin}</Label>
-                  <Input type="number" min={1} max={1440} value={intervalMinutes} onChange={(e) => setIntervalMinutes(Number(e.target.value))} />
+                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" type="number" min={1} max={1440} value={intervalMinutes} onChange={(e) => setIntervalMinutes(Number(e.target.value))} />
                   <p className="text-xs text-muted-foreground">{t.intervalHint}</p>
                 </div>
                 <div className="space-y-2">
                   <Label>{t.schedule}</Label>
-                  <Input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />
+                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />
                 </div>
               </div>
               <Button onClick={submitPost} disabled={busy} className="w-full gap-2">
@@ -371,20 +371,20 @@ function JobsHubPage() {
           </TabsContent>
 
           <TabsContent value="groupmembers">
-            <Card className="space-y-4 p-5">
+            <Card dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-4 p-5 text-start">
               <p className="text-sm text-muted-foreground">{t.gmHint}</p>
               <div className="space-y-2">
                 <Label>{t.gmGroup}</Label>
-                <Input placeholder={t.gmGroupPh} value={groupMembersId} onChange={(e) => setGroupMembersId(e.target.value)} />
+                <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" placeholder={t.gmGroupPh} value={groupMembersId} onChange={(e) => setGroupMembersId(e.target.value)} />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>{t.gmMax}</Label>
-                  <Input type="number" min={50} max={5000} step={50} value={groupMaxMembers} onChange={(e) => setGroupMaxMembers(Number(e.target.value))} />
+                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" type="number" min={50} max={5000} step={50} value={groupMaxMembers} onChange={(e) => setGroupMaxMembers(Number(e.target.value))} />
                 </div>
                 <div className="space-y-2">
                   <Label>{t.gmKeywords}</Label>
-                  <Input placeholder={t.gmKeywordsPh} value={groupFilterKeywords} onChange={(e) => setGroupFilterKeywords(e.target.value)} />
+                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" placeholder={t.gmKeywordsPh} value={groupFilterKeywords} onChange={(e) => setGroupFilterKeywords(e.target.value)} />
                 </div>
               </div>
               <Button onClick={submitGroupMembers} disabled={busy || !groupMembersId.trim()} className="w-full">
@@ -394,11 +394,11 @@ function JobsHubPage() {
           </TabsContent>
 
           <TabsContent value="pageaudience">
-            <Card className="space-y-4 p-5">
+            <Card dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-4 p-5 text-start">
               <p className="text-sm text-muted-foreground">{t.paHint}</p>
               <div className="space-y-2">
                 <Label>{t.paPage}</Label>
-                <Input placeholder={t.paPagePh} value={pageAudienceId} onChange={(e) => setPageAudienceId(e.target.value)} />
+                <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" placeholder={t.paPagePh} value={pageAudienceId} onChange={(e) => setPageAudienceId(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label>{t.paSources}</Label>
@@ -419,7 +419,7 @@ function JobsHubPage() {
               </div>
               <div className="space-y-2">
                 <Label>{t.paMax}</Label>
-                <Input type="number" min={50} max={3000} step={50} value={pageMaxItems} onChange={(e) => setPageMaxItems(Number(e.target.value))} />
+                <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" type="number" min={50} max={3000} step={50} value={pageMaxItems} onChange={(e) => setPageMaxItems(Number(e.target.value))} />
               </div>
               <Button onClick={submitPageAudience} disabled={busy || !pageAudienceId.trim()} className="w-full">
                 {busy && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{t.create}
@@ -428,10 +428,10 @@ function JobsHubPage() {
           </TabsContent>
 
           <TabsContent value="commenters">
-            <Card className="space-y-4 p-5">
+            <Card dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-4 p-5 text-start">
               <div className="space-y-2">
                 <Label>{t.postUrl}</Label>
-                <Input placeholder={t.postUrlPh} value={postUrl} onChange={(e) => setPostUrl(e.target.value)} />
+                <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" placeholder={t.postUrlPh} value={postUrl} onChange={(e) => setPostUrl(e.target.value)} />
               </div>
               <Button onClick={submitExtractCommenters} disabled={busy || !postUrl} className="w-full">
                 {busy && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{t.create}
@@ -440,7 +440,7 @@ function JobsHubPage() {
           </TabsContent>
 
           <TabsContent value="pages">
-            <Card className="space-y-4 p-5">
+            <Card dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-4 p-5 text-start">
               <p className="text-sm text-muted-foreground">{t.extractPagesDesc}</p>
               <Button onClick={submitExtractPages} disabled={busy} className="w-full">
                 {busy && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{t.create}
