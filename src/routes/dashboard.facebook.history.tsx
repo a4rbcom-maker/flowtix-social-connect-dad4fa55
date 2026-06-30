@@ -379,28 +379,7 @@ function JobsHistoryPage() {
               <span>{selected && t.types[selected.job_type]}</span>
               {results.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {isPeople && selected?.job_type !== "deep_profile_scrape" && (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={async () => {
-                        if (!selected?.id) return;
-                        try {
-                          const res = await call(createDeepProfileScrapeFromJob, { sourceJobId: selected.id });
-                          toast.success(
-                            lang === "ar"
-                              ? `تم إنشاء مهمة فحص عميق لـ ${res.count} بروفايل`
-                              : `Deep scrape queued for ${res.count} profiles`,
-                          );
-                          setSelected(null);
-                          load();
-                        } catch (e) { toast.error(String(e)); }
-                      }}
-                      className="gap-2"
-                    >
-                      {lang === "ar" ? "فحص عميق للبروفايلات" : "Deep profile scrape"}
-                    </Button>
-                  )}
+                  {/* Deep profile scrape hidden */}
                   {isPeople && (
                     <Button
                       size="sm"
