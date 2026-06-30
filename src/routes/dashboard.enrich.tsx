@@ -99,8 +99,8 @@ function EnrichPage() {
 
   const downloadCsv = () => {
     if (rows.length === 0) return;
-    const head = ["name", "phone", "city", "governorate", "source"];
-    const csv = [head, ...rows.map((r) => [r.name ?? "", r.phone ?? "", r.city ?? "", r.governorate ?? "", r.raw])]
+    const head = ["name", "phone", "email", "city", "governorate", "source"];
+    const csv = [head, ...rows.map((r) => [r.name ?? "", r.phone ?? "", r.email ?? "", r.city ?? "", r.governorate ?? "", r.raw])]
       .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -111,8 +111,10 @@ function EnrichPage() {
   const stats = {
     name: rows.filter((r) => r.name).length,
     phone: rows.filter((r) => r.phone).length,
+    email: rows.filter((r) => r.email).length,
     gov: rows.filter((r) => r.governorate).length,
   };
+  const noContact = rows.length > 0 && stats.phone === 0 && stats.email === 0 && stats.gov === 0;
 
   return (
     <DashboardLayout title={t.title}>
