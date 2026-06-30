@@ -653,8 +653,9 @@ export async function upsertConversationFromMessage(opts: {
   text: string | null;
   direction: "in" | "out";
   messageAt?: string;
+  historical?: boolean;
 }): Promise<string | null> {
-  const { userId, sessionId, remoteJid, contactName, contactPhone, text, direction } = opts;
+  const { userId, sessionId, remoteJid, contactName, contactPhone, text, direction, historical } = opts;
   const messageAt = opts.messageAt ?? new Date().toISOString();
 
   // Try update first
@@ -683,7 +684,11 @@ export async function upsertConversationFromMessage(opts: {
               last_direction: direction,
             }
           : {}),
-        unread_count: direction === "in" ? (existing.unread_count || 0) + 1 : existing.unread_count,
+        // Never increment unread for historical (back-fill) inbound messages.
+        unread_count:
+          !historical && direction === "in"
+            ? (existing.unread_count || 0) + 1
+            : existing.unread_count,
         contact_name: existing.contact_name || contactName,
         contact_phone: contactPhone || existing.contact_phone,
       })
@@ -702,11 +707,12 @@ export async function upsertConversationFromMessage(opts: {
       last_message_text: text ?? null,
       last_message_at: messageAt,
       last_direction: direction,
-      unread_count: direction === "in" ? 1 : 0,
+      unread_count: !historical && direction === "in" ? 1 : 0,
     })
     .select("id")
     .maybeSingle();
 
   return inserted?.id ?? null;
 }
+
 
