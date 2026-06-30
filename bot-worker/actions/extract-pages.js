@@ -1,12 +1,12 @@
 async function runExtractPages({ page, report }) {
   await page.goto("https://www.facebook.com/pages/?category=your_pages", { waitUntil: "domcontentloaded", timeout: 60_000 });
-  await page.waitForTimeout(4000);
+  await new Promise(r => setTimeout(r, 4000));
 
   // Scroll to load all
   let lastH = 0;
   for (let i = 0; i < 10; i++) {
     await page.evaluate(() => window.scrollBy(0, 1500));
-    await page.waitForTimeout(1500);
+    await new Promise(r => setTimeout(r, 1500));
     const h = await page.evaluate(() => document.body.scrollHeight);
     if (h === lastH) break;
     lastH = h;

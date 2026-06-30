@@ -1,7 +1,7 @@
 async function runExtractCommenters({ page, job, report }) {
   const { postUrl } = job.payload;
   await page.goto(postUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
-  await page.waitForTimeout(5000);
+  await new Promise(r => setTimeout(r, 5000));
 
   // Click "View more comments" repeatedly + scroll
   for (let i = 0; i < 30; i++) {
@@ -11,10 +11,10 @@ async function runExtractCommenters({ page, job, report }) {
       if (target) { target.click(); return true; }
       return false;
     });
-    await page.waitForTimeout(2000);
+    await new Promise(r => setTimeout(r, 2000));
     if (!clicked) {
       await page.evaluate(() => window.scrollBy(0, 1500));
-      await page.waitForTimeout(1500);
+      await new Promise(r => setTimeout(r, 1500));
     }
   }
 

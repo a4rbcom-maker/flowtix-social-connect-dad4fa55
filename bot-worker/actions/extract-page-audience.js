@@ -41,7 +41,7 @@ async function scrollAndCollect(page, cap) {
     }
     if (newCount === 0) emptyScrolls++; else emptyScrolls = 0;
     await page.evaluate(() => window.scrollBy(0, 1800));
-    await page.waitForTimeout(rand(2000, 4000));
+    await new Promise(r => setTimeout(r, rand(2000, 4000)));
   }
   return Array.from(seen.values());
 }
@@ -63,7 +63,7 @@ async function runExtractPageAudience({ page, job, report }) {
     if (totalCollected.size >= cap) break;
     try {
       await page.goto(task.url, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      await page.waitForTimeout(4000);
+      await new Promise(r => setTimeout(r, 4000));
       const remaining = cap - totalCollected.size;
       const found = await scrollAndCollect(page, remaining);
       for (const m of found) {
@@ -98,7 +98,7 @@ async function runExtractPageAudience({ page, job, report }) {
   if (sources.includes("engagers") && totalCollected.size < cap) {
     try {
       await page.goto(`https://www.facebook.com/${pageId}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      await page.waitForTimeout(4000);
+      await new Promise(r => setTimeout(r, 4000));
       // Just scroll the wall and parse profile-like links — quick & robust fallback
       const remaining = cap - totalCollected.size;
       const found = await scrollAndCollect(page, remaining);

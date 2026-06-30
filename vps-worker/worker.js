@@ -156,7 +156,7 @@ async function handleExtractCommenters(job) {
 
   try {
     await page.goto(postUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
-    await page.waitForTimeout(3000);
+    await new Promise(r => setTimeout(r, 3000));
 
     // Detect login wall
     if (page.url().includes("/login") || page.url().includes("/checkpoint")) {
@@ -178,7 +178,7 @@ async function handleExtractCommenters(job) {
         await chooser.first().click();
         const allOpt = page.getByRole("menuitem", { name: /all comments|كل التعليقات/i });
         if (await allOpt.first().isVisible({ timeout: 2000 })) await allOpt.first().click();
-        await page.waitForTimeout(1500);
+        await new Promise(r => setTimeout(r, 1500));
       }
     } catch (_) { /* ignore */ }
 
@@ -204,7 +204,7 @@ async function handleExtractCommenters(job) {
       }
 
       await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-      await page.waitForTimeout(1200);
+      await new Promise(r => setTimeout(r, 1200));
 
       // Harvest commenter links
       const commenters = await page.$$eval(
@@ -280,7 +280,7 @@ async function handleDeepProfileScrape(job) {
       const url = toUrl(ref);
       try {
         await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
-        await page.waitForTimeout(1500 + Math.floor(Math.random() * 1500));
+        await new Promise(r => setTimeout(r, 1500 + Math.floor(Math.random() * 1500)));
 
         // Detect login wall once
         if (page.url().includes("/login") || page.url().includes("/checkpoint")) {
@@ -384,7 +384,7 @@ async function handleDeepProfileScrape(job) {
       });
 
       // Gentle pacing to reduce ban risk
-      await page.waitForTimeout(2500 + Math.floor(Math.random() * 3500));
+      await new Promise(r => setTimeout(r, 2500 + Math.floor(Math.random() * 3500)));
     }
     return { extracted };
   } finally {
@@ -445,7 +445,7 @@ async function handleExtractGroupMembers(job) {
 
   try {
     await page.goto(membersUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
-    await page.waitForTimeout(5000);
+    await new Promise(r => setTimeout(r, 5000));
 
     if (page.url().includes("/login") || page.url().includes("/checkpoint")) {
       await postUpdate({
@@ -519,7 +519,7 @@ async function handleExtractGroupMembers(job) {
       });
 
       await page.evaluate(() => window.scrollBy(0, Math.max(1200, window.innerHeight * 1.6)));
-      await page.waitForTimeout(1600 + Math.floor(Math.random() * 2200));
+      await new Promise(r => setTimeout(r, 1600 + Math.floor(Math.random() * 2200)));
     }
 
     return { extracted };
@@ -606,7 +606,7 @@ async function handleExtractPageAudience(job) {
 
   try {
     await page.goto(pageUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
-    await page.waitForTimeout(4000);
+    await new Promise(r => setTimeout(r, 4000));
 
     if (page.url().includes("/login") || page.url().includes("/checkpoint")) {
       await postUpdate({
@@ -622,7 +622,7 @@ async function handleExtractPageAudience(job) {
 
     for (let i = 0; i < 8 && extracted < maxAudience; i++) {
       await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-      await page.waitForTimeout(1500);
+      await new Promise(r => setTimeout(r, 1500));
     }
 
     const postUrls = await page.$$eval(
@@ -655,7 +655,7 @@ async function handleExtractPageAudience(job) {
       const postUrl = targetPosts[i];
       try {
         await page.goto(postUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
-        await page.waitForTimeout(2500);
+        await new Promise(r => setTimeout(r, 2500));
 
         if (wantReactors) {
           try {
@@ -665,7 +665,7 @@ async function handleExtractPageAudience(job) {
             const rc = await reactBtn.count().catch(() => 0);
             if (rc > 0) {
               try { await reactBtn.first().click({ timeout: 2000 }); } catch (_) {}
-              await page.waitForTimeout(2000);
+              await new Promise(r => setTimeout(r, 2000));
 
               const dialog = page.locator('div[role="dialog"]');
               for (let s = 0; s < 12 && extracted < maxAudience; s++) {
@@ -674,7 +674,7 @@ async function handleExtractPageAudience(job) {
                 } catch (_) {
                   await page.evaluate(() => window.scrollBy(0, 600));
                 }
-                await page.waitForTimeout(900);
+                await new Promise(r => setTimeout(r, 900));
                 const batch = await harvestProfileLinks();
                 for (const b of batch) {
                   if (extracted >= maxAudience) break;
@@ -682,7 +682,7 @@ async function handleExtractPageAudience(job) {
                 }
               }
               try { await page.keyboard.press("Escape"); } catch (_) {}
-              await page.waitForTimeout(500);
+              await new Promise(r => setTimeout(r, 500));
             }
           } catch (_) {}
         }
@@ -694,7 +694,7 @@ async function handleExtractPageAudience(job) {
               await chooser.first().click();
               const allOpt = page.getByRole("menuitem", { name: /all comments|كل التعليقات/i });
               if (await allOpt.first().isVisible({ timeout: 1500 })) await allOpt.first().click();
-              await page.waitForTimeout(1200);
+              await new Promise(r => setTimeout(r, 1200));
             }
           } catch (_) {}
 
@@ -707,7 +707,7 @@ async function handleExtractPageAudience(job) {
               try { await more.nth(b).click({ timeout: 1200 }); } catch (_) {}
             }
             await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-            await page.waitForTimeout(1200);
+            await new Promise(r => setTimeout(r, 1200));
 
             const batch = await harvestProfileLinks();
             for (const b of batch) {
@@ -728,7 +728,7 @@ async function handleExtractPageAudience(job) {
         console.warn("post audience error:", postUrl, e.message);
       }
 
-      await page.waitForTimeout(1500 + Math.floor(Math.random() * 2000));
+      await new Promise(r => setTimeout(r, 1500 + Math.floor(Math.random() * 2000)));
     }
 
     return { extracted };
