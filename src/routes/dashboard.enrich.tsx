@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Download, Sparkles, Loader2, Upload, MapPin } from "lucide-react";
+import { Download, Sparkles, Loader2, Upload, MapPin, Database } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { Card } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { enrichLines, type EnrichedLead } from "@/lib/egypt-enrich";
+import { matchLeadsAgainstCustomers, type MatchResult } from "@/lib/customer-db";
 
 export const Route = createFileRoute("/dashboard/enrich")({
   ssr: false,
