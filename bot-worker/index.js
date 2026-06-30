@@ -35,9 +35,23 @@ async function fetchNextJob() {
   return data.job; // null when nothing
 }
 
+class JobCancelledError extends Error {
+  constructor(jobId) { super(`Job ${jobId} cancelled by user`); this.name = "JobCancelledError"; this.cancelled = true; }
+}
+
 async function reportUpdate(payload) {
-  try { await http.post("/api/public/bot/job-update", payload); }
-  catch (e) { console.error("[update fail]", e.message); }
+  try {
+    const { data } = await http.post("/api/public/bot/job-update", payload);
+    // Server signals user-initiated cancellation — abort the running action immediately.
+    if (data && data.cancelled) {
+      console.log(`[job ${payload.jobId}] cancellation signal received — aborting`);
+      throw new JobCancelledError(payload.jobId);
+    }
+    return data;
+  } catch (e) {
+    if (e instanceof JobCancelledError) throw e;
+    console.error("[update fail]", e.message);
+  }
 }
 
 async function runJob(job) {
@@ -78,8 +92,12 @@ async function runJob(job) {
     else await reportUpdate({ jobId: job.id, status: "failed", errorMessage: `Unknown job type: ${job.type}` });
 
   } catch (err) {
-    console.error(`[job ${job.id}] error`, err);
-    await reportUpdate({ jobId: job.id, status: "failed", errorMessage: String(err.message || err) });
+    if (err && err.cancelled) {
+      console.log(`[job ${job.id}] cancelled — closing browser and skipping failure report`);
+    } else {
+      console.error(`[job ${job.id}] error`, err);
+      await reportUpdate({ jobId: job.id, status: "failed", errorMessage: String(err.message || err) }).catch(() => {});
+    }
   } finally {
     if (browser) await browser.close().catch(() => {});
   }

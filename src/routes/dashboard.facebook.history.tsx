@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
 import { listJobs, getJob, cancelJob, createDeepProfileScrapeJob } from "@/lib/fb-bot.functions";
@@ -50,6 +51,8 @@ function JobsHistoryPage() {
   const [selected, setSelected] = useState<JobRow | null>(null);
   const [results, setResults] = useState<JobResult[]>([]);
   const [resultsLoading, setResultsLoading] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<JobRow | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   const t = lang === "ar" ? {
     title: "سجل المهام",
@@ -62,6 +65,11 @@ function JobsHistoryPage() {
     created: "أُنشئت",
     actions: "إجراءات",
     cancel: "إلغاء",
+    confirmCancelTitle: "تأكيد إلغاء المهمة",
+    confirmCancelDesc: "سيتم إيقاف المعالجة في الخلفية فوراً وحفظ ما تم استخراجه حتى الآن. هل تريد المتابعة؟",
+    confirmCancelYes: "نعم، ألغِ المهمة",
+    confirmCancelNo: "تراجع",
+    cancelDone: "تم إلغاء المهمة وإيقاف المعالجة",
     results: "النتائج",
     download: "تنزيل CSV",
     types: { post_to_groups: "نشر", extract_pages: "صفحات", extract_commenters: "معلقين", extract_group_members: "أعضاء جروب", extract_page_audience: "جمهور صفحة", deep_profile_scrape: "فحص عميق للبروفايل" },
@@ -77,6 +85,11 @@ function JobsHistoryPage() {
     created: "Created",
     actions: "Actions",
     cancel: "Cancel",
+    confirmCancelTitle: "Cancel job?",
+    confirmCancelDesc: "Background processing will stop immediately. Already-extracted data will be kept. Continue?",
+    confirmCancelYes: "Yes, cancel job",
+    confirmCancelNo: "Keep running",
+    cancelDone: "Job cancelled and worker stopped",
     results: "Results",
     download: "Download CSV",
     types: { post_to_groups: "Post", extract_pages: "Pages", extract_commenters: "Commenters", extract_group_members: "Group Members", extract_page_audience: "Page Audience", deep_profile_scrape: "Deep Profile Scrape" },
@@ -124,9 +137,16 @@ function JobsHistoryPage() {
     finally { setResultsLoading(false); }
   };
 
-  const handleCancel = async (id: string) => {
-    try { await call(cancelJob, { id }); toast.success(t.cancel); load(); }
-    catch (e) { toast.error(String(e)); }
+  const confirmCancel = async () => {
+    if (!cancelTarget) return;
+    setCancelling(true);
+    try {
+      await call(cancelJob, { id: cancelTarget.id });
+      setJobs((prev) => prev.map((j) => (j.id === cancelTarget.id ? { ...j, status: "cancelled", completed_at: new Date().toISOString() } : j)));
+      toast.success(t.cancelDone);
+      setCancelTarget(null);
+    } catch (e) { toast.error(String(e)); }
+    finally { setCancelling(false); }
   };
 
   const isPeople = selected?.job_type === "extract_commenters"
@@ -226,7 +246,7 @@ function JobsHistoryPage() {
                       <td className="px-4 py-3 text-muted-foreground">{new Date(j.created_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</td>
                       <td className="px-4 py-3 text-end">
                         {(j.status === "pending" || j.status === "running") && (
-                          <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleCancel(j.id); }}>
+                          <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setCancelTarget(j); }}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         )}
@@ -349,6 +369,22 @@ function JobsHistoryPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!cancelTarget} onOpenChange={(o) => !o && !cancelling && setCancelTarget(null)}>
+        <AlertDialogContent dir={lang === "ar" ? "rtl" : "ltr"}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t.confirmCancelTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{t.confirmCancelDesc}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelling}>{t.confirmCancelNo}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmCancel} disabled={cancelling} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {cancelling && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{t.confirmCancelYes}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
+
   );
 }
