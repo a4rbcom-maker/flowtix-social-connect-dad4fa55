@@ -13,17 +13,31 @@ const FB_SYSTEM_SLUGS = new Set([
   "messages","notifications","saved","memories","friends","games","weather","crisisresponse",
   "lite","mobile","l.php","sharer","sharer.php","plugins","dialog","oauth","tr","tr.php",
   "support","legal","brand","brandresources","newsroom","community","ai","meta",
+  "ad_choices","adchoices","privacy_policy","cookies","cookie","branded_content",
+  "communitystandards","data_policy","instagram","whatsapp","oculus","portal","workplace",
+  "developers","developer","platform","safety","prighting","accessibility",
 ]);
+
+// Generic Arabic/English UI labels that look like names but aren't.
+const GENERIC_LABELS = [
+  /^ad\s*choices$/i, /^الإعلانات$/, /^إعلانات$/, /^الشروط$/, /^شروط$/,
+  /^الخصوصية$/, /^خصوصية$/, /^سياسة(\s+\S+)?$/, /^ملفات\s*تعريف.*$/,
+  /^المتابعون(\s+[\u0660-\u0669\d٠-٩]+)?$/, /^متابعون(\s+[\u0660-\u0669\d٠-٩]+)?$/,
+  /^Followers(\s+\d+)?$/i, /^Likes(\s+\d+)?$/i, /^المعجبون(\s+[\u0660-\u0669\d٠-٩]+)?$/,
+  /^Ad\s*Choices$/i, /^Terms$/i, /^Privacy$/i, /^Cookies$/i, /^Help$/i, /^About$/i,
+  /^المساعدة$/, /^عن(\s+\S+)?$/, /^Meta$/i, /^ميتا$/,
+];
 
 function isLikelyPersonName(name) {
   if (!name) return false;
   const s = name.trim();
   if (s.length < 3 || s.length > 60) return false;
-  // Reject anything that looks like a UI label, generic page name, or contains digits/symbols heavy
   if (/^(Like|Follow|Share|See more|See all|Message|متابعة|إعجاب|مشاركة|عرض الكل|رسالة)$/i.test(s)) return false;
   if (/[#@<>{}|]/.test(s)) return false;
-  // Must contain at least one letter (Latin or Arabic)
   if (!/[A-Za-z\u0600-\u06FF]/.test(s)) return false;
+  for (const re of GENERIC_LABELS) if (re.test(s)) return false;
+  // Reject single-word labels in Arabic (real names usually have first + last)
+  // unless it's clearly a multi-word English name.
   return true;
 }
 
@@ -32,14 +46,24 @@ async function scrollAndCollect(page, cap) {
   let emptyScrolls = 0;
   for (let i = 0; i < 120 && seen.size < cap && emptyScrolls < 4; i++) {
     const batch = await page.evaluate(() => {
+      // Identify chrome regions we must ignore
+      const skipSelectors = [
+        'footer', '[role="contentinfo"]', '[role="banner"]',
+        '[role="navigation"]', '[data-pagelet="LeftRail"]',
+        '[data-pagelet="RightRail"]', '[data-pagelet*="Footer"]',
+        '[aria-label="Facebook"]',
+      ];
+      const skipRoots = skipSelectors.flatMap(s => Array.from(document.querySelectorAll(s)));
+      const inChrome = (el) => skipRoots.some(r => r.contains(el));
+
       const out = [];
-      const links = Array.from(document.querySelectorAll(
-        'a[href*="facebook.com/profile.php"], a[href^="/"][role="link"], a[href^="https://www.facebook.com/"][role="link"]'
-      ));
+      const links = Array.from(document.querySelectorAll('a[role="link"], a[href*="profile.php"]'));
       for (const a of links) {
+        if (inChrome(a)) continue;
         const href = a.getAttribute("href") || "";
         const name = (a.textContent || "").trim();
-        if (!name) continue;
+        if (!name || name.length < 3) continue;
+
         let id = null;
         let kind = null;
         const m1 = href.match(/profile\.php\?id=(\d+)/);
@@ -50,16 +74,24 @@ async function scrollAndCollect(page, cap) {
           if (slug) { id = slug[1]; kind = "slug"; }
         }
         if (!id) continue;
-        const profile = href.startsWith("http") ? href.split("?")[0] : `https://www.facebook.com${href.split("?")[0]}`;
+
+        // Strong signal: profile links on Facebook normally contain an <image>/<img> avatar inside.
+        const hasAvatar = !!a.querySelector('image, img, svg image');
+        // Or the link points to a person profile via numeric id
+        const isPerson = kind === "numeric" || hasAvatar;
+        if (!isPerson) continue;
+
+        const profile = href.startsWith("http")
+          ? href.split("?")[0]
+          : `https://www.facebook.com${href.split("?")[0]}`;
         out.push({ id, name, profile, kind });
       }
       return out;
     });
     let newCount = 0;
     for (const m of batch) {
-      // Filter: drop system slugs, require person-like names
       if (m.kind === "slug" && FB_SYSTEM_SLUGS.has(m.id.toLowerCase())) continue;
-      if (m.kind === "slug" && /^\d+$/.test(m.id) === false && m.id.length < 4) continue;
+      if (m.kind === "slug" && m.id.length < 4) continue;
       if (!isLikelyPersonName(m.name)) continue;
       if (!seen.has(m.id)) { seen.set(m.id, { id: m.id, name: m.name, profile: m.profile }); newCount++; }
       if (seen.size >= cap) break;
@@ -70,6 +102,7 @@ async function scrollAndCollect(page, cap) {
   }
   return Array.from(seen.values());
 }
+
 
 
 async function runExtractPageAudience({ page, job, report }) {
