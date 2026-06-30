@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
-import { Loader2, Send, Eye, AlertCircle, Users, UserPlus, MessageSquare, FileText } from "lucide-react";
+import { Loader2, Send, Eye, AlertCircle, Users, UserPlus, MessageSquare, FileText, Info, ShieldAlert, EyeOff, Lock, BarChart3 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
@@ -106,6 +106,16 @@ function JobsHubPage() {
     paLikersLabel: "الإعجابات",
     paEngagersLabel: "المتفاعلون مع البوستات",
     paHint: "بيسحب الجمهور المرئي علنياً فقط (حد أقصى 3000).",
+    paLimitsTitle: "قيود استخراج جمهور الصفحات",
+    paLimitsIntro: "أي صفحة عامة تقدر تستخرج منها، بشرط إن المحتوى ظاهر فعلاً للحساب اللي شغّال بيه البوت. خد بالك من الحالات دي:",
+    paLimit1Title: "صفحات أخفت جمهورها",
+    paLimit1Body: "بعض الصفحات بتعطّل ظهور قائمة المعجبين والمتابعين من إعدادات الصفحة، وفي الحالة دي مفيش طريقة لاستخراجهم.",
+    paLimit2Title: "محتوى غير عام",
+    paLimit2Body: "لو البوست أو الصفحة محدودة لأصدقاء صاحبها أو لجروب خاص، الحساب المربوط لازم يكون عنده صلاحية رؤية المحتوى.",
+    paLimit3Title: "حدود فيسبوك للصفحات الكبيرة",
+    paLimit3Body: "في الصفحات اللي عندها +100 ألف متابع، فيسبوك بيعرض عينة فقط مش كل الجمهور، فالرقم الظاهر مش بالضرورة كامل الجمهور الحقيقي.",
+    paLimit4Title: "حماية الحساب",
+    paLimit4Body: "ابدأ بأرقام صغيرة (500-1000) لأول مرة، ولو كل حاجة تمام زوّد تدريجياً، عشان نتجنّب أي Checkpoint أو حظر مؤقت من فيسبوك.",
   } : {
     title: "Bot Jobs",
     subtitle: "Create automation jobs",
@@ -146,6 +156,16 @@ function JobsHubPage() {
     paLikersLabel: "Likers",
     paEngagersLabel: "Post engagers",
     paHint: "Only publicly visible audience can be extracted (max 3000).",
+    paLimitsTitle: "Page audience extraction limits",
+    paLimitsIntro: "You can extract from any public page, as long as the content is actually visible to the linked account. Keep these limits in mind:",
+    paLimit1Title: "Pages that hide their audience",
+    paLimit1Body: "Some pages disable the public list of likers and followers from page settings — in that case there is no way to extract them.",
+    paLimit2Title: "Non-public content",
+    paLimit2Body: "If the post or page is restricted to friends or a private group, the connected account must have permission to see it.",
+    paLimit3Title: "Facebook limits on large pages",
+    paLimit3Body: "For pages with 100k+ followers, Facebook only returns a sample of the audience, not the full list.",
+    paLimit4Title: "Account safety",
+    paLimit4Body: "Start with small batches (500-1000) the first time, then scale up gradually to avoid triggering a Facebook checkpoint or a temporary block.",
   };
 
   useEffect(() => {
