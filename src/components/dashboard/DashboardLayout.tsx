@@ -202,6 +202,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     {
       title: labels.sectionInsights,
       items: [
+        { kind: "leaf", icon: Database, label: lang === "ar" ? "قاعدة عملائي" : "My customers DB", to: "/dashboard/customers" },
         { kind: "leaf", icon: MapPin, label: lang === "ar" ? "إثراء العملاء" : "Lead enrichment", to: "/dashboard/enrich" },
         { kind: "leaf", icon: Megaphone, label: lang === "ar" ? "مركز الإشعارات" : "Notifications", to: "/dashboard/notifications" },
         { kind: "leaf", icon: Activity, label: labels.activity, to: "/dashboard/activity" },
