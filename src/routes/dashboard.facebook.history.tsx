@@ -1199,10 +1199,16 @@ function JobsHistoryPage() {
             <Button variant="outline" onClick={() => setMsgOpen(false)} disabled={msgSubmitting}>
               {lang === "ar" ? "إلغاء" : "Cancel"}
             </Button>
-            <Button onClick={launchMessaging} disabled={msgSubmitting} className="gap-2">
+            <Button onClick={launchMessaging} disabled={msgSubmitting || sendRows.length === 0} className="gap-2">
               {msgSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
               <Send className="h-4 w-4" />
-              {lang === "ar" ? "إطلاق الحملة" : "Launch campaign"}
+              {msgSelectedRecipients.size > 0
+                ? (lang === "ar"
+                    ? `إرسال للمحدد (${sendRows.length}) — واتساب ${sendWaCount} / ماسنجر ${sendFbCount}`
+                    : `Send to selected (${sendRows.length}) — WA ${sendWaCount} / FB ${sendFbCount}`)
+                : (lang === "ar"
+                    ? `إرسال للكل (${sendRows.length})`
+                    : `Send to all (${sendRows.length})`)}
             </Button>
           </DialogFooter>
         </DialogContent>
