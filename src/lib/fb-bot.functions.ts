@@ -671,6 +671,59 @@ export const createDeepProfileScrapeJob = createServerFn({ method: "POST" })
     return row;
   });
 
+// ---------- createSendMessengerDmJob ----------
+// Sends a Messenger DM to a list of recipients via the bot account.
+// Throttled by intervalSeconds between sends (default 180s = ~20/hr).
+export const createSendMessengerDmJob = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        accountId: z.string().uuid(),
+        recipients: z
+          .array(
+            z.object({
+              profile: z.string().trim().min(1),
+              name: z.string().trim().max(120).optional(),
+            }),
+          )
+          .min(1)
+          .max(500),
+        message: z.string().trim().min(2).max(2000),
+        intervalSeconds: z.number().int().min(30).max(3600).default(180),
+        label: z.string().trim().max(120).optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const recipients = data.recipients
+      .map((r) => ({
+        profile: r.profile.trim().replace(/\?.*$/, "").replace(/\/$/, ""),
+        name: r.name?.trim() || null,
+      }))
+      .filter((r) => r.profile);
+    const { data: row, error } = await supabase
+      .from("fb_jobs")
+      .insert({
+        user_id: userId,
+        account_id: data.accountId,
+        job_type: "send_messenger_dm",
+        payload: {
+          recipients,
+          message: data.message,
+          intervalSeconds: data.intervalSeconds,
+          label: data.label ?? null,
+        },
+        total_items: recipients.length,
+        scheduled_at: new Date().toISOString(),
+        status: "pending",
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    return row;
+  });
 
 
 // ---------- listJobs ----------

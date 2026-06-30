@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Loader2, Trash2, RefreshCw, Download, Sparkles } from "lucide-react";
+import { Loader2, Trash2, RefreshCw, Download, Sparkles, Send } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,11 +9,16 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
-import { listJobs, getJob, cancelJob, createDeepProfileScrapeJob } from "@/lib/fb-bot.functions";
+import { listJobs, getJob, cancelJob, createDeepProfileScrapeJob, createSendMessengerDmJob } from "@/lib/fb-bot.functions";
 import { loadEgyptData, extractEgyptPhone, detectLocation } from "@/lib/egypt-enrich";
 
 export const Route = createFileRoute("/dashboard/facebook/history")({
@@ -28,7 +33,7 @@ export const Route = createFileRoute("/dashboard/facebook/history")({
 
 type JobRow = {
   id: string;
-  job_type: "post_to_groups" | "extract_pages" | "extract_commenters" | "extract_group_members" | "extract_page_audience" | "deep_profile_scrape";
+  job_type: "post_to_groups" | "extract_pages" | "extract_commenters" | "extract_group_members" | "extract_page_audience" | "deep_profile_scrape" | "send_messenger_dm";
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
   progress: number;
   total_items: number;
@@ -53,6 +58,13 @@ function JobsHistoryPage() {
   const [resultsLoading, setResultsLoading] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<JobRow | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  // Messaging wizard state
+  const [msgOpen, setMsgOpen] = useState(false);
+  const [msgChannels, setMsgChannels] = useState<{ whatsapp: boolean; messenger: boolean }>({ whatsapp: true, messenger: true });
+  const [msgText, setMsgText] = useState("");
+  const [msgTitle, setMsgTitle] = useState("");
+  const [msgPerHour, setMsgPerHour] = useState(20);
+  const [msgSubmitting, setMsgSubmitting] = useState(false);
 
   const t = lang === "ar" ? {
     title: "سجل المهام",
@@ -72,7 +84,7 @@ function JobsHistoryPage() {
     cancelDone: "تم إلغاء المهمة وإيقاف المعالجة",
     results: "النتائج",
     download: "تنزيل CSV",
-    types: { post_to_groups: "نشر", extract_pages: "صفحات", extract_commenters: "معلقين", extract_group_members: "أعضاء جروب", extract_page_audience: "جمهور صفحة", deep_profile_scrape: "فحص عميق للبروفايل" },
+    types: { post_to_groups: "نشر", extract_pages: "صفحات", extract_commenters: "معلقين", extract_group_members: "أعضاء جروب", extract_page_audience: "جمهور صفحة", deep_profile_scrape: "فحص عميق للبروفايل", send_messenger_dm: "رسائل ماسنجر" },
     statuses: { pending: "معلّقة", running: "جارية", completed: "مكتملة", failed: "فشلت", cancelled: "ملغاة" },
   } : {
     title: "Jobs History",
@@ -92,7 +104,7 @@ function JobsHistoryPage() {
     cancelDone: "Job cancelled and worker stopped",
     results: "Results",
     download: "Download CSV",
-    types: { post_to_groups: "Post", extract_pages: "Pages", extract_commenters: "Commenters", extract_group_members: "Group Members", extract_page_audience: "Page Audience", deep_profile_scrape: "Deep Profile Scrape" },
+    types: { post_to_groups: "Post", extract_pages: "Pages", extract_commenters: "Commenters", extract_group_members: "Group Members", extract_page_audience: "Page Audience", deep_profile_scrape: "Deep Profile Scrape", send_messenger_dm: "Messenger DMs" },
     statuses: { pending: "Pending", running: "Running", completed: "Completed", failed: "Failed", cancelled: "Cancelled" },
   };
 
@@ -200,6 +212,94 @@ function JobsHistoryPage() {
     failed: "bg-red-500/15 text-red-700 dark:text-red-400",
     cancelled: "bg-muted text-muted-foreground",
   }[s]);
+
+  // Counts for the messaging wizard preview
+  const phoneCount = enrichedRows.filter((e) => !!e.phone).length;
+  const profileCount = enrichedRows.filter((e) => !!(e.profile || e.row.target)).length;
+
+  const openMessenger = () => {
+    if (!selected) return;
+    const groupLabel = selected ? t.types[selected.job_type] : "";
+    setMsgTitle(lang === "ar" ? `حملة - ${groupLabel}` : `Campaign - ${groupLabel}`);
+    setMsgText("");
+    setMsgPerHour(20);
+    setMsgChannels({ whatsapp: phoneCount > 0, messenger: profileCount > 0 });
+    setMsgOpen(true);
+  };
+
+  const launchMessaging = async () => {
+    if (!user || !selected) return;
+    const message = msgText.trim();
+    if (message.length < 2) { toast.error(lang === "ar" ? "اكتب نص الرسالة" : "Enter message text"); return; }
+    if (!msgChannels.whatsapp && !msgChannels.messenger) { toast.error(lang === "ar" ? "اختر قناة واحدة على الأقل" : "Pick at least one channel"); return; }
+
+    const intervalSec = Math.max(36, Math.round(3600 / Math.max(1, msgPerHour)));
+    setMsgSubmitting(true);
+    try {
+      let waCount = 0;
+      let fbCount = 0;
+
+      // ---- WhatsApp: create a bulk_jobs row + recipients (only those with phone)
+      if (msgChannels.whatsapp) {
+        const waRecipients = enrichedRows
+          .filter((e) => !!e.phone)
+          .map((e) => ({ name: e.name || "", phone: String(e.phone) }));
+        if (waRecipients.length > 0) {
+          const { data: job, error } = await supabase
+            .from("bulk_jobs")
+            .insert({
+              user_id: user.id,
+              channel: "bulk",
+              title: msgTitle.trim() || (lang === "ar" ? "حملة واتساب" : "WhatsApp campaign"),
+              message,
+              interval_seconds: intervalSec,
+              batch_size: 1,
+              scheduled_at: new Date().toISOString(),
+              status: "scheduled",
+              total_recipients: waRecipients.length,
+            })
+            .select("id")
+            .single();
+          if (error || !job) throw new Error(error?.message || "WhatsApp campaign insert failed");
+          const rows = waRecipients.map((r) => ({ job_id: job.id, user_id: user.id, name: r.name, phone: r.phone }));
+          const { error: rErr } = await supabase.from("bulk_job_recipients").insert(rows);
+          if (rErr) throw new Error(rErr.message);
+          waCount = waRecipients.length;
+        }
+      }
+
+      // ---- Messenger: create fb_jobs send_messenger_dm
+      if (msgChannels.messenger) {
+        const fbRecipients = enrichedRows
+          .map((e) => ({ profile: e.profile || e.row.target || "", name: e.name || "" }))
+          .filter((r) => !!r.profile);
+        if (fbRecipients.length > 0 && selected.account_id) {
+          await call(createSendMessengerDmJob, {
+            accountId: selected.account_id,
+            recipients: fbRecipients.slice(0, 500),
+            message,
+            intervalSeconds: intervalSec,
+            label: msgTitle.trim() || undefined,
+          });
+          fbCount = fbRecipients.length;
+        } else if (msgChannels.messenger && !selected.account_id) {
+          toast.error(lang === "ar" ? "لا يوجد حساب فيسبوك مرتبط بهذه المهمة" : "No FB account linked to this job");
+        }
+      }
+
+      toast.success(
+        lang === "ar"
+          ? `تم: واتساب ${waCount} · ماسنجر ${fbCount}`
+          : `Queued: WhatsApp ${waCount} · Messenger ${fbCount}`,
+      );
+      setMsgOpen(false);
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setMsgSubmitting(false);
+    }
+  };
+
 
   return (
     <DashboardLayout title={t.title}>
@@ -309,6 +409,12 @@ function JobsHistoryPage() {
                       {lang === "ar" ? "إثراء بداتا مصر" : "Enrich with Egypt data"}
                     </Button>
                   )}
+                  {isPeople && (
+                    <Button size="sm" variant="default" onClick={openMessenger} className="gap-2">
+                      <Send className="h-4 w-4" />
+                      {lang === "ar" ? "إرسال رسائل" : "Send messages"}
+                    </Button>
+                  )}
                   <Button size="sm" variant="outline" onClick={downloadCsv}>
                     <Download className="me-2 h-4 w-4" />{t.download}
                   </Button>
@@ -384,6 +490,122 @@ function JobsHistoryPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={msgOpen} onOpenChange={(o) => !msgSubmitting && setMsgOpen(o)}>
+        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="text-start">
+              {lang === "ar" ? "إرسال رسائل للمستخرجين" : "Send messages to extracted people"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 text-start">
+            <div className="rounded-lg border bg-muted/40 p-3 text-sm leading-relaxed">
+              <div className="font-semibold mb-1">
+                {lang === "ar" ? "ملخّص المستلمين" : "Recipient summary"}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary">
+                  {lang === "ar" ? `أرقام واتساب: ${phoneCount}` : `WhatsApp numbers: ${phoneCount}`}
+                </Badge>
+                <Badge variant="secondary">
+                  {lang === "ar" ? `بروفايلات ماسنجر: ${profileCount}` : `Messenger profiles: ${profileCount}`}
+                </Badge>
+              </div>
+              {phoneCount === 0 && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {lang === "ar"
+                    ? "💡 لا توجد أرقام؟ شغّل «إثراء بداتا مصر» أو «فحص عميق للبروفايلات» أولاً."
+                    : "💡 No phones? Run “Enrich with Egypt data” or “Deep profile scrape” first."}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label className="block text-start">
+                {lang === "ar" ? "اسم الحملة" : "Campaign name"}
+              </Label>
+              <Input
+                dir="auto"
+                value={msgTitle}
+                onChange={(e) => setMsgTitle(e.target.value)}
+                placeholder={lang === "ar" ? "حملة سبتمبر" : "September campaign"}
+                className="text-start"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="block text-start">
+                {lang === "ar" ? "القنوات" : "Channels"}
+              </Label>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={msgChannels.whatsapp}
+                    onCheckedChange={(v) => setMsgChannels((s) => ({ ...s, whatsapp: !!v }))}
+                  />
+                  <span>{lang === "ar" ? `واتساب (${phoneCount})` : `WhatsApp (${phoneCount})`}</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={msgChannels.messenger}
+                    onCheckedChange={(v) => setMsgChannels((s) => ({ ...s, messenger: !!v }))}
+                  />
+                  <span>{lang === "ar" ? `ماسنجر (${profileCount})` : `Messenger (${profileCount})`}</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="block text-start">
+                {lang === "ar" ? "نص الرسالة" : "Message"}
+              </Label>
+              <Textarea
+                dir="auto"
+                rows={5}
+                value={msgText}
+                onChange={(e) => setMsgText(e.target.value)}
+                placeholder={lang === "ar" ? "أهلاً {name}, ..." : "Hi {name}, ..."}
+                className="text-start"
+              />
+              <p className="text-xs text-muted-foreground">
+                {lang === "ar"
+                  ? "متاح: {name} يُستبدل باسم المستلم."
+                  : "Available: {name} is replaced with recipient name."}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="block text-start">
+                {lang === "ar" ? `سرعة الإرسال: ${msgPerHour} / ساعة` : `Send rate: ${msgPerHour} / hour`}
+              </Label>
+              <Slider
+                value={[msgPerHour]}
+                min={5}
+                max={100}
+                step={5}
+                onValueChange={(v) => setMsgPerHour(v[0])}
+              />
+              <p className="text-xs text-muted-foreground">
+                {lang === "ar"
+                  ? "كل ما قلّت السرعة كل ما قلّ احتمال الحظر."
+                  : "Lower rates reduce the risk of being blocked."}
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMsgOpen(false)} disabled={msgSubmitting}>
+              {lang === "ar" ? "إلغاء" : "Cancel"}
+            </Button>
+            <Button onClick={launchMessaging} disabled={msgSubmitting} className="gap-2">
+              {msgSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              <Send className="h-4 w-4" />
+              {lang === "ar" ? "إطلاق الحملة" : "Launch campaign"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
 
   );

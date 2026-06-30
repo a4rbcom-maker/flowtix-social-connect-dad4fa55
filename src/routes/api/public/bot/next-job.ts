@@ -26,6 +26,7 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
           .filter(Boolean);
         const supportsGroupMembers = workerCapabilities.includes("extract_group_members");
         const supportsDeepProfile = workerCapabilities.includes("deep_profile_scrape");
+        const supportsMessengerDm = workerCapabilities.includes("send_messenger_dm");
 
         const [{ supabaseAdmin }, { decryptJson }] = await Promise.all([
           import("@/integrations/supabase/client.server"),
@@ -50,6 +51,9 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         }
         if (!supportsDeepProfile) {
           candidateQuery = candidateQuery.neq("job_type", "deep_profile_scrape");
+        }
+        if (!supportsMessengerDm) {
+          candidateQuery = candidateQuery.neq("job_type", "send_messenger_dm");
         }
 
         const { data: candidate, error: selErr } = await candidateQuery
