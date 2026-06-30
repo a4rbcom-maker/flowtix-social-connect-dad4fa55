@@ -1395,10 +1395,28 @@ function PreviewList({
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <Label className="block text-start text-sm font-medium">
           {lang === "ar"
-            ? `معاينة المستلمين (${filtered.length})${selectedKeys.size > 0 ? ` — محدد: ${selectedKeys.size}` : ""}`
-            : `Recipients preview (${filtered.length})${selectedKeys.size > 0 ? ` — selected: ${selectedKeys.size}` : ""}`}
+            ? `معاينة المستلمين (${visible.length}${uniqueOnly && filtered.length !== visible.length ? ` / ${filtered.length}` : ""})${selectedKeys.size > 0 ? ` — محدد: ${selectedKeys.size}` : ""}`
+            : `Recipients preview (${visible.length}${uniqueOnly && filtered.length !== visible.length ? ` / ${filtered.length}` : ""})${selectedKeys.size > 0 ? ` — selected: ${selectedKeys.size}` : ""}`}
+          {duplicatesCount > 0 && (
+            <span className="ms-2 inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-normal text-amber-700 dark:text-amber-300">
+              {lang === "ar" ? `مكررون: ${duplicatesCount}` : `Duplicates: ${duplicatesCount}`}
+            </span>
+          )}
         </Label>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            type="button"
+            size="sm"
+            variant={uniqueOnly ? "default" : "outline"}
+            className="h-8"
+            onClick={() => setUniqueOnly(!uniqueOnly)}
+            disabled={duplicatesCount === 0 && !uniqueOnly}
+            title={lang === "ar" ? "إظهار النسخ الفريدة فقط" : "Show unique only"}
+          >
+            {uniqueOnly
+              ? (lang === "ar" ? "عرض الكل" : "Show all")
+              : (lang === "ar" ? `النسخ الفريدة فقط${duplicatesCount > 0 ? ` (-${duplicatesCount})` : ""}` : `Unique only${duplicatesCount > 0 ? ` (-${duplicatesCount})` : ""}`)}
+          </Button>
           {selectedKeys.size > 0 && (
             <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => setSelectedKeys(new Set())}>
               <X className="me-1 h-3.5 w-3.5" />
