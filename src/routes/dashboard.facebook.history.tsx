@@ -213,6 +213,11 @@ function JobsHistoryPage() {
     cancelled: "bg-muted text-muted-foreground",
   }[s]);
 
+  // Detect session-expired failures so we surface a clear reconnect CTA
+  // instead of a generic "failed" status the user can't act on.
+  const isSessionExpired = (j: { status?: string; error_message?: string | null }) =>
+    j.status === "failed" && !!j.error_message && /SESSION_EXPIRED|session lost|cookies?\s+(rejected|invalid|expired)|c_user/i.test(j.error_message);
+
   // Counts for the messaging wizard preview
   const phoneCount = enrichedRows.filter((e) => !!e.phone).length;
   const profileCount = enrichedRows.filter((e) => !!(e.profile || e.row.target)).length;
