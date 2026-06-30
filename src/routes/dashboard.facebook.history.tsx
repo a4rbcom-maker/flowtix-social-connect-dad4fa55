@@ -125,6 +125,16 @@ function JobsHistoryPage() {
   const [msgSelectedRecipients, setMsgSelectedRecipients] = useState<Set<string>>(new Set());
   const [compactView, setCompactView] = useState(false);
   const PREVIEW_PAGE_SIZE = 25;
+  const JOBS_PAGE_SIZE = 15;
+  type JobsSortKey = "type" | "status" | "progress" | "created";
+  const [jobsSortKey, setJobsSortKey] = useState<JobsSortKey>("created");
+  const [jobsSortDir, setJobsSortDir] = useState<"asc" | "desc">("desc");
+  const [jobsPage, setJobsPage] = useState(1);
+  const toggleJobsSort = (k: JobsSortKey) => {
+    if (jobsSortKey !== k) { setJobsSortKey(k); setJobsSortDir("asc"); }
+    else setJobsSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    setJobsPage(1);
+  };
   const recipientKey = (e: { name?: string | null; phone?: string | null; profile?: string | null; row: { target?: string | null } }) =>
     `${(e.profile || e.row.target || "").toLowerCase()}::${(e.phone || "").toString().replace(/\D/g, "")}::${(e.name || "").toLowerCase()}`;
 
