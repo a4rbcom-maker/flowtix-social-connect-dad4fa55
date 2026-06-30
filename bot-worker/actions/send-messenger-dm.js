@@ -9,13 +9,40 @@ const fs = require("fs");
 const https = require("https");
 const http = require("http");
 
+// Extract a numeric Facebook user ID from any of the URL shapes we see
+// (profile.php?id=, /groups/<gid>/user/<uid>/, raw numeric, m.me/<id>).
+function extractFbUserId(input) {
+  const s = String(input || "").trim();
+  if (!s) return null;
+  if (/^\d{5,}$/.test(s)) return s;
+  const patterns = [
+    /\/groups\/[^/]+\/user\/(\d{5,})/i,
+    /profile\.php\?id=(\d{5,})/i,
+    /\/user\/(\d{5,})/i,
+    /messages\/t\/(\d{5,})/i,
+    /m\.me\/(\d{5,})/i,
+  ];
+  for (const re of patterns) {
+    const m = s.match(re);
+    if (m) return m[1];
+  }
+  return null;
+}
+
 function toProfileUrl(input) {
   const s = String(input || "").trim();
   if (!s) return null;
+  const id = extractFbUserId(s);
+  if (id) return `https://www.facebook.com/profile.php?id=${id}`;
   if (/^https?:\/\//i.test(s)) return s.split("?")[0].replace(/\/$/, "");
-  if (/^\d{5,}$/.test(s)) return `https://www.facebook.com/profile.php?id=${s}`;
   return `https://www.facebook.com/${s.replace(/^\/+/, "").replace(/\/$/, "")}`;
 }
+
+function toMessengerUrl(input) {
+  const id = extractFbUserId(input);
+  return id ? `https://www.facebook.com/messages/t/${id}` : null;
+}
+
 
 function downloadToTmp(url) {
   return new Promise((resolve, reject) => {
