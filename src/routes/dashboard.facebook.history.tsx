@@ -611,7 +611,7 @@ function JobsHistoryPage() {
       </div>
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent className="sm:max-w-3xl">
+        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex flex-wrap items-center justify-between gap-2">
               <span>{selected && t.types[selected.job_type]}</span>
