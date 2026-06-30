@@ -17,6 +17,7 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as DashboardWhatsappRouteImport } from './routes/dashboard.whatsapp'
+import { Route as DashboardRtlTestRouteImport } from './routes/dashboard.rtl-test'
 import { Route as DashboardProfileRouteImport } from './routes/dashboard.profile'
 import { Route as DashboardNotificationsRouteImport } from './routes/dashboard.notifications'
 import { Route as DashboardFacebookRouteImport } from './routes/dashboard.facebook'
@@ -106,6 +107,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const DashboardWhatsappRoute = DashboardWhatsappRouteImport.update({
   id: '/whatsapp',
   path: '/whatsapp',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardRtlTestRoute = DashboardRtlTestRouteImport.update({
+  id: '/rtl-test',
+  path: '/rtl-test',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardProfileRoute = DashboardProfileRouteImport.update({
@@ -402,6 +408,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/notifications': typeof DashboardNotificationsRoute
   '/dashboard/profile': typeof DashboardProfileRoute
+  '/dashboard/rtl-test': typeof DashboardRtlTestRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
   '/admin/': typeof AdminIndexRoute
   '/api/public/health': typeof ApiPublicHealthRoute
@@ -462,6 +469,7 @@ export interface FileRoutesByTo {
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/notifications': typeof DashboardNotificationsRoute
   '/dashboard/profile': typeof DashboardProfileRoute
+  '/dashboard/rtl-test': typeof DashboardRtlTestRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
   '/admin': typeof AdminIndexRoute
   '/api/public/health': typeof ApiPublicHealthRoute
@@ -522,6 +530,7 @@ export interface FileRoutesById {
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/notifications': typeof DashboardNotificationsRoute
   '/dashboard/profile': typeof DashboardProfileRoute
+  '/dashboard/rtl-test': typeof DashboardRtlTestRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
   '/admin/': typeof AdminIndexRoute
   '/api/public/health': typeof ApiPublicHealthRoute
@@ -584,6 +593,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook'
     | '/dashboard/notifications'
     | '/dashboard/profile'
+    | '/dashboard/rtl-test'
     | '/dashboard/whatsapp'
     | '/admin/'
     | '/api/public/health'
@@ -644,6 +654,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook'
     | '/dashboard/notifications'
     | '/dashboard/profile'
+    | '/dashboard/rtl-test'
     | '/dashboard/whatsapp'
     | '/admin'
     | '/api/public/health'
@@ -703,6 +714,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook'
     | '/dashboard/notifications'
     | '/dashboard/profile'
+    | '/dashboard/rtl-test'
     | '/dashboard/whatsapp'
     | '/admin/'
     | '/api/public/health'
@@ -824,6 +836,13 @@ declare module '@tanstack/react-router' {
       path: '/whatsapp'
       fullPath: '/dashboard/whatsapp'
       preLoaderRoute: typeof DashboardWhatsappRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/rtl-test': {
+      id: '/dashboard/rtl-test'
+      path: '/rtl-test'
+      fullPath: '/dashboard/rtl-test'
+      preLoaderRoute: typeof DashboardRtlTestRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/profile': {
@@ -1260,6 +1279,7 @@ interface DashboardRouteChildren {
   DashboardFacebookRoute: typeof DashboardFacebookRouteWithChildren
   DashboardNotificationsRoute: typeof DashboardNotificationsRoute
   DashboardProfileRoute: typeof DashboardProfileRoute
+  DashboardRtlTestRoute: typeof DashboardRtlTestRoute
   DashboardWhatsappRoute: typeof DashboardWhatsappRouteWithChildren
 }
 
@@ -1272,6 +1292,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardFacebookRoute: DashboardFacebookRouteWithChildren,
   DashboardNotificationsRoute: DashboardNotificationsRoute,
   DashboardProfileRoute: DashboardProfileRoute,
+  DashboardRtlTestRoute: DashboardRtlTestRoute,
   DashboardWhatsappRoute: DashboardWhatsappRouteWithChildren,
 }
 
