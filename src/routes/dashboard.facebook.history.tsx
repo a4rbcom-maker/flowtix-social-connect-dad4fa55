@@ -58,6 +58,7 @@ function JobsHistoryPage() {
   const [resultsLoading, setResultsLoading] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<JobRow | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [pausingId, setPausingId] = useState<string | null>(null);
   // Messaging wizard state
   const [msgOpen, setMsgOpen] = useState(false);
   const [msgChannels, setMsgChannels] = useState<{ whatsapp: boolean; messenger: boolean }>({ whatsapp: true, messenger: true });
