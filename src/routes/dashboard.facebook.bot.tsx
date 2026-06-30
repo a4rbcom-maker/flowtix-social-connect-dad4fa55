@@ -478,7 +478,7 @@ function BotAccountsPage() {
           credsWarn: "⚠️ تخزين كلمة المرور خطير ويعرّض حسابك للحظر. استخدم Cookies كلما أمكن.",
           email: "البريد الإلكتروني",
           password: "كلمة المرور",
-          twoFa: "مفتاح 2FA (اختياري)",
+          twoFa: "مفتاح \u200E2FA\u200E (اختياري)",
           save: "حفظ",
           cancel: "إلغاء",
           saved: "تم ربط الحساب بنجاح",
@@ -1596,7 +1596,7 @@ function BotAccountsPage() {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t.addTitle}</DialogTitle>
           </DialogHeader>
