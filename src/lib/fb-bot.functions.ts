@@ -959,12 +959,12 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
 
     // 1) Read the account row. Never throw — translate to Arabic message.
-    let acc: { id: string; auth_method: string; encrypted_payload: string } | null = null;
+    let acc: { id: string; auth_method: string; encrypted_payload: string; status?: string; last_error?: string | null } | null = null;
     try {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { data: row, error } = await supabaseAdmin
         .from("fb_bot_accounts")
-        .select("id, auth_method, encrypted_payload")
+        .select("id, auth_method, encrypted_payload, status, last_error")
         .eq("id", data.id)
         .eq("user_id", userId)
         .maybeSingle();
@@ -981,13 +981,48 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
           "هذا الحساب لم يعد موجودًا. حدِّث الصفحة ثم أعد إضافته إن لزم.",
         );
       }
-      acc = row as { id: string; auth_method: string; encrypted_payload: string };
+      acc = row as { id: string; auth_method: string; encrypted_payload: string; status?: string; last_error?: string | null };
     } catch (e) {
       console.error("[precheckBotAccount] db threw:", e);
       return precheckFailure(
         "DB_EXCEPTION",
         "حدث خطأ غير متوقع أثناء قراءة الحساب. أعد المحاولة بعد لحظات.",
       );
+    }
+
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: latestJob } = await supabaseAdmin
+        .from("fb_jobs")
+        .select("status, error_message, completed_at, created_at")
+        .eq("account_id", data.id)
+        .eq("user_id", userId)
+        .in("status", ["completed", "failed"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const latestError = typeof latestJob?.error_message === "string" ? latestJob.error_message : "";
+      const storedError = typeof acc?.last_error === "string" ? acc.last_error : "";
+      const rejectedSessionError = isFacebookSessionRejectedError(latestError)
+        ? latestError
+        : isFacebookSessionRejectedError(storedError)
+          ? storedError
+          : null;
+      if ((latestJob?.status === "failed" && rejectedSessionError) || acc?.status === "invalid" && rejectedSessionError) {
+        const checkedAt = (latestJob?.completed_at as string | null) ?? (latestJob?.created_at as string | null) ?? new Date().toISOString();
+        await supabase
+          .from("fb_bot_accounts")
+          .update({ status: "invalid", last_check_at: checkedAt, last_error: rejectedSessionError })
+          .eq("id", data.id)
+          .eq("user_id", userId);
+        return precheckFailure(
+          "FACEBOOK_SESSION_REJECTED",
+          "فيسبوك رفض جلسة الحساب المحفوظة في آخر محاولة فعلية. الفحص المحلي للكوكيز لا يكفي هنا؛ احذف الحساب وأعد ربطه بكوكيز جديدة من نفس المتصفح.",
+          "cookies",
+        );
+      }
+    } catch (e) {
+      console.warn("[precheckBotAccount] recent session failure scan skipped:", e);
     }
 
     // 2) Credentials accounts: cookies precheck doesn't apply.
