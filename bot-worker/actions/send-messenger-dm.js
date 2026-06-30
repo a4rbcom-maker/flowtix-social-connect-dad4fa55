@@ -87,50 +87,90 @@ async function findComposer(page) {
   });
 }
 
+async function diagnoseDmPage(page) {
+  const currentUrl = page.url();
+  if (/\/login|checkpoint|two_factor|two_step/i.test(currentUrl)) {
+    return { ok: false, reason: "SESSION_EXPIRED" };
+  }
+
+  return await page.evaluate(() => {
+    const text = document.body?.innerText || "";
+    const lower = text.toLowerCase();
+    const hasComposer = !!(
+      document.querySelector('[contenteditable="true"][role="textbox"]') ||
+      document.querySelector('div[aria-label*="message" i][contenteditable="true"]') ||
+      document.querySelector('div[aria-label*="رسالة"][contenteditable="true"]') ||
+      document.querySelector('div[aria-label*="Aa"][contenteditable="true"]')
+    );
+    if (hasComposer) return { ok: true, reason: null };
+
+    if (/can(?:not|'t|’t) message|can't reply|you can no longer send messages|this person isn't available|recipient unavailable/i.test(text)) {
+      return { ok: false, reason: "RECIPIENT_PRIVACY" };
+    }
+    if (/لا يمكنك مراسلة|لا يمكن مراسلة|غير متاح|لا تستطيع إرسال|لا يمكنك الرد/i.test(text)) {
+      return { ok: false, reason: "RECIPIENT_PRIVACY" };
+    }
+    if (/temporarily blocked|action blocked|you're restricted|we limit how often|try again later/i.test(text)) {
+      return { ok: false, reason: "ACCOUNT_RATE_LIMIT" };
+    }
+    if (/تم حظرك مؤقت|الإجراء محظور|حاول مرة أخرى لاحق|نحد من عدد المرات/i.test(text)) {
+      return { ok: false, reason: "ACCOUNT_RATE_LIMIT" };
+    }
+    if (lower.includes("messenger") || text.includes("ماسنجر") || text.includes("الدردشات")) {
+      return { ok: false, reason: "THREAD_NOT_AVAILABLE" };
+    }
+    return { ok: false, reason: "COMPOSER_NOT_FOUND" };
+  });
+}
+
+function dmErrorMessage(reason) {
+  if (reason === "SESSION_EXPIRED") return "SESSION_EXPIRED: Facebook redirected to login/checkpoint — reconnect the bot account";
+  if (reason === "RECIPIENT_PRIVACY") return "RECIPIENT_PRIVACY: recipient blocks non-friend messages or DMs are closed";
+  if (reason === "ACCOUNT_RATE_LIMIT") return "ACCOUNT_RATE_LIMIT: Facebook temporarily limited this bot account";
+  if (reason === "THREAD_NOT_AVAILABLE") return "THREAD_NOT_AVAILABLE: Messenger thread is not available for this recipient";
+  if (reason === "PROFILE_MESSAGE_BUTTON_MISSING") return "PROFILE_MESSAGE_BUTTON_MISSING: profile has no visible Message button";
+  return "COMPOSER_NOT_FOUND: could not find Messenger message box";
+}
+
 async function openViaMessenger(page, profile) {
   const mUrl = toMessengerUrl(profile);
-  if (!mUrl) return false;
+  if (!mUrl) return { ok: false, reason: "NO_NUMERIC_ID" };
   try {
     await page.goto(mUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
-  } catch (_) { return false; }
+  } catch (_) { return { ok: false, reason: "MESSENGER_NAV_FAILED" }; }
   await new Promise((r) => setTimeout(r, 4000));
-  if (/\/login|checkpoint/i.test(page.url())) return false;
-  // If FB blocked the DM (e.g. "You can't message this person"), bail.
-  const blocked = await page.evaluate(() => {
-    const t = document.body?.innerText || "";
-    return /can't message|can’t message|لا يمكنك مراسلة|غير متاح|This person isn't available/i.test(t);
-  });
-  if (blocked) return false;
-  return await findComposer(page);
+  return await diagnoseDmPage(page);
 }
 
 async function openViaProfile(page, profile) {
   const url = toProfileUrl(profile);
-  if (!url) return false;
+  if (!url) return { ok: false, reason: "NO_PROFILE_URL" };
   try {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
-  } catch (_) { return false; }
+  } catch (_) { return { ok: false, reason: "PROFILE_NAV_FAILED" }; }
   await new Promise((r) => setTimeout(r, 3500));
-  if (/\/login|checkpoint/i.test(page.url())) return false;
+  if (/\/login|checkpoint/i.test(page.url())) return { ok: false, reason: "SESSION_EXPIRED" };
   const clicked = await page.evaluate(() => {
     const btns = Array.from(document.querySelectorAll('[role="button"], a[role="link"]'));
     const target = btns.find((b) => /^\s*(Message|رسالة|إرسال رسالة)\s*$/i.test((b.textContent || "").trim()));
     if (target) { target.click(); return true; }
     return false;
   });
-  if (!clicked) return false;
+  if (!clicked) return { ok: false, reason: "PROFILE_MESSAGE_BUTTON_MISSING" };
   await new Promise((r) => setTimeout(r, 3000));
-  return await findComposer(page);
+  return await diagnoseDmPage(page);
 }
 
 async function sendToOne(page, profile, message, imagePath) {
   // 1) Preferred: open Messenger thread directly (works for /groups/.../user/<id>/ too).
-  let ready = await openViaMessenger(page, profile);
+  let opened = await openViaMessenger(page, profile);
   // 2) Fallback: visit the profile and click the Message button.
-  if (!ready) ready = await openViaProfile(page, profile);
-  if (!ready) {
-    if (/\/login|checkpoint/i.test(page.url())) return { status: "failed", error: "session lost" };
-    return { status: "failed", error: "Cannot open DM (recipient blocks non-friend messages or DMs closed)" };
+  if (!opened.ok) {
+    const fallback = await openViaProfile(page, profile);
+    opened = fallback.ok ? fallback : opened.reason === "SESSION_EXPIRED" ? opened : fallback;
+  }
+  if (!opened.ok) {
+    return { status: "failed", error: dmErrorMessage(opened.reason) };
   }
 
   if (imagePath) {
@@ -147,7 +187,7 @@ async function sendToOne(page, profile, message, imagePath) {
     document.execCommand("insertText", false, msg);
     return true;
   }, message);
-  if (!typed) return { status: "failed", error: "composer not found" };
+  if (!typed) return { status: "failed", error: dmErrorMessage("COMPOSER_NOT_FOUND") };
 
   await new Promise((r) => setTimeout(r, 1500));
   await page.keyboard.press("Enter");
