@@ -246,7 +246,7 @@ function JobsHistoryPage() {
                       <td className="px-4 py-3 text-muted-foreground">{new Date(j.created_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</td>
                       <td className="px-4 py-3 text-end">
                         {(j.status === "pending" || j.status === "running") && (
-                          <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleCancel(j.id); }}>
+                          <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setCancelTarget(j); }}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         )}
