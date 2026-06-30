@@ -1468,6 +1468,116 @@ function JobsHistoryPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Per-recipient details dialog */}
+      <Dialog open={!!detailRow} onOpenChange={(o) => { if (!o) setDetailRow(null); }}>
+        <DialogContent className="max-w-lg">
+          {detailRow && (() => {
+            const r = detailRow.row;
+            const ok = r.status === "success";
+            const msg = messengerFriendlyReason(r.error, r.status, lang);
+            const payload = (selectedJobPayload ?? {}) as { message?: string; imageUrls?: string[]; groupUrl?: string; postUrl?: string; sourceUrl?: string; label?: string };
+            const sourceUrl = payload.groupUrl || payload.postUrl || payload.sourceUrl || null;
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-start">
+                    <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">#{detailRow.index + 1}</span>
+                    <span className="min-w-0 break-words">{detailRow.name}</span>
+                    {ok ? (
+                      <Badge className="ms-auto border-primary/30 bg-primary/10 text-primary" variant="outline"><CheckCircle2 className="me-1 h-3 w-3" />{lang === "ar" ? "نجح" : "Sent"}</Badge>
+                    ) : r.status === "failed" ? (
+                      <Badge className="ms-auto border-destructive/30 bg-destructive/10 text-destructive" variant="outline"><XCircle className="me-1 h-3 w-3" />{lang === "ar" ? "فشل" : "Failed"}</Badge>
+                    ) : (
+                      <Badge variant="outline" className="ms-auto">{r.status}</Badge>
+                    )}
+                  </DialogTitle>
+                </DialogHeader>
+
+                <div className="max-h-[70vh] space-y-3 overflow-y-auto text-start">
+                  {/* Status reason */}
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <div className="text-sm font-semibold">{msg.title}</div>
+                    <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{msg.hint}</div>
+                  </div>
+
+                  {/* Code */}
+                  <DetailField label={lang === "ar" ? "الكود" : "Code"}>
+                    <bdi dir="ltr" className="inline-block rounded-md bg-muted/70 px-2 py-0.5 text-[11px] text-muted-foreground">{msg.code}</bdi>
+                  </DetailField>
+
+                  {/* Profile */}
+                  <DetailField label={lang === "ar" ? "البروفايل" : "Profile"}>
+                    {detailRow.profileUrl ? (
+                      <a href={detailRow.profileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-primary hover:underline">
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        <bdi dir="ltr" className="break-all">{detailRow.targetId ? `#${detailRow.targetId}` : detailRow.profileUrl}</bdi>
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </DetailField>
+
+                  {/* Target raw */}
+                  {r.target && (
+                    <DetailField label={lang === "ar" ? "الرابط الأصلي" : "Raw target"}>
+                      <bdi dir="ltr" className="block break-all rounded-md bg-muted/40 p-2 text-[11px] text-muted-foreground">{r.target}</bdi>
+                    </DetailField>
+                  )}
+
+                  {/* Source group/post */}
+                  {sourceUrl && (
+                    <DetailField label={lang === "ar" ? "رابط المصدر (جروب/منشور)" : "Source link (group/post)"}>
+                      <a href={sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-primary hover:underline">
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        <bdi dir="ltr" className="break-all">{sourceUrl}</bdi>
+                      </a>
+                    </DetailField>
+                  )}
+
+                  {/* Campaign label */}
+                  {payload.label && (
+                    <DetailField label={lang === "ar" ? "اسم الحملة" : "Campaign"}>
+                      <span className="text-sm font-medium">{payload.label}</span>
+                    </DetailField>
+                  )}
+
+                  {/* Message content */}
+                  {payload.message && (
+                    <DetailField label={lang === "ar" ? "نص الرسالة المُرسلة" : "Sent message"}>
+                      <div className="whitespace-pre-wrap break-words rounded-md border bg-background p-3 text-sm leading-relaxed">{payload.message}</div>
+                    </DetailField>
+                  )}
+
+                  {/* Images */}
+                  {Array.isArray(payload.imageUrls) && payload.imageUrls.length > 0 && (
+                    <DetailField label={lang === "ar" ? "الصور المرفقة" : "Attached images"}>
+                      <div className="flex flex-wrap gap-2">
+                        {payload.imageUrls.map((u, idx) => (
+                          <a key={idx} href={u} target="_blank" rel="noreferrer" className="block">
+                            <img src={u} alt={`attachment-${idx + 1}`} className="h-20 w-20 rounded-md border object-cover" />
+                          </a>
+                        ))}
+                      </div>
+                    </DetailField>
+                  )}
+
+                  {/* Raw error */}
+                  {r.error && (
+                    <DetailField label={lang === "ar" ? "تفاصيل الخطأ الخام" : "Raw error"}>
+                      <bdi dir="ltr" className="block max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-destructive/5 p-2 text-[11px] text-destructive">{r.error}</bdi>
+                    </DetailField>
+                  )}
+
+                  <div className="text-[11px] text-muted-foreground">
+                    {lang === "ar" ? "وقت المحاولة" : "Attempted at"}: <bdi dir="ltr">{new Date(r.created_at).toLocaleString()}</bdi>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
 
   );
