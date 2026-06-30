@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Trash2, RefreshCw, Download, Sparkles, Send, KeyRound, AlertTriangle, Image as ImageIcon, X, Clock, Pause, Play, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { Loader2, Trash2, RefreshCw, Download, Sparkles, Send, KeyRound, AlertTriangle, Image as ImageIcon, X, Clock, Pause, Play, ArrowUp, ArrowDown, ArrowUpDown, CheckCircle2, XCircle, ShieldAlert, ExternalLink, MessageCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
@@ -612,7 +612,7 @@ function JobsHistoryPage() {
       </div>
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="sm:max-w-3xl">
+        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="max-h-[92dvh] w-[calc(100vw-1rem)] max-w-5xl overflow-y-auto sm:w-[min(1100px,calc(100vw-2rem))] sm:max-w-5xl">
           <DialogHeader>
             <DialogTitle className="flex flex-wrap items-center justify-between gap-2">
               <span>{selected && t.types[selected.job_type]}</span>
@@ -753,84 +753,102 @@ function JobsHistoryPage() {
               const succ = results.filter((r) => r.status === "success").length;
               const fail = results.filter((r) => r.status === "failed").length;
               const skip = results.filter((r) => r.status === "skipped").length;
-              const friendly = (err: string | null): string => {
-                if (!err) return lang === "ar" ? "تم الإرسال" : "Delivered";
+              const classify = (err: string | null) => {
+                if (!err) return "sent" as const;
                 const e = err.toLowerCase();
-                if (e.includes("message button not visible") || e.includes("cannot open dm") || e.includes("closed dms") || e.includes("not friends"))
-                  return lang === "ar" ? "المستلم لا يستقبل رسائل من غير الأصدقاء" : "Recipient blocks non-friend DMs";
-                if (e.includes("composer")) return lang === "ar" ? "تعذّر فتح نافذة المحادثة" : "Could not open composer";
-                if (e.includes("session")) return lang === "ar" ? "انتهت جلسة الحساب — أعد الربط" : "Session expired — reconnect";
-                if (e.includes("blocked") || e.includes("can't message")) return lang === "ar" ? "فيسبوك منع إرسال رسالة لهذا الحساب" : "Facebook blocked this DM";
-                return err;
+                if (e.includes("recipient_privacy") || e.includes("message button not visible") || e.includes("cannot open dm") || e.includes("closed dms") || e.includes("not friends")) return "privacy" as const;
+                if (e.includes("account_rate_limit") || e.includes("temporarily limited") || e.includes("action blocked")) return "limited" as const;
+                if (e.includes("session")) return "session" as const;
+                if (e.includes("composer") || e.includes("thread_not_available") || e.includes("profile_message_button_missing")) return "unavailable" as const;
+                if (e.includes("blocked") || e.includes("can't message")) return "blocked" as const;
+                return "unknown" as const;
+              };
+              const friendly = (err: string | null): { title: string; hint: string } => {
+                const kind = classify(err);
+                if (kind === "sent") return { title: lang === "ar" ? "تم الإرسال بنجاح" : "Delivered successfully", hint: lang === "ar" ? "وصلت الرسالة لهذا المستلم." : "The message was sent to this recipient." };
+                if (kind === "privacy") return { title: lang === "ar" ? "المستلم قافل رسائل الغرباء" : "Recipient blocks non-friend DMs", hint: lang === "ar" ? "ماسنجر لا يسمح بإرسال DM لهذا الشخص إلا لو قبل الرسائل أو كان صديقاً للحساب." : "Messenger only allows this if the recipient accepts message requests or is already connected." };
+                if (kind === "limited") return { title: lang === "ar" ? "الحساب اتقيّد مؤقتاً من فيسبوك" : "Account temporarily limited", hint: lang === "ar" ? "قلّل السرعة واستخدم حساباً أقدم/أدفأ قبل استئناف الإرسال." : "Lower the send rate and use an older warmed-up account before resuming." };
+                if (kind === "session") return { title: lang === "ar" ? "جلسة الحساب انتهت" : "Account session expired", hint: lang === "ar" ? "أعد ربط حساب فيسبوك من صفحة حسابات البوت ثم أعد المهمة." : "Reconnect the Facebook bot account, then retry the job." };
+                if (kind === "unavailable") return { title: lang === "ar" ? "لم يتم فتح محادثة ماسنجر" : "Messenger chat unavailable", hint: lang === "ar" ? "الرابط ليس بروفايل قابل للمراسلة أو زر الرسائل غير ظاهر لهذا الحساب." : "The target is not a messageable profile or the Message button is hidden." };
+                if (kind === "blocked") return { title: lang === "ar" ? "فيسبوك منع هذه الرسالة" : "Facebook blocked this DM", hint: lang === "ar" ? "غالباً بسبب قيود خصوصية أو حماية من الإرسال المتكرر." : "Usually caused by recipient privacy or anti-spam limits." };
+                return { title: err || (lang === "ar" ? "سبب غير معروف" : "Unknown reason"), hint: lang === "ar" ? "راجع تفاصيل السجل الخام إذا تكرر نفس السبب." : "Review raw logs if this reason repeats." };
               };
               const extractId = (url: string | null) => {
                 if (!url) return null;
                 const m = url.match(/(?:user\/|profile\.php\?id=|messages\/t\/|m\.me\/)(\d{5,})/) || url.match(/^(\d{5,})$/);
                 return m ? m[1] : null;
               };
+              const topFailure = results.find((r) => r.status === "failed")?.error ?? null;
+              const topMessage = friendly(topFailure);
               return (
-                <div className="space-y-3">
-                  <div className="flex flex-wrap gap-2 px-1">
-                    <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" variant="outline">
-                      ✅ {lang === "ar" ? `ناجح: ${succ}` : `Sent: ${succ}`}
-                    </Badge>
-                    <Badge className="bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30" variant="outline">
-                      ❌ {lang === "ar" ? `فاشل: ${fail}` : `Failed: ${fail}`}
-                    </Badge>
-                    {skip > 0 && (
-                      <Badge variant="outline">⏭ {lang === "ar" ? `متخطّى: ${skip}` : `Skipped: ${skip}`}</Badge>
-                    )}
+                <div className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground"><CheckCircle2 className="h-4 w-4 text-primary" />{lang === "ar" ? "نجح" : "Sent"}</div>
+                      <div className="mt-1 text-2xl font-bold tabular-nums">{succ}</div>
+                    </div>
+                    <div className="rounded-lg border bg-destructive/5 p-3">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground"><XCircle className="h-4 w-4 text-destructive" />{lang === "ar" ? "فشل" : "Failed"}</div>
+                      <div className="mt-1 text-2xl font-bold tabular-nums text-destructive">{fail}</div>
+                    </div>
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground"><MessageCircle className="h-4 w-4 text-primary" />{lang === "ar" ? "الإجمالي" : "Total"}</div>
+                      <div className="mt-1 text-2xl font-bold tabular-nums">{results.length}</div>
+                      {skip > 0 && <div className="mt-1 text-xs text-muted-foreground">{lang === "ar" ? `متخطّى: ${skip}` : `Skipped: ${skip}`}</div>}
+                    </div>
                   </div>
-                  <div className="max-h-[55vh] overflow-auto rounded-lg border">
-                    <table className="w-full text-xs">
-                      <thead className="sticky top-0 bg-muted/50 text-muted-foreground">
-                        <tr>
-                          <th className="px-3 py-2 text-start">{lang === "ar" ? "#" : "#"}</th>
-                          <th className="px-3 py-2 text-start">{lang === "ar" ? "الاسم" : "Name"}</th>
-                          <th className="px-3 py-2 text-start">{lang === "ar" ? "الحالة" : "Status"}</th>
-                          <th className="px-3 py-2 text-start">{lang === "ar" ? "السبب / التفاصيل" : "Reason / Details"}</th>
-                          <th className="px-3 py-2 text-start">{lang === "ar" ? "البروفايل" : "Profile"}</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border/50">
-                        {results.map((r, i) => {
-                          const d = (r.data ?? {}) as { name?: string | null };
-                          const name = d.name?.trim() || (lang === "ar" ? "بدون اسم" : "Unknown");
-                          const id = extractId(r.target);
-                          const profileUrl = id ? `https://www.facebook.com/profile.php?id=${id}` : r.target;
-                          const ok = r.status === "success";
-                          return (
-                            <tr key={r.id} className={ok ? "bg-emerald-500/[0.04]" : r.status === "failed" ? "bg-rose-500/[0.03]" : ""}>
-                              <td className="px-3 py-2 text-muted-foreground text-start">{i + 1}</td>
-                              <td className="px-3 py-2 font-medium text-start">{name}</td>
-                              <td className="px-3 py-2 text-start">
-                                {ok ? (
-                                  <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" variant="outline">
-                                    ✅ {lang === "ar" ? "نجح" : "Sent"}
-                                  </Badge>
-                                ) : r.status === "failed" ? (
-                                  <Badge className="bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30" variant="outline">
-                                    ❌ {lang === "ar" ? "فشل" : "Failed"}
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="outline">{r.status}</Badge>
-                                )}
-                              </td>
-                              <td className="px-3 py-2 text-start text-muted-foreground">{friendly(r.error)}</td>
-                              <td className="px-3 py-2 text-start">
-                                {profileUrl ? (
-                                  <bdi dir="ltr">
-                                    <a href={profileUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">
-                                      {id ? `#${id}` : "↗"}
-                                    </a>
-                                  </bdi>
-                                ) : "—"}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+
+                  {fail > 0 && (
+                    <div className="flex items-start gap-3 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm">
+                      <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                      <div className="space-y-1 text-start">
+                        <div className="font-semibold text-destructive">{topMessage.title}</div>
+                        <div className="text-muted-foreground">{topMessage.hint}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="max-h-[58vh] space-y-2 overflow-y-auto pe-1">
+                    {results.map((r, i) => {
+                      const d = (r.data ?? {}) as { name?: string | null };
+                      const name = d.name?.trim() || (lang === "ar" ? "بدون اسم" : "Unknown");
+                      const id = extractId(r.target);
+                      const profileUrl = id ? `https://www.facebook.com/profile.php?id=${id}` : r.target;
+                      const ok = r.status === "success";
+                      const msg = friendly(r.error);
+                      return (
+                        <div key={r.id} className={`rounded-lg border p-3 ${ok ? "bg-primary/[0.03]" : r.status === "failed" ? "bg-destructive/[0.03]" : "bg-muted/20"}`}>
+                          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                            <div className="min-w-0 space-y-1 text-start">
+                              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                <span className="rounded-md bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">#{i + 1}</span>
+                                <span className="min-w-0 truncate font-semibold">{name}</span>
+                              </div>
+                              <div className="text-sm font-medium">{msg.title}</div>
+                              <div className="text-xs leading-relaxed text-muted-foreground">{msg.hint}</div>
+                              {r.error && <div className="mt-2 rounded-md bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground"><bdi dir="ltr">{r.error}</bdi></div>}
+                            </div>
+                            <div className="flex shrink-0 flex-col items-end gap-2">
+                              {ok ? (
+                                <Badge className="border-primary/30 bg-primary/10 text-primary" variant="outline"><CheckCircle2 className="me-1 h-3 w-3" />{lang === "ar" ? "نجح" : "Sent"}</Badge>
+                              ) : r.status === "failed" ? (
+                                <Badge className="border-destructive/30 bg-destructive/10 text-destructive" variant="outline"><XCircle className="me-1 h-3 w-3" />{lang === "ar" ? "فشل" : "Failed"}</Badge>
+                              ) : (
+                                <Badge variant="outline">{r.status}</Badge>
+                              )}
+                              {profileUrl && (
+                                <Button size="sm" variant="outline" asChild className="h-8 gap-1.5">
+                                  <a href={profileUrl} target="_blank" rel="noreferrer">
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                    <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
+                                  </a>
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
