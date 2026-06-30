@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -911,15 +911,15 @@ function JobsHistoryPage() {
       </AlertDialog>
 
       <Dialog open={msgOpen} onOpenChange={(o) => !msgSubmitting && setMsgOpen(o)}>
-        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="flex max-h-[92dvh] w-[calc(100vw-1rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:w-[min(920px,calc(100vw-2rem))] sm:max-w-4xl">
-          <DialogHeader className="shrink-0 border-b px-4 py-4 sm:px-5">
+        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="flex max-h-[92dvh] w-[min(calc(100dvw-0.75rem),920px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:w-[min(calc(100dvw-2rem),920px)] sm:rounded-xl">
+          <DialogHeader className="shrink-0 border-b px-3 py-3 sm:px-5 sm:py-4">
             <DialogTitle className="text-start">
               {lang === "ar" ? "إرسال رسائل للمستخرجين" : "Send messages to extracted people"}
             </DialogTitle>
           </DialogHeader>
 
 
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 text-start sm:px-5">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-3 py-3 text-start [scrollbar-gutter:stable] sm:px-5 sm:py-4">
             <div className="rounded-lg border bg-muted/40 p-3 text-sm leading-relaxed">
               <div className="font-semibold mb-1">
                 {lang === "ar" ? "ملخّص المستلمين" : "Recipient summary"}
@@ -1032,7 +1032,7 @@ function JobsHistoryPage() {
               </div>
 
               {/* Preview */}
-              <div className="grid grid-cols-3 gap-2 rounded-md border border-primary/20 bg-primary/5 p-2 text-center">
+              <div className="grid grid-cols-1 gap-2 rounded-md border border-primary/20 bg-primary/5 p-2 text-center sm:grid-cols-3">
                 <div>
                   <div className="text-[10px] uppercase text-muted-foreground">
                     {lang === "ar" ? "المستلمون بعد الفلترة" : "After filters"}
@@ -1252,7 +1252,7 @@ function JobsHistoryPage() {
                             <Clock className="h-4 w-4 text-primary" />
                             {lang === "ar" ? "توقيت الإرسال لكل حساب" : "Per-account send timing"}
                           </div>
-                          <div className="mb-2 grid grid-cols-3 gap-2 text-center">
+                          <div className="mb-2 grid grid-cols-1 gap-2 text-center sm:grid-cols-3">
                             <div className="rounded bg-background/60 p-2">
                               <div className="text-[10px] uppercase text-muted-foreground">{lang === "ar" ? "الفاصل العام" : "Global interval"}</div>
                               <div className="text-sm font-bold tabular-nums text-foreground">{globalSec}s</div>
@@ -1270,12 +1270,12 @@ function JobsHistoryPage() {
                             {selected.map((a, idx) => {
                               const firstSendSec = idx * globalSec;
                               return (
-                                <li key={a.id} className="flex items-center justify-between gap-2 rounded border border-border/50 bg-background/40 px-2 py-1.5">
-                                  <span className="flex items-center gap-2 truncate">
+                                <li key={a.id} className="grid gap-1 rounded border border-border/50 bg-background/40 px-2 py-1.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                                  <span className="flex min-w-0 items-center gap-2 truncate">
                                     <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">{idx + 1}</span>
                                     <span className="truncate font-medium text-foreground">{a.display_name}</span>
                                   </span>
-                                  <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
+                                  <span className="flex min-w-0 flex-wrap items-center gap-2 text-muted-foreground sm:shrink-0">
                                     <span title={lang === "ar" ? "أول رسالة بعد بدء الحملة" : "First send after launch"}>
                                       ▶ {firstSendSec}s
                                     </span>
@@ -1322,22 +1322,24 @@ function JobsHistoryPage() {
             </div>
           </div>
 
-          <DialogFooter className="shrink-0 gap-2 border-t bg-background px-4 py-4 sm:px-5">
+          <div className="grid shrink-0 gap-2 border-t bg-background px-3 py-3 sm:grid-cols-[auto_minmax(0,1fr)] sm:px-5 sm:py-4">
             <Button variant="outline" onClick={() => setMsgOpen(false)} disabled={msgSubmitting} className="w-full sm:w-auto">
               {lang === "ar" ? "إلغاء" : "Cancel"}
             </Button>
-            <Button onClick={launchMessaging} disabled={msgSubmitting || sendRows.length === 0} className="w-full min-w-0 justify-center gap-2 whitespace-normal sm:w-auto">
+            <Button onClick={launchMessaging} disabled={msgSubmitting || sendRows.length === 0} className="w-full min-w-0 justify-center gap-2 whitespace-normal break-words text-center leading-snug">
               {msgSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              <Send className="h-4 w-4" />
-              {msgSelectedRecipients.size > 0
-                ? (lang === "ar"
-                    ? `إرسال للمحدد (${sendRows.length}) — واتساب ${sendWaCount} / ماسنجر ${sendFbCount}`
-                    : `Send to selected (${sendRows.length}) — WA ${sendWaCount} / FB ${sendFbCount}`)
-                : (lang === "ar"
-                    ? `إرسال للكل (${sendRows.length})`
-                    : `Send to all (${sendRows.length})`)}
+              <Send className="h-4 w-4 shrink-0" />
+              <span className="min-w-0">
+                {msgSelectedRecipients.size > 0
+                  ? (lang === "ar"
+                      ? `إرسال للمحدد (${sendRows.length}) — واتساب ${sendWaCount} / ماسنجر ${sendFbCount}`
+                      : `Send to selected (${sendRows.length}) — WA ${sendWaCount} / FB ${sendFbCount}`)
+                  : (lang === "ar"
+                      ? `إرسال للكل (${sendRows.length})`
+                      : `Send to all (${sendRows.length})`)}
+              </span>
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </DashboardLayout>
