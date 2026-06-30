@@ -25,7 +25,10 @@ async function runExtractGroupMembers({ page, job, report }) {
     };
   });
   if (access.hasLogin || access.url.includes("/login")) {
-    await report({ status: "failed", errorMessage: "Session lost — please refresh cookies for this account." });
+    if (job.account?.id) {
+      await report({ accountStatus: { accountId: job.account.id, status: "invalid", error: "Session cookies rejected by Facebook" } });
+    }
+    await report({ status: "failed", errorMessage: "SESSION_EXPIRED: انتهت صلاحية جلسة حساب فيسبوك المرتبط. أعد تصدير الكوكيز وحدّث الحساب." });
     return;
   }
 

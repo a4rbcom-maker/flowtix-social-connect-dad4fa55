@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Loader2, Trash2, RefreshCw, Download, Sparkles, Send } from "lucide-react";
+import { Loader2, Trash2, RefreshCw, Download, Sparkles, Send, KeyRound, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
@@ -213,6 +213,11 @@ function JobsHistoryPage() {
     cancelled: "bg-muted text-muted-foreground",
   }[s]);
 
+  // Detect session-expired failures so we surface a clear reconnect CTA
+  // instead of a generic "failed" status the user can't act on.
+  const isSessionExpired = (j: { status?: string; error_message?: string | null }) =>
+    j.status === "failed" && !!j.error_message && /SESSION_EXPIRED|session lost|cookies?\s+(rejected|invalid|expired)|c_user/i.test(j.error_message);
+
   // Counts for the messaging wizard preview
   const phoneCount = enrichedRows.filter((e) => !!e.phone).length;
   const profileCount = enrichedRows.filter((e) => !!(e.profile || e.row.target)).length;
@@ -346,6 +351,14 @@ function JobsHistoryPage() {
                       <td className="px-4 py-3 text-muted-foreground">{new Date(j.created_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</td>
                       <td className="px-4 py-3 text-end">
                         <div className="flex items-center justify-end gap-1">
+                          {isSessionExpired(j) && (
+                            <Link to="/dashboard/facebook/bot" onClick={(e) => e.stopPropagation()}>
+                              <Button size="sm" variant="outline" className="h-7 gap-1 border-amber-500/40 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400" title={lang === "ar" ? "إعادة ربط حساب فيسبوك" : "Reconnect Facebook account"}>
+                                <KeyRound className="h-3.5 w-3.5" />
+                                <span className="text-xs">{lang === "ar" ? "إعادة ربط" : "Reconnect"}</span>
+                              </Button>
+                            </Link>
+                          )}
                           {j.status === "completed" && (j.processed_items > 0) && ["extract_commenters","extract_group_members","extract_page_audience","deep_profile_scrape"].includes(j.job_type) && (
                             <Button
                               size="sm"
@@ -411,6 +424,32 @@ function JobsHistoryPage() {
               )}
             </DialogTitle>
           </DialogHeader>
+          {selected && isSessionExpired(selected) && (
+            <div className="mb-3 flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="flex-1 space-y-2">
+                <p className="font-medium text-amber-900 dark:text-amber-200">
+                  {lang === "ar" ? "انتهت صلاحية جلسة حساب فيسبوك" : "Facebook account session expired"}
+                </p>
+                <p className="text-amber-800/90 dark:text-amber-300/90">
+                  {lang === "ar"
+                    ? "هذه ليست مشكلة في المنصة. فيسبوك أنهى جلسة الحساب المستخدم. أعد تصدير الكوكيز وحدّث الحساب ثم أعد تشغيل المهمة."
+                    : "This is not a platform issue. Facebook ended the bot account session. Re-export cookies, update the account, then re-run the job."}
+                </p>
+                <Link to="/dashboard/facebook/bot">
+                  <Button size="sm" className="gap-1.5">
+                    <KeyRound className="h-3.5 w-3.5" />
+                    {lang === "ar" ? "إعادة ربط الحساب الآن" : "Reconnect account now"}
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          )}
+          {selected?.status === "failed" && !isSessionExpired(selected) && selected.error_message && (
+            <div className="mb-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+              {selected.error_message}
+            </div>
+          )}
           {resultsLoading ? (
             <div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
           ) : results.length === 0 ? (
