@@ -49,32 +49,34 @@ function EnrichPage() {
 
   const t = lang === "ar" ? {
     title: "إثراء العملاء",
-    subtitle: "الصق نص أو قائمة (سطر لكل عميل) ونستخرج تلقائياً الاسم، رقم الموبايل، المدينة والمحافظة من قاعدة بيانات مصر.",
+    subtitle: "الصق نص أو قائمة (سطر لكل عميل) ونستخرج تلقائياً الاسم، رقم الموبايل، الإيميل، المدينة والمحافظة من قاعدة بيانات مصر.",
     inputLabel: "النص أو القائمة",
-    placeholder: "أحمد محمد 01012345678 من الزقازيق\nمنى صلاح 01551234567 المنصورة\nمحمد علي - 6 أكتوبر - 01112223344",
+    placeholder: "أحمد محمد 01012345678 ahmed@mail.com من الزقازيق\nمنى صلاح 01551234567 المنصورة\nمحمد علي - 6 أكتوبر - 01112223344",
     upload: "رفع ملف نصي/CSV",
     process: "تحليل وإثراء",
     clear: "مسح",
     download: "تنزيل CSV",
     none: "لا توجد نتائج بعد",
-    summary: (n: number, w: number, p: number, c: number) =>
-      `${n} سطر • ${w} باسم • ${p} برقم • ${c} بمحافظة`,
-    cols: { name: "الاسم", phone: "موبايل", city: "المدينة", gov: "المحافظة", raw: "النص الأصلي" },
+    summary: (n: number, w: number, p: number, e: number, c: number) =>
+      `${n} سطر • ${w} باسم • ${p} برقم • ${e} بإيميل • ${c} بمحافظة`,
+    cols: { name: "الاسم", phone: "موبايل", email: "إيميل", city: "المدينة", gov: "المحافظة", raw: "النص الأصلي" },
     matched: "تم التعرف",
+    emptyHint: "النتائج بدون أرقام/مدن؟ ده طبيعي مع أعضاء الجروبات لأن فيسبوك بيرجّع الاسم بس. شغّل «فحص عميق للبروفايلات» من سجل المهام عشان نفتح كل بروفايل ونسحب البيو والمدينة والشغل، وبعدها اعمل إثراء تاني.",
   } : {
     title: "Enrich leads",
-    subtitle: "Paste text or a list (one lead per line) and we'll extract name, mobile, city and governorate using the Egypt locations dataset.",
+    subtitle: "Paste text or a list (one lead per line) and we'll extract name, mobile, email, city and governorate using the Egypt locations dataset.",
     inputLabel: "Text or list",
-    placeholder: "Ahmed Mohamed 01012345678 from Zagazig\nMona Salah 01551234567 Mansoura\nMohamed Ali - 6th October - 01112223344",
+    placeholder: "Ahmed Mohamed 01012345678 ahmed@mail.com from Zagazig\nMona Salah 01551234567 Mansoura\nMohamed Ali - 6th October - 01112223344",
     upload: "Upload text/CSV file",
     process: "Analyze & enrich",
     clear: "Clear",
     download: "Download CSV",
     none: "No results yet",
-    summary: (n: number, w: number, p: number, c: number) =>
-      `${n} rows • ${w} with name • ${p} with phone • ${c} with governorate`,
-    cols: { name: "Name", phone: "Mobile", city: "City", gov: "Governorate", raw: "Source" },
+    summary: (n: number, w: number, p: number, e: number, c: number) =>
+      `${n} rows • ${w} with name • ${p} with phone • ${e} with email • ${c} with governorate`,
+    cols: { name: "Name", phone: "Mobile", email: "Email", city: "City", gov: "Governorate", raw: "Source" },
     matched: "Matched",
+    emptyHint: "No phones/cities in results? That's expected for group members — Facebook only returns the name. Run \"Deep profile scrape\" from Jobs History to open each profile and pull bio, city and work, then re-enrich.",
   };
 
   const run = async () => {
@@ -97,8 +99,8 @@ function EnrichPage() {
 
   const downloadCsv = () => {
     if (rows.length === 0) return;
-    const head = ["name", "phone", "city", "governorate", "source"];
-    const csv = [head, ...rows.map((r) => [r.name ?? "", r.phone ?? "", r.city ?? "", r.governorate ?? "", r.raw])]
+    const head = ["name", "phone", "email", "city", "governorate", "source"];
+    const csv = [head, ...rows.map((r) => [r.name ?? "", r.phone ?? "", r.email ?? "", r.city ?? "", r.governorate ?? "", r.raw])]
       .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -109,8 +111,10 @@ function EnrichPage() {
   const stats = {
     name: rows.filter((r) => r.name).length,
     phone: rows.filter((r) => r.phone).length,
+    email: rows.filter((r) => r.email).length,
     gov: rows.filter((r) => r.governorate).length,
   };
+  const noContact = rows.length > 0 && stats.phone === 0 && stats.email === 0 && stats.gov === 0;
 
   return (
     <DashboardLayout title={t.title}>
@@ -150,7 +154,7 @@ function EnrichPage() {
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-muted/30 px-4 py-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <MapPin className="h-4 w-4 text-primary" />
-              {rows.length > 0 ? t.summary(rows.length, stats.name, stats.phone, stats.gov) : t.none}
+              {rows.length > 0 ? t.summary(rows.length, stats.name, stats.phone, stats.email, stats.gov) : t.none}
             </div>
             {rows.length > 0 && (
               <Button size="sm" variant="outline" onClick={downloadCsv} className="gap-2">
@@ -158,6 +162,11 @@ function EnrichPage() {
               </Button>
             )}
           </div>
+          {noContact && (
+            <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-800 dark:text-amber-300">
+              {t.emptyHint}
+            </div>
+          )}
           {rows.length > 0 && (
             <div className="max-h-[60vh] overflow-auto">
               <table className="w-full text-sm">
@@ -166,6 +175,7 @@ function EnrichPage() {
                     <th className="px-4 py-2 text-start">#</th>
                     <th className="px-4 py-2 text-start">{t.cols.name}</th>
                     <th className="px-4 py-2 text-start">{t.cols.phone}</th>
+                    <th className="px-4 py-2 text-start">{t.cols.email}</th>
                     <th className="px-4 py-2 text-start">{t.cols.city}</th>
                     <th className="px-4 py-2 text-start">{t.cols.gov}</th>
                     <th className="px-4 py-2 text-start">{t.cols.raw}</th>
@@ -177,6 +187,7 @@ function EnrichPage() {
                       <td className="px-4 py-2 font-mono text-muted-foreground">{i + 1}</td>
                       <td className="px-4 py-2 font-medium">{r.name ?? "—"}</td>
                       <td className="px-4 py-2 font-mono">{r.phone ?? "—"}</td>
+                      <td className="px-4 py-2 font-mono text-xs">{r.email ?? "—"}</td>
                       <td className="px-4 py-2">{r.city ?? "—"}</td>
                       <td className="px-4 py-2">
                         {r.governorate ? <Badge variant="outline" className="border-primary/30 text-primary">{r.governorate}</Badge> : "—"}

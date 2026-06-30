@@ -142,26 +142,42 @@ export function detectLocation(text: string): EgyptLocation | null {
 export type EnrichedLead = {
   name: string | null;
   phone: string | null;
+  email: string | null;
   city: string | null;
   governorate: string | null;
   raw: string;
 };
 
-// Best-effort name extraction: the first line / first 6 words minus phone.
+// Email regex (RFC-lite, good enough for lead text).
+const EMAIL_RX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+
+export function extractEmail(text: string): string | null {
+  if (!text) return null;
+  const m = text.match(EMAIL_RX);
+  return m && m[0] ? m[0].toLowerCase() : null;
+}
+
+// Best-effort name extraction: first line / first 6 words minus phone/email.
 function extractName(text: string): string | null {
   const firstLine = text.split(/[\n\r|,;:]/)[0]?.trim();
   if (!firstLine) return null;
-  const woPhone = firstLine.replace(PHONE_RX, "").replace(/[٠-٩]/g, "").trim();
+  const woPhone = firstLine
+    .replace(PHONE_RX, "")
+    .replace(EMAIL_RX, "")
+    .replace(/[٠-٩]/g, "")
+    .trim();
   const words = woPhone.split(/\s+/).filter(Boolean).slice(0, 6).join(" ");
   return words.length >= 2 ? words : null;
 }
 
 export function enrichLine(line: string): EnrichedLead {
   const phone = extractEgyptPhone(line);
+  const email = extractEmail(line);
   const loc = detectLocation(line);
   return {
     name: extractName(line),
     phone,
+    email,
     city: loc?.city ?? null,
     governorate: loc?.gov ?? null,
     raw: line,
