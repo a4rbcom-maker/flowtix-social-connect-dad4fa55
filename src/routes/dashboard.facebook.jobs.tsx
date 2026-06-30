@@ -70,6 +70,8 @@ function JobsHubPage() {
     title: "مهام البوت",
     subtitle: "أنشئ مهام نشر تلقائي أو استخراج بيانات",
     accountLabel: "اختر الحساب",
+    invalidAccount: "هذا الحساب غير صالح حالياً. حدّث كوكيز فيسبوك من صفحة ربط الحسابات أولاً.",
+    activeAccountRequired: "لا يمكن إنشاء المهمة لأن الحساب المختار غير صالح. حدّث الكوكيز أو اختر حساب Active.",
     noAccounts: "لا توجد حسابات. اربط حساب أولاً.",
     addAccount: "ربط حساب",
     tabPost: "نشر على جروبات",
@@ -108,6 +110,8 @@ function JobsHubPage() {
     title: "Bot Jobs",
     subtitle: "Create automation jobs",
     accountLabel: "Select account",
+    invalidAccount: "This account is not valid right now. Refresh its Facebook cookies from the bot accounts page first.",
+    activeAccountRequired: "Can't create the job because the selected account is not valid. Refresh cookies or choose an Active account.",
     noAccounts: "No accounts yet. Link one first.",
     addAccount: "Link account",
     tabPost: "Post",
@@ -195,6 +199,8 @@ function JobsHubPage() {
 
   const submitPost = async () => {
     if (!accountId) return;
+    const selectedAccount = accounts.find((a) => a.id === accountId);
+    if (selectedAccount?.status !== "active") { toast.error(t.activeAccountRequired); return; }
     const ids = groupIds.split("\n").map((s) => s.trim()).filter(Boolean);
     if (ids.length === 0) { toast.error(t.groupIds); return; }
     setBusy(true);
@@ -213,6 +219,8 @@ function JobsHubPage() {
 
   const submitExtractPages = async () => {
     if (!accountId) return;
+    const selectedAccount = accounts.find((a) => a.id === accountId);
+    if (selectedAccount?.status !== "active") { toast.error(t.activeAccountRequired); return; }
     setBusy(true);
     try {
       await createExtractPagesJobFn({ data: { accountId } });
@@ -222,6 +230,8 @@ function JobsHubPage() {
 
   const submitExtractCommenters = async () => {
     if (!accountId) { toast.error("لا يوجد حساب فيسبوك مرتبط — اربط حسابك أولاً من صفحة البوت"); return; }
+    const selectedAccount = accounts.find((a) => a.id === accountId);
+    if (selectedAccount?.status !== "active") { toast.error(t.activeAccountRequired); return; }
     if (!postUrl.trim()) { toast.error("الرجاء إدخال رابط البوست"); return; }
     setBusy(true);
     try {
@@ -242,6 +252,8 @@ function JobsHubPage() {
 
   const submitGroupMembers = async () => {
     if (!accountId || !groupMembersId.trim()) return;
+    const selectedAccount = accounts.find((a) => a.id === accountId);
+    if (selectedAccount?.status !== "active") { toast.error(t.activeAccountRequired); return; }
     setBusy(true);
     try {
       const filterKeywords = groupFilterKeywords.split(",").map((s) => s.trim()).filter(Boolean);
@@ -258,6 +270,8 @@ function JobsHubPage() {
 
   const submitPageAudience = async () => {
     if (!accountId || !pageAudienceId.trim()) return;
+    const selectedAccount = accounts.find((a) => a.id === accountId);
+    if (selectedAccount?.status !== "active") { toast.error(t.activeAccountRequired); return; }
     const sources: ("followers" | "likers" | "engagers")[] = [];
     if (paFollowers) sources.push("followers");
     if (paLikers) sources.push("likers");
@@ -313,6 +327,9 @@ function JobsHubPage() {
               ))}
             </SelectContent>
           </Select>
+          {accounts.find((a) => a.id === accountId)?.status !== "active" && (
+            <p className="mt-2 text-sm text-destructive">{t.invalidAccount}</p>
+          )}
         </Card>
 
         <Card className="p-3">
