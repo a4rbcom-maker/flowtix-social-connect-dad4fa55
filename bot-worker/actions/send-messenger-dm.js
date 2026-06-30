@@ -163,7 +163,8 @@ async function openViaMessenger(page, profile) {
   try {
     await page.goto(mUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
   } catch (_) { return { ok: false, reason: "MESSENGER_NAV_FAILED" }; }
-  await new Promise((r) => setTimeout(r, 4000));
+  // Messenger lazy-loads — give it a real chance before declaring failure.
+  if (await waitForComposer(page, 12000)) return { ok: true, reason: null };
   return await diagnoseDmPage(page);
 }
 
@@ -179,15 +180,18 @@ async function waitForComposer(page, timeoutMs = 12000) {
 async function clickVisibleMessageAction(page) {
   const locators = [
     page.getByRole("button", { name: /^(مراسلة|رسالة|إرسال رسالة|Message|Send message)$/i }),
+    page.getByRole("link", { name: /^(مراسلة|رسالة|إرسال رسالة|Message|Send message)$/i }),
     page.getByText(/^(مراسلة|رسالة|إرسال رسالة|Message|Send message)$/i),
     page.locator('[aria-label*="مراسلة"], [aria-label*="رسالة"], [aria-label*="Message" i], [title*="مراسلة"], [title*="Message" i]'),
+    page.locator('a[href*="/messages/t/"], a[href*="m.me/"]'),
   ];
   for (const locator of locators) {
     try {
-      const count = Math.min(await locator.count(), 5);
+      const count = Math.min(await locator.count(), 8);
       for (let i = 0; i < count; i += 1) {
         const item = locator.nth(i);
         if (await item.isVisible({ timeout: 1000 }).catch(() => false)) {
+          await item.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => {});
           await item.click({ timeout: 5000 });
           return true;
         }
@@ -203,45 +207,69 @@ async function openViaProfile(page, profile) {
   try {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
   } catch (_) { return { ok: false, reason: "PROFILE_NAV_FAILED" }; }
-  await new Promise((r) => setTimeout(r, 3500));
+  // Group-member mini-profiles render the action bar after a short delay.
+  await new Promise((r) => setTimeout(r, 6000));
   if (/\/login|checkpoint/i.test(page.url())) return { ok: false, reason: "SESSION_EXPIRED" };
+
+  // Nudge the page so lazy action buttons hydrate.
+  await page.evaluate(() => { window.scrollBy(0, 200); window.scrollBy(0, -200); }).catch(() => {});
+  await new Promise((r) => setTimeout(r, 1200));
+
   let clicked = await page.evaluate(async () => {
     const normalize = (v) => String(v || "").replace(/\s+/g, " ").trim();
     const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    const isMessageAction = (el) => {
-      const text = normalize(el.textContent);
-      const aria = normalize(el.getAttribute("aria-label") || el.getAttribute("title"));
-      const label = `${text} ${aria}`;
-      if (/^(إضافة صديق|Add friend|تعرف على الإسهامات|View profile|عرض الملف الشخصي)$/i.test(text)) return false;
-      return /(Message|Messenger|Send message|رسالة|مراسلة|إرسال رسالة)/i.test(label);
+    const isVisible = (el) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 8 && r.height > 8 && r.bottom > 0 && r.right > 0;
     };
-    const getActions = () => Array.from(document.querySelectorAll('[role="button"], a[role="link"], a[href*="/messages/"], a[href*="m.me/"]'));
-    const directLink = getActions().find((el) => /\/messages\/|m\.me\//i.test(el.getAttribute("href") || ""));
-    if (directLink) { directLink.click(); return true; }
-    const target = getActions().find(isMessageAction);
+    const labelOf = (el) => {
+      const text = normalize(el.innerText || el.textContent);
+      const aria = normalize(el.getAttribute("aria-label") || el.getAttribute("title"));
+      return `${text} ${aria}`.trim();
+    };
+    const isMessageAction = (el) => {
+      const label = labelOf(el);
+      if (!label) return false;
+      // Explicit excludes first.
+      if (/^(إضافة صديق|Add friend|تعرف على الإسهامات|View profile|عرض الملف الشخصي|Follow|متابعة|إلغاء المتابعة|Unfollow|إلغاء الصداقة|Remove friend)$/i.test(normalize(el.innerText || el.textContent))) return false;
+      return /(^|\s)(Message|Messenger|Send message|رسالة|مراسلة|إرسال رسالة)(\s|$|\b)/i.test(label);
+    };
+    const getActions = () => Array.from(document.querySelectorAll(
+      '[role="button"], a[role="link"], a[href*="/messages/"], a[href*="m.me/"], div[role="button"]'
+    )).filter(isVisible);
+
+    // 1) Direct Messenger link wins.
+    const direct = getActions().find((el) => /\/messages\/(t\/)?\d|m\.me\//i.test(el.getAttribute("href") || ""));
+    if (direct) { direct.click(); return true; }
+
+    // 2) Visible action button labelled Message / مراسلة (including buttons whose only text is in a child span).
+    let target = getActions().find(isMessageAction);
     if (target) { target.click(); return true; }
 
-    // Some profile/group-member pages hide the Message action under an actions
-    // menu. Open likely menus, then search again.
+    // 3) Open any overflow menus and look again.
     const menus = getActions().filter((b) => {
-      const text = normalize(b.textContent);
       const aria = normalize(b.getAttribute("aria-label") || b.getAttribute("title"));
-      return /^(More|Menu|المزيد|خيارات|More options|⋯|\.\.\.)$/i.test(text) || /More|Menu|المزيد|خيارات|See more/i.test(aria);
+      const text = normalize(b.innerText || b.textContent);
+      return /^(More|Menu|المزيد|خيارات|⋯|\.\.\.)$/i.test(text) || /More|Menu|المزيد|خيارات|See more options|عرض المزيد/i.test(aria);
     });
-    for (const menu of menus.slice(0, 3)) {
+    for (const menu of menus.slice(0, 4)) {
       menu.click();
-      await wait(800);
-      const menuItems = getActions().concat(Array.from(document.querySelectorAll('[role="menuitem"], [role="menuitemradio"]')));
-      const item = menuItems.find(isMessageAction);
+      await wait(900);
+      const items = Array.from(document.querySelectorAll(
+        '[role="menuitem"], [role="menuitemradio"], [role="button"], a[role="link"]'
+      )).filter(isVisible);
+      const item = items.find(isMessageAction);
       if (item) { item.click(); return true; }
     }
     return false;
   });
+
   if (!clicked) clicked = await clickVisibleMessageAction(page);
   if (!clicked) return { ok: false, reason: "PROFILE_MESSAGE_BUTTON_MISSING" };
   await waitForComposer(page, 12000);
   return await diagnoseDmPage(page);
 }
+
 
 async function sendToOne(page, profile, message, imagePath) {
   // 1) Preferred: open Messenger thread directly (works for /groups/.../user/<id>/ too).
