@@ -46,13 +46,13 @@ function AutoReplyPage() {
 
   return (
     <DashboardLayout title={ar ? "الرد التلقائي" : "Auto-Reply"}>
-      <div className="container mx-auto p-6 space-y-6" dir={ar ? "rtl" : "ltr"}>
+      <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6" dir={ar ? "rtl" : "ltr"}>
         <div className={ar ? "text-right" : "text-left"}>
-          <h1 className={`text-3xl font-bold flex items-center gap-3 ${ar ? "justify-end flex-row-reverse" : "justify-start"}`}>
-            <Sparkles className="w-8 h-8 text-primary shrink-0" />
-            <span>{ar ? "الرد التلقائي على تعليقات الفيسبوك" : "Facebook Auto-Reply"}</span>
+          <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-3">
+            <Sparkles className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
+            <span className="min-w-0">{ar ? "الرد التلقائي على تعليقات الفيسبوك" : "Facebook Auto-Reply"}</span>
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-muted-foreground mt-1 text-sm sm:text-base">
             {ar
               ? "اربط صفحاتك وأنشئ قواعد ذكية ترد على التعليقات بتعليق عام و/أو رسالة خاصة."
               : "Connect your pages and build smart rules to auto-reply with comment and/or DM."}
@@ -60,8 +60,8 @@ function AutoReplyPage() {
         </div>
 
         <Tabs defaultValue="rules" className="space-y-4" dir={ar ? "rtl" : "ltr"}>
-          <div className={`flex w-full ${ar ? "justify-end" : "justify-start"}`}>
-            <TabsList className={ar ? "flex-row-reverse" : ""}>
+          <div className="-mx-4 sm:mx-0 overflow-x-auto px-4 sm:px-0">
+            <TabsList className="inline-flex w-max sm:w-auto">
               <TabsTrigger value="rules"><Sparkles className="w-4 h-4 me-2"/>{ar ? "القواعد" : "Rules"}</TabsTrigger>
               <TabsTrigger value="pages"><Settings className="w-4 h-4 me-2"/>{ar ? "الصفحات المربوطة" : "Connected pages"}</TabsTrigger>
               <TabsTrigger value="log"><Activity className="w-4 h-4 me-2"/>{ar ? "السجل" : "Log"}</TabsTrigger>
@@ -73,6 +73,7 @@ function AutoReplyPage() {
           <TabsContent value="log"><LogTab ar={ar} /></TabsContent>
         </Tabs>
       </div>
+
     </DashboardLayout>
   );
 }
@@ -95,17 +96,18 @@ function PagesTab({ ar }: { ar: boolean }) {
 
   return (
     <Card dir={ar ? "rtl" : "ltr"}>
-      <CardHeader className={`flex flex-row items-center justify-between gap-3 ${ar ? "flex-row-reverse" : ""}`}>
-        <div className={ar ? "text-right" : "text-left"}>
+      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className={`min-w-0 ${ar ? "text-right" : "text-left"}`}>
           <CardTitle>{ar ? "الصفحات المربوطة" : "Connected pages"}</CardTitle>
           <CardDescription>{ar ? "أضف صفحات فيسبوك ترغب في تشغيل الرد التلقائي عليها." : "Add Facebook pages for auto-reply."}</CardDescription>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button><Plus className="w-4 h-4 me-2"/>{ar ? "إضافة صفحة" : "Add page"}</Button></DialogTrigger>
+          <DialogTrigger asChild><Button className="w-full sm:w-auto shrink-0"><Plus className="w-4 h-4 me-2"/>{ar ? "إضافة صفحة" : "Add page"}</Button></DialogTrigger>
           <AddPageDialog ar={ar} onDone={() => { setOpen(false); qc.invalidateQueries({ queryKey: ["fb_pages"] }); }} addFn={add} />
         </Dialog>
       </CardHeader>
-      <CardContent>
+      <CardContent className="overflow-x-auto">
+
 
         {isLoading ? <Loader2 className="animate-spin"/> : !pages?.length ? (
           <p className="text-muted-foreground text-sm">{ar ? "لا توجد صفحات مربوطة بعد." : "No pages connected yet."}</p>
@@ -242,14 +244,15 @@ function RulesTab({ ar }: { ar: boolean }) {
 
   return (
     <Card dir={ar ? "rtl" : "ltr"}>
-      <CardHeader className={`flex flex-row items-center justify-between gap-3 ${ar ? "flex-row-reverse" : ""}`}>
-        <div className={ar ? "text-right" : "text-left"}>
+      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className={`min-w-0 ${ar ? "text-right" : "text-left"}`}>
           <CardTitle>{ar ? "قواعد الرد التلقائي" : "Auto-reply rules"}</CardTitle>
           <CardDescription>{ar ? "كل قاعدة تطابق التعليقات وفقاً للنطاق والكلمات." : "Each rule matches comments by scope and keywords."}</CardDescription>
         </div>
-        <Button onClick={openNew}><Plus className="w-4 h-4 me-2"/>{ar ? "قاعدة جديدة" : "New rule"}</Button>
+        <Button onClick={openNew} className="w-full sm:w-auto shrink-0"><Plus className="w-4 h-4 me-2"/>{ar ? "قاعدة جديدة" : "New rule"}</Button>
       </CardHeader>
-      <CardContent>
+      <CardContent className="overflow-x-auto">
+
 
         {!rules?.length ? (
           <p className="text-muted-foreground text-sm">{ar ? "لا توجد قواعد بعد." : "No rules yet."}</p>
@@ -350,7 +353,7 @@ function RuleDialog({ ar, pages, rule, onDone }: { ar: boolean; pages: PageRow[]
         <DialogTitle>{rule ? (ar ? "تعديل القاعدة" : "Edit rule") : (ar ? "قاعدة جديدة" : "New rule")}</DialogTitle>
       </DialogHeader>
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label>{ar ? "اسم القاعدة" : "Rule name"}</Label>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}/>
@@ -364,7 +367,7 @@ function RuleDialog({ ar, pages, rule, onDone }: { ar: boolean; pages: PageRow[]
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label>{ar ? "النطاق" : "Scope"}</Label>
             <Select value={form.scope} onValueChange={(v) => setForm({ ...form, scope: v as any })}>
@@ -449,7 +452,7 @@ function RuleDialog({ ar, pages, rule, onDone }: { ar: boolean; pages: PageRow[]
 
         <details className="border rounded-lg p-3">
           <summary className="cursor-pointer font-medium">{ar ? "خيارات متقدمة" : "Advanced"}</summary>
-          <div className="grid grid-cols-2 gap-3 mt-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
             <div className="flex items-center justify-between col-span-2"><Label>{ar ? "تجاهل تعليقات الإدارة" : "Ignore admin comments"}</Label><Switch checked={form.ignore_admin_comments} onCheckedChange={(v) => setForm({ ...form, ignore_admin_comments: v })}/></div>
             <div className="flex items-center justify-between col-span-2"><Label>{ar ? "عدم تكرار الرد لنفس الشخص" : "Dedupe per user"}</Label><Switch checked={form.dedupe_per_user} onCheckedChange={(v) => setForm({ ...form, dedupe_per_user: v })}/></div>
             <div className="flex items-center justify-between col-span-2"><Label>{ar ? "كشف السبام" : "Detect spam"}</Label><Switch checked={form.detect_spam} onCheckedChange={(v) => setForm({ ...form, detect_spam: v })}/></div>
@@ -476,10 +479,11 @@ function LogTab({ ar }: { ar: boolean }) {
     <Card dir={ar ? "rtl" : "ltr"}>
       <CardHeader><CardTitle className={ar ? "text-right" : "text-left"}>{ar ? "سجل التنفيذ" : "Execution log"}</CardTitle></CardHeader>
 
-      <CardContent>
+      <CardContent className="overflow-x-auto">
         {isLoading ? <Loader2 className="animate-spin"/> : !rows?.length ? (
           <p className="text-muted-foreground text-sm">{ar ? "لا يوجد سجلات." : "No log entries."}</p>
         ) : (
+
           <Table>
             <TableHeader><TableRow>
               <TableHead>{ar ? "الوقت" : "Time"}</TableHead>
