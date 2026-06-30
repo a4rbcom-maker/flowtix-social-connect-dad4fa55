@@ -275,13 +275,20 @@ export const waBridge = {
   // Bot-Xtra: POST /api/sessions creates a session bound to a tenantId+webhookUrl.
   // For an existing session it returns { status: "already_connected" } and does NOT
   // update webhook/tenant — you must DELETE then recreate to change them.
-  createSession: (id: string, opts: { webhookUrl?: string; tenantId?: string } = {}) =>
+  createSession: (
+    id: string,
+    opts: { webhookUrl?: string; tenantId?: string; syncFullHistory?: boolean } = {},
+  ) =>
     bridgeFetch<{ id?: string; sessionId?: string; status?: string }>("/api/sessions", {
       method: "POST",
       body: JSON.stringify({
         sessionId: id,
         ...(opts.webhookUrl ? { webhookUrl: opts.webhookUrl, webhook: opts.webhookUrl } : {}),
         ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
+        // Opt-in to WhatsApp history sync (Bot-Xtra v1.8+ honors this flag per session).
+        // Safe default: true on new/reset sessions only — existing sessions are unaffected
+        // because Bot-Xtra returns "already_connected" without re-applying options.
+        ...(opts.syncFullHistory === true ? { syncFullHistory: true } : {}),
       }),
     }),
   getStatus: (id: string) =>
