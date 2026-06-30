@@ -239,15 +239,16 @@ function RulesTab({ ar }: { ar: boolean }) {
   const openEdit = (r: RuleRow) => { setEditing(r); setOpen(true); };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
+    <Card dir={ar ? "rtl" : "ltr"}>
+      <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <div className={ar ? "text-right" : "text-left"}>
           <CardTitle>{ar ? "قواعد الرد التلقائي" : "Auto-reply rules"}</CardTitle>
           <CardDescription>{ar ? "كل قاعدة تطابق التعليقات وفقاً للنطاق والكلمات." : "Each rule matches comments by scope and keywords."}</CardDescription>
         </div>
         <Button onClick={openNew}><Plus className="w-4 h-4 me-2"/>{ar ? "قاعدة جديدة" : "New rule"}</Button>
       </CardHeader>
       <CardContent>
+
         {!rules?.length ? (
           <p className="text-muted-foreground text-sm">{ar ? "لا توجد قواعد بعد." : "No rules yet."}</p>
         ) : (
