@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Loader2, Trash2, RefreshCw, Download, Sparkles, Send, KeyRound, AlertTriangle, Image as ImageIcon, X, Clock, Pause, Play, ArrowUp, ArrowDown, ArrowUpDown, CheckCircle2, XCircle, ShieldAlert, ExternalLink, MessageCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -97,6 +97,8 @@ function JobsHistoryPage() {
   const [selected, setSelected] = useState<JobRow | null>(null);
   const [results, setResults] = useState<JobResult[]>([]);
   const [resultsLoading, setResultsLoading] = useState(false);
+  const [selectedJobPayload, setSelectedJobPayload] = useState<Record<string, unknown> | null>(null);
+  const [detailRow, setDetailRow] = useState<{ row: JobResult; index: number; name: string; profileUrl: string | null; targetId: string | null } | null>(null);
   const [cancelTarget, setCancelTarget] = useState<JobRow | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [pausingId, setPausingId] = useState<string | null>(null);
@@ -211,7 +213,8 @@ function JobsHistoryPage() {
     try {
       const peopleTypes = ["extract_commenters", "extract_group_members", "extract_page_audience", "deep_profile_scrape"];
       if (peopleTypes.includes(j.job_type)) await loadEgyptData();
-      const { results } = await call(getJob, { id: j.id });
+      const { job, results } = await call(getJob, { id: j.id });
+      setSelectedJobPayload(((job as { payload?: Record<string, unknown> } | null)?.payload) ?? null);
       setResults(results as JobResult[]);
     } catch (e) { toast.error(String(e)); }
     finally { setResultsLoading(false); }
@@ -867,7 +870,14 @@ function JobsHistoryPage() {
                       const ok = r.status === "success";
                       const msg = messengerFriendlyReason(r.error, r.status, lang);
                       return (
-                        <div key={r.id} className={`rounded-lg border p-3 ${ok ? "bg-primary/[0.03]" : r.status === "failed" ? "bg-destructive/[0.03]" : "bg-muted/20"}`}>
+                        <div
+                          key={r.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setDetailRow({ row: r, index: i, name, profileUrl, targetId: id })}
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetailRow({ row: r, index: i, name, profileUrl, targetId: id }); } }}
+                          className={`cursor-pointer rounded-lg border p-3 transition hover:border-primary/50 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/40 ${ok ? "bg-primary/[0.03]" : r.status === "failed" ? "bg-destructive/[0.03]" : "bg-muted/20"}`}
+                        >
                           <div className="space-y-2 text-start">
                             <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
                               <div className="flex min-w-0 items-center gap-2">
@@ -888,7 +898,7 @@ function JobsHistoryPage() {
                               <div className="flex flex-wrap items-center gap-2 pt-1">
                                 {!ok && <span className="inline-flex rounded-md bg-muted/70 px-2 py-0.5 text-[10px] text-muted-foreground">{lang === "ar" ? "كود" : "Code"}: <bdi dir="ltr" className="ms-1">{msg.code}</bdi></span>}
                                 {profileUrl && (
-                                  <Button size="sm" variant="outline" asChild className="h-8 gap-1.5">
+                                  <Button size="sm" variant="outline" asChild className="h-8 gap-1.5" onClick={(e) => e.stopPropagation()}>
                                     <a href={profileUrl} target="_blank" rel="noreferrer">
                                       <ExternalLink className="h-3.5 w-3.5" />
                                       <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
@@ -936,7 +946,11 @@ function JobsHistoryPage() {
                             const ok = r.status === "success";
                             const msg = messengerFriendlyReason(r.error, r.status, lang);
                             return (
-                              <tr key={r.id} className={ok ? "bg-primary/[0.025]" : r.status === "failed" ? "bg-destructive/[0.025]" : ""}>
+                              <tr
+                                key={r.id}
+                                onClick={() => setDetailRow({ row: r, index: i, name, profileUrl, targetId: id })}
+                                className={`cursor-pointer transition hover:bg-primary/10 ${ok ? "bg-primary/[0.025]" : r.status === "failed" ? "bg-destructive/[0.025]" : ""}`}
+                              >
                                 <td className="px-3 py-2.5 text-start text-xs tabular-nums text-muted-foreground">{i + 1}</td>
                                 <td className="px-3 py-2.5 text-start font-semibold">
                                   <div className="truncate" title={name}>{name}</div>
@@ -964,7 +978,7 @@ function JobsHistoryPage() {
                                 {!compactView && (
                                   <td className="px-3 py-2.5 text-start">
                                     {profileUrl ? (
-                                      <Button size="sm" variant="outline" asChild className="h-8 max-w-full gap-1.5">
+                                      <Button size="sm" variant="outline" asChild className="h-8 max-w-full gap-1.5" onClick={(e) => e.stopPropagation()}>
                                         <a href={profileUrl} target="_blank" rel="noreferrer" className="min-w-0">
                                           <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                                           <bdi dir="ltr" className="truncate">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
@@ -1454,8 +1468,127 @@ function JobsHistoryPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Per-recipient details dialog */}
+      <Dialog open={!!detailRow} onOpenChange={(o) => { if (!o) setDetailRow(null); }}>
+        <DialogContent className="max-w-lg">
+          {detailRow && (() => {
+            const r = detailRow.row;
+            const ok = r.status === "success";
+            const msg = messengerFriendlyReason(r.error, r.status, lang);
+            const payload = (selectedJobPayload ?? {}) as { message?: string; imageUrls?: string[]; groupUrl?: string; postUrl?: string; sourceUrl?: string; label?: string };
+            const sourceUrl = payload.groupUrl || payload.postUrl || payload.sourceUrl || null;
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-start">
+                    <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">#{detailRow.index + 1}</span>
+                    <span className="min-w-0 break-words">{detailRow.name}</span>
+                    {ok ? (
+                      <Badge className="ms-auto border-primary/30 bg-primary/10 text-primary" variant="outline"><CheckCircle2 className="me-1 h-3 w-3" />{lang === "ar" ? "نجح" : "Sent"}</Badge>
+                    ) : r.status === "failed" ? (
+                      <Badge className="ms-auto border-destructive/30 bg-destructive/10 text-destructive" variant="outline"><XCircle className="me-1 h-3 w-3" />{lang === "ar" ? "فشل" : "Failed"}</Badge>
+                    ) : (
+                      <Badge variant="outline" className="ms-auto">{r.status}</Badge>
+                    )}
+                  </DialogTitle>
+                </DialogHeader>
+
+                <div className="max-h-[70vh] space-y-3 overflow-y-auto text-start">
+                  {/* Status reason */}
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <div className="text-sm font-semibold">{msg.title}</div>
+                    <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{msg.hint}</div>
+                  </div>
+
+                  {/* Code */}
+                  <DetailField label={lang === "ar" ? "الكود" : "Code"}>
+                    <bdi dir="ltr" className="inline-block rounded-md bg-muted/70 px-2 py-0.5 text-[11px] text-muted-foreground">{msg.code}</bdi>
+                  </DetailField>
+
+                  {/* Profile */}
+                  <DetailField label={lang === "ar" ? "البروفايل" : "Profile"}>
+                    {detailRow.profileUrl ? (
+                      <a href={detailRow.profileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-primary hover:underline">
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        <bdi dir="ltr" className="break-all">{detailRow.targetId ? `#${detailRow.targetId}` : detailRow.profileUrl}</bdi>
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </DetailField>
+
+                  {/* Target raw */}
+                  {r.target && (
+                    <DetailField label={lang === "ar" ? "الرابط الأصلي" : "Raw target"}>
+                      <bdi dir="ltr" className="block break-all rounded-md bg-muted/40 p-2 text-[11px] text-muted-foreground">{r.target}</bdi>
+                    </DetailField>
+                  )}
+
+                  {/* Source group/post */}
+                  {sourceUrl && (
+                    <DetailField label={lang === "ar" ? "رابط المصدر (جروب/منشور)" : "Source link (group/post)"}>
+                      <a href={sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-primary hover:underline">
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        <bdi dir="ltr" className="break-all">{sourceUrl}</bdi>
+                      </a>
+                    </DetailField>
+                  )}
+
+                  {/* Campaign label */}
+                  {payload.label && (
+                    <DetailField label={lang === "ar" ? "اسم الحملة" : "Campaign"}>
+                      <span className="text-sm font-medium">{payload.label}</span>
+                    </DetailField>
+                  )}
+
+                  {/* Message content */}
+                  {payload.message && (
+                    <DetailField label={lang === "ar" ? "نص الرسالة المُرسلة" : "Sent message"}>
+                      <div className="whitespace-pre-wrap break-words rounded-md border bg-background p-3 text-sm leading-relaxed">{payload.message}</div>
+                    </DetailField>
+                  )}
+
+                  {/* Images */}
+                  {Array.isArray(payload.imageUrls) && payload.imageUrls.length > 0 && (
+                    <DetailField label={lang === "ar" ? "الصور المرفقة" : "Attached images"}>
+                      <div className="flex flex-wrap gap-2">
+                        {payload.imageUrls.map((u, idx) => (
+                          <a key={idx} href={u} target="_blank" rel="noreferrer" className="block">
+                            <img src={u} alt={`attachment-${idx + 1}`} className="h-20 w-20 rounded-md border object-cover" />
+                          </a>
+                        ))}
+                      </div>
+                    </DetailField>
+                  )}
+
+                  {/* Raw error */}
+                  {r.error && (
+                    <DetailField label={lang === "ar" ? "تفاصيل الخطأ الخام" : "Raw error"}>
+                      <bdi dir="ltr" className="block max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-destructive/5 p-2 text-[11px] text-destructive">{r.error}</bdi>
+                    </DetailField>
+                  )}
+
+                  <div className="text-[11px] text-muted-foreground">
+                    {lang === "ar" ? "وقت المحاولة" : "Attempted at"}: <bdi dir="ltr">{new Date(r.created_at).toLocaleString()}</bdi>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
 
+  );
+}
+
+function DetailField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-sm">{children}</div>
+    </div>
   );
 }
 
