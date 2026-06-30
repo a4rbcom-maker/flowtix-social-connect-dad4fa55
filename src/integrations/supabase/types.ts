@@ -1857,8 +1857,6 @@ export type Database = {
         }
         Returns: boolean
       }
-      show_limit: { Args: never; Returns: number }
-      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
       ai_account_status: "active" | "exhausted" | "disabled" | "error"
