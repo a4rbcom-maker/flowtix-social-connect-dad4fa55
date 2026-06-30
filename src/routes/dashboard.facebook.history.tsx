@@ -511,7 +511,7 @@ function JobsHistoryPage() {
 
   return (
     <DashboardLayout title={t.title}>
-      <div className="space-y-6">
+      <div dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-2xl font-bold">{t.title}</h2>
@@ -611,7 +611,7 @@ function JobsHistoryPage() {
       </div>
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent className="sm:max-w-3xl">
+        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex flex-wrap items-center justify-between gap-2">
               <span>{selected && t.types[selected.job_type]}</span>
@@ -710,14 +710,14 @@ function JobsHistoryPage() {
                 <tbody className="divide-y divide-border/50">
                   {enrichedRows.map((e) => (
                     <tr key={e.row.id} className={e.gov ? "bg-primary/[0.04]" : ""}>
-                      <td className="px-3 py-2 font-medium">{e.name}</td>
-                      <td className="px-3 py-2 font-mono">{e.phone ?? "—"}</td>
-                      <td className="px-3 py-2">{e.city ?? "—"}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2 font-medium text-start">{e.name}</td>
+                      <td className="px-3 py-2 font-mono text-start">{e.phone ? <bdi dir="ltr">{e.phone}</bdi> : "—"}</td>
+                      <td className="px-3 py-2 text-start">{e.city ?? "—"}</td>
+                      <td className="px-3 py-2 text-start">
                         {e.gov ? <Badge variant="outline" className="border-primary/30 text-primary">{e.gov}</Badge> : "—"}
                       </td>
-                      <td className="px-3 py-2">
-                        {e.profile ? <a href={e.profile} target="_blank" rel="noreferrer" className="text-primary hover:underline">↗</a> : "—"}
+                      <td className="px-3 py-2 text-start">
+                        {e.profile ? <bdi dir="ltr"><a href={e.profile} target="_blank" rel="noreferrer" className="text-primary hover:underline">↗</a></bdi> : "—"}
                       </td>
                     </tr>
                   ))}
@@ -737,10 +737,10 @@ function JobsHistoryPage() {
                 <tbody className="divide-y divide-border/50">
                   {groupRows.map((g) => (
                     <tr key={g.row.id}>
-                      <td className="px-3 py-2 font-medium">{g.name}</td>
-                      <td className="px-3 py-2 font-mono">{g.id || "—"}</td>
-                      <td className="px-3 py-2">
-                        {g.url ? <a href={g.url} target="_blank" rel="noreferrer" className="text-primary hover:underline">↗</a> : "—"}
+                      <td className="px-3 py-2 font-medium text-start">{g.name}</td>
+                      <td className="px-3 py-2 font-mono text-start"><bdi dir="ltr">{g.id || "—"}</bdi></td>
+                      <td className="px-3 py-2 text-start">
+                        {g.url ? <bdi dir="ltr"><a href={g.url} target="_blank" rel="noreferrer" className="text-primary hover:underline">↗</a></bdi> : "—"}
                       </td>
                     </tr>
                   ))}
@@ -756,9 +756,9 @@ function JobsHistoryPage() {
                 <tbody className="divide-y divide-border/50">
                   {results.map((r) => (
                     <tr key={r.id}>
-                      <td className="px-3 py-2 font-mono">{r.target ?? "—"}</td>
-                      <td className="px-3 py-2">{r.status}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{r.error ?? JSON.stringify(r.data ?? "")}</td>
+                      <td className="px-3 py-2 font-mono text-start"><bdi dir="ltr">{r.target ?? "—"}</bdi></td>
+                      <td className="px-3 py-2 text-start">{r.status}</td>
+                      <td className="px-3 py-2 text-muted-foreground text-start">{r.error ?? JSON.stringify(r.data ?? "")}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1391,7 +1391,7 @@ function PreviewList({
   );
 
   return (
-    <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
+    <div dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <Label className="block text-start text-sm font-medium">
           {lang === "ar"
@@ -1517,10 +1517,12 @@ function PreviewList({
                           )}
                         </div>
                       </td>
-                      <td className="px-2 py-1.5 tabular-nums" dir="ltr">{e.phone || <span className="text-muted-foreground">—</span>}</td>
-                      <td className="px-2 py-1.5 max-w-[200px] truncate" dir="ltr">
+                      <td className="px-2 py-1.5 tabular-nums text-start">
+                        {e.phone ? <bdi dir="ltr">{e.phone}</bdi> : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-2 py-1.5 max-w-[200px] truncate text-start">
                         {hasProfile ? (
-                          <a href={profile} target="_blank" rel="noreferrer" className="text-primary hover:underline">{profile}</a>
+                          <bdi dir="ltr"><a href={profile} target="_blank" rel="noreferrer" className="text-primary hover:underline">{profile}</a></bdi>
                         ) : <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="px-2 py-1.5">{e.city || <span className="text-muted-foreground">—</span>}</td>
