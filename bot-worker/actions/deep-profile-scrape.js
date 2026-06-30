@@ -92,13 +92,53 @@ async function runDeepProfileScrape({ page, job, report }) {
   }
 
   let done = 0;
-  for (const target of profiles) {
-    const result = await scrapeOne(page, target);
+  let consecutiveFailures = 0;
+  let sessionLost = false;
+
+  for (let i = 0; i < profiles.length; i++) {
+    const target = profiles[i];
+    let result;
+    try {
+      // Hard per-profile timeout so one slow page can't stall the whole job.
+      result = await Promise.race([
+        scrapeOne(page, target),
+        new Promise((resolve) => setTimeout(
+          () => resolve({ target, status: "failed", error: "per-profile timeout (90s)" }),
+          90_000,
+        )),
+      ]);
+    } catch (e) {
+      result = { target, status: "failed", error: String(e && e.message || e) };
+    }
+
+    if (result.status === "failed" && /login|checkpoint|session/i.test(result.error || "")) {
+      sessionLost = true;
+    }
+
     await report({
       result,
       processedItems: ++done,
       progress: Math.min(99, Math.round((done / profiles.length) * 100)),
     });
+
+    if (result.status === "success") {
+      consecutiveFailures = 0;
+    } else {
+      consecutiveFailures++;
+    }
+
+    // Abort early if FB clearly killed the session — the rest will all fail.
+    if (sessionLost || consecutiveFailures >= 15) {
+      await report({
+        status: "failed",
+        errorMessage: sessionLost
+          ? `Session lost after ${done}/${profiles.length} profiles. Re-sync cookies and resume.`
+          : `Aborted: ${consecutiveFailures} consecutive failures at profile ${done}.`,
+        processedItems: done,
+      });
+      return;
+    }
+
     // Polite jitter between profiles
     await new Promise((r) => setTimeout(r, 2500 + Math.floor(Math.random() * 2500)));
   }
