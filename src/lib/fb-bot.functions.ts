@@ -99,7 +99,7 @@ function errorMessage(value: unknown) {
 }
 
 const FACEBOOK_SESSION_REJECTED_RE =
-  /SESSION_EXPIRED|session lost|Facebook rejected the stored session cookies|cookies?\s+(?:rejected|invalid|expired)|c_user/i;
+  /SESSION_EXPIRED|session lost|session not logged in|redirected to login|checkpoint|login required|Facebook rejected the stored session cookies|cookies?\s+(?:rejected|invalid|expired)|c_user/i;
 
 function isFacebookSessionRejectedError(value: unknown) {
   return typeof value === "string" && FACEBOOK_SESSION_REJECTED_RE.test(value);
@@ -441,7 +441,7 @@ export const listBotAccounts = createServerFn({ method: "GET" })
               .eq("id", row.id)
               .eq("user_id", userId);
           }
-        } else if (row.auth_method === "cookies" && row.status !== "active" && row.encrypted_payload) {
+        } else if (row.auth_method === "cookies" && row.status === "untested" && row.encrypted_payload) {
           try {
             const { decryptJson } = await import("@/server/crypto.server");
             const cookies = normalizeStoredCookies(decryptJson<unknown>(row.encrypted_payload));
