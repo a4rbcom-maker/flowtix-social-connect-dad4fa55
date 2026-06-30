@@ -213,7 +213,8 @@ function JobsHistoryPage() {
     try {
       const peopleTypes = ["extract_commenters", "extract_group_members", "extract_page_audience", "deep_profile_scrape"];
       if (peopleTypes.includes(j.job_type)) await loadEgyptData();
-      const { results } = await call(getJob, { id: j.id });
+      const { job, results } = await call(getJob, { id: j.id });
+      setSelectedJobPayload(((job as { payload?: Record<string, unknown> } | null)?.payload) ?? null);
       setResults(results as JobResult[]);
     } catch (e) { toast.error(String(e)); }
     finally { setResultsLoading(false); }
