@@ -1385,6 +1385,23 @@ function BotAccountsPage() {
                             t={t}
                           />
                           {(() => {
+                            const accountStatus = normalizeStatus(a.status);
+                            if (a.auth_method === "cookies" && accountStatus === "invalid") {
+                              return (
+                                <span className="inline-flex items-center gap-1 rounded-md border border-red-500/40 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:text-red-300">
+                                  <LogIn className="h-3 w-3" />
+                                  {lang === "ar" ? "تحتاج إعادة ربط" : "Needs re-link"}
+                                </span>
+                              );
+                            }
+                            if (a.auth_method === "cookies" && accountStatus === "checkpoint") {
+                              return (
+                                <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                                  <ShieldAlert className="h-3 w-3" />
+                                  {lang === "ar" ? "تحتاج تحقق فيسبوك" : "Needs Facebook check"}
+                                </span>
+                              );
+                            }
                             const e = classifyExpiry(a.cookie_expires_at);
                             if (!e) {
                               return a.auth_method === "cookies" ? (
