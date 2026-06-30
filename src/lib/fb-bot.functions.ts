@@ -835,6 +835,9 @@ export const createDeepProfileScrapeFromJob = createServerFn({ method: "POST" })
 
 function normalizeMessengerRecipientTarget(input: string): string {
   const raw = input.trim();
+  if (/^https?:\/\/[^/]*facebook\.com\/groups\/[^/]+\/user\/\d{5,}/i.test(raw)) {
+    return raw.split("?")[0].replace(/\/$/, "");
+  }
   const id =
     raw.match(/\/groups\/[^/]+\/user\/(\d{5,})/i)?.[1] ??
     raw.match(/[?&]id=(\d{5,})/i)?.[1] ??

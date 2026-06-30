@@ -81,8 +81,12 @@ async function findComposer(page) {
   return page.evaluate(() => {
     const sel = [
       '[contenteditable="true"][role="textbox"]',
+      '[contenteditable="true"][aria-label]',
+      '[contenteditable="true"][data-lexical-editor="true"]',
       'div[aria-label*="message" i][contenteditable="true"]',
       'div[aria-label*="رسالة"][contenteditable="true"]',
+      'div[aria-label*="Aa"][contenteditable="true"]',
+      'div[aria-placeholder*="Aa"][contenteditable="true"]',
       'div[aria-label*="Aa"][contenteditable="true"]',
     ];
     for (const s of sel) {
@@ -104,9 +108,12 @@ async function diagnoseDmPage(page) {
     const lower = text.toLowerCase();
     const hasComposer = !!(
       document.querySelector('[contenteditable="true"][role="textbox"]') ||
+      document.querySelector('[contenteditable="true"][aria-label]') ||
+      document.querySelector('[contenteditable="true"][data-lexical-editor="true"]') ||
       document.querySelector('div[aria-label*="message" i][contenteditable="true"]') ||
       document.querySelector('div[aria-label*="رسالة"][contenteditable="true"]') ||
-      document.querySelector('div[aria-label*="Aa"][contenteditable="true"]')
+      document.querySelector('div[aria-label*="Aa"][contenteditable="true"]') ||
+      document.querySelector('div[aria-placeholder*="Aa"][contenteditable="true"]')
     );
     if (hasComposer) return { ok: true, reason: null };
 
@@ -148,6 +155,15 @@ async function openViaMessenger(page, profile) {
   return await diagnoseDmPage(page);
 }
 
+async function waitForComposer(page, timeoutMs = 12000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (await findComposer(page)) return true;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
+}
+
 async function openViaProfile(page, profile) {
   const url = toProfileUrl(profile);
   if (!url) return { ok: false, reason: "NO_PROFILE_URL" };
@@ -156,35 +172,40 @@ async function openViaProfile(page, profile) {
   } catch (_) { return { ok: false, reason: "PROFILE_NAV_FAILED" }; }
   await new Promise((r) => setTimeout(r, 3500));
   if (/\/login|checkpoint/i.test(page.url())) return { ok: false, reason: "SESSION_EXPIRED" };
-  const clicked = await page.evaluate(() => {
+  const clicked = await page.evaluate(async () => {
     const normalize = (v) => String(v || "").replace(/\s+/g, " ").trim();
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const isMessageAction = (el) => {
       const text = normalize(el.textContent);
       const aria = normalize(el.getAttribute("aria-label") || el.getAttribute("title"));
       const label = `${text} ${aria}`;
-      return /(^|\s)(Message|Messenger|Send message|رسالة|مراسلة|إرسال رسالة)(\s|$)/i.test(label);
+      if (/^(إضافة صديق|Add friend|تعرف على الإسهامات|View profile|عرض الملف الشخصي)$/i.test(text)) return false;
+      return /(Message|Messenger|Send message|رسالة|مراسلة|إرسال رسالة)/i.test(label);
     };
-    const btns = Array.from(document.querySelectorAll('[role="button"], a[role="link"], a[href*="/messages/"], a[href*="m.me/"]'));
-    const target = btns.find(isMessageAction);
+    const getActions = () => Array.from(document.querySelectorAll('[role="button"], a[role="link"], a[href*="/messages/"], a[href*="m.me/"]'));
+    const directLink = getActions().find((el) => /\/messages\/|m\.me\//i.test(el.getAttribute("href") || ""));
+    if (directLink) { directLink.click(); return true; }
+    const target = getActions().find(isMessageAction);
     if (target) { target.click(); return true; }
 
     // Some profile/group-member pages hide the Message action under an actions
     // menu. Open likely menus, then search again.
-    const menus = btns.filter((b) => {
+    const menus = getActions().filter((b) => {
       const text = normalize(b.textContent);
       const aria = normalize(b.getAttribute("aria-label") || b.getAttribute("title"));
-      return /^(More|Menu|المزيد|خيارات|More options)$/i.test(text) || /More|Menu|المزيد|خيارات/i.test(aria);
+      return /^(More|Menu|المزيد|خيارات|More options|⋯|\.\.\.)$/i.test(text) || /More|Menu|المزيد|خيارات|See more/i.test(aria);
     });
     for (const menu of menus.slice(0, 3)) {
       menu.click();
-      const menuItems = Array.from(document.querySelectorAll('[role="menuitem"], [role="button"], a[role="link"]'));
+      await wait(800);
+      const menuItems = getActions().concat(Array.from(document.querySelectorAll('[role="menuitem"], [role="menuitemradio"]')));
       const item = menuItems.find(isMessageAction);
       if (item) { item.click(); return true; }
     }
     return false;
   });
   if (!clicked) return { ok: false, reason: "PROFILE_MESSAGE_BUTTON_MISSING" };
-  await new Promise((r) => setTimeout(r, 3000));
+  await waitForComposer(page, 12000);
   return await diagnoseDmPage(page);
 }
 
@@ -206,9 +227,12 @@ async function sendToOne(page, profile, message, imagePath) {
 
   const typed = await page.evaluate((msg) => {
     const editor = document.querySelector('[contenteditable="true"][role="textbox"]')
+      || document.querySelector('[contenteditable="true"][aria-label]')
+      || document.querySelector('[contenteditable="true"][data-lexical-editor="true"]')
       || document.querySelector('div[aria-label*="message" i][contenteditable="true"]')
       || document.querySelector('div[aria-label*="رسالة"][contenteditable="true"]')
-      || document.querySelector('div[aria-label*="Aa"][contenteditable="true"]');
+      || document.querySelector('div[aria-label*="Aa"][contenteditable="true"]')
+      || document.querySelector('div[aria-placeholder*="Aa"][contenteditable="true"]');
     if (!editor) return false;
     editor.focus();
     document.execCommand("insertText", false, msg);
@@ -218,6 +242,16 @@ async function sendToOne(page, profile, message, imagePath) {
 
   await new Promise((r) => setTimeout(r, 1500));
   await page.keyboard.press("Enter");
+  await new Promise((r) => setTimeout(r, 1200));
+  await page.evaluate(() => {
+    const normalize = (v) => String(v || "").replace(/\s+/g, " ").trim();
+    const buttons = Array.from(document.querySelectorAll('[role="button"], [aria-label], [data-testid]'));
+    const send = buttons.find((el) => {
+      const label = `${normalize(el.textContent)} ${normalize(el.getAttribute("aria-label") || el.getAttribute("title") || el.getAttribute("data-testid"))}`;
+      return /(Send|إرسال)/i.test(label);
+    });
+    if (send) send.click();
+  });
   await new Promise((r) => setTimeout(r, 2500));
 
   return { status: "success" };
