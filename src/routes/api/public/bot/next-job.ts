@@ -52,6 +52,9 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         if (!supportsDeepProfile) {
           candidateQuery = candidateQuery.neq("job_type", "deep_profile_scrape");
         }
+        if (!supportsMessengerDm) {
+          candidateQuery = candidateQuery.neq("job_type", "send_messenger_dm");
+        }
 
         const { data: candidate, error: selErr } = await candidateQuery
           .order("scheduled_at", { ascending: true })
