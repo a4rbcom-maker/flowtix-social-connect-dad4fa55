@@ -212,6 +212,7 @@ function JobsHistoryPage() {
     || selected?.job_type === "extract_page_audience"
     || selected?.job_type === "deep_profile_scrape";
   const isGroupsList = selected?.job_type === "list_my_groups";
+  const isMessenger = selected?.job_type === "send_messenger_dm";
   const groupRows = isGroupsList
     ? results.map((r) => {
         const d = (r.data ?? {}) as { name?: string; url?: string; group_id?: string; id?: string };
