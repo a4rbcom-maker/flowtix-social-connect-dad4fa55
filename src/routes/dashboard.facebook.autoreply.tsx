@@ -96,17 +96,18 @@ function PagesTab({ ar }: { ar: boolean }) {
 
   return (
     <Card dir={ar ? "rtl" : "ltr"}>
-      <CardHeader className={`flex flex-row items-center justify-between gap-3 ${ar ? "flex-row-reverse" : ""}`}>
-        <div className={ar ? "text-right" : "text-left"}>
+      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className={`min-w-0 ${ar ? "text-right" : "text-left"}`}>
           <CardTitle>{ar ? "الصفحات المربوطة" : "Connected pages"}</CardTitle>
           <CardDescription>{ar ? "أضف صفحات فيسبوك ترغب في تشغيل الرد التلقائي عليها." : "Add Facebook pages for auto-reply."}</CardDescription>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button><Plus className="w-4 h-4 me-2"/>{ar ? "إضافة صفحة" : "Add page"}</Button></DialogTrigger>
+          <DialogTrigger asChild><Button className="w-full sm:w-auto shrink-0"><Plus className="w-4 h-4 me-2"/>{ar ? "إضافة صفحة" : "Add page"}</Button></DialogTrigger>
           <AddPageDialog ar={ar} onDone={() => { setOpen(false); qc.invalidateQueries({ queryKey: ["fb_pages"] }); }} addFn={add} />
         </Dialog>
       </CardHeader>
-      <CardContent>
+      <CardContent className="overflow-x-auto">
+
 
         {isLoading ? <Loader2 className="animate-spin"/> : !pages?.length ? (
           <p className="text-muted-foreground text-sm">{ar ? "لا توجد صفحات مربوطة بعد." : "No pages connected yet."}</p>
