@@ -181,6 +181,26 @@ function JobsHistoryPage() {
     finally { setCancelling(false); }
   };
 
+  const handlePause = async (j: JobRow) => {
+    setPausingId(j.id);
+    try {
+      await call(pauseJob, { id: j.id });
+      setJobs((prev) => prev.map((x) => (x.id === j.id ? { ...x, status: "paused" } : x)));
+      toast.success(t.pauseDone);
+    } catch (e) { toast.error(String(e)); }
+    finally { setPausingId(null); }
+  };
+
+  const handleResume = async (j: JobRow) => {
+    setPausingId(j.id);
+    try {
+      await call(resumeJob, { id: j.id });
+      setJobs((prev) => prev.map((x) => (x.id === j.id ? { ...x, status: "pending", error_message: null } : x)));
+      toast.success(t.resumeDone);
+    } catch (e) { toast.error(String(e)); }
+    finally { setPausingId(null); }
+  };
+
   const isPeople = selected?.job_type === "extract_commenters"
     || selected?.job_type === "extract_group_members"
     || selected?.job_type === "extract_page_audience"
