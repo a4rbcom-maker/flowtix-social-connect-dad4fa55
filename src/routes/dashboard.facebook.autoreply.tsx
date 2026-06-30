@@ -22,6 +22,7 @@ import {
   listRules, upsertRule, toggleRule, deleteRule,
   listLog,
 } from "@/lib/fb-autoreply.functions";
+import { normalizeServerFnError } from "@/lib/server-fn-error";
 
 export const Route = createFileRoute("/dashboard/facebook/autoreply")({
   ssr: false,
@@ -33,18 +34,21 @@ export const Route = createFileRoute("/dashboard/facebook/autoreply")({
   component: AutoReplyPage,
   errorComponent: ({ error, reset }) => {
     const router = useRouter();
-    const msg = error instanceof Response
-      ? (error.status === 401 ? "يلزم تسجيل الدخول" : `خطأ HTTP ${error.status}`)
-      : (error?.message ?? "حدث خطأ غير متوقع");
+    const normalized = normalizeServerFnError(error);
     return (
-      <div className="p-6 space-y-3">
-        <p className="text-destructive">حدث خطأ: {msg}</p>
+      <div className="p-6 space-y-3" dir="rtl">
+        <p className="text-destructive font-semibold">{normalized.title}</p>
+        <p className="text-muted-foreground text-sm">{normalized.message}</p>
+        {normalized.status != null && (
+          <p className="text-xs text-muted-foreground">رمز الخطأ: {normalized.code} ({normalized.status})</p>
+        )}
         <Button onClick={() => { reset(); router.invalidate(); }}>إعادة المحاولة</Button>
       </div>
     );
   },
   notFoundComponent: () => <div>غير موجود</div>,
 });
+
 
 
 type RuleRow = Awaited<ReturnType<typeof listRules>>[number];
