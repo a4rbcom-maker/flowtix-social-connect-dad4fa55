@@ -946,7 +946,11 @@ function JobsHistoryPage() {
                             const ok = r.status === "success";
                             const msg = messengerFriendlyReason(r.error, r.status, lang);
                             return (
-                              <tr key={r.id} className={ok ? "bg-primary/[0.025]" : r.status === "failed" ? "bg-destructive/[0.025]" : ""}>
+                              <tr
+                                key={r.id}
+                                onClick={() => setDetailRow({ row: r, index: i, name, profileUrl, targetId: id })}
+                                className={`cursor-pointer transition hover:bg-primary/10 ${ok ? "bg-primary/[0.025]" : r.status === "failed" ? "bg-destructive/[0.025]" : ""}`}
+                              >
                                 <td className="px-3 py-2.5 text-start text-xs tabular-nums text-muted-foreground">{i + 1}</td>
                                 <td className="px-3 py-2.5 text-start font-semibold">
                                   <div className="truncate" title={name}>{name}</div>
