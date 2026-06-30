@@ -1307,7 +1307,7 @@ function PreviewList({
       return collator.compare(av, bv);
     });
     return sortDir === "desc" ? sorted.reverse() : sorted;
-  }, [rows, search, sortKey, sortDir, lang]);
+  }, [rows, tokens, matchMode, sortKey, sortDir, lang]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
