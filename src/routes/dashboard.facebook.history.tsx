@@ -137,9 +137,16 @@ function JobsHistoryPage() {
     finally { setResultsLoading(false); }
   };
 
-  const handleCancel = async (id: string) => {
-    try { await call(cancelJob, { id }); toast.success(t.cancel); load(); }
-    catch (e) { toast.error(String(e)); }
+  const confirmCancel = async () => {
+    if (!cancelTarget) return;
+    setCancelling(true);
+    try {
+      await call(cancelJob, { id: cancelTarget.id });
+      setJobs((prev) => prev.map((j) => (j.id === cancelTarget.id ? { ...j, status: "cancelled", completed_at: new Date().toISOString() } : j)));
+      toast.success(t.cancelDone);
+      setCancelTarget(null);
+    } catch (e) { toast.error(String(e)); }
+    finally { setCancelling(false); }
   };
 
   const isPeople = selected?.job_type === "extract_commenters"
