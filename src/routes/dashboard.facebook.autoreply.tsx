@@ -471,8 +471,9 @@ function LogTab({ ar }: { ar: boolean }) {
   const list = useServerFn(listLog);
   const { data: rows, isLoading } = useQuery({ queryKey: ["fb_autoreply_log"], queryFn: () => list({ data: { limit: 100 } }) });
   return (
-    <Card>
-      <CardHeader><CardTitle>{ar ? "سجل التنفيذ" : "Execution log"}</CardTitle></CardHeader>
+    <Card dir={ar ? "rtl" : "ltr"}>
+      <CardHeader><CardTitle className={ar ? "text-right" : "text-left"}>{ar ? "سجل التنفيذ" : "Execution log"}</CardTitle></CardHeader>
+
       <CardContent>
         {isLoading ? <Loader2 className="animate-spin"/> : !rows?.length ? (
           <p className="text-muted-foreground text-sm">{ar ? "لا يوجد سجلات." : "No log entries."}</p>
