@@ -79,7 +79,10 @@ function JobsHistoryPage() {
   const [msgLimit, setMsgLimit] = useState(500);
   const [previewSearch, setPreviewSearch] = useState("");
   const [previewPage, setPreviewPage] = useState(1);
+  const [msgSelectedRecipients, setMsgSelectedRecipients] = useState<Set<string>>(new Set());
   const PREVIEW_PAGE_SIZE = 25;
+  const recipientKey = (e: { name?: string | null; phone?: string | null; profile?: string | null; row: { target?: string | null } }) =>
+    `${(e.profile || e.row.target || "").toLowerCase()}::${(e.phone || "").toString().replace(/\D/g, "")}::${(e.name || "").toLowerCase()}`;
 
   const t = lang === "ar" ? {
     title: "سجل المهام",
@@ -330,6 +333,30 @@ function JobsHistoryPage() {
     return !!p && !FB_SYSTEM_RE.test(p);
   }).length;
 
+  // Prune selection to only keys that still exist in filtered rows
+  useEffect(() => {
+    if (msgSelectedRecipients.size === 0) return;
+    const valid = new Set(filteredRows.map(recipientKey));
+    let changed = false;
+    const next = new Set<string>();
+    for (const k of msgSelectedRecipients) {
+      if (valid.has(k)) next.add(k);
+      else changed = true;
+    }
+    if (changed) setMsgSelectedRecipients(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredRows]);
+
+  // Rows that will actually be sent (selection-aware)
+  const sendRows = msgSelectedRecipients.size > 0
+    ? filteredRows.filter((e) => msgSelectedRecipients.has(recipientKey(e)))
+    : filteredRows;
+  const sendWaCount = sendRows.filter((e) => !!e.phone).length;
+  const sendFbCount = sendRows.filter((e) => {
+    const p = e.profile || e.row.target || "";
+    return !!p && !FB_SYSTEM_RE.test(p);
+  }).length;
+
 
   const openMessenger = async () => {
     if (!selected) return;
@@ -345,6 +372,7 @@ function JobsHistoryPage() {
     setMsgRequireProfile(false);
     setMsgDedupe(true);
     setMsgLimit(500);
+    setMsgSelectedRecipients(new Set());
     setMsgOpen(true);
     // Load active bot accounts (for multi-account rotation)
     try {
@@ -398,7 +426,7 @@ function JobsHistoryPage() {
 
       // ---- WhatsApp: create a bulk_jobs row + recipients (only those with phone)
       if (msgChannels.whatsapp) {
-        const waRecipients = filteredRows
+        const waRecipients = sendRows
           .filter((e) => !!e.phone)
           .map((e) => ({ name: e.name || "", phone: String(e.phone) }));
         if (waRecipients.length > 0) {
@@ -431,7 +459,7 @@ function JobsHistoryPage() {
       // *combined* throughput matches the chosen rate-per-hour.
       if (msgChannels.messenger) {
         const FB_SYSTEM = FB_SYSTEM_RE;
-        const fbRecipients = filteredRows
+        const fbRecipients = sendRows
           .map((e) => ({ profile: e.profile || e.row.target || "", name: e.name || "" }))
           .filter((r) => !!r.profile && !FB_SYSTEM.test(r.profile));
         const skipped = enrichedRows.filter((e) => {
@@ -958,6 +986,9 @@ function JobsHistoryPage() {
               setPage={setPreviewPage}
               pageSize={PREVIEW_PAGE_SIZE}
               isSystem={(p: string) => FB_SYSTEM_RE.test(p)}
+              selectedKeys={msgSelectedRecipients}
+              setSelectedKeys={setMsgSelectedRecipients}
+              keyFor={recipientKey}
             />
 
 
@@ -1168,10 +1199,16 @@ function JobsHistoryPage() {
             <Button variant="outline" onClick={() => setMsgOpen(false)} disabled={msgSubmitting}>
               {lang === "ar" ? "إلغاء" : "Cancel"}
             </Button>
-            <Button onClick={launchMessaging} disabled={msgSubmitting} className="gap-2">
+            <Button onClick={launchMessaging} disabled={msgSubmitting || sendRows.length === 0} className="gap-2">
               {msgSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
               <Send className="h-4 w-4" />
-              {lang === "ar" ? "إطلاق الحملة" : "Launch campaign"}
+              {msgSelectedRecipients.size > 0
+                ? (lang === "ar"
+                    ? `إرسال للمحدد (${sendRows.length}) — واتساب ${sendWaCount} / ماسنجر ${sendFbCount}`
+                    : `Send to selected (${sendRows.length}) — WA ${sendWaCount} / FB ${sendFbCount}`)
+                : (lang === "ar"
+                    ? `إرسال للكل (${sendRows.length})`
+                    : `Send to all (${sendRows.length})`)}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1194,6 +1231,7 @@ type PreviewRow = {
 
 function PreviewList({
   lang, rows, search, setSearch, page, setPage, pageSize, isSystem,
+  selectedKeys, setSelectedKeys, keyFor,
 }: {
   lang: string;
   rows: PreviewRow[];
@@ -1203,6 +1241,9 @@ function PreviewList({
   setPage: (n: number) => void;
   pageSize: number;
   isSystem: (p: string) => boolean;
+  selectedKeys: Set<string>;
+  setSelectedKeys: (s: Set<string>) => void;
+  keyFor: (e: PreviewRow) => string;
 }) {
   type SortKey = "name" | "city" | "gov";
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
@@ -1238,6 +1279,27 @@ function PreviewList({
   const start = (safePage - 1) * pageSize;
   const slice = filtered.slice(start, start + pageSize);
 
+  const filteredKeys = useMemo(() => filtered.map(keyFor), [filtered, keyFor]);
+  const allFilteredSelected = filteredKeys.length > 0 && filteredKeys.every((k) => selectedKeys.has(k));
+  const someFilteredSelected = filteredKeys.some((k) => selectedKeys.has(k));
+
+  const toggleOne = (k: string) => {
+    const next = new Set(selectedKeys);
+    if (next.has(k)) next.delete(k); else next.add(k);
+    setSelectedKeys(next);
+  };
+  const toggleAllFiltered = () => {
+    if (allFilteredSelected) {
+      const next = new Set(selectedKeys);
+      for (const k of filteredKeys) next.delete(k);
+      setSelectedKeys(next);
+    } else {
+      const next = new Set(selectedKeys);
+      for (const k of filteredKeys) next.add(k);
+      setSelectedKeys(next);
+    }
+  };
+
   const SortIcon = ({ k }: { k: SortKey }) => {
     if (sortKey !== k) return <ArrowUpDown className="w-3 h-3 opacity-50" />;
     return sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />;
@@ -1258,16 +1320,26 @@ function PreviewList({
 
   return (
     <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <Label className="block text-start text-sm font-medium">
-          {lang === "ar" ? `معاينة المستلمين (${filtered.length})` : `Recipients preview (${filtered.length})`}
+          {lang === "ar"
+            ? `معاينة المستلمين (${filtered.length})${selectedKeys.size > 0 ? ` — محدد: ${selectedKeys.size}` : ""}`
+            : `Recipients preview (${filtered.length})${selectedKeys.size > 0 ? ` — selected: ${selectedKeys.size}` : ""}`}
         </Label>
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={lang === "ar" ? "ابحث في النتائج..." : "Search results..."}
-          className="h-8 max-w-xs text-sm"
-        />
+        <div className="flex items-center gap-2">
+          {selectedKeys.size > 0 && (
+            <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => setSelectedKeys(new Set())}>
+              <X className="me-1 h-3.5 w-3.5" />
+              {lang === "ar" ? "مسح التحديد" : "Clear selection"}
+            </Button>
+          )}
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={lang === "ar" ? "ابحث في النتائج..." : "Search results..."}
+            className="h-8 max-w-xs text-sm"
+          />
+        </div>
       </div>
 
       {filtered.length === 0 ? (
@@ -1280,6 +1352,13 @@ function PreviewList({
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-muted/80 text-muted-foreground">
                 <tr>
+                  <th className="px-2 py-1.5 text-start w-8">
+                    <Checkbox
+                      checked={allFilteredSelected ? true : (someFilteredSelected ? "indeterminate" : false)}
+                      onCheckedChange={toggleAllFiltered}
+                      aria-label={lang === "ar" ? "تحديد الكل" : "Select all"}
+                    />
+                  </th>
                   <th className="px-2 py-1.5 text-start">#</th>
                   <SortableTh k="name" label={lang === "ar" ? "الاسم" : "Name"} />
                   <th className="px-2 py-1.5 text-start">{lang === "ar" ? "الهاتف" : "Phone"}</th>
@@ -1292,8 +1371,16 @@ function PreviewList({
                 {slice.map((e, i) => {
                   const profile = e.profile || e.row.target || "";
                   const hasProfile = !!profile && !isSystem(profile);
+                  const k = keyFor(e);
+                  const checked = selectedKeys.has(k);
                   return (
-                    <tr key={start + i} className="border-t border-border/60 hover:bg-muted/30">
+                    <tr
+                      key={start + i}
+                      className={`border-t border-border/60 hover:bg-muted/30 ${checked ? "bg-primary/5" : ""}`}
+                    >
+                      <td className="px-2 py-1.5">
+                        <Checkbox checked={checked} onCheckedChange={() => toggleOne(k)} aria-label={e.name || ""} />
+                      </td>
                       <td className="px-2 py-1.5 tabular-nums text-muted-foreground">{start + i + 1}</td>
                       <td className="px-2 py-1.5">{e.name || <span className="text-muted-foreground">—</span>}</td>
                       <td className="px-2 py-1.5 tabular-nums" dir="ltr">{e.phone || <span className="text-muted-foreground">—</span>}</td>
