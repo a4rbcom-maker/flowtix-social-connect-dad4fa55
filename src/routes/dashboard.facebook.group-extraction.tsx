@@ -296,7 +296,7 @@ function GroupExtractionStatusPage() {
                         </span>
                         <span className="text-sm text-muted-foreground"><Clock className="me-1 inline h-3.5 w-3.5" />{new Date(j.created_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</span>
                       </div>
-                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleCancel(j.id); }}>
+                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setCancelTarget(j); }}>
                         <Trash2 className="me-1 h-4 w-4 text-destructive" /> {t.cancel}
                       </Button>
                     </div>
