@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Loader2, Trash2, RefreshCw, Download, Sparkles, Send, KeyRound, AlertTriangle } from "lucide-react";
+import { Loader2, Trash2, RefreshCw, Download, Sparkles, Send, KeyRound, AlertTriangle, Image as ImageIcon, X } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,7 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
-import { listJobs, getJob, cancelJob, createSendMessengerDmJob } from "@/lib/fb-bot.functions";
+import { listJobs, getJob, cancelJob, createSendMessengerDmJob, listBotAccounts } from "@/lib/fb-bot.functions";
 import { loadEgyptData, extractEgyptPhone, detectLocation } from "@/lib/egypt-enrich";
 
 export const Route = createFileRoute("/dashboard/facebook/history")({
@@ -65,6 +65,10 @@ function JobsHistoryPage() {
   const [msgTitle, setMsgTitle] = useState("");
   const [msgPerHour, setMsgPerHour] = useState(20);
   const [msgSubmitting, setMsgSubmitting] = useState(false);
+  const [msgImages, setMsgImages] = useState<string[]>([]);
+  const [msgUploading, setMsgUploading] = useState(false);
+  const [msgAccounts, setMsgAccounts] = useState<Array<{ id: string; display_name: string; status: string }>>([]);
+  const [msgSelectedAccounts, setMsgSelectedAccounts] = useState<Set<string>>(new Set());
 
   const t = lang === "ar" ? {
     title: "سجل المهام",
@@ -222,14 +226,51 @@ function JobsHistoryPage() {
   const phoneCount = enrichedRows.filter((e) => !!e.phone).length;
   const profileCount = enrichedRows.filter((e) => !!(e.profile || e.row.target)).length;
 
-  const openMessenger = () => {
+  const openMessenger = async () => {
     if (!selected) return;
     const groupLabel = selected ? t.types[selected.job_type] : "";
     setMsgTitle(lang === "ar" ? `حملة - ${groupLabel}` : `Campaign - ${groupLabel}`);
     setMsgText("");
     setMsgPerHour(20);
+    setMsgImages([]);
     setMsgChannels({ whatsapp: phoneCount > 0, messenger: profileCount > 0 });
     setMsgOpen(true);
+    // Load active bot accounts (for multi-account rotation)
+    try {
+      const res = await call(listBotAccounts);
+      const accounts = (res?.accounts ?? []).filter((a: { status: string }) => a.status === "active");
+      setMsgAccounts(accounts);
+      const initial = new Set<string>();
+      if (selected.account_id && accounts.some((a: { id: string }) => a.id === selected.account_id)) initial.add(selected.account_id);
+      else if (accounts[0]) initial.add(accounts[0].id);
+      setMsgSelectedAccounts(initial);
+    } catch (_) { /* ignore */ }
+  };
+
+  const handleMsgImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (!user || files.length === 0) return;
+    if (msgImages.length + files.length > 10) {
+      toast.error(lang === "ar" ? "حد أقصى 10 صور" : "Max 10 images");
+      return;
+    }
+    setMsgUploading(true);
+    try {
+      const urls: string[] = [];
+      for (const file of files) {
+        if (file.size > 10 * 1024 * 1024) { toast.error(lang === "ar" ? `${file.name} أكبر من 10MB` : `${file.name} > 10MB`); continue; }
+        const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 60);
+        const path = `${user.id}/dm/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safe}`;
+        const { error } = await supabase.storage.from("fb-media").upload(path, file, { contentType: file.type, upsert: false });
+        if (error) { toast.error(error.message); continue; }
+        const { data: pub } = supabase.storage.from("fb-media").getPublicUrl(path);
+        urls.push(pub.publicUrl);
+      }
+      setMsgImages((prev) => [...prev, ...urls]);
+    } finally {
+      setMsgUploading(false);
+      if (e.target) e.target.value = "";
+    }
   };
 
   const launchMessaging = async () => {
@@ -273,24 +314,39 @@ function JobsHistoryPage() {
         }
       }
 
-      // ---- Messenger: create fb_jobs send_messenger_dm
+      // ---- Messenger: create one fb_jobs send_messenger_dm per selected account.
+      // Round-robin recipients across accounts so each account stays under FB's
+      // per-account rate. Per-account interval is N× the global interval so the
+      // *combined* throughput matches the chosen rate-per-hour.
       if (msgChannels.messenger) {
         const fbRecipients = enrichedRows
           .map((e) => ({ profile: e.profile || e.row.target || "", name: e.name || "" }))
-          .filter((r) => !!r.profile);
-        if (fbRecipients.length > 0 && selected.account_id) {
-          await call(createSendMessengerDmJob, {
-            accountId: selected.account_id,
-            recipients: fbRecipients.slice(0, 500),
-            message,
-            intervalSeconds: intervalSec,
-            label: msgTitle.trim() || undefined,
-          });
-          fbCount = fbRecipients.length;
-        } else if (msgChannels.messenger && !selected.account_id) {
-          toast.error(lang === "ar" ? "لا يوجد حساب فيسبوك مرتبط بهذه المهمة" : "No FB account linked to this job");
+          .filter((r) => !!r.profile)
+          .slice(0, 500);
+        const accountIds = Array.from(msgSelectedAccounts);
+        if (fbRecipients.length > 0 && accountIds.length === 0) {
+          toast.error(lang === "ar" ? "اختر حساب فيسبوك واحد على الأقل" : "Select at least one Facebook account");
+        } else if (fbRecipients.length > 0) {
+          const N = accountIds.length;
+          const buckets: Record<string, typeof fbRecipients> = Object.fromEntries(accountIds.map((id) => [id, []]));
+          fbRecipients.forEach((r, i) => buckets[accountIds[i % N]].push(r));
+          const perAccountInterval = Math.max(36, intervalSec * N);
+          for (const accId of accountIds) {
+            const slice = buckets[accId];
+            if (slice.length === 0) continue;
+            await call(createSendMessengerDmJob, {
+              accountId: accId,
+              recipients: slice,
+              message,
+              intervalSeconds: perAccountInterval,
+              imageUrls: msgImages.length ? msgImages : undefined,
+              label: msgTitle.trim() || undefined,
+            });
+            fbCount += slice.length;
+          }
         }
       }
+
 
       toast.success(
         lang === "ar"
@@ -603,6 +659,88 @@ function JobsHistoryPage() {
               </p>
             </div>
 
+            {/* Image attachments (optional) */}
+            {msgChannels.messenger && (
+              <div className="space-y-2">
+                <Label className="block text-start">
+                  {lang === "ar" ? "صور مرفقة (اختياري)" : "Attached images (optional)"}
+                </Label>
+                <div className="flex flex-wrap items-center gap-2">
+                  {msgImages.map((url) => (
+                    <div key={url} className="relative h-16 w-16 overflow-hidden rounded-md border">
+                      <img src={url} alt="" className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setMsgImages((p) => p.filter((u) => u !== url))}
+                        className="absolute top-0 end-0 rounded-bl bg-black/60 p-0.5 text-white hover:bg-black/80"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <label className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-md border border-dashed text-muted-foreground hover:bg-muted/50">
+                    {msgUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleMsgImageUpload} disabled={msgUploading} />
+                  </label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {lang === "ar"
+                    ? "لو رفعت أكتر من صورة، البوت بيدوّر عليها لتجنّب الحظر."
+                    : "If you upload multiple images, the bot rotates between them to reduce blocks."}
+                </p>
+              </div>
+            )}
+
+            {/* Multi-account selector for Messenger */}
+            {msgChannels.messenger && (
+              <div className="space-y-2">
+                <Label className="block text-start">
+                  {lang === "ar" ? "حسابات فيسبوك للإرسال (تدوير تلقائي)" : "Facebook accounts (auto-rotation)"}
+                </Label>
+                {msgAccounts.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    {lang === "ar" ? "لا توجد حسابات نشطة. أضف حساب من صفحة حسابات البوت." : "No active accounts. Add one from the Bot Accounts page."}
+                  </p>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      <Button type="button" size="sm" variant="outline" onClick={() => setMsgSelectedAccounts(new Set(msgAccounts.map((a) => a.id)))}>
+                        {lang === "ar" ? "اختر الكل" : "Select all"}
+                      </Button>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => setMsgSelectedAccounts(new Set())}>
+                        {lang === "ar" ? "مسح" : "Clear"}
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {msgAccounts.map((a) => {
+                        const on = msgSelectedAccounts.has(a.id);
+                        return (
+                          <button
+                            type="button"
+                            key={a.id}
+                            onClick={() => setMsgSelectedAccounts((prev) => {
+                              const n = new Set(prev);
+                              if (n.has(a.id)) n.delete(a.id); else n.add(a.id);
+                              return n;
+                            })}
+                            className={`rounded-full border px-3 py-1 text-xs transition ${on ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
+                          >
+                            {on ? "✓ " : ""}{a.display_name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {lang === "ar"
+                        ? `سيتم توزيع المستلمين بالتناوب (رسالة من كل حساب). المحدد: ${msgSelectedAccounts.size}/${msgAccounts.length}`
+                        : `Recipients will round-robin across accounts. Selected: ${msgSelectedAccounts.size}/${msgAccounts.length}`}
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+
+
             <div className="space-y-2">
               <Label className="block text-start">
                 {lang === "ar" ? `سرعة الإرسال: ${msgPerHour} / ساعة` : `Send rate: ${msgPerHour} / hour`}
@@ -616,8 +754,8 @@ function JobsHistoryPage() {
               />
               <p className="text-xs text-muted-foreground">
                 {lang === "ar"
-                  ? "كل ما قلّت السرعة كل ما قلّ احتمال الحظر."
-                  : "Lower rates reduce the risk of being blocked."}
+                  ? `≈ رسالة كل ${Math.round(3600 / Math.max(1, msgPerHour))} ثانية${msgSelectedAccounts.size > 1 ? ` (موزّعة على ${msgSelectedAccounts.size} حسابات → كل حساب يرسل كل ${Math.round((3600 / Math.max(1, msgPerHour)) * msgSelectedAccounts.size)} ثانية)` : ""}. كل ما قلّت السرعة كل ما قلّ احتمال الحظر.`
+                  : `≈ one message every ${Math.round(3600 / Math.max(1, msgPerHour))}s${msgSelectedAccounts.size > 1 ? ` (split across ${msgSelectedAccounts.size} accounts → each waits ${Math.round((3600 / Math.max(1, msgPerHour)) * msgSelectedAccounts.size)}s)` : ""}. Lower rates reduce block risk.`}
               </p>
             </div>
           </div>
