@@ -197,7 +197,23 @@ function JobsHistoryPage() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { if (user) load(); }, [user]);
+  const [activeAccountIds, setActiveAccountIds] = useState<Set<string>>(new Set());
+  const loadActiveAccounts = async () => {
+    try {
+      const res = await call(listBotAccounts);
+      const ids = new Set<string>((res?.accounts ?? []).filter((a: { status: string }) => a.status === "active").map((a: { id: string }) => a.id));
+      setActiveAccountIds(ids);
+    } catch (_) { /* ignore */ }
+  };
+
+  useEffect(() => { if (user) { load(); loadActiveAccounts(); } }, [user]);
+  // Re-check account status when the tab regains focus (after user finishes reconnecting in another tab)
+  useEffect(() => {
+    const onFocus = () => { if (user) loadActiveAccounts(); };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [user]);
+
 
   // Realtime: merge changes into local state to avoid full reloads (which feel like a page refresh)
   useEffect(() => {
