@@ -25,6 +25,7 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
           .map((item) => item.trim())
           .filter(Boolean);
         const supportsGroupMembers = workerCapabilities.includes("extract_group_members");
+        const supportsDeepProfile = workerCapabilities.includes("deep_profile_scrape");
 
         const [{ supabaseAdmin }, { decryptJson }] = await Promise.all([
           import("@/integrations/supabase/client.server"),
