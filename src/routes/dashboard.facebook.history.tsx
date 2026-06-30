@@ -18,7 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
-import { listJobs, getJob, cancelJob, createDeepProfileScrapeJob, createDeepProfileScrapeFromJob, createSendMessengerDmJob } from "@/lib/fb-bot.functions";
+import { listJobs, getJob, cancelJob, createSendMessengerDmJob } from "@/lib/fb-bot.functions";
 import { loadEgyptData, extractEgyptPhone, detectLocation } from "@/lib/egypt-enrich";
 
 export const Route = createFileRoute("/dashboard/facebook/history")({
@@ -379,28 +379,7 @@ function JobsHistoryPage() {
               <span>{selected && t.types[selected.job_type]}</span>
               {results.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {isPeople && selected?.job_type !== "deep_profile_scrape" && (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={async () => {
-                        if (!selected?.id) return;
-                        try {
-                          const res = await call(createDeepProfileScrapeFromJob, { sourceJobId: selected.id });
-                          toast.success(
-                            lang === "ar"
-                              ? `تم إنشاء مهمة فحص عميق لـ ${res.count} بروفايل`
-                              : `Deep scrape queued for ${res.count} profiles`,
-                          );
-                          setSelected(null);
-                          load();
-                        } catch (e) { toast.error(String(e)); }
-                      }}
-                      className="gap-2"
-                    >
-                      {lang === "ar" ? "فحص عميق للبروفايلات" : "Deep profile scrape"}
-                    </Button>
-                  )}
+                  {/* Deep profile scrape hidden */}
                   {isPeople && (
                     <Button
                       size="sm"
@@ -525,8 +504,8 @@ function JobsHistoryPage() {
               {phoneCount === 0 && (
                 <p className="mt-2 text-xs text-muted-foreground">
                   {lang === "ar"
-                    ? "💡 لا توجد أرقام؟ شغّل «إثراء بداتا مصر» أو «فحص عميق للبروفايلات» أولاً."
-                    : "💡 No phones? Run “Enrich with Egypt data” or “Deep profile scrape” first."}
+                    ? "💡 لا توجد أرقام؟ شغّل «إثراء بداتا مصر» أولاً."
+                    : "💡 No phones? Run “Enrich with Egypt data” first."}
                 </p>
               )}
             </div>
