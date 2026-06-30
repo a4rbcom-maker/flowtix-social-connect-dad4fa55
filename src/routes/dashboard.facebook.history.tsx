@@ -46,6 +46,47 @@ type JobRow = {
 
 type JobResult = { id: string; target: string | null; status: "success" | "failed" | "skipped"; data: unknown; error: string | null; created_at: string };
 
+type MessengerResultStatus = JobResult["status"];
+type MessengerFailureKind = "sent" | "privacy" | "limited" | "session" | "noMessageButton" | "unavailable" | "blocked" | "invalidTarget" | "unknown";
+
+const messengerFailureKind = (err: string | null, status?: MessengerResultStatus): MessengerFailureKind => {
+  if (status === "success" || (!err && status !== "failed")) return "sent";
+  const e = (err ?? "").toLowerCase();
+  if (e.includes("session") || e.includes("checkpoint") || e.includes("login")) return "session";
+  if (e.includes("account_rate_limit") || e.includes("temporarily limited") || e.includes("action blocked") || e.includes("restricted")) return "limited";
+  if (e.includes("profile_message_button_missing") || e.includes("visible message button") || e.includes("message button missing")) return "noMessageButton";
+  if (e.includes("recipient_privacy") || e.includes("closed dms") || e.includes("not friends") || e.includes("can't message") || e.includes("cannot message")) return "privacy";
+  if (e.includes("no_numeric_id") || e.includes("no_profile_url") || e.includes("not a valid profile")) return "invalidTarget";
+  if (e.includes("composer") || e.includes("thread_not_available") || e.includes("messenger_nav_failed") || e.includes("profile_nav_failed")) return "unavailable";
+  if (e.includes("blocked") || e.includes("you can no longer send messages")) return "blocked";
+  return "unknown";
+};
+
+const messengerFriendlyReason = (err: string | null, status: MessengerResultStatus | undefined, lang: string): { title: string; hint: string; code: string } => {
+  const ar = lang === "ar";
+  const kind = messengerFailureKind(err, status);
+  if (kind === "sent") return { title: ar ? "تم الإرسال بنجاح" : "Delivered successfully", hint: ar ? "وصلت الرسالة لهذا المستلم." : "The message was sent to this recipient.", code: "SENT" };
+  if (kind === "noMessageButton") return { title: ar ? "لا يوجد زر مراسلة ظاهر" : "No visible message button", hint: ar ? "فيسبوك لا يعرض زر الرسائل لهذا الشخص؛ غالباً بسبب إعدادات الخصوصية أو لأن الحساب ليس صديقاً أو لا يقبل رسائل الغرباء." : "Facebook is not showing a Message button for this person, usually because of privacy settings or non-friend DM restrictions.", code: "NO_MESSAGE_BUTTON" };
+  if (kind === "privacy") return { title: ar ? "المستلم لا يقبل رسائل من الغرباء" : "Recipient blocks non-friend DMs", hint: ar ? "الرسالة لم تُرسل لأن إعدادات ماسنجر عند المستلم تمنع طلبات الرسائل من هذا الحساب." : "The recipient's Messenger privacy settings blocked this message request.", code: "RECIPIENT_PRIVACY" };
+  if (kind === "limited") return { title: ar ? "حساب الإرسال مقيّد مؤقتاً" : "Sending account temporarily limited", hint: ar ? "فيسبوك قيّد الحساب مؤقتاً. قلّل معدل الإرسال واستخدم حساباً أقدم قبل إعادة المحاولة." : "Facebook temporarily limited this account. Lower the send rate and retry with a warmed-up account.", code: "ACCOUNT_LIMIT" };
+  if (kind === "session") return { title: ar ? "جلسة حساب فيسبوك انتهت" : "Facebook session expired", hint: ar ? "أعد ربط حساب فيسبوك من صفحة حسابات البوت ثم شغّل المهمة مرة أخرى." : "Reconnect the Facebook bot account, then run the job again.", code: "SESSION_EXPIRED" };
+  if (kind === "invalidTarget") return { title: ar ? "الرابط ليس بروفايل قابل للمراسلة" : "Target is not a messageable profile", hint: ar ? "تم استبعاد الرابط لأنه لا يحتوي على معرف مستخدم فيسبوك يمكن فتح محادثة ماسنجر له." : "The link does not contain a Facebook user ID that can be opened in Messenger.", code: "INVALID_TARGET" };
+  if (kind === "unavailable") return { title: ar ? "تعذر فتح محادثة ماسنجر" : "Messenger chat unavailable", hint: ar ? "لم تظهر خانة كتابة الرسالة بعد فتح المحادثة؛ قد يكون الرابط غير صالح أو المحادثة غير متاحة لهذا الحساب." : "The message composer did not appear, so the thread is unavailable for this account.", code: "CHAT_UNAVAILABLE" };
+  if (kind === "blocked") return { title: ar ? "فيسبوك منع الرسالة" : "Facebook blocked this DM", hint: ar ? "غالباً بسبب قيود حماية فيسبوك أو تكرار الإرسال. أوقف المهمة وقلّل السرعة." : "Usually caused by Facebook protection rules or repeated sending. Pause and lower the speed.", code: "FACEBOOK_BLOCKED" };
+  return { title: ar ? "فشل غير مصنّف" : "Unclassified failure", hint: ar ? "لم نستطع تصنيف السبب تلقائياً. احتفظنا بالكود التقني داخل ملف CSV فقط للمراجعة." : "The reason could not be classified automatically. The raw code is kept in the CSV for review only.", code: "UNKNOWN" };
+};
+
+const extractMessengerTargetId = (url: string | null) => {
+  if (!url) return null;
+  const m = url.match(/(?:groups\/[^/]+\/user\/|user\/|profile\.php\?id=|messages\/t\/|m\.me\/)(\d{5,})/i) || url.match(/^(\d{5,})$/);
+  return m ? m[1] : null;
+};
+
+const messengerProfileUrl = (target: string | null) => {
+  const id = extractMessengerTargetId(target);
+  return id ? `https://www.facebook.com/profile.php?id=${id}` : (target ?? "");
+};
+
 function JobsHistoryPage() {
   const { user } = useAuth();
   const { lang } = useI18n();
@@ -252,24 +293,12 @@ function JobsHistoryPage() {
         ...enrichedRows.map((e) => [e.name, e.row.target ?? "", e.profile, e.phone ?? "", e.city ?? "", e.gov ?? "", e.source]),
       ];
     } else if (isMessenger) {
-      const reason = (err: string | null) => {
-        if (!err) return lang === "ar" ? "تم الإرسال" : "Delivered";
-        const e = err.toLowerCase();
-        if (e.includes("recipient_privacy") || e.includes("message button not visible") || e.includes("cannot open dm") || e.includes("closed dms") || e.includes("not friends")) return lang === "ar" ? "المستلم قافل رسائل الغرباء" : "Recipient blocks non-friend DMs";
-        if (e.includes("account_rate_limit")) return lang === "ar" ? "الحساب اتقيّد مؤقتاً" : "Account temporarily limited";
-        if (e.includes("session")) return lang === "ar" ? "جلسة الحساب انتهت" : "Session expired";
-        if (e.includes("composer") || e.includes("thread_not_available") || e.includes("profile_message_button_missing")) return lang === "ar" ? "محادثة ماسنجر غير متاحة" : "Messenger chat unavailable";
-        return err;
-      };
-      const profile = (target: string | null) => {
-        const id = target?.match(/(?:user\/|profile\.php\?id=|messages\/t\/|m\.me\/)(\d{5,})/)?.[1];
-        return id ? `https://www.facebook.com/profile.php?id=${id}` : (target ?? "");
-      };
       rows = [
-        ["name", "status", "reason", "profile", "raw_error", "created_at"],
+        ["name", "status", "reason", "hint", "profile", "technical_code", "created_at"],
         ...results.map((r) => {
           const d = (r.data ?? {}) as { name?: string | null };
-          return [d.name ?? "", r.status, reason(r.error), profile(r.target), r.error ?? "", r.created_at];
+          const reason = messengerFriendlyReason(r.error, r.status, lang);
+          return [d.name ?? "", r.status, reason.title, reason.hint, messengerProfileUrl(r.target), reason.code, r.created_at];
         }),
       ];
     } else if (isGroupsList) {
@@ -633,12 +662,12 @@ function JobsHistoryPage() {
       </div>
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="max-h-[92dvh] w-[calc(100vw-1rem)] max-w-5xl overflow-y-auto sm:w-[min(1100px,calc(100vw-2rem))] sm:max-w-5xl">
-          <DialogHeader>
-            <DialogTitle className="flex flex-wrap items-center justify-between gap-2">
-              <span>{selected && t.types[selected.job_type]}</span>
+        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="flex max-h-[92dvh] w-[min(calc(100dvw-0.75rem),1040px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:w-[min(calc(100dvw-2rem),1040px)] sm:rounded-xl">
+          <DialogHeader className="border-b px-4 py-4 sm:px-6">
+            <DialogTitle className="flex flex-col gap-3 text-start sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-xl font-bold leading-tight">{selected && t.types[selected.job_type]}</span>
               {results.length > 0 && (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 sm:justify-end">
                   {/* Deep profile scrape hidden */}
                   {isGroupsList && (
                     <Button size="sm" variant="default" asChild className="gap-2">
@@ -678,46 +707,49 @@ function JobsHistoryPage() {
               )}
             </DialogTitle>
           </DialogHeader>
-          {selected && isSessionExpired(selected) && (
-            <div className="mb-3 flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
-              <div className="flex-1 space-y-2">
-                <p className="font-medium text-amber-900 dark:text-amber-200">
-                  {lang === "ar" ? "انتهت صلاحية جلسة حساب فيسبوك" : "Facebook account session expired"}
-                </p>
-                <p className="text-amber-800/90 dark:text-amber-300/90">
-                  {lang === "ar"
-                    ? "هذه ليست مشكلة في المنصة. فيسبوك أنهى جلسة الحساب المستخدم. أعد تصدير الكوكيز وحدّث الحساب ثم أعد تشغيل المهمة."
-                    : "This is not a platform issue. Facebook ended the bot account session. Re-export cookies, update the account, then re-run the job."}
-                </p>
-                <Link to="/dashboard/facebook/bot">
-                  <Button size="sm" className="gap-1.5">
-                    <KeyRound className="h-3.5 w-3.5" />
-                    {lang === "ar" ? "إعادة ربط الحساب الآن" : "Reconnect account now"}
-                  </Button>
-                </Link>
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6">
+            {selected && isSessionExpired(selected) && (
+              <div className="mb-3 flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div className="flex-1 space-y-2">
+                  <p className="font-medium text-amber-900 dark:text-amber-200">
+                    {lang === "ar" ? "انتهت صلاحية جلسة حساب فيسبوك" : "Facebook account session expired"}
+                  </p>
+                  <p className="text-amber-800/90 dark:text-amber-300/90">
+                    {lang === "ar"
+                      ? "هذه ليست مشكلة في المنصة. فيسبوك أنهى جلسة الحساب المستخدم. أعد تصدير الكوكيز وحدّث الحساب ثم أعد تشغيل المهمة."
+                      : "This is not a platform issue. Facebook ended the bot account session. Re-export cookies, update the account, then re-run the job."}
+                  </p>
+                  <Link to="/dashboard/facebook/bot">
+                    <Button size="sm" className="gap-1.5">
+                      <KeyRound className="h-3.5 w-3.5" />
+                      {lang === "ar" ? "إعادة ربط الحساب الآن" : "Reconnect account now"}
+                    </Button>
+                  </Link>
+                </div>
               </div>
-            </div>
-          )}
-          {selected?.status === "failed" && !isSessionExpired(selected) && selected.error_message && (
-            <div className="mb-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
-              {selected.error_message}
-            </div>
-          )}
-          {resultsLoading ? (
-            <div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
-          ) : results.length === 0 ? (
-            <div className="py-6 text-center text-sm text-muted-foreground">
-              <p>{t.none}</p>
-              {selected?.job_type === "list_my_groups" && selected.status === "completed" && (
-                <p className="mt-2">
-                  {lang === "ar"
-                    ? "لم يعثر الـ Worker على جروبات مرئية لهذا الحساب. تأكد أن الحساب عضو فعلاً في جروبات وأن صفحة الجروبات تفتح له داخل فيسبوك."
-                    : "The Worker found no visible groups for this account. Make sure the account is actually joined to groups and can open the groups page in Facebook."}
-                </p>
-              )}
-            </div>
-          ) : isPeople ? (
+            )}
+            {selected?.status === "failed" && !isSessionExpired(selected) && selected.error_message && (
+              <div className="mb-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+                {isMessenger
+                  ? messengerFriendlyReason(selected.error_message, "failed", lang).title
+                  : selected.error_message}
+              </div>
+            )}
+            {resultsLoading ? (
+              <div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+            ) : results.length === 0 ? (
+              <div className="py-6 text-center text-sm text-muted-foreground">
+                <p>{t.none}</p>
+                {selected?.job_type === "list_my_groups" && selected.status === "completed" && (
+                  <p className="mt-2">
+                    {lang === "ar"
+                      ? "لم يعثر الـ Worker على جروبات مرئية لهذا الحساب. تأكد أن الحساب عضو فعلاً في جروبات وأن صفحة الجروبات تفتح له داخل فيسبوك."
+                      : "The Worker found no visible groups for this account. Make sure the account is actually joined to groups and can open the groups page in Facebook."}
+                  </p>
+                )}
+              </div>
+            ) : isPeople ? (
             <div className="max-h-[60vh] overflow-auto">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-muted/40 text-muted-foreground">
@@ -774,45 +806,20 @@ function JobsHistoryPage() {
               const succ = results.filter((r) => r.status === "success").length;
               const fail = results.filter((r) => r.status === "failed").length;
               const skip = results.filter((r) => r.status === "skipped").length;
-              const classify = (err: string | null) => {
-                if (!err) return "sent" as const;
-                const e = err.toLowerCase();
-                if (e.includes("recipient_privacy") || e.includes("message button not visible") || e.includes("cannot open dm") || e.includes("closed dms") || e.includes("not friends")) return "privacy" as const;
-                if (e.includes("account_rate_limit") || e.includes("temporarily limited") || e.includes("action blocked")) return "limited" as const;
-                if (e.includes("session")) return "session" as const;
-                if (e.includes("composer") || e.includes("thread_not_available") || e.includes("profile_message_button_missing")) return "unavailable" as const;
-                if (e.includes("blocked") || e.includes("can't message")) return "blocked" as const;
-                return "unknown" as const;
-              };
-              const friendly = (err: string | null): { title: string; hint: string } => {
-                const kind = classify(err);
-                if (kind === "sent") return { title: lang === "ar" ? "تم الإرسال بنجاح" : "Delivered successfully", hint: lang === "ar" ? "وصلت الرسالة لهذا المستلم." : "The message was sent to this recipient." };
-                if (kind === "privacy") return { title: lang === "ar" ? "المستلم قافل رسائل الغرباء" : "Recipient blocks non-friend DMs", hint: lang === "ar" ? "ماسنجر لا يسمح بإرسال DM لهذا الشخص إلا لو قبل الرسائل أو كان صديقاً للحساب." : "Messenger only allows this if the recipient accepts message requests or is already connected." };
-                if (kind === "limited") return { title: lang === "ar" ? "الحساب اتقيّد مؤقتاً من فيسبوك" : "Account temporarily limited", hint: lang === "ar" ? "قلّل السرعة واستخدم حساباً أقدم/أدفأ قبل استئناف الإرسال." : "Lower the send rate and use an older warmed-up account before resuming." };
-                if (kind === "session") return { title: lang === "ar" ? "جلسة الحساب انتهت" : "Account session expired", hint: lang === "ar" ? "أعد ربط حساب فيسبوك من صفحة حسابات البوت ثم أعد المهمة." : "Reconnect the Facebook bot account, then retry the job." };
-                if (kind === "unavailable") return { title: lang === "ar" ? "لم يتم فتح محادثة ماسنجر" : "Messenger chat unavailable", hint: lang === "ar" ? "الرابط ليس بروفايل قابل للمراسلة أو زر الرسائل غير ظاهر لهذا الحساب." : "The target is not a messageable profile or the Message button is hidden." };
-                if (kind === "blocked") return { title: lang === "ar" ? "فيسبوك منع هذه الرسالة" : "Facebook blocked this DM", hint: lang === "ar" ? "غالباً بسبب قيود خصوصية أو حماية من الإرسال المتكرر." : "Usually caused by recipient privacy or anti-spam limits." };
-                return { title: err || (lang === "ar" ? "سبب غير معروف" : "Unknown reason"), hint: lang === "ar" ? "راجع تفاصيل السجل الخام إذا تكرر نفس السبب." : "Review raw logs if this reason repeats." };
-              };
-              const extractId = (url: string | null) => {
-                if (!url) return null;
-                const m = url.match(/(?:user\/|profile\.php\?id=|messages\/t\/|m\.me\/)(\d{5,})/) || url.match(/^(\d{5,})$/);
-                return m ? m[1] : null;
-              };
-              const topFailure = results.find((r) => r.status === "failed")?.error ?? null;
-              const topMessage = friendly(topFailure);
+              const topFailure = results.find((r) => r.status === "failed");
+              const topMessage = messengerFriendlyReason(topFailure?.error ?? null, topFailure?.status, lang);
               return (
                 <div className="space-y-4">
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-lg border bg-muted/30 p-3">
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <div className="rounded-lg border bg-primary/5 p-3 text-start">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground"><CheckCircle2 className="h-4 w-4 text-primary" />{lang === "ar" ? "نجح" : "Sent"}</div>
                       <div className="mt-1 text-2xl font-bold tabular-nums">{succ}</div>
                     </div>
-                    <div className="rounded-lg border bg-destructive/5 p-3">
+                    <div className="rounded-lg border bg-destructive/5 p-3 text-start">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground"><XCircle className="h-4 w-4 text-destructive" />{lang === "ar" ? "فشل" : "Failed"}</div>
                       <div className="mt-1 text-2xl font-bold tabular-nums text-destructive">{fail}</div>
                     </div>
-                    <div className="rounded-lg border bg-muted/30 p-3">
+                    <div className="rounded-lg border bg-muted/30 p-3 text-start">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground"><MessageCircle className="h-4 w-4 text-primary" />{lang === "ar" ? "الإجمالي" : "Total"}</div>
                       <div className="mt-1 text-2xl font-bold tabular-nums">{results.length}</div>
                       {skip > 0 && <div className="mt-1 text-xs text-muted-foreground">{lang === "ar" ? `متخطّى: ${skip}` : `Skipped: ${skip}`}</div>}
@@ -829,27 +836,27 @@ function JobsHistoryPage() {
                     </div>
                   )}
 
-                  <div className="max-h-[58vh] space-y-2 overflow-y-auto pe-1">
+                  <div className="space-y-2">
                     {results.map((r, i) => {
                       const d = (r.data ?? {}) as { name?: string | null };
                       const name = d.name?.trim() || (lang === "ar" ? "بدون اسم" : "Unknown");
-                      const id = extractId(r.target);
-                      const profileUrl = id ? `https://www.facebook.com/profile.php?id=${id}` : r.target;
+                      const id = extractMessengerTargetId(r.target);
+                      const profileUrl = messengerProfileUrl(r.target);
                       const ok = r.status === "success";
-                      const msg = friendly(r.error);
+                      const msg = messengerFriendlyReason(r.error, r.status, lang);
                       return (
                         <div key={r.id} className={`rounded-lg border p-3 ${ok ? "bg-primary/[0.03]" : r.status === "failed" ? "bg-destructive/[0.03]" : "bg-muted/20"}`}>
-                          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-                            <div className="min-w-0 space-y-1 text-start">
+                          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                            <div className="min-w-0 space-y-2 text-start">
                               <div className="flex min-w-0 flex-wrap items-center gap-2">
                                 <span className="rounded-md bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">#{i + 1}</span>
-                                <span className="min-w-0 truncate font-semibold">{name}</span>
+                                <span className="min-w-0 break-words font-semibold">{name}</span>
                               </div>
-                              <div className="text-sm font-medium">{msg.title}</div>
+                              <div className="text-sm font-semibold">{msg.title}</div>
                               <div className="text-xs leading-relaxed text-muted-foreground">{msg.hint}</div>
-                              {r.error && <div className="mt-2 rounded-md bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground"><bdi dir="ltr">{r.error}</bdi></div>}
+                              {!ok && <div className="inline-flex rounded-md bg-muted/70 px-2 py-1 text-[11px] text-muted-foreground">{lang === "ar" ? "كود السبب" : "Reason code"}: <bdi dir="ltr" className="ms-1">{msg.code}</bdi></div>}
                             </div>
-                            <div className="flex shrink-0 flex-col items-end gap-2">
+                            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                               {ok ? (
                                 <Badge className="border-primary/30 bg-primary/10 text-primary" variant="outline"><CheckCircle2 className="me-1 h-3 w-3" />{lang === "ar" ? "نجح" : "Sent"}</Badge>
                               ) : r.status === "failed" ? (
@@ -861,7 +868,7 @@ function JobsHistoryPage() {
                                 <Button size="sm" variant="outline" asChild className="h-8 gap-1.5">
                                   <a href={profileUrl} target="_blank" rel="noreferrer">
                                     <ExternalLink className="h-3.5 w-3.5" />
-                                    <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
+                                    <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح البروفايل" : "Open")}</bdi>
                                   </a>
                                 </Button>
                               )}
@@ -892,6 +899,7 @@ function JobsHistoryPage() {
               </table>
             </div>
           )}
+          </div>
         </DialogContent>
       </Dialog>
 
