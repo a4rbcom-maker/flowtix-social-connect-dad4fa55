@@ -169,6 +169,18 @@ function JobsHistoryPage() {
     || selected?.job_type === "extract_group_members"
     || selected?.job_type === "extract_page_audience"
     || selected?.job_type === "deep_profile_scrape";
+  const isGroupsList = selected?.job_type === "list_my_groups";
+  const groupRows = isGroupsList
+    ? results.map((r) => {
+        const d = (r.data ?? {}) as { name?: string; url?: string; group_id?: string; id?: string };
+        return {
+          row: r,
+          id: d.group_id ?? d.id ?? r.target ?? "",
+          name: d.name ?? r.target ?? "—",
+          url: d.url ?? (r.target ? `https://www.facebook.com/groups/${r.target}` : ""),
+        };
+      })
+    : [];
   const enrichedRows = isPeople
     ? results.map((r) => {
         const d = (r.data ?? {}) as { name?: string; id?: string; fb_user_id?: string; profile?: string; profile_url?: string; bio?: string; bio_snippet?: string; city?: string; hometown?: string; work?: string; phone?: string; source?: string };
@@ -195,6 +207,11 @@ function JobsHistoryPage() {
       rows = [
         ["name", "facebook_id", "profile", "phone", "city", "governorate", "source"],
         ...enrichedRows.map((e) => [e.name, e.row.target ?? "", e.profile, e.phone ?? "", e.city ?? "", e.gov ?? "", e.source]),
+      ];
+    } else if (isGroupsList) {
+      rows = [
+        ["group_id", "name", "url", "status", "error"],
+        ...groupRows.map((g) => [g.id, g.name, g.url, g.row.status, g.row.error ?? ""]),
       ];
     } else {
       rows = [
@@ -449,6 +466,13 @@ function JobsHistoryPage() {
               {results.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {/* Deep profile scrape hidden */}
+                  {isGroupsList && (
+                    <Button size="sm" variant="default" asChild className="gap-2">
+                      <Link to="/dashboard/facebook/jobs" search={{ tab: "post" }}>
+                        {lang === "ar" ? "نشر على هذه الجروبات" : "Post to these groups"}
+                      </Link>
+                    </Button>
+                  )}
                   {isPeople && (
                     <Button
                       size="sm"
@@ -509,7 +533,16 @@ function JobsHistoryPage() {
           {resultsLoading ? (
             <div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
           ) : results.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">{t.none}</p>
+            <div className="py-6 text-center text-sm text-muted-foreground">
+              <p>{t.none}</p>
+              {selected?.job_type === "list_my_groups" && selected.status === "completed" && (
+                <p className="mt-2">
+                  {lang === "ar"
+                    ? "لم يعثر الـ Worker على جروبات مرئية لهذا الحساب. تأكد أن الحساب عضو فعلاً في جروبات وأن صفحة الجروبات تفتح له داخل فيسبوك."
+                    : "The Worker found no visible groups for this account. Make sure the account is actually joined to groups and can open the groups page in Facebook."}
+                </p>
+              )}
+            </div>
           ) : isPeople ? (
             <div className="max-h-[60vh] overflow-auto">
               <table className="w-full text-xs">
@@ -533,6 +566,29 @@ function JobsHistoryPage() {
                       </td>
                       <td className="px-3 py-2">
                         {e.profile ? <a href={e.profile} target="_blank" rel="noreferrer" className="text-primary hover:underline">↗</a> : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : isGroupsList ? (
+            <div className="max-h-[60vh] overflow-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-muted/40 text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "اسم الجروب" : "Group"}</th>
+                    <th className="px-3 py-2 text-start">ID</th>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "الرابط" : "Link"}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {groupRows.map((g) => (
+                    <tr key={g.row.id}>
+                      <td className="px-3 py-2 font-medium">{g.name}</td>
+                      <td className="px-3 py-2 font-mono">{g.id || "—"}</td>
+                      <td className="px-3 py-2">
+                        {g.url ? <a href={g.url} target="_blank" rel="noreferrer" className="text-primary hover:underline">↗</a> : "—"}
                       </td>
                     </tr>
                   ))}
