@@ -34,9 +34,28 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
         // signal the worker to abort and stop persisting further results/progress.
         const { data: current } = await supabaseAdmin
           .from("fb_jobs")
-          .select("status")
+          .select("status, job_type")
           .eq("id", body.jobId)
           .maybeSingle();
+        if (
+          current?.job_type === "extract_group_members" &&
+          body.status === "failed" &&
+          /is not implemented in this worker/i.test(body.errorMessage || "")
+        ) {
+          await supabaseAdmin
+            .from("fb_jobs")
+            .update({
+              status: "pending",
+              progress: 0,
+              processed_items: 0,
+              started_at: null,
+              completed_at: null,
+              error_message: "تم تجاهل تحديث من Worker قديم وإعادة المهمة للانتظار.",
+            } as never)
+            .eq("id", body.jobId)
+            .eq("status", "running");
+          return Response.json({ ok: false, staleWorker: true, message: "Stale worker ignored; job requeued" });
+        }
         const terminal = current && (current.status === "cancelled" || current.status === "completed" || current.status === "failed");
         if (terminal) {
           // Still allow account-status writes (those are about the FB account, not the job).

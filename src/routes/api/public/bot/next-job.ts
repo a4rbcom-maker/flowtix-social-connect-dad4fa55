@@ -20,6 +20,12 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         const denied = authorize(request);
         if (denied) return denied;
 
+        const workerCapabilities = (request.headers.get("x-flowtix-worker-capabilities") || "")
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean);
+        const supportsGroupMembers = workerCapabilities.includes("extract_group_members");
+
         const [{ supabaseAdmin }, { decryptJson }] = await Promise.all([
           import("@/integrations/supabase/client.server"),
           import("@/server/crypto.server"),
@@ -31,11 +37,18 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         const nowIso = new Date().toISOString();
 
         // Step 1: select candidate (admin bypasses RLS)
-        const { data: candidate, error: selErr } = await supabaseAdmin
+        let candidateQuery = supabaseAdmin
           .from("fb_jobs")
           .select("id")
           .eq("status", "pending")
-          .lte("scheduled_at", nowIso)
+          .lte("scheduled_at", nowIso);
+        // Old VPS workers do not send capabilities and may mark group-member jobs as
+        // "not implemented". Never let those stale workers claim this job type.
+        if (!supportsGroupMembers) {
+          candidateQuery = candidateQuery.neq("job_type", "extract_group_members");
+        }
+
+        const { data: candidate, error: selErr } = await candidateQuery
           .order("scheduled_at", { ascending: true })
           .limit(1)
           .maybeSingle();

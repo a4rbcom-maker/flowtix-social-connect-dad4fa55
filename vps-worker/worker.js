@@ -27,6 +27,13 @@ const SECRET = process.env.BOT_WORKER_SECRET || "";
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 5000);
 const MAX_COMMENT_SCROLLS = Number(process.env.MAX_COMMENT_SCROLLS || 40);
 const HEADLESS = String(process.env.HEADLESS ?? "true").toLowerCase() !== "false";
+const WORKER_VERSION = "vps-worker-2026-06-30-group-members";
+const WORKER_CAPABILITIES = [
+  "extract_commenters",
+  "deep_profile_scrape",
+  "extract_group_members",
+  "extract_page_audience",
+].join(",");
 
 if (!API_BASE_URL || !SECRET) {
   console.error("FATAL: API_BASE_URL and BOT_WORKER_SECRET are required (.env)");
@@ -41,7 +48,11 @@ if (!existsSync(PROFILES_DIR)) mkdirSync(PROFILES_DIR, { recursive: true });
 async function fetchNextJob() {
   const res = await fetch(`${API_BASE_URL}/api/public/bot/next-job`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${SECRET}` },
+    headers: {
+      Authorization: `Bearer ${SECRET}`,
+      "X-Flowtix-Worker-Version": WORKER_VERSION,
+      "X-Flowtix-Worker-Capabilities": WORKER_CAPABILITIES,
+    },
   });
   if (!res.ok) throw new Error(`next-job ${res.status}: ${await res.text()}`);
   return res.json();
@@ -761,7 +772,7 @@ async function processJob(job) {
 }
 
 async function mainLoop() {
-  console.log(`Flowtix worker started → ${API_BASE_URL}`);
+  console.log(`Flowtix worker started → ${API_BASE_URL} version=${WORKER_VERSION} pid=${process.pid} cwd=${process.cwd()}`);
   while (true) {
     try {
       const { job } = await fetchNextJob();
