@@ -910,11 +910,11 @@ function JobsHistoryPage() {
                       <table className="w-full table-fixed text-sm">
                         <colgroup>
                           <col className="w-12" />
-                          <col className="w-[28%]" />
+                          <col className={compactView ? "w-[34%]" : "w-[28%]"} />
                           <col className="w-24" />
                           <col />
-                          <col className="w-28" />
-                          <col className="w-28" />
+                          {!compactView && <col className="w-28" />}
+                          {!compactView && <col className="w-28" />}
                         </colgroup>
                         <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                           <tr>
@@ -922,8 +922,8 @@ function JobsHistoryPage() {
                             <th className="px-3 py-2.5 text-start">{lang === "ar" ? "الاسم" : "Name"}</th>
                             <th className="px-3 py-2.5 text-start">{lang === "ar" ? "الحالة" : "Status"}</th>
                             <th className="px-3 py-2.5 text-start">{lang === "ar" ? "السبب" : "Reason"}</th>
-                            <th className="px-3 py-2.5 text-start">{lang === "ar" ? "الكود" : "Code"}</th>
-                            <th className="px-3 py-2.5 text-start">{lang === "ar" ? "البروفايل" : "Profile"}</th>
+                            {!compactView && <th className="px-3 py-2.5 text-start">{lang === "ar" ? "الكود" : "Code"}</th>}
+                            {!compactView && <th className="px-3 py-2.5 text-start">{lang === "ar" ? "البروفايل" : "Profile"}</th>}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border/60">
@@ -951,26 +951,31 @@ function JobsHistoryPage() {
                                 </td>
                                 <td className="px-3 py-2.5 text-start align-top">
                                   <div className="text-sm font-medium leading-snug">{msg.title}</div>
-                                  <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{msg.hint}</div>
+                                  {!compactView && <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{msg.hint}</div>}
                                 </td>
-                                <td className="px-3 py-2.5 text-start">
-                                  {!ok ? (
-                                    <bdi dir="ltr" className="rounded-md bg-muted/70 px-2 py-0.5 text-[11px] text-muted-foreground">{msg.code}</bdi>
-                                  ) : <span className="text-muted-foreground">—</span>}
-                                </td>
-                                <td className="px-3 py-2.5 text-start">
-                                  {profileUrl ? (
-                                    <Button size="sm" variant="outline" asChild className="h-8 gap-1.5">
-                                      <a href={profileUrl} target="_blank" rel="noreferrer">
-                                        <ExternalLink className="h-3.5 w-3.5" />
-                                        <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
-                                      </a>
-                                    </Button>
-                                  ) : <span className="text-muted-foreground">—</span>}
-                                </td>
+                                {!compactView && (
+                                  <td className="px-3 py-2.5 text-start">
+                                    {!ok ? (
+                                      <bdi dir="ltr" className="rounded-md bg-muted/70 px-2 py-0.5 text-[11px] text-muted-foreground">{msg.code}</bdi>
+                                    ) : <span className="text-muted-foreground">—</span>}
+                                  </td>
+                                )}
+                                {!compactView && (
+                                  <td className="px-3 py-2.5 text-start">
+                                    {profileUrl ? (
+                                      <Button size="sm" variant="outline" asChild className="h-8 gap-1.5">
+                                        <a href={profileUrl} target="_blank" rel="noreferrer">
+                                          <ExternalLink className="h-3.5 w-3.5" />
+                                          <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
+                                        </a>
+                                      </Button>
+                                    ) : <span className="text-muted-foreground">—</span>}
+                                  </td>
+                                )}
                               </tr>
                             );
                           })}
+
                         </tbody>
                       </table>
                     </div>
