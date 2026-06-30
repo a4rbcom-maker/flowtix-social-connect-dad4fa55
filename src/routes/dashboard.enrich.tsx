@@ -154,7 +154,7 @@ function EnrichPage() {
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-muted/30 px-4 py-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <MapPin className="h-4 w-4 text-primary" />
-              {rows.length > 0 ? t.summary(rows.length, stats.name, stats.phone, stats.gov) : t.none}
+              {rows.length > 0 ? t.summary(rows.length, stats.name, stats.phone, stats.email, stats.gov) : t.none}
             </div>
             {rows.length > 0 && (
               <Button size="sm" variant="outline" onClick={downloadCsv} className="gap-2">
@@ -162,6 +162,11 @@ function EnrichPage() {
               </Button>
             )}
           </div>
+          {noContact && (
+            <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-800 dark:text-amber-300">
+              {t.emptyHint}
+            </div>
+          )}
           {rows.length > 0 && (
             <div className="max-h-[60vh] overflow-auto">
               <table className="w-full text-sm">
@@ -170,6 +175,7 @@ function EnrichPage() {
                     <th className="px-4 py-2 text-start">#</th>
                     <th className="px-4 py-2 text-start">{t.cols.name}</th>
                     <th className="px-4 py-2 text-start">{t.cols.phone}</th>
+                    <th className="px-4 py-2 text-start">{t.cols.email}</th>
                     <th className="px-4 py-2 text-start">{t.cols.city}</th>
                     <th className="px-4 py-2 text-start">{t.cols.gov}</th>
                     <th className="px-4 py-2 text-start">{t.cols.raw}</th>
@@ -181,6 +187,7 @@ function EnrichPage() {
                       <td className="px-4 py-2 font-mono text-muted-foreground">{i + 1}</td>
                       <td className="px-4 py-2 font-medium">{r.name ?? "—"}</td>
                       <td className="px-4 py-2 font-mono">{r.phone ?? "—"}</td>
+                      <td className="px-4 py-2 font-mono text-xs">{r.email ?? "—"}</td>
                       <td className="px-4 py-2">{r.city ?? "—"}</td>
                       <td className="px-4 py-2">
                         {r.governorate ? <Badge variant="outline" className="border-primary/30 text-primary">{r.governorate}</Badge> : "—"}
