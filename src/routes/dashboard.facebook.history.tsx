@@ -247,6 +247,7 @@ function JobsHistoryPage() {
     completed: "bg-green-500/15 text-green-700 dark:text-green-400",
     failed: "bg-red-500/15 text-red-700 dark:text-red-400",
     cancelled: "bg-muted text-muted-foreground",
+    paused: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
   }[s]);
 
   // Detect session-expired failures so we surface a clear reconnect CTA
