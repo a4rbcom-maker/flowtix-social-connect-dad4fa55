@@ -96,7 +96,11 @@ function JobsHistoryPage() {
     results: "النتائج",
     download: "تنزيل CSV",
     types: { post_to_groups: "نشر", extract_pages: "صفحات", extract_commenters: "معلقين", extract_group_members: "أعضاء جروب", extract_page_audience: "جمهور صفحة", list_my_groups: "جروباتي", deep_profile_scrape: "فحص عميق للبروفايل", send_messenger_dm: "رسائل ماسنجر" },
-    statuses: { pending: "معلّقة", running: "جارية", completed: "مكتملة", failed: "فشلت", cancelled: "ملغاة" },
+    statuses: { pending: "معلّقة", running: "جارية", completed: "مكتملة", failed: "فشلت", cancelled: "ملغاة", paused: "متوقفة مؤقتاً" },
+    pause: "إيقاف مؤقت",
+    resume: "استئناف",
+    pauseDone: "تم إيقاف المهمة مؤقتاً — اضغط استئناف لإكمالها من نفس المكان",
+    resumeDone: "تمت إعادة تشغيل المهمة — ستكمل من حيث توقفت",
   } : {
     title: "Jobs History",
     subtitle: "All jobs with live progress",
