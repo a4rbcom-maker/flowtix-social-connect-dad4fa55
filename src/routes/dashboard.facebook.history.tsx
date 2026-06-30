@@ -1391,7 +1391,7 @@ function PreviewList({
   );
 
   return (
-    <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
+    <div dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <Label className="block text-start text-sm font-medium">
           {lang === "ar"
