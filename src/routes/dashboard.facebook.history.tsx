@@ -750,6 +750,109 @@ function JobsHistoryPage() {
               />
             </div>
 
+            {/* ───── Recipient filters ───── */}
+            <div dir={lang === "ar" ? "rtl" : "ltr"} className="space-y-3 rounded-lg border border-border bg-muted/30 p-3 text-start">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="block font-semibold">
+                  {lang === "ar" ? "فلترة المستلمين" : "Recipient filters"}
+                </Label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMsgFilterCity("");
+                    setMsgFilterKeyword("");
+                    setMsgRequirePhone(false);
+                    setMsgRequireProfile(false);
+                    setMsgDedupe(true);
+                    setMsgLimit(500);
+                  }}
+                  className="text-xs text-muted-foreground hover:text-foreground underline"
+                >
+                  {lang === "ar" ? "إعادة ضبط" : "Reset"}
+                </button>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="block text-start text-xs">
+                    {lang === "ar" ? "المدينة / المحافظة" : "City / Governorate"}
+                  </Label>
+                  <Input
+                    dir="auto"
+                    value={msgFilterCity}
+                    onChange={(e) => setMsgFilterCity(e.target.value)}
+                    placeholder={lang === "ar" ? "مثال: القاهرة" : "e.g. Cairo"}
+                    className="h-9 text-start"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="block text-start text-xs">
+                    {lang === "ar" ? "كلمات في الاسم/العمل (مفصولة بفاصلة)" : "Keywords in name/work (comma separated)"}
+                  </Label>
+                  <Input
+                    dir="auto"
+                    value={msgFilterKeyword}
+                    onChange={(e) => setMsgFilterKeyword(e.target.value)}
+                    placeholder={lang === "ar" ? "محمد, دكتور, مهندس" : "ahmed, doctor, engineer"}
+                    className="h-9 text-start"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-4 text-sm">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox checked={msgRequirePhone} onCheckedChange={(v) => setMsgRequirePhone(!!v)} />
+                  <span>{lang === "ar" ? "لديه رقم موبايل فقط" : "Has phone only"}</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox checked={msgRequireProfile} onCheckedChange={(v) => setMsgRequireProfile(!!v)} />
+                  <span>{lang === "ar" ? "لديه بروفايل فيسبوك فقط" : "Has FB profile only"}</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox checked={msgDedupe} onCheckedChange={(v) => setMsgDedupe(!!v)} />
+                  <span>{lang === "ar" ? "حذف المكرر" : "Dedupe"}</span>
+                </label>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="block text-start text-xs">
+                  {lang === "ar" ? `الحد الأقصى للمستلمين: ${msgLimit}` : `Recipient cap: ${msgLimit}`}
+                </Label>
+                <Slider value={[msgLimit]} min={10} max={2000} step={10} onValueChange={(v) => setMsgLimit(v[0])} />
+              </div>
+
+              {/* Preview */}
+              <div className="grid grid-cols-3 gap-2 rounded-md border border-primary/20 bg-primary/5 p-2 text-center">
+                <div>
+                  <div className="text-[10px] uppercase text-muted-foreground">
+                    {lang === "ar" ? "المستلمون بعد الفلترة" : "After filters"}
+                  </div>
+                  <div className="text-lg font-bold tabular-nums text-primary">{filteredRows.length}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {lang === "ar" ? `من ${enrichedRows.length}` : `of ${enrichedRows.length}`}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase text-muted-foreground">
+                    {lang === "ar" ? "واتساب" : "WhatsApp"}
+                  </div>
+                  <div className="text-lg font-bold tabular-nums text-foreground">{filteredWaCount}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {lang === "ar" ? `من ${phoneCount}` : `of ${phoneCount}`}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase text-muted-foreground">
+                    {lang === "ar" ? "ماسنجر" : "Messenger"}
+                  </div>
+                  <div className="text-lg font-bold tabular-nums text-foreground">{filteredFbCount}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {lang === "ar" ? `من ${profileCount}` : `of ${profileCount}`}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label className="block text-start">
                 {lang === "ar" ? "القنوات" : "Channels"}
@@ -760,17 +863,18 @@ function JobsHistoryPage() {
                     checked={msgChannels.whatsapp}
                     onCheckedChange={(v) => setMsgChannels((s) => ({ ...s, whatsapp: !!v }))}
                   />
-                  <span>{lang === "ar" ? `واتساب (${phoneCount})` : `WhatsApp (${phoneCount})`}</span>
+                  <span>{lang === "ar" ? `واتساب (${filteredWaCount})` : `WhatsApp (${filteredWaCount})`}</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <Checkbox
                     checked={msgChannels.messenger}
                     onCheckedChange={(v) => setMsgChannels((s) => ({ ...s, messenger: !!v }))}
                   />
-                  <span>{lang === "ar" ? `ماسنجر (${profileCount})` : `Messenger (${profileCount})`}</span>
+                  <span>{lang === "ar" ? `ماسنجر (${filteredFbCount})` : `Messenger (${filteredFbCount})`}</span>
                 </label>
               </div>
             </div>
+
 
             <div className="space-y-2">
               <Label className="block text-start">
