@@ -115,6 +115,7 @@ async function runSendMessengerDm({ page, job, report }) {
     await report({
       result: { target: r.profile, status: res.status, error: res.error, data: { name: r.name ?? null, image: img ? path.basename(img) : null } },
       processedItems: ++done,
+      totalItems: recipients.length,
       progress: Math.min(99, Math.round((done / recipients.length) * 100)),
     });
     const jitter = Math.floor(Math.random() * (wait * 0.3));
@@ -124,7 +125,7 @@ async function runSendMessengerDm({ page, job, report }) {
   // Cleanup tmp images
   for (const p of localImages) { try { fs.unlinkSync(p); } catch (_) { /* ignore */ } }
 
-  await report({ status: "completed", processedItems: done, progress: 100 });
+  await report({ status: "completed", processedItems: done, totalItems: recipients.length, progress: 100 });
 }
 
 module.exports = { runSendMessengerDm };

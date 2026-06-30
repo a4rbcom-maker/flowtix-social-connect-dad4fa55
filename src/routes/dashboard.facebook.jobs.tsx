@@ -192,7 +192,10 @@ function JobsHubPage() {
       }
 
       setAccounts(data);
-      if (data.length > 0) setAccountId(data[0].id);
+      if (data.length > 0) {
+        const active = data.find((a) => a.status === "active");
+        setAccountId((active ?? data[0]).id);
+      }
       setLoading(false);
     })();
   }, [user, authLoading]);

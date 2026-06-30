@@ -76,6 +76,7 @@ async function runListMyGroups({ page, job, report }) {
   await report({
     status: "completed",
     processedItems: seen.size,
+    totalItems: seen.size,
     progress: 100,
   });
 }

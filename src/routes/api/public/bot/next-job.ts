@@ -25,6 +25,8 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
           .map((item) => item.trim())
           .filter(Boolean);
         const supportsGroupMembers = workerCapabilities.includes("extract_group_members");
+        const supportsPageAudience = workerCapabilities.includes("extract_page_audience");
+        const supportsListMyGroups = workerCapabilities.includes("list_my_groups");
         const supportsDeepProfile = workerCapabilities.includes("deep_profile_scrape");
         const supportsMessengerDm = workerCapabilities.includes("send_messenger_dm");
 
@@ -39,15 +41,34 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         const nowIso = new Date().toISOString();
 
         // Step 1: select candidate (admin bypasses RLS)
+        await supabaseAdmin
+          .from("fb_jobs")
+          .update({
+            status: "failed",
+            progress: 100,
+            completed_at: nowIso,
+            error_message: "المهمة بدون حساب فيسبوك مرتبط. اختر حساب Active وأنشئ المهمة مرة أخرى.",
+          })
+          .eq("status", "pending")
+          .lte("scheduled_at", nowIso)
+          .is("account_id", null);
+
         let candidateQuery = supabaseAdmin
           .from("fb_jobs")
           .select("id")
           .eq("status", "pending")
+          .not("account_id", "is", null)
           .lte("scheduled_at", nowIso);
         // Old VPS workers do not send capabilities and may mark group-member jobs as
         // "not implemented". Never let those stale workers claim this job type.
         if (!supportsGroupMembers) {
           candidateQuery = candidateQuery.neq("job_type", "extract_group_members");
+        }
+        if (!supportsPageAudience) {
+          candidateQuery = candidateQuery.neq("job_type", "extract_page_audience");
+        }
+        if (!supportsListMyGroups) {
+          candidateQuery = candidateQuery.neq("job_type", "list_my_groups");
         }
         if (!supportsDeepProfile) {
           candidateQuery = candidateQuery.neq("job_type", "deep_profile_scrape");
@@ -81,10 +102,25 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         if (claimed.account_id) {
           const { data: acc } = await supabaseAdmin
             .from("fb_bot_accounts")
-            .select("display_name, auth_method, encrypted_payload")
+            .select("display_name, auth_method, status, last_error, encrypted_payload")
             .eq("id", claimed.account_id)
             .maybeSingle();
           if (acc) {
+            if (acc.status !== "active") {
+              await supabaseAdmin
+                .from("fb_jobs")
+                .update({
+                  status: "failed",
+                  progress: 100,
+                  completed_at: nowIso,
+                  error_message: acc.last_error
+                    ? `حساب فيسبوك غير صالح حالياً: ${acc.last_error}`
+                    : "حساب فيسبوك غير صالح حالياً. أعد ربط الحساب أو اختر حساب Active.",
+                })
+                .eq("id", claimed.id)
+                .eq("status", "running");
+              return Response.json({ job: null, skippedInvalidAccount: true });
+            }
             displayName = acc.display_name;
             authMethod = acc.auth_method;
             try {
@@ -95,6 +131,18 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
                 { status: 500 },
               );
             }
+          } else {
+            await supabaseAdmin
+              .from("fb_jobs")
+              .update({
+                status: "failed",
+                progress: 100,
+                completed_at: nowIso,
+                error_message: "حساب فيسبوك المرتبط بالمهمة غير موجود. اختر حساباً صالحاً وأنشئ المهمة مرة أخرى.",
+              })
+              .eq("id", claimed.id)
+              .eq("status", "running");
+            return Response.json({ job: null, skippedMissingAccount: true });
           }
         }
 

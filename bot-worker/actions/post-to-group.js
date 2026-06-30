@@ -150,6 +150,7 @@ async function runPostToGroups({ page, job, report }) {
         await report({
           progress: Math.round((processed / total) * 100),
           processedItems: processed,
+          totalItems: total,
           result: { target: gid, status: "success" },
         });
       } catch (e) {
@@ -157,6 +158,7 @@ async function runPostToGroups({ page, job, report }) {
         await report({
           progress: Math.round((processed / total) * 100),
           processedItems: processed,
+          totalItems: total,
           result: { target: gid, status: "failed", error: String(e.message || e) },
         });
       }
@@ -167,7 +169,7 @@ async function runPostToGroups({ page, job, report }) {
         await new Promise(r => setTimeout(r, wait));
       }
     }
-    await report({ status: "completed" });
+    await report({ status: "completed", processedItems: processed, totalItems: total });
   } finally {
     // Cleanup temp media files
     const cleanedCount = mediaFiles.length;

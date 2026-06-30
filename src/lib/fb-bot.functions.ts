@@ -359,6 +359,28 @@ export type BotAccountsListResult = {
 const BOT_ACCOUNT_SAFE_SELECT =
   "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at";
 
+async function assertUsableBotAccount(
+  supabase: { from: (table: string) => any },
+  userId: string,
+  accountId: string,
+) {
+  const { data: account, error } = await supabase
+    .from("fb_bot_accounts")
+    .select("id, status, last_error")
+    .eq("id", accountId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!account) throw new Error("حساب فيسبوك المختار غير موجود أو غير تابع لك.");
+  if (account.status !== "active") {
+    throw new Error(
+      account.last_error
+        ? `حساب فيسبوك غير صالح حالياً: ${account.last_error}`
+        : "حساب فيسبوك غير صالح حالياً. أعد ربط الحساب أو اختر حساب Active.",
+    );
+  }
+}
+
 // ---------- listBotAccounts ----------
 export const listBotAccounts = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -515,6 +537,7 @@ export const createPostJob = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => postJobSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    await assertUsableBotAccount(supabase, userId, data.accountId);
     const { data: row, error } = await supabase
       .from("fb_jobs")
       .insert({
@@ -544,6 +567,7 @@ export const createExtractPagesJob = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ accountId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    await assertUsableBotAccount(supabase, userId, data.accountId);
     const { data: row, error } = await supabase
       .from("fb_jobs")
       .insert({
@@ -573,6 +597,7 @@ export const createExtractCommentersJob = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    await assertUsableBotAccount(supabase, userId, data.accountId);
     const { data: row, error } = await supabase
       .from("fb_jobs")
       .insert({
@@ -604,6 +629,7 @@ export const createExtractGroupMembersJob = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    await assertUsableBotAccount(supabase, userId, data.accountId);
     // Accept either raw ID or URL — extract the ID from URLs
     const idMatch = data.groupId.match(/groups\/([^/?]+)/);
     const groupId = idMatch ? idMatch[1] : data.groupId;
@@ -638,6 +664,7 @@ export const createExtractPageAudienceJob = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    await assertUsableBotAccount(supabase, userId, data.accountId);
     const idMatch = data.pageId.match(/facebook\.com\/([^/?]+)/);
     const pageId = idMatch ? idMatch[1] : data.pageId;
     const { data: row, error } = await supabase
@@ -671,6 +698,7 @@ export const createListMyGroupsJob = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    await assertUsableBotAccount(supabase, userId, data.accountId);
     const { data: row, error } = await supabase
       .from("fb_jobs")
       .insert({
@@ -702,6 +730,7 @@ export const createDeepProfileScrapeJob = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    await assertUsableBotAccount(supabase, userId, data.accountId);
     const profiles = Array.from(
       new Set(
         data.profiles
@@ -754,6 +783,7 @@ export const createDeepProfileScrapeFromJob = createServerFn({ method: "POST" })
     if (srcErr || !srcJob) throw new Error(srcErr?.message || "Source job not found");
     const accountId = data.accountId ?? srcJob.account_id;
     if (!accountId) throw new Error("No account linked");
+    await assertUsableBotAccount(supabase, userId, accountId);
 
     // Paginate through fb_job_results — Supabase default cap is 1000 per page.
     const profiles = new Set<string>();
@@ -830,6 +860,7 @@ export const createSendMessengerDmJob = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    await assertUsableBotAccount(supabase, userId, data.accountId);
     const recipients = data.recipients
       .map((r) => ({
         profile: r.profile.trim().replace(/\?.*$/, "").replace(/\/$/, ""),
