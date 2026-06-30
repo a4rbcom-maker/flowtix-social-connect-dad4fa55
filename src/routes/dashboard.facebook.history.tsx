@@ -490,6 +490,122 @@ function JobsHistoryPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={msgOpen} onOpenChange={(o) => !msgSubmitting && setMsgOpen(o)}>
+        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="text-start">
+              {lang === "ar" ? "إرسال رسائل للمستخرجين" : "Send messages to extracted people"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 text-start">
+            <div className="rounded-lg border bg-muted/40 p-3 text-sm leading-relaxed">
+              <div className="font-semibold mb-1">
+                {lang === "ar" ? "ملخّص المستلمين" : "Recipient summary"}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary">
+                  {lang === "ar" ? `أرقام واتساب: ${phoneCount}` : `WhatsApp numbers: ${phoneCount}`}
+                </Badge>
+                <Badge variant="secondary">
+                  {lang === "ar" ? `بروفايلات ماسنجر: ${profileCount}` : `Messenger profiles: ${profileCount}`}
+                </Badge>
+              </div>
+              {phoneCount === 0 && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {lang === "ar"
+                    ? "💡 لا توجد أرقام؟ شغّل «إثراء بداتا مصر» أو «فحص عميق للبروفايلات» أولاً."
+                    : "💡 No phones? Run “Enrich with Egypt data” or “Deep profile scrape” first."}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label className="block text-start">
+                {lang === "ar" ? "اسم الحملة" : "Campaign name"}
+              </Label>
+              <Input
+                dir="auto"
+                value={msgTitle}
+                onChange={(e) => setMsgTitle(e.target.value)}
+                placeholder={lang === "ar" ? "حملة سبتمبر" : "September campaign"}
+                className="text-start"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="block text-start">
+                {lang === "ar" ? "القنوات" : "Channels"}
+              </Label>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={msgChannels.whatsapp}
+                    onCheckedChange={(v) => setMsgChannels((s) => ({ ...s, whatsapp: !!v }))}
+                  />
+                  <span>{lang === "ar" ? `واتساب (${phoneCount})` : `WhatsApp (${phoneCount})`}</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={msgChannels.messenger}
+                    onCheckedChange={(v) => setMsgChannels((s) => ({ ...s, messenger: !!v }))}
+                  />
+                  <span>{lang === "ar" ? `ماسنجر (${profileCount})` : `Messenger (${profileCount})`}</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="block text-start">
+                {lang === "ar" ? "نص الرسالة" : "Message"}
+              </Label>
+              <Textarea
+                dir="auto"
+                rows={5}
+                value={msgText}
+                onChange={(e) => setMsgText(e.target.value)}
+                placeholder={lang === "ar" ? "أهلاً {name}, ..." : "Hi {name}, ..."}
+                className="text-start"
+              />
+              <p className="text-xs text-muted-foreground">
+                {lang === "ar"
+                  ? "متاح: {name} يُستبدل باسم المستلم."
+                  : "Available: {name} is replaced with recipient name."}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="block text-start">
+                {lang === "ar" ? `سرعة الإرسال: ${msgPerHour} / ساعة` : `Send rate: ${msgPerHour} / hour`}
+              </Label>
+              <Slider
+                value={[msgPerHour]}
+                min={5}
+                max={100}
+                step={5}
+                onValueChange={(v) => setMsgPerHour(v[0])}
+              />
+              <p className="text-xs text-muted-foreground">
+                {lang === "ar"
+                  ? "كل ما قلّت السرعة كل ما قلّ احتمال الحظر."
+                  : "Lower rates reduce the risk of being blocked."}
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMsgOpen(false)} disabled={msgSubmitting}>
+              {lang === "ar" ? "إلغاء" : "Cancel"}
+            </Button>
+            <Button onClick={launchMessaging} disabled={msgSubmitting} className="gap-2">
+              {msgSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              <Send className="h-4 w-4" />
+              {lang === "ar" ? "إطلاق الحملة" : "Launch campaign"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
 
   );
