@@ -134,6 +134,7 @@ function EnrichPage() {
       setRows(data);
       toast.success(lang === "ar" ? `تم إثراء ${data.length} سطر` : `Enriched ${data.length} rows`);
       void runMatching(data);
+      void runDbEnrichment(data);
     } catch (e) { toast.error(String(e)); }
     finally { setBusy(false); }
   };
