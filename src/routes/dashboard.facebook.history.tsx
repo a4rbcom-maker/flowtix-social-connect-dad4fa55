@@ -756,9 +756,9 @@ function JobsHistoryPage() {
                 <tbody className="divide-y divide-border/50">
                   {results.map((r) => (
                     <tr key={r.id}>
-                      <td className="px-3 py-2 font-mono">{r.target ?? "—"}</td>
-                      <td className="px-3 py-2">{r.status}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{r.error ?? JSON.stringify(r.data ?? "")}</td>
+                      <td className="px-3 py-2 font-mono text-start"><bdi dir="ltr">{r.target ?? "—"}</bdi></td>
+                      <td className="px-3 py-2 text-start">{r.status}</td>
+                      <td className="px-3 py-2 text-muted-foreground text-start">{r.error ?? JSON.stringify(r.data ?? "")}</td>
                     </tr>
                   ))}
                 </tbody>
