@@ -95,7 +95,7 @@ function PagesTab({ ar }: { ar: boolean }) {
 
   return (
     <Card dir={ar ? "rtl" : "ltr"}>
-      <CardHeader className="flex flex-row items-center justify-between gap-3">
+      <CardHeader className={`flex flex-row items-center justify-between gap-3 ${ar ? "flex-row-reverse" : ""}`}>
         <div className={ar ? "text-right" : "text-left"}>
           <CardTitle>{ar ? "الصفحات المربوطة" : "Connected pages"}</CardTitle>
           <CardDescription>{ar ? "أضف صفحات فيسبوك ترغب في تشغيل الرد التلقائي عليها." : "Add Facebook pages for auto-reply."}</CardDescription>
