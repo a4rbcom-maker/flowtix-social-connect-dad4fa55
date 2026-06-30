@@ -833,6 +833,29 @@ export const createDeepProfileScrapeFromJob = createServerFn({ method: "POST" })
 
 
 
+function normalizeMessengerRecipientTarget(input: string): string {
+  const raw = input.trim();
+  const id =
+    raw.match(/\/groups\/[^/]+\/user\/(\d{5,})/i)?.[1] ??
+    raw.match(/[?&]id=(\d{5,})/i)?.[1] ??
+    raw.match(/\/(?:user|messages\/t)\/(\d{5,})/i)?.[1] ??
+    raw.match(/m\.me\/(\d{5,})/i)?.[1] ??
+    raw.match(/^(\d{5,})$/)?.[1];
+
+  if (id) return `https://www.facebook.com/profile.php?id=${id}`;
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const url = new URL(raw);
+      url.hash = "";
+      if (!/\/profile\.php$/i.test(url.pathname)) url.search = "";
+      return url.toString().replace(/\/$/, "");
+    } catch {
+      return raw.replace(/\/$/, "");
+    }
+  }
+  return raw.replace(/\/$/, "");
+}
+
 // ---------- createSendMessengerDmJob ----------
 // Sends a Messenger DM to a list of recipients via the bot account.
 // Throttled by intervalSeconds between sends (default 180s = ~20/hr).
@@ -863,7 +886,7 @@ export const createSendMessengerDmJob = createServerFn({ method: "POST" })
     await assertUsableBotAccount(supabase, userId, data.accountId);
     const recipients = data.recipients
       .map((r) => ({
-        profile: r.profile.trim().replace(/\?.*$/, "").replace(/\/$/, ""),
+        profile: normalizeMessengerRecipientTarget(r.profile),
         name: r.name?.trim() || null,
       }))
       .filter((r) => r.profile);
