@@ -1248,6 +1248,7 @@ function PreviewList({
   type SortKey = "name" | "city" | "gov";
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [matchMode, setMatchMode] = useState<"any" | "all">("all");
 
   const toggleSort = (k: SortKey) => {
     if (sortKey !== k) { setSortKey(k); setSortDir("asc"); }
@@ -1255,11 +1256,45 @@ function PreviewList({
     else { setSortKey(null); setSortDir("asc"); }
   };
 
+  // Advanced search: split by comma/whitespace, support "quoted phrase",
+  // "-term" for exclusion, and field prefixes (name:, phone:, city:, gov:, profile:).
+  type Token = { negate: boolean; text: string; field: "name" | "phone" | "city" | "gov" | "profile" | "any" };
+  const tokens = useMemo<Token[]>(() => {
+    const q = search.trim();
+    if (!q) return [];
+    const out: Token[] = [];
+    const re = /-?(?:[a-z]+:)?(?:"[^"]+"|\S+)/gi;
+    const matches = q.match(re) ?? [];
+    for (const raw of matches) {
+      let s = raw;
+      const negate = s.startsWith("-");
+      if (negate) s = s.slice(1);
+      let field: Token["field"] = "any";
+      const m = s.match(/^(name|phone|city|gov|profile):(.*)$/i);
+      if (m) { field = m[1].toLowerCase() as Token["field"]; s = m[2]; }
+      if (s.startsWith('"') && s.endsWith('"')) s = s.slice(1, -1);
+      const text = s.trim().toLowerCase();
+      if (text) out.push({ negate, text, field });
+    }
+    return out;
+  }, [search]);
+
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const base = !q ? rows : rows.filter((e) => {
-      const blob = `${e.name ?? ""} ${e.phone ?? ""} ${e.profile ?? e.row.target ?? ""} ${e.city ?? ""} ${e.gov ?? ""} ${e.work ?? ""}`.toLowerCase();
-      return blob.includes(q);
+    const base = tokens.length === 0 ? rows : rows.filter((e) => {
+      const fields = {
+        name: (e.name ?? "").toLowerCase(),
+        phone: (e.phone ?? "").toString().toLowerCase(),
+        city: (e.city ?? "").toLowerCase(),
+        gov: (e.gov ?? "").toLowerCase(),
+        profile: (e.profile ?? e.row.target ?? "").toLowerCase(),
+        any: `${e.name ?? ""} ${e.phone ?? ""} ${e.profile ?? e.row.target ?? ""} ${e.city ?? ""} ${e.gov ?? ""} ${e.work ?? ""}`.toLowerCase(),
+      };
+      const positives = tokens.filter((t) => !t.negate);
+      const negatives = tokens.filter((t) => t.negate);
+      for (const t of negatives) if (fields[t.field].includes(t.text)) return false;
+      if (positives.length === 0) return true;
+      const check = (t: Token) => fields[t.field].includes(t.text);
+      return matchMode === "all" ? positives.every(check) : positives.some(check);
     });
     if (!sortKey) return base;
     const collator = new Intl.Collator(lang === "ar" ? "ar" : "en", { sensitivity: "base", numeric: true });
@@ -1272,7 +1307,7 @@ function PreviewList({
       return collator.compare(av, bv);
     });
     return sortDir === "desc" ? sorted.reverse() : sorted;
-  }, [rows, search, sortKey, sortDir, lang]);
+  }, [rows, tokens, matchMode, sortKey, sortDir, lang]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -1333,14 +1368,45 @@ function PreviewList({
               {lang === "ar" ? "مسح التحديد" : "Clear selection"}
             </Button>
           )}
+          <div className="flex items-center gap-1 rounded-md border border-border bg-background p-0.5">
+            <button
+              type="button"
+              onClick={() => setMatchMode("all")}
+              className={`px-2 py-1 text-xs rounded ${matchMode === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              title={lang === "ar" ? "كل الكلمات يجب أن تتطابق" : "All terms must match"}
+            >
+              {lang === "ar" ? "كل الكلمات" : "AND"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMatchMode("any")}
+              className={`px-2 py-1 text-xs rounded ${matchMode === "any" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              title={lang === "ar" ? "أي كلمة تتطابق" : "Any term matches"}
+            >
+              {lang === "ar" ? "أي كلمة" : "OR"}
+            </button>
+          </div>
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={lang === "ar" ? "ابحث في النتائج..." : "Search results..."}
-            className="h-8 max-w-xs text-sm"
+            placeholder={lang === "ar" ? 'بحث متقدم: كلمات، "عبارة"، -استبعاد، city:القاهرة' : 'Advanced: words, "phrase", -exclude, city:Cairo'}
+            className="h-8 w-72 max-w-full text-sm"
           />
         </div>
       </div>
+      {tokens.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+          <span>{lang === "ar" ? "المرشحات:" : "Filters:"}</span>
+          {tokens.map((t, i) => (
+            <span
+              key={i}
+              className={`px-1.5 py-0.5 rounded border ${t.negate ? "border-destructive/40 text-destructive" : "border-border"}`}
+            >
+              {t.negate ? "−" : ""}{t.field !== "any" ? `${t.field}:` : ""}{t.text}
+            </span>
+          ))}
+        </div>
+      )}
 
       {filtered.length === 0 ? (
         <div className="py-6 text-center text-sm text-muted-foreground">
