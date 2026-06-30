@@ -710,14 +710,14 @@ function JobsHistoryPage() {
                 <tbody className="divide-y divide-border/50">
                   {enrichedRows.map((e) => (
                     <tr key={e.row.id} className={e.gov ? "bg-primary/[0.04]" : ""}>
-                      <td className="px-3 py-2 font-medium">{e.name}</td>
-                      <td className="px-3 py-2 font-mono">{e.phone ?? "—"}</td>
-                      <td className="px-3 py-2">{e.city ?? "—"}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2 font-medium text-start">{e.name}</td>
+                      <td className="px-3 py-2 font-mono text-start">{e.phone ? <bdi dir="ltr">{e.phone}</bdi> : "—"}</td>
+                      <td className="px-3 py-2 text-start">{e.city ?? "—"}</td>
+                      <td className="px-3 py-2 text-start">
                         {e.gov ? <Badge variant="outline" className="border-primary/30 text-primary">{e.gov}</Badge> : "—"}
                       </td>
-                      <td className="px-3 py-2">
-                        {e.profile ? <a href={e.profile} target="_blank" rel="noreferrer" className="text-primary hover:underline">↗</a> : "—"}
+                      <td className="px-3 py-2 text-start">
+                        {e.profile ? <bdi dir="ltr"><a href={e.profile} target="_blank" rel="noreferrer" className="text-primary hover:underline">↗</a></bdi> : "—"}
                       </td>
                     </tr>
                   ))}
