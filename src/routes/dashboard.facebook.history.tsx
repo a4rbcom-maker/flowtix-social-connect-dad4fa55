@@ -1248,6 +1248,7 @@ function PreviewList({
   type SortKey = "name" | "city" | "gov";
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [matchMode, setMatchMode] = useState<"any" | "all">("all");
 
   const toggleSort = (k: SortKey) => {
     if (sortKey !== k) { setSortKey(k); setSortDir("asc"); }
@@ -1255,11 +1256,45 @@ function PreviewList({
     else { setSortKey(null); setSortDir("asc"); }
   };
 
+  // Advanced search: split by comma/whitespace, support "quoted phrase",
+  // "-term" for exclusion, and field prefixes (name:, phone:, city:, gov:, profile:).
+  type Token = { negate: boolean; text: string; field: "name" | "phone" | "city" | "gov" | "profile" | "any" };
+  const tokens = useMemo<Token[]>(() => {
+    const q = search.trim();
+    if (!q) return [];
+    const out: Token[] = [];
+    const re = /-?(?:[a-z]+:)?(?:"[^"]+"|\S+)/gi;
+    const matches = q.match(re) ?? [];
+    for (const raw of matches) {
+      let s = raw;
+      const negate = s.startsWith("-");
+      if (negate) s = s.slice(1);
+      let field: Token["field"] = "any";
+      const m = s.match(/^(name|phone|city|gov|profile):(.*)$/i);
+      if (m) { field = m[1].toLowerCase() as Token["field"]; s = m[2]; }
+      if (s.startsWith('"') && s.endsWith('"')) s = s.slice(1, -1);
+      const text = s.trim().toLowerCase();
+      if (text) out.push({ negate, text, field });
+    }
+    return out;
+  }, [search]);
+
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const base = !q ? rows : rows.filter((e) => {
-      const blob = `${e.name ?? ""} ${e.phone ?? ""} ${e.profile ?? e.row.target ?? ""} ${e.city ?? ""} ${e.gov ?? ""} ${e.work ?? ""}`.toLowerCase();
-      return blob.includes(q);
+    const base = tokens.length === 0 ? rows : rows.filter((e) => {
+      const fields = {
+        name: (e.name ?? "").toLowerCase(),
+        phone: (e.phone ?? "").toString().toLowerCase(),
+        city: (e.city ?? "").toLowerCase(),
+        gov: (e.gov ?? "").toLowerCase(),
+        profile: (e.profile ?? e.row.target ?? "").toLowerCase(),
+        any: `${e.name ?? ""} ${e.phone ?? ""} ${e.profile ?? e.row.target ?? ""} ${e.city ?? ""} ${e.gov ?? ""} ${e.work ?? ""}`.toLowerCase(),
+      };
+      const positives = tokens.filter((t) => !t.negate);
+      const negatives = tokens.filter((t) => t.negate);
+      for (const t of negatives) if (fields[t.field].includes(t.text)) return false;
+      if (positives.length === 0) return true;
+      const check = (t: Token) => fields[t.field].includes(t.text);
+      return matchMode === "all" ? positives.every(check) : positives.some(check);
     });
     if (!sortKey) return base;
     const collator = new Intl.Collator(lang === "ar" ? "ar" : "en", { sensitivity: "base", numeric: true });
