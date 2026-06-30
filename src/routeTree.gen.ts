@@ -49,6 +49,7 @@ import { Route as DashboardFacebookJobsRouteImport } from './routes/dashboard.fa
 import { Route as DashboardFacebookInsightsRouteImport } from './routes/dashboard.facebook.insights'
 import { Route as DashboardFacebookHistoryRouteImport } from './routes/dashboard.facebook.history'
 import { Route as DashboardFacebookGroupsRouteImport } from './routes/dashboard.facebook.groups'
+import { Route as DashboardFacebookGroupExtractionRouteImport } from './routes/dashboard.facebook.group-extraction'
 import { Route as DashboardFacebookCampaignsRouteImport } from './routes/dashboard.facebook.campaigns'
 import { Route as DashboardFacebookBotRouteImport } from './routes/dashboard.facebook.bot'
 import { Route as DashboardFacebookAutoreplyRouteImport } from './routes/dashboard.facebook.autoreply'
@@ -274,6 +275,12 @@ const DashboardFacebookGroupsRoute = DashboardFacebookGroupsRouteImport.update({
   path: '/groups',
   getParentRoute: () => DashboardFacebookRoute,
 } as any)
+const DashboardFacebookGroupExtractionRoute =
+  DashboardFacebookGroupExtractionRouteImport.update({
+    id: '/group-extraction',
+    path: '/group-extraction',
+    getParentRoute: () => DashboardFacebookRoute,
+  } as any)
 const DashboardFacebookCampaignsRoute =
   DashboardFacebookCampaignsRouteImport.update({
     id: '/campaigns',
@@ -397,6 +404,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/facebook/autoreply': typeof DashboardFacebookAutoreplyRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
   '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
+  '/dashboard/facebook/group-extraction': typeof DashboardFacebookGroupExtractionRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/history': typeof DashboardFacebookHistoryRoute
   '/dashboard/facebook/insights': typeof DashboardFacebookInsightsRoute
@@ -454,6 +462,7 @@ export interface FileRoutesByTo {
   '/api/public/wa-webhook': typeof ApiPublicWaWebhookRoute
   '/dashboard/facebook/autoreply': typeof DashboardFacebookAutoreplyRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
+  '/dashboard/facebook/group-extraction': typeof DashboardFacebookGroupExtractionRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/history': typeof DashboardFacebookHistoryRoute
   '/dashboard/facebook/insights': typeof DashboardFacebookInsightsRoute
@@ -513,6 +522,7 @@ export interface FileRoutesById {
   '/dashboard/facebook/autoreply': typeof DashboardFacebookAutoreplyRoute
   '/dashboard/facebook/bot': typeof DashboardFacebookBotRoute
   '/dashboard/facebook/campaigns': typeof DashboardFacebookCampaignsRouteWithChildren
+  '/dashboard/facebook/group-extraction': typeof DashboardFacebookGroupExtractionRoute
   '/dashboard/facebook/groups': typeof DashboardFacebookGroupsRoute
   '/dashboard/facebook/history': typeof DashboardFacebookHistoryRoute
   '/dashboard/facebook/insights': typeof DashboardFacebookInsightsRoute
@@ -573,6 +583,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/autoreply'
     | '/dashboard/facebook/bot'
     | '/dashboard/facebook/campaigns'
+    | '/dashboard/facebook/group-extraction'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/history'
     | '/dashboard/facebook/insights'
@@ -630,6 +641,7 @@ export interface FileRouteTypes {
     | '/api/public/wa-webhook'
     | '/dashboard/facebook/autoreply'
     | '/dashboard/facebook/bot'
+    | '/dashboard/facebook/group-extraction'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/history'
     | '/dashboard/facebook/insights'
@@ -688,6 +700,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/autoreply'
     | '/dashboard/facebook/bot'
     | '/dashboard/facebook/campaigns'
+    | '/dashboard/facebook/group-extraction'
     | '/dashboard/facebook/groups'
     | '/dashboard/facebook/history'
     | '/dashboard/facebook/insights'
@@ -1025,6 +1038,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardFacebookGroupsRouteImport
       parentRoute: typeof DashboardFacebookRoute
     }
+    '/dashboard/facebook/group-extraction': {
+      id: '/dashboard/facebook/group-extraction'
+      path: '/group-extraction'
+      fullPath: '/dashboard/facebook/group-extraction'
+      preLoaderRoute: typeof DashboardFacebookGroupExtractionRouteImport
+      parentRoute: typeof DashboardFacebookRoute
+    }
     '/dashboard/facebook/campaigns': {
       id: '/dashboard/facebook/campaigns'
       path: '/campaigns'
@@ -1162,6 +1182,7 @@ interface DashboardFacebookRouteChildren {
   DashboardFacebookAutoreplyRoute: typeof DashboardFacebookAutoreplyRoute
   DashboardFacebookBotRoute: typeof DashboardFacebookBotRoute
   DashboardFacebookCampaignsRoute: typeof DashboardFacebookCampaignsRouteWithChildren
+  DashboardFacebookGroupExtractionRoute: typeof DashboardFacebookGroupExtractionRoute
   DashboardFacebookGroupsRoute: typeof DashboardFacebookGroupsRoute
   DashboardFacebookHistoryRoute: typeof DashboardFacebookHistoryRoute
   DashboardFacebookInsightsRoute: typeof DashboardFacebookInsightsRoute
@@ -1176,6 +1197,7 @@ const DashboardFacebookRouteChildren: DashboardFacebookRouteChildren = {
   DashboardFacebookAutoreplyRoute: DashboardFacebookAutoreplyRoute,
   DashboardFacebookBotRoute: DashboardFacebookBotRoute,
   DashboardFacebookCampaignsRoute: DashboardFacebookCampaignsRouteWithChildren,
+  DashboardFacebookGroupExtractionRoute: DashboardFacebookGroupExtractionRoute,
   DashboardFacebookGroupsRoute: DashboardFacebookGroupsRoute,
   DashboardFacebookHistoryRoute: DashboardFacebookHistoryRoute,
   DashboardFacebookInsightsRoute: DashboardFacebookInsightsRoute,
