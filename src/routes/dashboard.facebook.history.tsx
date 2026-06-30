@@ -121,6 +121,7 @@ function JobsHistoryPage() {
   const [previewSearch, setPreviewSearch] = useState("");
   const [previewPage, setPreviewPage] = useState(1);
   const [msgSelectedRecipients, setMsgSelectedRecipients] = useState<Set<string>>(new Set());
+  const [compactView, setCompactView] = useState(false);
   const PREVIEW_PAGE_SIZE = 25;
   const recipientKey = (e: { name?: string | null; phone?: string | null; profile?: string | null; row: { target?: string | null } }) =>
     `${(e.profile || e.row.target || "").toLowerCase()}::${(e.phone || "").toString().replace(/\D/g, "")}::${(e.name || "").toLowerCase()}`;
