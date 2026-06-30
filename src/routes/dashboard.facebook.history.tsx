@@ -97,7 +97,7 @@ function JobsHistoryPage() {
     cancelDone: "Job cancelled and worker stopped",
     results: "Results",
     download: "Download CSV",
-    types: { post_to_groups: "Post", extract_pages: "Pages", extract_commenters: "Commenters", extract_group_members: "Group Members", extract_page_audience: "Page Audience", deep_profile_scrape: "Deep Profile Scrape" },
+    types: { post_to_groups: "Post", extract_pages: "Pages", extract_commenters: "Commenters", extract_group_members: "Group Members", extract_page_audience: "Page Audience", deep_profile_scrape: "Deep Profile Scrape", send_messenger_dm: "Messenger DMs" },
     statuses: { pending: "Pending", running: "Running", completed: "Completed", failed: "Failed", cancelled: "Cancelled" },
   };
 
