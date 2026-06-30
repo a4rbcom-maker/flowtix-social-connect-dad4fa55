@@ -70,7 +70,8 @@ export function buildRow(input: CustomerRow & { user_id: string }) {
 }
 
 // ----- Column auto-detection -----
-const HEADER_HINTS: Record<keyof CustomerRow, string[]> = {
+type MappableField = Exclude<keyof CustomerRow, "id">;
+const HEADER_HINTS: Record<MappableField, string[]> = {
   full_name: ["name", "اسم", "الاسم", "full name", "client", "عميل"],
   phone: ["phone", "mobile", "tel", "موبايل", "رقم", "هاتف", "جوال", "تليفون", "whatsapp", "واتس"],
   email: ["email", "mail", "ايميل", "إيميل", "بريد"],
