@@ -226,14 +226,51 @@ function JobsHistoryPage() {
   const phoneCount = enrichedRows.filter((e) => !!e.phone).length;
   const profileCount = enrichedRows.filter((e) => !!(e.profile || e.row.target)).length;
 
-  const openMessenger = () => {
+  const openMessenger = async () => {
     if (!selected) return;
     const groupLabel = selected ? t.types[selected.job_type] : "";
     setMsgTitle(lang === "ar" ? `حملة - ${groupLabel}` : `Campaign - ${groupLabel}`);
     setMsgText("");
     setMsgPerHour(20);
+    setMsgImages([]);
     setMsgChannels({ whatsapp: phoneCount > 0, messenger: profileCount > 0 });
     setMsgOpen(true);
+    // Load active bot accounts (for multi-account rotation)
+    try {
+      const res = await call(listBotAccounts);
+      const accounts = (res?.accounts ?? []).filter((a: { status: string }) => a.status === "active");
+      setMsgAccounts(accounts);
+      const initial = new Set<string>();
+      if (selected.account_id && accounts.some((a: { id: string }) => a.id === selected.account_id)) initial.add(selected.account_id);
+      else if (accounts[0]) initial.add(accounts[0].id);
+      setMsgSelectedAccounts(initial);
+    } catch (_) { /* ignore */ }
+  };
+
+  const handleMsgImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (!user || files.length === 0) return;
+    if (msgImages.length + files.length > 10) {
+      toast.error(lang === "ar" ? "حد أقصى 10 صور" : "Max 10 images");
+      return;
+    }
+    setMsgUploading(true);
+    try {
+      const urls: string[] = [];
+      for (const file of files) {
+        if (file.size > 10 * 1024 * 1024) { toast.error(lang === "ar" ? `${file.name} أكبر من 10MB` : `${file.name} > 10MB`); continue; }
+        const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 60);
+        const path = `${user.id}/dm/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safe}`;
+        const { error } = await supabase.storage.from("fb-media").upload(path, file, { contentType: file.type, upsert: false });
+        if (error) { toast.error(error.message); continue; }
+        const { data: pub } = supabase.storage.from("fb-media").getPublicUrl(path);
+        urls.push(pub.publicUrl);
+      }
+      setMsgImages((prev) => [...prev, ...urls]);
+    } finally {
+      setMsgUploading(false);
+      if (e.target) e.target.value = "";
+    }
   };
 
   const launchMessaging = async () => {
