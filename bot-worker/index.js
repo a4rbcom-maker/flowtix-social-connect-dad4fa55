@@ -12,6 +12,7 @@ const { runExtractCommenters } = require("./actions/extract-commenters");
 const { runExtractGroupMembers } = require("./actions/extract-group-members");
 const { runExtractPageAudience } = require("./actions/extract-page-audience");
 const { runListMyGroups } = require("./actions/list-my-groups");
+const { runDeepProfileScrape } = require("./actions/deep-profile-scrape");
 const { ensureLogin } = require("./actions/login");
 
 const API = process.env.API_BASE_URL;
