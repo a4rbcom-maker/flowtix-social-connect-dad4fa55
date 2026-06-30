@@ -1693,26 +1693,72 @@ function BotAccountsPage() {
                   </p>
                   <p className="leading-relaxed">
                     {lang === "ar"
-                      ? "فيسبوك يحجب طلبات استخراج الجروبات القادمة من مراكز البيانات (Cloudflare/Workers). الكوكيز سليمة لكن قائمة الجروبات تحتاج متصفح حقيقي على IP منزلي عبر VPS Worker (المرحلة 4)."
-                      : "Facebook blocks group-list requests from datacenters (Cloudflare/Workers). Your cookies are valid, but reading the groups list needs a real browser on a residential IP via the VPS Worker (Phase 4)."}
+                  <p className="font-semibold mb-1">
+                    {lang === "ar" ? "لماذا لم تظهر الجروبات هنا؟" : "Why no groups here?"}
                   </p>
+                  <p className="leading-relaxed">
+                    {lang === "ar"
+                      ? "هذا الزر (اختبر الآن) يعمل من السيرفر، وفيسبوك يحجب طلبات الجروبات من مراكز البيانات. لكن الـ VPS Worker عندك يقدر يفتح حسابك في متصفح حقيقي ويجلب القائمة تلقائيًا — اضغط الزر بالأسفل."
+                      : "The Test button runs from the server, and Facebook blocks group-list calls from datacenters. Your VPS Worker can open the account in a real browser and fetch the list automatically — use the button below."}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm">
+                  <p className="font-semibold mb-2 text-foreground">
+                    {lang === "ar" ? "استخراج جروباتي تلقائيًا عبر الـ Worker" : "Auto-extract my groups via the Worker"}
+                  </p>
+                  <p className="text-muted-foreground leading-relaxed mb-3">
+                    {lang === "ar"
+                      ? "هيتم إنشاء مهمة باسم list_my_groups وينفّذها الـ Worker على IP منزلي خلال دقائق، وتظهر النتائج في سجل المهام."
+                      : "Creates a list_my_groups job that the Worker runs on a residential IP within minutes. Results appear in the jobs history."}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      disabled={listGroupsLoading || !groupsResult}
+                      onClick={async () => {
+                        if (!groupsResult) return;
+                        setListGroupsLoading(true);
+                        try {
+                          await listMyGroupsFn({ data: { accountId: groupsResult.accountId, max: 500 } });
+                          toast.success(
+                            lang === "ar"
+                              ? "تم إرسال المهمة للـ Worker — تابع التقدم من سجل المهام"
+                              : "Job sent to the Worker — track progress in jobs history",
+                          );
+                          setGroupsResult(null);
+                        } catch (e) {
+                          toast.error(String((e as Error).message || e));
+                        } finally {
+                          setListGroupsLoading(false);
+                        }
+                      }}
+                    >
+                      {listGroupsLoading && <Loader2 className="me-2 h-4 w-4 animate-spin" />}
+                      {lang === "ar" ? "ابدأ الاستخراج التلقائي" : "Start auto-extract"}
+                    </Button>
+                    <Button asChild size="sm" variant="outline">
+                      <Link to="/dashboard/facebook/history" onClick={() => setGroupsResult(null)}>
+                        {lang === "ar" ? "فتح سجل المهام" : "Open jobs history"}
+                      </Link>
+                    </Button>
+                  </div>
                 </div>
                 <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
                   <p className="font-semibold mb-2 text-foreground">
-                    {lang === "ar" ? "الحل الآن — أضف الجروبات يدويًا" : "Solution now — add groups manually"}
+                    {lang === "ar" ? "أو أضف الجروبات يدويًا" : "Or add groups manually"}
                   </p>
                   <ol className="list-decimal space-y-1 ps-5 text-muted-foreground leading-relaxed">
                     <li>{lang === "ar" ? "افتح صفحة «جروباتي المرتبطة»." : "Open \"My Linked Groups\" page."}</li>
                     <li>{lang === "ar" ? "الصق رابط الجروب أو معرّفه (Group ID)." : "Paste the group URL or its ID."}</li>
-                    <li>{lang === "ar" ? "سيتم استخدامها مباشرة في الحملات والإرسال." : "It will be used immediately in campaigns and posting."}</li>
                   </ol>
-                  <Button asChild size="sm" className="mt-3">
+                  <Button asChild size="sm" variant="ghost" className="mt-3">
                     <Link to="/dashboard/facebook/groups" onClick={() => setGroupsResult(null)}>
                       {lang === "ar" ? "إدارة الجروبات يدويًا" : "Manage groups manually"}
                     </Link>
                   </Button>
                 </div>
               </div>
+
             ) : (
 
               <ul className="divide-y divide-border/50">
