@@ -59,6 +59,7 @@ import { Route as ApiPublicWaWebhookRouteImport } from './routes/api/public/wa-w
 import { Route as ApiPublicWaClientRouteImport } from './routes/api/public/wa-client'
 import { Route as ApiPublicWaBridgeHealthRouteImport } from './routes/api/public/wa-bridge-health'
 import { Route as ApiPublicHealthRouteImport } from './routes/api/public/health'
+import { Route as ApiPublicFbPeopleIngestRouteImport } from './routes/api/public/fb-people-ingest'
 import { Route as DashboardFacebookCampaignsIndexRouteImport } from './routes/dashboard.facebook.campaigns.index'
 import { Route as DashboardFacebookCampaignsNewRouteImport } from './routes/dashboard.facebook.campaigns.new'
 import { Route as DashboardFacebookCampaignsIdRouteImport } from './routes/dashboard.facebook.campaigns.$id'
@@ -330,6 +331,11 @@ const ApiPublicHealthRoute = ApiPublicHealthRouteImport.update({
   path: '/api/public/health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicFbPeopleIngestRoute = ApiPublicFbPeopleIngestRouteImport.update({
+  id: '/api/public/fb-people-ingest',
+  path: '/api/public/fb-people-ingest',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardFacebookCampaignsIndexRoute =
   DashboardFacebookCampaignsIndexRouteImport.update({
     id: '/',
@@ -411,6 +417,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/rtl-test': typeof DashboardRtlTestRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
   '/admin/': typeof AdminIndexRoute
+  '/api/public/fb-people-ingest': typeof ApiPublicFbPeopleIngestRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/api/public/wa-bridge-health': typeof ApiPublicWaBridgeHealthRoute
   '/api/public/wa-client': typeof ApiPublicWaClientRoute
@@ -472,6 +479,7 @@ export interface FileRoutesByTo {
   '/dashboard/rtl-test': typeof DashboardRtlTestRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
   '/admin': typeof AdminIndexRoute
+  '/api/public/fb-people-ingest': typeof ApiPublicFbPeopleIngestRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/api/public/wa-bridge-health': typeof ApiPublicWaBridgeHealthRoute
   '/api/public/wa-client': typeof ApiPublicWaClientRoute
@@ -533,6 +541,7 @@ export interface FileRoutesById {
   '/dashboard/rtl-test': typeof DashboardRtlTestRoute
   '/dashboard/whatsapp': typeof DashboardWhatsappRouteWithChildren
   '/admin/': typeof AdminIndexRoute
+  '/api/public/fb-people-ingest': typeof ApiPublicFbPeopleIngestRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/api/public/wa-bridge-health': typeof ApiPublicWaBridgeHealthRoute
   '/api/public/wa-client': typeof ApiPublicWaClientRoute
@@ -596,6 +605,7 @@ export interface FileRouteTypes {
     | '/dashboard/rtl-test'
     | '/dashboard/whatsapp'
     | '/admin/'
+    | '/api/public/fb-people-ingest'
     | '/api/public/health'
     | '/api/public/wa-bridge-health'
     | '/api/public/wa-client'
@@ -657,6 +667,7 @@ export interface FileRouteTypes {
     | '/dashboard/rtl-test'
     | '/dashboard/whatsapp'
     | '/admin'
+    | '/api/public/fb-people-ingest'
     | '/api/public/health'
     | '/api/public/wa-bridge-health'
     | '/api/public/wa-client'
@@ -717,6 +728,7 @@ export interface FileRouteTypes {
     | '/dashboard/rtl-test'
     | '/dashboard/whatsapp'
     | '/admin/'
+    | '/api/public/fb-people-ingest'
     | '/api/public/health'
     | '/api/public/wa-bridge-health'
     | '/api/public/wa-client'
@@ -769,6 +781,7 @@ export interface RootRouteChildren {
   AdminUsersRoute: typeof AdminUsersRoute
   AdminWhatsappRoute: typeof AdminWhatsappRoute
   AdminIndexRoute: typeof AdminIndexRoute
+  ApiPublicFbPeopleIngestRoute: typeof ApiPublicFbPeopleIngestRoute
   ApiPublicHealthRoute: typeof ApiPublicHealthRoute
   ApiPublicWaBridgeHealthRoute: typeof ApiPublicWaBridgeHealthRoute
   ApiPublicWaClientRoute: typeof ApiPublicWaClientRoute
@@ -1132,6 +1145,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fb-people-ingest': {
+      id: '/api/public/fb-people-ingest'
+      path: '/api/public/fb-people-ingest'
+      fullPath: '/api/public/fb-people-ingest'
+      preLoaderRoute: typeof ApiPublicFbPeopleIngestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard/facebook/campaigns/': {
       id: '/dashboard/facebook/campaigns/'
       path: '/'
@@ -1331,6 +1351,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminUsersRoute: AdminUsersRoute,
   AdminWhatsappRoute: AdminWhatsappRoute,
   AdminIndexRoute: AdminIndexRoute,
+  ApiPublicFbPeopleIngestRoute: ApiPublicFbPeopleIngestRoute,
   ApiPublicHealthRoute: ApiPublicHealthRoute,
   ApiPublicWaBridgeHealthRoute: ApiPublicWaBridgeHealthRoute,
   ApiPublicWaClientRoute: ApiPublicWaClientRoute,

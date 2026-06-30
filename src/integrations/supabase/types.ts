@@ -1877,6 +1877,7 @@ export type Database = {
           work: string
         }[]
       }
+      fb_people_post_index: { Args: never; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
