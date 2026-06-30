@@ -341,6 +341,60 @@ function InboxPage() {
     [conversations, activeJid],
   );
 
+  // Notification beep via WebAudio (no asset needed, no autoplay issues once unlocked).
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioUnlockedRef = useRef(false);
+  const soundOnRef = useRef(soundOn);
+  useEffect(() => {
+    soundOnRef.current = soundOn;
+  }, [soundOn]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const unlock = () => {
+      try {
+        const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        if (!Ctx) return;
+        if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
+        if (audioCtxRef.current.state === "suspended") void audioCtxRef.current.resume();
+        audioUnlockedRef.current = true;
+      } catch {
+        /* ignore */
+      }
+    };
+    const events: Array<keyof WindowEventMap> = ["pointerdown", "keydown", "touchstart"];
+    events.forEach((e) => window.addEventListener(e, unlock, { once: true, passive: true }));
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, unlock));
+    };
+  }, []);
+
+  const playBeep = () => {
+    if (!soundOnRef.current) return;
+    const ctx = audioCtxRef.current;
+    if (!ctx || !audioUnlockedRef.current) return;
+    try {
+      if (ctx.state === "suspended") void ctx.resume();
+      const now = ctx.currentTime;
+      const playTone = (freq: number, start: number, duration: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, now + start);
+        gain.gain.exponentialRampToValueAtTime(0.25, now + start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + start + duration);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(now + start);
+        osc.stop(now + start + duration + 0.02);
+      };
+      playTone(880, 0, 0.15);
+      playTone(1175, 0.16, 0.18);
+    } catch {
+      /* ignore */
+    }
+  };
+
   const toggleSound = () => {
     setSoundOn((p) => {
       const next = !p;
@@ -349,9 +403,11 @@ function InboxPage() {
       } catch {
         /* ignore */
       }
+      if (next) playBeep();
       return next;
     });
   };
+
 
   const Sidebar = (
     <aside dir={isAr ? "rtl" : "ltr"} className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card/60 backdrop-blur-sm">
