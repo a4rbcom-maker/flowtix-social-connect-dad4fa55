@@ -34,6 +34,7 @@ const BATCH = Number(args.batch || 1500);
 const START_ID = Number(args.start || 1);
 const END_ID = args.end ? Number(args.end) : Infinity;
 const CONCURRENCY = Number(args.concurrency || 3);
+const CORRUPT_CHUNK = Number(args["corrupt-chunk"] || 100);
 
 const INGEST_URL = env.FB_INGEST_URL;
 const INGEST_SECRET = env.FB_INGEST_SECRET;
@@ -164,18 +165,23 @@ try {
     if (r && r.m) maxId = Math.min(END_ID, r.m);
   } catch {}
 }
-console.log(`[import] country=${COUNTRY} sqlite=${SQLITE_PATH} ids=${START_ID}..${maxId} batch=${BATCH} concurrency=${CONCURRENCY}`);
+console.log(
+  `[import] country=${COUNTRY} sqlite=${SQLITE_PATH} ids=${START_ID}..${maxId} batch=${BATCH} concurrency=${CONCURRENCY} corrupt_chunk=${CORRUPT_CHUNK}`,
+);
 
 function readRange(lo, hi) {
   try {
-    return sqlite.prepare("SELECT * FROM data WHERE id BETWEEN ? AND ?").all(lo, hi);
+    return { rows: sqlite.prepare("SELECT * FROM data WHERE id BETWEEN ? AND ?").all(lo, hi), skipped: 0 };
   } catch (err) {
-    if (lo >= hi) {
-      console.warn(`\n  [skip] id=${lo} corrupt: ${err.message}`);
-      return [];
+    if (hi - lo + 1 <= CORRUPT_CHUNK) {
+      const count = hi - lo + 1;
+      console.warn(`\n  [skip] ids=${lo}..${hi} (${count}) corrupt: ${err.message}`);
+      return { rows: [], skipped: count };
     }
     const mid = Math.floor((lo + hi) / 2);
-    return readRange(lo, mid).concat(readRange(mid + 1, hi));
+    const left = readRange(lo, mid);
+    const right = readRange(mid + 1, hi);
+    return { rows: left.rows.concat(right.rows), skipped: left.skipped + right.skipped };
   }
 }
 
@@ -203,9 +209,9 @@ async function dispatch(rows, hi) {
 
 for (let lo = START_ID; lo <= maxId; lo += BATCH) {
   const hi = Math.min(lo + BATCH - 1, maxId);
-  const raw = readRange(lo, hi);
+  const { rows: raw, skipped } = readRange(lo, hi);
+  totalSkipped += skipped;
   if (raw.length === 0) {
-    totalSkipped += hi - lo + 1;
     continue;
   }
   const rows = raw.map((r) => toRow(COUNTRY, r));
