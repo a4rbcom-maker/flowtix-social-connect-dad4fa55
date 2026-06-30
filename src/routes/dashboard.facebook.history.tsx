@@ -306,6 +306,12 @@ function JobsHistoryPage() {
     setMsgPerHour(20);
     setMsgImages([]);
     setMsgChannels({ whatsapp: phoneCount > 0, messenger: profileCount > 0 });
+    setMsgFilterCity("");
+    setMsgFilterKeyword("");
+    setMsgRequirePhone(false);
+    setMsgRequireProfile(false);
+    setMsgDedupe(true);
+    setMsgLimit(500);
     setMsgOpen(true);
     // Load active bot accounts (for multi-account rotation)
     try {
