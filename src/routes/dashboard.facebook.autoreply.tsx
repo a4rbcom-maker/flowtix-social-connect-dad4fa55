@@ -353,7 +353,7 @@ function RuleDialog({ ar, pages, rule, onDone }: { ar: boolean; pages: PageRow[]
         <DialogTitle>{rule ? (ar ? "تعديل القاعدة" : "Edit rule") : (ar ? "قاعدة جديدة" : "New rule")}</DialogTitle>
       </DialogHeader>
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label>{ar ? "اسم القاعدة" : "Rule name"}</Label>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}/>
@@ -367,7 +367,7 @@ function RuleDialog({ ar, pages, rule, onDone }: { ar: boolean; pages: PageRow[]
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label>{ar ? "النطاق" : "Scope"}</Label>
             <Select value={form.scope} onValueChange={(v) => setForm({ ...form, scope: v as any })}>
@@ -452,7 +452,7 @@ function RuleDialog({ ar, pages, rule, onDone }: { ar: boolean; pages: PageRow[]
 
         <details className="border rounded-lg p-3">
           <summary className="cursor-pointer font-medium">{ar ? "خيارات متقدمة" : "Advanced"}</summary>
-          <div className="grid grid-cols-2 gap-3 mt-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
             <div className="flex items-center justify-between col-span-2"><Label>{ar ? "تجاهل تعليقات الإدارة" : "Ignore admin comments"}</Label><Switch checked={form.ignore_admin_comments} onCheckedChange={(v) => setForm({ ...form, ignore_admin_comments: v })}/></div>
             <div className="flex items-center justify-between col-span-2"><Label>{ar ? "عدم تكرار الرد لنفس الشخص" : "Dedupe per user"}</Label><Switch checked={form.dedupe_per_user} onCheckedChange={(v) => setForm({ ...form, dedupe_per_user: v })}/></div>
             <div className="flex items-center justify-between col-span-2"><Label>{ar ? "كشف السبام" : "Detect spam"}</Label><Switch checked={form.detect_spam} onCheckedChange={(v) => setForm({ ...form, detect_spam: v })}/></div>
