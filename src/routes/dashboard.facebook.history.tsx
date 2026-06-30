@@ -94,13 +94,19 @@ function JobsHistoryPage() {
 
   useEffect(() => { if (user) load(); }, [user]);
 
-  // Realtime: subscribe ONLY to this user's jobs (no client polling)
+  // Realtime: merge changes into local state to avoid full reloads (which feel like a page refresh)
   useEffect(() => {
     if (!user) return;
     const ch = supabase
       .channel(`fb-jobs-${user.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "fb_jobs", filter: `user_id=eq.${user.id}` }, () => {
-        load();
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "fb_jobs", filter: `user_id=eq.${user.id}` }, (payload) => {
+        setJobs((prev) => [payload.new as JobRow, ...prev.filter((j) => j.id !== (payload.new as JobRow).id)]);
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "fb_jobs", filter: `user_id=eq.${user.id}` }, (payload) => {
+        setJobs((prev) => prev.map((j) => (j.id === (payload.new as JobRow).id ? { ...j, ...(payload.new as JobRow) } : j)));
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "fb_jobs", filter: `user_id=eq.${user.id}` }, (payload) => {
+        setJobs((prev) => prev.filter((j) => j.id !== (payload.old as JobRow).id));
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
