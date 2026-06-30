@@ -600,6 +600,37 @@ export const createExtractPageAudienceJob = createServerFn({ method: "POST" })
     return row;
   });
 
+// ---------- createListMyGroupsJob ----------
+// Asks the VPS Worker to open the joined-groups tab in a real browser on a
+// residential IP and scrape the list of groups the account belongs to.
+export const createListMyGroupsJob = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        accountId: z.string().uuid(),
+        max: z.number().int().min(20).max(2000).default(500),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: row, error } = await supabase
+      .from("fb_jobs")
+      .insert({
+        user_id: userId,
+        account_id: data.accountId,
+        job_type: "list_my_groups",
+        payload: { max: data.max },
+        scheduled_at: new Date().toISOString(),
+        status: "pending",
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    return row;
+  });
+
 // ---------- createDeepProfileScrapeJob ----------
 // Visits each Facebook profile URL and scrapes public Bio / intro / declared city / work.
 export const createDeepProfileScrapeJob = createServerFn({ method: "POST" })
