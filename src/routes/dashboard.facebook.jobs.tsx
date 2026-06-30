@@ -57,7 +57,7 @@ function JobsHubPage() {
   const [postUrl, setPostUrl] = useState("");
   // Extract group members
   const [groupMembersId, setGroupMembersId] = useState("");
-  const [groupMaxMembers, setGroupMaxMembers] = useState(1500);
+  const [groupMaxMembers, setGroupMaxMembers] = useState(200);
   const [groupFilterKeywords, setGroupFilterKeywords] = useState("");
   // Extract page audience
   const [pageAudienceId, setPageAudienceId] = useState("");
@@ -97,7 +97,7 @@ function JobsHubPage() {
     gmMax: "الحد الأقصى للأعضاء",
     gmKeywords: "كلمات فلترة (اختياري، مفصولة بفاصلة)",
     gmKeywordsPh: "مصر, قاهرة, ملابس",
-    gmHint: "بيسحب الأعضاء الظاهرين فعلياً (حد أقصى 5000). يتطلب أن تكون عضو في الجروب.",
+    gmHint: "بيسحب الأعضاء الظاهرين فعلياً (حد أقصى 200 لحماية حسابك من الحظر). يتطلب أن تكون عضو في الجروب.",
     paPage: "ID الصفحة أو رابطها",
     paPagePh: "pageusername أو 100012345",
     paMax: "الحد الأقصى",
@@ -137,7 +137,7 @@ function JobsHubPage() {
     gmMax: "Max members",
     gmKeywords: "Filter keywords (optional, comma-separated)",
     gmKeywordsPh: "egypt, cairo, fashion",
-    gmHint: "Extracts visible members only (max 5000). You must be a group member.",
+    gmHint: "Extracts visible members only (max 200 to protect your account from blocks). You must be a group member.",
     paPage: "Page ID or URL",
     paPagePh: "pageusername or 100012345",
     paMax: "Max items",
@@ -383,7 +383,7 @@ function JobsHubPage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label className={`block ${lang === "ar" ? "text-right" : "text-left"}`}>{t.gmMax}</Label>
-                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className={lang === "ar" ? "text-right" : "text-left"} type="number" min={50} max={5000} step={50} value={groupMaxMembers} onChange={(e) => setGroupMaxMembers(Number(e.target.value))} />
+                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className={lang === "ar" ? "text-right" : "text-left"} type="number" min={50} max={200} step={50} value={groupMaxMembers} onChange={(e) => setGroupMaxMembers(Number(e.target.value))} />
                 </div>
                 <div className="space-y-2">
                   <Label className={`block ${lang === "ar" ? "text-right" : "text-left"}`}>{t.gmKeywords}</Label>
