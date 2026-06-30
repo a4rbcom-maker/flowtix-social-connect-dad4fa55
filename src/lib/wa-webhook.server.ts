@@ -335,6 +335,133 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     return new Response("ok");
   }
 
+  // ── HISTORY SYNC: chats catalogue ──
+  if (event === "history_chats") {
+    const chats = Array.isArray(data.chats) ? (data.chats as Record<string, unknown>[]) : [];
+    let upserted = 0;
+    for (const c of chats) {
+      const rawJid = pickStr(c, "rawJid", "jid", "id");
+      const phone = digits(pickStr(c, "jid") ?? rawJid);
+      const remoteJid =
+        rawJid && (rawJid.includes("@") ? rawJid : `${rawJid}@s.whatsapp.net`) ||
+        (phone ? `${phone}@s.whatsapp.net` : null);
+      if (!remoteJid) continue;
+      const isGroup = Boolean(c.isGroup) || String(remoteJid).endsWith("@g.us");
+      const name = pickStr(c, "name", "subject") ?? null;
+      const lastTsRaw = c.lastMessageTimestamp;
+      const lastTs =
+        typeof lastTsRaw === "number"
+          ? new Date(lastTsRaw * 1000).toISOString()
+          : typeof lastTsRaw === "string" && lastTsRaw
+            ? new Date(Number(lastTsRaw) * 1000).toISOString()
+            : undefined;
+      const lastText = pickStr(c, "lastMessage") ?? null;
+      const cid = await upsertConversationFromMessage({
+        userId,
+        sessionId,
+        remoteJid,
+        contactName: name,
+        contactPhone: isGroup ? null : phone || null,
+        text: lastText,
+        direction: "in",
+        messageAt: lastTs,
+        historical: true,
+      });
+      if (cid) upserted++;
+    }
+    return new Response(JSON.stringify({ ok: true, historyChats: upserted }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // ── HISTORY SYNC: backfilled messages ──
+  if (event === "history_messages") {
+    const msgs = Array.isArray(data.messages) ? (data.messages as Record<string, unknown>[]) : [];
+    let saved = 0;
+    let dup = 0;
+    for (const h of msgs) {
+      const providerMessageId = pickStr(h, "id") ?? null;
+      const phone = digits(pickStr(h, "from") ?? pickStr(h, "to"));
+      const rawJid = pickStr(h, "rawJid") ?? null;
+      const isGroup = Boolean(h.isGroup) || (rawJid?.endsWith("@g.us") ?? false);
+      const remoteJid =
+        rawJid ||
+        (phone ? `${phone}${isGroup ? "@g.us" : "@s.whatsapp.net"}` : null);
+      if (!remoteJid) continue;
+      const fromMe = Boolean(h.fromMe);
+      const msgType = (pickStr(h, "type") || "text").toLowerCase();
+      const text = pickStr(h, "body") ?? null;
+      const tsRaw = h.timestamp;
+      const waTimestamp =
+        typeof tsRaw === "number"
+          ? new Date(tsRaw * 1000).toISOString()
+          : typeof tsRaw === "string" && tsRaw
+            ? new Date(Number(tsRaw) * 1000).toISOString()
+            : new Date().toISOString();
+      const contactName = pickStr(h, "pushName", "senderName", "notifyName") ?? null;
+      const senderPhone = digits(pickStr(h, "sender", "participant")) || phone;
+
+      if (providerMessageId) {
+        const { data: existing } = await supabaseAdmin
+          .from("wa_messages")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("session_id", sessionId)
+          .eq("provider_message_id", providerMessageId)
+          .maybeSingle();
+        if (existing?.id) {
+          dup++;
+          continue;
+        }
+      }
+
+      const { error: insErr } = await supabaseAdmin.from("wa_messages").insert({
+        user_id: userId,
+        session_id: sessionId,
+        direction: fromMe ? "out" : "in",
+        remote_jid: remoteJid,
+        from_phone: fromMe ? null : (isGroup ? senderPhone || null : phone || null),
+        to_phone: fromMe ? (phone || null) : null,
+        msg_type: msgType,
+        text_body: text,
+        media_url: null,
+        status: fromMe ? "sent" : "received",
+        provider_message_id: providerMessageId,
+        wa_timestamp: waTimestamp,
+        raw: {
+          ...h,
+          is_historical: true,
+          normalizedRemoteJid: remoteJid,
+          normalizedWaTimestamp: waTimestamp,
+        } as never,
+      });
+      if (insErr) {
+        console.error("[wa-webhook] history_messages insert failed:", insErr.message);
+        continue;
+      }
+      saved++;
+
+      await upsertConversationFromMessage({
+        userId,
+        sessionId,
+        remoteJid,
+        contactName,
+        contactPhone: isGroup ? null : phone || null,
+        text: text ?? (msgType !== "text" ? `[${msgType}]` : null),
+        direction: fromMe ? "out" : "in",
+        messageAt: waTimestamp,
+        historical: true,
+      });
+    }
+    return new Response(JSON.stringify({ ok: true, historyMessages: saved, duplicates: dup }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+
+
   const statusUpdates = await updateMessageStatuses(userId, sessionId, payload);
 
   // ── inbound/outbound messages ──
