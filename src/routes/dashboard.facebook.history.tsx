@@ -737,10 +737,10 @@ function JobsHistoryPage() {
                 <tbody className="divide-y divide-border/50">
                   {groupRows.map((g) => (
                     <tr key={g.row.id}>
-                      <td className="px-3 py-2 font-medium">{g.name}</td>
-                      <td className="px-3 py-2 font-mono">{g.id || "—"}</td>
-                      <td className="px-3 py-2">
-                        {g.url ? <a href={g.url} target="_blank" rel="noreferrer" className="text-primary hover:underline">↗</a> : "—"}
+                      <td className="px-3 py-2 font-medium text-start">{g.name}</td>
+                      <td className="px-3 py-2 font-mono text-start"><bdi dir="ltr">{g.id || "—"}</bdi></td>
+                      <td className="px-3 py-2 text-start">
+                        {g.url ? <bdi dir="ltr"><a href={g.url} target="_blank" rel="noreferrer" className="text-primary hover:underline">↗</a></bdi> : "—"}
                       </td>
                     </tr>
                   ))}
