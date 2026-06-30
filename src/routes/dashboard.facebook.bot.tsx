@@ -1596,7 +1596,7 @@ function BotAccountsPage() {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t.addTitle}</DialogTitle>
           </DialogHeader>
