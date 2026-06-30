@@ -60,11 +60,13 @@ function AutoReplyPage() {
         </div>
 
         <Tabs defaultValue="rules" className="space-y-4" dir={ar ? "rtl" : "ltr"}>
-          <TabsList className={ar ? "flex-row-reverse" : ""}>
-            <TabsTrigger value="rules"><Sparkles className="w-4 h-4 me-2"/>{ar ? "القواعد" : "Rules"}</TabsTrigger>
-            <TabsTrigger value="pages"><Settings className="w-4 h-4 me-2"/>{ar ? "الصفحات المربوطة" : "Connected pages"}</TabsTrigger>
-            <TabsTrigger value="log"><Activity className="w-4 h-4 me-2"/>{ar ? "السجل" : "Log"}</TabsTrigger>
-          </TabsList>
+          <div className={`flex w-full ${ar ? "justify-end" : "justify-start"}`}>
+            <TabsList className={ar ? "flex-row-reverse" : ""}>
+              <TabsTrigger value="rules"><Sparkles className="w-4 h-4 me-2"/>{ar ? "القواعد" : "Rules"}</TabsTrigger>
+              <TabsTrigger value="pages"><Settings className="w-4 h-4 me-2"/>{ar ? "الصفحات المربوطة" : "Connected pages"}</TabsTrigger>
+              <TabsTrigger value="log"><Activity className="w-4 h-4 me-2"/>{ar ? "السجل" : "Log"}</TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="rules"><RulesTab ar={ar} /></TabsContent>
           <TabsContent value="pages"><PagesTab ar={ar} /></TabsContent>
@@ -93,7 +95,7 @@ function PagesTab({ ar }: { ar: boolean }) {
 
   return (
     <Card dir={ar ? "rtl" : "ltr"}>
-      <CardHeader className="flex flex-row items-center justify-between gap-3">
+      <CardHeader className={`flex flex-row items-center justify-between gap-3 ${ar ? "flex-row-reverse" : ""}`}>
         <div className={ar ? "text-right" : "text-left"}>
           <CardTitle>{ar ? "الصفحات المربوطة" : "Connected pages"}</CardTitle>
           <CardDescription>{ar ? "أضف صفحات فيسبوك ترغب في تشغيل الرد التلقائي عليها." : "Add Facebook pages for auto-reply."}</CardDescription>
@@ -240,7 +242,7 @@ function RulesTab({ ar }: { ar: boolean }) {
 
   return (
     <Card dir={ar ? "rtl" : "ltr"}>
-      <CardHeader className="flex flex-row items-center justify-between gap-3">
+      <CardHeader className={`flex flex-row items-center justify-between gap-3 ${ar ? "flex-row-reverse" : ""}`}>
         <div className={ar ? "text-right" : "text-left"}>
           <CardTitle>{ar ? "قواعد الرد التلقائي" : "Auto-reply rules"}</CardTitle>
           <CardDescription>{ar ? "كل قاعدة تطابق التعليقات وفقاً للنطاق والكلمات." : "Each rule matches comments by scope and keywords."}</CardDescription>
