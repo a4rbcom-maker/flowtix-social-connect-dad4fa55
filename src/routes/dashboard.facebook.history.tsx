@@ -804,45 +804,20 @@ function JobsHistoryPage() {
               const succ = results.filter((r) => r.status === "success").length;
               const fail = results.filter((r) => r.status === "failed").length;
               const skip = results.filter((r) => r.status === "skipped").length;
-              const classify = (err: string | null) => {
-                if (!err) return "sent" as const;
-                const e = err.toLowerCase();
-                if (e.includes("recipient_privacy") || e.includes("message button not visible") || e.includes("cannot open dm") || e.includes("closed dms") || e.includes("not friends")) return "privacy" as const;
-                if (e.includes("account_rate_limit") || e.includes("temporarily limited") || e.includes("action blocked")) return "limited" as const;
-                if (e.includes("session")) return "session" as const;
-                if (e.includes("composer") || e.includes("thread_not_available") || e.includes("profile_message_button_missing")) return "unavailable" as const;
-                if (e.includes("blocked") || e.includes("can't message")) return "blocked" as const;
-                return "unknown" as const;
-              };
-              const friendly = (err: string | null): { title: string; hint: string } => {
-                const kind = classify(err);
-                if (kind === "sent") return { title: lang === "ar" ? "تم الإرسال بنجاح" : "Delivered successfully", hint: lang === "ar" ? "وصلت الرسالة لهذا المستلم." : "The message was sent to this recipient." };
-                if (kind === "privacy") return { title: lang === "ar" ? "المستلم قافل رسائل الغرباء" : "Recipient blocks non-friend DMs", hint: lang === "ar" ? "ماسنجر لا يسمح بإرسال DM لهذا الشخص إلا لو قبل الرسائل أو كان صديقاً للحساب." : "Messenger only allows this if the recipient accepts message requests or is already connected." };
-                if (kind === "limited") return { title: lang === "ar" ? "الحساب اتقيّد مؤقتاً من فيسبوك" : "Account temporarily limited", hint: lang === "ar" ? "قلّل السرعة واستخدم حساباً أقدم/أدفأ قبل استئناف الإرسال." : "Lower the send rate and use an older warmed-up account before resuming." };
-                if (kind === "session") return { title: lang === "ar" ? "جلسة الحساب انتهت" : "Account session expired", hint: lang === "ar" ? "أعد ربط حساب فيسبوك من صفحة حسابات البوت ثم أعد المهمة." : "Reconnect the Facebook bot account, then retry the job." };
-                if (kind === "unavailable") return { title: lang === "ar" ? "لم يتم فتح محادثة ماسنجر" : "Messenger chat unavailable", hint: lang === "ar" ? "الرابط ليس بروفايل قابل للمراسلة أو زر الرسائل غير ظاهر لهذا الحساب." : "The target is not a messageable profile or the Message button is hidden." };
-                if (kind === "blocked") return { title: lang === "ar" ? "فيسبوك منع هذه الرسالة" : "Facebook blocked this DM", hint: lang === "ar" ? "غالباً بسبب قيود خصوصية أو حماية من الإرسال المتكرر." : "Usually caused by recipient privacy or anti-spam limits." };
-                return { title: err || (lang === "ar" ? "سبب غير معروف" : "Unknown reason"), hint: lang === "ar" ? "راجع تفاصيل السجل الخام إذا تكرر نفس السبب." : "Review raw logs if this reason repeats." };
-              };
-              const extractId = (url: string | null) => {
-                if (!url) return null;
-                const m = url.match(/(?:user\/|profile\.php\?id=|messages\/t\/|m\.me\/)(\d{5,})/) || url.match(/^(\d{5,})$/);
-                return m ? m[1] : null;
-              };
-              const topFailure = results.find((r) => r.status === "failed")?.error ?? null;
-              const topMessage = friendly(topFailure);
+              const topFailure = results.find((r) => r.status === "failed");
+              const topMessage = messengerFriendlyReason(topFailure?.error ?? null, topFailure?.status, lang);
               return (
                 <div className="space-y-4">
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-lg border bg-muted/30 p-3">
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <div className="rounded-lg border bg-primary/5 p-3 text-start">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground"><CheckCircle2 className="h-4 w-4 text-primary" />{lang === "ar" ? "نجح" : "Sent"}</div>
                       <div className="mt-1 text-2xl font-bold tabular-nums">{succ}</div>
                     </div>
-                    <div className="rounded-lg border bg-destructive/5 p-3">
+                    <div className="rounded-lg border bg-destructive/5 p-3 text-start">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground"><XCircle className="h-4 w-4 text-destructive" />{lang === "ar" ? "فشل" : "Failed"}</div>
                       <div className="mt-1 text-2xl font-bold tabular-nums text-destructive">{fail}</div>
                     </div>
-                    <div className="rounded-lg border bg-muted/30 p-3">
+                    <div className="rounded-lg border bg-muted/30 p-3 text-start">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground"><MessageCircle className="h-4 w-4 text-primary" />{lang === "ar" ? "الإجمالي" : "Total"}</div>
                       <div className="mt-1 text-2xl font-bold tabular-nums">{results.length}</div>
                       {skip > 0 && <div className="mt-1 text-xs text-muted-foreground">{lang === "ar" ? `متخطّى: ${skip}` : `Skipped: ${skip}`}</div>}
@@ -859,27 +834,27 @@ function JobsHistoryPage() {
                     </div>
                   )}
 
-                  <div className="max-h-[58vh] space-y-2 overflow-y-auto pe-1">
+                  <div className="space-y-2">
                     {results.map((r, i) => {
                       const d = (r.data ?? {}) as { name?: string | null };
                       const name = d.name?.trim() || (lang === "ar" ? "بدون اسم" : "Unknown");
-                      const id = extractId(r.target);
-                      const profileUrl = id ? `https://www.facebook.com/profile.php?id=${id}` : r.target;
+                      const id = extractMessengerTargetId(r.target);
+                      const profileUrl = messengerProfileUrl(r.target);
                       const ok = r.status === "success";
-                      const msg = friendly(r.error);
+                      const msg = messengerFriendlyReason(r.error, r.status, lang);
                       return (
                         <div key={r.id} className={`rounded-lg border p-3 ${ok ? "bg-primary/[0.03]" : r.status === "failed" ? "bg-destructive/[0.03]" : "bg-muted/20"}`}>
-                          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-                            <div className="min-w-0 space-y-1 text-start">
+                          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                            <div className="min-w-0 space-y-2 text-start">
                               <div className="flex min-w-0 flex-wrap items-center gap-2">
                                 <span className="rounded-md bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">#{i + 1}</span>
-                                <span className="min-w-0 truncate font-semibold">{name}</span>
+                                <span className="min-w-0 break-words font-semibold">{name}</span>
                               </div>
-                              <div className="text-sm font-medium">{msg.title}</div>
+                              <div className="text-sm font-semibold">{msg.title}</div>
                               <div className="text-xs leading-relaxed text-muted-foreground">{msg.hint}</div>
-                              {r.error && <div className="mt-2 rounded-md bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground"><bdi dir="ltr">{r.error}</bdi></div>}
+                              {!ok && <div className="inline-flex rounded-md bg-muted/70 px-2 py-1 text-[11px] text-muted-foreground">{lang === "ar" ? "كود السبب" : "Reason code"}: <bdi dir="ltr" className="ms-1">{msg.code}</bdi></div>}
                             </div>
-                            <div className="flex shrink-0 flex-col items-end gap-2">
+                            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                               {ok ? (
                                 <Badge className="border-primary/30 bg-primary/10 text-primary" variant="outline"><CheckCircle2 className="me-1 h-3 w-3" />{lang === "ar" ? "نجح" : "Sent"}</Badge>
                               ) : r.status === "failed" ? (
@@ -891,7 +866,7 @@ function JobsHistoryPage() {
                                 <Button size="sm" variant="outline" asChild className="h-8 gap-1.5">
                                   <a href={profileUrl} target="_blank" rel="noreferrer">
                                     <ExternalLink className="h-3.5 w-3.5" />
-                                    <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
+                                    <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح البروفايل" : "Open")}</bdi>
                                   </a>
                                 </Button>
                               )}
