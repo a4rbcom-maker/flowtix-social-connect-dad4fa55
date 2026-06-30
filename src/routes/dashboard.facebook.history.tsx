@@ -345,11 +345,23 @@ function JobsHistoryPage() {
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{new Date(j.created_at).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</td>
                       <td className="px-4 py-3 text-end">
-                        {(j.status === "pending" || j.status === "running") && (
-                          <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setCancelTarget(j); }}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        )}
+                        <div className="flex items-center justify-end gap-1">
+                          {j.status === "completed" && (j.processed_items > 0) && ["extract_commenters","extract_group_members","extract_page_audience","deep_profile_scrape"].includes(j.job_type) && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              title={lang === "ar" ? "إرسال رسائل" : "Send messages"}
+                              onClick={(e) => { e.stopPropagation(); openDetails(j).then(() => openMessenger()); }}
+                            >
+                              <Send className="h-4 w-4 text-primary" />
+                            </Button>
+                          )}
+                          {(j.status === "pending" || j.status === "running") && (
+                            <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setCancelTarget(j); }}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
