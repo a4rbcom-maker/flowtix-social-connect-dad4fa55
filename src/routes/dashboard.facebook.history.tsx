@@ -51,6 +51,8 @@ function JobsHistoryPage() {
   const [selected, setSelected] = useState<JobRow | null>(null);
   const [results, setResults] = useState<JobResult[]>([]);
   const [resultsLoading, setResultsLoading] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<JobRow | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   const t = lang === "ar" ? {
     title: "سجل المهام",
