@@ -46,6 +46,47 @@ type JobRow = {
 
 type JobResult = { id: string; target: string | null; status: "success" | "failed" | "skipped"; data: unknown; error: string | null; created_at: string };
 
+type MessengerResultStatus = JobResult["status"];
+type MessengerFailureKind = "sent" | "privacy" | "limited" | "session" | "noMessageButton" | "unavailable" | "blocked" | "invalidTarget" | "unknown";
+
+const messengerFailureKind = (err: string | null, status?: MessengerResultStatus): MessengerFailureKind => {
+  if (status === "success" || (!err && status !== "failed")) return "sent";
+  const e = (err ?? "").toLowerCase();
+  if (e.includes("session") || e.includes("checkpoint") || e.includes("login")) return "session";
+  if (e.includes("account_rate_limit") || e.includes("temporarily limited") || e.includes("action blocked") || e.includes("restricted")) return "limited";
+  if (e.includes("profile_message_button_missing") || e.includes("visible message button") || e.includes("message button missing")) return "noMessageButton";
+  if (e.includes("recipient_privacy") || e.includes("closed dms") || e.includes("not friends") || e.includes("can't message") || e.includes("cannot message")) return "privacy";
+  if (e.includes("no_numeric_id") || e.includes("no_profile_url") || e.includes("not a valid profile")) return "invalidTarget";
+  if (e.includes("composer") || e.includes("thread_not_available") || e.includes("messenger_nav_failed") || e.includes("profile_nav_failed")) return "unavailable";
+  if (e.includes("blocked") || e.includes("you can no longer send messages")) return "blocked";
+  return "unknown";
+};
+
+const messengerFriendlyReason = (err: string | null, status: MessengerResultStatus | undefined, lang: string): { title: string; hint: string; code: string } => {
+  const ar = lang === "ar";
+  const kind = messengerFailureKind(err, status);
+  if (kind === "sent") return { title: ar ? "تم الإرسال بنجاح" : "Delivered successfully", hint: ar ? "وصلت الرسالة لهذا المستلم." : "The message was sent to this recipient.", code: "SENT" };
+  if (kind === "noMessageButton") return { title: ar ? "لا يوجد زر مراسلة ظاهر" : "No visible message button", hint: ar ? "فيسبوك لا يعرض زر الرسائل لهذا الشخص؛ غالباً بسبب إعدادات الخصوصية أو لأن الحساب ليس صديقاً أو لا يقبل رسائل الغرباء." : "Facebook is not showing a Message button for this person, usually because of privacy settings or non-friend DM restrictions.", code: "NO_MESSAGE_BUTTON" };
+  if (kind === "privacy") return { title: ar ? "المستلم لا يقبل رسائل من الغرباء" : "Recipient blocks non-friend DMs", hint: ar ? "الرسالة لم تُرسل لأن إعدادات ماسنجر عند المستلم تمنع طلبات الرسائل من هذا الحساب." : "The recipient's Messenger privacy settings blocked this message request.", code: "RECIPIENT_PRIVACY" };
+  if (kind === "limited") return { title: ar ? "حساب الإرسال مقيّد مؤقتاً" : "Sending account temporarily limited", hint: ar ? "فيسبوك قيّد الحساب مؤقتاً. قلّل معدل الإرسال واستخدم حساباً أقدم قبل إعادة المحاولة." : "Facebook temporarily limited this account. Lower the send rate and retry with a warmed-up account.", code: "ACCOUNT_LIMIT" };
+  if (kind === "session") return { title: ar ? "جلسة حساب فيسبوك انتهت" : "Facebook session expired", hint: ar ? "أعد ربط حساب فيسبوك من صفحة حسابات البوت ثم شغّل المهمة مرة أخرى." : "Reconnect the Facebook bot account, then run the job again.", code: "SESSION_EXPIRED" };
+  if (kind === "invalidTarget") return { title: ar ? "الرابط ليس بروفايل قابل للمراسلة" : "Target is not a messageable profile", hint: ar ? "تم استبعاد الرابط لأنه لا يحتوي على معرف مستخدم فيسبوك يمكن فتح محادثة ماسنجر له." : "The link does not contain a Facebook user ID that can be opened in Messenger.", code: "INVALID_TARGET" };
+  if (kind === "unavailable") return { title: ar ? "تعذر فتح محادثة ماسنجر" : "Messenger chat unavailable", hint: ar ? "لم تظهر خانة كتابة الرسالة بعد فتح المحادثة؛ قد يكون الرابط غير صالح أو المحادثة غير متاحة لهذا الحساب." : "The message composer did not appear, so the thread is unavailable for this account.", code: "CHAT_UNAVAILABLE" };
+  if (kind === "blocked") return { title: ar ? "فيسبوك منع الرسالة" : "Facebook blocked this DM", hint: ar ? "غالباً بسبب قيود حماية فيسبوك أو تكرار الإرسال. أوقف المهمة وقلّل السرعة." : "Usually caused by Facebook protection rules or repeated sending. Pause and lower the speed.", code: "FACEBOOK_BLOCKED" };
+  return { title: ar ? "فشل غير مصنّف" : "Unclassified failure", hint: ar ? "لم نستطع تصنيف السبب تلقائياً. احتفظنا بالكود التقني داخل ملف CSV فقط للمراجعة." : "The reason could not be classified automatically. The raw code is kept in the CSV for review only.", code: "UNKNOWN" };
+};
+
+const extractMessengerTargetId = (url: string | null) => {
+  if (!url) return null;
+  const m = url.match(/(?:groups\/[^/]+\/user\/|user\/|profile\.php\?id=|messages\/t\/|m\.me\/)(\d{5,})/i) || url.match(/^(\d{5,})$/);
+  return m ? m[1] : null;
+};
+
+const messengerProfileUrl = (target: string | null) => {
+  const id = extractMessengerTargetId(target);
+  return id ? `https://www.facebook.com/profile.php?id=${id}` : (target ?? "");
+};
+
 function JobsHistoryPage() {
   const { user } = useAuth();
   const { lang } = useI18n();
