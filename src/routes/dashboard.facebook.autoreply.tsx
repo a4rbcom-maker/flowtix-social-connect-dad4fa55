@@ -242,7 +242,7 @@ function RulesTab({ ar }: { ar: boolean }) {
 
   return (
     <Card dir={ar ? "rtl" : "ltr"}>
-      <CardHeader className="flex flex-row items-center justify-between gap-3">
+      <CardHeader className={`flex flex-row items-center justify-between gap-3 ${ar ? "flex-row-reverse" : ""}`}>
         <div className={ar ? "text-right" : "text-left"}>
           <CardTitle>{ar ? "قواعد الرد التلقائي" : "Auto-reply rules"}</CardTitle>
           <CardDescription>{ar ? "كل قاعدة تطابق التعليقات وفقاً للنطاق والكلمات." : "Each rule matches comments by scope and keywords."}</CardDescription>
