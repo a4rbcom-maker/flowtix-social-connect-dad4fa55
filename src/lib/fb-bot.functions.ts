@@ -441,7 +441,7 @@ export const listBotAccounts = createServerFn({ method: "GET" })
               .eq("id", row.id)
               .eq("user_id", userId);
           }
-        } else if (row.auth_method === "cookies" && row.status !== "active" && row.encrypted_payload) {
+        } else if (row.auth_method === "cookies" && row.status === "untested" && row.encrypted_payload) {
           try {
             const { decryptJson } = await import("@/server/crypto.server");
             const cookies = normalizeStoredCookies(decryptJson<unknown>(row.encrypted_payload));
