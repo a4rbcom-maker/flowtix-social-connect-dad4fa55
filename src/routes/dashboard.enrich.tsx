@@ -92,7 +92,7 @@ function EnrichPage() {
       `${n} rows • ${w} with name • ${p} with phone • ${e} with email • ${c} with governorate`,
     cols: { name: "Name", phone: "Mobile", email: "Email", city: "City", gov: "Governorate", raw: "Source" },
     matched: "Matched",
-    emptyHint: "No phones/cities in results? That's expected for group members — Facebook only returns the name. Run \"Deep profile scrape\" from Jobs History to open each profile and pull bio, city and work, then re-enrich.",
+    emptyHint: "No phones/cities in results? That's expected for group members — Facebook only returns the name. Try uploading your customers file in \"My Customers DB\" for automatic matching.",
   };
 
   const run = async () => {
