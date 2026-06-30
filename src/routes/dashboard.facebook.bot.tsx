@@ -991,7 +991,7 @@ function BotAccountsPage() {
           setRetryCounts((p) => ({ ...p, [id]: 0 }));
           pushEvent(id, { key: "done", state: "ok", detail: t.groupsFound(groups.length) });
           toast.success(t.testSuccess, { id: toastId, description: t.groupsFound(groups.length) });
-          setGroupsResult({ accountName: finalAccount.display_name, groups });
+          setGroupsResult({ accountId: finalAccount.id, accountName: finalAccount.display_name, groups });
         } else if (detectedCheckpoint) {
           pushEvent(id, {
             key: "error",
