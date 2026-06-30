@@ -34,7 +34,7 @@ export const Route = createFileRoute("/dashboard/facebook/history")({
 type JobRow = {
   id: string;
   job_type: "post_to_groups" | "extract_pages" | "extract_commenters" | "extract_group_members" | "extract_page_audience" | "list_my_groups" | "deep_profile_scrape" | "send_messenger_dm";
-  status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  status: "pending" | "running" | "completed" | "failed" | "cancelled" | "paused";
   progress: number;
   total_items: number;
   processed_items: number;
