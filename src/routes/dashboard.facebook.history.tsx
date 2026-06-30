@@ -1249,6 +1249,15 @@ function PreviewList({
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [matchMode, setMatchMode] = useState<"any" | "all">("all");
+  const [uniqueOnly, setUniqueOnly] = useState(false);
+
+  const dupKeyFor = (e: PreviewRow) => {
+    const phone = (e.phone ?? "").replace(/\D+/g, "");
+    if (phone) return `p:${phone}`;
+    const prof = (e.profile ?? e.row.target ?? "").trim().toLowerCase();
+    if (prof) return `u:${prof}`;
+    return `n:${(e.name ?? "").trim().toLowerCase()}`;
+  };
 
   const toggleSort = (k: SortKey) => {
     if (sortKey !== k) { setSortKey(k); setSortDir("asc"); }
@@ -1309,12 +1318,40 @@ function PreviewList({
     return sortDir === "desc" ? sorted.reverse() : sorted;
   }, [rows, tokens, matchMode, sortKey, sortDir, lang]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  // Duplicate detection over the filtered list (by phone, then profile, then name).
+  const dupCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const e of filtered) {
+      const k = dupKeyFor(e);
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return m;
+  }, [filtered]);
+  const duplicatesCount = useMemo(() => {
+    let n = 0;
+    for (const c of dupCounts.values()) if (c > 1) n += c - 1;
+    return n;
+  }, [dupCounts]);
+
+  const visible = useMemo(() => {
+    if (!uniqueOnly) return filtered;
+    const seen = new Set<string>();
+    const out: PreviewRow[] = [];
+    for (const e of filtered) {
+      const k = dupKeyFor(e);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(e);
+    }
+    return out;
+  }, [filtered, uniqueOnly]);
+
+  const totalPages = Math.max(1, Math.ceil(visible.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const start = (safePage - 1) * pageSize;
-  const slice = filtered.slice(start, start + pageSize);
+  const slice = visible.slice(start, start + pageSize);
 
-  const filteredKeys = useMemo(() => filtered.map(keyFor), [filtered, keyFor]);
+  const filteredKeys = useMemo(() => visible.map(keyFor), [visible, keyFor]);
   const allFilteredSelected = filteredKeys.length > 0 && filteredKeys.every((k) => selectedKeys.has(k));
   const someFilteredSelected = filteredKeys.some((k) => selectedKeys.has(k));
 
@@ -1358,10 +1395,28 @@ function PreviewList({
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <Label className="block text-start text-sm font-medium">
           {lang === "ar"
-            ? `معاينة المستلمين (${filtered.length})${selectedKeys.size > 0 ? ` — محدد: ${selectedKeys.size}` : ""}`
-            : `Recipients preview (${filtered.length})${selectedKeys.size > 0 ? ` — selected: ${selectedKeys.size}` : ""}`}
+            ? `معاينة المستلمين (${visible.length}${uniqueOnly && filtered.length !== visible.length ? ` / ${filtered.length}` : ""})${selectedKeys.size > 0 ? ` — محدد: ${selectedKeys.size}` : ""}`
+            : `Recipients preview (${visible.length}${uniqueOnly && filtered.length !== visible.length ? ` / ${filtered.length}` : ""})${selectedKeys.size > 0 ? ` — selected: ${selectedKeys.size}` : ""}`}
+          {duplicatesCount > 0 && (
+            <span className="ms-2 inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-normal text-amber-700 dark:text-amber-300">
+              {lang === "ar" ? `مكررون: ${duplicatesCount}` : `Duplicates: ${duplicatesCount}`}
+            </span>
+          )}
         </Label>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            type="button"
+            size="sm"
+            variant={uniqueOnly ? "default" : "outline"}
+            className="h-8"
+            onClick={() => setUniqueOnly(!uniqueOnly)}
+            disabled={duplicatesCount === 0 && !uniqueOnly}
+            title={lang === "ar" ? "إظهار النسخ الفريدة فقط" : "Show unique only"}
+          >
+            {uniqueOnly
+              ? (lang === "ar" ? "عرض الكل" : "Show all")
+              : (lang === "ar" ? `النسخ الفريدة فقط${duplicatesCount > 0 ? ` (-${duplicatesCount})` : ""}` : `Unique only${duplicatesCount > 0 ? ` (-${duplicatesCount})` : ""}`)}
+          </Button>
           {selectedKeys.size > 0 && (
             <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => setSelectedKeys(new Set())}>
               <X className="me-1 h-3.5 w-3.5" />
@@ -1408,7 +1463,7 @@ function PreviewList({
         </div>
       )}
 
-      {filtered.length === 0 ? (
+      {visible.length === 0 ? (
         <div className="py-6 text-center text-sm text-muted-foreground">
           {lang === "ar" ? "لا يوجد مستلمون مطابقون" : "No matching recipients"}
         </div>
@@ -1439,16 +1494,29 @@ function PreviewList({
                   const hasProfile = !!profile && !isSystem(profile);
                   const k = keyFor(e);
                   const checked = selectedKeys.has(k);
+                  const dupCount = dupCounts.get(dupKeyFor(e)) ?? 1;
                   return (
                     <tr
                       key={start + i}
-                      className={`border-t border-border/60 hover:bg-muted/30 ${checked ? "bg-primary/5" : ""}`}
+                      className={`border-t border-border/60 hover:bg-muted/30 ${checked ? "bg-primary/5" : ""} ${dupCount > 1 ? "bg-amber-500/5" : ""}`}
                     >
                       <td className="px-2 py-1.5">
                         <Checkbox checked={checked} onCheckedChange={() => toggleOne(k)} aria-label={e.name || ""} />
                       </td>
                       <td className="px-2 py-1.5 tabular-nums text-muted-foreground">{start + i + 1}</td>
-                      <td className="px-2 py-1.5">{e.name || <span className="text-muted-foreground">—</span>}</td>
+                      <td className="px-2 py-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <span>{e.name || <span className="text-muted-foreground">—</span>}</span>
+                          {dupCount > 1 && (
+                            <span
+                              className="inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-1 py-0 text-[10px] text-amber-700 dark:text-amber-300"
+                              title={lang === "ar" ? `يظهر ${dupCount} مرات` : `Appears ${dupCount} times`}
+                            >
+                              ×{dupCount}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-2 py-1.5 tabular-nums" dir="ltr">{e.phone || <span className="text-muted-foreground">—</span>}</td>
                       <td className="px-2 py-1.5 max-w-[200px] truncate" dir="ltr">
                         {hasProfile ? (
@@ -1468,8 +1536,8 @@ function PreviewList({
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>
               {lang === "ar"
-                ? `عرض ${start + 1}-${Math.min(start + pageSize, filtered.length)} من ${filtered.length}`
-                : `Showing ${start + 1}-${Math.min(start + pageSize, filtered.length)} of ${filtered.length}`}
+                ? `عرض ${start + 1}-${Math.min(start + pageSize, visible.length)} من ${visible.length}`
+                : `Showing ${start + 1}-${Math.min(start + pageSize, visible.length)} of ${visible.length}`}
             </span>
             <div className="flex items-center gap-2">
               <Button type="button" size="sm" variant="outline" className="h-7" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>
