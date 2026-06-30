@@ -923,3 +923,48 @@ html {
 .dark [data-dashboard-section="facebook"][dir="rtl"] :focus-visible {
   outline-color: oklch(0.72 0.22 295);
 }
+
+/* ============================================================
+   RTL: Action buttons on LEFT, titles/text on RIGHT
+   - CardHeader's CardAction slot → justify to start (left in RTL)
+   - DialogFooter buttons → align to start (left in RTL)
+   - CardHeader/CardTitle text stays on the right via text-align
+   ============================================================ */
+[dir="rtl"] [data-slot="card-action"] {
+  justify-self: start;
+  margin-inline-start: 0;
+  margin-inline-end: auto;
+}
+
+[dir="rtl"] [data-slot="card-header"] [data-slot="card-title"],
+[dir="rtl"] [data-slot="card-header"] [data-slot="card-description"] {
+  text-align: right;
+}
+
+[dir="rtl"] [data-slot="dialog-footer"] {
+  justify-content: flex-start;
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] [data-slot="dialog-header"] [data-slot="dialog-title"],
+[dir="rtl"] [data-slot="dialog-header"] [data-slot="dialog-description"] {
+  text-align: right;
+}
+
+/* AlertDialog footer follows the same pattern */
+[dir="rtl"] [data-slot="alert-dialog-footer"] {
+  justify-content: flex-start;
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] [data-slot="alert-dialog-header"] [data-slot="alert-dialog-title"],
+[dir="rtl"] [data-slot="alert-dialog-header"] [data-slot="alert-dialog-description"] {
+  text-align: right;
+}
+
+/* SheetFooter / DrawerFooter parity */
+[dir="rtl"] [data-slot="sheet-footer"],
+[dir="rtl"] [data-slot="drawer-footer"] {
+  justify-content: flex-start;
+}
+
