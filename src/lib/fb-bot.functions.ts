@@ -540,7 +540,7 @@ export const createExtractGroupMembersJob = createServerFn({ method: "POST" })
     z
       .object({
         accountId: z.string().uuid(),
-        groupId: z.string().trim().min(3).max(64),
+        groupId: z.string().trim().min(3).max(512),
         maxMembers: z.number().int().min(50).max(5000).default(1500),
         filterKeywords: z.array(z.string().trim().min(1).max(40)).max(20).optional().default([]),
       })
