@@ -870,7 +870,14 @@ function JobsHistoryPage() {
                       const ok = r.status === "success";
                       const msg = messengerFriendlyReason(r.error, r.status, lang);
                       return (
-                        <div key={r.id} className={`rounded-lg border p-3 ${ok ? "bg-primary/[0.03]" : r.status === "failed" ? "bg-destructive/[0.03]" : "bg-muted/20"}`}>
+                        <div
+                          key={r.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setDetailRow({ row: r, index: i, name, profileUrl, targetId: id })}
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetailRow({ row: r, index: i, name, profileUrl, targetId: id }); } }}
+                          className={`cursor-pointer rounded-lg border p-3 transition hover:border-primary/50 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/40 ${ok ? "bg-primary/[0.03]" : r.status === "failed" ? "bg-destructive/[0.03]" : "bg-muted/20"}`}
+                        >
                           <div className="space-y-2 text-start">
                             <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
                               <div className="flex min-w-0 items-center gap-2">
