@@ -20,7 +20,21 @@ function EnrichPage() {
   const { lang } = useI18n();
   const [input, setInput] = useState("");
   const [rows, setRows] = useState<EnrichedLead[]>([]);
+  const [matches, setMatches] = useState<Map<number, MatchResult>>(new Map());
   const [busy, setBusy] = useState(false);
+
+  const runMatching = async (data: EnrichedLead[]) => {
+    try {
+      const m = await matchLeadsAgainstCustomers(
+        data.map((r) => ({ raw: r.raw, name: r.name, phone: r.phone, email: r.email })),
+      );
+      setMatches(m);
+      if (m.size > 0) {
+        toast.success(lang === "ar" ? `🎯 تم التعرف على ${m.size} عميل من قاعدة عملائك` : `🎯 Matched ${m.size} from your DB`);
+      }
+    } catch { /* silent */ }
+  };
+
 
   // Auto-fill from a job's results when navigated from history page.
   useEffect(() => {
