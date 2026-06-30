@@ -43,6 +43,7 @@ async function runExtractCommenters({ page, job, report }) {
   await report({
     progress: 100,
     processedItems: commenters.length,
+    totalItems: commenters.length,
     status: "completed",
   });
 }

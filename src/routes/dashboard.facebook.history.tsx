@@ -33,7 +33,7 @@ export const Route = createFileRoute("/dashboard/facebook/history")({
 
 type JobRow = {
   id: string;
-  job_type: "post_to_groups" | "extract_pages" | "extract_commenters" | "extract_group_members" | "extract_page_audience" | "deep_profile_scrape" | "send_messenger_dm";
+  job_type: "post_to_groups" | "extract_pages" | "extract_commenters" | "extract_group_members" | "extract_page_audience" | "list_my_groups" | "deep_profile_scrape" | "send_messenger_dm";
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
   progress: number;
   total_items: number;
@@ -88,7 +88,7 @@ function JobsHistoryPage() {
     cancelDone: "تم إلغاء المهمة وإيقاف المعالجة",
     results: "النتائج",
     download: "تنزيل CSV",
-    types: { post_to_groups: "نشر", extract_pages: "صفحات", extract_commenters: "معلقين", extract_group_members: "أعضاء جروب", extract_page_audience: "جمهور صفحة", deep_profile_scrape: "فحص عميق للبروفايل", send_messenger_dm: "رسائل ماسنجر" },
+    types: { post_to_groups: "نشر", extract_pages: "صفحات", extract_commenters: "معلقين", extract_group_members: "أعضاء جروب", extract_page_audience: "جمهور صفحة", list_my_groups: "جروباتي", deep_profile_scrape: "فحص عميق للبروفايل", send_messenger_dm: "رسائل ماسنجر" },
     statuses: { pending: "معلّقة", running: "جارية", completed: "مكتملة", failed: "فشلت", cancelled: "ملغاة" },
   } : {
     title: "Jobs History",
@@ -108,7 +108,7 @@ function JobsHistoryPage() {
     cancelDone: "Job cancelled and worker stopped",
     results: "Results",
     download: "Download CSV",
-    types: { post_to_groups: "Post", extract_pages: "Pages", extract_commenters: "Commenters", extract_group_members: "Group Members", extract_page_audience: "Page Audience", deep_profile_scrape: "Deep Profile Scrape", send_messenger_dm: "Messenger DMs" },
+    types: { post_to_groups: "Post", extract_pages: "Pages", extract_commenters: "Commenters", extract_group_members: "Group Members", extract_page_audience: "Page Audience", list_my_groups: "My Groups", deep_profile_scrape: "Deep Profile Scrape", send_messenger_dm: "Messenger DMs" },
     statuses: { pending: "Pending", running: "Running", completed: "Completed", failed: "Failed", cancelled: "Cancelled" },
   };
 
@@ -415,7 +415,7 @@ function JobsHistoryPage() {
                               </Button>
                             </Link>
                           )}
-                          {j.status === "completed" && (j.processed_items > 0) && ["extract_commenters","extract_group_members","extract_page_audience","deep_profile_scrape"].includes(j.job_type) && (
+                           {j.status === "completed" && (j.processed_items > 0) && ["extract_commenters","extract_group_members","extract_page_audience","deep_profile_scrape"].includes(j.job_type) && (
                             <Button
                               size="sm"
                               variant="ghost"

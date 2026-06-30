@@ -33,6 +33,7 @@ async function runExtractPages({ page, report }) {
   await report({
     progress: 100,
     processedItems: pages.length,
+    totalItems: pages.length,
     status: "completed",
   });
 }

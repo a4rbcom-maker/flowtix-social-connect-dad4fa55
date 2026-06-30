@@ -118,6 +118,7 @@ async function runDeepProfileScrape({ page, job, report }) {
     await report({
       result,
       processedItems: ++done,
+      totalItems: profiles.length,
       progress: Math.min(99, Math.round((done / profiles.length) * 100)),
     });
 
@@ -135,6 +136,7 @@ async function runDeepProfileScrape({ page, job, report }) {
           ? `Session lost after ${done}/${profiles.length} profiles. Re-sync cookies and resume.`
           : `Aborted: ${consecutiveFailures} consecutive failures at profile ${done}.`,
         processedItems: done,
+        totalItems: profiles.length,
       });
       return;
     }
@@ -143,7 +145,7 @@ async function runDeepProfileScrape({ page, job, report }) {
     await new Promise((r) => setTimeout(r, 2500 + Math.floor(Math.random() * 2500)));
   }
 
-  await report({ status: "completed", processedItems: done, progress: 100 });
+  await report({ status: "completed", processedItems: done, totalItems: profiles.length, progress: 100 });
 }
 
 module.exports = { runDeepProfileScrape };
