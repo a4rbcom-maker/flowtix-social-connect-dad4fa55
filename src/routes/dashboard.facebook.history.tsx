@@ -58,6 +58,13 @@ function JobsHistoryPage() {
   const [resultsLoading, setResultsLoading] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<JobRow | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  // Messaging wizard state
+  const [msgOpen, setMsgOpen] = useState(false);
+  const [msgChannels, setMsgChannels] = useState<{ whatsapp: boolean; messenger: boolean }>({ whatsapp: true, messenger: true });
+  const [msgText, setMsgText] = useState("");
+  const [msgTitle, setMsgTitle] = useState("");
+  const [msgPerHour, setMsgPerHour] = useState(20);
+  const [msgSubmitting, setMsgSubmitting] = useState(false);
 
   const t = lang === "ar" ? {
     title: "سجل المهام",
