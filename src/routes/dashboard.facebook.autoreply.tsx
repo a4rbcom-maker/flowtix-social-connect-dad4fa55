@@ -46,13 +46,13 @@ function AutoReplyPage() {
 
   return (
     <DashboardLayout title={ar ? "الرد التلقائي" : "Auto-Reply"}>
-      <div className="container mx-auto p-6 space-y-6" dir={ar ? "rtl" : "ltr"}>
+      <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6" dir={ar ? "rtl" : "ltr"}>
         <div className={ar ? "text-right" : "text-left"}>
-          <h1 className={`text-3xl font-bold flex items-center gap-3 ${ar ? "justify-end flex-row-reverse" : "justify-start"}`}>
-            <Sparkles className="w-8 h-8 text-primary shrink-0" />
-            <span>{ar ? "الرد التلقائي على تعليقات الفيسبوك" : "Facebook Auto-Reply"}</span>
+          <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-3">
+            <Sparkles className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
+            <span className="min-w-0">{ar ? "الرد التلقائي على تعليقات الفيسبوك" : "Facebook Auto-Reply"}</span>
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-muted-foreground mt-1 text-sm sm:text-base">
             {ar
               ? "اربط صفحاتك وأنشئ قواعد ذكية ترد على التعليقات بتعليق عام و/أو رسالة خاصة."
               : "Connect your pages and build smart rules to auto-reply with comment and/or DM."}
@@ -60,8 +60,8 @@ function AutoReplyPage() {
         </div>
 
         <Tabs defaultValue="rules" className="space-y-4" dir={ar ? "rtl" : "ltr"}>
-          <div className={`flex w-full ${ar ? "justify-end" : "justify-start"}`}>
-            <TabsList className={ar ? "flex-row-reverse" : ""}>
+          <div className="-mx-4 sm:mx-0 overflow-x-auto px-4 sm:px-0">
+            <TabsList className="inline-flex w-max sm:w-auto">
               <TabsTrigger value="rules"><Sparkles className="w-4 h-4 me-2"/>{ar ? "القواعد" : "Rules"}</TabsTrigger>
               <TabsTrigger value="pages"><Settings className="w-4 h-4 me-2"/>{ar ? "الصفحات المربوطة" : "Connected pages"}</TabsTrigger>
               <TabsTrigger value="log"><Activity className="w-4 h-4 me-2"/>{ar ? "السجل" : "Log"}</TabsTrigger>
@@ -73,6 +73,7 @@ function AutoReplyPage() {
           <TabsContent value="log"><LogTab ar={ar} /></TabsContent>
         </Tabs>
       </div>
+
     </DashboardLayout>
   );
 }
