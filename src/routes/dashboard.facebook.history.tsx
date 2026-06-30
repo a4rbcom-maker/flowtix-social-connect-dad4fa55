@@ -426,7 +426,7 @@ function JobsHistoryPage() {
 
       // ---- WhatsApp: create a bulk_jobs row + recipients (only those with phone)
       if (msgChannels.whatsapp) {
-        const waRecipients = filteredRows
+        const waRecipients = sendRows
           .filter((e) => !!e.phone)
           .map((e) => ({ name: e.name || "", phone: String(e.phone) }));
         if (waRecipients.length > 0) {
