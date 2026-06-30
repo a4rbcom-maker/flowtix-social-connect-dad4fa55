@@ -121,6 +121,7 @@ function JobsHistoryPage() {
   const [previewSearch, setPreviewSearch] = useState("");
   const [previewPage, setPreviewPage] = useState(1);
   const [msgSelectedRecipients, setMsgSelectedRecipients] = useState<Set<string>>(new Set());
+  const [compactView, setCompactView] = useState(false);
   const PREVIEW_PAGE_SIZE = 25;
   const recipientKey = (e: { name?: string | null; phone?: string | null; profile?: string | null; row: { target?: string | null } }) =>
     `${(e.profile || e.row.target || "").toLowerCase()}::${(e.phone || "").toString().replace(/\D/g, "")}::${(e.name || "").toLowerCase()}`;
@@ -823,7 +824,27 @@ function JobsHistoryPage() {
                       <div className="flex items-center gap-2 text-sm text-muted-foreground"><MessageCircle className="h-4 w-4 text-primary" />{lang === "ar" ? "الإجمالي" : "Total"}</div>
                       <div className="mt-1 text-2xl font-bold tabular-nums">{results.length}</div>
                       {skip > 0 && <div className="mt-1 text-xs text-muted-foreground">{lang === "ar" ? `متخطّى: ${skip}` : `Skipped: ${skip}`}</div>}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-xs">
+                    <div className="text-muted-foreground">
+                      {compactView
+                        ? (lang === "ar" ? "وضع القراءة السريعة: الاسم + الحالة + السبب فقط." : "Quick read: name, status, reason only.")
+                        : (lang === "ar" ? "العرض الكامل: كل التفاصيل والأكواد التقنية." : "Full view: all details and technical codes.")}
                     </div>
+                    <Button
+                      size="sm"
+                      variant={compactView ? "default" : "outline"}
+                      onClick={() => setCompactView((v) => !v)}
+                      className="h-8 shrink-0 gap-1.5"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {compactView
+                        ? (lang === "ar" ? "عرض كامل" : "Full view")
+                        : (lang === "ar" ? "قراءة سريعة" : "Quick read")}
+                    </Button>
+                  </div>
+
                   </div>
 
                   {fail > 0 && (
@@ -862,18 +883,21 @@ function JobsHistoryPage() {
                               )}
                             </div>
                             <div className="text-sm font-semibold leading-snug">{msg.title}</div>
-                            <div className="text-xs leading-relaxed text-muted-foreground">{msg.hint}</div>
-                            <div className="flex flex-wrap items-center gap-2 pt-1">
-                              {!ok && <span className="inline-flex rounded-md bg-muted/70 px-2 py-0.5 text-[10px] text-muted-foreground">{lang === "ar" ? "كود" : "Code"}: <bdi dir="ltr" className="ms-1">{msg.code}</bdi></span>}
-                              {profileUrl && (
-                                <Button size="sm" variant="outline" asChild className="h-8 gap-1.5">
-                                  <a href={profileUrl} target="_blank" rel="noreferrer">
-                                    <ExternalLink className="h-3.5 w-3.5" />
-                                    <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
-                                  </a>
-                                </Button>
-                              )}
-                            </div>
+                            {!compactView && <div className="text-xs leading-relaxed text-muted-foreground">{msg.hint}</div>}
+                            {!compactView && (
+                              <div className="flex flex-wrap items-center gap-2 pt-1">
+                                {!ok && <span className="inline-flex rounded-md bg-muted/70 px-2 py-0.5 text-[10px] text-muted-foreground">{lang === "ar" ? "كود" : "Code"}: <bdi dir="ltr" className="ms-1">{msg.code}</bdi></span>}
+                                {profileUrl && (
+                                  <Button size="sm" variant="outline" asChild className="h-8 gap-1.5">
+                                    <a href={profileUrl} target="_blank" rel="noreferrer">
+                                      <ExternalLink className="h-3.5 w-3.5" />
+                                      <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
+                                    </a>
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+
                           </div>
                         </div>
                       );
@@ -886,11 +910,11 @@ function JobsHistoryPage() {
                       <table className="w-full table-fixed text-sm">
                         <colgroup>
                           <col className="w-12" />
-                          <col className="w-[28%]" />
+                          <col className={compactView ? "w-[34%]" : "w-[28%]"} />
                           <col className="w-24" />
                           <col />
-                          <col className="w-28" />
-                          <col className="w-28" />
+                          {!compactView && <col className="w-28" />}
+                          {!compactView && <col className="w-28" />}
                         </colgroup>
                         <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                           <tr>
@@ -898,8 +922,8 @@ function JobsHistoryPage() {
                             <th className="px-3 py-2.5 text-start">{lang === "ar" ? "الاسم" : "Name"}</th>
                             <th className="px-3 py-2.5 text-start">{lang === "ar" ? "الحالة" : "Status"}</th>
                             <th className="px-3 py-2.5 text-start">{lang === "ar" ? "السبب" : "Reason"}</th>
-                            <th className="px-3 py-2.5 text-start">{lang === "ar" ? "الكود" : "Code"}</th>
-                            <th className="px-3 py-2.5 text-start">{lang === "ar" ? "البروفايل" : "Profile"}</th>
+                            {!compactView && <th className="px-3 py-2.5 text-start">{lang === "ar" ? "الكود" : "Code"}</th>}
+                            {!compactView && <th className="px-3 py-2.5 text-start">{lang === "ar" ? "البروفايل" : "Profile"}</th>}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border/60">
@@ -927,26 +951,31 @@ function JobsHistoryPage() {
                                 </td>
                                 <td className="px-3 py-2.5 text-start align-top">
                                   <div className="text-sm font-medium leading-snug">{msg.title}</div>
-                                  <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{msg.hint}</div>
+                                  {!compactView && <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{msg.hint}</div>}
                                 </td>
-                                <td className="px-3 py-2.5 text-start">
-                                  {!ok ? (
-                                    <bdi dir="ltr" className="rounded-md bg-muted/70 px-2 py-0.5 text-[11px] text-muted-foreground">{msg.code}</bdi>
-                                  ) : <span className="text-muted-foreground">—</span>}
-                                </td>
-                                <td className="px-3 py-2.5 text-start">
-                                  {profileUrl ? (
-                                    <Button size="sm" variant="outline" asChild className="h-8 gap-1.5">
-                                      <a href={profileUrl} target="_blank" rel="noreferrer">
-                                        <ExternalLink className="h-3.5 w-3.5" />
-                                        <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
-                                      </a>
-                                    </Button>
-                                  ) : <span className="text-muted-foreground">—</span>}
-                                </td>
+                                {!compactView && (
+                                  <td className="px-3 py-2.5 text-start">
+                                    {!ok ? (
+                                      <bdi dir="ltr" className="rounded-md bg-muted/70 px-2 py-0.5 text-[11px] text-muted-foreground">{msg.code}</bdi>
+                                    ) : <span className="text-muted-foreground">—</span>}
+                                  </td>
+                                )}
+                                {!compactView && (
+                                  <td className="px-3 py-2.5 text-start">
+                                    {profileUrl ? (
+                                      <Button size="sm" variant="outline" asChild className="h-8 gap-1.5">
+                                        <a href={profileUrl} target="_blank" rel="noreferrer">
+                                          <ExternalLink className="h-3.5 w-3.5" />
+                                          <bdi dir="ltr">{id ? `#${id}` : (lang === "ar" ? "فتح" : "Open")}</bdi>
+                                        </a>
+                                      </Button>
+                                    ) : <span className="text-muted-foreground">—</span>}
+                                  </td>
+                                )}
                               </tr>
                             );
                           })}
+
                         </tbody>
                       </table>
                     </div>
