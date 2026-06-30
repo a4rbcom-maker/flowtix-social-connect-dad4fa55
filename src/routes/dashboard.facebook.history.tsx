@@ -424,6 +424,32 @@ function JobsHistoryPage() {
               )}
             </DialogTitle>
           </DialogHeader>
+          {selected && isSessionExpired(selected) && (
+            <div className="mb-3 flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="flex-1 space-y-2">
+                <p className="font-medium text-amber-900 dark:text-amber-200">
+                  {lang === "ar" ? "انتهت صلاحية جلسة حساب فيسبوك" : "Facebook account session expired"}
+                </p>
+                <p className="text-amber-800/90 dark:text-amber-300/90">
+                  {lang === "ar"
+                    ? "هذه ليست مشكلة في المنصة. فيسبوك أنهى جلسة الحساب المستخدم. أعد تصدير الكوكيز وحدّث الحساب ثم أعد تشغيل المهمة."
+                    : "This is not a platform issue. Facebook ended the bot account session. Re-export cookies, update the account, then re-run the job."}
+                </p>
+                <Link to="/dashboard/facebook/bot">
+                  <Button size="sm" className="gap-1.5">
+                    <KeyRound className="h-3.5 w-3.5" />
+                    {lang === "ar" ? "إعادة ربط الحساب الآن" : "Reconnect account now"}
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          )}
+          {selected?.status === "failed" && !isSessionExpired(selected) && selected.error_message && (
+            <div className="mb-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+              {selected.error_message}
+            </div>
+          )}
           {resultsLoading ? (
             <div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
           ) : results.length === 0 ? (
