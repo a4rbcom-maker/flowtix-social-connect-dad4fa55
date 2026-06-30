@@ -366,6 +366,66 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_database: {
+        Row: {
+          address: string | null
+          city: string | null
+          created_at: string
+          email: string | null
+          extra: Json | null
+          fb_id: string | null
+          fb_profile_url: string | null
+          full_name: string | null
+          governorate: string | null
+          id: string
+          name_norm: string | null
+          notes: string | null
+          phone: string | null
+          phone_norm: string | null
+          tags: string[] | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          address?: string | null
+          city?: string | null
+          created_at?: string
+          email?: string | null
+          extra?: Json | null
+          fb_id?: string | null
+          fb_profile_url?: string | null
+          full_name?: string | null
+          governorate?: string | null
+          id?: string
+          name_norm?: string | null
+          notes?: string | null
+          phone?: string | null
+          phone_norm?: string | null
+          tags?: string[] | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          address?: string | null
+          city?: string | null
+          created_at?: string
+          email?: string | null
+          extra?: Json | null
+          fb_id?: string | null
+          fb_profile_url?: string | null
+          full_name?: string | null
+          governorate?: string | null
+          id?: string
+          name_norm?: string | null
+          notes?: string | null
+          phone?: string | null
+          phone_norm?: string | null
+          tags?: string[] | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       facebook_connections: {
         Row: {
           access_token: string

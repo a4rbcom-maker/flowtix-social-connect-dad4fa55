@@ -21,6 +21,7 @@ import { Route as DashboardProfileRouteImport } from './routes/dashboard.profile
 import { Route as DashboardNotificationsRouteImport } from './routes/dashboard.notifications'
 import { Route as DashboardFacebookRouteImport } from './routes/dashboard.facebook'
 import { Route as DashboardEnrichRouteImport } from './routes/dashboard.enrich'
+import { Route as DashboardCustomersRouteImport } from './routes/dashboard.customers'
 import { Route as DashboardControlRouteImport } from './routes/dashboard.control'
 import { Route as DashboardBulkRouteImport } from './routes/dashboard.bulk'
 import { Route as DashboardActivityRouteImport } from './routes/dashboard.activity'
@@ -125,6 +126,11 @@ const DashboardFacebookRoute = DashboardFacebookRouteImport.update({
 const DashboardEnrichRoute = DashboardEnrichRouteImport.update({
   id: '/enrich',
   path: '/enrich',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardCustomersRoute = DashboardCustomersRouteImport.update({
+  id: '/customers',
+  path: '/customers',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardControlRoute = DashboardControlRouteImport.update({
@@ -391,6 +397,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/bulk': typeof DashboardBulkRoute
   '/dashboard/control': typeof DashboardControlRoute
+  '/dashboard/customers': typeof DashboardCustomersRoute
   '/dashboard/enrich': typeof DashboardEnrichRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/notifications': typeof DashboardNotificationsRoute
@@ -450,6 +457,7 @@ export interface FileRoutesByTo {
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/bulk': typeof DashboardBulkRoute
   '/dashboard/control': typeof DashboardControlRoute
+  '/dashboard/customers': typeof DashboardCustomersRoute
   '/dashboard/enrich': typeof DashboardEnrichRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/notifications': typeof DashboardNotificationsRoute
@@ -509,6 +517,7 @@ export interface FileRoutesById {
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/bulk': typeof DashboardBulkRoute
   '/dashboard/control': typeof DashboardControlRoute
+  '/dashboard/customers': typeof DashboardCustomersRoute
   '/dashboard/enrich': typeof DashboardEnrichRoute
   '/dashboard/facebook': typeof DashboardFacebookRouteWithChildren
   '/dashboard/notifications': typeof DashboardNotificationsRoute
@@ -570,6 +579,7 @@ export interface FileRouteTypes {
     | '/dashboard/activity'
     | '/dashboard/bulk'
     | '/dashboard/control'
+    | '/dashboard/customers'
     | '/dashboard/enrich'
     | '/dashboard/facebook'
     | '/dashboard/notifications'
@@ -629,6 +639,7 @@ export interface FileRouteTypes {
     | '/dashboard/activity'
     | '/dashboard/bulk'
     | '/dashboard/control'
+    | '/dashboard/customers'
     | '/dashboard/enrich'
     | '/dashboard/facebook'
     | '/dashboard/notifications'
@@ -687,6 +698,7 @@ export interface FileRouteTypes {
     | '/dashboard/activity'
     | '/dashboard/bulk'
     | '/dashboard/control'
+    | '/dashboard/customers'
     | '/dashboard/enrich'
     | '/dashboard/facebook'
     | '/dashboard/notifications'
@@ -840,6 +852,13 @@ declare module '@tanstack/react-router' {
       path: '/enrich'
       fullPath: '/dashboard/enrich'
       preLoaderRoute: typeof DashboardEnrichRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/customers': {
+      id: '/dashboard/customers'
+      path: '/customers'
+      fullPath: '/dashboard/customers'
+      preLoaderRoute: typeof DashboardCustomersRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/control': {
@@ -1236,6 +1255,7 @@ interface DashboardRouteChildren {
   DashboardActivityRoute: typeof DashboardActivityRoute
   DashboardBulkRoute: typeof DashboardBulkRoute
   DashboardControlRoute: typeof DashboardControlRoute
+  DashboardCustomersRoute: typeof DashboardCustomersRoute
   DashboardEnrichRoute: typeof DashboardEnrichRoute
   DashboardFacebookRoute: typeof DashboardFacebookRouteWithChildren
   DashboardNotificationsRoute: typeof DashboardNotificationsRoute
@@ -1247,6 +1267,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardActivityRoute: DashboardActivityRoute,
   DashboardBulkRoute: DashboardBulkRoute,
   DashboardControlRoute: DashboardControlRoute,
+  DashboardCustomersRoute: DashboardCustomersRoute,
   DashboardEnrichRoute: DashboardEnrichRoute,
   DashboardFacebookRoute: DashboardFacebookRouteWithChildren,
   DashboardNotificationsRoute: DashboardNotificationsRoute,

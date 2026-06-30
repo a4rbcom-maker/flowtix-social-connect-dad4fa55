@@ -37,6 +37,7 @@ import {
   Reply,
   BarChart3,
   History,
+  Database,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -134,7 +135,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     ? { overview: "نظرة عامة", control: "لوحة التحكم", facebook: "فيسبوك", fbConnect: "ربط حساب فيسبوك", fbGroups: "جروباتي المرتبطة", whatsapp: "واتساب", waInbox: "الدردشة", waAccounts: "حساباتي", waBot: "البوت (ردود الكلمات)", waAgent: "وكيل الذكاء الاصطناعي", waSettings: "إعدادات واتساب", bulk: "إرسال جماعي", activity: "سجل النشاط", settings: "الملف الشخصي", logout: "تسجيل الخروج", sectionMain: "الرئيسية", sectionChannels: "القنوات", sectionInsights: "التحليلات" }
     : { overview: "Overview", control: "Control Panel", facebook: "Facebook", fbConnect: "Connect Facebook Account", fbGroups: "My Linked Groups", whatsapp: "WhatsApp", waInbox: "Chats", waAccounts: "My Accounts", waBot: "Bot (Keyword Replies)", waAgent: "AI Agent", waSettings: "WhatsApp Settings", bulk: "Bulk Send", activity: "Activity", settings: "Profile", logout: "Sign Out", sectionMain: "Main", sectionChannels: "Channels", sectionInsights: "Insights" };
 
-  type LeafItem = { kind: "leaf"; icon: typeof LayoutDashboard; label: string; to: "/dashboard" | "/dashboard/control" | "/dashboard/facebook" | "/dashboard/facebook/groups" | "/dashboard/facebook/insights" | "/dashboard/facebook/messages" | "/dashboard/facebook/bot" | "/dashboard/facebook/jobs" | "/dashboard/facebook/history" | "/dashboard/facebook/group-extraction" | "/dashboard/facebook/campaigns" | "/dashboard/facebook/templates" | "/dashboard/facebook/media" | "/dashboard/facebook/autoreply" | "/dashboard/whatsapp" | "/dashboard/whatsapp/inbox" | "/dashboard/whatsapp/accounts" | "/dashboard/whatsapp/bot" | "/dashboard/whatsapp/automation" | "/dashboard/whatsapp/settings" | "/dashboard/whatsapp/contacts" | "/dashboard/bulk" | "/dashboard/enrich" | "/dashboard/activity" | "/dashboard/profile" | "/dashboard/notifications"; search?: Record<string, string> };
+  type LeafItem = { kind: "leaf"; icon: typeof LayoutDashboard; label: string; to: "/dashboard" | "/dashboard/control" | "/dashboard/facebook" | "/dashboard/facebook/groups" | "/dashboard/facebook/insights" | "/dashboard/facebook/messages" | "/dashboard/facebook/bot" | "/dashboard/facebook/jobs" | "/dashboard/facebook/history" | "/dashboard/facebook/group-extraction" | "/dashboard/facebook/campaigns" | "/dashboard/facebook/templates" | "/dashboard/facebook/media" | "/dashboard/facebook/autoreply" | "/dashboard/whatsapp" | "/dashboard/whatsapp/inbox" | "/dashboard/whatsapp/accounts" | "/dashboard/whatsapp/bot" | "/dashboard/whatsapp/automation" | "/dashboard/whatsapp/settings" | "/dashboard/whatsapp/contacts" | "/dashboard/bulk" | "/dashboard/enrich" | "/dashboard/customers" | "/dashboard/activity" | "/dashboard/profile" | "/dashboard/notifications"; search?: Record<string, string> };
   type SubheaderItem = { kind: "subheader"; label: string };
   type GroupChild = LeafItem | SubheaderItem;
   type GroupItem = { kind: "group"; key: string; icon: typeof LayoutDashboard; label: string; children: GroupChild[] };
@@ -202,6 +203,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     {
       title: labels.sectionInsights,
       items: [
+        { kind: "leaf", icon: Database, label: lang === "ar" ? "قاعدة عملائي" : "My customers DB", to: "/dashboard/customers" },
         { kind: "leaf", icon: MapPin, label: lang === "ar" ? "إثراء العملاء" : "Lead enrichment", to: "/dashboard/enrich" },
         { kind: "leaf", icon: Megaphone, label: lang === "ar" ? "مركز الإشعارات" : "Notifications", to: "/dashboard/notifications" },
         { kind: "leaf", icon: Activity, label: labels.activity, to: "/dashboard/activity" },

@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Download, Sparkles, Loader2, Upload, MapPin } from "lucide-react";
+import { Download, Sparkles, Loader2, Upload, MapPin, Database } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { Card } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { enrichLines, type EnrichedLead } from "@/lib/egypt-enrich";
+import { matchLeadsAgainstCustomers, type MatchResult } from "@/lib/customer-db";
 
 export const Route = createFileRoute("/dashboard/enrich")({
   ssr: false,
@@ -19,7 +20,21 @@ function EnrichPage() {
   const { lang } = useI18n();
   const [input, setInput] = useState("");
   const [rows, setRows] = useState<EnrichedLead[]>([]);
+  const [matches, setMatches] = useState<Map<number, MatchResult>>(new Map());
   const [busy, setBusy] = useState(false);
+
+  const runMatching = async (data: EnrichedLead[]) => {
+    try {
+      const m = await matchLeadsAgainstCustomers(
+        data.map((r) => ({ raw: r.raw, name: r.name, phone: r.phone, email: r.email })),
+      );
+      setMatches(m);
+      if (m.size > 0) {
+        toast.success(lang === "ar" ? `🎯 تم التعرف على ${m.size} عميل من قاعدة عملائك` : `🎯 Matched ${m.size} from your DB`);
+      }
+    } catch { /* silent */ }
+  };
+
 
   // Auto-fill from a job's results when navigated from history page.
   useEffect(() => {
@@ -37,6 +52,7 @@ function EnrichPage() {
               .then((data) => {
                 setRows(data);
                 toast.success(lang === "ar" ? `تم إثراء ${data.length} سطر` : `Enriched ${data.length} rows`);
+                void runMatching(data);
               })
               .catch((e) => toast.error(String(e)))
               .finally(() => setBusy(false));
@@ -87,6 +103,7 @@ function EnrichPage() {
       const data = await enrichLines(lines);
       setRows(data);
       toast.success(lang === "ar" ? `تم إثراء ${data.length} سطر` : `Enriched ${data.length} rows`);
+      void runMatching(data);
     } catch (e) { toast.error(String(e)); }
     finally { setBusy(false); }
   };
@@ -152,17 +169,33 @@ function EnrichPage() {
 
         <Card className="overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-muted/30 px-4 py-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <MapPin className="h-4 w-4 text-primary" />
-              {rows.length > 0 ? t.summary(rows.length, stats.name, stats.phone, stats.email, stats.gov) : t.none}
+            <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+              <span className="flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-primary" />
+                {rows.length > 0 ? t.summary(rows.length, stats.name, stats.phone, stats.email, stats.gov) : t.none}
+              </span>
+              {matches.size > 0 && (
+                <Badge className="gap-1 bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300">
+                  <Database className="h-3 w-3" />
+                  {lang === "ar" ? `${matches.size} عميل من قاعدتك` : `${matches.size} from your DB`}
+                </Badge>
+              )}
             </div>
-            {rows.length > 0 && (
-              <Button size="sm" variant="outline" onClick={downloadCsv} className="gap-2">
-                <Download className="h-4 w-4" />{t.download}
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              <Link to="/dashboard/customers">
+                <Button size="sm" variant="ghost" className="gap-2">
+                  <Database className="h-4 w-4" />
+                  {lang === "ar" ? "إدارة قاعدة عملائي" : "Manage my customer DB"}
+                </Button>
+              </Link>
+              {rows.length > 0 && (
+                <Button size="sm" variant="outline" onClick={downloadCsv} className="gap-2">
+                  <Download className="h-4 w-4" />{t.download}
+                </Button>
+              )}
+            </div>
           </div>
-          {noContact && (
+          {noContact && matches.size === 0 && (
             <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-800 dark:text-amber-300">
               {t.emptyHint}
             </div>
@@ -182,19 +215,38 @@ function EnrichPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
-                  {rows.map((r, i) => (
-                    <tr key={i} className={r.governorate ? "bg-primary/[0.03]" : ""}>
-                      <td className="px-4 py-2 font-mono text-muted-foreground">{i + 1}</td>
-                      <td className="px-4 py-2 font-medium">{r.name ?? "—"}</td>
-                      <td className="px-4 py-2 font-mono">{r.phone ?? "—"}</td>
-                      <td className="px-4 py-2 font-mono text-xs">{r.email ?? "—"}</td>
-                      <td className="px-4 py-2">{r.city ?? "—"}</td>
-                      <td className="px-4 py-2">
-                        {r.governorate ? <Badge variant="outline" className="border-primary/30 text-primary">{r.governorate}</Badge> : "—"}
-                      </td>
-                      <td className="px-4 py-2 text-xs text-muted-foreground line-clamp-2 max-w-md">{r.raw}</td>
-                    </tr>
-                  ))}
+                  {rows.map((r, i) => {
+                    const m = matches.get(i);
+                    const name = m?.full_name ?? r.name;
+                    const phone = m?.phone ?? r.phone;
+                    const email = m?.email ?? r.email;
+                    const city = m?.city ?? r.city;
+                    const gov = m?.governorate ?? r.governorate;
+                    return (
+                      <tr key={i} className={m ? "bg-emerald-500/[0.06]" : r.governorate ? "bg-primary/[0.03]" : ""}>
+                        <td className="px-4 py-2 font-mono text-muted-foreground">{i + 1}</td>
+                        <td className="px-4 py-2 font-medium">
+                          <div className="flex items-center gap-2">
+                            <span>{name ?? "—"}</span>
+                            {m && (
+                              <Badge className="gap-1 bg-emerald-500/15 px-1.5 py-0 text-[10px] text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300">
+                                <Database className="h-2.5 w-2.5" />
+                                {t.matched}
+                              </Badge>
+                            )}
+                          </div>
+                          {m?.notes && <div className="text-[11px] text-muted-foreground line-clamp-1">{m.notes}</div>}
+                        </td>
+                        <td className="px-4 py-2 font-mono">{phone ?? "—"}</td>
+                        <td className="px-4 py-2 font-mono text-xs">{email ?? "—"}</td>
+                        <td className="px-4 py-2">{city ?? "—"}</td>
+                        <td className="px-4 py-2">
+                          {gov ? <Badge variant="outline" className="border-primary/30 text-primary">{gov}</Badge> : "—"}
+                        </td>
+                        <td className="px-4 py-2 text-xs text-muted-foreground line-clamp-2 max-w-md">{r.raw}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
