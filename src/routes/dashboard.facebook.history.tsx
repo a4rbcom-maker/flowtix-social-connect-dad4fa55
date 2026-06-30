@@ -731,7 +731,9 @@ function JobsHistoryPage() {
             )}
             {selected?.status === "failed" && !isSessionExpired(selected) && selected.error_message && (
               <div className="mb-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
-                {selected.error_message}
+                {isMessenger
+                  ? messengerFriendlyReason(selected.error_message, "failed", lang).title
+                  : selected.error_message}
               </div>
             )}
             {resultsLoading ? (
