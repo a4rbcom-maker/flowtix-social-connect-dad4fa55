@@ -45,13 +45,13 @@ async function attachMedia(page, filePaths) {
   const photoBtnSel = '[role="dialog"] [aria-label*="Photo"], [role="dialog"] [aria-label*="صورة"], [role="dialog"] [aria-label*="فيديو"]';
   const photoBtn = await page.$(photoBtnSel);
   if (photoBtn) { try { await photoBtn.click(); } catch {} }
-  await page.waitForTimeout(800);
+  await new Promise(r => setTimeout(r, 800));
 
   const input = await page.waitForSelector('[role="dialog"] input[type="file"]', { timeout: 8000 }).catch(() => null);
   if (!input) throw new Error("Could not find media upload input");
   await input.uploadFile(...filePaths);
   // wait for thumbnails to appear
-  await page.waitForTimeout(4000 + filePaths.length * 1500);
+  await new Promise(r => setTimeout(r, 4000 + filePaths.length * 1500));
 }
 
 async function runPostToGroups({ page, job, report }) {
@@ -108,19 +108,19 @@ async function runPostToGroups({ page, job, report }) {
     for (const gid of groupIds) {
       try {
         await page.goto(`https://www.facebook.com/groups/${gid}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-        await page.waitForTimeout(3000 + Math.random() * 2000);
+        await new Promise(r => setTimeout(r, 3000 + Math.random() * 2000));
 
         // Click "Write something"
         const composerSel = '[role="button"][aria-label*="Write"], [role="button"][aria-label*="اكتب"]';
         const composer = await page.waitForSelector(composerSel, { timeout: 15_000 });
         await composer.click();
-        await page.waitForTimeout(1500);
+        await new Promise(r => setTimeout(r, 1500));
 
         // Type into the editable composer
         const editableSel = '[role="dialog"] [contenteditable="true"]';
         await page.waitForSelector(editableSel, { timeout: 10_000 });
         if (content) await page.type(editableSel, expandSpin(content), { delay: 25 });
-        await page.waitForTimeout(800);
+        await new Promise(r => setTimeout(r, 800));
 
         // Attach media if any
         if (mediaFiles.length > 0) {
@@ -144,7 +144,7 @@ async function runPostToGroups({ page, job, report }) {
         // Click Post
         const postBtn = await page.$('[role="dialog"] [aria-label="Post"], [role="dialog"] [aria-label="نشر"]');
         if (postBtn) await postBtn.click();
-        await page.waitForTimeout(6000);
+        await new Promise(r => setTimeout(r, 6000));
 
         processed++;
         await report({
@@ -164,7 +164,7 @@ async function runPostToGroups({ page, job, report }) {
       // Random delay between groups
       if (processed < total) {
         const wait = randomBetween(delayMin, delayMax) * 1000;
-        await page.waitForTimeout(wait);
+        await new Promise(r => setTimeout(r, wait));
       }
     }
     await report({ status: "completed" });

@@ -23,7 +23,7 @@ async function runListMyGroups({ page, job, report }) {
     await report({ status: "failed", errorMessage: `Failed to open groups page: ${lastErr?.message || lastErr}` });
     return;
   }
-  await page.waitForTimeout(5000);
+  await new Promise(r => setTimeout(r, 5000));
 
   // Quick sanity: detect login redirect.
   const curUrl = page.url();
@@ -70,7 +70,7 @@ async function runListMyGroups({ page, job, report }) {
     emptyScrolls = added === 0 ? emptyScrolls + 1 : 0;
 
     await page.evaluate(() => window.scrollBy(0, window.innerHeight * 0.9));
-    await page.waitForTimeout(1500 + Math.floor(Math.random() * 1500));
+    await new Promise(r => setTimeout(r, 1500 + Math.floor(Math.random() * 1500)));
   }
 
   await report({

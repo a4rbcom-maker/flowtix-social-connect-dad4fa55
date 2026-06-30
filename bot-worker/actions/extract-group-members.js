@@ -12,7 +12,7 @@ async function runExtractGroupMembers({ page, job, report }) {
 
   const url = `https://www.facebook.com/groups/${groupId}/members`;
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
-  await page.waitForTimeout(5000);
+  await new Promise(r => setTimeout(r, 5000));
 
   const seen = new Set();
   const cap = Math.min(Math.max(50, Number(maxMembers) || 2000), 5000);
@@ -89,7 +89,7 @@ async function runExtractGroupMembers({ page, job, report }) {
     if (newCount === 0) emptyScrolls++; else emptyScrolls = 0;
 
     await page.evaluate(() => window.scrollBy(0, 1800));
-    await page.waitForTimeout(rand(2000, 4500));
+    await new Promise(r => setTimeout(r, rand(2000, 4500)));
 
     await report({
       progress: Math.min(99, Math.round((seen.size / cap) * 100)),
