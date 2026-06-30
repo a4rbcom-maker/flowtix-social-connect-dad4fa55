@@ -49,32 +49,34 @@ function EnrichPage() {
 
   const t = lang === "ar" ? {
     title: "إثراء العملاء",
-    subtitle: "الصق نص أو قائمة (سطر لكل عميل) ونستخرج تلقائياً الاسم، رقم الموبايل، المدينة والمحافظة من قاعدة بيانات مصر.",
+    subtitle: "الصق نص أو قائمة (سطر لكل عميل) ونستخرج تلقائياً الاسم، رقم الموبايل، الإيميل، المدينة والمحافظة من قاعدة بيانات مصر.",
     inputLabel: "النص أو القائمة",
-    placeholder: "أحمد محمد 01012345678 من الزقازيق\nمنى صلاح 01551234567 المنصورة\nمحمد علي - 6 أكتوبر - 01112223344",
+    placeholder: "أحمد محمد 01012345678 ahmed@mail.com من الزقازيق\nمنى صلاح 01551234567 المنصورة\nمحمد علي - 6 أكتوبر - 01112223344",
     upload: "رفع ملف نصي/CSV",
     process: "تحليل وإثراء",
     clear: "مسح",
     download: "تنزيل CSV",
     none: "لا توجد نتائج بعد",
-    summary: (n: number, w: number, p: number, c: number) =>
-      `${n} سطر • ${w} باسم • ${p} برقم • ${c} بمحافظة`,
-    cols: { name: "الاسم", phone: "موبايل", city: "المدينة", gov: "المحافظة", raw: "النص الأصلي" },
+    summary: (n: number, w: number, p: number, e: number, c: number) =>
+      `${n} سطر • ${w} باسم • ${p} برقم • ${e} بإيميل • ${c} بمحافظة`,
+    cols: { name: "الاسم", phone: "موبايل", email: "إيميل", city: "المدينة", gov: "المحافظة", raw: "النص الأصلي" },
     matched: "تم التعرف",
+    emptyHint: "النتائج بدون أرقام/مدن؟ ده طبيعي مع أعضاء الجروبات لأن فيسبوك بيرجّع الاسم بس. شغّل «فحص عميق للبروفايلات» من سجل المهام عشان نفتح كل بروفايل ونسحب البيو والمدينة والشغل، وبعدها اعمل إثراء تاني.",
   } : {
     title: "Enrich leads",
-    subtitle: "Paste text or a list (one lead per line) and we'll extract name, mobile, city and governorate using the Egypt locations dataset.",
+    subtitle: "Paste text or a list (one lead per line) and we'll extract name, mobile, email, city and governorate using the Egypt locations dataset.",
     inputLabel: "Text or list",
-    placeholder: "Ahmed Mohamed 01012345678 from Zagazig\nMona Salah 01551234567 Mansoura\nMohamed Ali - 6th October - 01112223344",
+    placeholder: "Ahmed Mohamed 01012345678 ahmed@mail.com from Zagazig\nMona Salah 01551234567 Mansoura\nMohamed Ali - 6th October - 01112223344",
     upload: "Upload text/CSV file",
     process: "Analyze & enrich",
     clear: "Clear",
     download: "Download CSV",
     none: "No results yet",
-    summary: (n: number, w: number, p: number, c: number) =>
-      `${n} rows • ${w} with name • ${p} with phone • ${c} with governorate`,
-    cols: { name: "Name", phone: "Mobile", city: "City", gov: "Governorate", raw: "Source" },
+    summary: (n: number, w: number, p: number, e: number, c: number) =>
+      `${n} rows • ${w} with name • ${p} with phone • ${e} with email • ${c} with governorate`,
+    cols: { name: "Name", phone: "Mobile", email: "Email", city: "City", gov: "Governorate", raw: "Source" },
     matched: "Matched",
+    emptyHint: "No phones/cities in results? That's expected for group members — Facebook only returns the name. Run \"Deep profile scrape\" from Jobs History to open each profile and pull bio, city and work, then re-enrich.",
   };
 
   const run = async () => {
