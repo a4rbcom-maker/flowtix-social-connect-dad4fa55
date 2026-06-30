@@ -60,11 +60,13 @@ function AutoReplyPage() {
         </div>
 
         <Tabs defaultValue="rules" className="space-y-4" dir={ar ? "rtl" : "ltr"}>
-          <TabsList className={ar ? "flex-row-reverse" : ""}>
-            <TabsTrigger value="rules"><Sparkles className="w-4 h-4 me-2"/>{ar ? "القواعد" : "Rules"}</TabsTrigger>
-            <TabsTrigger value="pages"><Settings className="w-4 h-4 me-2"/>{ar ? "الصفحات المربوطة" : "Connected pages"}</TabsTrigger>
-            <TabsTrigger value="log"><Activity className="w-4 h-4 me-2"/>{ar ? "السجل" : "Log"}</TabsTrigger>
-          </TabsList>
+          <div className={`flex w-full ${ar ? "justify-end" : "justify-start"}`}>
+            <TabsList className={ar ? "flex-row-reverse" : ""}>
+              <TabsTrigger value="rules"><Sparkles className="w-4 h-4 me-2"/>{ar ? "القواعد" : "Rules"}</TabsTrigger>
+              <TabsTrigger value="pages"><Settings className="w-4 h-4 me-2"/>{ar ? "الصفحات المربوطة" : "Connected pages"}</TabsTrigger>
+              <TabsTrigger value="log"><Activity className="w-4 h-4 me-2"/>{ar ? "السجل" : "Log"}</TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="rules"><RulesTab ar={ar} /></TabsContent>
           <TabsContent value="pages"><PagesTab ar={ar} /></TabsContent>
