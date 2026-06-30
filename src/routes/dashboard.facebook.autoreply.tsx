@@ -47,10 +47,10 @@ function AutoReplyPage() {
   return (
     <DashboardLayout title={ar ? "الرد التلقائي" : "Auto-Reply"}>
       <div className="container mx-auto p-6 space-y-6" dir={ar ? "rtl" : "ltr"}>
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-3">
-            <Sparkles className="w-8 h-8 text-primary" />
-            {ar ? "الرد التلقائي على تعليقات الفيسبوك" : "Facebook Auto-Reply"}
+        <div className={ar ? "text-right" : "text-left"}>
+          <h1 className={`text-3xl font-bold flex items-center gap-3 ${ar ? "justify-end flex-row-reverse" : "justify-start"}`}>
+            <Sparkles className="w-8 h-8 text-primary shrink-0" />
+            <span>{ar ? "الرد التلقائي على تعليقات الفيسبوك" : "Facebook Auto-Reply"}</span>
           </h1>
           <p className="text-muted-foreground mt-1">
             {ar
@@ -59,8 +59,8 @@ function AutoReplyPage() {
           </p>
         </div>
 
-        <Tabs defaultValue="rules" className="space-y-4">
-          <TabsList>
+        <Tabs defaultValue="rules" className="space-y-4" dir={ar ? "rtl" : "ltr"}>
+          <TabsList className={ar ? "flex-row-reverse" : ""}>
             <TabsTrigger value="rules"><Sparkles className="w-4 h-4 me-2"/>{ar ? "القواعد" : "Rules"}</TabsTrigger>
             <TabsTrigger value="pages"><Settings className="w-4 h-4 me-2"/>{ar ? "الصفحات المربوطة" : "Connected pages"}</TabsTrigger>
             <TabsTrigger value="log"><Activity className="w-4 h-4 me-2"/>{ar ? "السجل" : "Log"}</TabsTrigger>
@@ -74,6 +74,7 @@ function AutoReplyPage() {
     </DashboardLayout>
   );
 }
+
 
 /* ====================== PAGES TAB ====================== */
 function PagesTab({ ar }: { ar: boolean }) {
@@ -91,9 +92,9 @@ function PagesTab({ ar }: { ar: boolean }) {
   });
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
+    <Card dir={ar ? "rtl" : "ltr"}>
+      <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <div className={ar ? "text-right" : "text-left"}>
           <CardTitle>{ar ? "الصفحات المربوطة" : "Connected pages"}</CardTitle>
           <CardDescription>{ar ? "أضف صفحات فيسبوك ترغب في تشغيل الرد التلقائي عليها." : "Add Facebook pages for auto-reply."}</CardDescription>
         </div>
@@ -103,6 +104,7 @@ function PagesTab({ ar }: { ar: boolean }) {
         </Dialog>
       </CardHeader>
       <CardContent>
+
         {isLoading ? <Loader2 className="animate-spin"/> : !pages?.length ? (
           <p className="text-muted-foreground text-sm">{ar ? "لا توجد صفحات مربوطة بعد." : "No pages connected yet."}</p>
         ) : (
@@ -164,7 +166,7 @@ function AddPageDialog({ ar, onDone, addFn }: { ar: boolean; onDone: () => void;
   };
 
   return (
-    <DialogContent>
+    <DialogContent dir={ar ? "rtl" : "ltr"} className={ar ? "text-right" : ""}>
       <DialogHeader>
         <DialogTitle>{ar ? "ربط صفحة فيسبوك" : "Connect Facebook page"}</DialogTitle>
         <DialogDescription>
@@ -237,15 +239,16 @@ function RulesTab({ ar }: { ar: boolean }) {
   const openEdit = (r: RuleRow) => { setEditing(r); setOpen(true); };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
+    <Card dir={ar ? "rtl" : "ltr"}>
+      <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <div className={ar ? "text-right" : "text-left"}>
           <CardTitle>{ar ? "قواعد الرد التلقائي" : "Auto-reply rules"}</CardTitle>
           <CardDescription>{ar ? "كل قاعدة تطابق التعليقات وفقاً للنطاق والكلمات." : "Each rule matches comments by scope and keywords."}</CardDescription>
         </div>
         <Button onClick={openNew}><Plus className="w-4 h-4 me-2"/>{ar ? "قاعدة جديدة" : "New rule"}</Button>
       </CardHeader>
       <CardContent>
+
         {!rules?.length ? (
           <p className="text-muted-foreground text-sm">{ar ? "لا توجد قواعد بعد." : "No rules yet."}</p>
         ) : (
@@ -340,7 +343,7 @@ function RuleDialog({ ar, pages, rule, onDone }: { ar: boolean; pages: PageRow[]
   };
 
   return (
-    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    <DialogContent dir={ar ? "rtl" : "ltr"} className={`max-w-2xl max-h-[90vh] overflow-y-auto ${ar ? "text-right" : ""}`}>
       <DialogHeader>
         <DialogTitle>{rule ? (ar ? "تعديل القاعدة" : "Edit rule") : (ar ? "قاعدة جديدة" : "New rule")}</DialogTitle>
       </DialogHeader>
@@ -468,8 +471,9 @@ function LogTab({ ar }: { ar: boolean }) {
   const list = useServerFn(listLog);
   const { data: rows, isLoading } = useQuery({ queryKey: ["fb_autoreply_log"], queryFn: () => list({ data: { limit: 100 } }) });
   return (
-    <Card>
-      <CardHeader><CardTitle>{ar ? "سجل التنفيذ" : "Execution log"}</CardTitle></CardHeader>
+    <Card dir={ar ? "rtl" : "ltr"}>
+      <CardHeader><CardTitle className={ar ? "text-right" : "text-left"}>{ar ? "سجل التنفيذ" : "Execution log"}</CardTitle></CardHeader>
+
       <CardContent>
         {isLoading ? <Loader2 className="animate-spin"/> : !rows?.length ? (
           <p className="text-muted-foreground text-sm">{ar ? "لا يوجد سجلات." : "No log entries."}</p>
