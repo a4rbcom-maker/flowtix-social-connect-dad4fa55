@@ -9,6 +9,9 @@ const fs = require("fs");
 const https = require("https");
 const http = require("http");
 
+const MESSAGE_ACTION_PATTERN = "Message|Messenger|Send message|Send a message|Private message|رسالة|مراسلة|راسل|إرسال رسالة|ارسال رسالة|إرسل رسالة|ارسل رسالة|إرسال|ارسال";
+const MESSAGE_ACTION_RE = new RegExp(MESSAGE_ACTION_PATTERN, "i");
+
 // Extract a numeric Facebook user ID from any of the URL shapes we see
 // (profile.php?id=, /groups/<gid>/user/<uid>/, raw numeric, m.me/<id>).
 function extractFbUserId(input) {
@@ -153,7 +156,7 @@ function dmErrorMessage(reason) {
   if (reason === "RECIPIENT_PRIVACY") return "RECIPIENT_PRIVACY: recipient blocks non-friend messages or DMs are closed";
   if (reason === "ACCOUNT_RATE_LIMIT") return "ACCOUNT_RATE_LIMIT: Facebook temporarily limited this bot account";
   if (reason === "THREAD_NOT_AVAILABLE") return "THREAD_NOT_AVAILABLE: Messenger thread is not available for this recipient";
-  if (reason === "PROFILE_MESSAGE_BUTTON_MISSING") return "PROFILE_MESSAGE_BUTTON_MISSING: profile has no visible Message button";
+  if (reason === "PROFILE_MESSAGE_BUTTON_MISSING") return "MESSAGE_ACTION_NOT_DETECTED: could not open the profile Message/مراسلة/إرسال action";
   return "COMPOSER_NOT_FOUND: could not find Messenger message box";
 }
 
@@ -179,10 +182,10 @@ async function waitForComposer(page, timeoutMs = 12000) {
 
 async function clickVisibleMessageAction(page) {
   const locators = [
-    page.getByRole("button", { name: /^(مراسلة|رسالة|إرسال رسالة|Message|Send message)$/i }),
-    page.getByRole("link", { name: /^(مراسلة|رسالة|إرسال رسالة|Message|Send message)$/i }),
-    page.getByText(/^(مراسلة|رسالة|إرسال رسالة|Message|Send message)$/i),
-    page.locator('[aria-label*="مراسلة"], [aria-label*="رسالة"], [aria-label*="Message" i], [title*="مراسلة"], [title*="Message" i]'),
+    page.getByRole("button", { name: MESSAGE_ACTION_RE }),
+    page.getByRole("link", { name: MESSAGE_ACTION_RE }),
+    page.getByText(MESSAGE_ACTION_RE),
+    page.locator('[aria-label*="مراسلة"], [aria-label*="رسالة"], [aria-label*="إرسال"], [aria-label*="ارسال"], [aria-label*="Message" i], [aria-label*="Messenger" i], [title*="مراسلة"], [title*="رسالة"], [title*="إرسال"], [title*="Message" i], [title*="Messenger" i]'),
     page.locator('a[href*="/messages/t/"], a[href*="m.me/"]'),
   ];
   for (const locator of locators) {
@@ -218,48 +221,87 @@ async function openViaProfile(page, profile) {
   let clicked = await page.evaluate(async () => {
     const normalize = (v) => String(v || "").replace(/\s+/g, " ").trim();
     const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const MESSAGE_RE = /Message|Messenger|Send message|Send a message|Private message|رسالة|مراسلة|راسل|إرسال رسالة|ارسال رسالة|إرسل رسالة|ارسل رسالة|إرسال|ارسال/i;
+    const NEGATIVE_RE = /Add friend|Friend request|Follow|Following|Unfollow|Like|Share|Comment|Search|Block|Report|Copy link|Invite|Join|View profile|See more|Menu|More|إضافة صديق|طلب صداقة|صديق|متابعة|إلغاء المتابعة|إعجاب|مشاركة|تعليق|بحث|حظر|إبلاغ|نسخ الرابط|دعوة|انضمام|عرض الملف|مشاهدة الملف|القائمة|المزيد|خيارات/i;
     const isVisible = (el) => {
       const r = el.getBoundingClientRect();
-      return r.width > 8 && r.height > 8 && r.bottom > 0 && r.right > 0;
+      const style = window.getComputedStyle(el);
+      return r.width > 8 && r.height > 8 && r.bottom > 0 && r.right > 0 && style.visibility !== "hidden" && style.display !== "none";
     };
+    const clickableOf = (el) => el.closest?.('a[href], [role="button"], [role="link"], [tabindex="0"], [aria-label], div[role="button"]') || el;
     const labelOf = (el) => {
-      const text = normalize(el.innerText || el.textContent);
-      const aria = normalize(el.getAttribute("aria-label") || el.getAttribute("title"));
-      return `${text} ${aria}`.trim();
+      const target = clickableOf(el);
+      const describedBy = normalize((target.getAttribute("aria-describedby") || "").split(/\s+/).map((id) => document.getElementById(id)?.innerText || "").join(" "));
+      const own = [
+        target.innerText,
+        target.textContent,
+        target.getAttribute("aria-label"),
+        target.getAttribute("title"),
+        target.getAttribute("data-tooltip-content"),
+        target.getAttribute("data-tooltiptext"),
+        target.getAttribute("href"),
+        describedBy,
+      ];
+      const parent = target.parentElement ? [target.parentElement.getAttribute("aria-label"), target.parentElement.getAttribute("title")] : [];
+      return normalize([...own, ...parent].filter(Boolean).join(" "));
     };
     const isMessageAction = (el) => {
       const label = labelOf(el);
       if (!label) return false;
-      // Explicit excludes first.
-      if (/^(إضافة صديق|Add friend|تعرف على الإسهامات|View profile|عرض الملف الشخصي|Follow|متابعة|إلغاء المتابعة|Unfollow|إلغاء الصداقة|Remove friend)$/i.test(normalize(el.innerText || el.textContent))) return false;
-      return /(^|\s)(Message|Messenger|Send message|رسالة|مراسلة|إرسال رسالة)(\s|$|\b)/i.test(label);
+      const href = el.getAttribute?.("href") || clickableOf(el).getAttribute?.("href") || "";
+      if (/\/messages\/(t\/)?\d|m\.me\//i.test(href)) return true;
+      if (!MESSAGE_RE.test(label)) return false;
+      // Standalone Arabic "إرسال/ارسال" is valid for Facebook's localized profile message action,
+      // but never click obvious friend/share/search/navigation actions.
+      return !NEGATIVE_RE.test(label.replace(/إرسال رسالة|ارسال رسالة|إرسل رسالة|ارسل رسالة|Message|Messenger/gi, ""));
+    };
+    const clickElement = (el) => {
+      const target = clickableOf(el);
+      target.scrollIntoView?.({ block: "center", inline: "center" });
+      target.click();
+      return true;
+    };
+    const scoreAction = (el) => {
+      const label = labelOf(el);
+      const href = el.getAttribute?.("href") || clickableOf(el).getAttribute?.("href") || "";
+      if (/\/messages\/(t\/)?\d|m\.me\//i.test(href)) return 100;
+      if (/^(Message|Messenger|رسالة|مراسلة|إرسال رسالة|ارسال رسالة)$/i.test(label)) return 90;
+      if (/Message|Messenger|مراسلة|إرسال رسالة|ارسال رسالة|رسالة/i.test(label)) return 80;
+      if (/(^|\s)(إرسال|ارسال)(\s|$)/i.test(label) && !NEGATIVE_RE.test(label)) return 70;
+      return 0;
     };
     const getActions = () => Array.from(document.querySelectorAll(
-      '[role="button"], a[role="link"], a[href*="/messages/"], a[href*="m.me/"], div[role="button"]'
-    )).filter(isVisible);
+      'a[href], [role="button"], [role="link"], [tabindex="0"], [aria-label], [title], div[role="button"], span[role="button"]'
+    )).map(clickableOf).filter((el, index, arr) => arr.indexOf(el) === index && isVisible(el));
 
     // 1) Direct Messenger link wins.
     const direct = getActions().find((el) => /\/messages\/(t\/)?\d|m\.me\//i.test(el.getAttribute("href") || ""));
-    if (direct) { direct.click(); return true; }
+    if (direct) return clickElement(direct);
 
-    // 2) Visible action button labelled Message / مراسلة (including buttons whose only text is in a child span).
-    let target = getActions().find(isMessageAction);
-    if (target) { target.click(); return true; }
+    // 2) Visible action button labelled Message / مراسلة / إرسال (including text in child spans or aria labels).
+    let target = getActions()
+      .map((el) => ({ el, score: scoreAction(el) }))
+      .filter((x) => x.score > 0 && isMessageAction(x.el))
+      .sort((a, b) => b.score - a.score)[0]?.el;
+    if (target) return clickElement(target);
 
     // 3) Open any overflow menus and look again.
     const menus = getActions().filter((b) => {
       const aria = normalize(b.getAttribute("aria-label") || b.getAttribute("title"));
       const text = normalize(b.innerText || b.textContent);
-      return /^(More|Menu|المزيد|خيارات|⋯|\.\.\.)$/i.test(text) || /More|Menu|المزيد|خيارات|See more options|عرض المزيد/i.test(aria);
+      return /^(More|Menu|Actions|Options|المزيد|خيارات|إجراءات|⋯|\.\.\.)$/i.test(text) || /More|Menu|Actions|Options|See more options|Profile actions|المزيد|خيارات|خيارات أخرى|إجراءات|عرض المزيد/i.test(aria);
     });
     for (const menu of menus.slice(0, 4)) {
-      menu.click();
+      clickElement(menu);
       await wait(900);
       const items = Array.from(document.querySelectorAll(
-        '[role="menuitem"], [role="menuitemradio"], [role="button"], a[role="link"]'
-      )).filter(isVisible);
-      const item = items.find(isMessageAction);
-      if (item) { item.click(); return true; }
+        '[role="menuitem"], [role="menuitemradio"], [role="button"], [role="link"], a[href], [tabindex="0"], [aria-label]'
+      )).map(clickableOf).filter((el, index, arr) => arr.indexOf(el) === index && isVisible(el));
+      const item = items
+        .map((el) => ({ el, score: scoreAction(el) }))
+        .filter((x) => x.score > 0 && isMessageAction(x.el))
+        .sort((a, b) => b.score - a.score)[0]?.el;
+      if (item) return clickElement(item);
     }
     return false;
   });

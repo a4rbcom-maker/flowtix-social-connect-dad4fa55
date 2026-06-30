@@ -54,7 +54,7 @@ const messengerFailureKind = (err: string | null, status?: MessengerResultStatus
   const e = (err ?? "").toLowerCase();
   if (e.includes("session") || e.includes("checkpoint") || e.includes("login")) return "session";
   if (e.includes("account_rate_limit") || e.includes("temporarily limited") || e.includes("action blocked") || e.includes("restricted")) return "limited";
-  if (e.includes("profile_message_button_missing") || e.includes("visible message button") || e.includes("message button missing")) return "noMessageButton";
+  if (e.includes("profile_message_button_missing") || e.includes("message_action_not_detected") || e.includes("visible message button") || e.includes("message button missing")) return "noMessageButton";
   if (e.includes("recipient_privacy") || e.includes("closed dms") || e.includes("not friends") || e.includes("can't message") || e.includes("cannot message")) return "privacy";
   if (e.includes("no_numeric_id") || e.includes("no_profile_url") || e.includes("not a valid profile")) return "invalidTarget";
   if (e.includes("composer") || e.includes("thread_not_available") || e.includes("messenger_nav_failed") || e.includes("profile_nav_failed")) return "unavailable";
@@ -66,7 +66,7 @@ const messengerFriendlyReason = (err: string | null, status: MessengerResultStat
   const ar = lang === "ar";
   const kind = messengerFailureKind(err, status);
   if (kind === "sent") return { title: ar ? "تم الإرسال بنجاح" : "Delivered successfully", hint: ar ? "وصلت الرسالة لهذا المستلم." : "The message was sent to this recipient.", code: "SENT" };
-  if (kind === "noMessageButton") return { title: ar ? "لا يوجد زر مراسلة ظاهر" : "No visible message button", hint: ar ? "فيسبوك لا يعرض زر الرسائل لهذا الشخص؛ غالباً بسبب إعدادات الخصوصية أو لأن الحساب ليس صديقاً أو لا يقبل رسائل الغرباء." : "Facebook is not showing a Message button for this person, usually because of privacy settings or non-friend DM restrictions.", code: "NO_MESSAGE_BUTTON" };
+  if (kind === "noMessageButton") return { title: ar ? "تعذر اكتشاف زر المراسلة" : "Message action was not detected", hint: ar ? "النظام لم يتمكن من فتح زر مراسلة/إرسال تلقائياً داخل صفحة فيسبوك. تم تحسين الاكتشاف ليبحث عن الزر بالعربي والإنجليزي ومن القوائم المخفية." : "The system could not automatically open the Message action on Facebook. Detection now checks Arabic/English labels and hidden action menus.", code: "MESSAGE_ACTION_NOT_DETECTED" };
   if (kind === "privacy") return { title: ar ? "المستلم لا يقبل رسائل من الغرباء" : "Recipient blocks non-friend DMs", hint: ar ? "الرسالة لم تُرسل لأن إعدادات ماسنجر عند المستلم تمنع طلبات الرسائل من هذا الحساب." : "The recipient's Messenger privacy settings blocked this message request.", code: "RECIPIENT_PRIVACY" };
   if (kind === "limited") return { title: ar ? "حساب الإرسال مقيّد مؤقتاً" : "Sending account temporarily limited", hint: ar ? "فيسبوك قيّد الحساب مؤقتاً. قلّل معدل الإرسال واستخدم حساباً أقدم قبل إعادة المحاولة." : "Facebook temporarily limited this account. Lower the send rate and retry with a warmed-up account.", code: "ACCOUNT_LIMIT" };
   if (kind === "session") return { title: ar ? "جلسة حساب فيسبوك انتهت" : "Facebook session expired", hint: ar ? "أعد ربط حساب فيسبوك من صفحة حسابات البوت ثم شغّل المهمة مرة أخرى." : "Reconnect the Facebook bot account, then run the job again.", code: "SESSION_EXPIRED" };
