@@ -210,17 +210,25 @@ function InboxPage() {
   const conversations = useMemo<ConversationRow[]>(
     () => {
       const raw = Array.isArray(convQuery.data) ? convQuery.data : [];
-      // Hide WhatsApp LID duplicates: same person appears twice — once with phone JID,
-      // once with a long numeric LID JID (14+ digits) and a placeholder name like "."
+      // Build set of contact_phones that have a "real" phone-JID conversation.
+      // Only then we can safely hide the LID duplicate of that same contact.
+      const phoneJidContacts = new Set<string>();
+      for (const c of raw) {
+        const local = c.remote_jid.split("@")[0] ?? "";
+        const isLidLike = /^\d{14,}$/.test(local);
+        if (!isLidLike && c.contact_phone) phoneJidContacts.add(c.contact_phone);
+      }
       return raw.filter((c) => {
         const local = c.remote_jid.split("@")[0] ?? "";
         const isLidLike = /^\d{14,}$/.test(local);
-        const placeholderName = !c.contact_name || c.contact_name.trim() === "" || c.contact_name.trim() === ".";
-        return !(isLidLike && placeholderName);
+        if (!isLidLike) return true;
+        // Only hide the LID row if the same contact_phone also exists as a phone-JID row.
+        return !(c.contact_phone && phoneJidContacts.has(c.contact_phone));
       });
     },
     [convQuery.data],
   );
+
   const messages = useMemo<ChatMessageRow[]>(
     () => (Array.isArray(msgsQuery.data) ? msgsQuery.data : []),
     [msgsQuery.data],
