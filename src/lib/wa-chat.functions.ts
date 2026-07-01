@@ -335,6 +335,115 @@ export const sendChatMessage = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// ─── Test Message ──────────────────────────────────────────────────────────
+
+export const sendTestMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        phone: z.string().trim().min(6).max(24),
+        text: z.string().trim().min(1).max(1000).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const { data: sess } = await supabase
+      .from("wa_sessions")
+      .select("session_id, status")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!sess?.session_id) throw new Error("WhatsApp is not connected");
+    if (sess.status !== "connected") throw new Error("WhatsApp is not connected");
+
+    const phoneDigits = data.phone.replace(/[^0-9]/g, "");
+    if (!phoneDigits || phoneDigits.length < 6) throw new Error("Invalid phone number");
+    const to = `${phoneDigits}@s.whatsapp.net`;
+    const text = data.text?.trim() || `✅ رسالة اختبار من Flowtix — ${new Date().toLocaleString("ar-EG")}`;
+    const sentAt = new Date().toISOString();
+
+    try {
+      const webhookUrl = await deriveWebhookUrl().catch(() => null);
+      const res = await sendTextWithReconnect(sess.session_id, to, text, {
+        webhookUrl: webhookUrl ?? undefined,
+        tenantId: userId,
+        recipientPhone: phoneDigits,
+      });
+      const queuedId = bridgeSendQueuedMessage(res);
+      let providerMessageId: string | null = null;
+      let status = "sent";
+      let delivery = "whatsapp_acknowledged";
+      try {
+        providerMessageId = assertBridgeSendQueued(res);
+      } catch (err) {
+        if (!queuedId) throw err;
+        status = "pending";
+        delivery = "bridge_queued_waiting_for_whatsapp_ack";
+      }
+      const { data: inserted, error: insErr } = await supabase
+        .from("wa_messages")
+        .insert({
+          user_id: userId,
+          session_id: sess.session_id,
+          direction: "out",
+          remote_jid: to,
+          to_phone: phoneDigits,
+          msg_type: "text",
+          text_body: text,
+          status,
+          provider_message_id: providerMessageId,
+          wa_timestamp: sentAt,
+          raw: {
+            test: true,
+            bridgeMessageId: providerMessageId,
+            queuedId,
+            delivery,
+            targetJid: to,
+            bridgeResponse: res,
+          } as never,
+        })
+        .select("id, status, wa_timestamp")
+        .single();
+      if (insErr) throw new Error(insErr.message);
+
+      await upsertConversationFromMessage({
+        userId,
+        sessionId: sess.session_id,
+        remoteJid: to,
+        contactName: null,
+        contactPhone: phoneDigits,
+        text,
+        direction: "out",
+        messageAt: sentAt,
+      });
+
+      return {
+        ok: true,
+        status,
+        delivery,
+        phone: phoneDigits,
+        remoteJid: to,
+        messageId: inserted?.id ?? null,
+        providerMessageId,
+        queuedId,
+        text,
+        sentAt,
+      };
+    } catch (err) {
+      if (isBridgeSessionMissingError(err)) {
+        await resetWaSessionAfterBridgeLoss({
+          userId,
+          oldSessionId: sess.session_id,
+          reason: "test send failed",
+        });
+      }
+      const msg =
+        err instanceof BridgeError ? err.message : err instanceof Error ? err.message : "Bridge error";
+      throw new Error(msg);
+    }
+  });
+
 // ─── AI Settings ───────────────────────────────────────────────────────────
 
 export interface WaAiSettings {

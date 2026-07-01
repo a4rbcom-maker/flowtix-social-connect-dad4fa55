@@ -34,6 +34,8 @@ import {
   type WaBridgeHealth,
   type WaSessionEventRow,
 } from "@/lib/wa.functions";
+import { sendTestMessage } from "@/lib/wa-chat.functions";
+import { Send } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard/whatsapp/accounts")({
   ssr: false,
@@ -550,6 +552,10 @@ function WhatsAppPage() {
                     </div>
                   </div>
 
+                  {status === "connected" && (
+                    <TestSendCard ar={ar} defaultPhone="01273747262" />
+                  )}
+
 
                   {/* QR section (collapsible, only when needed) */}
                   {showQr && status !== "connected" && (
@@ -649,6 +655,122 @@ function WhatsAppPage() {
         )}
       </div>
     </DashboardLayout>
+  );
+}
+
+function TestSendCard({ ar, defaultPhone }: { ar: boolean; defaultPhone: string }) {
+  const sendFn = useServerFn(sendTestMessage);
+  const [phone, setPhone] = useState(defaultPhone);
+  const [text, setText] = useState("");
+  const [result, setResult] = useState<null | {
+    ok: boolean;
+    status?: string;
+    delivery?: string;
+    messageId?: string | null;
+    providerMessageId?: string | null;
+    queuedId?: string | null;
+    phone?: string;
+    sentAt?: string;
+    error?: string;
+  }>(null);
+
+  const mut = useMutation({
+    mutationFn: (input: { phone: string; text?: string }) => sendFn({ data: input }),
+    onSuccess: (r) => {
+      setResult(r);
+      toast.success(
+        ar ? "تم إرسال رسالة الاختبار" : "Test message sent",
+        { description: ar ? `الحالة: ${r.status}` : `Status: ${r.status}` },
+      );
+    },
+    onError: (err: Error) => {
+      setResult({ ok: false, error: err.message });
+      toast.error(ar ? "فشل الإرسال" : "Send failed", { description: err.message });
+    },
+  });
+
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
+      <div className="mb-4 flex items-center gap-2">
+        <Send className="h-4 w-4 text-primary" />
+        <h3 className="text-base font-bold text-foreground">
+          {ar ? "اختبار الإرسال" : "Send Test Message"}
+        </h3>
+      </div>
+      <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
+        {ar
+          ? "أرسل رسالة تجريبية إلى رقم واحد باستخدام جلستك المربوطة، وسيتم حفظها في سجل الرسائل (wa_messages)."
+          : "Send a test message to a single number using your linked session. It will be saved to wa_messages."}
+      </p>
+      <div className="grid gap-3 sm:grid-cols-[1fr_2fr]">
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-foreground">
+            {ar ? "رقم الهاتف" : "Phone"}
+          </label>
+          <input
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="01273747262"
+            dir="ltr"
+            className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm font-mono text-foreground"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-foreground">
+            {ar ? "نص الرسالة (اختياري)" : "Message (optional)"}
+          </label>
+          <input
+            type="text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={ar ? "اتركه فارغاً لرسالة افتراضية" : "Leave empty for default"}
+            className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground"
+          />
+        </div>
+      </div>
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => mut.mutate({ phone, text: text.trim() || undefined })}
+          disabled={mut.isPending || !phone.trim()}
+          className="inline-flex h-10 items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-5 text-sm font-semibold text-primary-foreground shadow-md hover:opacity-95 disabled:opacity-60"
+        >
+          {mut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          {ar ? "إرسال رسالة اختبار" : "Send test"}
+        </button>
+      </div>
+      {result && (
+        <div
+          className={`mt-4 rounded-xl border p-3 text-xs leading-relaxed ${
+            result.ok
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+              : "border-destructive/30 bg-destructive/10 text-destructive"
+          }`}
+        >
+          {result.ok ? (
+            <div className="space-y-1">
+              <div className="font-semibold">
+                {ar ? "✅ تم الحفظ في wa_messages" : "✅ Saved to wa_messages"}
+              </div>
+              <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 font-mono">
+                <span>status: {result.status}</span>
+                <span>delivery: {result.delivery}</span>
+                <span>phone: {result.phone}</span>
+                <span>id: {result.messageId?.slice(0, 8)}…</span>
+                {result.providerMessageId && <span>provider: {result.providerMessageId.slice(0, 12)}…</span>}
+                {result.queuedId && <span>queued: {result.queuedId.slice(0, 12)}…</span>}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div className="font-semibold">{ar ? "فشل الإرسال" : "Send failed"}</div>
+              <div className="mt-1 opacity-90">{result.error}</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
