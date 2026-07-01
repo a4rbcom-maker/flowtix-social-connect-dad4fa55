@@ -486,7 +486,14 @@ function InboxPage() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages.length, activeJid]);
+  }, [messages.length, activeJid, isTyping]);
+
+  // Reset typing indicator when switching conversations
+  useEffect(() => {
+    setIsTyping(false);
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+  }, [activeJid]);
+
 
   // Mark active conversation read
   useEffect(() => {
