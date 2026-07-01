@@ -2511,9 +2511,7 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
     <div dir="ltr" className={`flex ${isOut ? "justify-end" : "justify-start"} px-1`}>
       <div
         dir={isAr ? "rtl" : "ltr"}
-        className={`group min-w-0 max-w-[86%] overflow-hidden rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-[0_1px_2px_rgba(0,0,0,0.04),0_1px_1px_rgba(0,0,0,0.03)] ring-1 sm:max-w-[70%] ${
-          isOut ? "rounded-br-sm rtl:rounded-br-2xl rtl:rounded-bl-sm" : "rounded-bl-sm rtl:rounded-bl-2xl rtl:rounded-br-sm"
-        } ${
+        className={`group min-w-0 max-w-[86%] overflow-hidden rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-[0_1px_2px_rgba(0,0,0,0.06),0_1px_1px_rgba(0,0,0,0.04)] ring-1 sm:max-w-[70%] ${
           isFailed
             ? "bg-destructive/10 text-foreground ring-destructive/30"
             : isPending
@@ -2523,6 +2521,7 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
                 : "bg-card text-foreground ring-border/60"
         }`}
       >
+
         {showSender && (
           <p className="mb-1 text-[11px] font-semibold text-primary">
             {m.sender_name || (m.sender_phone ? `+${m.sender_phone}` : "")}
