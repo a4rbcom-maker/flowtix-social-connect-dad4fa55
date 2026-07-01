@@ -2353,8 +2353,8 @@ function renderMessagesWithDays(
     if (dk !== lastDay) {
       lastDay = dk;
       out.push(
-        <div key={`day-${dk}-${m.id}`} className="my-3 flex justify-center">
-          <span className="rounded-full border border-border/50 bg-card/80 px-3 py-1 text-[10px] font-semibold text-muted-foreground shadow-sm backdrop-blur">
+        <div key={`day-${dk}-${m.id}`} className="my-4 flex justify-center">
+          <span className="rounded-full border border-border/50 bg-card/90 px-3 py-1 text-[10px] font-semibold tracking-wide text-muted-foreground shadow-sm backdrop-blur">
             {dayLabel(m.created_at, isAr, t)}
           </span>
         </div>,
