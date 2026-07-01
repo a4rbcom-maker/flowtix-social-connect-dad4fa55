@@ -15,6 +15,7 @@ import {
   Plus,
   Wifi,
   WifiOff,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
