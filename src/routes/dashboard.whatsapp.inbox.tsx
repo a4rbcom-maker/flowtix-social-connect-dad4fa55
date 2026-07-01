@@ -696,6 +696,15 @@ function InboxPage() {
             >
               {soundOn ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
             </button>
+            <button
+              type="button"
+              onClick={testPlayback}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+              aria-label={t.testSound}
+              title={t.testSound}
+            >
+              <PlayCircle className="h-4 w-4" />
+            </button>
           </div>
         </div>
 
