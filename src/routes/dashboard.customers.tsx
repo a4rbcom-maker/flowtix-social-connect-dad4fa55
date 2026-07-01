@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { Database, Upload, Search, Trash2, Loader2, FileSpreadsheet, Users, UserPlus, ClipboardPaste } from "lucide-react";
+import { Database, Upload, Search, Trash2, Loader2, FileSpreadsheet, Users, UserPlus, ClipboardPaste, Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
