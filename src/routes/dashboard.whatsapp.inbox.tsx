@@ -719,23 +719,42 @@ function InboxPage() {
   const Sidebar = (
     <aside dir={isAr ? "rtl" : "ltr"} className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card/60 backdrop-blur-sm">
       {/* Header */}
-      <div className="border-b border-border/60 p-4">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-white shadow-lg shadow-primary/20">
+      <div className="space-y-3 border-b border-border/60 p-3 sm:p-4">
+        {/* Title row */}
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-white shadow-lg shadow-primary/20 sm:h-11 sm:w-11">
             <InboxIcon className="h-5 w-5" strokeWidth={2.5} />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <h1 className="truncate text-base font-bold">{t.title}</h1>
+              <h1 className="truncate text-[15px] font-bold leading-tight sm:text-base">{t.title}</h1>
               {totalUnread > 0 && (
                 <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
                   {totalUnread}
                 </span>
               )}
             </div>
-            <p className="truncate text-xs text-muted-foreground">{t.subtitle}</p>
+            <p className="mt-0.5 truncate text-[11px] text-muted-foreground sm:text-xs">{t.subtitle}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={toggleSound}
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+              aria-label={soundOn ? t.soundOn : t.soundOff}
+              title={soundOn ? t.soundOn : t.soundOff}
+            >
+              {soundOn ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={testPlayback}
+              className="hidden h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-primary/10 hover:text-primary sm:flex"
+              aria-label={t.testSound}
+              title={t.testSound}
+            >
+              <PlayCircle className="h-4 w-4" />
+            </button>
             <button
               type="button"
               onClick={async () => {
@@ -746,7 +765,7 @@ function InboxPage() {
                 ]);
                 historySyncMut.mutate();
               }}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 text-xs font-semibold text-primary transition hover:bg-primary/20 disabled:opacity-60"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 px-2.5 text-[11px] font-semibold text-primary transition hover:bg-primary/20 disabled:opacity-60 sm:text-xs"
               aria-label={t.resync}
               title={t.resync}
               disabled={historySyncMut.isPending || convQuery.isFetching}
@@ -756,29 +775,11 @@ function InboxPage() {
                 {historySyncMut.isPending ? t.resyncing : t.resync}
               </span>
             </button>
-            <button
-              type="button"
-              onClick={toggleSound}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
-              aria-label={soundOn ? t.soundOn : t.soundOff}
-              title={soundOn ? t.soundOn : t.soundOff}
-            >
-              {soundOn ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
-            </button>
-            <button
-              type="button"
-              onClick={testPlayback}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
-              aria-label={t.testSound}
-              title={t.testSound}
-            >
-              <PlayCircle className="h-4 w-4" />
-            </button>
           </div>
         </div>
 
         {/* Search */}
-        <div className="relative mt-3">
+        <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground ltr:left-3 rtl:right-3" />
           <input
             type="text"
@@ -789,8 +790,8 @@ function InboxPage() {
           />
         </div>
 
-        {/* Filters */}
-        <div className="mt-3 flex max-w-full items-center gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* Filters + time range unified in one wrap block */}
+        <div className="flex flex-wrap items-center gap-1.5">
           {([
             { k: "all" as FilterKey, label: t.all },
             { k: "unread" as FilterKey, label: t.filterUnread },
@@ -812,16 +813,13 @@ function InboxPage() {
               </button>
             );
           })}
-        </div>
-
-        {/* Time range */}
-        <div className="mt-2 flex max-w-full items-center gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <span className="mx-1 h-4 w-px bg-border/70" aria-hidden />
           {([
             { k: "all" as TimeRangeKey, label: isAr ? "كل الوقت" : "All time" },
             { k: "1d" as TimeRangeKey, label: isAr ? "24 ساعة" : "24h" },
-            { k: "7d" as TimeRangeKey, label: isAr ? "7 أيام" : "7 days" },
-            { k: "30d" as TimeRangeKey, label: isAr ? "30 يوم" : "30 days" },
-            { k: "90d" as TimeRangeKey, label: isAr ? "90 يوم" : "90 days" },
+            { k: "7d" as TimeRangeKey, label: isAr ? "7 أيام" : "7d" },
+            { k: "30d" as TimeRangeKey, label: isAr ? "30 يوم" : "30d" },
+            { k: "90d" as TimeRangeKey, label: isAr ? "90 يوم" : "90d" },
           ]).map((f) => {
             const active = timeRange === f.k;
             return (
@@ -829,7 +827,7 @@ function InboxPage() {
                 key={f.k}
                 type="button"
                 onClick={() => setTimeRange(f.k)}
-                className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition ${
+                className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
                   active
                     ? "bg-primary/15 text-primary ring-1 ring-primary/30"
                     : "bg-muted/40 text-muted-foreground hover:bg-muted"
@@ -840,13 +838,19 @@ function InboxPage() {
             );
           })}
         </div>
-        <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-[11px] font-semibold text-muted-foreground">
-          <span className="truncate">
-            {t.savedStats(conversations.length, inboxStatsQuery.data?.messages ?? 0)}
-          </span>
-          <span className={`shrink-0 rounded-full px-2 py-0.5 ${connQuery.data?.status === "connected" ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-            {connQuery.data?.status === "connected" ? t.connected : t.disconnected}
-          </span>
+
+        {/* Status strip */}
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-[11px] font-medium text-muted-foreground">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className={`inline-flex h-2 w-2 shrink-0 rounded-full ${connQuery.data?.status === "connected" ? "bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.15)]" : "bg-muted-foreground/40"}`} aria-hidden />
+            <span className={`shrink-0 font-semibold ${connQuery.data?.status === "connected" ? "text-emerald-600" : "text-muted-foreground"}`}>
+              {connQuery.data?.status === "connected" ? t.connected : t.disconnected}
+            </span>
+            <span className="text-border">·</span>
+            <span className="truncate">
+              {t.savedStats(conversations.length, inboxStatsQuery.data?.messages ?? 0)}
+            </span>
+          </div>
         </div>
         {syncState.status !== "idle" && (() => {
           const elapsed = Math.max(0, Date.now() - syncState.startedAt);
