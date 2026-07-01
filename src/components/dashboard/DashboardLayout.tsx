@@ -611,7 +611,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
               >
                 <LogOut className="h-[18px] w-[18px]" />
               </button>
-              <span className="text-[9px] text-muted-foreground/40">v2.1.0</span>
+              <span className="text-[9px] text-muted-foreground/40">v2.2.0</span>
             </div>
           )}
         </div>
