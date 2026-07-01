@@ -535,12 +535,12 @@ export async function handleAiAutoReply(opts: {
     // so we can inject it into the system prompt and block hallucinated numbers.
     const { data: sessionRow } = await supabaseAdmin
       .from("wa_sessions")
-      .select("phone_number, display_name")
+      .select("phone_number")
       .eq("user_id", userId)
       .eq("session_id", sessionId)
       .maybeSingle();
     const businessPhone = (sessionRow?.phone_number || "").toString().replace(/[^0-9+]/g, "");
-    const businessName = sessionRow?.display_name || "";
+
 
     const baseSystem =
       settings.ai_system_prompt?.trim() ||
