@@ -55,6 +55,7 @@ import {
   type ConversationRow,
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
+import { requestWaHistorySync } from "@/lib/wa.functions";
 import {
   createQuickReply,
   updateQuickReply,
@@ -86,6 +87,7 @@ function InboxPage() {
   const isMobile = useIsMobile();
   const sendFn = useServerFn(sendChatMessage);
   const markReadFn = useServerFn(markConversationRead);
+  const requestHistorySyncFn = useServerFn(requestWaHistorySync);
 
 
 
@@ -106,6 +108,7 @@ function InboxPage() {
   });
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const historySyncRequestedRef = useRef<string | null>(null);
 
   const t = isAr
     ? {
@@ -252,6 +255,24 @@ function InboxPage() {
     queryFn: () => safeCall<QuickReply[]>(() => fetchInboxQuickReplies(user!.id), []),
     enabled: !!user?.id,
   });
+
+  useEffect(() => {
+    if (!user?.id) return;
+    if (connQuery.data?.status !== "connected") return;
+    if (convQuery.isFetching) return;
+    const raw = Array.isArray(convQuery.data) ? convQuery.data : [];
+    if (raw.length > 0) return;
+    const key = `${user.id}:${connQuery.data.status}`;
+    if (historySyncRequestedRef.current === key) return;
+    historySyncRequestedRef.current = key;
+    requestHistorySyncFn()
+      .then(() => {
+        window.setTimeout(() => {
+          qc.invalidateQueries({ queryKey: ["wa-conversations", user.id] });
+        }, 4000);
+      })
+      .catch((err: unknown) => console.warn("[inbox] history sync request failed", err));
+  }, [connQuery.data?.status, convQuery.data, convQuery.isFetching, qc, requestHistorySyncFn, user?.id]);
 
 
 

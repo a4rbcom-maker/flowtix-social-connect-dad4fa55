@@ -288,9 +288,48 @@ export const waBridge = {
         // Opt-in to WhatsApp history sync (Bot-Xtra v1.8+ honors this flag per session).
         // Safe default: true on new/reset sessions only — existing sessions are unaffected
         // because Bot-Xtra returns "already_connected" without re-applying options.
-        ...(opts.syncFullHistory === true ? { syncFullHistory: true } : {}),
+        ...(opts.syncFullHistory === true
+          ? {
+              syncFullHistory: true,
+              syncHistory: true,
+              historySync: true,
+              fullHistory: true,
+              fireInitQueries: true,
+              emitOwnEvents: true,
+            }
+          : {}),
       }),
     }),
+  requestHistorySync: async (id: string) => {
+    const paths = [
+      `/api/sessions/${encodeURIComponent(id)}/sync-history`,
+      `/api/sessions/${encodeURIComponent(id)}/history/sync`,
+      `/api/sessions/${encodeURIComponent(id)}/request-history`,
+      `/api/sessions/${encodeURIComponent(id)}/resync`,
+    ];
+    const attempts: Array<{ path: string; ok: boolean; status?: number; error?: string }> = [];
+    for (const path of paths) {
+      try {
+        await bridgeFetch<unknown>(path, {
+          method: "POST",
+          body: JSON.stringify({
+            syncFullHistory: true,
+            syncHistory: true,
+            historySync: true,
+            fullHistory: true,
+          }),
+        });
+        attempts.push({ path, ok: true });
+        return { ok: true, attempts };
+      } catch (err) {
+        const status = err instanceof BridgeError ? err.status : undefined;
+        const error = err instanceof Error ? err.message : String(err);
+        attempts.push({ path, ok: false, status, error });
+        if (status && ![404, 405, 501].includes(status)) break;
+      }
+    }
+    return { ok: false, attempts };
+  },
   getStatus: (id: string) =>
     bridgeFetch<BridgeStatusResponse>(`/api/sessions/${encodeURIComponent(id)}/status`),
   getQr: (id: string) =>
