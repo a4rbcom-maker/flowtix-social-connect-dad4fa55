@@ -307,10 +307,10 @@ export const waBridge = {
       `/api/sessions/${encodeURIComponent(id)}/request-history`,
       `/api/sessions/${encodeURIComponent(id)}/resync`,
     ];
-    const attempts: Array<{ path: string; ok: boolean; status?: number; error?: string }> = [];
+    const attempts: Array<{ path: string; ok: boolean; status?: number; error?: string; importedMessages?: number; importedChats?: number }> = [];
     for (const path of paths) {
       try {
-        await bridgeFetch<unknown>(path, {
+        const body = await bridgeFetch<unknown>(path, {
           method: "POST",
           body: JSON.stringify({
             syncFullHistory: true,
@@ -320,7 +320,7 @@ export const waBridge = {
           }),
         });
         attempts.push({ path, ok: true });
-        return { ok: true, attempts };
+        return { ok: true, attempts, body };
       } catch (err) {
         const status = err instanceof BridgeError ? err.status : undefined;
         const error = err instanceof Error ? err.message : String(err);
@@ -328,10 +328,10 @@ export const waBridge = {
         if (status && ![404, 405, 501].includes(status)) break;
       }
     }
-    return { ok: false, attempts };
+    return { ok: false, attempts, body: null as unknown };
   },
   fetchMessages: (id: string, jid: string, limit = 50) =>
-    bridgeFetch<{ success?: boolean; requested?: number; message?: string }>(
+    bridgeFetch<unknown>(
       `/api/sessions/${encodeURIComponent(id)}/fetch-messages`,
       {
         method: "POST",

@@ -158,7 +158,7 @@ export interface WaHistorySyncResult {
   ok: boolean;
   sessionId: string | null;
   requested: boolean;
-  attempts: Array<{ path: string; ok: boolean; status?: number; error?: string }>;
+  attempts: Array<{ path: string; ok: boolean; status?: number; error?: string; importedMessages?: number; importedChats?: number }>;
   error: string | null;
   before?: { conversations: number; messages: number };
   after?: { conversations: number; messages: number };
@@ -177,6 +177,80 @@ function jidFromPhone(value: unknown): string | null {
 }
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function pickArray(value: unknown, keys: string[]): Record<string, unknown>[] {
+  const found: Record<string, unknown>[] = [];
+  const visit = (node: unknown, depth = 0) => {
+    if (!node || depth > 5) return;
+    if (Array.isArray(node)) {
+      const records = node.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"));
+      if (records.length) found.push(...records);
+      return;
+    }
+    if (typeof node !== "object") return;
+    const rec = node as Record<string, unknown>;
+    for (const key of keys) {
+      const child = rec[key];
+      if (Array.isArray(child)) {
+        const records = child.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"));
+        if (records.length) found.push(...records);
+      }
+    }
+    for (const key of ["data", "result", "payload", "response", "body"]) {
+      if (rec[key] && rec[key] !== node) visit(rec[key], depth + 1);
+    }
+  };
+  visit(value);
+  const seen = new Set<string>();
+  return found.filter((item) => {
+    const fingerprint = JSON.stringify(item).slice(0, 500);
+    if (seen.has(fingerprint)) return false;
+    seen.add(fingerprint);
+    return true;
+  });
+}
+
+async function replayBridgeHistoryPayload(sessionId: string, payload: unknown): Promise<{ messages: number; chats: number; error: string | null }> {
+  const secret = process.env.WA_BRIDGE_WEBHOOK_SECRET;
+  if (!secret) return { messages: 0, chats: 0, error: "missing_webhook_secret" };
+
+  const { handleWaWebhook } = await import("./wa-webhook.server");
+  const { createHmac } = await import("crypto");
+  const postInternalWebhook = async (body: Record<string, unknown>) => {
+    const raw = JSON.stringify(body);
+    const sig = createHmac("sha256", secret).update(raw, "utf8").digest("hex");
+    const res = await handleWaWebhook(new Request("http://internal.local/api/public/wa-webhook", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-bridge-signature": `sha256=${sig}`,
+      },
+      body: raw,
+    }));
+    const text = await res.text();
+    return asRecord(text ? JSON.parse(text) : {});
+  };
+
+  let messages = 0;
+  let chats = 0;
+  const messageRows = pickArray(payload, ["messages", "items"]);
+  if (messageRows.length) {
+    const body = await postInternalWebhook({ event: "history_messages", sessionId, data: { messages: messageRows } });
+    messages += Number(body.historyMessages ?? body.saved ?? 0) || 0;
+  }
+
+  const chatRows = pickArray(payload, ["chats", "contacts"]);
+  if (chatRows.length) {
+    const body = await postInternalWebhook({ event: "history_chats", sessionId, data: { chats: chatRows } });
+    chats += Number(body.historyChats ?? body.updated ?? 0) || 0;
+  }
+
+  return { messages, chats, error: null };
+}
 
 export const requestWaHistorySync = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -198,19 +272,25 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
         supabase
           .from("wa_conversations")
           .select("id", { count: "exact", head: true })
-          .eq("user_id", userId)
-          .eq("session_id", row.session_id),
+          .eq("user_id", userId),
         supabase
           .from("wa_messages")
           .select("id", { count: "exact", head: true })
-          .eq("user_id", userId)
-          .eq("session_id", row.session_id),
+          .eq("user_id", userId),
       ]);
       return { conversations: conversations ?? 0, messages: messages ?? 0 };
     };
 
     const before = await countStored();
     const result = await waBridge.requestHistorySync(row.session_id);
+    let directImports = { messages: 0, chats: 0, error: null as string | null };
+    if (result.body) {
+      directImports = await replayBridgeHistoryPayload(row.session_id, result.body).catch((err) => ({
+        messages: 0,
+        chats: 0,
+        error: err instanceof Error ? err.message : String(err),
+      }));
+    }
 
     const knownJids = new Set<string>();
     const addJid = (value: unknown) => {
@@ -227,7 +307,6 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
         .from("wa_conversations")
         .select("remote_jid, contact_phone")
         .eq("user_id", userId)
-        .eq("session_id", row.session_id)
         .order("updated_at", { ascending: false })
         .limit(80),
       supabase.from("contacts").select("phone").eq("user_id", userId).limit(80),
@@ -249,9 +328,17 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
     for (const jid of Array.from(knownJids).slice(0, 120)) {
       if (!jid || jid === "@s.whatsapp.net" || jid.endsWith("@broadcast")) continue;
       try {
-        await waBridge.fetchMessages(row.session_id, jid, 100);
+        const fetchBody = await waBridge.fetchMessages(row.session_id, jid, 100);
+        const imported = await replayBridgeHistoryPayload(row.session_id, fetchBody).catch((err) => ({
+          messages: 0,
+          chats: 0,
+          error: err instanceof Error ? err.message : String(err),
+        }));
+        directImports.messages += imported.messages;
+        directImports.chats += imported.chats;
+        directImports.error = directImports.error ?? imported.error;
         fetchedKnownChats++;
-        result.attempts.push({ path: `/api/sessions/${row.session_id}/fetch-messages`, ok: true });
+        result.attempts.push({ path: `/api/sessions/${row.session_id}/fetch-messages`, ok: true, importedMessages: imported.messages, importedChats: imported.chats });
       } catch (err) {
         result.attempts.push({
           path: `/api/sessions/${row.session_id}/fetch-messages`,
@@ -282,7 +369,7 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       reason: actuallyImported
         ? "history_sync_imported_messages"
         : result.ok
-          ? "history_sync_requested_no_new_messages"
+          ? `history_sync_requested_no_new_messages${directImports.error ? ` (${directImports.error})` : ""}`
           : "history_sync_endpoint_unavailable",
     });
     return {
@@ -293,7 +380,7 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       error: actuallyImported
         ? null
         : result.ok
-          ? "no_new_messages_after_sync"
+          ? directImports.error || "no_new_messages_after_sync"
           : "bridge_history_sync_endpoint_unavailable",
       before,
       after,
@@ -406,10 +493,6 @@ export const disconnectWaSession = createServerFn({ method: "POST" })
         reason: "manual_disconnect",
       });
     }
-    const { error: msgErr } = await supabase.from("wa_messages").delete().eq("user_id", userId);
-    if (msgErr) throw new Error(`Failed to clear WhatsApp messages: ${msgErr.message}`);
-    const { error: convErr } = await supabase.from("wa_conversations").delete().eq("user_id", userId);
-    if (convErr) throw new Error(`Failed to clear WhatsApp conversations: ${convErr.message}`);
     const { error: sessErr } = await supabase.from("wa_sessions").delete().eq("user_id", userId);
     if (sessErr) throw new Error(`Failed to clear WhatsApp session: ${sessErr.message}`);
     const { error: settingsErr } = await supabase
@@ -588,7 +671,7 @@ export const deepResetWaSession = createServerFn({ method: "POST" })
         fromStatus: existing.status ?? null,
         toStatus: "disconnected",
         source: "reset",
-        reason: "deep_reset_wipe_and_recreate",
+        reason: "deep_reset_recreate_bridge_session_keep_history",
       });
       await supabase
         .from("wa_sessions")
@@ -612,7 +695,7 @@ export const deepResetWaSession = createServerFn({ method: "POST" })
       fromStatus: null,
       toStatus: "qr",
       source: "reset",
-      reason: `deep_reset_new_session_created (wiped ${report.removedBridgeSessions.length} old)`,
+      reason: `deep_reset_new_session_created (removed ${report.removedBridgeSessions.length} old bridge sessions, kept inbox history)`,
     });
 
     report.ok = true;
