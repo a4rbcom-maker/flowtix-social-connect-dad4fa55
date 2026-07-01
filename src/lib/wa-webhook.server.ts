@@ -448,7 +448,9 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
           : typeof tsRaw === "string" && tsRaw
             ? new Date(Number(tsRaw) * 1000).toISOString()
             : new Date().toISOString());
-      const contactName = parsed?.contactName || pickStr(h, "pushName", "senderName", "notifyName", "contactName", "name") || null;
+      const contactName = fromMe
+        ? parsed?.contactName || null
+        : parsed?.contactName || pickStr(h, "pushName", "senderName", "notifyName", "contactName", "name") || null;
       const senderPhone = parsed?.fromPhone || digits(pickStr(h, "sender", "participant")) || phone;
 
       if (providerMessageId) {

@@ -693,6 +693,7 @@ export async function upsertConversationFromMessage(opts: {
 }): Promise<string | null> {
   const { userId, sessionId, remoteJid, contactName, contactPhone, text, direction, historical } = opts;
   const messageAt = opts.messageAt ?? new Date().toISOString();
+  const safeContactName = direction === "in" || remoteJid.endsWith("@g.us") ? contactName : null;
 
   // Try update first
   const { data: existing } = await supabaseAdmin
@@ -725,7 +726,7 @@ export async function upsertConversationFromMessage(opts: {
           !historical && direction === "in"
             ? (existing.unread_count || 0) + 1
             : existing.unread_count,
-        contact_name: existing.contact_name || contactName,
+        contact_name: existing.contact_name || safeContactName,
         contact_phone: contactPhone || existing.contact_phone,
       })
       .eq("id", existing.id);
@@ -738,7 +739,7 @@ export async function upsertConversationFromMessage(opts: {
       user_id: userId,
       session_id: sessionId,
       remote_jid: remoteJid,
-      contact_name: contactName,
+      contact_name: safeContactName,
       contact_phone: contactPhone,
       last_message_text: text ?? null,
       last_message_at: messageAt,
