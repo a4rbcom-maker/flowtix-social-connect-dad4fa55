@@ -1917,8 +1917,13 @@ function ConversationRow({
             <span className={`min-w-0 flex-1 truncate text-sm ${hasUnread ? "font-bold text-foreground" : "font-semibold"}`}>
               {conv.contact_name ?? conv.remote_jid.replace(/@.*/, "")}
             </span>
-            <span className={`shrink-0 text-[10px] tabular-nums ${hasUnread ? "font-bold text-primary" : "font-medium text-muted-foreground/90"}`} dir="ltr">
-              {formatRelative(conv.last_message_at, isAr)}
+            <span className={`flex shrink-0 flex-col items-end leading-tight ${hasUnread ? "text-primary" : "text-muted-foreground/90"}`} dir="ltr">
+              <span className={`text-[10px] tabular-nums ${hasUnread ? "font-bold" : "font-medium"}`}>
+                {formatRelative(conv.last_message_at, isAr)}
+              </span>
+              <span className="mt-0.5 text-[9px] font-medium tabular-nums opacity-75">
+                {formatAgo(conv.last_message_at, isAr)}
+              </span>
             </span>
           </div>
           <div className="mt-0.5 flex items-center gap-1.5">
@@ -2434,6 +2439,25 @@ function formatRelative(iso: string, isAr: boolean): string {
   return d.toLocaleDateString(isAr ? "ar-EG" : "en-US", { month: "short", day: "numeric" });
 }
 
+function formatAgo(iso: string, isAr: boolean): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const sec = Math.max(1, Math.floor(diffMs / 1000));
+  if (sec < 60) return isAr ? "الآن" : "now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return isAr ? `قبل ${min} د` : `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return isAr ? `قبل ${hr} س` : `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return isAr ? `قبل ${day} ي` : `${day}d ago`;
+  const wk = Math.floor(day / 7);
+  if (wk < 5) return isAr ? `قبل ${wk} أ` : `${wk}w ago`;
+  const mo = Math.floor(day / 30);
+  if (mo < 12) return isAr ? `قبل ${mo} ش` : `${mo}mo ago`;
+  const yr = Math.floor(day / 365);
+  return isAr ? `قبل ${yr} سنة` : `${yr}y ago`;
+}
+
+
 function dayKey(iso: string): string {
   return new Date(iso).toDateString();
 }
@@ -2583,6 +2607,9 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
         >
           {m.is_ai && <Bot className="h-3 w-3" />}
           <span>{formatTime(m.created_at, isAr)}</span>
+          <span className="opacity-70">·</span>
+          <span className="opacity-80">{formatAgo(m.created_at, isAr)}</span>
+
           {isPending ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : isFailed ? (
