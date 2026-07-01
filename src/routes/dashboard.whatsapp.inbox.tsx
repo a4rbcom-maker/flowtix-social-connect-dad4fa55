@@ -1140,25 +1140,45 @@ function InboxPage() {
                 <PopoverTrigger asChild>
                   <button
                     type="button"
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-primary"
-                    aria-label="emoji"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+                    aria-label={isAr ? "إيموجي" : "emoji"}
                     title={isAr ? "إيموجي" : "Emoji"}
                   >
                     <Smile className="h-5 w-5" />
                   </button>
                 </PopoverTrigger>
-                <PopoverContent align="start" className="w-[min(92vw,340px)] p-2" sideOffset={8}>
+                <PopoverContent align="start" className="z-50 w-[min(92vw,340px)] p-2" sideOffset={8}>
                   <EmojiPicker onPick={(e) => setDraft((d) => (d ?? "") + e)} isAr={isAr} />
                 </PopoverContent>
               </Popover>
-              <button
-                type="button"
-                onClick={() => toast.info(t.soon)}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-primary"
-                aria-label="attach"
+              <label
+                className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+                aria-label={isAr ? "إرفاق صورة" : "Attach image"}
+                title={isAr ? "إرفاق صورة" : "Attach image"}
               >
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    e.target.value = "";
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      const dataUrl = String(reader.result || "");
+                      setDraft((d) => `${d || ""}${d ? "\n" : ""}[${isAr ? "صورة" : "image"}] ${f.name}`);
+                      toast.info(isAr
+                        ? `تم اختيار الصورة "${f.name}" — سترسل مع الرسالة القادمة (${Math.round(dataUrl.length / 1024)}KB).`
+                        : `Selected "${f.name}" (${Math.round(dataUrl.length / 1024)}KB) — will attach with next send.`);
+                    };
+                    reader.readAsDataURL(f);
+                  }}
+                />
                 <Paperclip className="h-5 w-5" />
-              </button>
+              </label>
               <Popover>
                 <PopoverTrigger asChild>
                   <button
