@@ -1458,9 +1458,11 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     .from("wa_messages")
     .select("id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw")
     .eq("user_id", userId)
+    .eq("session_id", sessionRow.session_id)
     .eq("remote_jid", remoteJid)
     .order("wa_timestamp", { ascending: true })
     .limit(1000);
+
   if (error) throw new Error(error.message);
 
 
