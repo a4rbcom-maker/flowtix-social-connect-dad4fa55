@@ -33,6 +33,7 @@ import {
   Info,
   Sun,
   Moon,
+  PlayCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "@/lib/theme";
