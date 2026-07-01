@@ -47,6 +47,29 @@ function bestContactName(contact: Record<string, unknown>): string | null {
   return cleaned;
 }
 
+function timestampFromContact(contact: Record<string, unknown>): string | undefined {
+  const raw = contact.lastMessageTimestamp ?? contact.last_msg_timestamp ?? contact.timestamp ?? contact.t;
+  if (raw == null) return undefined;
+  const num = typeof raw === "number" ? raw : Number(String(raw).trim());
+  if (!Number.isFinite(num) || num <= 0) return undefined;
+  const ms = num < 1_000_000_000_000 ? num * 1000 : num;
+  const date = new Date(ms);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+function contactLooksLikeChat(contact: Record<string, unknown>): boolean {
+  return Boolean(
+    contact.isChat === true ||
+      contact.is_chat === true ||
+      contact.lastMessage ||
+      contact.last_message ||
+      contact.lastMessageTimestamp ||
+      contact.last_msg_timestamp ||
+      contact.unreadCount ||
+      contact.unread_count,
+  );
+}
+
 async function updateConversationContacts(params: {
   userId: string;
   sessionId: string;
@@ -71,6 +94,22 @@ async function updateConversationContacts(params: {
       .eq("session_id", params.sessionId)
       .or(`remote_jid.eq.${remoteJid}${phone ? `,contact_phone.eq.${phone}` : ""}`)
       .limit(5);
+
+    if ((!rows || rows.length === 0) && contactLooksLikeChat(c)) {
+      const cid = await upsertConversationFromMessage({
+        userId: params.userId,
+        sessionId: params.sessionId,
+        remoteJid,
+        contactName: name,
+        contactPhone: phone || null,
+        text: pickStr(c, "lastMessage", "last_message", "preview", "message", "body", "text"),
+        direction: "in",
+        messageAt: timestampFromContact(c),
+        historical: true,
+      });
+      if (cid) updated++;
+      continue;
+    }
 
     for (const row of rows ?? []) {
       const currentName = String(row.contact_name ?? "").trim();
