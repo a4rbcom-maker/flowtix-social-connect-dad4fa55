@@ -131,6 +131,16 @@ function InboxPage() {
     if (typeof window !== "undefined") localStorage.setItem("flowtix-inbox-timerange", timeRange);
   }, [timeRange]);
   const [draft, setDraft] = useState("");
+  // Real image attachment: hold the picked File + a local object URL preview.
+  // On submit we upload to `wa-media` and forward the signed URL to the bridge.
+  const [attachment, setAttachment] = useState<{ file: File; previewUrl: string } | null>(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  useEffect(() => {
+    // Revoke the object URL when the attachment changes or unmounts to avoid leaks.
+    return () => {
+      if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+    };
+  }, [attachment]);
   const [soundOn, setSoundOn] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("flowtix-inbox-sound") !== "false";
