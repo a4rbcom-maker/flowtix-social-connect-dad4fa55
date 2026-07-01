@@ -65,26 +65,33 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const isWhatsappInbox = location.pathname === "/dashboard/whatsapp/inbox";
-  // Persisted preference — separate keys for desktop vs mobile so the
-  // saved state on a laptop doesn't force the sidebar open on a phone.
-  const SIDEBAR_PREF_DESKTOP = "flowtix.sidebarOpen.desktop";
-  const SIDEBAR_PREF_MOBILE = "flowtix.sidebarOpen.mobile";
-  const readSidebarPref = (desktop: boolean): boolean | null => {
+  // Persisted preferences — separated by form factor AND by context
+  // (chat vs general) so auto-collapse inside the chat never leaks into
+  // the rest of the dashboard, and vice versa.
+  const PREF_KEYS = {
+    desktop: { general: "flowtix.sidebarOpen.desktop", chat: "flowtix.sidebarOpen.chat.desktop" },
+    mobile:  { general: "flowtix.sidebarOpen.mobile",  chat: "flowtix.sidebarOpen.chat.mobile"  },
+  } as const;
+  const prefKey = (desktop: boolean, chat: boolean) =>
+    (desktop ? PREF_KEYS.desktop : PREF_KEYS.mobile)[chat ? "chat" : "general"];
+  const readPref = (desktop: boolean, chat: boolean): boolean | null => {
     if (typeof window === "undefined") return null;
     try {
-      const raw = window.localStorage.getItem(desktop ? SIDEBAR_PREF_DESKTOP : SIDEBAR_PREF_MOBILE);
+      const raw = window.localStorage.getItem(prefKey(desktop, chat));
       if (raw === "1") return true;
       if (raw === "0") return false;
     } catch {}
     return null;
   };
+  const defaultFor = (desktop: boolean, chat: boolean) => {
+    if (chat) return false;      // chat: default collapsed
+    return desktop;              // general: open on desktop, closed on mobile
+  };
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === "undefined") return true;
     const desktop = window.matchMedia("(min-width: 768px)").matches;
-    const saved = readSidebarPref(desktop);
-    if (saved !== null) return saved;
-    if (isWhatsappInbox) return false;
-    return desktop;
+    const saved = readPref(desktop, isWhatsappInbox);
+    return saved !== null ? saved : defaultFor(desktop, isWhatsappInbox);
   });
   const [isDesktop, setIsDesktop] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -108,8 +115,6 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     "/dashboard/whatsapp/settings",
   ];
 
-  // Admins use the admin panel by default, but can open the Facebook bot flow
-  // to inspect/create extraction jobs exactly like a client account.
   useEffect(() => {
     const canStayOnDashboard = adminAllowedDashboardPaths.some((path) =>
       location.pathname === path || location.pathname.startsWith(`${path}/`),
@@ -119,39 +124,39 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     }
   }, [isAdmin, isAdminLoading, location.pathname, navigate]);
 
-  // Track viewport size, and re-apply the saved preference for the new form
-  // factor when the user crosses the md breakpoint (resize / device rotation).
+  // Track viewport and re-apply the correct saved preference for the
+  // active context (chat vs general) when the breakpoint changes.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const mql = window.matchMedia("(min-width: 768px)");
     const apply = () => {
       setIsDesktop(mql.matches);
-      const saved = readSidebarPref(mql.matches);
-      if (saved !== null) setSidebarOpen(saved);
+      const saved = readPref(mql.matches, isWhatsappInbox);
+      setSidebarOpen(saved !== null ? saved : defaultFor(mql.matches, isWhatsappInbox));
     };
     apply();
     mql.addEventListener("change", apply);
     return () => mql.removeEventListener("change", apply);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isWhatsappInbox]);
 
-  // Persist every toggle so the choice survives refresh and route changes.
+  // Persist toggles to the CURRENT context's key, so choices made inside the
+  // chat only affect the chat and choices made elsewhere stay elsewhere.
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      window.localStorage.setItem(
-        isDesktop ? SIDEBAR_PREF_DESKTOP : SIDEBAR_PREF_MOBILE,
-        sidebarOpen ? "1" : "0",
-      );
+      window.localStorage.setItem(prefKey(isDesktop, isWhatsappInbox), sidebarOpen ? "1" : "0");
     } catch {}
-  }, [sidebarOpen, isDesktop]);
+  }, [sidebarOpen, isDesktop, isWhatsappInbox]);
 
-  // Auto-close on mobile route changes ONLY when no explicit preference exists,
-  // so a user who chose "open on mobile" isn't overridden on every navigation.
+  // On route change, re-apply the preference for the new context so entering
+  // the chat auto-collapses (unless the user chose otherwise for chat) and
+  // leaving the chat restores the general preference untouched.
   useEffect(() => {
-    if (isDesktop) return;
-    if (readSidebarPref(false) !== null) return;
-    setSidebarOpen(false);
-  }, [location.pathname, isDesktop]);
+    const saved = readPref(isDesktop, isWhatsappInbox);
+    setSidebarOpen(saved !== null ? saved : defaultFor(isDesktop, isWhatsappInbox));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
 
   // Lock body scroll while the mobile sidebar overlay is open.
