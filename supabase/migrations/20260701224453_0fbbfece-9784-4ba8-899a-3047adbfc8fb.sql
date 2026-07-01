@@ -1,0 +1,1 @@
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS lang text CHECK (lang IN ('ar','en')), ADD COLUMN IF NOT EXISTS theme text CHECK (theme IN ('light','dark'));
