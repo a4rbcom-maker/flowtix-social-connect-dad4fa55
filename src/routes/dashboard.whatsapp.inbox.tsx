@@ -526,11 +526,14 @@ function InboxPage() {
         window.setTimeout(() => setSyncState((s) => (s.status === "done" ? { ...s, status: "idle" } : s)), 6000);
         return;
       }
-      const errMsg = isAr
-        ? "الجسر لم يرسل أي رسائل قديمة بعد طلب المزامنة؛ الرسائل الجديدة فقط هي التي تصل حالياً."
-        : "The bridge did not deliver any old messages after sync; only new messages are arriving now.";
-      toast.error(errMsg);
-      setSyncState((s) => ({ ...s, status: "error", message: errMsg }));
+      // Bridge responded but reported no new imports — this is not an error,
+      // it just means there's nothing older to fetch. Show a neutral info state.
+      const infoMsg = isAr
+        ? "الصندوق مُزامَن بالكامل — لا رسائل قديمة إضافية للجلب."
+        : "Inbox fully synced — no older messages available to import.";
+      toast.info(infoMsg);
+      setSyncState((s) => ({ ...s, status: "done", message: infoMsg }));
+      window.setTimeout(() => setSyncState((s) => (s.status === "done" ? { ...s, status: "idle" } : s)), 6000);
     },
     onError: (err: Error) => {
       toast.error(err.message);
