@@ -594,7 +594,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
 
               <div className="text-center">
                 <span className="text-[10px] text-muted-foreground/50">
-                  {lang === "ar" ? "الإصدار 2.1.0" : "v2.1.0"}
+                  {lang === "ar" ? "الإصدار 2.2.0" : "v2.2.0"}
                 </span>
               </div>
             </div>
