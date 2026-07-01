@@ -34,6 +34,8 @@ import {
   type WaBridgeHealth,
   type WaSessionEventRow,
 } from "@/lib/wa.functions";
+import { sendTestMessage } from "@/lib/wa-chat.functions";
+import { Send } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard/whatsapp/accounts")({
   ssr: false,
