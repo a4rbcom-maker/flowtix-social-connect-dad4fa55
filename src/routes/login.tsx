@@ -123,11 +123,18 @@ function LoginPage() {
       message.includes("networkerror") ||
       message.includes("network request failed") ||
       message.includes("timeout") ||
-      message.includes("timed out")
+      message.includes("timed out") ||
+      message.includes("load failed")
     ) {
+      const online = typeof navigator !== "undefined" ? navigator.onLine : true;
+      if (!online) {
+        return lang === "ar"
+          ? "لا يوجد اتصال بالإنترنت على جهازك. تحقق من الشبكة وحاول مجدداً."
+          : "Your device is offline. Check your network and try again.";
+      }
       return lang === "ar"
-        ? "تعذّر الاتصال بخدمة تسجيل الدخول الآن. تم مسح الجلسة القديمة؛ حدّث الصفحة وحاول مرة أخرى."
-        : "Could not reach sign-in right now. The old local session was cleared; refresh and try again.";
+        ? "تعذّر الوصول لخدمة تسجيل الدخول. قد يكون هناك حاجب إعلانات أو امتداد يحجب النطاق supabase.co — عطّله وحاول مجدداً، أو جرّب متصفحاً آخر."
+        : "Couldn't reach sign-in. An ad blocker or extension may be blocking supabase.co — disable it or try another browser.";
     }
     if (message.includes("rate limit") || message.includes("too many")) {
       return lang === "ar"
@@ -155,7 +162,6 @@ function LoginPage() {
     try {
       if (isLogin) {
         localStorage.setItem("flowtix_remember_me", rememberMe ? "true" : "false");
-        await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
         const { error } = await withTimeout(
           supabase.auth.signInWithPassword({ email: email.trim(), password }),
           20_000,
@@ -163,6 +169,7 @@ function LoginPage() {
         if (error) throw error;
         // Don't navigate manually — the role-aware <Navigate> gate above
         // redirects to /admin or /dashboard once useIsAdmin resolves.
+
       } else {
         const { error } = await withTimeout(
           supabase.auth.signUp({
