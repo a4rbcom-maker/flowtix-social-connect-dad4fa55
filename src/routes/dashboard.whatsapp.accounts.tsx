@@ -558,7 +558,7 @@ function WhatsAppPage() {
                         {ar ? "امسح الكود لإكمال الربط" : "Scan the code to complete linking"}
                       </h3>
                       {qrValue ? (
-                        <QrView qr={qrValue} polling={polling} t={t} />
+                        <QrView qr={qrValue} polling={polling} secondsLeft={qrSecondsLeft} autoRefreshing={resetMut.isPending && autoRefreshingRef.current} ar={ar} t={t} />
                       ) : (
                         <div className="flex flex-col items-center gap-3 py-6">
                           <Loader2 className="h-8 w-8 animate-spin text-primary" />
