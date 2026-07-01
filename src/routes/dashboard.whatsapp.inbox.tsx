@@ -595,7 +595,37 @@ function InboxPage() {
         osc.connect(gain).connect(ctx.destination);
         osc.start(now + start);
         osc.stop(now + start + duration + 0.02);
+  };
+
+  const testPlayback = async () => {
+    try {
+      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) throw new Error("no-audio");
+      if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
+      const ctx = audioCtxRef.current;
+      if (ctx.state === "suspended") await ctx.resume();
+      audioUnlockedRef.current = true;
+      const now = ctx.currentTime;
+      const playTone = (freq: number, start: number, duration: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, now + start);
+        gain.gain.exponentialRampToValueAtTime(0.3, now + start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + start + duration);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(now + start);
+        osc.stop(now + start + duration + 0.02);
       };
+      playTone(660, 0, 0.15);
+      playTone(880, 0.16, 0.18);
+      playTone(1175, 0.34, 0.22);
+      toast.success(t.testSoundOk);
+    } catch {
+      toast.error(t.testSoundFail);
+    }
+  };
       playTone(880, 0, 0.15);
       playTone(1175, 0.16, 0.18);
     } catch {
