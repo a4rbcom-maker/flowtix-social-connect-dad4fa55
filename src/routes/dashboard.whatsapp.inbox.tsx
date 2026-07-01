@@ -71,6 +71,7 @@ export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
 });
 
 type FilterKey = "all" | "unread" | "ai";
+type TimeRangeKey = "all" | "1d" | "7d" | "30d" | "90d";
 
 function InboxPage() {
   const { lang } = useI18n();
