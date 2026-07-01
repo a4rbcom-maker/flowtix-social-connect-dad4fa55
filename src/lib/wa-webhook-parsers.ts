@@ -287,6 +287,14 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
       : realPhone || digits(senderJid) || digits(remoteJid);
 
   const { text, type, mediaUrl } = extractTextFromMessage(entry);
+  const outboundRecipientName =
+    pickStr(entry, "recipientName", "toName", "targetName", "chatName") ||
+    pickStr(recipientObj, "pushName", "name", "shortName", "verifiedName") ||
+    pickStr(toObj, "pushName", "name", "shortName", "verifiedName");
+  const inboundContactName =
+    pickStr(entry, "pushName", "contactName", "senderName", "name", "notifyName", "notify") ||
+    pickStr(senderObj, "pushName", "name", "shortName", "verifiedName") ||
+    pickStr(fromObj, "pushName", "name", "shortName", "verifiedName");
 
   const jid = remoteJid || fromPhone || "";
   if (jid.endsWith("@broadcast") || jid === "status@broadcast") return null;
@@ -301,9 +309,9 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
     mediaUrl,
     contactName: isGroup
       ? pickStr(entry, "groupSubject", "groupName")
-      : pickStr(entry, "pushName", "contactName", "senderName", "name", "notifyName", "notify") ||
-        pickStr(senderObj, "pushName", "name", "shortName", "verifiedName") ||
-        pickStr(fromObj, "pushName", "name", "shortName", "verifiedName"),
+      : fromMe
+        ? outboundRecipientName
+        : inboundContactName,
     fromMe,
     isGroup,
     providerMessageId: messageIdFrom(entry),

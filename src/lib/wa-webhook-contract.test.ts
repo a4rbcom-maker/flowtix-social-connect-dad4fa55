@@ -327,7 +327,27 @@ describe("Bot-Xtra v1.8.x: parseMessageEntry", () => {
     expect(m.text).toBe("تم الرد");
     expect(m.fromMe).toBe(true);
     expect(m.remoteJid).toBe("201508776669@s.whatsapp.net");
+    expect(m.contactName).toBeNull();
     expect(m.providerMessageId).toBe("3EB0BX1.8.BARE002");
+  });
+
+  it("does not use the linked account pushName as the customer name for outbound messages", () => {
+    const m = parseMessageEntry({
+      id: "3EB0BX1.8.OUT001",
+      from: "31173409554610",
+      fromMe: true,
+      pushName: "Xtra Menu",
+      senderName: "Xtra Menu",
+      notifyName: "Xtra Menu",
+      body: "هلا علي",
+      type: "text",
+      timestamp: 1_730_000_070,
+    })!;
+    expect(m).not.toBeNull();
+    expect(m.fromMe).toBe(true);
+    expect(m.remoteJid).toBe("31173409554610@s.whatsapp.net");
+    expect(m.fromPhone).toBe("31173409554610");
+    expect(m.contactName).toBeNull();
   });
 });
 
