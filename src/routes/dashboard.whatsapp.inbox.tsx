@@ -1461,7 +1461,15 @@ function InboxPage() {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
+                  // Enter → send, Shift+Enter → newline.
+                  // Ignore while an IME composition is active (Arabic/CJK keyboards)
+                  // so mid-word Enter doesn't fire a premature send.
+                  if (
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    !e.nativeEvent.isComposing &&
+                    e.keyCode !== 229
+                  ) {
                     e.preventDefault();
                     const text = draft.trim();
                     if ((text || attachment) && !sendMut.isPending && !uploadingAttachment) {
