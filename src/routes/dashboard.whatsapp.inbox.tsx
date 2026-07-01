@@ -1494,6 +1494,21 @@ function InboxPage() {
                 )}
               </button>
             </div>
+            <div className="mt-1 px-1 text-[10px] text-muted-foreground/70">
+              {isAr ? (
+                <>
+                  اضغط <kbd className="rounded border border-border bg-muted px-1 font-mono text-[9px]">Enter</kbd> للإرسال ·{" "}
+                  <kbd className="rounded border border-border bg-muted px-1 font-mono text-[9px]">Shift</kbd> +{" "}
+                  <kbd className="rounded border border-border bg-muted px-1 font-mono text-[9px]">Enter</kbd> لسطر جديد
+                </>
+              ) : (
+                <>
+                  Press <kbd className="rounded border border-border bg-muted px-1 font-mono text-[9px]">Enter</kbd> to send ·{" "}
+                  <kbd className="rounded border border-border bg-muted px-1 font-mono text-[9px]">Shift</kbd> +{" "}
+                  <kbd className="rounded border border-border bg-muted px-1 font-mono text-[9px]">Enter</kbd> for a new line
+                </>
+              )}
+            </div>
           </form>
 
         </>
