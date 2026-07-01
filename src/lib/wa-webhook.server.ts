@@ -79,10 +79,9 @@ async function updateConversationContacts(params: {
         currentName === row.remote_jid ||
         currentName === row.contact_phone ||
         currentName.replace(/[^0-9]/g, "") === (row.contact_phone || "");
-      const patch: Record<string, unknown> = {
-        ...(phone && !row.contact_phone ? { contact_phone: phone } : {}),
-        ...(name && currentLooksLikePlaceholder ? { contact_name: name } : {}),
-      };
+      const patch: { contact_phone?: string; contact_name?: string } = {};
+      if (phone && !row.contact_phone) patch.contact_phone = phone;
+      if (name && currentLooksLikePlaceholder) patch.contact_name = name;
       if (!Object.keys(patch).length) continue;
       const { error } = await supabaseAdmin.from("wa_conversations").update(patch).eq("id", row.id);
       if (!error) updated++;
