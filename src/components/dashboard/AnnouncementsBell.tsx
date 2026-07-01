@@ -27,7 +27,14 @@ export function AnnouncementsBell() {
 
   const { data } = useQuery({
     queryKey: ["my-notifications"],
-    queryFn: () => fetchFn(),
+    queryFn: async () => {
+      try {
+        return await fetchFn();
+      } catch {
+        return { rows: [], unreadCount: 0, popupId: null as string | null };
+      }
+    },
+    retry: false,
     refetchInterval: 60_000,
   });
 
