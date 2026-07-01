@@ -7,6 +7,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Megaphone, Info, AlertTriangle, CheckCircle2, Bell, Wrench, Gift, ShieldAlert } from "lucide-react";
 import { getMyNotifications, markAllNotificationsRead, markNotificationRead } from "@/lib/notifications.functions";
 import { useI18n } from "@/lib/i18n";
+import { useAuth } from "@/lib/auth";
+
 
 const TYPE_ICONS: Record<string, { Icon: typeof Info; color: string }> = {
   info: { Icon: Info, color: "text-sky-500 bg-sky-500/15" },
@@ -20,6 +22,7 @@ const TYPE_ICONS: Record<string, { Icon: typeof Info; color: string }> = {
 
 export function AnnouncementsBell() {
   const { lang, dir } = useI18n();
+  const { user, loading: authLoading } = useAuth();
   const qc = useQueryClient();
   const fetchFn = useServerFn(getMyNotifications);
   const allReadFn = useServerFn(markAllNotificationsRead);
@@ -27,6 +30,7 @@ export function AnnouncementsBell() {
 
   const { data } = useQuery({
     queryKey: ["my-notifications"],
+    enabled: !authLoading && !!user,
     queryFn: async () => {
       try {
         return await fetchFn();
@@ -37,6 +41,7 @@ export function AnnouncementsBell() {
     retry: false,
     refetchInterval: 60_000,
   });
+
 
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
