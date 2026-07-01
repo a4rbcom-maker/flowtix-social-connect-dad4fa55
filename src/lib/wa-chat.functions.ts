@@ -57,22 +57,12 @@ export const listConversations = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<ConversationRow[]> => {
     const { supabase, userId } = context;
-    const { data: sess } = await supabase
-      .from("wa_sessions")
-      .select("session_id, status")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!sess?.session_id || sess.status !== "connected") return [];
-
-
-
     const { data, error } = await supabase
       .from("wa_conversations")
       .select(
         "id, session_id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled",
       )
       .eq("user_id", userId)
-      .eq("session_id", sess.session_id)
       .eq("is_archived", false)
       .order("last_message_at", { ascending: false })
       .limit(200);
@@ -85,7 +75,6 @@ export const listConversations = createServerFn({ method: "POST" })
       .from("wa_messages")
       .select("remote_jid, text_body, msg_type, raw, wa_timestamp, created_at")
       .eq("user_id", userId)
-      .eq("session_id", sess.session_id)
       .in("remote_jid", remoteJids)
       .not("raw", "is", null)
       .order("wa_timestamp", { ascending: false })
@@ -125,18 +114,10 @@ export const getConversationMessages = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }): Promise<ChatMessageRow[]> => {
     const { supabase, userId } = context;
-    const { data: sess } = await supabase
-      .from("wa_sessions")
-      .select("session_id, status")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!sess?.session_id || sess.status !== "connected") return [];
-
     const { data: rows, error } = await supabase
       .from("wa_messages")
       .select("id, remote_jid, direction, status, text_body, msg_type, media_url, wa_timestamp, created_at, raw")
       .eq("user_id", userId)
-      .eq("session_id", sess.session_id)
       .eq("remote_jid", data.remoteJid)
       .order("wa_timestamp", { ascending: true })
       .limit(1000);
@@ -180,18 +161,11 @@ export const markConversationRead = createServerFn({ method: "POST" })
   .inputValidator((input) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    const { data: sess } = await supabase
-      .from("wa_sessions")
-      .select("session_id, status")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!sess?.session_id || sess.status !== "connected") return { ok: true };
     await supabase
       .from("wa_conversations")
       .update({ unread_count: 0 })
       .eq("id", data.id)
-      .eq("user_id", userId)
-      .eq("session_id", sess.session_id);
+      .eq("user_id", userId);
     return { ok: true };
   });
 
@@ -202,18 +176,11 @@ export const toggleConversationAi = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    const { data: sess } = await supabase
-      .from("wa_sessions")
-      .select("session_id, status")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!sess?.session_id || sess.status !== "connected") throw new Error("WhatsApp is not connected");
     const { error } = await supabase
       .from("wa_conversations")
       .update({ ai_enabled: data.enabled })
       .eq("id", data.id)
-      .eq("user_id", userId)
-      .eq("session_id", sess.session_id);
+      .eq("user_id", userId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -242,14 +209,14 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       .from("wa_conversations")
       .select("contact_phone")
       .eq("user_id", userId)
-      .eq("session_id", sess.session_id)
       .eq("remote_jid", data.remoteJid)
+      .order("updated_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
     const { data: recentRaw } = await supabase
       .from("wa_messages")
       .select("raw")
       .eq("user_id", userId)
-      .eq("session_id", sess.session_id)
       .eq("remote_jid", data.remoteJid)
       .not("raw", "is", null)
       .order("created_at", { ascending: false })
@@ -576,19 +543,10 @@ export const saveAiSettings = createServerFn({ method: "POST" })
     // a previous UI toggle, which made users think the package-level AI was on
     // while some customers were silently skipped.
     if (data.ai_enabled) {
-      const { data: sess } = await supabase
-        .from("wa_sessions")
-        .select("session_id, status")
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (!sess?.session_id || sess.status !== "connected") {
-        return { ok: true, ai_enabled: true };
-      }
       const { error: convErr } = await supabase
         .from("wa_conversations")
         .update({ ai_enabled: true })
         .eq("user_id", userId)
-        .eq("session_id", sess.session_id)
         .eq("ai_enabled", false);
       if (convErr) throw new Error(convErr.message);
     }
@@ -649,17 +607,10 @@ export const extractInboundContacts = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }): Promise<ExtractedContact[]> => {
     const { supabase, userId } = context;
-    const { data: sess } = await supabase
-      .from("wa_sessions")
-      .select("session_id, status")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!sess?.session_id || sess.status !== "connected") return [];
     let query = supabase
       .from("wa_messages")
       .select("remote_jid, from_phone, raw, created_at")
       .eq("user_id", userId)
-      .eq("session_id", sess.session_id)
       .eq("direction", "in")
       .gte("created_at", data.from)
       .lte("created_at", data.to)
@@ -675,8 +626,7 @@ export const extractInboundContacts = createServerFn({ method: "POST" })
     const { data: convos } = await supabase
       .from("wa_conversations")
       .select("remote_jid, contact_name, contact_phone")
-      .eq("user_id", userId)
-      .eq("session_id", sess.session_id);
+      .eq("user_id", userId);
     const nameByJid = new Map<string, { name: string | null; phone: string | null }>();
     for (const c of convos ?? []) {
       nameByJid.set(c.remote_jid, { name: c.contact_name, phone: c.contact_phone });
@@ -724,18 +674,10 @@ export const summarizeConversation = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }): Promise<{ summary: string; model: string; provider: "kie"; messageCount: number }> => {
     const { supabase, userId } = context;
-    const { data: sess } = await supabase
-      .from("wa_sessions")
-      .select("session_id, status")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!sess?.session_id) throw new Error("No WhatsApp session found");
-
     const { data: rows, error } = await supabase
       .from("wa_messages")
       .select("direction, text_body, raw, created_at, msg_type")
       .eq("user_id", userId)
-      .eq("session_id", sess.session_id)
       .eq("remote_jid", data.remoteJid)
       .order("created_at", { ascending: false })
       .limit(data.limit);

@@ -746,15 +746,16 @@ export async function upsertConversationFromMessage(opts: {
   // those as one conversation when the sibling row already exists.
   const { data: existingRows } = await supabaseAdmin
     .from("wa_conversations")
-    .select("id, unread_count, contact_name, contact_phone, last_message_at, remote_jid")
+    .select("id, session_id, unread_count, contact_name, contact_phone, last_message_at, remote_jid")
     .eq("user_id", userId)
-    .eq("session_id", sessionId)
     .in("remote_jid", aliasJids)
-    .limit(aliasJids.length);
+    .limit(aliasJids.length * 3);
+  const currentSessionRows = (existingRows ?? []).filter((row) => row.session_id === sessionId);
+  const candidateRows = currentSessionRows.length ? currentSessionRows : (existingRows ?? []);
   const existing =
-    (existingRows ?? []).find((row) => String(row.remote_jid ?? "").endsWith("@lid")) ??
-    (existingRows ?? []).find((row) => row.remote_jid === remoteJid) ??
-    (existingRows ?? []).find((row) => row.id);
+    candidateRows.find((row) => String(row.remote_jid ?? "").endsWith("@lid")) ??
+    candidateRows.find((row) => row.remote_jid === remoteJid) ??
+    candidateRows.find((row) => row.id);
 
   if (existing) {
     // Only bump the summary if this message is newer than the existing one,

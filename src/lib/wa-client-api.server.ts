@@ -113,12 +113,8 @@ async function disconnect(supabase: ReturnType<typeof getSupabaseForToken>, user
   if (row?.session_id) {
     try { await waBridge.deleteSession(row.session_id); } catch { /* best effort */ }
   }
-  // Clear conversations + messages so disconnecting truly wipes the inbox.
-  // RLS scopes both tables to the current user.
-  const { error: msgErr } = await supabase.from("wa_messages").delete().eq("user_id", userId);
-  if (msgErr) throw new Error(`Failed to clear WhatsApp messages: ${msgErr.message}`);
-  const { error: convErr } = await supabase.from("wa_conversations").delete().eq("user_id", userId);
-  if (convErr) throw new Error(`Failed to clear WhatsApp conversations: ${convErr.message}`);
+  // Disconnect must only unpair the bridge session. Do not wipe inbox history;
+  // the inbox is user-wide and must survive reconnecting with a fresh session id.
   const { error: sessErr } = await supabase.from("wa_sessions").delete().eq("user_id", userId);
   if (sessErr) throw new Error(`Failed to clear WhatsApp session: ${sessErr.message}`);
   const { error: settingsErr } = await supabase
@@ -200,8 +196,7 @@ async function readState(supabase: ReturnType<typeof getSupabaseForToken>, userI
       const { count } = await supabase
         .from("wa_messages")
         .select("id", { count: "exact", head: true })
-        .eq("user_id", userId)
-        .eq("session_id", sessionId);
+        .eq("user_id", userId);
       shouldRequestHistory = (count ?? 0) === 0;
     }
     if (shouldRequestHistory) {
