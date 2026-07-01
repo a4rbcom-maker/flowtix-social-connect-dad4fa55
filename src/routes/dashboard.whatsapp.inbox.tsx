@@ -138,6 +138,11 @@ function InboxPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const historySyncRequestedRef = useRef<string | null>(null);
+  const PAGE_SIZE = 40;
+  const [visibleCount, setVisibleCount] = useState<number>(PAGE_SIZE);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const preserveScrollRef = useRef<number | null>(null);
+  const prevMsgLenRef = useRef<number>(0);
 
   type SyncStatus = "idle" | "running" | "pending" | "done" | "error";
   const [syncState, setSyncState] = useState<{
