@@ -2409,3 +2409,48 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
     </div>
   );
 }
+
+const EMOJI_GROUPS: { label: { ar: string; en: string }; emojis: string[] }[] = [
+  {
+    label: { ar: "الوجوه", en: "Smileys" },
+    emojis: ["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫","🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤","😴","😷","🤒","🤕","🤢","🤮","🥵","🥶","🥴","😵","🤯","🤠","🥳","😎","🤓","🧐","😕","😟","🙁","☹️","😮","😯","😲","😳","🥺","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬"],
+  },
+  {
+    label: { ar: "إيماءات", en: "Gestures" },
+    emojis: ["👍","👎","👌","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","👇","☝️","✋","🤚","🖐️","🖖","👋","🤝","🙏","👏","🙌","👐","🤲","🤦","🤷","💪","🦾","👶","🧑","👨","👩","🧔","👴","👵"],
+  },
+  {
+    label: { ar: "قلوب", en: "Hearts" },
+    emojis: ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","♥️","💌"],
+  },
+  {
+    label: { ar: "أشياء", en: "Objects" },
+    emojis: ["🔥","✨","🎉","🎊","🎁","🎈","🏆","🥇","🥈","🥉","⚽","🏀","🎮","🎵","🎶","📱","💻","⌨️","🖥️","📷","📸","💡","🔔","🔕","📌","📍","✅","❌","⭐","🌟","💯","💢","💥","💫","💦","💨","🕐","☀️","🌙","☁️","🌈","☔"],
+  },
+];
+
+function EmojiPicker({ onPick, isAr }: { onPick: (emoji: string) => void; isAr: boolean }) {
+  return (
+    <div className="max-h-72 overflow-y-auto" dir={isAr ? "rtl" : "ltr"}>
+      {EMOJI_GROUPS.map((group) => (
+        <div key={group.label.en} className="mb-2 last:mb-0">
+          <div className="mb-1 px-1 text-[11px] font-semibold text-muted-foreground">
+            {isAr ? group.label.ar : group.label.en}
+          </div>
+          <div className="grid grid-cols-8 gap-0.5">
+            {group.emojis.map((e, i) => (
+              <button
+                key={`${group.label.en}-${i}`}
+                type="button"
+                onClick={() => onPick(e)}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-xl transition hover:bg-muted"
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
