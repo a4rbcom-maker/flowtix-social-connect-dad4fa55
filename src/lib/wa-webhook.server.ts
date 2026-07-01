@@ -371,11 +371,13 @@ async function persistWaMedia(params: {
   const payload = mediaBytesFromEntry(params.entry, params.msgType, params.mediaUrl);
   if (!payload) return params.mediaUrl && /^(https?:)?\/\//i.test(params.mediaUrl) ? params.mediaUrl : null;
 
-  const fallbackName = `${Date.now()}_${randomUUID()}.${extensionFromMime(payload.mimeType, params.msgType)}`;
+  const cleanMime = sanitizeStoredContentType(payload.mimeType, params.msgType);
+  const fallbackName = `${Date.now()}_${randomUUID()}.${extensionFromMime(cleanMime, params.msgType)}`;
   const fileName = safeBaseName(pickStr(media, "fileName", "filename", "name"), fallbackName);
   const path = `${params.userId}/${params.sessionId}/${Date.now()}_${fileName}`;
   const { error } = await supabaseAdmin.storage.from(WA_MEDIA_BUCKET).upload(path, payload.bytes, {
-    contentType: payload.mimeType,
+    contentType: cleanMime,
+    cacheControl: "3600",
     upsert: true,
   });
   if (error) {
