@@ -335,6 +335,14 @@ function InboxPage() {
     let out = list;
     if (filter === "unread") out = out.filter((c) => c.unread_count > 0);
     else if (filter === "ai") out = out.filter((c) => c.ai_enabled);
+    if (timeRange !== "all") {
+      const daysMap: Record<Exclude<TimeRangeKey, "all">, number> = { "1d": 1, "7d": 7, "30d": 30, "90d": 90 };
+      const cutoff = Date.now() - daysMap[timeRange] * 24 * 60 * 60 * 1000;
+      out = out.filter((c) => {
+        const ts = c.last_message_at ? new Date(c.last_message_at).getTime() : 0;
+        return ts >= cutoff;
+      });
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       out = out.filter(
@@ -346,7 +354,7 @@ function InboxPage() {
       );
     }
     return out;
-  }, [conversations, search, filter]);
+  }, [conversations, search, filter, timeRange]);
 
   const totalUnread = useMemo(
     () => conversations.reduce((s, c) => s + (c.unread_count || 0), 0),
