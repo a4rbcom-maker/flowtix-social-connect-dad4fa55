@@ -2434,6 +2434,25 @@ function formatRelative(iso: string, isAr: boolean): string {
   return d.toLocaleDateString(isAr ? "ar-EG" : "en-US", { month: "short", day: "numeric" });
 }
 
+function formatAgo(iso: string, isAr: boolean): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const sec = Math.max(1, Math.floor(diffMs / 1000));
+  if (sec < 60) return isAr ? "الآن" : "now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return isAr ? `قبل ${min} د` : `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return isAr ? `قبل ${hr} س` : `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return isAr ? `قبل ${day} ي` : `${day}d ago`;
+  const wk = Math.floor(day / 7);
+  if (wk < 5) return isAr ? `قبل ${wk} أ` : `${wk}w ago`;
+  const mo = Math.floor(day / 30);
+  if (mo < 12) return isAr ? `قبل ${mo} ش` : `${mo}mo ago`;
+  const yr = Math.floor(day / 365);
+  return isAr ? `قبل ${yr} سنة` : `${yr}y ago`;
+}
+
+
 function dayKey(iso: string): string {
   return new Date(iso).toDateString();
 }
