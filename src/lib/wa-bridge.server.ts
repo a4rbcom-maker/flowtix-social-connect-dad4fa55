@@ -330,6 +330,14 @@ export const waBridge = {
     }
     return { ok: false, attempts };
   },
+  fetchMessages: (id: string, jid: string, limit = 50) =>
+    bridgeFetch<{ success?: boolean; requested?: number; message?: string }>(
+      `/api/sessions/${encodeURIComponent(id)}/fetch-messages`,
+      {
+        method: "POST",
+        body: JSON.stringify({ jid, limit }),
+      },
+    ),
   getStatus: (id: string) =>
     bridgeFetch<BridgeStatusResponse>(`/api/sessions/${encodeURIComponent(id)}/status`),
   getQr: (id: string) =>
