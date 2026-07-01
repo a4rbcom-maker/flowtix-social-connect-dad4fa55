@@ -36,6 +36,7 @@ const PRIORITY_BADGE: Record<string, { ar: string; en: string; cls: string }> = 
 
 export function AnnouncementModal() {
   const { lang, dir } = useI18n();
+  const { user, loading: authLoading } = useAuth();
   const qc = useQueryClient();
   const fetchFn = useServerFn(getMyNotifications);
   const openedFn = useServerFn(markNotificationOpened);
@@ -43,6 +44,7 @@ export function AnnouncementModal() {
 
   const { data } = useQuery({
     queryKey: ["my-notifications"],
+    enabled: !authLoading && !!user,
     queryFn: async () => {
       try {
         return await fetchFn();
@@ -54,6 +56,7 @@ export function AnnouncementModal() {
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   });
+
 
   const [dismissedSession, setDismissedSession] = useState<string[]>([]);
   const popup = (data?.rows ?? []).find(
