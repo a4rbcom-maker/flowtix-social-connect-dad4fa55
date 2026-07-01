@@ -491,12 +491,56 @@ function InboxPage() {
     };
   }, [qc, user?.id, activeJid, requestHistorySyncFn]);
 
-  // Auto-scroll
+  // Reset progressive pagination when conversation changes
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    setVisibleCount(PAGE_SIZE);
+    setIsLoadingOlder(false);
+    preserveScrollRef.current = null;
+    prevMsgLenRef.current = 0;
+  }, [activeJid]);
+
+  // Preserve scroll position when loading older messages; auto-scroll to bottom on new tail
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (preserveScrollRef.current != null) {
+      // We just prepended older messages — keep the previously-visible message anchored.
+      const delta = el.scrollHeight - preserveScrollRef.current;
+      el.scrollTop = el.scrollTop + delta;
+      preserveScrollRef.current = null;
+      setIsLoadingOlder(false);
+      prevMsgLenRef.current = messages.length;
+      return;
     }
-  }, [messages.length, activeJid, isTyping]);
+    const prev = prevMsgLenRef.current;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+    if (messages.length !== prev) {
+      // New message(s) appended or conversation switched — scroll to bottom if user is near it.
+      if (nearBottom || prev === 0) {
+        el.scrollTop = el.scrollHeight;
+      }
+      prevMsgLenRef.current = messages.length;
+    }
+  }, [visibleMessages, messages.length, activeJid]);
+
+  // Scroll to bottom for typing indicator only when already near bottom
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !isTyping) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+    if (nearBottom) el.scrollTop = el.scrollHeight;
+  }, [isTyping]);
+
+  const handleMessagesScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (el.scrollTop <= 60 && hasMoreOlder && !isLoadingOlder) {
+      setIsLoadingOlder(true);
+      preserveScrollRef.current = el.scrollHeight;
+      setVisibleCount((c) => Math.min(c + PAGE_SIZE, messages.length));
+    }
+  }, [hasMoreOlder, isLoadingOlder, messages.length]);
+
 
   // Reset typing indicator when switching conversations
   useEffect(() => {
