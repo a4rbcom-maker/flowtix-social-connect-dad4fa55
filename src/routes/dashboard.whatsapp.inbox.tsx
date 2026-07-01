@@ -868,9 +868,10 @@ function InboxPage() {
             syncState.status === "running"
               ? { label: isAr ? "جاري المزامنة…" : "Syncing…", tone: "bg-primary/10 text-primary ring-primary/30", bar: "bg-primary" }
               : syncState.status === "pending"
-                ? { label: isAr ? "قيد الانتظار — بانتظار دفعات الجسر" : "Pending — waiting for bridge batches", tone: "bg-amber-500/10 text-amber-600 ring-amber-500/30", bar: "bg-amber-500" }
-                : syncState.status === "done"
-                  ? { label: isAr ? "اكتملت المزامنة" : "Sync complete", tone: "bg-emerald-500/10 text-emerald-600 ring-emerald-500/30", bar: "bg-emerald-500" }
+                ? { label: isAr ? "قيد الانتظار — بانتظار دفعات الجسر" : "Pending — waiting for bridge batches", tone: "bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-amber-500/30", bar: "bg-amber-500" }
+              : syncState.status === "done"
+                ? { label: isAr ? "اكتملت المزامنة" : "Sync complete", tone: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30", bar: "bg-emerald-500" }
+
                   : { label: isAr ? "تعذّرت المزامنة" : "Sync failed", tone: "bg-destructive/10 text-destructive ring-destructive/30", bar: "bg-destructive" };
           const active = syncState.status === "running" || syncState.status === "pending";
           return (
