@@ -165,21 +165,21 @@ function DemoPreview({ stepKey, lang }: { stepKey: string; lang: "ar" | "en" }) 
           </div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[12.5px] font-semibold text-foreground">
-              {isAr ? "أحمد محمد (حساب تجريبي)" : "Ahmed Mohamed (sample)"}
+              {lang === "ar" ? "أحمد محمد (حساب تجريبي)" : "Ahmed Mohamed (sample)"}
             </div>
             <div className="truncate text-[11px] text-muted-foreground">ahmed@demo.flowtix.app</div>
           </div>
           <span className="rounded-md bg-green-500/10 px-2 py-0.5 text-[10.5px] font-semibold text-green-700 dark:text-green-400">
-            {isAr ? "متصل" : "Connected"}
+            {lang === "ar" ? "متصل" : "Connected"}
           </span>
         </div>
         <div className="grid grid-cols-2 gap-2 text-[11.5px]">
           <div className="rounded-md bg-card p-2 ring-1 ring-border">
-            <div className="text-muted-foreground">{isAr ? "صفحات" : "Pages"}</div>
+            <div className="text-muted-foreground">{lang === "ar" ? "صفحات" : "Pages"}</div>
             <div className="font-bold text-foreground">12</div>
           </div>
           <div className="rounded-md bg-card p-2 ring-1 ring-border">
-            <div className="text-muted-foreground">{isAr ? "جروبات" : "Groups"}</div>
+            <div className="text-muted-foreground">{lang === "ar" ? "جروبات" : "Groups"}</div>
             <div className="font-bold text-foreground">38</div>
           </div>
         </div>
@@ -199,12 +199,12 @@ function DemoPreview({ stepKey, lang }: { stepKey: string; lang: "ar" | "en" }) 
         </div>
         <div className="rounded-md bg-card p-2 text-[11.5px] ring-1 ring-border">
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">{isAr ? "فاصل النشر الافتراضي" : "Default post interval"}</span>
-            <span className="font-semibold text-foreground">5 {isAr ? "دقائق" : "min"}</span>
+            <span className="text-muted-foreground">{lang === "ar" ? "فاصل النشر الافتراضي" : "Default post interval"}</span>
+            <span className="font-semibold text-foreground">5 {lang === "ar" ? "دقائق" : "min"}</span>
           </div>
           <div className="mt-1 flex items-center justify-between">
-            <span className="text-muted-foreground">{isAr ? "الرد التلقائي" : "Auto-reply"}</span>
-            <span className="font-semibold text-foreground">{isAr ? "مفعّل" : "Enabled"}</span>
+            <span className="text-muted-foreground">{lang === "ar" ? "الرد التلقائي" : "Auto-reply"}</span>
+            <span className="font-semibold text-foreground">{lang === "ar" ? "مفعّل" : "Enabled"}</span>
           </div>
         </div>
       </div>
@@ -215,17 +215,17 @@ function DemoPreview({ stepKey, lang }: { stepKey: string; lang: "ar" | "en" }) 
       <div className="space-y-2">
         <div className="rounded-md border border-green-500/30 bg-green-500/5 p-2 text-[11.5px]">
           <div className="flex items-center gap-1.5 font-semibold text-green-700 dark:text-green-400">
-            <CheckCircle2 className="h-3.5 w-3.5" /> {isAr ? "اختبار الإرسال نجح" : "Dry-run send passed"}
+            <CheckCircle2 className="h-3.5 w-3.5" /> {lang === "ar" ? "اختبار الإرسال نجح" : "Dry-run send passed"}
           </div>
           <div className="mt-1 text-muted-foreground">
-            {isAr ? "هدف مقترح: " : "Suggested target: "}
-            <span className="font-mono text-foreground">{isAr ? "جروب: تسوّق القاهرة" : "Group: Cairo Shoppers"}</span>
+            {lang === "ar" ? "هدف مقترح: " : "Suggested target: "}
+            <span className="font-mono text-foreground">{lang === "ar" ? "جروب: تسوّق القاهرة" : "Group: Cairo Shoppers"}</span>
           </div>
         </div>
         <ul className="space-y-0.5 text-[11px] text-foreground/80">
-          <li>✓ {isAr ? "التوكن صالح" : "Token valid"}</li>
-          <li>✓ {isAr ? "3 جروبات و 2 صفحات قابلة للنشر" : "3 groups & 2 pages reachable"}</li>
-          <li>✓ {isAr ? "صلاحيات النشر مكتملة" : "All publish scopes granted"}</li>
+          <li>✓ {lang === "ar" ? "التوكن صالح" : "Token valid"}</li>
+          <li>✓ {lang === "ar" ? "3 جروبات و 2 صفحات قابلة للنشر" : "3 groups & 2 pages reachable"}</li>
+          <li>✓ {lang === "ar" ? "صلاحيات النشر مكتملة" : "All publish scopes granted"}</li>
         </ul>
       </div>
     );
@@ -236,27 +236,27 @@ function DemoPreview({ stepKey, lang }: { stepKey: string; lang: "ar" | "en" }) 
         <div className="rounded-md bg-card p-2.5 ring-1 ring-border">
           <div className="flex items-center justify-between">
             <span className="text-[12px] font-semibold text-foreground">
-              {isAr ? "حملة: عرض الجمعة 🔥" : "Campaign: Friday Deal 🔥"}
+              {lang === "ar" ? "حملة: عرض الجمعة 🔥" : "Campaign: Friday Deal 🔥"}
             </span>
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-              {isAr ? "مجدولة" : "Scheduled"}
+              {lang === "ar" ? "مجدولة" : "Scheduled"}
             </span>
           </div>
           <div className="mt-1 text-[11px] text-muted-foreground">
-            {isAr ? "5 جروبات · كل 5 دقائق · تبدأ 8 مساءً" : "5 groups · every 5 min · starts 8 PM"}
+            {lang === "ar" ? "5 جروبات · كل 5 دقائق · تبدأ 8 مساءً" : "5 groups · every 5 min · starts 8 PM"}
           </div>
         </div>
         <div className="grid grid-cols-3 gap-2 text-center text-[11px]">
           <div className="rounded-md bg-card p-1.5 ring-1 ring-border">
-            <div className="text-muted-foreground">{isAr ? "أُرسل" : "Sent"}</div>
+            <div className="text-muted-foreground">{lang === "ar" ? "أُرسل" : "Sent"}</div>
             <div className="font-bold text-foreground">3/5</div>
           </div>
           <div className="rounded-md bg-card p-1.5 ring-1 ring-border">
-            <div className="text-muted-foreground">{isAr ? "تفاعل" : "Reach"}</div>
+            <div className="text-muted-foreground">{lang === "ar" ? "تفاعل" : "Reach"}</div>
             <div className="font-bold text-foreground">412</div>
           </div>
           <div className="rounded-md bg-card p-1.5 ring-1 ring-border">
-            <div className="text-muted-foreground">{isAr ? "تعليق" : "Comments"}</div>
+            <div className="text-muted-foreground">{lang === "ar" ? "تعليق" : "Comments"}</div>
             <div className="font-bold text-foreground">28</div>
           </div>
         </div>
@@ -311,6 +311,27 @@ function FacebookPage() {
   const [connecting, setConnecting] = useState(false);
   const [inspectingToken, setInspectingToken] = useState(false);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
+  const toggleGroupSelect = (id: string) => {
+    setSelectedGroupIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  };
+  const selectAllGroups = () => setSelectedGroupIds(new Set(groups.map((g) => g.id)));
+  const clearGroupSelection = () => setSelectedGroupIds(new Set());
+  const startSendToSelectedGroups = () => {
+    if (selectedGroupIds.size === 0) return;
+    const chosen = groups.filter((g) => selectedGroupIds.has(g.id));
+    try {
+      sessionStorage.setItem(
+        "fb_preselect_groups",
+        JSON.stringify({ groups: chosen, ts: Date.now() }),
+      );
+    } catch { /* ignore quota errors */ }
+    navigate({ to: "/dashboard/facebook/groups" });
+  };
   const [pages, setPages] = useState<Page[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [loadingPages, setLoadingPages] = useState(false);
@@ -2809,35 +2830,88 @@ function FacebookPage() {
               (groups.length === 0 ? (
                 <p className="py-12 text-center text-sm text-muted-foreground">{t.noGroups}</p>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {groups.map((g) => (
-                    <div
-                      key={g.id}
-                      className="overflow-hidden rounded-xl border border-border/50 bg-background transition-all hover:border-primary/30 hover:shadow-md"
-                    >
-                      {g.cover?.source && (
-                        <img
-                          src={g.cover.source}
-                          alt={g.name}
-                          className="h-24 w-full object-cover"
-                        />
+                <div className="space-y-3">
+                  {/* Selection bar */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/50 bg-muted/30 px-3 py-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-foreground">
+                        {lang === "ar"
+                          ? `${selectedGroupIds.size} من ${groups.length} محدد`
+                          : `${selectedGroupIds.size} of ${groups.length} selected`}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={selectAllGroups}
+                        className="rounded-md border border-border bg-background px-2 py-1 text-xs hover:bg-accent"
+                      >
+                        {lang === "ar" ? "تحديد الكل" : "Select all"}
+                      </button>
+                      {selectedGroupIds.size > 0 && (
+                        <button
+                          type="button"
+                          onClick={clearGroupSelection}
+                          className="rounded-md border border-border bg-background px-2 py-1 text-xs hover:bg-accent"
+                        >
+                          {lang === "ar" ? "إلغاء التحديد" : "Clear"}
+                        </button>
                       )}
-                      <div className="p-4">
-                        <h3 className="line-clamp-1 font-semibold text-foreground">{g.name}</h3>
-                        <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-                          {typeof g.member_count === "number" && (
-                            <span className="inline-flex items-center gap-1">
-                              <Users className="h-3 w-3" />
-                              {g.member_count.toLocaleString()} {t.members}
-                            </span>
-                          )}
-                          {g.privacy && (
-                            <span className="rounded-full bg-muted px-2 py-0.5">{g.privacy}</span>
-                          )}
-                        </div>
-                      </div>
                     </div>
-                  ))}
+                    <button
+                      type="button"
+                      disabled={selectedGroupIds.size === 0}
+                      onClick={startSendToSelectedGroups}
+                      className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                      {lang === "ar"
+                        ? `إرسال رسالة (${selectedGroupIds.size})`
+                        : `Send message (${selectedGroupIds.size})`}
+                    </button>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {groups.map((g) => {
+                      const checked = selectedGroupIds.has(g.id);
+                      return (
+                        <label
+                          key={g.id}
+                          className={`relative block cursor-pointer overflow-hidden rounded-xl border bg-background transition-all hover:shadow-md ${
+                            checked
+                              ? "border-primary ring-2 ring-primary/40"
+                              : "border-border/50 hover:border-primary/30"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleGroupSelect(g.id)}
+                            className={`absolute top-2 z-10 h-4 w-4 accent-primary ${lang === "ar" ? "right-2" : "left-2"}`}
+                          />
+                          {g.cover?.source && (
+                            <img
+                              src={g.cover.source}
+                              alt={g.name}
+                              className="h-24 w-full object-cover"
+                            />
+                          )}
+                          <div className="p-4">
+                            <h3 className="line-clamp-1 font-semibold text-foreground">{g.name}</h3>
+                            <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+                              {typeof g.member_count === "number" && (
+                                <span className="inline-flex items-center gap-1">
+                                  <Users className="h-3 w-3" />
+                                  {g.member_count.toLocaleString()} {t.members}
+                                </span>
+                              )}
+                              {g.privacy && (
+                                <span className="rounded-full bg-muted px-2 py-0.5">{g.privacy}</span>
+                              )}
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
 
