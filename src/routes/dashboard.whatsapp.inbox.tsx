@@ -114,6 +114,13 @@ function InboxPage() {
 
 
   const [activeJid, setActiveJid] = useState<string | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const triggerTyping = useCallback((ms = 1400) => {
+    setIsTyping(true);
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => setIsTyping(false), ms);
+  }, []);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [timeRange, setTimeRange] = useState<TimeRangeKey>(() => {
