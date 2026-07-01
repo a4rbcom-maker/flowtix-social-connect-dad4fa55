@@ -710,3 +710,78 @@ export const extractInboundContacts = createServerFn({ method: "POST" })
     }
     return Array.from(byPhone.values()).sort((a, b) => b.message_count - a.message_count);
   });
+
+// ─── Conversation summary (kie.ai) ─────────────────────────────────────────
+export const summarizeConversation = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        remoteJid: z.string().min(1).max(200),
+        limit: z.number().int().min(5).max(200).optional().default(80),
+      })
+      .parse(input),
+  )
+  .handler(async ({ context, data }): Promise<{ summary: string; model: string; provider: "kie"; messageCount: number }> => {
+    const { supabase, userId } = context;
+    const { data: sess } = await supabase
+      .from("wa_sessions")
+      .select("session_id, status")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!sess?.session_id) throw new Error("No WhatsApp session found");
+
+    const { data: rows, error } = await supabase
+      .from("wa_messages")
+      .select("direction, text_body, raw, created_at, msg_type")
+      .eq("user_id", userId)
+      .eq("session_id", sess.session_id)
+      .eq("remote_jid", data.remoteJid)
+      .order("created_at", { ascending: false })
+      .limit(data.limit);
+    if (error) throw new Error(error.message);
+    if (!rows || rows.length === 0) throw new Error("No messages to summarize");
+
+    const ordered = [...rows].reverse();
+    const transcript = ordered
+      .map((r) => {
+        const who = r.direction === "out" ? "AGENT" : "CUSTOMER";
+        const text = cleanMessageText(r.text_body) || previewTextFromRaw(r.raw, r.msg_type) || `[${r.msg_type ?? "media"}]`;
+        return `${who}: ${text}`;
+      })
+      .join("\n")
+      .slice(0, 12000);
+
+    const { data: settings } = await supabase
+      .from("whatsapp_settings")
+      .select("ai_model, ai_tier_smart")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const model = settings?.ai_tier_smart || settings?.ai_model || "gemini-2.5-flash";
+
+    const { callKieChat } = await import("./ai-pool.server");
+    const result = await callKieChat({
+      userId,
+      model,
+      tier: "smart",
+      temperature: 0.3,
+      maxTokens: 600,
+      messages: [
+        {
+          role: "system",
+          content:
+            "أنت مساعد يلخّص محادثات خدمة العملاء بالعربية. اكتب ملخصًا موجزًا واضحًا يشمل: (1) طلب العميل الأساسي، (2) أهم النقاط التي دارت، (3) الحالة الحالية، (4) الإجراء التالي المقترح. استخدم نقاطًا قصيرة، بدون مقدمات.",
+        },
+        { role: "user", content: `المحادثة:\n${transcript}` },
+      ],
+    });
+    if (result.error || !result.text) {
+      throw new Error(result.error || "AI provider returned empty summary");
+    }
+    return {
+      summary: result.text.trim(),
+      model: result.model,
+      provider: "kie",
+      messageCount: ordered.length,
+    };
+  });
