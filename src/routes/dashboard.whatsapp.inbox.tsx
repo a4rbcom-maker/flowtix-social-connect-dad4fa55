@@ -395,6 +395,18 @@ function InboxPage() {
             !row.raw?.is_historical
           ) {
             playBeep();
+            // Briefly show a "typing…" hint in the open chat while the message row hydrates
+            if (activeJid && row.remote_jid === activeJid) {
+              triggerTyping(900);
+            }
+          }
+          // Conversation-level bump for the active chat also nudges typing
+          if (
+            payload.table === "wa_conversations" &&
+            (payload.new as { remote_jid?: string; last_direction?: string })?.remote_jid === activeJid &&
+            (payload.new as { last_direction?: string })?.last_direction === "in"
+          ) {
+            triggerTyping(1200);
           }
         },
       )
