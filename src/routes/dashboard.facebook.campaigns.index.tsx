@@ -13,6 +13,7 @@ import {
   pauseCampaign,
 } from "@/lib/fb-campaigns.functions";
 import { safeArray } from "@/lib/safe-data";
+import { statusBadgeTone } from "@/lib/status-badge";
 
 function CampaignsErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
