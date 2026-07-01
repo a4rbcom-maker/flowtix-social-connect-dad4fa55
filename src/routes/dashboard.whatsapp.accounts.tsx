@@ -552,6 +552,10 @@ function WhatsAppPage() {
                     </div>
                   </div>
 
+                  {status === "connected" && (
+                    <TestSendCard ar={ar} defaultPhone="01273747262" />
+                  )}
+
 
                   {/* QR section (collapsible, only when needed) */}
                   {showQr && status !== "connected" && (
