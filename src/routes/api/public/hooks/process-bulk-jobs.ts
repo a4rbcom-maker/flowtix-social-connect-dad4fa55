@@ -1,18 +1,25 @@
 // Background worker for bulk_jobs.
 // Called by pg_cron every minute via /api/public/hooks/process-bulk-jobs.
 // Uses service-role admin client to advance jobs across all users.
+// Delivers real WhatsApp messages via the Bot-Xtra bridge using each
+// user's connected wa_sessions row.
 import { createFileRoute } from "@tanstack/react-router";
 
 const MAX_JOBS_PER_TICK = 25;
 const DEFAULT_BATCH_SIZE = 10;
 const HARD_CAP_SENDS_PER_JOB_PER_TICK = 100;
 
+function renderTemplate(tpl: string, ctx: { name?: string | null; phone?: string | null }): string {
+  if (!tpl) return "";
+  return tpl
+    .replace(/\{\{?\s*name\s*\}?\}/gi, ctx.name?.trim() || "")
+    .replace(/\{\{?\s*phone\s*\}?\}/gi, ctx.phone?.trim() || "");
+}
+
 export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        // Shared-secret auth: pg_cron / external scheduler must send
-        // `Authorization: Bearer <CRON_SECRET or BOT_WORKER_SECRET>`.
         const secret = process.env.CRON_SECRET || process.env.BOT_WORKER_SECRET;
         if (!secret) {
           return new Response("Worker secret not configured", { status: 500 });
@@ -23,14 +30,24 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
         }
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { waBridge, assertBridgeSendQueued, describeBridgeError } = await import(
+          "@/lib/wa-bridge.server"
+        );
 
         const now = new Date();
-        const summary = { promoted: 0, processed: 0, sent: 0, completed: 0 };
+        const summary = {
+          promoted: 0,
+          processed: 0,
+          sent: 0,
+          failed: 0,
+          completed: 0,
+          skipped_no_session: 0,
+        };
 
-        // 1) Promote scheduled → running for any job whose time has come
+        // 1) Promote scheduled → running
         const { data: due } = await supabaseAdmin
           .from("bulk_jobs")
-          .select("id, user_id")
+          .select("id")
           .eq("status", "scheduled")
           .lte("scheduled_at", now.toISOString())
           .limit(MAX_JOBS_PER_TICK);
@@ -55,6 +72,20 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
           .lte("next_send_at", now.toISOString())
           .limit(MAX_JOBS_PER_TICK);
 
+        // Cache wa_sessions per user for this tick
+        const sessionCache = new Map<string, { session_id: string; status: string } | null>();
+        async function getSession(userId: string) {
+          if (sessionCache.has(userId)) return sessionCache.get(userId) ?? null;
+          const { data } = await supabaseAdmin
+            .from("wa_sessions")
+            .select("session_id, status")
+            .eq("user_id", userId)
+            .maybeSingle();
+          const row = data && data.session_id ? { session_id: data.session_id, status: data.status } : null;
+          sessionCache.set(userId, row);
+          return row;
+        }
+
         for (const job of running ?? []) {
           summary.processed++;
 
@@ -63,7 +94,22 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
             Math.min(job.batch_size ?? DEFAULT_BATCH_SIZE, HARD_CAP_SENDS_PER_JOB_PER_TICK),
           );
 
-          // Pull pending recipients for this job
+          // Verify user has a connected WA session
+          const sess = await getSession(job.user_id);
+          if (!sess || sess.status !== "connected") {
+            // Pause the job with a clear error until user reconnects
+            await supabaseAdmin
+              .from("bulk_jobs")
+              .update({
+                status: "paused",
+                error_message: "WhatsApp غير متصل — قم بإعادة الربط ثم استأنف الحملة",
+                next_send_at: null,
+              })
+              .eq("id", job.id);
+            summary.skipped_no_session++;
+            continue;
+          }
+
           const { data: pending } = await supabaseAdmin
             .from("bulk_job_recipients")
             .select("id, name, phone")
@@ -73,7 +119,6 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
             .limit(batchSize);
 
           if (!pending || pending.length === 0) {
-            // No pending → mark complete
             await supabaseAdmin
               .from("bulk_jobs")
               .update({
@@ -86,47 +131,106 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
             continue;
           }
 
-          // "Send" each recipient. Real WhatsApp API call would happen here;
-          // we mark as success and rely on the user's connected channel
-          // (Meta API or QR) to actually deliver. This stub keeps the queue
-          // moving and makes status visible end-to-end.
           let sent = 0;
           let failed = 0;
-          for (const r of pending) {
-            // TODO: integrate Meta WhatsApp Cloud API here using
-            // whatsapp_settings for this job.user_id. For now we mark as
-            // success so the pipeline + UI work end-to-end.
-            const { error } = await supabaseAdmin
-              .from("bulk_job_recipients")
-              .update({
-                status: "success",
-                sent_at: new Date().toISOString(),
-              })
-              .eq("id", r.id);
-            if (error) failed++; else sent++;
 
-            // Mirror into send_log so it shows up in the activity feed
+          for (const r of pending) {
+            const phone = (r.phone || "").replace(/[^0-9]/g, "");
+            if (!phone || phone.length < 6) {
+              await supabaseAdmin
+                .from("bulk_job_recipients")
+                .update({ status: "failed", error_message: "رقم غير صالح", sent_at: new Date().toISOString() })
+                .eq("id", r.id);
+              failed++;
+              continue;
+            }
+
+            const rendered = renderTemplate(job.message || "", { name: r.name, phone });
+            let errorMessage: string | null = null;
+            let providerId: string | null = null;
+
+            try {
+              const caption = rendered.trim();
+              if (job.image_url) {
+                // Send as image with optional caption via bridge /send
+                const res = await (waBridge as unknown as {
+                  sendText: (id: string, to: string, text: string, opts?: { phone?: string | null }) => Promise<unknown>;
+                }).sendText(sess.session_id, phone, caption || "");
+                // Then follow up with the image URL as a text if bridge lacks media
+                providerId = assertBridgeSendQueued(res);
+                // Best-effort image: send URL as second text so recipient can open it
+                try {
+                  await (waBridge as unknown as {
+                    sendText: (id: string, to: string, text: string) => Promise<unknown>;
+                  }).sendText(sess.session_id, phone, job.image_url);
+                } catch {
+                  // ignore secondary failure
+                }
+              } else {
+                const res = await waBridge.sendText(sess.session_id, phone, caption);
+                providerId = assertBridgeSendQueued(res);
+              }
+            } catch (err) {
+              errorMessage = describeBridgeError(err);
+            }
+
+            if (errorMessage) {
+              failed++;
+              await supabaseAdmin
+                .from("bulk_job_recipients")
+                .update({
+                  status: "failed",
+                  error_message: errorMessage,
+                  sent_at: new Date().toISOString(),
+                })
+                .eq("id", r.id);
+            } else {
+              sent++;
+              await supabaseAdmin
+                .from("bulk_job_recipients")
+                .update({
+                  status: "success",
+                  sent_at: new Date().toISOString(),
+                })
+                .eq("id", r.id);
+
+              // Mirror to wa_messages so it appears in inbox history
+              await supabaseAdmin.from("wa_messages").insert({
+                user_id: job.user_id,
+                session_id: sess.session_id,
+                direction: "out",
+                remote_jid: `${phone}@s.whatsapp.net`,
+                to_phone: phone,
+                msg_type: job.image_url ? "image" : "text",
+                text_body: rendered,
+                media_url: job.image_url ?? null,
+                status: "sent",
+                provider_message_id: providerId,
+              });
+            }
+
             await supabaseAdmin.from("send_log").insert({
               user_id: job.user_id,
               channel: "bulk",
               action: "bulk_send",
-              status: error ? "failed" : "success",
+              status: errorMessage ? "failed" : "success",
               title: job.title,
-              description: job.message.slice(0, 140),
-              recipient: `${r.name} (${r.phone})`,
-              error_message: error?.message ?? null,
-              metadata: { job_id: job.id },
+              description: rendered.slice(0, 140),
+              recipient: `${r.name} (${phone})`,
+              error_message: errorMessage,
+              metadata: { job_id: job.id, provider_message_id: providerId },
             });
           }
-          summary.sent += sent;
 
-          // Update counters + schedule next tick (interval seconds away)
-          const nextAt = new Date(Date.now() + job.interval_seconds * 1000);
+          summary.sent += sent;
+          summary.failed += failed;
+
+          const nextAt = new Date(Date.now() + (job.interval_seconds ?? 5) * 1000);
           await supabaseAdmin
             .from("bulk_jobs")
             .update({
-              sent_count: job.sent_count + sent,
-              failed_count: job.failed_count + failed,
+              sent_count: (job.sent_count ?? 0) + sent,
+              failed_count: (job.failed_count ?? 0) + failed,
               next_send_at: nextAt.toISOString(),
             })
             .eq("id", job.id);
