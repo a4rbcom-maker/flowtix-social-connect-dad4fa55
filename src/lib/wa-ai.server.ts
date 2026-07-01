@@ -531,17 +531,53 @@ export async function handleAiAutoReply(opts: {
     }
 
 
-    const systemPrompt =
+    // Fetch the authoritative business phone (the linked WhatsApp number)
+    // so we can inject it into the system prompt and block hallucinated numbers.
+    const { data: sessionRow } = await supabaseAdmin
+      .from("wa_sessions")
+      .select("phone_number")
+      .eq("user_id", userId)
+      .eq("session_id", sessionId)
+      .maybeSingle();
+    const businessPhone = (sessionRow?.phone_number || "").toString().replace(/[^0-9+]/g, "");
+
+
+    const baseSystem =
       settings.ai_system_prompt?.trim() ||
       "You are a helpful customer support assistant replying via WhatsApp. Keep replies short, friendly, and in the same language as the user.";
 
+    // Strict anti-hallucination guardrails — the model must NEVER invent phone
+    // numbers, emails, prices, links, or addresses. It may only cite values
+    // that appear verbatim in the knowledge base or the injected business info.
+    const guardrails = [
+      "# قواعد صارمة (Guardrails)",
+      "- ممنوع منعاً باتاً اختراع أي رقم هاتف أو بريد إلكتروني أو رابط أو عنوان أو سعر لم يُذكر حرفياً في «معلومات النشاط» أو «قاعدة المعرفة» أدناه.",
+      "- إذا سأل العميل عن رقم/إيميل/رابط/سعر وغير موجود في المعلومات المتاحة، قل بوضوح: «سأحوّلك لأحد الزملاء ليزوّدك بهذه المعلومة» ولا تخمّن.",
+      "- لا تذكر أي رقم واتساب/موبايل غير الرقم الرسمي المُدرج في «معلومات النشاط».",
+      "- لا تكرر رقم العميل نفسه ولا تعطيه رقماً مختلفاً عن الرقم الرسمي.",
+      "- ردودك قصيرة، بنفس لغة العميل، وبدون توقيعات أو روابط مخترعة.",
+    ].join("\n");
+
+    const businessInfo = [
+      "# معلومات النشاط (المصدر الرسمي الوحيد للرقم)",
+      businessPhone ? `- رقم الواتساب الرسمي: ${businessPhone}` : null,
+      businessPhone
+        ? `- رقم الواتساب الرسمي: ${businessPhone} (هذا هو الرقم الوحيد المسموح ذكره)`
+        : "- رقم الواتساب الرسمي: غير متوفر — لا تذكر أي رقم إطلاقاً.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
     const kb = settings.ai_knowledge_base?.trim();
+    const systemContent = [baseSystem, guardrails, businessInfo, kb ? `# قاعدة المعرفة\n${kb}` : null]
+      .filter(Boolean)
+      .join("\n\n");
+
     const messages: ChatMessage[] = [
-      {
-        role: "system",
-        content: kb ? `${systemPrompt}\n\n# Knowledge base\n${kb}` : systemPrompt,
-      },
+      { role: "system", content: systemContent },
     ];
+
+
 
     for (const m of ordered) {
       const txt = m.text_body || (m.msg_type !== "text" ? `[${m.msg_type}]` : "");
