@@ -2,7 +2,6 @@
 // All bridge calls happen here so secrets stay on the server.
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { createHmac } from "crypto";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requireAdmin } from "./admin-middleware";
 import {
@@ -220,6 +219,7 @@ async function replayBridgeHistoryPayload(sessionId: string, payload: unknown): 
   if (!secret) return { messages: 0, chats: 0, error: "missing_webhook_secret" };
 
   const { handleWaWebhook } = await import("./wa-webhook.server");
+  const { createHmac } = await import("crypto");
   const postInternalWebhook = async (body: Record<string, unknown>) => {
     const raw = JSON.stringify(body);
     const sig = createHmac("sha256", secret).update(raw, "utf8").digest("hex");
