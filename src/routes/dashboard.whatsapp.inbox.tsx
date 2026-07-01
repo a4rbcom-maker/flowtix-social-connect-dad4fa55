@@ -2372,17 +2372,19 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
   const isFailed = isOut && m.status === "failed";
   const isStalePending = isPending && m.is_stale_pending;
   return (
-    <div dir="ltr" className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
+    <div dir="ltr" className={`flex ${isOut ? "justify-end" : "justify-start"} px-1`}>
       <div
         dir={isAr ? "rtl" : "ltr"}
-        className={`group min-w-0 max-w-[86%] overflow-hidden px-3.5 py-2 text-sm shadow-sm sm:max-w-[72%] ${
+        className={`group min-w-0 max-w-[86%] overflow-hidden rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-[0_1px_2px_rgba(0,0,0,0.04),0_1px_1px_rgba(0,0,0,0.03)] ring-1 sm:max-w-[70%] ${
+          isOut ? "rounded-br-sm rtl:rounded-br-2xl rtl:rounded-bl-sm" : "rounded-bl-sm rtl:rounded-bl-2xl rtl:rounded-br-sm"
+        } ${
           isFailed
-            ? "rounded-2xl rounded-br-md border border-destructive/35 bg-destructive/10 text-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
+            ? "bg-destructive/10 text-foreground ring-destructive/30"
             : isPending
-              ? "rounded-2xl rounded-br-md border border-primary/25 bg-primary/10 text-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
+              ? "bg-primary/10 text-foreground ring-primary/25"
               : isOut
-                ? "rounded-2xl rounded-br-md bg-gradient-to-br from-primary to-[oklch(0.55_0.28_295)] text-primary-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
-                : "rounded-2xl rounded-bl-md border border-border/60 bg-card text-foreground rtl:rounded-bl-2xl rtl:rounded-br-md"
+                ? "bg-gradient-to-br from-primary to-[oklch(0.55_0.28_295)] text-primary-foreground ring-primary/20"
+                : "bg-card text-foreground ring-border/60"
         }`}
       >
         {showSender && (
