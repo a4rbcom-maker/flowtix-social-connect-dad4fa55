@@ -316,6 +316,27 @@ function extensionFromMime(mimeType: string, msgType: string): string {
   return "bin";
 }
 
+// Normalize raw mime strings coming from the bridge/Baileys before we hand
+// them to Supabase Storage. Storage stores this string verbatim and echoes
+// it as the `Content-Type` header for every download — a wrong or unusual
+// value (e.g. `application/octet-stream`, `audio/ogg; codecs=opus`, or an
+// upper-case codec) makes Safari, iOS and some Chromium builds refuse to
+// play the file inside a plain <audio> element. Strip codec parameters,
+// map known aliases to canonical types, and fall back by msgType so the
+// browser always receives a clean, well-known media MIME.
+function sanitizeStoredContentType(rawMime: string, msgType: string): string {
+  const base = (rawMime || "").split(";")[0]?.trim().toLowerCase() || "";
+  if (base === "audio/opus" || base === "audio/x-opus" || base === "audio/ogg") return "audio/ogg";
+  if (base === "audio/mp4" || base === "audio/x-m4a" || base === "audio/aac") return "audio/mp4";
+  if (base === "audio/mpeg" || base === "audio/mp3") return "audio/mpeg";
+  if (base === "audio/webm") return "audio/webm";
+  if (base === "audio/wav" || base === "audio/x-wav") return "audio/wav";
+  if (base.startsWith("image/") || base.startsWith("video/") || base.startsWith("audio/") || base === "application/pdf") {
+    return base;
+  }
+  return fallbackMimeType(msgType);
+}
+
 function safeBaseName(value: string | null, fallback: string): string {
   const last = (value ?? "").split(/[\\/]/).filter(Boolean).at(-1) ?? "";
   return (last || fallback).replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 140) || fallback;
@@ -350,11 +371,13 @@ async function persistWaMedia(params: {
   const payload = mediaBytesFromEntry(params.entry, params.msgType, params.mediaUrl);
   if (!payload) return params.mediaUrl && /^(https?:)?\/\//i.test(params.mediaUrl) ? params.mediaUrl : null;
 
-  const fallbackName = `${Date.now()}_${randomUUID()}.${extensionFromMime(payload.mimeType, params.msgType)}`;
+  const cleanMime = sanitizeStoredContentType(payload.mimeType, params.msgType);
+  const fallbackName = `${Date.now()}_${randomUUID()}.${extensionFromMime(cleanMime, params.msgType)}`;
   const fileName = safeBaseName(pickStr(media, "fileName", "filename", "name"), fallbackName);
   const path = `${params.userId}/${params.sessionId}/${Date.now()}_${fileName}`;
   const { error } = await supabaseAdmin.storage.from(WA_MEDIA_BUCKET).upload(path, payload.bytes, {
-    contentType: payload.mimeType,
+    contentType: cleanMime,
+    cacheControl: "3600",
     upsert: true,
   });
   if (error) {
