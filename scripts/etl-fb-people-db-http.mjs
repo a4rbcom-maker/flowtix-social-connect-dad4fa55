@@ -112,24 +112,36 @@ function toRow(country, r) {
   };
 }
 
-async function postBatch(rows, attempt = 1) {
+async function callOp(body, attempt = 1) {
   try {
     const res = await fetch(ENDPOINT, {
       method: "POST",
       headers: { "content-type": "application/json", "x-ingest-secret": INGEST_SECRET },
-      body: JSON.stringify({ rows }),
+      body: JSON.stringify(body),
     });
+    const text = await res.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch {}
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
+      // 422 = row validation error → do NOT retry; surface immediately.
+      if (res.status === 422) {
+        const err = new Error(`validation failed: ${text.slice(0, 400)}`);
+        err.fatal = true;
+        throw err;
+      }
       throw new Error(`HTTP ${res.status}: ${text.slice(0, 300)}`);
     }
-    const json = await res.json();
-    return json.inserted || 0;
+    return json || {};
   } catch (err) {
-    if (attempt >= 4) throw err;
+    if (err.fatal || attempt >= 4) throw err;
     await new Promise((r) => setTimeout(r, 1000 * attempt));
-    return postBatch(rows, attempt + 1);
+    return callOp(body, attempt + 1);
   }
+}
+
+async function postBatch(rows) {
+  const json = await callOp({ rows });
+  return { inserted: json.inserted || 0, delta: json.delta || null };
 }
 
 if (POST_INDEX) {
@@ -141,6 +153,20 @@ if (POST_INDEX) {
   });
   console.log("[post-index] HTTP", res.status, await res.text());
   exit(res.ok ? 0 : 1);
+}
+
+// ---- PREFLIGHT: verify endpoint reachable, secret valid, DB reachable ------
+console.log("[preflight] checking endpoint + DB health...");
+let preflight;
+try {
+  preflight = await callOp({ op: "preflight" });
+  if (!preflight?.ok) throw new Error(`preflight rejected: ${JSON.stringify(preflight)}`);
+  console.log(
+    `[preflight] OK  endpoint_version=${preflight.endpoint_version}  counts=${JSON.stringify(preflight.counts)}`,
+  );
+} catch (err) {
+  console.error(`[preflight] FAILED: ${err.message}`);
+  exit(3);
 }
 
 if (!COUNTRY || !["EG", "IQ"].includes(COUNTRY)) {
@@ -202,18 +228,29 @@ const startWall = performance.now();
 
 // Simple concurrency window: keep N in-flight POSTs.
 const inFlight = new Set();
+let fatalError = null;
 async function dispatch(rows, hi) {
   const p = postBatch(rows)
-    .then((ins) => {
-      totalInserted += ins;
+    .then(({ inserted, delta }) => {
+      totalInserted += inserted;
       lastFlushedId = Math.max(lastFlushedId, hi);
+      // Mid-flight sanity: if server delta is negative or wildly off, warn.
+      if (delta && typeof delta[COUNTRY] === "number" && delta[COUNTRY] < 0) {
+        console.warn(`\n  [sanity] batch id<=${hi} produced negative delta=${delta[COUNTRY]} for ${COUNTRY}`);
+      }
     })
     .catch((err) => {
       console.error(`\n  [error] batch ending id=${hi} failed: ${err.message}`);
+      if (err.fatal) fatalError = err;
     })
     .finally(() => inFlight.delete(p));
   inFlight.add(p);
   if (inFlight.size >= CONCURRENCY) await Promise.race(inFlight);
+  if (fatalError) {
+    await Promise.allSettled(inFlight);
+    console.error(`[abort] fatal validation error — stopping to avoid partial/corrupt data.`);
+    exit(4);
+  }
 }
 
 for (let lo = START_ID; lo <= maxId; lo += BATCH) {
@@ -248,3 +285,27 @@ await Promise.all(inFlight);
 stdout.write("\n");
 console.log(`[done] country=${COUNTRY} read=${totalRead} inserted=${totalInserted} skipped_ids=${totalSkipped} last_id=${lastFlushedId}`);
 sqlite.close();
+
+// ---- FINAL VERIFY: compare server counts to what we expected --------------
+try {
+  const verify = await callOp({ op: "verify" });
+  const beforeCount = preflight?.counts?.[COUNTRY] ?? 0;
+  const afterCount = verify?.counts?.[COUNTRY] ?? 0;
+  const netAdded = afterCount - beforeCount;
+  console.log(
+    `[verify] ${COUNTRY} count before=${beforeCount} after=${afterCount} net_added=${netAdded} (server truth)`,
+  );
+  if (netAdded < 0) {
+    console.error(`[verify] FAIL: negative net delta — data may have been deleted.`);
+    exit(5);
+  }
+  // Warn if we posted many rows but almost nothing landed (mostly duplicates is normal,
+  // but a >99% drop on a first-time load is suspicious).
+  if (totalRead > 1000 && netAdded === 0) {
+    console.warn(`[verify] WARN: read=${totalRead} but net_added=0. Likely all duplicates; investigate if unexpected.`);
+  }
+} catch (err) {
+  console.error(`[verify] failed: ${err.message}`);
+  exit(5);
+}
+
