@@ -2830,35 +2830,88 @@ function FacebookPage() {
               (groups.length === 0 ? (
                 <p className="py-12 text-center text-sm text-muted-foreground">{t.noGroups}</p>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {groups.map((g) => (
-                    <div
-                      key={g.id}
-                      className="overflow-hidden rounded-xl border border-border/50 bg-background transition-all hover:border-primary/30 hover:shadow-md"
-                    >
-                      {g.cover?.source && (
-                        <img
-                          src={g.cover.source}
-                          alt={g.name}
-                          className="h-24 w-full object-cover"
-                        />
+                <div className="space-y-3">
+                  {/* Selection bar */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/50 bg-muted/30 px-3 py-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-foreground">
+                        {isAr
+                          ? `${selectedGroupIds.size} من ${groups.length} محدد`
+                          : `${selectedGroupIds.size} of ${groups.length} selected`}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={selectAllGroups}
+                        className="rounded-md border border-border bg-background px-2 py-1 text-xs hover:bg-accent"
+                      >
+                        {isAr ? "تحديد الكل" : "Select all"}
+                      </button>
+                      {selectedGroupIds.size > 0 && (
+                        <button
+                          type="button"
+                          onClick={clearGroupSelection}
+                          className="rounded-md border border-border bg-background px-2 py-1 text-xs hover:bg-accent"
+                        >
+                          {isAr ? "إلغاء التحديد" : "Clear"}
+                        </button>
                       )}
-                      <div className="p-4">
-                        <h3 className="line-clamp-1 font-semibold text-foreground">{g.name}</h3>
-                        <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-                          {typeof g.member_count === "number" && (
-                            <span className="inline-flex items-center gap-1">
-                              <Users className="h-3 w-3" />
-                              {g.member_count.toLocaleString()} {t.members}
-                            </span>
-                          )}
-                          {g.privacy && (
-                            <span className="rounded-full bg-muted px-2 py-0.5">{g.privacy}</span>
-                          )}
-                        </div>
-                      </div>
                     </div>
-                  ))}
+                    <button
+                      type="button"
+                      disabled={selectedGroupIds.size === 0}
+                      onClick={startSendToSelectedGroups}
+                      className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                      {isAr
+                        ? `إرسال رسالة (${selectedGroupIds.size})`
+                        : `Send message (${selectedGroupIds.size})`}
+                    </button>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {groups.map((g) => {
+                      const checked = selectedGroupIds.has(g.id);
+                      return (
+                        <label
+                          key={g.id}
+                          className={`relative block cursor-pointer overflow-hidden rounded-xl border bg-background transition-all hover:shadow-md ${
+                            checked
+                              ? "border-primary ring-2 ring-primary/40"
+                              : "border-border/50 hover:border-primary/30"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleGroupSelect(g.id)}
+                            className={`absolute top-2 z-10 h-4 w-4 accent-primary ${dir === "rtl" ? "right-2" : "left-2"}`}
+                          />
+                          {g.cover?.source && (
+                            <img
+                              src={g.cover.source}
+                              alt={g.name}
+                              className="h-24 w-full object-cover"
+                            />
+                          )}
+                          <div className="p-4">
+                            <h3 className="line-clamp-1 font-semibold text-foreground">{g.name}</h3>
+                            <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+                              {typeof g.member_count === "number" && (
+                                <span className="inline-flex items-center gap-1">
+                                  <Users className="h-3 w-3" />
+                                  {g.member_count.toLocaleString()} {t.members}
+                                </span>
+                              )}
+                              {g.privacy && (
+                                <span className="rounded-full bg-muted px-2 py-0.5">{g.privacy}</span>
+                              )}
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
 
