@@ -1137,11 +1137,35 @@ function ContactInfoPanel({
   const name = conv.contact_name ?? jid.replace(/@.*/, "");
   const phone = conv.contact_phone ? `+${conv.contact_phone}` : jid;
 
+  const summarizeFn = useServerFn(summarizeConversation);
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryText, setSummaryText] = useState("");
+  const [summaryMeta, setSummaryMeta] = useState<{ model: string; count: number } | null>(null);
+  const [summarizing, setSummarizing] = useState(false);
+
+  async function handleSummarize() {
+    setSummarizing(true);
+    setSummaryOpen(true);
+    setSummaryText("");
+    setSummaryMeta(null);
+    try {
+      const res = await summarizeFn({ data: { remoteJid: jid, limit: 80 } });
+      setSummaryText(res.summary);
+      setSummaryMeta({ model: res.model, count: res.messageCount });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setSummaryText((isAr ? "فشل التلخيص: " : "Summary failed: ") + msg);
+    } finally {
+      setSummarizing(false);
+    }
+  }
+
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [saveEmail, setSaveEmail] = useState("");
   const [saveCity, setSaveCity] = useState("");
   const [saveNotes, setSaveNotes] = useState("");
+
 
   function openSaveDialog() {
     setSaveName(conv.contact_name ?? "");
