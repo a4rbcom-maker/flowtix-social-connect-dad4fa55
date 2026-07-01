@@ -71,6 +71,7 @@ export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
 });
 
 type FilterKey = "all" | "unread" | "ai";
+type TimeRangeKey = "all" | "1d" | "7d" | "30d" | "90d";
 
 function InboxPage() {
   const { lang } = useI18n();
@@ -86,6 +87,13 @@ function InboxPage() {
   const [activeJid, setActiveJid] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [timeRange, setTimeRange] = useState<TimeRangeKey>(() => {
+    if (typeof window === "undefined") return "all";
+    return (localStorage.getItem("flowtix-inbox-timerange") as TimeRangeKey) || "all";
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") localStorage.setItem("flowtix-inbox-timerange", timeRange);
+  }, [timeRange]);
   const [draft, setDraft] = useState("");
   const [soundOn, setSoundOn] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
@@ -327,6 +335,14 @@ function InboxPage() {
     let out = list;
     if (filter === "unread") out = out.filter((c) => c.unread_count > 0);
     else if (filter === "ai") out = out.filter((c) => c.ai_enabled);
+    if (timeRange !== "all") {
+      const daysMap: Record<Exclude<TimeRangeKey, "all">, number> = { "1d": 1, "7d": 7, "30d": 30, "90d": 90 };
+      const cutoff = Date.now() - daysMap[timeRange] * 24 * 60 * 60 * 1000;
+      out = out.filter((c) => {
+        const ts = c.last_message_at ? new Date(c.last_message_at).getTime() : 0;
+        return ts >= cutoff;
+      });
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       out = out.filter(
@@ -338,7 +354,7 @@ function InboxPage() {
       );
     }
     return out;
-  }, [conversations, search, filter]);
+  }, [conversations, search, filter, timeRange]);
 
   const totalUnread = useMemo(
     () => conversations.reduce((s, c) => s + (c.unread_count || 0), 0),
@@ -488,6 +504,33 @@ function InboxPage() {
                   active
                     ? "bg-gradient-to-r from-primary to-[oklch(0.52_0.28_290)] text-primary-foreground shadow-sm"
                     : "bg-muted/60 text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                {f.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Time range */}
+        <div className="mt-2 flex max-w-full items-center gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {([
+            { k: "all" as TimeRangeKey, label: isAr ? "كل الوقت" : "All time" },
+            { k: "1d" as TimeRangeKey, label: isAr ? "24 ساعة" : "24h" },
+            { k: "7d" as TimeRangeKey, label: isAr ? "7 أيام" : "7 days" },
+            { k: "30d" as TimeRangeKey, label: isAr ? "30 يوم" : "30 days" },
+            { k: "90d" as TimeRangeKey, label: isAr ? "90 يوم" : "90 days" },
+          ]).map((f) => {
+            const active = timeRange === f.k;
+            return (
+              <button
+                key={f.k}
+                type="button"
+                onClick={() => setTimeRange(f.k)}
+                className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition ${
+                  active
+                    ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+                    : "bg-muted/40 text-muted-foreground hover:bg-muted"
                 }`}
               >
                 {f.label}
