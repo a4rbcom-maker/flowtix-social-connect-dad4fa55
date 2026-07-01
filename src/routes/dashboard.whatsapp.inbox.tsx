@@ -560,10 +560,15 @@ function InboxPage() {
       setSyncState((s) => ({ ...s, importedMsg, importedConv }));
     }
     if (Date.now() >= syncState.deadlineAt) {
-      setSyncState((s) => ({ ...s, status: importedMsg > 0 ? "done" : "error", message: importedMsg > 0 ? undefined : (isAr ? "انتهت مهلة الانتظار دون وصول رسائل جديدة." : "Timed out waiting for old messages.") }));
-      if (importedMsg > 0) {
-        window.setTimeout(() => setSyncState((s) => (s.status === "done" ? { ...s, status: "idle" } : s)), 6000);
-      }
+      // No error even when 0 imported — it just means the bridge has nothing older to send.
+      setSyncState((s) => ({
+        ...s,
+        status: "done",
+        message: importedMsg > 0
+          ? undefined
+          : (isAr ? "الصندوق مُزامَن بالكامل — لا رسائل قديمة إضافية." : "Inbox fully synced — no older messages to import."),
+      }));
+      window.setTimeout(() => setSyncState((s) => (s.status === "done" ? { ...s, status: "idle" } : s)), 6000);
     }
   }, [syncTick, inboxStatsQuery.data?.messages, conversations.length, syncState.status, syncState.baselineMsg, syncState.baselineConv, syncState.deadlineAt, syncState.importedMsg, syncState.importedConv, isAr]);
 
