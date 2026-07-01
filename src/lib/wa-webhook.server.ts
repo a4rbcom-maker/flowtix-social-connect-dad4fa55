@@ -605,7 +605,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
             } as never,
           },
           {
-            onConflict: "user_id,session_id,provider_message_id",
+            onConflict: "user_id,provider_message_id",
             ignoreDuplicates: true,
           },
         )

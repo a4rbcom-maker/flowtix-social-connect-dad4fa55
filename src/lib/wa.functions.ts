@@ -159,7 +159,7 @@ export interface WaHistorySyncResult {
   ok: boolean;
   sessionId: string | null;
   requested: boolean;
-  attempts: Array<{ path: string; ok: boolean; status?: number; error?: string }>;
+  attempts: Array<{ path: string; ok: boolean; status?: number; error?: string; importedMessages?: number; importedChats?: number }>;
   error: string | null;
   before?: { conversations: number; messages: number };
   after?: { conversations: number; messages: number };
@@ -338,7 +338,7 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
         directImports.chats += imported.chats;
         directImports.error = directImports.error ?? imported.error;
         fetchedKnownChats++;
-        result.attempts.push({ path: `/api/sessions/${row.session_id}/fetch-messages`, ok: true, importedMessages: imported.messages, importedChats: imported.chats } as never);
+        result.attempts.push({ path: `/api/sessions/${row.session_id}/fetch-messages`, ok: true, importedMessages: imported.messages, importedChats: imported.chats });
       } catch (err) {
         result.attempts.push({
           path: `/api/sessions/${row.session_id}/fetch-messages`,

@@ -307,7 +307,7 @@ export const waBridge = {
       `/api/sessions/${encodeURIComponent(id)}/request-history`,
       `/api/sessions/${encodeURIComponent(id)}/resync`,
     ];
-    const attempts: Array<{ path: string; ok: boolean; status?: number; error?: string }> = [];
+    const attempts: Array<{ path: string; ok: boolean; status?: number; error?: string; importedMessages?: number; importedChats?: number }> = [];
     for (const path of paths) {
       try {
         const body = await bridgeFetch<unknown>(path, {
