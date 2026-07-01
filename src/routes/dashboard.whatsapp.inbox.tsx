@@ -987,14 +987,21 @@ function InboxPage() {
             className="min-w-0 border-t border-border/60 bg-card/80 p-2.5 backdrop-blur sm:p-3"
           >
             <div className="flex min-w-0 items-end gap-1.5 rounded-2xl border border-input bg-background px-2 py-1.5 shadow-sm transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 sm:gap-2 sm:px-2.5">
-              <button
-                type="button"
-                onClick={() => toast.info(t.soon)}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-primary"
-                aria-label="emoji"
-              >
-                <Smile className="h-5 w-5" />
-              </button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-primary"
+                    aria-label="emoji"
+                    title={isAr ? "إيموجي" : "Emoji"}
+                  >
+                    <Smile className="h-5 w-5" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-[min(92vw,340px)] p-2" sideOffset={8}>
+                  <EmojiPicker onPick={(e) => setDraft((d) => (d ?? "") + e)} isAr={isAr} />
+                </PopoverContent>
+              </Popover>
               <button
                 type="button"
                 onClick={() => toast.info(t.soon)}
@@ -2399,6 +2406,51 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+const EMOJI_GROUPS: { label: { ar: string; en: string }; emojis: string[] }[] = [
+  {
+    label: { ar: "الوجوه", en: "Smileys" },
+    emojis: ["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫","🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤","😴","😷","🤒","🤕","🤢","🤮","🥵","🥶","🥴","😵","🤯","🤠","🥳","😎","🤓","🧐","😕","😟","🙁","☹️","😮","😯","😲","😳","🥺","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬"],
+  },
+  {
+    label: { ar: "إيماءات", en: "Gestures" },
+    emojis: ["👍","👎","👌","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","👇","☝️","✋","🤚","🖐️","🖖","👋","🤝","🙏","👏","🙌","👐","🤲","🤦","🤷","💪","🦾","👶","🧑","👨","👩","🧔","👴","👵"],
+  },
+  {
+    label: { ar: "قلوب", en: "Hearts" },
+    emojis: ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","♥️","💌"],
+  },
+  {
+    label: { ar: "أشياء", en: "Objects" },
+    emojis: ["🔥","✨","🎉","🎊","🎁","🎈","🏆","🥇","🥈","🥉","⚽","🏀","🎮","🎵","🎶","📱","💻","⌨️","🖥️","📷","📸","💡","🔔","🔕","📌","📍","✅","❌","⭐","🌟","💯","💢","💥","💫","💦","💨","🕐","☀️","🌙","☁️","🌈","☔"],
+  },
+];
+
+function EmojiPicker({ onPick, isAr }: { onPick: (emoji: string) => void; isAr: boolean }) {
+  return (
+    <div className="max-h-72 overflow-y-auto" dir={isAr ? "rtl" : "ltr"}>
+      {EMOJI_GROUPS.map((group) => (
+        <div key={group.label.en} className="mb-2 last:mb-0">
+          <div className="mb-1 px-1 text-[11px] font-semibold text-muted-foreground">
+            {isAr ? group.label.ar : group.label.en}
+          </div>
+          <div className="grid grid-cols-8 gap-0.5">
+            {group.emojis.map((e, i) => (
+              <button
+                key={`${group.label.en}-${i}`}
+                type="button"
+                onClick={() => onPick(e)}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-xl transition hover:bg-muted"
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
