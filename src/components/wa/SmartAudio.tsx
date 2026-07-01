@@ -67,7 +67,7 @@ async function transcodeOpusToWav(src: string): Promise<string> {
   const res = await fetch(src);
   if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
   const bytes = new Uint8Array(await res.arrayBuffer());
-  const { OggOpusDecoderWebWorker } = await import("opus-decoder");
+  const { OggOpusDecoderWebWorker } = await import("ogg-opus-decoder");
   const decoder = new OggOpusDecoderWebWorker();
   await decoder.ready;
   try {
