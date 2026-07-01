@@ -406,36 +406,14 @@ function InboxPage() {
   // Realtime
   useEffect(() => {
     if (!user) return;
+    const uid = user.id;
     const ch = supabase
-      .channel(`wa_inbox_realtime:${user.id}`)
+      .channel(`wa_inbox_realtime:${uid}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "wa_conversations", filter: `user_id=eq.${user.id}` },
-        () => qc.invalidateQueries({ queryKey: ["wa-conversations"] }),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "wa_messages", filter: `user_id=eq.${user.id}` },
+        { event: "*", schema: "public", table: "wa_conversations", filter: `user_id=eq.${uid}` },
         (payload) => {
-          // Always refresh the conversation list so the new chat appears
-          qc.invalidateQueries({ queryKey: ["wa-conversations"] });
-          const row = payload.new as { remote_jid?: string; direction?: string; raw?: { is_historical?: boolean } | null };
-          if (activeJid) {
-            qc.invalidateQueries({ queryKey: ["wa-messages", user.id, activeJid] });
-          }
-          // Notification beep for new INCOMING messages only (skip outbound and historical sync)
-          if (
-            payload.eventType === "INSERT" &&
-            row.direction === "in" &&
-            !row.raw?.is_historical
-          ) {
-            playBeep();
-            // Briefly show a "typing…" hint in the open chat while the message row hydrates
-            if (activeJid && row.remote_jid === activeJid) {
-              triggerTyping(900);
-            }
-          }
-          // Conversation-level bump for the active chat also nudges typing
+          scheduleInvalidateConversations();
           if (
             payload.table === "wa_conversations" &&
             (payload.new as { remote_jid?: string; last_direction?: string })?.remote_jid === activeJid &&
@@ -445,12 +423,33 @@ function InboxPage() {
           }
         },
       )
-
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "wa_messages", filter: `user_id=eq.${uid}` },
+        (payload) => {
+          scheduleInvalidateConversations();
+          const row = payload.new as { remote_jid?: string; direction?: string; raw?: { is_historical?: boolean } | null };
+          if (activeJid && (payload.eventType === "DELETE" || row?.remote_jid === activeJid || payload.eventType === "UPDATE")) {
+            scheduleInvalidateMessages(uid, activeJid);
+          }
+          if (
+            payload.eventType === "INSERT" &&
+            row?.direction === "in" &&
+            !row?.raw?.is_historical
+          ) {
+            playBeep();
+            if (activeJid && row.remote_jid === activeJid) {
+              triggerTyping(900);
+            }
+          }
+        },
+      )
       .subscribe();
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [qc, activeJid, user, triggerTyping]);
+  }, [qc, activeJid, user, triggerTyping, scheduleInvalidateConversations, scheduleInvalidateMessages]);
+
 
   // Catch-up on missed messages after tab was hidden / offline / long idle.
   // Any gap > 30s triggers an immediate refetch of conversations + active
