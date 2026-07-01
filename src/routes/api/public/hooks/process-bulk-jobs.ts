@@ -30,9 +30,15 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
         }
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { waBridge, assertBridgeSendQueued, describeBridgeError } = await import(
+        const { waBridge, assertBridgeSendQueued, bridgeSendFailureMessage, BridgeError } = await import(
           "@/lib/wa-bridge.server"
         );
+        const describeErr = (err: unknown): string => {
+          if (err instanceof BridgeError) {
+            return bridgeSendFailureMessage(err.body) || err.message || "Bridge error";
+          }
+          return err instanceof Error ? err.message : "Send failed";
+        };
 
         const now = new Date();
         const summary = {
