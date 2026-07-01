@@ -1809,7 +1809,7 @@ function ConversationRow({
             <span className={`min-w-0 flex-1 truncate text-sm ${conv.unread_count > 0 ? "font-bold" : "font-semibold"}`}>
               {conv.contact_name ?? conv.remote_jid.replace(/@.*/, "")}
             </span>
-            <span className="shrink-0 text-[10px] text-muted-foreground" dir="ltr">
+            <span className="shrink-0 text-[10px] font-medium tabular-nums text-muted-foreground/90" dir="ltr">
               {formatRelative(conv.last_message_at, isAr)}
             </span>
           </div>
