@@ -11,9 +11,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>) => ({
     redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+    reason: typeof search.reason === "string" ? search.reason : undefined,
   }),
   component: LoginPage,
 });
+
 
 function isSafeRedirect(path: string | undefined): path is string {
   if (!path || !path.startsWith("/") || path.startsWith("//")) return false;
@@ -26,17 +28,23 @@ function LoginPage() {
   const { user } = useAuth();
   const { isAdmin, isLoading: isAdminLoading } = useIsAdmin();
   
-  const { redirect: redirectParam } = Route.useSearch();
+  const { redirect: redirectParam, reason: reasonParam } = Route.useSearch();
+  const expiredNotice = reasonParam === "expired"
+    ? (lang === "ar"
+        ? "انتهت جلستك بسبب طول فترة عدم النشاط. سجّل الدخول لمتابعة عملك."
+        : "Your session expired due to inactivity. Sign in to continue.")
+    : "";
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(expiredNotice);
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+
 
   if (user && !isAdminLoading) {
     const fallback = isAdmin ? "/admin" : "/dashboard";

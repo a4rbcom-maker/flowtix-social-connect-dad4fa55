@@ -1,5 +1,6 @@
 import { createCsrfMiddleware, createStart } from "@tanstack/react-start";
 import { attachSupabaseAuth } from "@/integrations/supabase/auth-attacher";
+import { reauthOnExpiredSession } from "@/lib/reauth-middleware";
 
 // Polyfill global WebSocket on Node.js < 22 (SSR runtime only). Required by
 // @supabase/realtime-js which expects a native WebSocket constructor.
@@ -17,5 +18,5 @@ const csrfMiddleware = createCsrfMiddleware({
 
 export const startInstance = createStart(() => ({
   requestMiddleware: [csrfMiddleware],
-  functionMiddleware: [attachSupabaseAuth],
+  functionMiddleware: [attachSupabaseAuth, reauthOnExpiredSession],
 }));
