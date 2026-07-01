@@ -449,61 +449,73 @@ function WhatsAppPage() {
 
                     {/* Actions */}
                     <div className="mt-5 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => stateQuery.refetch()}
-                        disabled={stateQuery.isFetching}
-                        className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-sm font-semibold text-foreground hover:bg-muted/60 disabled:opacity-60"
-                      >
-                        <RefreshCw className={`h-4 w-4 ${stateQuery.isFetching ? "animate-spin" : ""}`} />
-                        {t.refresh}
-                      </button>
+                      {(() => {
+                        const hasLinkedNumber = Boolean(state?.phoneNumber) || status === "connected";
+                        return (
+                          <>
+                            {hasLinkedNumber && (
+                              <button
+                                type="button"
+                                onClick={() => stateQuery.refetch()}
+                                disabled={stateQuery.isFetching}
+                                className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-sm font-semibold text-foreground hover:bg-muted/60 disabled:opacity-60"
+                              >
+                                <RefreshCw className={`h-4 w-4 ${stateQuery.isFetching ? "animate-spin" : ""}`} />
+                                {t.refresh}
+                              </button>
+                            )}
 
-                      {status !== "connected" && (
-                        <button
-                          type="button"
-                          onClick={() => setShowQr((v) => !v)}
-                          className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-sm font-semibold text-foreground hover:bg-muted/60"
-                        >
-                          <QrCode className="h-4 w-4" />
-                          {showQr ? t.hideQr : t.showQr}
-                        </button>
-                      )}
+                            {status !== "connected" && (
+                              <button
+                                type="button"
+                                onClick={() => setShowQr((v) => !v)}
+                                className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-sm font-semibold text-foreground hover:bg-muted/60"
+                              >
+                                <QrCode className="h-4 w-4" />
+                                {showQr ? t.hideQr : t.showQr}
+                              </button>
+                            )}
 
-                      <button
-                        type="button"
-                        onClick={() => resetMut.mutate()}
-                        disabled={resetMut.isPending}
-                        className="inline-flex h-10 items-center gap-2 rounded-xl bg-muted px-4 text-sm font-semibold text-foreground hover:bg-muted/80 disabled:opacity-60"
-                      >
-                        {resetMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                        {t.reconnect}
-                      </button>
+                            <button
+                              type="button"
+                              onClick={() => resetMut.mutate()}
+                              disabled={resetMut.isPending}
+                              className="inline-flex h-10 items-center gap-2 rounded-xl bg-muted px-4 text-sm font-semibold text-foreground hover:bg-muted/80 disabled:opacity-60"
+                            >
+                              {resetMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                              {t.reconnect}
+                            </button>
 
-                      <button
-                        type="button"
-                        onClick={handleDeepReset}
-                        disabled={deepResetMut.isPending}
-                        title={t.deepResetHint}
-                        className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 text-sm font-semibold text-amber-700 hover:bg-amber-500/20 disabled:opacity-60 dark:text-amber-400"
-                      >
-                        {deepResetMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertCircle className="h-4 w-4" />}
-                        {t.deepReset}
-                      </button>
+                            {hasLinkedNumber && (
+                              <button
+                                type="button"
+                                onClick={handleDeepReset}
+                                disabled={deepResetMut.isPending}
+                                title={t.deepResetHint}
+                                className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 text-sm font-semibold text-amber-700 hover:bg-amber-500/20 disabled:opacity-60 dark:text-amber-400"
+                              >
+                                {deepResetMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertCircle className="h-4 w-4" />}
+                                {t.deepReset}
+                              </button>
+                            )}
 
-
-                      {/* Disconnect — always visible when account row exists */}
-                      <button
-                        type="button"
-                        onClick={handleDisconnect}
-                        disabled={disconnectMut.isPending}
-                        className="ms-auto inline-flex h-10 items-center gap-2 rounded-xl border border-destructive/40 bg-destructive/10 px-4 text-sm font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-60"
-                      >
-                        {disconnectMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
-                        {t.disconnect}
-                      </button>
+                            {hasLinkedNumber && (
+                              <button
+                                type="button"
+                                onClick={handleDisconnect}
+                                disabled={disconnectMut.isPending}
+                                className="ms-auto inline-flex h-10 items-center gap-2 rounded-xl border border-destructive/40 bg-destructive/10 px-4 text-sm font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-60"
+                              >
+                                {disconnectMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+                                {t.disconnect}
+                              </button>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
+
 
                   {/* QR section (collapsible, only when needed) */}
                   {showQr && status !== "connected" && (
