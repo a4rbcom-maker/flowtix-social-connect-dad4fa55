@@ -1472,7 +1472,7 @@ function JobsHistoryPage() {
                                     <span title={lang === "ar" ? "أول رسالة بعد بدء الحملة" : "First send after launch"}>
                                       ▶ {firstSendSec}s
                                     </span>
-                                    <span className="text-border">·</span>
+                                    <span className="text-muted-foreground/50" aria-hidden>·</span>
                                     <span className="font-medium text-foreground tabular-nums" title={lang === "ar" ? "الفاصل بين رسائل هذا الحساب" : "Interval between this account's messages"}>
                                       ⏱ {perAccountSec}s
                                     </span>

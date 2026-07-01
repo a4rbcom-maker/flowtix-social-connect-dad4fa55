@@ -974,10 +974,10 @@ function InboxPage() {
         <div className="flex items-center justify-between gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-[11px] font-medium text-muted-foreground">
           <div className="flex min-w-0 items-center gap-2">
             <span className={`inline-flex h-2 w-2 shrink-0 rounded-full ${connQuery.data?.status === "connected" ? "bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.15)]" : "bg-muted-foreground/40"}`} aria-hidden />
-            <span className={`shrink-0 font-semibold ${connQuery.data?.status === "connected" ? "text-emerald-600" : "text-muted-foreground"}`}>
+            <span className={`shrink-0 font-semibold ${connQuery.data?.status === "connected" ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground"}`}>
               {connQuery.data?.status === "connected" ? t.connected : t.disconnected}
             </span>
-            <span className="text-border">·</span>
+            <span className="text-muted-foreground/50" aria-hidden>·</span>
             <span className="truncate">
               {t.savedStats(conversations.length, inboxStatsQuery.data?.messages ?? 0)}
             </span>
