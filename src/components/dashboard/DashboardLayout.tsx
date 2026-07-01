@@ -634,6 +634,21 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
 
         <div className="min-w-0 overflow-x-hidden p-4 md:p-6">{children}</div>
       </main>
+
+      {/* Floating reopen button — only inside the chat, when the sidebar is collapsed/hidden. */}
+      {isWhatsappInbox && !sidebarOpen && (
+        <button
+          onClick={() => setSidebarOpen(true)}
+          aria-label={lang === "ar" ? "فتح القائمة الجانبية" : "Open sidebar"}
+          className={`fixed bottom-5 z-50 flex items-center gap-2 rounded-full border border-primary/40 bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/30 transition-all hover:scale-[1.03] hover:shadow-primary/50 ${
+            dir === "rtl" ? "right-4" : "left-4"
+          }`}
+        >
+          <Menu className="h-4 w-4" />
+          <span>{lang === "ar" ? "القائمة" : "Menu"}</span>
+        </button>
+      )}
     </div>
   );
 }
+
