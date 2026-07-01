@@ -276,6 +276,23 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   const event = String(payload.event || payload.type || "").toLowerCase();
   const data = asObj(payload.data);
 
+  const eventStatus = SESSION_STATUS_MAP[event];
+  if (eventStatus) {
+    const phoneNumber = digits(data.phoneNumber ?? data.phone ?? payload.phoneNumber ?? payload.phone);
+    await updateWaSessionStatus(supabaseAdmin, {
+      userId,
+      sessionId,
+      nextStatus: eventStatus,
+      source: "webhook_status",
+      reason: extractSessionReason(payload, data),
+      rawStatus: event,
+      bridgeEvent: event,
+      phoneNumber,
+      payload,
+    });
+    return new Response("ok");
+  }
+
   // Bot-Xtra overloads event="status": it can mean either a WhatsApp session
   // state (open/qr/disconnected) or a message delivery ACK
   // (sent/delivered/read + messageId). Handle message ACKs first so confirmed
@@ -376,22 +393,27 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   }
 
   // ── HISTORY SYNC: backfilled messages ──
-  if (event === "history_messages") {
+  if (["history_messages", "messaging-history.set", "messaging_history.set", "history.sync", "history_sync"].includes(event)) {
     const msgs = Array.isArray(data.messages) ? (data.messages as Record<string, unknown>[]) : [];
     let saved = 0;
     let dup = 0;
     for (const h of msgs) {
-      const providerMessageId = pickStr(h, "id") ?? null;
-      const phone = digits(pickStr(h, "from") ?? pickStr(h, "to"));
-      const rawJid = pickStr(h, "rawJid") ?? null;
-      const isGroup = Boolean(h.isGroup) || (rawJid?.endsWith("@g.us") ?? false);
+      const parsed = parseMessageEntry(h);
+      const providerMessageId = parsed?.providerMessageId || pickStr(h, "id", "messageId", "message_id", "msgId", "msg_id") || null;
+      const phone = parsed?.fromPhone || digits(pickStr(h, "from", "to", "sender", "participant"));
+      const rawJid = parsed?.remoteJid || pickStr(h, "rawJid", "remoteJid", "remote_jid", "jid", "chatId") || pickStr(asObj(h.key), "remoteJid") || null;
+      const isGroup = Boolean(parsed?.isGroup) || Boolean(h.isGroup) || (rawJid?.endsWith("@g.us") ?? false);
       const remoteJid =
         rawJid ||
         (phone ? `${phone}${isGroup ? "@g.us" : "@s.whatsapp.net"}` : null);
       if (!remoteJid) continue;
-      const fromMe = Boolean(h.fromMe);
-      const msgType = (pickStr(h, "type") || "text").toLowerCase();
-      const text = pickStr(h, "body") ?? null;
+      const fromMe = Boolean(parsed?.fromMe) || Boolean(h.fromMe);
+      const msgType = mediaTypeFromRaw(h, (parsed?.msgType || pickStr(h, "type", "msgType", "messageType") || "text").toLowerCase());
+      const text = cleanMessageText(
+        parsed?.text || pickStr(h, "body", "text", "message", "content", "caption") || pickStr(asObj(h.message), "conversation"),
+        h,
+        msgType,
+      );
       const tsRaw = h.timestamp;
       const waTimestamp =
         typeof tsRaw === "number"
@@ -399,8 +421,8 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
           : typeof tsRaw === "string" && tsRaw
             ? new Date(Number(tsRaw) * 1000).toISOString()
             : new Date().toISOString();
-      const contactName = pickStr(h, "pushName", "senderName", "notifyName") ?? null;
-      const senderPhone = digits(pickStr(h, "sender", "participant")) || phone;
+      const contactName = parsed?.contactName || pickStr(h, "pushName", "senderName", "notifyName", "contactName", "name") || null;
+      const senderPhone = parsed?.fromPhone || digits(pickStr(h, "sender", "participant")) || phone;
 
       if (providerMessageId) {
         const { data: existing } = await supabaseAdmin

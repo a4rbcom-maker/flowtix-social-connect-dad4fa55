@@ -188,6 +188,28 @@ async function readState(supabase: ReturnType<typeof getSupabaseForToken>, userI
   }
 
   const now = new Date().toISOString();
+  const { data: previous } = await supabase
+    .from("wa_sessions")
+    .select("status")
+    .eq("user_id", userId)
+    .eq("session_id", sessionId)
+    .maybeSingle();
+  if (status === "connected") {
+    let shouldRequestHistory = previous?.status !== "connected";
+    if (!shouldRequestHistory) {
+      const { count } = await supabase
+        .from("wa_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("session_id", sessionId);
+      shouldRequestHistory = (count ?? 0) === 0;
+    }
+    if (shouldRequestHistory) {
+      waBridge.requestHistorySync(sessionId).catch((err) => {
+        console.warn("[wa-client] requestHistorySync failed:", err instanceof Error ? err.message : err);
+      });
+    }
+  }
   const update: Database["public"]["Tables"]["wa_sessions"]["Update"] = {
     status,
     qr_data_url: null,

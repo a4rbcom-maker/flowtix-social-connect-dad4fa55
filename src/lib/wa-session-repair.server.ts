@@ -33,6 +33,7 @@ export async function resetWaSessionAfterBridgeLoss(params: {
     await waBridge.createSession(sessionId, {
       webhookUrl: webhookUrl ?? undefined,
       tenantId: userId,
+      syncFullHistory: true,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err ?? "Bridge session reset failed");

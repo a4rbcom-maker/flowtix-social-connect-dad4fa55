@@ -85,6 +85,7 @@ export const connectWaSession = createServerFn({ method: "POST" })
       await waBridge.createSession(sessionId, {
         webhookUrl: webhookUrl ?? undefined,
         tenantId: userId,
+        syncFullHistory: true,
       });
     } catch (err) {
       if (err instanceof BridgeError && (err.status === 409 || err.status === 400)) {
@@ -151,6 +152,46 @@ export const getWaConnectionState = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!row?.session_id) return null;
     return readState(supabase, userId, row.session_id);
+  });
+
+export interface WaHistorySyncResult {
+  ok: boolean;
+  sessionId: string | null;
+  requested: boolean;
+  attempts: Array<{ path: string; ok: boolean; status?: number; error?: string }>;
+  error: string | null;
+}
+
+export const requestWaHistorySync = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<WaHistorySyncResult> => {
+    const { supabase, userId } = context;
+    const { data: row, error } = await supabase
+      .from("wa_sessions")
+      .select("session_id, status")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!row?.session_id) return { ok: false, sessionId: null, requested: false, attempts: [], error: "no_session" };
+    if (row.status !== "connected") {
+      return { ok: false, sessionId: row.session_id, requested: false, attempts: [], error: "session_not_connected" };
+    }
+    const result = await waBridge.requestHistorySync(row.session_id);
+    await logWaSessionEvent(supabase, {
+      userId,
+      sessionId: row.session_id,
+      fromStatus: "connected",
+      toStatus: "connected",
+      source: "history_sync",
+      reason: result.ok ? "history_sync_requested" : "history_sync_endpoint_unavailable",
+    });
+    return {
+      ok: result.ok,
+      sessionId: row.session_id,
+      requested: true,
+      attempts: result.attempts,
+      error: result.ok ? null : "bridge_history_sync_endpoint_unavailable",
+    };
   });
 
 export const getWaSessionEvents = createServerFn({ method: "POST" })
@@ -307,6 +348,7 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
       await waBridge.createSession(newSessionId, {
         webhookUrl: webhookUrl ?? undefined,
         tenantId: userId,
+        syncFullHistory: true,
       });
     } catch (err) {
       const msg = describeBridgeError(err);
@@ -632,6 +674,19 @@ async function readState(
   let phoneNumber: string | null = null;
   let error: string | null = null;
 
+  let previousStatus: BridgeSessionStatus | null = null;
+  try {
+    const { data: current } = await supabase
+      .from("wa_sessions")
+      .select("status")
+      .eq("user_id", userId)
+      .eq("session_id", sessionId)
+      .maybeSingle();
+    previousStatus = (current?.status as BridgeSessionStatus | undefined) ?? null;
+  } catch {
+    previousStatus = null;
+  }
+
   try {
     const s = await waBridge.getStatus(sessionId);
     status = inferStatus(s);
@@ -674,6 +729,22 @@ async function readState(
   }
 
   const now = new Date().toISOString();
+  if (status === "connected") {
+    let shouldRequestHistory = previousStatus !== "connected";
+    if (!shouldRequestHistory) {
+      const { count } = await supabase
+        .from("wa_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("session_id", sessionId);
+      shouldRequestHistory = (count ?? 0) === 0;
+    }
+    if (shouldRequestHistory) {
+      waBridge.requestHistorySync(sessionId).catch((err) => {
+        console.warn("[wa] requestHistorySync failed:", err instanceof Error ? err.message : err);
+      });
+    }
+  }
   // Preserve last-known phone_number when bridge transiently reports null
   // (e.g. session re-paired). Only overwrite when we actually got a number.
   await updateWaSessionStatus(supabase, {

@@ -11,6 +11,7 @@ export type WaSessionEventSource =
   | "poll_error"
   | "connect_error"
   | "disconnect"
+  | "history_sync"
   | "reset";
 
 type DbClient = {
