@@ -1270,6 +1270,9 @@ function FacebookPage() {
       // refresh connection
       const c = await fbCall(getFacebookConnection);
       setConnection(c.connection);
+      // Auto-load groups right after a successful connect so the user sees them immediately.
+      setTab("groups");
+      void handleLoadGroups();
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : "Connection failed";
       const fbType = (err as Error & { fbType?: string })?.fbType ?? null;
