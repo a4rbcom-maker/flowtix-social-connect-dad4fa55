@@ -519,7 +519,55 @@ function CustomersPage() {
             </div>
           )}
         </Card>
+
+        <Dialog open={editOpen} onOpenChange={setEditOpen}>
+          <DialogContent className="max-w-lg" dir={isAr ? "rtl" : "ltr"}>
+            <DialogHeader>
+              <DialogTitle>{isAr ? "تعديل بيانات العميل" : "Edit customer"}</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-xs text-muted-foreground">{labels.full_name}</label>
+                <Input value={eName} onChange={(e) => setEName(e.target.value)} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">{labels.phone}</label>
+                <Input value={ePhone} onChange={(e) => setEPhone(e.target.value)} dir="ltr" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">{labels.email}</label>
+                <Input value={eEmail} onChange={(e) => setEEmail(e.target.value)} type="email" dir="ltr" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">{labels.city}</label>
+                <Input value={eCity} onChange={(e) => setECity(e.target.value)} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">{labels.governorate}</label>
+                <Input value={eGov} onChange={(e) => setEGov(e.target.value)} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-xs text-muted-foreground">{labels.address}</label>
+                <Input value={eAddress} onChange={(e) => setEAddress(e.target.value)} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-xs text-muted-foreground">{labels.notes}</label>
+                <Textarea value={eNotes} onChange={(e) => setENotes(e.target.value)} rows={3} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditOpen(false)} disabled={savingEdit}>
+                {isAr ? "إلغاء" : "Cancel"}
+              </Button>
+              <Button onClick={saveEdit} disabled={savingEdit} className="gap-2">
+                {savingEdit && <Loader2 className="h-4 w-4 animate-spin" />}
+                {isAr ? "حفظ التعديل" : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );
 }
+
