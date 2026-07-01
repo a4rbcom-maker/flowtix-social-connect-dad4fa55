@@ -354,6 +354,123 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
   });
 
 
+export interface WaDeepResetReport {
+  ok: boolean;
+  removedBridgeSessions: string[];
+  deleteErrors: Array<{ id: string; error: string }>;
+  createdSessionId: string | null;
+  webhookUrl: string | null;
+  error: string | null;
+}
+
+/**
+ * Nuclear option: enumerate ALL bridge sessions, force-delete every session
+ * matching this user's tenantId (fixes "silent socket death" where an old
+ * Baileys socket is still connected on the bridge but not delivering events),
+ * then create a fresh session with a brand-new id, webhookUrl, and tenantId.
+ */
+export const deepResetWaSession = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<WaDeepResetReport> => {
+    const { supabase, userId } = context;
+    const report: WaDeepResetReport = {
+      ok: false,
+      removedBridgeSessions: [],
+      deleteErrors: [],
+      createdSessionId: null,
+      webhookUrl: null,
+      error: null,
+    };
+
+    const { data: existing } = await supabase
+      .from("wa_sessions")
+      .select("session_id, status")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const userIdPrefix = `flowtix-${userId.replace(/-/g, "").slice(0, 16)}`;
+    const toDelete = new Set<string>();
+    if (existing?.session_id) toDelete.add(existing.session_id);
+    try {
+      const list = await waBridge.listSessions();
+      for (const s of list.sessions ?? []) {
+        const id = s.id ?? "";
+        if (!id) continue;
+        if (s.tenantId === userId || id.startsWith(userIdPrefix)) {
+          toDelete.add(id);
+        }
+      }
+    } catch (err) {
+      console.warn("[wa] deepReset: listSessions failed:", err instanceof Error ? err.message : err);
+    }
+
+    for (const id of toDelete) {
+      try {
+        await waBridge.deleteSession(id);
+        report.removedBridgeSessions.push(id);
+      } catch (err) {
+        report.deleteErrors.push({ id, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    await new Promise((r) => setTimeout(r, 1500));
+
+    const newSessionId = `flowtix-${userId.replace(/-/g, "").slice(0, 16)}-${Date.now().toString(36)}`;
+    const webhookUrl = await deriveWebhookUrl();
+    report.webhookUrl = webhookUrl;
+    try {
+      await waBridge.createSession(newSessionId, {
+        webhookUrl: webhookUrl ?? undefined,
+        tenantId: userId,
+        syncFullHistory: true,
+      });
+      report.createdSessionId = newSessionId;
+    } catch (err) {
+      const msg = describeBridgeError(err);
+      report.error = `createSession failed: ${msg}`;
+      return report;
+    }
+
+    const now = new Date().toISOString();
+    if (existing) {
+      await logWaSessionEvent(supabase, {
+        userId,
+        sessionId: existing.session_id,
+        fromStatus: existing.status ?? null,
+        toStatus: "disconnected",
+        source: "reset",
+        reason: "deep_reset_wipe_and_recreate",
+      });
+      await supabase
+        .from("wa_sessions")
+        .update({
+          session_id: newSessionId,
+          status: "qr",
+          qr_data_url: null,
+          phone_number: null,
+          last_seen_at: now,
+        })
+        .eq("user_id", userId);
+    } else {
+      await supabase
+        .from("wa_sessions")
+        .insert({ user_id: userId, session_id: newSessionId, status: "qr" });
+    }
+
+    await logWaSessionEvent(supabase, {
+      userId,
+      sessionId: newSessionId,
+      fromStatus: null,
+      toStatus: "qr",
+      source: "reset",
+      reason: `deep_reset_new_session_created (wiped ${report.removedBridgeSessions.length} old)`,
+    });
+
+    report.ok = true;
+    return report;
+  });
+
+
 export interface WaWebhookTestResult {
   ok: boolean;
   httpStatus: number;

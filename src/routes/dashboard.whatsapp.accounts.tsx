@@ -29,6 +29,7 @@ import {
   disconnectWaSession,
   pingWaBridgeUser,
   resetWaReceiver,
+  deepResetWaSession,
   type WaConnectionState,
   type WaBridgeHealth,
   type WaSessionEventRow,
@@ -76,6 +77,7 @@ function WhatsAppPage() {
   const qc = useQueryClient();
   const connectFn = useServerFn(connectWaSession);
   const resetFn = useServerFn(resetWaReceiver);
+  const deepResetFn = useServerFn(deepResetWaSession);
   const statusFn = useServerFn(getWaConnectionState);
   const eventsFn = useServerFn(getWaSessionEvents);
   const disconnectFn = useServerFn(disconnectWaSession);
@@ -113,6 +115,10 @@ function WhatsAppPage() {
         connect: "ربط رقم جديد",
         reconnect: "إعادة الربط (QR جديد)",
         disconnect: "قطع الاتصال نهائياً",
+        deepReset: "فصل عميق + مسح شامل",
+        deepResetHint: "لو الرقم متصل لكن مافيش رسائل بتوصل، جرّب ده — بيمسح كل الجلسات المعلقة على الخادم ويعمل جلسة نظيفة بـ QR جديد.",
+        deepResetConfirm: "سيتم مسح كل جلسات واتساب المرتبطة بحسابك على الخادم ثم إنشاء جلسة جديدة. متابعة؟",
+        deepResetDone: "تم الفصل العميق — امسح الـ QR الجديد",
         showQr: "عرض QR للمسح",
         hideQr: "إخفاء QR",
         refresh: "تحديث الحالة",
@@ -157,6 +163,10 @@ function WhatsAppPage() {
         connect: "Link new number",
         reconnect: "Reconnect (new QR)",
         disconnect: "Disconnect permanently",
+        deepReset: "Deep reset (wipe bridge)",
+        deepResetHint: "If your number shows connected but no messages arrive, run this — it wipes every stale session tied to your account on the bridge and creates a fresh one with a new QR.",
+        deepResetConfirm: "This will wipe every WhatsApp session on the bridge tied to your account and start a fresh one. Continue?",
+        deepResetDone: "Deep reset done — scan the new QR",
         showQr: "Show QR to scan",
         hideQr: "Hide QR",
         refresh: "Refresh status",
@@ -282,6 +292,33 @@ function WhatsAppPage() {
     },
     onError: (err: Error) => toast.error(t.errorTitle, { description: err.message }),
   });
+
+  const deepResetMut = useMutation({
+    mutationFn: () => deepResetFn(),
+    onSuccess: (report) => {
+      if (!report.ok) {
+        toast.error(t.errorTitle, { description: report.error ?? "Deep reset failed" });
+        return;
+      }
+      const wiped = report.removedBridgeSessions.length;
+      const failed = report.deleteErrors.length;
+      toast.success(t.deepResetDone, {
+        description: ar
+          ? `مسحنا ${wiped} جلسة قديمة${failed ? ` (${failed} فشلت)` : ""}. الجلسة الجديدة: ${report.createdSessionId?.slice(-8) ?? "?"}`
+          : `Wiped ${wiped} stale sessions${failed ? ` (${failed} failed)` : ""}. New session id: …${report.createdSessionId?.slice(-8) ?? "?"}`,
+      });
+      qc.invalidateQueries({ queryKey: ["wa-state"] });
+      qc.invalidateQueries({ queryKey: ["wa-session-events"] });
+      setPolling(true);
+      setShowQr(true);
+    },
+    onError: (err: Error) => toast.error(t.errorTitle, { description: err.message }),
+  });
+
+  const handleDeepReset = () => {
+    if (!window.confirm(t.deepResetConfirm)) return;
+    deepResetMut.mutate();
+  };
 
   const disconnectMut = useMutation({
     mutationFn: () => useCloudBridge ? callCloud<{ ok: boolean }>("disconnect") : disconnectFn(),
@@ -442,6 +479,18 @@ function WhatsAppPage() {
                         {resetMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                         {t.reconnect}
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={handleDeepReset}
+                        disabled={deepResetMut.isPending}
+                        title={t.deepResetHint}
+                        className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 text-sm font-semibold text-amber-700 hover:bg-amber-500/20 disabled:opacity-60 dark:text-amber-400"
+                      >
+                        {deepResetMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertCircle className="h-4 w-4" />}
+                        {t.deepReset}
+                      </button>
+
 
                       {/* Disconnect — always visible when account row exists */}
                       <button
