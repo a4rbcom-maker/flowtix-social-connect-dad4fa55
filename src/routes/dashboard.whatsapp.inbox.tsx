@@ -1461,7 +1461,15 @@ function InboxPage() {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
+                  // Enter → send, Shift+Enter → newline.
+                  // Ignore while an IME composition is active (Arabic/CJK keyboards)
+                  // so mid-word Enter doesn't fire a premature send.
+                  if (
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    !e.nativeEvent.isComposing &&
+                    e.keyCode !== 229
+                  ) {
                     e.preventDefault();
                     const text = draft.trim();
                     if ((text || attachment) && !sendMut.isPending && !uploadingAttachment) {
@@ -1485,6 +1493,21 @@ function InboxPage() {
                   <Send className="h-4 w-4 rtl:rotate-180" />
                 )}
               </button>
+            </div>
+            <div className="mt-1 px-1 text-[10px] text-muted-foreground/70">
+              {isAr ? (
+                <>
+                  اضغط <kbd className="rounded border border-border bg-muted px-1 font-mono text-[9px]">Enter</kbd> للإرسال ·{" "}
+                  <kbd className="rounded border border-border bg-muted px-1 font-mono text-[9px]">Shift</kbd> +{" "}
+                  <kbd className="rounded border border-border bg-muted px-1 font-mono text-[9px]">Enter</kbd> لسطر جديد
+                </>
+              ) : (
+                <>
+                  Press <kbd className="rounded border border-border bg-muted px-1 font-mono text-[9px]">Enter</kbd> to send ·{" "}
+                  <kbd className="rounded border border-border bg-muted px-1 font-mono text-[9px]">Shift</kbd> +{" "}
+                  <kbd className="rounded border border-border bg-muted px-1 font-mono text-[9px]">Enter</kbd> for a new line
+                </>
+              )}
             </div>
           </form>
 
