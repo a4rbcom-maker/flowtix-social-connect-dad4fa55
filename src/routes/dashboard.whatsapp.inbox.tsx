@@ -52,6 +52,7 @@ import { Zap } from "lucide-react";
 import {
   sendChatMessage,
   markConversationRead,
+  summarizeConversation,
   type ConversationRow,
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
