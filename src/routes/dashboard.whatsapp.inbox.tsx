@@ -50,6 +50,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
+import { statusBadgeTone } from "@/lib/status-badge";
 import { SmartAudio } from "@/components/wa/SmartAudio";
 import { Zap } from "lucide-react";
 import {
