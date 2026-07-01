@@ -733,6 +733,61 @@ function InboxPage() {
             {connQuery.data?.status === "connected" ? t.connected : t.disconnected}
           </span>
         </div>
+        {syncState.status !== "idle" && (() => {
+          const elapsed = Math.max(0, Date.now() - syncState.startedAt);
+          const total = Math.max(1, syncState.deadlineAt - syncState.startedAt);
+          const timePct = Math.min(100, Math.round((elapsed / total) * 100));
+          // Progress heuristic: mix of time elapsed and messages imported (cap at 500).
+          const msgPct = Math.min(100, Math.round((syncState.importedMsg / 500) * 100));
+          const pct =
+            syncState.status === "done"
+              ? 100
+              : syncState.status === "error"
+                ? Math.max(timePct, msgPct)
+                : Math.max(msgPct, Math.min(95, timePct));
+          const meta =
+            syncState.status === "running"
+              ? { label: isAr ? "جاري المزامنة…" : "Syncing…", tone: "bg-primary/10 text-primary ring-primary/30", bar: "bg-primary" }
+              : syncState.status === "pending"
+                ? { label: isAr ? "قيد الانتظار — بانتظار دفعات الجسر" : "Pending — waiting for bridge batches", tone: "bg-amber-500/10 text-amber-600 ring-amber-500/30", bar: "bg-amber-500" }
+                : syncState.status === "done"
+                  ? { label: isAr ? "اكتملت المزامنة" : "Sync complete", tone: "bg-emerald-500/10 text-emerald-600 ring-emerald-500/30", bar: "bg-emerald-500" }
+                  : { label: isAr ? "تعذّرت المزامنة" : "Sync failed", tone: "bg-destructive/10 text-destructive ring-destructive/30", bar: "bg-destructive" };
+          const active = syncState.status === "running" || syncState.status === "pending";
+          return (
+            <div className={`mt-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-[11px] ring-1 ${meta.tone.split(" ").filter((c) => c.startsWith("ring-")).join(" ")}`}>
+              <div className="flex items-center justify-between gap-2 font-semibold">
+                <span className="inline-flex items-center gap-1.5 truncate">
+                  {active && <Loader2 className="h-3 w-3 animate-spin" />}
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 ${meta.tone}`}>{meta.label}</span>
+                </span>
+                <span className="shrink-0 tabular-nums text-muted-foreground">{pct}%</span>
+              </div>
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className={`h-full rounded-full ${meta.bar} transition-[width] duration-500`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                <span className="truncate">
+                  {isAr
+                    ? `+${syncState.importedMsg} رسالة · +${syncState.importedConv} محادثة`
+                    : `+${syncState.importedMsg} messages · +${syncState.importedConv} chats`}
+                </span>
+                {active && (
+                  <span className="shrink-0 tabular-nums">
+                    {Math.round(elapsed / 1000)}
+                    {isAr ? " ث" : "s"}
+                  </span>
+                )}
+              </div>
+              {syncState.status === "error" && syncState.message && (
+                <div className="mt-1 line-clamp-2 text-[10px] text-destructive/80">{syncState.message}</div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* List */}
