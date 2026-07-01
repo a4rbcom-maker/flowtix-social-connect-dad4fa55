@@ -126,11 +126,6 @@ function contactLooksLikeChat(contact: Record<string, unknown>): boolean {
   return Boolean(
     contact.isChat === true ||
       contact.is_chat === true ||
-      contact.id ||
-      contact.jid ||
-      contact.rawJid ||
-      contact.remoteJid ||
-      contact.chatId ||
       contact.lastMessage ||
       contact.last_message ||
       contact.lastMessageTimestamp ||
@@ -197,9 +192,8 @@ async function updateConversationContacts(params: {
     const name = bestContactName(c);
     const { data: rows } = await supabaseAdmin
       .from("wa_conversations")
-      .select("id, contact_name, contact_phone, remote_jid")
+      .select("id, session_id, contact_name, contact_phone, remote_jid")
       .eq("user_id", params.userId)
-      .eq("session_id", params.sessionId)
       .or(`remote_jid.eq.${remoteJid}${phone ? `,contact_phone.eq.${phone}` : ""}`)
       .limit(5);
 
@@ -226,7 +220,8 @@ async function updateConversationContacts(params: {
         currentName === row.remote_jid ||
         currentName === row.contact_phone ||
         currentName.replace(/[^0-9]/g, "") === (row.contact_phone || "");
-      const patch: { contact_phone?: string; contact_name?: string } = {};
+      const patch: { contact_phone?: string; contact_name?: string; session_id?: string } = {};
+      if (row.session_id !== params.sessionId) patch.session_id = params.sessionId;
       if (phone && !row.contact_phone) patch.contact_phone = phone;
       if (name && currentLooksLikePlaceholder) patch.contact_name = name;
       if (!Object.keys(patch).length) continue;
