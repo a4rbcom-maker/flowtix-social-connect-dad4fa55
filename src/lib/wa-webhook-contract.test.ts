@@ -133,6 +133,40 @@ const BOTXTRA_V18_LID_INBOUND_MESSAGE = {
   },
 };
 
+const BOTXTRA_V18_BARE_FROM_MESSAGE = {
+  event: "message",
+  sessionId: "flowtix-abcdef0123456789-l4k2j",
+  data: {
+    tenantId: "4f4b101d-b785-4719-82a3-6f378584739e",
+    from: "201508776669",
+    fromMe: "false",
+    pushName: "Customer",
+    senderName: "Customer",
+    notifyName: "Customer",
+    body: "رسالة قديمة",
+    type: "text",
+    id: "3EB0BX1.8.BARE001",
+    isGroup: false,
+    sender: "201508776669",
+    timestamp: 1_730_000_050,
+  },
+};
+
+const BOTXTRA_V18_OWN_BARE_FROM_MESSAGE = {
+  event: "message",
+  sessionId: "flowtix-abcdef0123456789-l4k2j",
+  data: {
+    tenantId: "4f4b101d-b785-4719-82a3-6f378584739e",
+    from: "201508776669",
+    fromMe: true,
+    body: "تم الرد",
+    type: "text",
+    id: "3EB0BX1.8.BARE002",
+    isGroup: false,
+    timestamp: 1_730_000_060,
+  },
+};
+
 // ── Session id discovery ────────────────────────────────────────────────────
 
 describe("Bot-Xtra v1.8.x: sessionId discovery", () => {
@@ -245,6 +279,27 @@ describe("Bot-Xtra v1.8.x: parseMessageEntry", () => {
     expect(m.fromPhone).toBe("201273747262");
     expect(m.remoteJid).toBe("182239858000081@lid");
     expect(m.providerMessageId).toBe("3EB0BX1.8.LID001");
+  });
+
+  it("parses Bot-Xtra flat messages where from is a bare phone and fromMe is a string", () => {
+    const [entry] = collectMessageEntries(BOTXTRA_V18_BARE_FROM_MESSAGE);
+    const m = parseMessageEntry(entry)!;
+    expect(m).not.toBeNull();
+    expect(m.text).toBe("رسالة قديمة");
+    expect(m.fromMe).toBe(false);
+    expect(m.fromPhone).toBe("201508776669");
+    expect(m.remoteJid).toBe("201508776669@s.whatsapp.net");
+    expect(m.providerMessageId).toBe("3EB0BX1.8.BARE001");
+  });
+
+  it("keeps own historical flat messages even when Bot-Xtra omits a separate recipient field", () => {
+    const [entry] = collectMessageEntries(BOTXTRA_V18_OWN_BARE_FROM_MESSAGE);
+    const m = parseMessageEntry(entry)!;
+    expect(m).not.toBeNull();
+    expect(m.text).toBe("تم الرد");
+    expect(m.fromMe).toBe(true);
+    expect(m.remoteJid).toBe("201508776669@s.whatsapp.net");
+    expect(m.providerMessageId).toBe("3EB0BX1.8.BARE002");
   });
 });
 
