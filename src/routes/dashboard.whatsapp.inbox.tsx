@@ -1366,6 +1366,50 @@ function ContactInfoPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
+        <DialogContent dir={isAr ? "rtl" : "ltr"} className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              {isAr ? "ملخّص المحادثة" : "Conversation summary"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="min-h-[120px] max-h-[60vh] overflow-y-auto whitespace-pre-wrap rounded-md border border-border/60 bg-muted/30 p-3 text-sm leading-relaxed">
+            {summarizing ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {isAr ? "جارٍ توليد الملخص عبر kie.ai…" : "Generating summary via kie.ai…"}
+              </div>
+            ) : (
+              summaryText || (isAr ? "لا يوجد ملخص" : "No summary")
+            )}
+          </div>
+          {summaryMeta && !summarizing && (
+            <p className="text-[11px] text-muted-foreground">
+              {isAr ? "المزوّد" : "Provider"}: kie.ai · {isAr ? "الموديل" : "model"}: {summaryMeta.model} · {summaryMeta.count} {isAr ? "رسالة" : "messages"}
+            </p>
+          )}
+          <DialogFooter>
+            {summaryText && !summarizing && (
+              <button
+                type="button"
+                onClick={() => { navigator.clipboard.writeText(summaryText); toast.success(isAr ? "تم النسخ" : "Copied"); }}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold hover:bg-muted"
+              >
+                {isAr ? "نسخ" : "Copy"}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setSummaryOpen(false)}
+              className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+            >
+              {isAr ? "إغلاق" : "Close"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </aside>
   );
 }
