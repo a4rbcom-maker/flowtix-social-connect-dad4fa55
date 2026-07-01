@@ -997,13 +997,13 @@ function InboxPage() {
                 : Math.max(msgPct, Math.min(95, timePct));
           const meta =
             syncState.status === "running"
-              ? { label: isAr ? "جاري المزامنة…" : "Syncing…", tone: "bg-primary/10 text-primary ring-primary/30", bar: "bg-primary" }
+              ? { label: isAr ? "جاري المزامنة…" : "Syncing…", tone: "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-foreground ring-primary/30", bar: "bg-primary" }
               : syncState.status === "pending"
-                ? { label: isAr ? "قيد الانتظار" : "Pending", tone: "bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-amber-500/30", bar: "bg-amber-500" }
+                ? { label: isAr ? "قيد الانتظار" : "Pending", tone: "bg-amber-500/10 text-amber-700 dark:bg-amber-400/15 dark:text-amber-200 ring-amber-500/30", bar: "bg-amber-500" }
               : syncState.status === "done"
-                ? { label: isAr ? "اكتملت المزامنة" : "Sync complete", tone: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30", bar: "bg-emerald-500" }
+                ? { label: isAr ? "اكتملت المزامنة" : "Sync complete", tone: "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-200 ring-emerald-500/30", bar: "bg-emerald-500" }
 
-                  : { label: isAr ? "تعذّرت المزامنة" : "Sync failed", tone: "bg-destructive/10 text-destructive ring-destructive/30", bar: "bg-destructive" };
+                  : { label: isAr ? "تعذّرت المزامنة" : "Sync failed", tone: "bg-destructive/10 text-destructive dark:bg-destructive/25 dark:text-red-200 ring-destructive/30", bar: "bg-destructive" };
           const active = syncState.status === "running" || syncState.status === "pending";
           return (
             <div className={`mt-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-[11px] ring-1 ${meta.tone.split(" ").filter((c) => c.startsWith("ring-")).join(" ")}`}>
