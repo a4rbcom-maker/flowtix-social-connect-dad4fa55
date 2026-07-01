@@ -1870,6 +1870,11 @@ function phoneFromRaw(raw: unknown): string | null {
   return digits(pickString(obj, "normalizedContactPhone", "senderPn", "participantPn", "phoneNumber", "phone"));
 }
 
+function contactNameFromRaw(raw: unknown): string | null {
+  const obj = asRecord(raw);
+  return pickString(obj, "contactName", "pushName", "senderName", "notifyName", "name", "verifiedName", "subject");
+}
+
 function profilePicFromRaw(raw: unknown): string | null {
   const obj = asRecord(raw);
   return pickString(obj, "profilePicUrl", "groupProfilePicUrl", "avatarUrl", "picture", "photoUrl");
