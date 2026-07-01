@@ -111,6 +111,27 @@ function InboxPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const historySyncRequestedRef = useRef<string | null>(null);
 
+  type SyncStatus = "idle" | "running" | "pending" | "done" | "error";
+  const [syncState, setSyncState] = useState<{
+    status: SyncStatus;
+    baselineMsg: number;
+    baselineConv: number;
+    importedMsg: number;
+    importedConv: number;
+    startedAt: number;
+    deadlineAt: number;
+    message?: string;
+  }>({
+    status: "idle",
+    baselineMsg: 0,
+    baselineConv: 0,
+    importedMsg: 0,
+    importedConv: 0,
+    startedAt: 0,
+    deadlineAt: 0,
+  });
+  const [syncTick, setSyncTick] = useState(0);
+
   const t = isAr
     ? {
         title: "المحادثات",
@@ -384,14 +405,34 @@ function InboxPage() {
 
   const historySyncMut = useMutation({
     mutationFn: () => requestHistorySyncFn(),
+    onMutate: () => {
+      const baseMsg = inboxStatsQuery.data?.messages ?? 0;
+      const baseConv = conversations.length;
+      const now = Date.now();
+      setSyncState({
+        status: "running",
+        baselineMsg: baseMsg,
+        baselineConv: baseConv,
+        importedMsg: 0,
+        importedConv: 0,
+        startedAt: now,
+        deadlineAt: now + 90000,
+      });
+    },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["wa-conversations", user?.id] });
+      qc.invalidateQueries({ queryKey: ["wa-inbox-stats", user?.id] });
       if (activeJid) qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
       const beforeMessages = res.before?.messages ?? 0;
       const afterMessages = res.after?.messages ?? beforeMessages;
       const imported = Math.max(0, afterMessages - beforeMessages);
       if (res.ok && res.pending) {
         toast.success(t.resyncQueued);
+        setSyncState((s) => ({
+          ...s,
+          status: "pending",
+          deadlineAt: Date.now() + 90000,
+        }));
         window.setTimeout(() => {
           qc.invalidateQueries({ queryKey: ["wa-conversations", user?.id] });
           qc.invalidateQueries({ queryKey: ["wa-inbox-stats", user?.id] });
@@ -401,16 +442,55 @@ function InboxPage() {
       }
       if (res.ok) {
         toast.success(isAr ? `تم جلب ${imported} رسالة قديمة` : `Imported ${imported} old messages`);
+        setSyncState((s) => ({
+          ...s,
+          status: "done",
+          importedMsg: Math.max(s.importedMsg, imported),
+        }));
+        window.setTimeout(() => setSyncState((s) => (s.status === "done" ? { ...s, status: "idle" } : s)), 6000);
         return;
       }
-      toast.error(
-        isAr
-          ? "الجسر لم يرسل أي رسائل قديمة بعد طلب المزامنة؛ الرسائل الجديدة فقط هي التي تصل حالياً."
-          : "The bridge did not deliver any old messages after sync; only new messages are arriving now.",
-      );
+      const errMsg = isAr
+        ? "الجسر لم يرسل أي رسائل قديمة بعد طلب المزامنة؛ الرسائل الجديدة فقط هي التي تصل حالياً."
+        : "The bridge did not deliver any old messages after sync; only new messages are arriving now.";
+      toast.error(errMsg);
+      setSyncState((s) => ({ ...s, status: "error", message: errMsg }));
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => {
+      toast.error(err.message);
+      setSyncState((s) => ({ ...s, status: "error", message: err.message }));
+    },
   });
+
+  // Poll stats while a sync is running/pending and update imported counts.
+  useEffect(() => {
+    if (syncState.status !== "running" && syncState.status !== "pending") return;
+    const id = window.setInterval(() => {
+      qc.invalidateQueries({ queryKey: ["wa-inbox-stats", user?.id] });
+      qc.invalidateQueries({ queryKey: ["wa-conversations", user?.id] });
+      setSyncTick((n) => n + 1);
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [syncState.status, qc, user?.id]);
+
+  // Update imported delta from live stats and finish when deadline reached.
+  useEffect(() => {
+    if (syncState.status !== "running" && syncState.status !== "pending") return;
+    const curMsg = inboxStatsQuery.data?.messages ?? 0;
+    const curConv = conversations.length;
+    const importedMsg = Math.max(0, curMsg - syncState.baselineMsg);
+    const importedConv = Math.max(0, curConv - syncState.baselineConv);
+    if (importedMsg !== syncState.importedMsg || importedConv !== syncState.importedConv) {
+      setSyncState((s) => ({ ...s, importedMsg, importedConv }));
+    }
+    if (Date.now() >= syncState.deadlineAt) {
+      setSyncState((s) => ({ ...s, status: importedMsg > 0 ? "done" : "error", message: importedMsg > 0 ? undefined : (isAr ? "انتهت مهلة الانتظار دون وصول رسائل جديدة." : "Timed out waiting for old messages.") }));
+      if (importedMsg > 0) {
+        window.setTimeout(() => setSyncState((s) => (s.status === "done" ? { ...s, status: "idle" } : s)), 6000);
+      }
+    }
+  }, [syncTick, inboxStatsQuery.data?.messages, conversations.length, syncState.status, syncState.baselineMsg, syncState.baselineConv, syncState.deadlineAt, syncState.importedMsg, syncState.importedConv, isAr]);
+
 
   const aiToggleMut = useMutation({
     mutationFn: async (vars: { id: string; enabled: boolean }) => {
@@ -653,6 +733,61 @@ function InboxPage() {
             {connQuery.data?.status === "connected" ? t.connected : t.disconnected}
           </span>
         </div>
+        {syncState.status !== "idle" && (() => {
+          const elapsed = Math.max(0, Date.now() - syncState.startedAt);
+          const total = Math.max(1, syncState.deadlineAt - syncState.startedAt);
+          const timePct = Math.min(100, Math.round((elapsed / total) * 100));
+          // Progress heuristic: mix of time elapsed and messages imported (cap at 500).
+          const msgPct = Math.min(100, Math.round((syncState.importedMsg / 500) * 100));
+          const pct =
+            syncState.status === "done"
+              ? 100
+              : syncState.status === "error"
+                ? Math.max(timePct, msgPct)
+                : Math.max(msgPct, Math.min(95, timePct));
+          const meta =
+            syncState.status === "running"
+              ? { label: isAr ? "جاري المزامنة…" : "Syncing…", tone: "bg-primary/10 text-primary ring-primary/30", bar: "bg-primary" }
+              : syncState.status === "pending"
+                ? { label: isAr ? "قيد الانتظار — بانتظار دفعات الجسر" : "Pending — waiting for bridge batches", tone: "bg-amber-500/10 text-amber-600 ring-amber-500/30", bar: "bg-amber-500" }
+                : syncState.status === "done"
+                  ? { label: isAr ? "اكتملت المزامنة" : "Sync complete", tone: "bg-emerald-500/10 text-emerald-600 ring-emerald-500/30", bar: "bg-emerald-500" }
+                  : { label: isAr ? "تعذّرت المزامنة" : "Sync failed", tone: "bg-destructive/10 text-destructive ring-destructive/30", bar: "bg-destructive" };
+          const active = syncState.status === "running" || syncState.status === "pending";
+          return (
+            <div className={`mt-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-[11px] ring-1 ${meta.tone.split(" ").filter((c) => c.startsWith("ring-")).join(" ")}`}>
+              <div className="flex items-center justify-between gap-2 font-semibold">
+                <span className="inline-flex items-center gap-1.5 truncate">
+                  {active && <Loader2 className="h-3 w-3 animate-spin" />}
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 ${meta.tone}`}>{meta.label}</span>
+                </span>
+                <span className="shrink-0 tabular-nums text-muted-foreground">{pct}%</span>
+              </div>
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className={`h-full rounded-full ${meta.bar} transition-[width] duration-500`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                <span className="truncate">
+                  {isAr
+                    ? `+${syncState.importedMsg} رسالة · +${syncState.importedConv} محادثة`
+                    : `+${syncState.importedMsg} messages · +${syncState.importedConv} chats`}
+                </span>
+                {active && (
+                  <span className="shrink-0 tabular-nums">
+                    {Math.round(elapsed / 1000)}
+                    {isAr ? " ث" : "s"}
+                  </span>
+                )}
+              </div>
+              {syncState.status === "error" && syncState.message && (
+                <div className="mt-1 line-clamp-2 text-[10px] text-destructive/80">{syncState.message}</div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* List */}
