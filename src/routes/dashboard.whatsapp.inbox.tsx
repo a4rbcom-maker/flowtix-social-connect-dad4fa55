@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/resizable";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { SmartAudio } from "@/components/wa/SmartAudio";
 import { Zap } from "lucide-react";
 import {
@@ -1055,20 +1056,63 @@ function InboxPage() {
                 : Math.max(msgPct, Math.min(95, timePct));
           const meta =
             syncState.status === "running"
-              ? { label: isAr ? "جاري المزامنة…" : "Syncing…", tone: "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-foreground ring-primary/30", bar: "bg-primary" }
+              ? {
+                  label: isAr ? "جاري المزامنة…" : "Syncing…",
+                  tone: "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-foreground ring-primary/30",
+                  bar: "bg-primary",
+                  hint: isAr
+                    ? "الجسر يستقبل الرسائل الآن. لا حاجة لأي إجراء — اترك الصفحة مفتوحة حتى تكتمل."
+                    : "The bridge is fetching messages. No action needed — keep this page open until it finishes.",
+                }
               : syncState.status === "pending"
-                ? { label: isAr ? "قيد الانتظار" : "Pending", tone: "bg-amber-500/10 text-amber-700 dark:bg-amber-400/15 dark:text-amber-200 ring-amber-500/30", bar: "bg-amber-500" }
-              : syncState.status === "done"
-                ? { label: isAr ? "اكتملت المزامنة" : "Sync complete", tone: "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-200 ring-emerald-500/30", bar: "bg-emerald-500" }
-
-                  : { label: isAr ? "تعذّرت المزامنة" : "Sync failed", tone: "bg-destructive/10 text-destructive dark:bg-destructive/25 dark:text-red-200 ring-destructive/30", bar: "bg-destructive" };
+                ? {
+                    label: isAr ? "قيد الانتظار" : "Pending",
+                    tone: "bg-amber-500/10 text-amber-700 dark:bg-amber-400/15 dark:text-amber-200 ring-amber-500/30",
+                    bar: "bg-amber-500",
+                    hint: isAr
+                      ? "بانتظار بدء الجسر بمعالجة الدفعة. سيبدأ تلقائياً خلال ثوانٍ — لا يلزم أي تدخل."
+                      : "Waiting for the bridge to start the batch. It will begin automatically in a few seconds.",
+                  }
+                : syncState.status === "done"
+                  ? {
+                      label: isAr ? "اكتملت المزامنة" : "Sync complete",
+                      tone: "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-200 ring-emerald-500/30",
+                      bar: "bg-emerald-500",
+                      hint: isAr
+                        ? "تمت المزامنة بنجاح. يمكنك متابعة استخدام صندوق الوارد بشكل طبيعي."
+                        : "Sync finished successfully. You can continue using the inbox normally.",
+                    }
+                  : {
+                      label: isAr ? "تعذّرت المزامنة" : "Sync failed",
+                      tone: "bg-destructive/10 text-destructive dark:bg-destructive/25 dark:text-red-200 ring-destructive/30",
+                      bar: "bg-destructive",
+                      hint: isAr
+                        ? "توقفت المزامنة قبل الاكتمال. جرّب إعادة المحاولة، وإن استمر الفشل استخدم زر إعادة الاقتران."
+                        : "Sync stopped before completing. Retry, and if it keeps failing use the re-pair button.",
+                    };
           const active = syncState.status === "running" || syncState.status === "pending";
           return (
             <div className={`mt-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-[11px] ring-1 ${meta.tone.split(" ").filter((c) => c.startsWith("ring-")).join(" ")}`}>
               <div className="flex items-center justify-between gap-2 font-semibold">
                 <span className="inline-flex items-center gap-1.5 truncate">
                   {active && <Loader2 className="h-3 w-3 animate-spin" />}
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 ${meta.tone}`}>{meta.label}</span>
+                  <TooltipProvider delayDuration={150}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={meta.label}
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 outline-none focus-visible:ring-2 focus-visible:ring-primary/40 cursor-help ${meta.tone}`}
+                        >
+                          {meta.label}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" align={isAr ? "end" : "start"} className="max-w-[260px] text-[11px] leading-relaxed">
+                        <div className="font-semibold">{meta.label}</div>
+                        <div className="mt-1 opacity-90">{meta.hint}</div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </span>
                 <span className="shrink-0 tabular-nums text-muted-foreground">{pct}%</span>
               </div>
