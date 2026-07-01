@@ -22,6 +22,7 @@ const TYPE_ICONS: Record<string, { Icon: typeof Info; color: string }> = {
 
 export function AnnouncementsBell() {
   const { lang, dir } = useI18n();
+  const { user, loading: authLoading } = useAuth();
   const qc = useQueryClient();
   const fetchFn = useServerFn(getMyNotifications);
   const allReadFn = useServerFn(markAllNotificationsRead);
@@ -29,6 +30,7 @@ export function AnnouncementsBell() {
 
   const { data } = useQuery({
     queryKey: ["my-notifications"],
+    enabled: !authLoading && !!user,
     queryFn: async () => {
       try {
         return await fetchFn();
@@ -39,6 +41,7 @@ export function AnnouncementsBell() {
     retry: false,
     refetchInterval: 60_000,
   });
+
 
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
