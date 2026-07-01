@@ -58,7 +58,7 @@ import {
   type ConversationRow,
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
-import { requestWaHistorySync } from "@/lib/wa.functions";
+import { requestWaHistorySync, deepResetWaSession } from "@/lib/wa.functions";
 import {
   createQuickReply,
   updateQuickReply,
@@ -91,6 +91,25 @@ function InboxPage() {
   const sendFn = useServerFn(sendChatMessage);
   const markReadFn = useServerFn(markConversationRead);
   const requestHistorySyncFn = useServerFn(requestWaHistorySync);
+  const deepResetFn = useServerFn(deepResetWaSession);
+  const [rePairing, setRePairing] = useState(false);
+  const handleRePairForFullHistory = async () => {
+    const confirmMsg = isAr
+      ? "لجلب الأرشيف الكامل من واتساب يجب إعادة الاقتران وقراءة رمز QR جديد. لن يتم حذف الرسائل الحالية. المتابعة؟"
+      : "To fetch the full archive from WhatsApp you must re-pair and scan a fresh QR code. Existing messages are kept. Continue?";
+    if (!window.confirm(confirmMsg)) return;
+    try {
+      setRePairing(true);
+      const r = await deepResetFn();
+      if (!r.ok) throw new Error(r.error || "reset failed");
+      toast.success(isAr ? "تم إنشاء جلسة جديدة — امسح رمز QR" : "New session created — scan the QR");
+      window.location.assign("/dashboard/whatsapp");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "reset failed");
+    } finally {
+      setRePairing(false);
+    }
+  };
 
 
 
@@ -912,6 +931,29 @@ function InboxPage() {
               </div>
               {syncState.status === "error" && syncState.message && (
                 <div className="mt-1 line-clamp-2 text-[10px] text-destructive/80">{syncState.message}</div>
+              )}
+              {syncState.status === "done" && syncState.importedMsg === 0 && (
+                <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-2 text-[10.5px] leading-relaxed text-amber-900 dark:text-amber-200">
+                  <div className="font-semibold">
+                    {isAr ? "لماذا لا تظهر الرسائل القديمة؟" : "Why aren't old messages appearing?"}
+                  </div>
+                  <div className="mt-1 text-amber-800/90 dark:text-amber-200/90">
+                    {isAr
+                      ? "واتساب يرسل الأرشيف الكامل مرة واحدة فقط عند مسح رمز QR لأول مرة. لجلب المحادثات القديمة كلها اضغط الزر أدناه لإعادة الاقتران — لن تُحذف الرسائل الحالية."
+                      : "WhatsApp only pushes the full archive once, right after QR pairing. To retrieve all old chats, re-pair below — your current messages are kept."}
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={rePairing}
+                    onClick={handleRePairForFullHistory}
+                    className="mt-2 h-7 gap-1.5 border-amber-500/40 bg-amber-500/10 text-[11px] font-semibold text-amber-900 hover:bg-amber-500/20 dark:text-amber-100"
+                  >
+                    {rePairing && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {isAr ? "إعادة الاقتران لجلب الأرشيف الكامل" : "Re-pair for full archive"}
+                  </Button>
+                </div>
               )}
             </div>
           );
