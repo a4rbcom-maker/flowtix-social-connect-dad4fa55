@@ -711,13 +711,14 @@ export async function upsertConversationFromMessage(opts: {
   // those as one conversation when the sibling row already exists.
   const { data: existingRows } = await supabaseAdmin
     .from("wa_conversations")
-    .select("id, unread_count, contact_name, contact_phone, last_message_at")
+    .select("id, unread_count, contact_name, contact_phone, last_message_at, remote_jid")
     .eq("user_id", userId)
     .eq("session_id", sessionId)
     .in("remote_jid", aliasJids)
     .limit(aliasJids.length);
   const existing =
-    (existingRows ?? []).find((row) => aliasJids.length === 1 || row.id && row.contact_phone && remoteJid.endsWith("@lid")) ??
+    (existingRows ?? []).find((row) => String(row.remote_jid ?? "").endsWith("@lid")) ??
+    (existingRows ?? []).find((row) => row.remote_jid === remoteJid) ??
     (existingRows ?? []).find((row) => row.id);
 
   if (existing) {
