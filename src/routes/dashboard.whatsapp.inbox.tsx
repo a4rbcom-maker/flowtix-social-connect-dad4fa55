@@ -1601,34 +1601,32 @@ function EmptyChat({
 
 async function fetchInboxConversations(userId: string): Promise<ConversationRow[]> {
   // نجلب تاريخ محادثات المستخدم كله حتى لا يختفي بعد فصل الجلسة وإعادة الربط.
-  const { data, error } = await supabase
-    .from("wa_conversations")
-    .select("id, session_id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
-    .eq("user_id", userId)
-    .eq("is_archived", false)
-    .order("last_message_at", { ascending: false })
-    .limit(200);
+  const [{ data, error }, { data: rawMessages, error: msgError }] = await Promise.all([
+    supabase
+      .from("wa_conversations")
+      .select("id, session_id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
+      .eq("user_id", userId)
+      .eq("is_archived", false)
+      .order("last_message_at", { ascending: false })
+      .limit(200),
+    supabase
+      .from("wa_messages")
+      .select("session_id, remote_jid, direction, text_body, msg_type, raw, wa_timestamp, created_at")
+      .eq("user_id", userId)
+      .order("wa_timestamp", { ascending: false })
+      .limit(1000),
+  ]);
 
   if (error) throw new Error(error.message);
+  if (msgError) throw new Error(msgError.message);
 
   const rows = (data ?? []) as Omit<ConversationRow, "profile_pic_url">[];
-  if (!rows.length) return [];
-
-  const { data: rawMessages } = await supabase
-    .from("wa_messages")
-    .select("remote_jid, text_body, msg_type, raw, wa_timestamp, created_at")
-    .eq("user_id", userId)
-    .in("remote_jid", rows.map((row) => row.remote_jid))
-    .not("raw", "is", null)
-    .order("wa_timestamp", { ascending: false })
-    .limit(1000);
-
-
-
   const metaByJid = new Map<string, { phone: string | null; profile: string | null; preview: string | null }>();
+  const latestMessageByJid = new Map<string, NonNullable<typeof rawMessages>[number]>();
   for (const msg of rawMessages ?? []) {
     const jid = String(msg.remote_jid ?? "");
     if (!jid) continue;
+    if (!latestMessageByJid.has(jid)) latestMessageByJid.set(jid, msg);
     const current = metaByJid.get(jid) ?? { phone: null, profile: null, preview: null };
     metaByJid.set(jid, {
       phone: current.phone ?? phoneFromRaw(msg.raw),
@@ -1637,7 +1635,8 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
     });
   }
 
-  return rows.map((row) => {
+  const existingJids = new Set(rows.map((row) => row.remote_jid));
+  const visibleRows: ConversationRow[] = rows.map((row) => {
     const meta = metaByJid.get(row.remote_jid);
     const isGroup = row.remote_jid.endsWith("@g.us");
     return {
@@ -1647,6 +1646,34 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
       profile_pic_url: meta?.profile ?? null,
     };
   });
+
+  // بعض رسائل التاريخ تصل قبل إنشاء صف في wa_conversations. لا نخفيها؛
+  // ننشئ صف محادثة افتراضي من آخر رسالة محفوظة حتى يظهر التاريخ فورًا في الشات.
+  for (const [jid, msg] of latestMessageByJid) {
+    if (existingJids.has(jid)) continue;
+    const raw = msg.raw;
+    const isGroup = jid.endsWith("@g.us");
+    const direction = msg.direction === "out" ? "out" : "in";
+    const phone = isGroup ? null : phoneFromRaw(raw);
+    const name = direction === "in" || isGroup ? usefulContactName(contactNameFromRaw(raw), phone, jid) : null;
+    visibleRows.push({
+      id: `virtual:${jid}`,
+      session_id: msg.session_id ?? undefined,
+      remote_jid: jid,
+      contact_name: name,
+      contact_phone: phone,
+      profile_pic_url: profilePicFromRaw(raw),
+      last_message_text: previewTextFromRaw(raw, msg.text_body, msg.msg_type),
+      last_message_at: msg.wa_timestamp ?? msg.created_at,
+      last_direction: direction,
+      unread_count: 0,
+      ai_enabled: false,
+    });
+  }
+
+  return visibleRows
+    .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime())
+    .slice(0, 200);
 }
 
 async function fetchInboxMessages(userId: string, remoteJid: string): Promise<ChatMessageRow[]> {
