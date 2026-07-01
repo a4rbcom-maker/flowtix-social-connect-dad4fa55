@@ -220,21 +220,29 @@ function InboxPage() {
   const conversations = useMemo<ConversationRow[]>(
     () => {
       const raw = Array.isArray(convQuery.data) ? convQuery.data : [];
-      // Build set of contact_phones that have a "real" phone-JID conversation.
-      // Only then we can safely hide the LID duplicate of that same contact.
-      const phoneJidContacts = new Set<string>();
+      const lidLocals = new Set(
+        raw
+          .filter((c) => c.remote_jid.endsWith("@lid"))
+          .map((c) => c.remote_jid.split("@")[0])
+          .filter(Boolean) as string[],
+      );
+      const groups = new Map<string, ConversationRow[]>();
+      const identityToKey = new Map<string, string>();
       for (const c of raw) {
-        const local = c.remote_jid.split("@")[0] ?? "";
-        const isLidLike = /^\d{14,}$/.test(local);
-        if (!isLidLike && c.contact_phone) phoneJidContacts.add(c.contact_phone);
+        const identities = conversationIdentities(c, lidLocals);
+        const existingKeys = Array.from(new Set(identities.map((id) => identityToKey.get(id)).filter(Boolean) as string[]));
+        const key = existingKeys[0] ?? identities[0] ?? `jid:${c.remote_jid}`;
+        const mergedItems = [...(groups.get(key) ?? []), c];
+        for (const oldKey of existingKeys.slice(1)) {
+          mergedItems.push(...(groups.get(oldKey) ?? []));
+          groups.delete(oldKey);
+        }
+        groups.set(key, mergedItems);
+        for (const id of identities) identityToKey.set(id, key);
       }
-      return raw.filter((c) => {
-        const local = c.remote_jid.split("@")[0] ?? "";
-        const isLidLike = /^\d{14,}$/.test(local);
-        if (!isLidLike) return true;
-        // Only hide the LID row if the same contact_phone also exists as a phone-JID row.
-        return !(c.contact_phone && phoneJidContacts.has(c.contact_phone));
-      });
+      return Array.from(groups.values())
+        .map((items) => mergeConversationAliases(items))
+        .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
     },
     [convQuery.data],
   );
@@ -296,7 +304,7 @@ function InboxPage() {
           // Always refresh the conversation list so the new chat appears
           qc.invalidateQueries({ queryKey: ["wa-conversations"] });
           const row = payload.new as { remote_jid?: string; direction?: string; raw?: { is_historical?: boolean } | null };
-          if (activeJid && row.remote_jid === activeJid) {
+          if (activeJid) {
             qc.invalidateQueries({ queryKey: ["wa-messages", user.id, activeJid] });
           }
           // Notification beep for new INCOMING messages only (skip outbound and historical sync)
@@ -1528,6 +1536,7 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
     .from("wa_messages")
     .select("remote_jid, text_body, msg_type, raw, wa_timestamp, created_at")
     .eq("user_id", userId)
+    .eq("session_id", sessionRow.session_id)
     .in("remote_jid", rows.map((row) => row.remote_jid))
     .not("raw", "is", null)
     .order("wa_timestamp", { ascending: false })
@@ -1568,12 +1577,21 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
   if (sessionError) throw new Error(sessionError.message);
   if (!sessionRow?.session_id || sessionRow.status !== "connected") return [];
 
+  const { data: convAliases } = await supabase
+    .from("wa_conversations")
+    .select("contact_phone")
+    .eq("user_id", userId)
+    .eq("session_id", sessionRow.session_id)
+    .eq("remote_jid", remoteJid)
+    .maybeSingle();
+
+  const messageAliases = inboxJidAliases(remoteJid, convAliases?.contact_phone ?? null);
   const { data, error } = await supabase
     .from("wa_messages")
     .select("id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw")
     .eq("user_id", userId)
     .eq("session_id", sessionRow.session_id)
-    .eq("remote_jid", remoteJid)
+    .in("remote_jid", messageAliases)
     .order("wa_timestamp", { ascending: true })
     .limit(1000);
 
@@ -1669,6 +1687,73 @@ function pickString(obj: Record<string, unknown>, ...keys: string[]): string | n
 function digits(value: string | null): string | null {
   const cleaned = value?.replace(/[^0-9]/g, "") ?? "";
   return cleaned || null;
+}
+
+function jidLocal(jid: string): string {
+  return jid.split("@")[0] ?? "";
+}
+
+function isLidLocal(local: string): boolean {
+  return /^\d{14,}$/.test(local);
+}
+
+function inboxJidAliases(remoteJid: string, contactPhone?: string | null): string[] {
+  const local = jidLocal(remoteJid);
+  const aliases = new Set([remoteJid]);
+  if (remoteJid.endsWith("@lid")) aliases.add(`${local}@s.whatsapp.net`);
+  else if (remoteJid.endsWith("@s.whatsapp.net") && isLidLocal(local)) aliases.add(`${local}@lid`);
+  const phone = cleanAliasPhone(contactPhone, remoteJid);
+  if (phone) aliases.add(`${phone}@s.whatsapp.net`);
+  return Array.from(aliases);
+}
+
+function cleanAliasPhone(phone: string | null | undefined, canonicalJid: string): string | null {
+  const local = jidLocal(canonicalJid);
+  const normalized = digits(phone ?? null);
+  if (!normalized) return null;
+  return isLidLocal(local) && normalized === local ? null : normalized;
+}
+
+function conversationIdentities(conv: ConversationRow, lidLocals: Set<string>): string[] {
+  const local = jidLocal(conv.remote_jid);
+  const identities = new Set<string>([`jid:${conv.remote_jid}`]);
+  if (local && (conv.remote_jid.endsWith("@lid") || lidLocals.has(local))) identities.add(`lid:${local}`);
+  const phone = cleanAliasPhone(conv.contact_phone, conv.remote_jid);
+  if (phone) identities.add(`phone:${phone}`);
+  return Array.from(identities);
+}
+
+function usefulContactName(name: string | null | undefined, phone: string | null | undefined, jid: string): string | null {
+  const cleaned = name?.trim();
+  if (!cleaned) return null;
+  const compact = cleaned.replace(/\s+/g, "");
+  if (/^\+?\d{6,}$/.test(compact)) return null;
+  if (cleaned === jid || cleaned === phone) return null;
+  return cleaned;
+}
+
+function mergeConversationAliases(items: ConversationRow[]): ConversationRow {
+  const sorted = [...items].sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
+  const preferred = items.find((c) => c.remote_jid.endsWith("@lid")) ?? sorted[0];
+  const newest = sorted[0];
+  const phone = items
+    .map((c) => cleanAliasPhone(c.contact_phone, preferred.remote_jid))
+    .find(Boolean) ?? null;
+  const name =
+    items
+      .map((c) => usefulContactName(c.contact_name, phone, c.remote_jid))
+      .find(Boolean) ?? null;
+  return {
+    ...preferred,
+    contact_name: name,
+    contact_phone: phone,
+    profile_pic_url: items.map((c) => c.profile_pic_url).find(Boolean) ?? null,
+    last_message_text: newest.last_message_text,
+    last_message_at: newest.last_message_at,
+    last_direction: newest.last_direction,
+    unread_count: items.reduce((sum, c) => sum + (c.unread_count || 0), 0),
+    ai_enabled: items.some((c) => c.ai_enabled),
+  };
 }
 
 function phoneFromRaw(raw: unknown): string | null {

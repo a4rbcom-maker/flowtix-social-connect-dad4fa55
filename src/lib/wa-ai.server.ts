@@ -694,15 +694,32 @@ export async function upsertConversationFromMessage(opts: {
   const { userId, sessionId, remoteJid, contactName, contactPhone, text, direction, historical } = opts;
   const messageAt = opts.messageAt ?? new Date().toISOString();
   const safeContactName = direction === "in" || remoteJid.endsWith("@g.us") ? contactName : null;
+  const localPart = remoteJid.split("@")[0] ?? "";
+  const looksLikeLidAlias = /^\d{14,}$/.test(localPart);
+  const safeContactPhone = looksLikeLidAlias && contactPhone?.replace(/[^0-9]/g, "") === localPart ? null : contactPhone;
+  const aliasJids = Array.from(
+    new Set([
+      remoteJid,
+      ...(looksLikeLidAlias && remoteJid.endsWith("@lid") ? [`${localPart}@s.whatsapp.net`] : []),
+      ...(looksLikeLidAlias && remoteJid.endsWith("@s.whatsapp.net") ? [`${localPart}@lid`] : []),
+      ...(safeContactPhone ? [`${safeContactPhone}@s.whatsapp.net`] : []),
+    ]),
+  );
 
-  // Try update first
-  const { data: existing } = await supabaseAdmin
+  // Try update first. WhatsApp may send the same direct chat as both a LID
+  // (123...@lid) and a phone-looking alias (123...@s.whatsapp.net). Treat
+  // those as one conversation when the sibling row already exists.
+  const { data: existingRows } = await supabaseAdmin
     .from("wa_conversations")
-    .select("id, unread_count, contact_name, contact_phone, last_message_at")
+    .select("id, unread_count, contact_name, contact_phone, last_message_at, remote_jid")
     .eq("user_id", userId)
     .eq("session_id", sessionId)
-    .eq("remote_jid", remoteJid)
-    .maybeSingle();
+    .in("remote_jid", aliasJids)
+    .limit(aliasJids.length);
+  const existing =
+    (existingRows ?? []).find((row) => String(row.remote_jid ?? "").endsWith("@lid")) ??
+    (existingRows ?? []).find((row) => row.remote_jid === remoteJid) ??
+    (existingRows ?? []).find((row) => row.id);
 
   if (existing) {
     // Only bump the summary if this message is newer than the existing one,
@@ -727,7 +744,7 @@ export async function upsertConversationFromMessage(opts: {
             ? (existing.unread_count || 0) + 1
             : existing.unread_count,
         contact_name: existing.contact_name || safeContactName,
-        contact_phone: contactPhone || existing.contact_phone,
+        contact_phone: safeContactPhone || existing.contact_phone,
       })
       .eq("id", existing.id);
     return existing.id;
@@ -740,7 +757,7 @@ export async function upsertConversationFromMessage(opts: {
       session_id: sessionId,
       remote_jid: remoteJid,
       contact_name: safeContactName,
-      contact_phone: contactPhone,
+      contact_phone: safeContactPhone,
       last_message_text: text ?? null,
       last_message_at: messageAt,
       last_direction: direction,
