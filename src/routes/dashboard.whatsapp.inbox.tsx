@@ -1051,8 +1051,24 @@ function InboxPage() {
             }}
           >
             {msgsQuery.isLoading ? (
-              <div className="flex justify-center py-6">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              <div className="space-y-3 py-2" aria-busy="true">
+                {[["70%", "start"], ["55%", "end"], ["80%", "start"], ["45%", "end"], ["65%", "start"]].map(([w, side], i) => (
+                  <div key={i} className={`flex ${side === "end" ? "justify-end" : "justify-start"}`}>
+                    <div className="h-10 animate-pulse rounded-2xl bg-muted" style={{ width: w as string }} />
+                  </div>
+                ))}
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+                  <MessageCircle className="h-7 w-7 text-muted-foreground" />
+                </div>
+                <p className="text-sm font-medium">
+                  {isAr ? "لا توجد رسائل بعد" : "No messages yet"}
+                </p>
+                <p className="max-w-xs px-6 text-xs text-muted-foreground">
+                  {isAr ? "ابدأ المحادثة بكتابة رسالتك في الأسفل." : "Start the conversation by typing your message below."}
+                </p>
               </div>
             ) : (
               renderMessagesWithDays(messages, isAr, t)
