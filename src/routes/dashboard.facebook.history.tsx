@@ -685,7 +685,7 @@ function JobsHistoryPage() {
                                 )}
                                 {j.job_type === "send_messenger_dm" && (j.status === "pending" || j.status === "running") && (
                                   <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title={t.pause} disabled={pausingId === j.id} onClick={(e) => { e.stopPropagation(); handlePause(j); }}>
-                                    {pausingId === j.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4 text-amber-600" />}
+                                    {pausingId === j.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4 text-amber-600 dark:text-amber-300" />}
                                   </Button>
                                 )}
                                 {j.status === "paused" && (

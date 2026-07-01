@@ -16,7 +16,7 @@ const TYPE_ICONS: Record<string, { Icon: typeof Info; color: string }> = {
   warning: { Icon: AlertTriangle, color: "text-amber-500 bg-amber-500/15" },
   alert: { Icon: ShieldAlert, color: "text-rose-500 bg-rose-500/15" },
   update: { Icon: Bell, color: "text-violet-500 bg-violet-500/15" },
-  maintenance: { Icon: Wrench, color: "text-slate-500 bg-slate-500/15" },
+  maintenance: { Icon: Wrench, color: "text-slate-500 dark:text-slate-400 bg-slate-500/15" },
   offer: { Icon: Gift, color: "text-fuchsia-500 bg-fuchsia-500/15" },
 };
 

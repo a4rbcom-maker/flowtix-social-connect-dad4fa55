@@ -248,12 +248,12 @@ function WaSettingsPage() {
             }`}>
               <div className="flex items-center gap-2 font-semibold">
                 {testResult.ok ? (
-                  <><CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  <><CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
                     <span className="text-emerald-700 dark:text-emerald-300">
                       {lang === "ar" ? "تم الاستلام بنجاح" : "Delivery succeeded"}
                     </span></>
                 ) : (
-                  <><XCircle className="h-4 w-4 text-rose-600" />
+                  <><XCircle className="h-4 w-4 text-rose-600 dark:text-rose-300" />
                     <span className="text-rose-700 dark:text-rose-300">
                       {lang === "ar" ? "فشل الاستلام" : "Delivery failed"}
                     </span></>

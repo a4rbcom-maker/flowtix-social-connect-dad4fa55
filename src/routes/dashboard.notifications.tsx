@@ -38,7 +38,7 @@ const META: Record<string, { Icon: typeof Info; color: string; ring: string }> =
   warning: { Icon: AlertTriangle, color: "text-amber-500 bg-amber-500/15", ring: "ring-amber-500/20" },
   alert: { Icon: ShieldAlert, color: "text-rose-500 bg-rose-500/15", ring: "ring-rose-500/20" },
   update: { Icon: Bell, color: "text-violet-500 bg-violet-500/15", ring: "ring-violet-500/20" },
-  maintenance: { Icon: Wrench, color: "text-slate-500 bg-slate-500/15", ring: "ring-slate-500/20" },
+  maintenance: { Icon: Wrench, color: "text-slate-500 dark:text-slate-400 bg-slate-500/15", ring: "ring-slate-500/20" },
   offer: { Icon: Gift, color: "text-fuchsia-500 bg-fuchsia-500/15", ring: "ring-fuchsia-500/20" },
 };
 
@@ -145,12 +145,12 @@ function NotificationCenter() {
                         <h3 className={`font-bold ${isUnread ? "" : "text-muted-foreground"}`}>{it.title}</h3>
                         {isUnread && <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />}
                         {it.priority === "urgent" && (
-                          <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-600 animate-pulse">
+                          <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-600 dark:text-rose-300 animate-pulse">
                             {lang === "ar" ? "عاجل" : "Urgent"}
                           </span>
                         )}
                         {it.require_ack && !it._read?.ack_at && (
-                          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-600">
+                          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-300">
                             {lang === "ar" ? "يتطلب تأكيد" : "Needs ack"}
                           </span>
                         )}

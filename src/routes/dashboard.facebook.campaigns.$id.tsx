@@ -175,9 +175,9 @@ function CampaignDetailPage() {
   const active = c.status === "running" || c.status === "queued";
 
   const statusBadge = (s: string) => {
-    const cls = s === "success" ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+    const cls = s === "success" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border-emerald-500/30"
       : s === "failed" ? "bg-destructive/10 text-destructive border-destructive/30"
-      : s === "skipped" ? "bg-amber-500/10 text-amber-600 border-amber-500/30"
+      : s === "skipped" ? "bg-amber-500/10 text-amber-600 dark:text-amber-300 border-amber-500/30"
       : "bg-muted text-muted-foreground border-border";
     const label = s === "success" ? t.success : s === "failed" ? t.failed : s === "skipped" ? t.skipped : t.pending;
     return <span className={`text-[10px] px-2 py-0.5 rounded-full border ${cls}`}>{label}</span>;
@@ -185,11 +185,11 @@ function CampaignDetailPage() {
 
   const renderMediaRow = (r: Result, ev: MediaEvent) => {
     const d = (r.data ?? {}) as { count?: number; durationMs?: number; target?: string };
-    const meta = ev === "media_download_start" ? { icon: <Download className="w-3.5 h-3.5" />, label: t.mediaDownloadStart, cls: "text-sky-600 bg-sky-500/10 border-sky-500/30" }
-      : ev === "media_download_done" ? { icon: <Download className="w-3.5 h-3.5" />, label: t.mediaDownloadDone, cls: "text-emerald-600 bg-emerald-500/10 border-emerald-500/30" }
+    const meta = ev === "media_download_start" ? { icon: <Download className="w-3.5 h-3.5" />, label: t.mediaDownloadStart, cls: "text-sky-600 dark:text-sky-300 bg-sky-500/10 border-sky-500/30" }
+      : ev === "media_download_done" ? { icon: <Download className="w-3.5 h-3.5" />, label: t.mediaDownloadDone, cls: "text-emerald-600 dark:text-emerald-300 bg-emerald-500/10 border-emerald-500/30" }
       : ev === "media_download_failed" ? { icon: <XCircle className="w-3.5 h-3.5" />, label: t.mediaDownloadFailed, cls: "text-destructive bg-destructive/10 border-destructive/30" }
-      : ev === "media_upload_done" ? { icon: <Upload className="w-3.5 h-3.5" />, label: t.mediaUploadDone, cls: "text-violet-600 bg-violet-500/10 border-violet-500/30" }
-      : { icon: <Trash2 className="w-3.5 h-3.5" />, label: t.mediaCleanupDone, cls: "text-amber-600 bg-amber-500/10 border-amber-500/30" };
+      : ev === "media_upload_done" ? { icon: <Upload className="w-3.5 h-3.5" />, label: t.mediaUploadDone, cls: "text-violet-600 dark:text-violet-300 bg-violet-500/10 border-violet-500/30" }
+      : { icon: <Trash2 className="w-3.5 h-3.5" />, label: t.mediaCleanupDone, cls: "text-amber-600 dark:text-amber-300 bg-amber-500/10 border-amber-500/30" };
     const detailBits: string[] = [];
     if (typeof d.count === "number") detailBits.push(`${d.count} ${t.files}`);
     if (typeof d.durationMs === "number") detailBits.push(`${t.duration}: ${d.durationMs} ${t.ms}`);

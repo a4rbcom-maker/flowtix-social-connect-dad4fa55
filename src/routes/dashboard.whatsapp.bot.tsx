@@ -427,7 +427,7 @@ function BotPage() {
                         type="button"
                         onClick={() => rateMut.mutate({ id: log.id, rating: 1 })}
                         className={`flex h-7 w-7 items-center justify-center rounded-lg hover:bg-muted ${
-                          log.rating === 1 ? "bg-emerald-500/15 text-emerald-600" : "text-muted-foreground"
+                          log.rating === 1 ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300" : "text-muted-foreground"
                         }`}
                         aria-label="good"
                       >

@@ -1801,7 +1801,7 @@ function FacebookPage() {
                                 setDeletingBotId(null);
                               }
                             }}
-                            className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-50"
+                            className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-red-600 dark:text-red-300 hover:bg-red-500/10 disabled:opacity-50"
                             aria-label={lang === "ar" ? "حذف" : "Delete"}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -2407,7 +2407,7 @@ function FacebookPage() {
                   </div>
                 </div>
                 <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-foreground/80">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-300" />
                   <p>
                     {lang === "ar"
                       ? "ملاحظة: عند فتح Graph API Explorer قد يطلب منك فيسبوك تسجيل الدخول إلى حسابك أولاً، ثم الموافقة على صلاحيات التطبيق المطلوبة (User Token + Permissions). إذا لم تمنح الصلاحيات بالكامل، لن يعمل الاستكشاف ولن نتمكن من جلب الجروبات والصفحات."
@@ -2472,9 +2472,9 @@ function FacebookPage() {
                                 l.level === "error"
                                   ? "text-destructive"
                                   : l.level === "warn"
-                                    ? "text-amber-600"
+                                    ? "text-amber-600 dark:text-amber-300"
                                     : l.level === "success"
-                                      ? "text-emerald-600"
+                                      ? "text-emerald-600 dark:text-emerald-300"
                                       : "text-foreground/80"
                               }`}
                             >
@@ -2544,7 +2544,7 @@ function FacebookPage() {
                       </p>
                     ) : (
                       <div className="mt-2">
-                        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-amber-600">
+                        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-300">
                           {t.missingScopes} ({missing.length})
                         </p>
                         <div className="flex flex-wrap gap-1.5">
@@ -2750,7 +2750,7 @@ function FacebookPage() {
                         className="flex items-start gap-2 rounded-md px-2 py-1.5 text-xs odd:bg-muted/30"
                       >
                         {ev.status === "success" ? (
-                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-600" />
+                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-300" />
                         ) : (
                           <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
                         )}
