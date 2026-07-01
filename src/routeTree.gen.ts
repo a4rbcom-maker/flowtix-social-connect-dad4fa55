@@ -66,7 +66,6 @@ import { Route as DashboardFacebookCampaignsIndexRouteImport } from './routes/da
 import { Route as DashboardFacebookCampaignsNewRouteImport } from './routes/dashboard.facebook.campaigns.new'
 import { Route as DashboardFacebookCampaignsIdRouteImport } from './routes/dashboard.facebook.campaigns.$id'
 import { Route as ApiPublicWebhooksFacebookRouteImport } from './routes/api/public/webhooks/facebook'
-import { Route as ApiPublicWaWebhookRouteImport } from './routes/api/public/wa/webhook'
 import { Route as ApiPublicHooksProcessBulkJobsRouteImport } from './routes/api/public/hooks/process-bulk-jobs'
 import { Route as ApiPublicHooksCleanupOldMediaRouteImport } from './routes/api/public/hooks/cleanup-old-media'
 import { Route as ApiPublicBotNextJobRouteImport } from './routes/api/public/bot/next-job'
@@ -375,11 +374,6 @@ const ApiPublicWebhooksFacebookRoute =
     path: '/api/public/webhooks/facebook',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicWaWebhookRoute = ApiPublicWaWebhookRouteImport.update({
-  id: '/api/public/wa/webhook',
-  path: '/api/public/wa/webhook',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiPublicHooksProcessBulkJobsRoute =
   ApiPublicHooksProcessBulkJobsRouteImport.update({
     id: '/api/public/hooks/process-bulk-jobs',
@@ -467,7 +461,6 @@ export interface FileRoutesByFullPath {
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/cleanup-old-media': typeof ApiPublicHooksCleanupOldMediaRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
-  '/api/public/wa/webhook': typeof ApiPublicWaWebhookRoute
   '/api/public/webhooks/facebook': typeof ApiPublicWebhooksFacebookRoute
   '/dashboard/facebook/campaigns/$id': typeof DashboardFacebookCampaignsIdRoute
   '/dashboard/facebook/campaigns/new': typeof DashboardFacebookCampaignsNewRoute
@@ -531,7 +524,6 @@ export interface FileRoutesByTo {
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/cleanup-old-media': typeof ApiPublicHooksCleanupOldMediaRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
-  '/api/public/wa/webhook': typeof ApiPublicWaWebhookRoute
   '/api/public/webhooks/facebook': typeof ApiPublicWebhooksFacebookRoute
   '/dashboard/facebook/campaigns/$id': typeof DashboardFacebookCampaignsIdRoute
   '/dashboard/facebook/campaigns/new': typeof DashboardFacebookCampaignsNewRoute
@@ -597,7 +589,6 @@ export interface FileRoutesById {
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/cleanup-old-media': typeof ApiPublicHooksCleanupOldMediaRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
-  '/api/public/wa/webhook': typeof ApiPublicWaWebhookRoute
   '/api/public/webhooks/facebook': typeof ApiPublicWebhooksFacebookRoute
   '/dashboard/facebook/campaigns/$id': typeof DashboardFacebookCampaignsIdRoute
   '/dashboard/facebook/campaigns/new': typeof DashboardFacebookCampaignsNewRoute
@@ -664,7 +655,6 @@ export interface FileRouteTypes {
     | '/api/public/bot/next-job'
     | '/api/public/hooks/cleanup-old-media'
     | '/api/public/hooks/process-bulk-jobs'
-    | '/api/public/wa/webhook'
     | '/api/public/webhooks/facebook'
     | '/dashboard/facebook/campaigns/$id'
     | '/dashboard/facebook/campaigns/new'
@@ -728,7 +718,6 @@ export interface FileRouteTypes {
     | '/api/public/bot/next-job'
     | '/api/public/hooks/cleanup-old-media'
     | '/api/public/hooks/process-bulk-jobs'
-    | '/api/public/wa/webhook'
     | '/api/public/webhooks/facebook'
     | '/dashboard/facebook/campaigns/$id'
     | '/dashboard/facebook/campaigns/new'
@@ -793,7 +782,6 @@ export interface FileRouteTypes {
     | '/api/public/bot/next-job'
     | '/api/public/hooks/cleanup-old-media'
     | '/api/public/hooks/process-bulk-jobs'
-    | '/api/public/wa/webhook'
     | '/api/public/webhooks/facebook'
     | '/dashboard/facebook/campaigns/$id'
     | '/dashboard/facebook/campaigns/new'
@@ -830,7 +818,6 @@ export interface RootRouteChildren {
   ApiPublicBotNextJobRoute: typeof ApiPublicBotNextJobRoute
   ApiPublicHooksCleanupOldMediaRoute: typeof ApiPublicHooksCleanupOldMediaRoute
   ApiPublicHooksProcessBulkJobsRoute: typeof ApiPublicHooksProcessBulkJobsRoute
-  ApiPublicWaWebhookRoute: typeof ApiPublicWaWebhookRoute
   ApiPublicWebhooksFacebookRoute: typeof ApiPublicWebhooksFacebookRoute
 }
 
@@ -1235,13 +1222,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicWebhooksFacebookRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/wa/webhook': {
-      id: '/api/public/wa/webhook'
-      path: '/api/public/wa/webhook'
-      fullPath: '/api/public/wa/webhook'
-      preLoaderRoute: typeof ApiPublicWaWebhookRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/public/hooks/process-bulk-jobs': {
       id: '/api/public/hooks/process-bulk-jobs'
       path: '/api/public/hooks/process-bulk-jobs'
@@ -1424,7 +1404,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicBotNextJobRoute: ApiPublicBotNextJobRoute,
   ApiPublicHooksCleanupOldMediaRoute: ApiPublicHooksCleanupOldMediaRoute,
   ApiPublicHooksProcessBulkJobsRoute: ApiPublicHooksProcessBulkJobsRoute,
-  ApiPublicWaWebhookRoute: ApiPublicWaWebhookRoute,
   ApiPublicWebhooksFacebookRoute: ApiPublicWebhooksFacebookRoute,
 }
 export const routeTree = rootRouteImport
