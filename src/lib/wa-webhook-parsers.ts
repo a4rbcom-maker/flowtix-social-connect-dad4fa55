@@ -225,9 +225,9 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
   const recipientObj = asObj(entry.recipient);
   const toObj = asObj(entry.to);
   const fromMe =
-    entry.fromMe === true ||
-    entry.fromme === true ||
-    (key.fromMe as boolean | undefined) === true;
+    isTruthy(entry.fromMe) ||
+    isTruthy(entry.fromme) ||
+    isTruthy(key.fromMe);
   const isGroup =
     isTruthy(entry.isGroup) ||
     Boolean(pickStr(entry, "groupJid", "groupId")) ||
@@ -290,11 +290,6 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
   if (jid.endsWith("@broadcast") || jid === "status@broadcast") return null;
   if (!text && type === "unknown" && !mediaUrl) return null;
   if (!remoteJid && !fromPhone) return null;
-
-  if (!isGroup && fromMe) {
-    const hasRealRecipient = Boolean(recipientJid || directChatJid || keyRemote);
-    if (!hasRealRecipient) return null;
-  }
 
   return {
     remoteJid: normalizeRemoteJid(remoteJid, isGroup ? digits(groupJid) : fromPhone, isGroup),

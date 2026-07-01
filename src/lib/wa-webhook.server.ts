@@ -28,6 +28,32 @@ import {
 
 
 const WA_MEDIA_BUCKET = "wa-media";
+const HISTORY_EVENTS = new Set(["history_messages", "messaging-history.set", "messaging_history.set", "history.sync", "history_sync"]);
+const HISTORICAL_MESSAGE_AGE_MS = 10 * 60 * 1000;
+
+function isTruthyFlag(value: unknown): boolean {
+  return value === true || ["true", "1", "yes", "history", "historical"].includes(String(value ?? "").toLowerCase());
+}
+
+function isHistoricalMessage(event: string, payload: Record<string, unknown>, data: Record<string, unknown>, waTimestamp: string | null): boolean {
+  if (HISTORY_EVENTS.has(event)) return true;
+  if (
+    isTruthyFlag(payload.isHistorical) ||
+    isTruthyFlag(payload.is_historical) ||
+    isTruthyFlag(payload.history) ||
+    isTruthyFlag(data.isHistorical) ||
+    isTruthyFlag(data.is_historical) ||
+    isTruthyFlag(data.history)
+  ) {
+    return true;
+  }
+  const source = String(payload.source ?? data.source ?? "").toLowerCase();
+  if (source.includes("history") || source.includes("sync")) return true;
+
+  if (!waTimestamp) return false;
+  const ts = new Date(waTimestamp).getTime();
+  return Number.isFinite(ts) && Date.now() - ts > HISTORICAL_MESSAGE_AGE_MS;
+}
 
 function attachBackgroundTask(request: Request, task: Promise<unknown>, label: string): boolean {
   const waitUntil = (request as Request & { waitUntil?: (promise: Promise<unknown>) => void }).waitUntil;
@@ -393,7 +419,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   }
 
   // ── HISTORY SYNC: backfilled messages ──
-  if (["history_messages", "messaging-history.set", "messaging_history.set", "history.sync", "history_sync"].includes(event)) {
+  if (HISTORY_EVENTS.has(event)) {
     const msgs = Array.isArray(data.messages) ? (data.messages as Record<string, unknown>[]) : [];
     let saved = 0;
     let dup = 0;
@@ -416,11 +442,11 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       );
       const tsRaw = h.timestamp;
       const waTimestamp =
-        typeof tsRaw === "number"
+        parsed?.waTimestamp ?? (typeof tsRaw === "number"
           ? new Date(tsRaw * 1000).toISOString()
           : typeof tsRaw === "string" && tsRaw
             ? new Date(Number(tsRaw) * 1000).toISOString()
-            : new Date().toISOString();
+            : new Date().toISOString());
       const contactName = parsed?.contactName || pickStr(h, "pushName", "senderName", "notifyName", "contactName", "name") || null;
       const senderPhone = parsed?.fromPhone || digits(pickStr(h, "sender", "participant")) || phone;
 
@@ -535,6 +561,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     }
 
     const waTimestamp = m.waTimestamp ?? new Date().toISOString();
+    const isHistorical = isHistoricalMessage(event, payload, data, waTimestamp);
 
     if (m.fromMe && m.providerMessageId && text) {
       const { data: pendingAi } = await supabaseAdmin
@@ -568,6 +595,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
               normalizedStatus: m.status,
               normalizedWaTimestamp: waTimestamp,
               delivery: "whatsapp_acknowledged",
+              ...(isHistorical ? { is_historical: true } : {}),
               storedMediaUrl: mediaUrl?.startsWith("wa-media:") ? mediaUrl : null,
             } as never,
           })
@@ -583,6 +611,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
           text: text ?? (msgType !== "text" ? `[${msgType}]` : null),
           direction: "out",
           messageAt: waTimestamp,
+          historical: isHistorical,
         });
         continue;
       }
@@ -608,6 +637,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         normalizedStatus: m.status,
         normalizedWaTimestamp: waTimestamp,
         providerMessageId: m.providerMessageId,
+        ...(isHistorical ? { is_historical: true } : {}),
         storedMediaUrl: mediaUrl?.startsWith("wa-media:") ? mediaUrl : null,
       } as never,
     });
@@ -626,10 +656,11 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       text: text ?? (msgType !== "text" ? `[${msgType}]` : null),
       direction: m.fromMe ? "out" : "in",
       messageAt: waTimestamp,
+      historical: isHistorical,
     });
 
 
-    if (text && !m.fromMe) {
+    if (text && !m.fromMe && !isHistorical) {
       // Try keyword auto-reply FIRST. If it matches, skip AI entirely.
       const matched = await tryKeywordAutoReply({
         userId,
