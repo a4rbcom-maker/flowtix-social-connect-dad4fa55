@@ -111,6 +111,27 @@ function InboxPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const historySyncRequestedRef = useRef<string | null>(null);
 
+  type SyncStatus = "idle" | "running" | "pending" | "done" | "error";
+  const [syncState, setSyncState] = useState<{
+    status: SyncStatus;
+    baselineMsg: number;
+    baselineConv: number;
+    importedMsg: number;
+    importedConv: number;
+    startedAt: number;
+    deadlineAt: number;
+    message?: string;
+  }>({
+    status: "idle",
+    baselineMsg: 0,
+    baselineConv: 0,
+    importedMsg: 0,
+    importedConv: 0,
+    startedAt: 0,
+    deadlineAt: 0,
+  });
+  const [syncTick, setSyncTick] = useState(0);
+
   const t = isAr
     ? {
         title: "المحادثات",
