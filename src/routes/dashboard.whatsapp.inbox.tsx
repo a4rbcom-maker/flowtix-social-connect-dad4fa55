@@ -87,6 +87,13 @@ function InboxPage() {
   const [activeJid, setActiveJid] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [timeRange, setTimeRange] = useState<TimeRangeKey>(() => {
+    if (typeof window === "undefined") return "all";
+    return (localStorage.getItem("flowtix-inbox-timerange") as TimeRangeKey) || "all";
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") localStorage.setItem("flowtix-inbox-timerange", timeRange);
+  }, [timeRange]);
   const [draft, setDraft] = useState("");
   const [soundOn, setSoundOn] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
