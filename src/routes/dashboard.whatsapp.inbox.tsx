@@ -1083,6 +1083,20 @@ function ContactInfoPanel({
   const name = conv.contact_name ?? jid.replace(/@.*/, "");
   const phone = conv.contact_phone ? `+${conv.contact_phone}` : jid;
 
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [saveEmail, setSaveEmail] = useState("");
+  const [saveCity, setSaveCity] = useState("");
+  const [saveNotes, setSaveNotes] = useState("");
+
+  function openSaveDialog() {
+    setSaveName(conv.contact_name ?? "");
+    setSaveEmail("");
+    setSaveCity("");
+    setSaveNotes("");
+    setSaveOpen(true);
+  }
+
   async function handleSaveCustomer() {
     if (saving) return;
     setSaving(true);
@@ -1095,9 +1109,11 @@ function ContactInfoPanel({
       const rawPhone = conv.contact_phone ?? jid.replace(/@.*/, "");
       const row = buildRow({
         user_id: user.id,
-        full_name: conv.contact_name ?? null,
+        full_name: saveName.trim() || null,
         phone: rawPhone,
-        notes: isAr ? "تم الحفظ من المحادثات" : "Saved from inbox",
+        email: saveEmail.trim() || null,
+        city: saveCity.trim() || null,
+        notes: saveNotes.trim() || (isAr ? "تم الحفظ من المحادثات" : "Saved from inbox"),
       });
       if (row.phone_norm) {
         const { data: existing } = await supabase
@@ -1107,13 +1123,15 @@ function ContactInfoPanel({
           .eq("phone_norm", row.phone_norm)
           .maybeSingle();
         if (existing) {
-          toast.info(isAr ? "العميل محفوظ بالفعل" : "Already saved");
+          toast.info(isAr ? "العميل محفوظ بالفعل — يمكنك تعديله من قاعدة العملاء" : "Already saved — edit from customers");
+          setSaveOpen(false);
           return;
         }
       }
       const { error } = await supabase.from("customer_database").insert(row);
       if (error) throw error;
       toast.success(isAr ? "تم حفظ العميل في قاعدة بياناتك" : "Customer saved");
+      setSaveOpen(false);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error((isAr ? "فشل الحفظ: " : "Save failed: ") + msg);
@@ -1121,6 +1139,7 @@ function ContactInfoPanel({
       setSaving(false);
     }
   }
+
 
   return (
     <aside dir={isAr ? "rtl" : "ltr"} className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card/40 backdrop-blur-sm">
