@@ -342,12 +342,16 @@ export const waBridge = {
     }
     return { ok: false, attempts, body: null as unknown };
   },
-  fetchMessages: (id: string, jid: string, limit = 50) =>
+  fetchMessages: (id: string, jid: string, limit = 50, opts: { anchorMessageId?: string | null } = {}) =>
     bridgeFetch<unknown>(
       `/api/sessions/${encodeURIComponent(id)}/fetch-messages`,
       {
         method: "POST",
-        body: JSON.stringify({ jid, limit }),
+        body: JSON.stringify({
+          jid,
+          limit,
+          ...(opts.anchorMessageId ? { anchorMessageId: opts.anchorMessageId } : {}),
+        }),
       },
     ),
   getStatus: (id: string) =>
