@@ -88,6 +88,10 @@ function WhatsAppPage() {
     typeof window !== "undefined" && localStorage.getItem(WA_BRIDGE_MODE_STORAGE_KEY) === "cloud",
   );
   const startedRef = useRef(false);
+  const [qrIssuedAt, setQrIssuedAt] = useState<number | null>(null);
+  const [qrSecondsLeft, setQrSecondsLeft] = useState<number>(60);
+  const lastQrValueRef = useRef<string | null>(null);
+  const autoRefreshingRef = useRef(false);
 
   const t = ar
     ? {
@@ -250,6 +254,36 @@ function WhatsAppPage() {
   useEffect(() => {
     if (errorMsg && polling) setPolling(false);
   }, [errorMsg, polling]);
+
+  // Track when a new QR is issued to compute expiry
+  useEffect(() => {
+    if (qrValue && qrValue !== lastQrValueRef.current) {
+      lastQrValueRef.current = qrValue;
+      setQrIssuedAt(Date.now());
+      setQrSecondsLeft(60);
+      autoRefreshingRef.current = false;
+    }
+    if (!qrValue) {
+      lastQrValueRef.current = null;
+      setQrIssuedAt(null);
+    }
+  }, [qrValue]);
+
+  // Countdown ticker + auto-refresh expired QR silently
+  useEffect(() => {
+    if (!qrIssuedAt || status === "connected") return;
+    const timer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - qrIssuedAt) / 1000);
+      const left = Math.max(0, 60 - elapsed);
+      setQrSecondsLeft(left);
+      if (left === 0 && !autoRefreshingRef.current && (status === "qr" || status === "connecting" || status === "disconnected")) {
+        autoRefreshingRef.current = true;
+        resetMut.mutate();
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [qrIssuedAt, status]);
+
 
   const connectMut = useMutation({
     mutationFn: async () => {
@@ -524,7 +558,7 @@ function WhatsAppPage() {
                         {ar ? "امسح الكود لإكمال الربط" : "Scan the code to complete linking"}
                       </h3>
                       {qrValue ? (
-                        <QrView qr={qrValue} polling={polling} t={t} />
+                        <QrView qr={qrValue} polling={polling} secondsLeft={qrSecondsLeft} autoRefreshing={resetMut.isPending && autoRefreshingRef.current} ar={ar} t={t} />
                       ) : (
                         <div className="flex flex-col items-center gap-3 py-6">
                           <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -763,19 +797,43 @@ function MetaRow({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function QrView({ qr, polling, t }: { qr: string; polling: boolean; t: { scan: string; scanWaiting: string } }) {
+function QrView({ qr, polling, secondsLeft, autoRefreshing, ar, t }: { qr: string; polling: boolean; secondsLeft: number; autoRefreshing: boolean; ar: boolean; t: { scan: string; scanWaiting: string } }) {
   const isDataUrl = qr.startsWith("data:image");
+  const expired = secondsLeft <= 0;
   return (
     <div className="flex flex-col items-center gap-3">
-      <div className="rounded-2xl border-4 border-primary/20 bg-white p-3 shadow-lg">
+      <div className={`relative rounded-2xl border-4 ${expired ? "border-amber-400/60" : "border-primary/20"} bg-white p-3 shadow-lg`}>
         {isDataUrl ? (
-          <img src={qr} alt="WhatsApp QR Code" className="h-56 w-56" />
+          <img src={qr} alt="WhatsApp QR Code" className={`h-56 w-56 ${expired ? "opacity-40 blur-[1px]" : ""}`} />
         ) : (
-          <QRCodeSVG value={qr} size={224} level="M" includeMargin={false} />
+          <div className={expired ? "opacity-40 blur-[1px]" : ""}>
+            <QRCodeSVG value={qr} size={224} level="M" includeMargin={false} />
+          </div>
+        )}
+        {expired && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-2xl bg-white/70 dark:bg-black/40">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <span className="text-xs font-semibold text-foreground">
+              {ar ? "يتم توليد كود جديد تلقائياً…" : "Generating a new code…"}
+            </span>
+          </div>
         )}
       </div>
       <p className="max-w-md text-center text-xs leading-relaxed text-muted-foreground">{t.scan}</p>
-      {polling && (
+      <div className="inline-flex items-center gap-2 rounded-full bg-muted/60 px-3 py-1 text-xs font-semibold text-foreground">
+        {expired || autoRefreshing ? (
+          <>
+            <Loader2 className="h-3 w-3 animate-spin text-primary" />
+            {ar ? "جارٍ تحديث الكود…" : "Refreshing code…"}
+          </>
+        ) : (
+          <>
+            <span className={`inline-block h-2 w-2 rounded-full ${secondsLeft <= 10 ? "bg-amber-500 animate-pulse" : "bg-emerald-500"}`} />
+            {ar ? `صالح لمدة ${secondsLeft} ثانية` : `Valid for ${secondsLeft}s`}
+          </>
+        )}
+      </div>
+      {polling && !expired && (
         <div className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
           <Loader2 className="h-3 w-3 animate-spin" />
           {t.scanWaiting}
@@ -784,3 +842,4 @@ function QrView({ qr, polling, t }: { qr: string; polling: boolean; t: { scan: s
     </div>
   );
 }
+
