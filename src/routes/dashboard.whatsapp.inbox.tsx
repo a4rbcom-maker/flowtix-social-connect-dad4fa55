@@ -1886,32 +1886,43 @@ function ConversationRow({
   onClick: () => void;
 }) {
   const media = detectMedia(conv.last_message_text, mediaLabels);
+  const hasUnread = (conv.unread_count ?? 0) > 0;
   return (
     <li className="relative">
       <button
         type="button"
         onClick={onClick}
-        className={`flex w-full min-w-0 items-center gap-3 overflow-hidden px-3 py-3 text-start transition ${
+        className={`relative flex w-full min-w-0 items-center gap-3 overflow-hidden px-3 py-3 text-start transition ${
           active
             ? "bg-primary/10"
-            : "hover:bg-muted/50"
+            : hasUnread
+              ? "bg-primary/[0.04] hover:bg-primary/10 dark:bg-primary/10 dark:hover:bg-primary/15"
+              : "hover:bg-muted/50"
         }`}
       >
         {active && (
           <span className="absolute top-2 bottom-2 w-1 rounded-full bg-gradient-to-b from-primary to-[oklch(0.52_0.28_290)] ltr:left-0 rtl:right-0" />
         )}
-        <ContactAvatar name={conv.contact_name ?? conv.remote_jid} src={conv.profile_pic_url ?? null} size="sm" />
+        {!active && hasUnread && (
+          <span className="absolute top-3 bottom-3 w-[3px] rounded-full bg-gradient-to-b from-primary to-[oklch(0.52_0.28_290)] ltr:left-0 rtl:right-0" />
+        )}
+        <div className="relative shrink-0">
+          <ContactAvatar name={conv.contact_name ?? conv.remote_jid} src={conv.profile_pic_url ?? null} size="sm" />
+          {hasUnread && (
+            <span className="absolute -top-0.5 -end-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />
+          )}
+        </div>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center justify-between gap-2">
-            <span className={`min-w-0 flex-1 truncate text-sm ${conv.unread_count > 0 ? "font-bold" : "font-semibold"}`}>
+            <span className={`min-w-0 flex-1 truncate text-sm ${hasUnread ? "font-bold text-foreground" : "font-semibold"}`}>
               {conv.contact_name ?? conv.remote_jid.replace(/@.*/, "")}
             </span>
-            <span className="shrink-0 text-[10px] font-medium tabular-nums text-muted-foreground/90" dir="ltr">
+            <span className={`shrink-0 text-[10px] tabular-nums ${hasUnread ? "font-bold text-primary" : "font-medium text-muted-foreground/90"}`} dir="ltr">
               {formatRelative(conv.last_message_at, isAr)}
             </span>
           </div>
           <div className="mt-0.5 flex items-center gap-1.5">
-            <p className={`block min-w-0 flex-1 truncate text-xs ${conv.unread_count > 0 ? "text-foreground" : "text-muted-foreground"}`}>
+            <p className={`block min-w-0 flex-1 truncate text-xs ${hasUnread ? "font-medium text-foreground" : "text-muted-foreground"}`}>
               {conv.last_direction === "out" && (
                 <span className="font-medium text-primary">{youLabel}: </span>
               )}
@@ -1929,9 +1940,12 @@ function ConversationRow({
                 <Bot className="h-2.5 w-2.5" />
               </span>
             )}
-            {conv.unread_count > 0 && (
-              <span className="shrink-0 rounded-full bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] px-2 py-0.5 text-[10px] font-bold text-primary-foreground shadow-sm">
-                {conv.unread_count}
+            {hasUnread && (
+              <span
+                className="inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] px-1.5 text-[11px] font-bold leading-none text-primary-foreground shadow-md ring-2 ring-background animate-in zoom-in-50 duration-200"
+                aria-label={isAr ? `${conv.unread_count} رسائل غير مقروءة` : `${conv.unread_count} unread messages`}
+              >
+                {conv.unread_count > 99 ? "99+" : conv.unread_count}
               </span>
             )}
           </div>
@@ -1940,6 +1954,7 @@ function ConversationRow({
     </li>
   );
 }
+
 
 function EmptyChat({
   isAr,
