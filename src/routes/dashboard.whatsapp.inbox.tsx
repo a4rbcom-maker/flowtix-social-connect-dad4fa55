@@ -1175,6 +1175,7 @@ function InboxPage() {
           {/* Messages */}
           <div
             ref={scrollRef}
+            onScroll={handleMessagesScroll}
             className="relative min-w-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-6"
             style={{
               backgroundImage:
@@ -1202,7 +1203,36 @@ function InboxPage() {
                 </p>
               </div>
             ) : (
-              renderMessagesWithDays(messages, isAr, t)
+              <>
+                {hasMoreOlder && (
+                  <div className="flex justify-center py-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const el = scrollRef.current;
+                        if (!el || isLoadingOlder) return;
+                        setIsLoadingOlder(true);
+                        preserveScrollRef.current = el.scrollHeight;
+                        setVisibleCount((c) => Math.min(c + PAGE_SIZE, messages.length));
+                      }}
+                      className="rounded-full bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm ring-1 ring-border/60 transition hover:text-foreground disabled:opacity-60"
+                      disabled={isLoadingOlder}
+                    >
+                      {isLoadingOlder
+                        ? (isAr ? "جارٍ التحميل…" : "Loading…")
+                        : (isAr ? "تحميل رسائل أقدم" : "Load older messages")}
+                    </button>
+                  </div>
+                )}
+                {!hasMoreOlder && messages.length > PAGE_SIZE && (
+                  <div className="flex justify-center py-2">
+                    <span className="rounded-full bg-muted/60 px-3 py-1 text-[10px] text-muted-foreground">
+                      {isAr ? "بداية المحادثة" : "Start of conversation"}
+                    </span>
+                  </div>
+                )}
+                {renderMessagesWithDays(visibleMessages, isAr, t)}
+              </>
             )}
             {isTyping && activeJid && (
               <div dir="ltr" className="flex justify-start px-1 pt-1">
