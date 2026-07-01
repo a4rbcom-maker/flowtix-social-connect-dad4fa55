@@ -144,6 +144,7 @@ function InboxPage() {
         resync: "إعادة مزامنة",
         resyncing: "جارٍ المزامنة…",
         resyncDone: "تم تحديث المحادثات والرسائل",
+        resyncQueued: "تم إرسال طلب المزامنة للجسر، وسيتم تحديث الشات تلقائيًا عند وصول الدفعات.",
         soon: "قريباً",
         photo: "صورة",
         voice: "رسالة صوتية",
@@ -187,6 +188,7 @@ function InboxPage() {
         resync: "Resync",
         resyncing: "Syncing…",
         resyncDone: "Conversations and messages refreshed",
+        resyncQueued: "Sync request sent to the bridge; chats will update automatically when batches arrive.",
         soon: "Coming soon",
         photo: "Photo",
         voice: "Voice message",
@@ -388,6 +390,15 @@ function InboxPage() {
       const beforeMessages = res.before?.messages ?? 0;
       const afterMessages = res.after?.messages ?? beforeMessages;
       const imported = Math.max(0, afterMessages - beforeMessages);
+      if (res.ok && res.pending) {
+        toast.success(t.resyncQueued);
+        window.setTimeout(() => {
+          qc.invalidateQueries({ queryKey: ["wa-conversations", user?.id] });
+          qc.invalidateQueries({ queryKey: ["wa-inbox-stats", user?.id] });
+          if (activeJid) qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
+        }, 8000);
+        return;
+      }
       if (res.ok) {
         toast.success(isAr ? `تم جلب ${imported} رسالة قديمة` : `Imported ${imported} old messages`);
         return;
@@ -547,9 +558,7 @@ function InboxPage() {
                   qc.invalidateQueries({ queryKey: ["wa-messages"] }),
                   qc.invalidateQueries({ queryKey: ["wa-connection"] }),
                 ]);
-                historySyncMut.mutate(undefined, {
-                  onSuccess: () => toast.success(t.resyncDone),
-                });
+                historySyncMut.mutate();
               }}
               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 text-xs font-semibold text-primary transition hover:bg-primary/20 disabled:opacity-60"
               aria-label={t.resync}
