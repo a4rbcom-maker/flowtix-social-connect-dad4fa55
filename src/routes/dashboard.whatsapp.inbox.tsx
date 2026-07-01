@@ -279,8 +279,9 @@ function InboxPage() {
     queryKey: ["wa-conversations", user?.id],
     queryFn: () => safeCall<ConversationRow[]>(() => fetchInboxConversations(user!.id), []),
     enabled: !!user?.id,
-    placeholderData: [],
-    refetchInterval: 15000,
+    placeholderData: (prev) => prev,
+    staleTime: 10_000,
+    refetchInterval: 60_000, // safety net; realtime drives updates
     refetchOnWindowFocus: true,
     refetchOnReconnect: "always",
   });
@@ -291,11 +292,35 @@ function InboxPage() {
         ? safeCall<ChatMessageRow[]>(() => fetchInboxMessages(user!.id, activeJid), [])
         : Promise.resolve([]),
     enabled: !!activeJid && !!user?.id,
-    placeholderData: [],
-    refetchInterval: 5000,
-    refetchOnWindowFocus: true,
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+    refetchInterval: 45_000, // safety net; realtime drives updates
+    refetchOnWindowFocus: false,
     refetchOnReconnect: "always",
   });
+  // Debounced invalidators so bursts of realtime events don't refetch repeatedly.
+  const invalidateTimersRef = useRef<{ conv?: ReturnType<typeof setTimeout>; msgs?: ReturnType<typeof setTimeout> }>({});
+  const scheduleInvalidateConversations = useCallback(() => {
+    const t = invalidateTimersRef.current;
+    if (t.conv) return;
+    t.conv = setTimeout(() => {
+      t.conv = undefined;
+      qc.invalidateQueries({ queryKey: ["wa-conversations"], refetchType: "active" });
+    }, 600);
+  }, [qc]);
+  const scheduleInvalidateMessages = useCallback((uid: string, jid: string) => {
+    const t = invalidateTimersRef.current;
+    if (t.msgs) return;
+    t.msgs = setTimeout(() => {
+      t.msgs = undefined;
+      qc.invalidateQueries({ queryKey: ["wa-messages", uid, jid], refetchType: "active" });
+    }, 500);
+  }, [qc]);
+  useEffect(() => () => {
+    const t = invalidateTimersRef.current;
+    if (t.conv) clearTimeout(t.conv);
+    if (t.msgs) clearTimeout(t.msgs);
+  }, []);
   const conversations = useMemo<ConversationRow[]>(
     () => {
       const raw = Array.isArray(convQuery.data) ? convQuery.data : [];
