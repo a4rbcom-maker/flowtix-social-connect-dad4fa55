@@ -560,7 +560,7 @@ export async function handleAiAutoReply(opts: {
 
     const businessInfo = [
       "# معلومات النشاط (المصدر الرسمي الوحيد للرقم)",
-      businessName ? `- الاسم: ${businessName}` : null,
+      businessPhone ? `- رقم الواتساب الرسمي: ${businessPhone}` : null,
       businessPhone
         ? `- رقم الواتساب الرسمي: ${businessPhone} (هذا هو الرقم الوحيد المسموح ذكره)`
         : "- رقم الواتساب الرسمي: غير متوفر — لا تذكر أي رقم إطلاقاً.",
