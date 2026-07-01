@@ -912,10 +912,20 @@ function InboxPage() {
       {/* List */}
       <div className="flex-1 overflow-y-auto">
         {convQuery.isLoading ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {t.loading}
-          </div>
+          <ul className="divide-y divide-border/30" aria-busy="true" aria-label={t.loading}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <li key={i} className="flex items-center gap-3 px-4 py-3">
+                <div className="h-11 w-11 shrink-0 animate-pulse rounded-full bg-muted" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="h-3.5 w-32 animate-pulse rounded bg-muted" />
+                    <div className="h-3 w-10 animate-pulse rounded bg-muted/70" />
+                  </div>
+                  <div className="h-3 w-3/4 animate-pulse rounded bg-muted/70" />
+                </div>
+              </li>
+            ))}
+          </ul>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-12 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
