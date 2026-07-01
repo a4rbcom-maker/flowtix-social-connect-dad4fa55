@@ -595,6 +595,12 @@ function InboxPage() {
         osc.connect(gain).connect(ctx.destination);
         osc.start(now + start);
         osc.stop(now + start + duration + 0.02);
+      };
+      playTone(880, 0, 0.15);
+      playTone(1175, 0.16, 0.18);
+    } catch {
+      /* ignore */
+    }
   };
 
   const testPlayback = async () => {
@@ -624,12 +630,6 @@ function InboxPage() {
       toast.success(t.testSoundOk);
     } catch {
       toast.error(t.testSoundFail);
-    }
-  };
-      playTone(880, 0, 0.15);
-      playTone(1175, 0.16, 0.18);
-    } catch {
-      /* ignore */
     }
   };
 
