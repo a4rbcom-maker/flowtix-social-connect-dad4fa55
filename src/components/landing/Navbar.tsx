@@ -71,11 +71,10 @@ export function Navbar() {
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
             )}
           </button>
-          {!authLoading && (
-            <Link to={user ? "/dashboard" : "/login"} className="btn-luxury-base btn-luxury hidden !px-4 !py-2 text-sm md:inline-flex">
-              {user ? t.nav.dashboardShort : t.nav.startFree}
-            </Link>
-          )}
+          <Link to={user ? "/dashboard" : "/login"} className="btn-luxury-base btn-luxury hidden !px-4 !py-2 text-sm md:inline-flex">
+            {user ? t.nav.dashboardShort : t.nav.startFree}
+          </Link>
+
           <button onClick={() => setOpen(!open)} className="p-2 text-foreground md:hidden" aria-label="Menu">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
           </button>
@@ -96,9 +95,8 @@ export function Navbar() {
             >
               {lang === "ar" ? "English" : "العربية"}
             </button>
-            {!authLoading && (
-              <Link to={user ? "/dashboard" : "/login"} onClick={() => setOpen(false)} className="btn-luxury-base btn-luxury !px-4 !py-2 text-sm">{user ? t.nav.dashboardShort : t.nav.loginShort}</Link>
-            )}
+            <Link to={user ? "/dashboard" : "/login"} onClick={() => setOpen(false)} className="btn-luxury-base btn-luxury !px-4 !py-2 text-sm">{user ? t.nav.dashboardShort : t.nav.loginShort}</Link>
+
           </div>
         </div>
       )}
