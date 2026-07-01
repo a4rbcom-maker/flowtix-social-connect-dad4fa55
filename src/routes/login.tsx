@@ -11,9 +11,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>) => ({
     redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+    reason: typeof search.reason === "string" ? search.reason : undefined,
   }),
   component: LoginPage,
 });
+
 
 function isSafeRedirect(path: string | undefined): path is string {
   if (!path || !path.startsWith("/") || path.startsWith("//")) return false;
