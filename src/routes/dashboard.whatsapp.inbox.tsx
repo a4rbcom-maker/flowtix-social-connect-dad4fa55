@@ -2602,6 +2602,9 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
         >
           {m.is_ai && <Bot className="h-3 w-3" />}
           <span>{formatTime(m.created_at, isAr)}</span>
+          <span className="opacity-70">·</span>
+          <span className="opacity-80">{formatAgo(m.created_at, isAr)}</span>
+
           {isPending ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : isFailed ? (
