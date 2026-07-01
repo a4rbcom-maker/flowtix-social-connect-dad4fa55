@@ -403,7 +403,74 @@ export const waBridge = {
       },
     );
   },
+  sendMedia: (
+    id: string,
+    to: string,
+    mediaUrl: string,
+    opts: {
+      caption?: string;
+      mediaType?: "image" | "video" | "document" | "audio";
+      mimeType?: string;
+      fileName?: string;
+      phone?: string | null;
+    } = {},
+  ) => {
+    const explicitPhone = opts.phone?.replace(/[^0-9]/g, "") || "";
+    const phone = explicitPhone || to.replace(/[^0-9]/g, "");
+    const jid = to.includes("@") ? to : `${phone}@s.whatsapp.net`;
+    const isLid = jid.endsWith("@lid");
+    const publicJid = explicitPhone ? `${explicitPhone}@s.whatsapp.net` : null;
+    const mediaType = opts.mediaType ?? "image";
+    const caption = opts.caption ?? "";
+    // Bot-Xtra/Baileys accept several field shapes for media; supply the common
+    // variants so the bridge picks whichever matches its handler.
+    return bridgeFetch<BridgeSendResponse>(
+      `/api/sessions/${encodeURIComponent(id)}/send`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          to: jid,
+          jid,
+          chatId: jid,
+          ...(phone && !isLid ? { phone } : {}),
+          ...(isLid && publicJid ? { recipientPn: publicJid, participantPn: publicJid } : {}),
+          type: mediaType,
+          mediaType,
+          mediaUrl,
+          url: mediaUrl,
+          [mediaType]: { url: mediaUrl, caption, mimetype: opts.mimeType, fileName: opts.fileName },
+          caption,
+          text: caption,
+          message: caption,
+          ...(opts.mimeType ? { mimetype: opts.mimeType, mimeType: opts.mimeType } : {}),
+          ...(opts.fileName ? { fileName: opts.fileName, filename: opts.fileName } : {}),
+        }),
+      },
+    );
+  },
 };
+
+export async function sendMediaWithReconnect(
+  id: string,
+  to: string,
+  mediaUrl: string,
+  opts: {
+    caption?: string;
+    mediaType?: "image" | "video" | "document" | "audio";
+    mimeType?: string;
+    fileName?: string;
+    recipientPhone?: string | null;
+  },
+): Promise<BridgeSendResponse> {
+  return await waBridge.sendMedia(id, to, mediaUrl, {
+    caption: opts.caption,
+    mediaType: opts.mediaType,
+    mimeType: opts.mimeType,
+    fileName: opts.fileName,
+    phone: opts.recipientPhone,
+  });
+}
+
 
 /**
  * Resilient send: on a persistent 401 / disconnected error (session vanished
