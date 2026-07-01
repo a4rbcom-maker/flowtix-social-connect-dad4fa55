@@ -23,6 +23,7 @@ import {
   pickStr,
   SESSION_STATUS_MAP,
   verifySignature,
+  isTruthy,
   type ParsedMessage,
 } from "./wa-webhook-parsers";
 
@@ -433,7 +434,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         rawJid ||
         (phone ? `${phone}${isGroup ? "@g.us" : "@s.whatsapp.net"}` : null);
       if (!remoteJid) continue;
-      const fromMe = Boolean(parsed?.fromMe) || Boolean(h.fromMe);
+      const fromMe = parsed?.fromMe ?? isTruthy(h.fromMe);
       const msgType = mediaTypeFromRaw(h, (parsed?.msgType || pickStr(h, "type", "msgType", "messageType") || "text").toLowerCase());
       const text = cleanMessageText(
         parsed?.text || pickStr(h, "body", "text", "message", "content", "caption") || pickStr(asObj(h.message), "conversation"),
@@ -617,32 +618,44 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       }
     }
 
-    const { error: insErr } = await supabaseAdmin.from("wa_messages").insert({
-      user_id: userId,
-      session_id: sessionId,
-      direction: m.fromMe ? "out" : "in",
-      remote_jid: m.remoteJid,
-      from_phone: m.fromMe ? null : m.fromPhone,
-      to_phone: m.fromMe ? m.fromPhone : null,
-      msg_type: msgType,
-      text_body: text,
-      media_url: mediaUrl,
-      status: m.status,
-      provider_message_id: m.providerMessageId,
-      wa_timestamp: waTimestamp,
-      raw: {
-        ...entry,
-        normalizedRemoteJid: m.remoteJid,
-        normalizedContactPhone: m.fromPhone,
-        normalizedStatus: m.status,
-        normalizedWaTimestamp: waTimestamp,
-        providerMessageId: m.providerMessageId,
-        ...(isHistorical ? { is_historical: true } : {}),
-        storedMediaUrl: mediaUrl?.startsWith("wa-media:") ? mediaUrl : null,
-      } as never,
-    });
+    const { error: insErr, data: insertedRows } = await supabaseAdmin
+      .from("wa_messages")
+      .upsert(
+        {
+          user_id: userId,
+          session_id: sessionId,
+          direction: m.fromMe ? "out" : "in",
+          remote_jid: m.remoteJid,
+          from_phone: m.fromMe ? null : m.fromPhone,
+          to_phone: m.fromMe ? m.fromPhone : null,
+          msg_type: msgType,
+          text_body: text,
+          media_url: mediaUrl,
+          status: m.status,
+          provider_message_id: m.providerMessageId,
+          wa_timestamp: waTimestamp,
+          raw: {
+            ...entry,
+            normalizedRemoteJid: m.remoteJid,
+            normalizedContactPhone: m.fromPhone,
+            normalizedStatus: m.status,
+            normalizedWaTimestamp: waTimestamp,
+            providerMessageId: m.providerMessageId,
+            ...(isHistorical ? { is_historical: true } : {}),
+            storedMediaUrl: mediaUrl?.startsWith("wa-media:") ? mediaUrl : null,
+          } as never,
+        },
+        {
+          onConflict: "user_id,session_id,provider_message_id",
+          ignoreDuplicates: true,
+        },
+      )
+      .select("id");
     if (insErr) {
       console.error("[wa-webhook] insert wa_messages failed:", insErr.message);
+      continue;
+    }
+    if (m.providerMessageId && (!insertedRows || insertedRows.length === 0)) {
       continue;
     }
     saved++;
