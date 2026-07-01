@@ -330,6 +330,11 @@ function InboxPage() {
     () => (Array.isArray(msgsQuery.data) ? msgsQuery.data : []),
     [msgsQuery.data],
   );
+  const visibleMessages = useMemo<ChatMessageRow[]>(
+    () => (messages.length > visibleCount ? messages.slice(messages.length - visibleCount) : messages),
+    [messages, visibleCount],
+  );
+  const hasMoreOlder = messages.length > visibleMessages.length;
 
   // Track connection so we can show the right empty-state CTA.
   const connQuery = useQuery<{ status: string } | null>({
