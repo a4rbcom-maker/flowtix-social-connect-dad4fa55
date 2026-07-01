@@ -671,7 +671,7 @@ export const deepResetWaSession = createServerFn({ method: "POST" })
         fromStatus: existing.status ?? null,
         toStatus: "disconnected",
         source: "reset",
-        reason: "deep_reset_wipe_and_recreate",
+        reason: "deep_reset_recreate_bridge_session_keep_history",
       });
       await supabase
         .from("wa_sessions")
@@ -695,7 +695,7 @@ export const deepResetWaSession = createServerFn({ method: "POST" })
       fromStatus: null,
       toStatus: "qr",
       source: "reset",
-      reason: `deep_reset_new_session_created (wiped ${report.removedBridgeSessions.length} old)`,
+      reason: `deep_reset_new_session_created (removed ${report.removedBridgeSessions.length} old bridge sessions, kept inbox history)`,
     });
 
     report.ok = true;
