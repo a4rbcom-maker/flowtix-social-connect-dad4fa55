@@ -295,7 +295,19 @@ export const waBridge = {
               historySync: true,
               fullHistory: true,
               fireInitQueries: true,
+              // Extra aliases understood by different Bot-Xtra/Baileys builds.
+              // Unknown flags are ignored by the bridge, while supported ones
+              // increase the chance that WhatsApp emits the initial history set
+              // right after QR pairing instead of new messages only.
+              syncHistoryOnConnect: true,
+              historySyncOnConnect: true,
+              autoSyncHistory: true,
+              downloadHistory: true,
+              emitHistory: true,
               emitOwnEvents: true,
+              shouldSyncHistoryMessage: true,
+              historySyncMode: "full",
+              historyLimit: 10_000,
             }
           : {}),
       }),
@@ -330,12 +342,21 @@ export const waBridge = {
     }
     return { ok: false, attempts, body: null as unknown };
   },
-  fetchMessages: (id: string, jid: string, limit = 50) =>
+  fetchMessages: (id: string, jid: string, limit = 50, opts: { anchorMessageId?: string | null } = {}) =>
     bridgeFetch<unknown>(
       `/api/sessions/${encodeURIComponent(id)}/fetch-messages`,
       {
         method: "POST",
-        body: JSON.stringify({ jid, limit }),
+        body: JSON.stringify({
+          jid,
+          limit,
+          syncFullHistory: true,
+          syncHistory: true,
+          historySync: true,
+          fullHistory: true,
+          historySyncMode: "full",
+          ...(opts.anchorMessageId ? { anchorMessageId: opts.anchorMessageId } : {}),
+        }),
       },
     ),
   getStatus: (id: string) =>

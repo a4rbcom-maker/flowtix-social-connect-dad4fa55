@@ -158,6 +158,7 @@ export interface WaHistorySyncResult {
   ok: boolean;
   sessionId: string | null;
   requested: boolean;
+  pending?: boolean;
   attempts: Array<{ path: string; ok: boolean; status?: number; error?: string; importedMessages?: number; importedChats?: number }>;
   error: string | null;
   before?: { conversations: number; messages: number };
@@ -302,7 +303,7 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       if (jid) knownJids.add(jid);
     };
 
-    const [{ data: chats }, { data: contacts }, { data: customers }, { data: recipients }, { data: logs }] = await Promise.all([
+    const [{ data: chats }, { data: contacts }, { data: customers }, { data: recipients }, { data: logs }, { data: oldMessages }] = await Promise.all([
       supabase
         .from("wa_conversations")
         .select("remote_jid, contact_phone")
@@ -313,11 +314,33 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       supabase.from("customer_database").select("phone, phone_norm").eq("user_id", userId).limit(80),
       supabase.from("bulk_job_recipients").select("phone").eq("user_id", userId).limit(80),
       supabase.from("send_log").select("recipient").eq("user_id", userId).eq("channel", "whatsapp").limit(80),
+      supabase
+        .from("wa_messages")
+        .select("remote_jid, provider_message_id, wa_timestamp")
+        .eq("user_id", userId)
+        .not("provider_message_id", "is", null)
+        .order("wa_timestamp", { ascending: true })
+        .limit(500),
     ]);
+
+    const anchorByJid = new Map<string, string>();
+    const addAnchor = (jid: unknown, providerMessageId: unknown) => {
+      if (typeof jid !== "string" || typeof providerMessageId !== "string" || !jid.trim() || !providerMessageId.trim()) return;
+      const cleanJid = jid.trim();
+      if (!anchorByJid.has(cleanJid)) anchorByJid.set(cleanJid, providerMessageId.trim());
+      const local = cleanJid.split("@")[0] ?? "";
+      if (/^\d{8,}$/.test(local)) {
+        if (cleanJid.endsWith("@lid") && !anchorByJid.has(`${local}@s.whatsapp.net`)) anchorByJid.set(`${local}@s.whatsapp.net`, providerMessageId.trim());
+        if (cleanJid.endsWith("@s.whatsapp.net") && !anchorByJid.has(`${local}@lid`)) anchorByJid.set(`${local}@lid`, providerMessageId.trim());
+      }
+    };
+    for (const msg of oldMessages ?? []) addAnchor(msg.remote_jid, msg.provider_message_id);
 
     for (const chat of chats ?? []) {
       addJid(chat.remote_jid);
       addPhone(chat.contact_phone);
+      const anchor = anchorByJid.get(chat.remote_jid);
+      if (chat.contact_phone && anchor) addAnchor(jidFromPhone(chat.contact_phone), anchor);
     }
     for (const contact of contacts ?? []) addPhone(contact.phone);
     for (const customer of customers ?? []) addPhone(customer.phone_norm || customer.phone);
@@ -328,7 +351,12 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
     for (const jid of Array.from(knownJids).slice(0, 120)) {
       if (!jid || jid === "@s.whatsapp.net" || jid.endsWith("@broadcast")) continue;
       try {
-        const fetchBody = await waBridge.fetchMessages(row.session_id, jid, 100);
+        const fetchBody = await waBridge.fetchMessages(row.session_id, jid, 100, {
+          // Bot-Xtra v1.8.4 accepts this and asks Baileys for messages older
+          // than a message we already have in that chat. Without an anchor,
+          // WhatsApp often returns only future/live messages.
+          anchorMessageId: anchorByJid.get(jid) ?? null,
+        });
         const imported = await replayBridgeHistoryPayload(row.session_id, fetchBody).catch((err) => ({
           messages: 0,
           chats: 0,
@@ -354,12 +382,14 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
     }
 
     let after = await countStored();
-    for (let i = 0; i < 4 && after.messages === before.messages && after.conversations === before.conversations; i++) {
-      await wait(1500);
+    for (let i = 0; i < 6 && after.messages === before.messages && after.conversations === before.conversations; i++) {
+      await wait(2000);
       after = await countStored();
     }
 
     const actuallyImported = after.messages > before.messages || after.conversations > before.conversations;
+    const requestAccepted = result.ok || fetchedKnownChats > 0;
+    const pending = requestAccepted && !actuallyImported;
     await logWaSessionEvent(supabase, {
       userId,
       sessionId: row.session_id,
@@ -368,19 +398,20 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       source: "history_sync",
       reason: actuallyImported
         ? "history_sync_imported_messages"
-        : result.ok
-          ? `history_sync_requested_no_new_messages${directImports.error ? ` (${directImports.error})` : ""}`
+        : requestAccepted
+          ? `history_sync_requested_waiting_for_bridge_batches${directImports.error ? ` (${directImports.error})` : ""}`
           : "history_sync_endpoint_unavailable",
     });
     return {
-      ok: actuallyImported,
+      ok: actuallyImported || requestAccepted,
       sessionId: row.session_id,
       requested: true,
+      pending,
       attempts: result.attempts,
       error: actuallyImported
         ? null
-        : result.ok
-          ? directImports.error || "no_new_messages_after_sync"
+        : requestAccepted
+          ? null
           : "bridge_history_sync_endpoint_unavailable",
       before,
       after,
