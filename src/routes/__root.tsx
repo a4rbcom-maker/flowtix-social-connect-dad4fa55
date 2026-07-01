@@ -150,6 +150,7 @@ function RootComponent() {
         <I18nProvider>
           <AuthProvider>
             <NotificationsProvider>
+              <UserPreferencesSync />
               <Outlet />
               <GlobalAnnouncements />
               <Toaster
