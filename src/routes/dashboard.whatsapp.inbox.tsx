@@ -977,7 +977,7 @@ function InboxPage() {
             <span className={`shrink-0 font-semibold ${connQuery.data?.status === "connected" ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground"}`}>
               {connQuery.data?.status === "connected" ? t.connected : t.disconnected}
             </span>
-            <span className="text-border">·</span>
+            <span className="text-muted-foreground/50" aria-hidden>·</span>
             <span className="truncate">
               {t.savedStats(conversations.length, inboxStatsQuery.data?.messages ?? 0)}
             </span>
