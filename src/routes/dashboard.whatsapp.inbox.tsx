@@ -2330,17 +2330,7 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
         )}
         {m.media_url && m.msg_type === "audio" && (
           <div dir="ltr" className="mb-1.5 flex flex-col gap-1">
-            <audio
-              controls
-              preload="metadata"
-              className="w-full min-w-[240px]"
-              controlsList="nodownload noplaybackrate"
-            >
-              <source src={m.media_url} type="audio/ogg; codecs=opus" />
-              <source src={m.media_url} type="audio/ogg" />
-              <source src={m.media_url} type="audio/mpeg" />
-              <source src={m.media_url} />
-            </audio>
+            <SmartAudio src={m.media_url} className="w-full min-w-[240px]" />
             <a
               href={m.media_url}
               target="_blank"
