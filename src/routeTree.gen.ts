@@ -58,6 +58,7 @@ import { Route as DashboardFacebookAutoreplyRouteImport } from './routes/dashboa
 import { Route as ApiPublicWaWebhookRouteImport } from './routes/api/public/wa-webhook'
 import { Route as ApiPublicWaClientRouteImport } from './routes/api/public/wa-client'
 import { Route as ApiPublicWaBridgeSessionsRouteImport } from './routes/api/public/wa-bridge-sessions'
+import { Route as ApiPublicWaBridgeSessionStatusRouteImport } from './routes/api/public/wa-bridge-session-status'
 import { Route as ApiPublicWaBridgeHealthRouteImport } from './routes/api/public/wa-bridge-health'
 import { Route as ApiPublicHealthRouteImport } from './routes/api/public/health'
 import { Route as ApiPublicFbPeopleIngestRouteImport } from './routes/api/public/fb-people-ingest'
@@ -328,6 +329,12 @@ const ApiPublicWaBridgeSessionsRoute =
     path: '/api/public/wa-bridge-sessions',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicWaBridgeSessionStatusRoute =
+  ApiPublicWaBridgeSessionStatusRouteImport.update({
+    id: '/api/public/wa-bridge-session-status',
+    path: '/api/public/wa-bridge-session-status',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicWaBridgeHealthRoute = ApiPublicWaBridgeHealthRouteImport.update({
   id: '/api/public/wa-bridge-health',
   path: '/api/public/wa-bridge-health',
@@ -427,6 +434,7 @@ export interface FileRoutesByFullPath {
   '/api/public/fb-people-ingest': typeof ApiPublicFbPeopleIngestRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/api/public/wa-bridge-health': typeof ApiPublicWaBridgeHealthRoute
+  '/api/public/wa-bridge-session-status': typeof ApiPublicWaBridgeSessionStatusRoute
   '/api/public/wa-bridge-sessions': typeof ApiPublicWaBridgeSessionsRoute
   '/api/public/wa-client': typeof ApiPublicWaClientRoute
   '/api/public/wa-webhook': typeof ApiPublicWaWebhookRoute
@@ -490,6 +498,7 @@ export interface FileRoutesByTo {
   '/api/public/fb-people-ingest': typeof ApiPublicFbPeopleIngestRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/api/public/wa-bridge-health': typeof ApiPublicWaBridgeHealthRoute
+  '/api/public/wa-bridge-session-status': typeof ApiPublicWaBridgeSessionStatusRoute
   '/api/public/wa-bridge-sessions': typeof ApiPublicWaBridgeSessionsRoute
   '/api/public/wa-client': typeof ApiPublicWaClientRoute
   '/api/public/wa-webhook': typeof ApiPublicWaWebhookRoute
@@ -553,6 +562,7 @@ export interface FileRoutesById {
   '/api/public/fb-people-ingest': typeof ApiPublicFbPeopleIngestRoute
   '/api/public/health': typeof ApiPublicHealthRoute
   '/api/public/wa-bridge-health': typeof ApiPublicWaBridgeHealthRoute
+  '/api/public/wa-bridge-session-status': typeof ApiPublicWaBridgeSessionStatusRoute
   '/api/public/wa-bridge-sessions': typeof ApiPublicWaBridgeSessionsRoute
   '/api/public/wa-client': typeof ApiPublicWaClientRoute
   '/api/public/wa-webhook': typeof ApiPublicWaWebhookRoute
@@ -618,6 +628,7 @@ export interface FileRouteTypes {
     | '/api/public/fb-people-ingest'
     | '/api/public/health'
     | '/api/public/wa-bridge-health'
+    | '/api/public/wa-bridge-session-status'
     | '/api/public/wa-bridge-sessions'
     | '/api/public/wa-client'
     | '/api/public/wa-webhook'
@@ -681,6 +692,7 @@ export interface FileRouteTypes {
     | '/api/public/fb-people-ingest'
     | '/api/public/health'
     | '/api/public/wa-bridge-health'
+    | '/api/public/wa-bridge-session-status'
     | '/api/public/wa-bridge-sessions'
     | '/api/public/wa-client'
     | '/api/public/wa-webhook'
@@ -743,6 +755,7 @@ export interface FileRouteTypes {
     | '/api/public/fb-people-ingest'
     | '/api/public/health'
     | '/api/public/wa-bridge-health'
+    | '/api/public/wa-bridge-session-status'
     | '/api/public/wa-bridge-sessions'
     | '/api/public/wa-client'
     | '/api/public/wa-webhook'
@@ -797,6 +810,7 @@ export interface RootRouteChildren {
   ApiPublicFbPeopleIngestRoute: typeof ApiPublicFbPeopleIngestRoute
   ApiPublicHealthRoute: typeof ApiPublicHealthRoute
   ApiPublicWaBridgeHealthRoute: typeof ApiPublicWaBridgeHealthRoute
+  ApiPublicWaBridgeSessionStatusRoute: typeof ApiPublicWaBridgeSessionStatusRoute
   ApiPublicWaBridgeSessionsRoute: typeof ApiPublicWaBridgeSessionsRoute
   ApiPublicWaClientRoute: typeof ApiPublicWaClientRoute
   ApiPublicWaWebhookRoute: typeof ApiPublicWaWebhookRoute
@@ -1152,6 +1166,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicWaBridgeSessionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/wa-bridge-session-status': {
+      id: '/api/public/wa-bridge-session-status'
+      path: '/api/public/wa-bridge-session-status'
+      fullPath: '/api/public/wa-bridge-session-status'
+      preLoaderRoute: typeof ApiPublicWaBridgeSessionStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/wa-bridge-health': {
       id: '/api/public/wa-bridge-health'
       path: '/api/public/wa-bridge-health'
@@ -1375,6 +1396,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicFbPeopleIngestRoute: ApiPublicFbPeopleIngestRoute,
   ApiPublicHealthRoute: ApiPublicHealthRoute,
   ApiPublicWaBridgeHealthRoute: ApiPublicWaBridgeHealthRoute,
+  ApiPublicWaBridgeSessionStatusRoute: ApiPublicWaBridgeSessionStatusRoute,
   ApiPublicWaBridgeSessionsRoute: ApiPublicWaBridgeSessionsRoute,
   ApiPublicWaClientRoute: ApiPublicWaClientRoute,
   ApiPublicWaWebhookRoute: ApiPublicWaWebhookRoute,
@@ -1387,3 +1409,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
