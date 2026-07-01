@@ -77,6 +77,7 @@ function WhatsAppPage() {
   const qc = useQueryClient();
   const connectFn = useServerFn(connectWaSession);
   const resetFn = useServerFn(resetWaReceiver);
+  const deepResetFn = useServerFn(deepResetWaSession);
   const statusFn = useServerFn(getWaConnectionState);
   const eventsFn = useServerFn(getWaSessionEvents);
   const disconnectFn = useServerFn(disconnectWaSession);
