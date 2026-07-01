@@ -30,14 +30,92 @@ import {
 
 const WA_MEDIA_BUCKET = "wa-media";
 const HISTORY_EVENTS = new Set(["history_messages", "messaging-history.set", "messaging_history.set", "history.sync", "history_sync"]);
+const CONTACT_EVENTS = new Set([
+  "contacts",
+  "contacts.set",
+  "contacts.update",
+  "contacts.upsert",
+  "chats",
+  "chats.set",
+  "chats.update",
+  "chats.upsert",
+]);
 const HISTORICAL_MESSAGE_AGE_MS = 10 * 60 * 1000;
 
-function pickContactArray(payload: Record<string, unknown>, data: Record<string, unknown>): Record<string, unknown>[] {
-  const candidates = [data.contacts, payload.contacts, data.items, payload.items, data.chats, payload.chats];
-  for (const value of candidates) {
-    if (Array.isArray(value)) return value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"));
+function recordsFromUnknown(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"));
+  }
+  if (value && typeof value === "object") {
+    const rec = value as Record<string, unknown>;
+    const values = Object.values(rec);
+    const records = values.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"));
+    // Baileys sometimes sends maps keyed by jid. Treat object values as rows only
+    // when most values are objects; otherwise this is one row, not a collection.
+    if (records.length && records.length >= Math.max(1, Math.floor(values.length * 0.6))) return records;
   }
   return [];
+}
+
+function collectRecordArraysDeep(root: unknown, keys: string[], maxDepth = 5): Record<string, unknown>[] {
+  const found: Record<string, unknown>[] = [];
+  const seenNodes = new Set<unknown>();
+  const wanted = new Set(keys);
+  const visit = (node: unknown, depth: number) => {
+    if (!node || depth > maxDepth || seenNodes.has(node)) return;
+    if (typeof node !== "object") return;
+    seenNodes.add(node);
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item, depth + 1);
+      return;
+    }
+    const rec = node as Record<string, unknown>;
+    for (const key of wanted) {
+      const rows = recordsFromUnknown(rec[key]);
+      if (rows.length) found.push(...rows);
+    }
+    for (const key of [
+      "data",
+      "payload",
+      "result",
+      "response",
+      "body",
+      "history",
+      "sync",
+      "messagingHistory",
+      "messaging_history",
+      "chats",
+      "contacts",
+      "items",
+    ]) {
+      if (rec[key] && rec[key] !== node) visit(rec[key], depth + 1);
+    }
+  };
+  visit(root, 0);
+  const seen = new Set<string>();
+  return found.filter((item) => {
+    const id = messageIdFrom(item) || pickStr(item, "jid", "id", "rawJid", "remoteJid", "chatId") || JSON.stringify(item).slice(0, 300);
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
+function pickContactArray(payload: Record<string, unknown>, data: Record<string, unknown>): Record<string, unknown>[] {
+  const candidates = [data.contacts, payload.contacts, data.items, payload.items, data.chats, payload.chats, payload.data];
+  for (const value of candidates) {
+    const rows = recordsFromUnknown(value);
+    if (rows.length) return rows;
+  }
+  return collectRecordArraysDeep({ payload, data }, ["contacts", "chats", "items"]);
+}
+
+function pickHistoryMessages(payload: Record<string, unknown>, data: Record<string, unknown>): Record<string, unknown>[] {
+  const direct = [data.messages, payload.messages, data.items, payload.items, payload.data]
+    .flatMap(recordsFromUnknown)
+    .filter((item) => Object.keys(item).length > 0);
+  if (direct.length) return direct;
+  return collectRecordArraysDeep({ payload, data }, ["messages", "items"]);
 }
 
 function bestContactName(contact: Record<string, unknown>): string | null {
@@ -65,9 +143,47 @@ function contactLooksLikeChat(contact: Record<string, unknown>): boolean {
       contact.last_message ||
       contact.lastMessageTimestamp ||
       contact.last_msg_timestamp ||
+      contact.conversationTimestamp ||
+      contact.lastMsgTimestamp ||
+      contact.messages ||
       contact.unreadCount ||
       contact.unread_count,
   );
+}
+
+async function importHistoryChats(params: {
+  userId: string;
+  sessionId: string;
+  chats: Record<string, unknown>[];
+}): Promise<number> {
+  let upserted = 0;
+  for (const c of params.chats) {
+    const rawJid = pickStr(c, "rawJid", "jid", "id", "remoteJid", "remote_jid", "chatId");
+    const phone = digits(pickStr(c, "phoneNumber", "phone", "number", "user", "pn") ?? rawJid);
+    const remoteJid =
+      rawJid && (rawJid.includes("@") ? rawJid : `${rawJid}@s.whatsapp.net`) ||
+      (phone ? `${phone}@s.whatsapp.net` : null);
+    if (!remoteJid || remoteJid === "status@broadcast" || remoteJid.endsWith("@broadcast")) continue;
+    const isGroup = Boolean(c.isGroup) || String(remoteJid).endsWith("@g.us");
+    const name = pickStr(c, "name", "subject", "pushName", "notifyName", "verifiedName", "displayName") ?? null;
+    const lastTs = timestampFromContact(c);
+    const lastText = pickStr(c, "lastMessage", "last_message", "preview", "message", "body", "text") ?? null;
+    const cid = await upsertConversationFromMessage({
+      userId: params.userId,
+      sessionId: params.sessionId,
+      remoteJid,
+      // Direct-chat names from a history chat catalogue are not always reliable;
+      // group subjects are safe, DMs are later enriched by inbound/contact rows.
+      contactName: isGroup ? name : null,
+      contactPhone: isGroup ? null : phone || null,
+      text: lastText,
+      direction: "in",
+      messageAt: lastTs,
+      historical: true,
+    });
+    if (cid) upserted++;
+  }
+  return upserted;
 }
 
 async function updateConversationContacts(params: {
@@ -89,9 +205,8 @@ async function updateConversationContacts(params: {
     const name = bestContactName(c);
     const { data: rows } = await supabaseAdmin
       .from("wa_conversations")
-      .select("id, contact_name, contact_phone, remote_jid")
+      .select("id, session_id, contact_name, contact_phone, remote_jid")
       .eq("user_id", params.userId)
-      .eq("session_id", params.sessionId)
       .or(`remote_jid.eq.${remoteJid}${phone ? `,contact_phone.eq.${phone}` : ""}`)
       .limit(5);
 
@@ -118,7 +233,8 @@ async function updateConversationContacts(params: {
         currentName === row.remote_jid ||
         currentName === row.contact_phone ||
         currentName.replace(/[^0-9]/g, "") === (row.contact_phone || "");
-      const patch: { contact_phone?: string; contact_name?: string } = {};
+      const patch: { contact_phone?: string; contact_name?: string; session_id?: string } = {};
+      if (row.session_id !== params.sessionId) patch.session_id = params.sessionId;
       if (phone && !row.contact_phone) patch.contact_phone = phone;
       if (name && currentLooksLikePlaceholder) patch.contact_name = name;
       if (!Object.keys(patch).length) continue;
@@ -401,15 +517,18 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   const event = String(payload.event || payload.type || "").toLowerCase();
   const data = asObj(payload.data);
 
-  if (event === "contacts" || event === "contacts.update" || event === "contacts.upsert") {
+  if (CONTACT_EVENTS.has(event)) {
     const contacts = pickContactArray(payload, data);
+    const chatUpserted = event.includes("chat")
+      ? await importHistoryChats({ userId, sessionId, chats: contacts })
+      : 0;
     const updated = await updateConversationContacts({
       userId,
       sessionId,
       businessPhone: digits(sess.phone_number),
       contacts,
     });
-    return new Response(JSON.stringify({ ok: true, contacts: contacts.length, updated }), {
+    return new Response(JSON.stringify({ ok: true, contacts: contacts.length, updated, chats: chatUpserted }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
@@ -493,41 +612,8 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
 
   // ── HISTORY SYNC: chats catalogue ──
   if (event === "history_chats") {
-    const chats = Array.isArray(data.chats) ? (data.chats as Record<string, unknown>[]) : [];
-    let upserted = 0;
-    for (const c of chats) {
-      const rawJid = pickStr(c, "rawJid", "jid", "id");
-      const phone = digits(pickStr(c, "jid") ?? rawJid);
-      const remoteJid =
-        rawJid && (rawJid.includes("@") ? rawJid : `${rawJid}@s.whatsapp.net`) ||
-        (phone ? `${phone}@s.whatsapp.net` : null);
-      if (!remoteJid) continue;
-      const isGroup = Boolean(c.isGroup) || String(remoteJid).endsWith("@g.us");
-      const name = pickStr(c, "name", "subject") ?? null;
-      const lastTsRaw = c.lastMessageTimestamp;
-      const lastTs =
-        typeof lastTsRaw === "number"
-          ? new Date(lastTsRaw * 1000).toISOString()
-          : typeof lastTsRaw === "string" && lastTsRaw
-            ? new Date(Number(lastTsRaw) * 1000).toISOString()
-            : undefined;
-      const lastText = pickStr(c, "lastMessage") ?? null;
-      const cid = await upsertConversationFromMessage({
-        userId,
-        sessionId,
-        remoteJid,
-        // Direct-chat "name" from the chat list is often the business's own
-        // WhatsApp display name (Baileys echoes it back). Only trust group
-        // subjects; leave DM names to real inbound message events.
-        contactName: isGroup ? name : null,
-        contactPhone: isGroup ? null : phone || null,
-        text: lastText,
-        direction: "in",
-        messageAt: lastTs,
-        historical: true,
-      });
-      if (cid) upserted++;
-    }
+    const chats = pickContactArray(payload, data);
+    const upserted = await importHistoryChats({ userId, sessionId, chats });
     return new Response(JSON.stringify({ ok: true, historyChats: upserted }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -536,7 +622,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
 
   // ── HISTORY SYNC: backfilled messages ──
   if (HISTORY_EVENTS.has(event)) {
-    const msgs = Array.isArray(data.messages) ? (data.messages as Record<string, unknown>[]) : [];
+    const msgs = pickHistoryMessages(payload, data);
     let saved = 0;
     let dup = 0;
     for (const h of msgs) {
