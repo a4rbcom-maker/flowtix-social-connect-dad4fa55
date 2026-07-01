@@ -1163,13 +1163,14 @@ function ContactInfoPanel({
         <div className="grid w-full grid-cols-2 gap-2">
           <button
             type="button"
-            onClick={handleSaveCustomer}
+            onClick={openSaveDialog}
             disabled={saving}
             className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-border bg-background/60 px-2 py-2 text-[11px] font-semibold transition hover:border-primary/40 hover:bg-primary/5 disabled:opacity-60"
           >
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> : <UserPlus className="h-3.5 w-3.5 text-primary" />}
             {isAr ? "حفظ" : "Save"}
           </button>
+
           <button
             type="button"
             onClick={() => toast.info(isAr ? "قريباً" : "Soon")}
