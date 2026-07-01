@@ -23,6 +23,7 @@ import {
   pickStr,
   SESSION_STATUS_MAP,
   verifySignature,
+  isTruthy,
   type ParsedMessage,
 } from "./wa-webhook-parsers";
 
@@ -433,7 +434,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         rawJid ||
         (phone ? `${phone}${isGroup ? "@g.us" : "@s.whatsapp.net"}` : null);
       if (!remoteJid) continue;
-      const fromMe = Boolean(parsed?.fromMe) || Boolean(h.fromMe);
+      const fromMe = parsed?.fromMe ?? isTruthy(h.fromMe);
       const msgType = mediaTypeFromRaw(h, (parsed?.msgType || pickStr(h, "type", "msgType", "messageType") || "text").toLowerCase());
       const text = cleanMessageText(
         parsed?.text || pickStr(h, "body", "text", "message", "content", "caption") || pickStr(asObj(h.message), "conversation"),
