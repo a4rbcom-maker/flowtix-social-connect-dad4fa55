@@ -65,11 +65,26 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const isWhatsappInbox = location.pathname === "/dashboard/whatsapp/inbox";
-  // Default: closed on mobile, open on desktop (avoid sidebar covering screen on first mobile load).
+  // Persisted preference — separate keys for desktop vs mobile so the
+  // saved state on a laptop doesn't force the sidebar open on a phone.
+  const SIDEBAR_PREF_DESKTOP = "flowtix.sidebarOpen.desktop";
+  const SIDEBAR_PREF_MOBILE = "flowtix.sidebarOpen.mobile";
+  const readSidebarPref = (desktop: boolean): boolean | null => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(desktop ? SIDEBAR_PREF_DESKTOP : SIDEBAR_PREF_MOBILE);
+      if (raw === "1") return true;
+      if (raw === "0") return false;
+    } catch {}
+    return null;
+  };
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === "undefined") return true;
+    const desktop = window.matchMedia("(min-width: 768px)").matches;
+    const saved = readSidebarPref(desktop);
+    if (saved !== null) return saved;
     if (isWhatsappInbox) return false;
-    return window.matchMedia("(min-width: 768px)").matches;
+    return desktop;
   });
   const [isDesktop, setIsDesktop] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -104,20 +119,40 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     }
   }, [isAdmin, isAdminLoading, location.pathname, navigate]);
 
-  // Track viewport size only — do not auto-collapse the sidebar.
+  // Track viewport size, and re-apply the saved preference for the new form
+  // factor when the user crosses the md breakpoint (resize / device rotation).
   useEffect(() => {
     if (typeof window === "undefined") return;
     const mql = window.matchMedia("(min-width: 768px)");
-    const apply = () => setIsDesktop(mql.matches);
+    const apply = () => {
+      setIsDesktop(mql.matches);
+      const saved = readSidebarPref(mql.matches);
+      if (saved !== null) setSidebarOpen(saved);
+    };
     apply();
     mql.addEventListener("change", apply);
     return () => mql.removeEventListener("change", apply);
   }, []);
 
-  // Also auto-close on mobile when the route actually changes.
+  // Persist every toggle so the choice survives refresh and route changes.
   useEffect(() => {
-    if (isWhatsappInbox || !isDesktop) setSidebarOpen(false);
-  }, [location.pathname, isDesktop, isWhatsappInbox]);
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        isDesktop ? SIDEBAR_PREF_DESKTOP : SIDEBAR_PREF_MOBILE,
+        sidebarOpen ? "1" : "0",
+      );
+    } catch {}
+  }, [sidebarOpen, isDesktop]);
+
+  // Auto-close on mobile route changes ONLY when no explicit preference exists,
+  // so a user who chose "open on mobile" isn't overridden on every navigation.
+  useEffect(() => {
+    if (isDesktop) return;
+    if (readSidebarPref(false) !== null) return;
+    setSidebarOpen(false);
+  }, [location.pathname, isDesktop]);
+
 
   // Lock body scroll while the mobile sidebar overlay is open.
   useEffect(() => {
