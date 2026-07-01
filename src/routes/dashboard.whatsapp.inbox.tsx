@@ -148,6 +148,9 @@ function InboxPage() {
         video: "فيديو",
         today: "اليوم",
         yesterday: "أمس",
+        savedStats: (chats: number, messages: number) => `${chats} محادثات ظاهرة · ${messages} رسالة محفوظة`,
+        connected: "متصل",
+        disconnected: "غير متصل",
       }
     : {
         title: "Conversations",
@@ -185,6 +188,9 @@ function InboxPage() {
         video: "Video",
         today: "Today",
         yesterday: "Yesterday",
+        savedStats: (chats: number, messages: number) => `${chats} visible chats · ${messages} saved messages`,
+        connected: "Connected",
+        disconnected: "Not connected",
       };
 
   // Data
@@ -259,6 +265,13 @@ function InboxPage() {
     queryFn: () => safeCall(() => fetchInboxConnectionState(user!.id), null),
     enabled: !!user?.id,
     refetchInterval: 30000,
+  });
+
+  const inboxStatsQuery = useQuery<{ messages: number }>({
+    queryKey: ["wa-inbox-stats", user?.id],
+    queryFn: () => safeCall(() => fetchInboxStats(user!.id), { messages: 0 }),
+    enabled: !!user?.id,
+    refetchInterval: 15000,
   });
 
   const quickRepliesQuery = useQuery<QuickReply[]>({
@@ -604,6 +617,14 @@ function InboxPage() {
               </button>
             );
           })}
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-[11px] font-semibold text-muted-foreground">
+          <span className="truncate">
+            {t.savedStats(conversations.length, inboxStatsQuery.data?.messages ?? 0)}
+          </span>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 ${connQuery.data?.status === "connected" ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+            {connQuery.data?.status === "connected" ? t.connected : t.disconnected}
+          </span>
         </div>
       </div>
 
