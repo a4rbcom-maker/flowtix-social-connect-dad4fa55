@@ -29,6 +29,7 @@ import {
   disconnectWaSession,
   pingWaBridgeUser,
   resetWaReceiver,
+  deepResetWaSession,
   type WaConnectionState,
   type WaBridgeHealth,
   type WaSessionEventRow,
