@@ -170,6 +170,73 @@ function CustomersPage() {
     loadRows();
   };
 
+  const saveSingle = async () => {
+    if (!mName.trim() && !mPhone.trim() && !mEmail.trim()) {
+      toast.error(isAr ? "أدخل الاسم أو الموبايل على الأقل" : "Enter name or phone");
+      return;
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { toast.error("Auth required"); return; }
+    setSavingManual(true);
+    try {
+      const row = buildRow({
+        user_id: user.id,
+        full_name: mName || null,
+        phone: mPhone || null,
+        email: mEmail || null,
+        city: mCity || null,
+        notes: mNotes || null,
+      });
+      const { error } = await supabase.from("customer_database").insert([row]);
+      if (error) throw error;
+      toast.success(isAr ? "تم حفظ العميل" : "Customer saved");
+      setMName(""); setMPhone(""); setMEmail(""); setMCity(""); setMNotes("");
+      setManualOpen(false);
+      loadRows();
+    } catch (err) { toast.error(String((err as Error).message ?? err)); }
+    finally { setSavingManual(false); }
+  };
+
+  const savePaste = async () => {
+    const text = pasteText.trim();
+    if (!text) { toast.error(isAr ? "الصق أرقاماً أولاً" : "Paste something first"); return; }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { toast.error("Auth required"); return; }
+    // Each line: "phone" OR "phone,name" OR "name,phone" OR just "name" — auto-detects digits
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const prepared = lines.map((line) => {
+      const parts = line.split(/[,;\t|]+/).map((p) => p.trim()).filter(Boolean);
+      let phone: string | null = null;
+      let name: string | null = null;
+      for (const p of parts) {
+        const digits = p.replace(/[^\d+]/g, "");
+        if (!phone && digits.length >= 7) phone = digits;
+        else if (!name) name = p;
+      }
+      if (parts.length === 1 && !phone) name = parts[0];
+      return buildRow({ user_id: user.id, full_name: name, phone });
+    }).filter((r) => r.full_name || r.phone);
+    if (!prepared.length) { toast.error(isAr ? "لم يتم اكتشاف بيانات صحيحة" : "No valid rows"); return; }
+    setSavingManual(true);
+    try {
+      const CHUNK = 500;
+      let done = 0;
+      for (let i = 0; i < prepared.length; i += CHUNK) {
+        const slice = prepared.slice(i, i + CHUNK);
+        const { error } = await supabase.from("customer_database").insert(slice);
+        if (error) throw error;
+        done += slice.length;
+      }
+      toast.success(isAr ? `تم حفظ ${done} عميل` : `Saved ${done} customers`);
+      setPasteText("");
+      setManualOpen(false);
+      loadRows();
+    } catch (err) { toast.error(String((err as Error).message ?? err)); }
+    finally { setSavingManual(false); }
+  };
+
+
+
   return (
     <DashboardLayout title={isAr ? "قاعدة عملائي" : "My customers"}>
       <div className="space-y-6">
