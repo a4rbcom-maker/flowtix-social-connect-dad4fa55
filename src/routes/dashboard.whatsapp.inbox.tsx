@@ -91,6 +91,25 @@ function InboxPage() {
   const sendFn = useServerFn(sendChatMessage);
   const markReadFn = useServerFn(markConversationRead);
   const requestHistorySyncFn = useServerFn(requestWaHistorySync);
+  const deepResetFn = useServerFn(deepResetWaSession);
+  const [rePairing, setRePairing] = useState(false);
+  const handleRePairForFullHistory = async () => {
+    const confirmMsg = isAr
+      ? "لجلب الأرشيف الكامل من واتساب يجب إعادة الاقتران وقراءة رمز QR جديد. لن يتم حذف الرسائل الحالية. المتابعة؟"
+      : "To fetch the full archive from WhatsApp you must re-pair and scan a fresh QR code. Existing messages are kept. Continue?";
+    if (!window.confirm(confirmMsg)) return;
+    try {
+      setRePairing(true);
+      const r = await deepResetFn();
+      if (!r.ok) throw new Error(r.error || "reset failed");
+      toast.success(isAr ? "تم إنشاء جلسة جديدة — امسح رمز QR" : "New session created — scan the QR");
+      window.location.assign("/dashboard/whatsapp");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "reset failed");
+    } finally {
+      setRePairing(false);
+    }
+  };
 
 
 
