@@ -511,6 +511,33 @@ function InboxPage() {
             );
           })}
         </div>
+
+        {/* Time range */}
+        <div className="mt-2 flex max-w-full items-center gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {([
+            { k: "all" as TimeRangeKey, label: isAr ? "كل الوقت" : "All time" },
+            { k: "1d" as TimeRangeKey, label: isAr ? "24 ساعة" : "24h" },
+            { k: "7d" as TimeRangeKey, label: isAr ? "7 أيام" : "7 days" },
+            { k: "30d" as TimeRangeKey, label: isAr ? "30 يوم" : "30 days" },
+            { k: "90d" as TimeRangeKey, label: isAr ? "90 يوم" : "90 days" },
+          ]).map((f) => {
+            const active = timeRange === f.k;
+            return (
+              <button
+                key={f.k}
+                type="button"
+                onClick={() => setTimeRange(f.k)}
+                className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition ${
+                  active
+                    ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+                    : "bg-muted/40 text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                {f.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* List */}
