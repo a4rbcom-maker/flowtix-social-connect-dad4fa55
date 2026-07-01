@@ -1374,7 +1374,13 @@ function InboxPage() {
               </div>
             )}
             <div className="flex min-w-0 items-end gap-1.5 rounded-2xl border border-input bg-background px-2 py-1.5 shadow-sm transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 sm:gap-2 sm:px-2.5">
-              <Popover>
+              <Popover
+                onOpenChange={(open) => {
+                  if (open) {
+                    toast.info(isAr ? "لوحة الإيموجي مفتوحة" : "Emoji picker opened", { duration: 1500 });
+                  }
+                }}
+              >
                 <PopoverTrigger asChild>
                   <button
                     type="button"
