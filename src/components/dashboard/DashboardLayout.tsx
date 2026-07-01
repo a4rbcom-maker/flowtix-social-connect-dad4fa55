@@ -64,9 +64,11 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
+  const isWhatsappInbox = location.pathname === "/dashboard/whatsapp/inbox";
   // Default: closed on mobile, open on desktop (avoid sidebar covering screen on first mobile load).
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === "undefined") return true;
+    if (isWhatsappInbox) return false;
     return window.matchMedia("(min-width: 768px)").matches;
   });
   const [isDesktop, setIsDesktop] = useState(() => {
@@ -114,8 +116,8 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
 
   // Also auto-close on mobile when the route actually changes.
   useEffect(() => {
-    if (!isDesktop) setSidebarOpen(false);
-  }, [location.pathname, isDesktop]);
+    if (isWhatsappInbox || !isDesktop) setSidebarOpen(false);
+  }, [location.pathname, isDesktop, isWhatsappInbox]);
 
   // Lock body scroll while the mobile sidebar overlay is open.
   useEffect(() => {
