@@ -1917,8 +1917,13 @@ function ConversationRow({
             <span className={`min-w-0 flex-1 truncate text-sm ${hasUnread ? "font-bold text-foreground" : "font-semibold"}`}>
               {conv.contact_name ?? conv.remote_jid.replace(/@.*/, "")}
             </span>
-            <span className={`shrink-0 text-[10px] tabular-nums ${hasUnread ? "font-bold text-primary" : "font-medium text-muted-foreground/90"}`} dir="ltr">
-              {formatRelative(conv.last_message_at, isAr)}
+            <span className={`flex shrink-0 flex-col items-end leading-tight ${hasUnread ? "text-primary" : "text-muted-foreground/90"}`} dir="ltr">
+              <span className={`text-[10px] tabular-nums ${hasUnread ? "font-bold" : "font-medium"}`}>
+                {formatRelative(conv.last_message_at, isAr)}
+              </span>
+              <span className="mt-0.5 text-[9px] font-medium tabular-nums opacity-75">
+                {formatAgo(conv.last_message_at, isAr)}
+              </span>
             </span>
           </div>
           <div className="mt-0.5 flex items-center gap-1.5">
