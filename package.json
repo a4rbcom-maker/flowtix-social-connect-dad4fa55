@@ -60,6 +60,7 @@
     "input-otp": "^1.4.2",
     "lucide-react": "^0.575.0",
     "nitro": "3.0.260603-beta",
+    "ogg-opus-decoder": "^1.7.3",
     "qrcode": "^1.5.4",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.0",
