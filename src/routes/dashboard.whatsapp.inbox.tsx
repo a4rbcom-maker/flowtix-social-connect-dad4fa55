@@ -415,7 +415,7 @@ function InboxPage() {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [qc, activeJid, user]);
+  }, [qc, activeJid, user, triggerTyping]);
 
   // Catch-up on missed messages after tab was hidden / offline / long idle.
   // Any gap > 30s triggers an immediate refetch of conversations + active
