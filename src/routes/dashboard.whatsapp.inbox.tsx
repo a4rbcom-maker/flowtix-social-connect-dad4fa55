@@ -405,14 +405,34 @@ function InboxPage() {
 
   const historySyncMut = useMutation({
     mutationFn: () => requestHistorySyncFn(),
+    onMutate: () => {
+      const baseMsg = inboxStatsQuery.data?.messages ?? 0;
+      const baseConv = conversations.length;
+      const now = Date.now();
+      setSyncState({
+        status: "running",
+        baselineMsg: baseMsg,
+        baselineConv: baseConv,
+        importedMsg: 0,
+        importedConv: 0,
+        startedAt: now,
+        deadlineAt: now + 90000,
+      });
+    },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["wa-conversations", user?.id] });
+      qc.invalidateQueries({ queryKey: ["wa-inbox-stats", user?.id] });
       if (activeJid) qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
       const beforeMessages = res.before?.messages ?? 0;
       const afterMessages = res.after?.messages ?? beforeMessages;
       const imported = Math.max(0, afterMessages - beforeMessages);
       if (res.ok && res.pending) {
         toast.success(t.resyncQueued);
+        setSyncState((s) => ({
+          ...s,
+          status: "pending",
+          deadlineAt: Date.now() + 90000,
+        }));
         window.setTimeout(() => {
           qc.invalidateQueries({ queryKey: ["wa-conversations", user?.id] });
           qc.invalidateQueries({ queryKey: ["wa-inbox-stats", user?.id] });
@@ -422,16 +442,55 @@ function InboxPage() {
       }
       if (res.ok) {
         toast.success(isAr ? `تم جلب ${imported} رسالة قديمة` : `Imported ${imported} old messages`);
+        setSyncState((s) => ({
+          ...s,
+          status: "done",
+          importedMsg: Math.max(s.importedMsg, imported),
+        }));
+        window.setTimeout(() => setSyncState((s) => (s.status === "done" ? { ...s, status: "idle" } : s)), 6000);
         return;
       }
-      toast.error(
-        isAr
-          ? "الجسر لم يرسل أي رسائل قديمة بعد طلب المزامنة؛ الرسائل الجديدة فقط هي التي تصل حالياً."
-          : "The bridge did not deliver any old messages after sync; only new messages are arriving now.",
-      );
+      const errMsg = isAr
+        ? "الجسر لم يرسل أي رسائل قديمة بعد طلب المزامنة؛ الرسائل الجديدة فقط هي التي تصل حالياً."
+        : "The bridge did not deliver any old messages after sync; only new messages are arriving now.";
+      toast.error(errMsg);
+      setSyncState((s) => ({ ...s, status: "error", message: errMsg }));
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => {
+      toast.error(err.message);
+      setSyncState((s) => ({ ...s, status: "error", message: err.message }));
+    },
   });
+
+  // Poll stats while a sync is running/pending and update imported counts.
+  useEffect(() => {
+    if (syncState.status !== "running" && syncState.status !== "pending") return;
+    const id = window.setInterval(() => {
+      qc.invalidateQueries({ queryKey: ["wa-inbox-stats", user?.id] });
+      qc.invalidateQueries({ queryKey: ["wa-conversations", user?.id] });
+      setSyncTick((n) => n + 1);
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [syncState.status, qc, user?.id]);
+
+  // Update imported delta from live stats and finish when deadline reached.
+  useEffect(() => {
+    if (syncState.status !== "running" && syncState.status !== "pending") return;
+    const curMsg = inboxStatsQuery.data?.messages ?? 0;
+    const curConv = conversations.length;
+    const importedMsg = Math.max(0, curMsg - syncState.baselineMsg);
+    const importedConv = Math.max(0, curConv - syncState.baselineConv);
+    if (importedMsg !== syncState.importedMsg || importedConv !== syncState.importedConv) {
+      setSyncState((s) => ({ ...s, importedMsg, importedConv }));
+    }
+    if (Date.now() >= syncState.deadlineAt) {
+      setSyncState((s) => ({ ...s, status: importedMsg > 0 ? "done" : "error", message: importedMsg > 0 ? undefined : (isAr ? "انتهت مهلة الانتظار دون وصول رسائل جديدة." : "Timed out waiting for old messages.") }));
+      if (importedMsg > 0) {
+        window.setTimeout(() => setSyncState((s) => (s.status === "done" ? { ...s, status: "idle" } : s)), 6000);
+      }
+    }
+  }, [syncTick, inboxStatsQuery.data?.messages, conversations.length, syncState.status, syncState.baselineMsg, syncState.baselineConv, syncState.deadlineAt, syncState.importedMsg, syncState.importedConv, isAr]);
+
 
   const aiToggleMut = useMutation({
     mutationFn: async (vars: { id: string; enabled: boolean }) => {
