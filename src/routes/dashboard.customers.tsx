@@ -256,12 +256,83 @@ function CustomersPage() {
             <Badge variant="outline" className="gap-1.5 border-primary/30 px-3 py-1.5 text-primary">
               <Users className="h-3.5 w-3.5" /> {count.toLocaleString()} {isAr ? "عميل" : "customers"}
             </Badge>
+            <Dialog open={manualOpen} onOpenChange={setManualOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" className="gap-2">
+                  <UserPlus className="h-4 w-4" />
+                  {isAr ? "إضافة عميل" : "Add customer"}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>{isAr ? "إضافة عملاء يدوياً" : "Add customers manually"}</DialogTitle>
+                </DialogHeader>
+                <Tabs value={manualTab} onValueChange={(v) => setManualTab(v as "single" | "paste")}>
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="single" className="gap-2"><UserPlus className="h-4 w-4" />{isAr ? "عميل واحد" : "Single"}</TabsTrigger>
+                    <TabsTrigger value="paste" className="gap-2"><ClipboardPaste className="h-4 w-4" />{isAr ? "لصق مجمّع" : "Bulk paste"}</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="single" className="space-y-3 pt-4">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">{labels.full_name}</label>
+                      <Input value={mName} onChange={(e) => setMName(e.target.value)} placeholder={isAr ? "الاسم الكامل" : "Full name"} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">{labels.phone}</label>
+                        <Input value={mPhone} onChange={(e) => setMPhone(e.target.value)} placeholder="01xxxxxxxxx" inputMode="tel" dir="ltr" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">{labels.city}</label>
+                        <Input value={mCity} onChange={(e) => setMCity(e.target.value)} placeholder={isAr ? "المدينة" : "City"} />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">{labels.email}</label>
+                      <Input value={mEmail} onChange={(e) => setMEmail(e.target.value)} placeholder="email@example.com" dir="ltr" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">{labels.notes}</label>
+                      <Textarea value={mNotes} onChange={(e) => setMNotes(e.target.value)} rows={2} placeholder={isAr ? "ملاحظات اختيارية" : "Optional notes"} />
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="paste" className="space-y-3 pt-4">
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      {isAr
+                        ? "الصق قائمة أرقام — كل سطر رقم واحد. يمكنك أيضاً كتابة الرقم متبوعاً بفاصلة ثم الاسم مثل: 01012345678,أحمد"
+                        : "Paste one number per line. You can also add a name after a comma: 01012345678,Ahmed"}
+                    </p>
+                    <Textarea
+                      value={pasteText}
+                      onChange={(e) => setPasteText(e.target.value)}
+                      rows={10}
+                      dir="ltr"
+                      className="font-mono text-sm"
+                      placeholder={`01012345678\n01198765432,محمد\n01234567890,سارة`}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {isAr ? `${pasteText.split(/\r?\n/).filter((l) => l.trim()).length} سطر` : `${pasteText.split(/\r?\n/).filter((l) => l.trim()).length} lines`}
+                    </p>
+                  </TabsContent>
+                </Tabs>
+                <DialogFooter>
+                  <Button variant="ghost" onClick={() => setManualOpen(false)} disabled={savingManual}>
+                    {isAr ? "إلغاء" : "Cancel"}
+                  </Button>
+                  <Button onClick={manualTab === "single" ? saveSingle : savePaste} disabled={savingManual} className="gap-2">
+                    {savingManual && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {isAr ? "حفظ" : "Save"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             {count > 0 && (
               <Button variant="ghost" size="sm" onClick={wipeAll} className="text-destructive hover:text-destructive">
                 <Trash2 className="h-4 w-4" />
               </Button>
             )}
           </div>
+
         </div>
 
         <Card className="space-y-4 p-5">
