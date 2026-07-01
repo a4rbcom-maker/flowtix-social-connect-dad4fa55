@@ -350,6 +350,11 @@ export const waBridge = {
         body: JSON.stringify({
           jid,
           limit,
+          syncFullHistory: true,
+          syncHistory: true,
+          historySync: true,
+          fullHistory: true,
+          historySyncMode: "full",
           ...(opts.anchorMessageId ? { anchorMessageId: opts.anchorMessageId } : {}),
         }),
       },
