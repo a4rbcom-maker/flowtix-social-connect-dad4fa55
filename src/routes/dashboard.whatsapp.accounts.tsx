@@ -293,6 +293,33 @@ function WhatsAppPage() {
     onError: (err: Error) => toast.error(t.errorTitle, { description: err.message }),
   });
 
+  const deepResetMut = useMutation({
+    mutationFn: () => deepResetFn(),
+    onSuccess: (report) => {
+      if (!report.ok) {
+        toast.error(t.errorTitle, { description: report.error ?? "Deep reset failed" });
+        return;
+      }
+      const wiped = report.removedBridgeSessions.length;
+      const failed = report.deleteErrors.length;
+      toast.success(t.deepResetDone, {
+        description: ar
+          ? `مسحنا ${wiped} جلسة قديمة${failed ? ` (${failed} فشلت)` : ""}. الجلسة الجديدة: ${report.createdSessionId?.slice(-8) ?? "?"}`
+          : `Wiped ${wiped} stale sessions${failed ? ` (${failed} failed)` : ""}. New session id: …${report.createdSessionId?.slice(-8) ?? "?"}`,
+      });
+      qc.invalidateQueries({ queryKey: ["wa-state"] });
+      qc.invalidateQueries({ queryKey: ["wa-session-events"] });
+      setPolling(true);
+      setShowQr(true);
+    },
+    onError: (err: Error) => toast.error(t.errorTitle, { description: err.message }),
+  });
+
+  const handleDeepReset = () => {
+    if (!window.confirm(t.deepResetConfirm)) return;
+    deepResetMut.mutate();
+  };
+
   const disconnectMut = useMutation({
     mutationFn: () => useCloudBridge ? callCloud<{ ok: boolean }>("disconnect") : disconnectFn(),
     onSuccess: () => {
