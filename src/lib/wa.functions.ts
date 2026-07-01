@@ -177,6 +177,31 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       return { ok: false, sessionId: row.session_id, requested: false, attempts: [], error: "session_not_connected" };
     }
     const result = await waBridge.requestHistorySync(row.session_id);
+    if (!result.ok) {
+      const { data: chats } = await supabase
+        .from("wa_conversations")
+        .select("remote_jid")
+        .eq("user_id", userId)
+        .eq("session_id", row.session_id)
+        .order("updated_at", { ascending: false })
+        .limit(40);
+      for (const chat of chats ?? []) {
+        const jid = typeof chat.remote_jid === "string" ? chat.remote_jid : "";
+        if (!jid || jid === "status@broadcast") continue;
+        try {
+          await waBridge.fetchMessages(row.session_id, jid, 50);
+          result.attempts.push({ path: `/api/sessions/${row.session_id}/fetch-messages`, ok: true });
+          result.ok = true;
+        } catch (err) {
+          result.attempts.push({
+            path: `/api/sessions/${row.session_id}/fetch-messages`,
+            ok: false,
+            status: err instanceof BridgeError ? err.status : undefined,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    }
     await logWaSessionEvent(supabase, {
       userId,
       sessionId: row.session_id,
