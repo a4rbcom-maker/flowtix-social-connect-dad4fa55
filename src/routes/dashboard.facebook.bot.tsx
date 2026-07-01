@@ -1499,9 +1499,9 @@ function BotAccountsPage() {
                                           : Clock;
                                   const cls =
                                     ev.state === "ok"
-                                      ? "text-emerald-600"
+                                      ? "text-emerald-600 dark:text-emerald-300"
                                       : ev.state === "fail"
-                                        ? "text-red-600"
+                                        ? "text-red-600 dark:text-red-300"
                                         : ev.state === "running"
                                           ? "text-primary"
                                           : "text-muted-foreground";
@@ -1697,7 +1697,7 @@ function BotAccountsPage() {
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-green-600" />
+              <ShieldCheck className="h-5 w-5 text-green-600 dark:text-green-300" />
               {t.groupsTitle} — {groupsResult?.accountName}
             </DialogTitle>
           </DialogHeader>

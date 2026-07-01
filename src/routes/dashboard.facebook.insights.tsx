@@ -417,8 +417,8 @@ function InsightsPage() {
                 </ResponsiveContainer>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <MiniStat icon={<UserPlus className="h-4 w-4 text-green-600" />} label={t.fanAdds} value={sumField(insights.daily, "fanAdds")} />
-                <MiniStat icon={<UserMinus className="h-4 w-4 text-red-600" />} label={t.fanRemoves} value={sumField(insights.daily, "fanRemoves")} />
+                <MiniStat icon={<UserPlus className="h-4 w-4 text-green-600 dark:text-green-300" />} label={t.fanAdds} value={sumField(insights.daily, "fanAdds")} />
+                <MiniStat icon={<UserMinus className="h-4 w-4 text-red-600 dark:text-red-300" />} label={t.fanRemoves} value={sumField(insights.daily, "fanRemoves")} />
                 <MiniStat icon={<Eye className="h-4 w-4 text-primary" />} label={t.reach} value={sumField(insights.daily, "reach")} />
                 <MiniStat icon={<TrendingUp className="h-4 w-4 text-primary" />} label={t.views} value={sumField(insights.daily, "views")} />
               </div>

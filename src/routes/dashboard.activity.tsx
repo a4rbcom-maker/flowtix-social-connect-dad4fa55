@@ -195,10 +195,10 @@ function ActivityPage() {
   ];
   const statusOptions: { v: StatusFilter; label: string; color: string }[] = [
     { v: "all", label: t.statusAll, color: "" },
-    { v: "success", label: t.success, color: "text-green-600" },
+    { v: "success", label: t.success, color: "text-green-600 dark:text-green-300" },
     { v: "failed", label: t.failed, color: "text-destructive" },
-    { v: "processing", label: t.processing, color: "text-blue-600" },
-    { v: "pending", label: t.pending, color: "text-amber-600" },
+    { v: "processing", label: t.processing, color: "text-blue-600 dark:text-blue-300" },
+    { v: "pending", label: t.pending, color: "text-amber-600 dark:text-amber-300" },
   ];
 
   return (
