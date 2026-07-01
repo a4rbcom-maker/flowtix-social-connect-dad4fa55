@@ -603,14 +603,56 @@ function InboxPage() {
   }, [draft]);
 
   const sendMut = useMutation({
-    mutationFn: (text: string) => sendFn({ data: { remoteJid: activeJid!, text } }),
+    mutationFn: async ({ text, file }: { text: string; file: File | null }) => {
+      let mediaUrl: string | undefined;
+      let mediaType: "image" | "video" | "document" | "audio" | undefined;
+      let mimeType: string | undefined;
+      let fileName: string | undefined;
+      if (file) {
+        setUploadingAttachment(true);
+        try {
+          const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+          const path = `${user!.id}/outgoing/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+          const { error: upErr } = await supabase.storage
+            .from("wa-media")
+            .upload(path, file, { upsert: false, contentType: file.type });
+          if (upErr) throw new Error(upErr.message);
+          const { data: signed, error: sErr } = await supabase.storage
+            .from("wa-media")
+            .createSignedUrl(path, 60 * 60 * 24 * 7);
+          if (sErr || !signed) throw new Error(sErr?.message || "Failed to sign media URL");
+          mediaUrl = signed.signedUrl;
+          mediaType = file.type.startsWith("video/")
+            ? "video"
+            : file.type.startsWith("audio/")
+              ? "audio"
+              : file.type.startsWith("image/")
+                ? "image"
+                : "document";
+          mimeType = file.type || undefined;
+          fileName = file.name;
+        } finally {
+          setUploadingAttachment(false);
+        }
+      }
+      return sendFn({
+        data: {
+          remoteJid: activeJid!,
+          text,
+          ...(mediaUrl ? { mediaUrl, mediaType, mimeType, fileName } : {}),
+        },
+      });
+    },
     onSuccess: () => {
       setDraft("");
+      if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+      setAttachment(null);
       qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
       qc.invalidateQueries({ queryKey: ["wa-conversations"] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
+
 
   const historySyncMut = useMutation({
     mutationFn: () => requestHistorySyncFn(),
