@@ -1809,7 +1809,7 @@ function ConversationRow({
             <span className={`min-w-0 flex-1 truncate text-sm ${conv.unread_count > 0 ? "font-bold" : "font-semibold"}`}>
               {conv.contact_name ?? conv.remote_jid.replace(/@.*/, "")}
             </span>
-            <span className="shrink-0 text-[10px] text-muted-foreground" dir="ltr">
+            <span className="shrink-0 text-[10px] font-medium tabular-nums text-muted-foreground/90" dir="ltr">
               {formatRelative(conv.last_message_at, isAr)}
             </span>
           </div>
@@ -2353,8 +2353,8 @@ function renderMessagesWithDays(
     if (dk !== lastDay) {
       lastDay = dk;
       out.push(
-        <div key={`day-${dk}-${m.id}`} className="my-3 flex justify-center">
-          <span className="rounded-full border border-border/50 bg-card/80 px-3 py-1 text-[10px] font-semibold text-muted-foreground shadow-sm backdrop-blur">
+        <div key={`day-${dk}-${m.id}`} className="my-4 flex justify-center">
+          <span className="rounded-full border border-border/50 bg-card/90 px-3 py-1 text-[10px] font-semibold tracking-wide text-muted-foreground shadow-sm backdrop-blur">
             {dayLabel(m.created_at, isAr, t)}
           </span>
         </div>,
@@ -2372,17 +2372,19 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
   const isFailed = isOut && m.status === "failed";
   const isStalePending = isPending && m.is_stale_pending;
   return (
-    <div dir="ltr" className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
+    <div dir="ltr" className={`flex ${isOut ? "justify-end" : "justify-start"} px-1`}>
       <div
         dir={isAr ? "rtl" : "ltr"}
-        className={`group min-w-0 max-w-[86%] overflow-hidden px-3.5 py-2 text-sm shadow-sm sm:max-w-[72%] ${
+        className={`group min-w-0 max-w-[86%] overflow-hidden rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-[0_1px_2px_rgba(0,0,0,0.04),0_1px_1px_rgba(0,0,0,0.03)] ring-1 sm:max-w-[70%] ${
+          isOut ? "rounded-br-sm rtl:rounded-br-2xl rtl:rounded-bl-sm" : "rounded-bl-sm rtl:rounded-bl-2xl rtl:rounded-br-sm"
+        } ${
           isFailed
-            ? "rounded-2xl rounded-br-md border border-destructive/35 bg-destructive/10 text-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
+            ? "bg-destructive/10 text-foreground ring-destructive/30"
             : isPending
-              ? "rounded-2xl rounded-br-md border border-primary/25 bg-primary/10 text-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
+              ? "bg-primary/10 text-foreground ring-primary/25"
               : isOut
-                ? "rounded-2xl rounded-br-md bg-gradient-to-br from-primary to-[oklch(0.55_0.28_295)] text-primary-foreground rtl:rounded-br-2xl rtl:rounded-bl-md"
-                : "rounded-2xl rounded-bl-md border border-border/60 bg-card text-foreground rtl:rounded-bl-2xl rtl:rounded-br-md"
+                ? "bg-gradient-to-br from-primary to-[oklch(0.55_0.28_295)] text-primary-foreground ring-primary/20"
+                : "bg-card text-foreground ring-border/60"
         }`}
       >
         {showSender && (
@@ -2462,8 +2464,8 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
           </p>
         )}
         <div
-          className={`mt-1 flex items-center gap-1 text-[10px] ${
-            isOut && !isPending && !isFailed ? "justify-end text-primary-foreground/80" : "justify-end text-muted-foreground"
+          className={`mt-1.5 flex items-center gap-1 text-[10px] font-medium tabular-nums ${
+            isOut && !isPending && !isFailed ? "justify-end text-primary-foreground/85" : "justify-end text-muted-foreground/90"
           }`}
           dir="ltr"
         >
