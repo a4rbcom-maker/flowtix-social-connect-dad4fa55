@@ -2464,8 +2464,8 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
           </p>
         )}
         <div
-          className={`mt-1 flex items-center gap-1 text-[10px] ${
-            isOut && !isPending && !isFailed ? "justify-end text-primary-foreground/80" : "justify-end text-muted-foreground"
+          className={`mt-1.5 flex items-center gap-1 text-[10px] font-medium tabular-nums ${
+            isOut && !isPending && !isFailed ? "justify-end text-primary-foreground/85" : "justify-end text-muted-foreground/90"
           }`}
           dir="ltr"
         >
