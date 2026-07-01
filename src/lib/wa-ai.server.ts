@@ -464,6 +464,41 @@ export async function handleAiAutoReply(opts: {
       }
     }
 
+    // Human takeover: if the business owner (or a teammate) replied manually
+    // to this conversation in the last 30 minutes, pause the AI so it does not
+    // interrupt the human conversation. The AI resumes automatically after 30
+    // minutes of no human replies. AI-sent messages are marked with raw.ai=true
+    // and are ignored by this check.
+    const HUMAN_TAKEOVER_MINUTES = 30;
+    {
+      const since = new Date(Date.now() - HUMAN_TAKEOVER_MINUTES * 60_000).toISOString();
+      const { data: humanOut } = await supabaseAdmin
+        .from("wa_messages")
+        .select("id, created_at, raw")
+        .eq("user_id", userId)
+        .eq("session_id", sessionId)
+        .eq("remote_jid", remoteJid)
+        .eq("direction", "out")
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(10);
+      const lastHuman = (humanOut ?? []).find((m) => {
+        const raw = (m as { raw?: { ai?: unknown } }).raw;
+        return !(raw && raw.ai === true);
+      });
+      if (lastHuman) {
+        await logAiSkip({
+          userId,
+          conversationId,
+          remoteJid,
+          inboundText,
+          model: settings.ai_model,
+          reason: `human_takeover: تم إيقاف الوكيل مؤقتاً لأن رداً بشرياً أُرسل خلال آخر ${HUMAN_TAKEOVER_MINUTES} دقيقة. سيعود الوكيل تلقائياً بعد ${HUMAN_TAKEOVER_MINUTES} دقيقة من الصمت.`,
+        });
+        return;
+      }
+    }
+
     // Blacklist
     // Critical delivery fix: modern WhatsApp/Baileys often identifies the real
     // chat by @lid while senderPn only contains the public phone number. Sending
