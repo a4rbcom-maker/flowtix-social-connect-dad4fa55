@@ -1251,10 +1251,11 @@ function ContactInfoPanel({
 
           <button
             type="button"
-            onClick={() => toast.info(isAr ? "قريباً" : "Soon")}
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-border bg-background/60 px-2 py-2 text-[11px] font-semibold transition hover:border-primary/40 hover:bg-primary/5"
+            onClick={handleSummarize}
+            disabled={summarizing}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-border bg-background/60 px-2 py-2 text-[11px] font-semibold transition hover:border-primary/40 hover:bg-primary/5 disabled:opacity-60"
           >
-            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            {summarizing ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> : <Sparkles className="h-3.5 w-3.5 text-primary" />}
             {isAr ? "تلخيص" : "Summary"}
           </button>
 
