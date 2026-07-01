@@ -58,7 +58,7 @@ import {
   type ConversationRow,
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
-import { requestWaHistorySync } from "@/lib/wa.functions";
+import { requestWaHistorySync, deepResetWaSession } from "@/lib/wa.functions";
 import {
   createQuickReply,
   updateQuickReply,
