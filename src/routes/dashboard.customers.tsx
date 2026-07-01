@@ -497,10 +497,16 @@ function CustomersPage() {
                       <td className="px-3 py-2">{r.city ?? r.governorate ?? "—"}</td>
                       <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{r.fb_id ?? "—"}</td>
                       <td className="px-3 py-2 text-end">
-                        <Button size="icon" variant="ghost" onClick={() => deleteOne(r.id!)}>
-                          <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                        </Button>
+                        <div className="inline-flex items-center gap-1">
+                          <Button size="icon" variant="ghost" onClick={() => openEdit(r)} title={isAr ? "تعديل" : "Edit"}>
+                            <Pencil className="h-4 w-4 text-muted-foreground hover:text-primary" />
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => deleteOne(r.id!)} title={isAr ? "حذف" : "Delete"}>
+                            <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                          </Button>
+                        </div>
                       </td>
+
                     </tr>
                   ))}
                 </tbody>
