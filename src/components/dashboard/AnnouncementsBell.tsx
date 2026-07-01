@@ -7,6 +7,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Megaphone, Info, AlertTriangle, CheckCircle2, Bell, Wrench, Gift, ShieldAlert } from "lucide-react";
 import { getMyNotifications, markAllNotificationsRead, markNotificationRead } from "@/lib/notifications.functions";
 import { useI18n } from "@/lib/i18n";
+import { useAuth } from "@/lib/auth";
+
 
 const TYPE_ICONS: Record<string, { Icon: typeof Info; color: string }> = {
   info: { Icon: Info, color: "text-sky-500 bg-sky-500/15" },
