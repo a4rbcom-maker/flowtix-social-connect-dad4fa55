@@ -16,7 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 export function UserPreferencesSync() {
   const { user } = useAuth();
   const { lang, setLang } = useI18n();
-  const { theme, toggleTheme, mounted } = useTheme();
+  const { theme, setTheme, mounted } = useTheme();
 
   // Track whether we've already hydrated from the server for the current user
   // so the write-back effect doesn't fire during the initial pull.
@@ -49,7 +49,7 @@ export function UserPreferencesSync() {
         (data.theme === "light" || data.theme === "dark") &&
         data.theme !== theme
       ) {
-        toggleTheme();
+        setTheme(data.theme);
       }
       hydratedForUser.current = user.id;
     })();
