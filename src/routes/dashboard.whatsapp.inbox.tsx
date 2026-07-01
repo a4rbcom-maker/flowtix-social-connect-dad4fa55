@@ -643,12 +643,18 @@ function InboxPage() {
         },
       });
     },
-    onSuccess: () => {
+    onSuccess: (_res, vars) => {
+      const hadFile = !!vars.file;
       setDraft("");
       if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
       setAttachment(null);
       qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
       qc.invalidateQueries({ queryKey: ["wa-conversations"] });
+      toast.success(
+        hadFile
+          ? isAr ? "تم إرسال الصورة بنجاح" : "Image sent successfully"
+          : isAr ? "تم إرسال الرسالة بنجاح" : "Message sent successfully",
+      );
     },
     onError: (err: Error) => toast.error(err.message),
   });
