@@ -1,7 +1,7 @@
 import * as React from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   MessageCircle,
@@ -114,6 +114,13 @@ function InboxPage() {
 
 
   const [activeJid, setActiveJid] = useState<string | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const triggerTyping = useCallback((ms = 1400) => {
+    setIsTyping(true);
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => setIsTyping(false), ms);
+  }, []);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [timeRange, setTimeRange] = useState<TimeRangeKey>(() => {
@@ -388,6 +395,18 @@ function InboxPage() {
             !row.raw?.is_historical
           ) {
             playBeep();
+            // Briefly show a "typing…" hint in the open chat while the message row hydrates
+            if (activeJid && row.remote_jid === activeJid) {
+              triggerTyping(900);
+            }
+          }
+          // Conversation-level bump for the active chat also nudges typing
+          if (
+            payload.table === "wa_conversations" &&
+            (payload.new as { remote_jid?: string; last_direction?: string })?.remote_jid === activeJid &&
+            (payload.new as { last_direction?: string })?.last_direction === "in"
+          ) {
+            triggerTyping(1200);
           }
         },
       )
@@ -396,7 +415,7 @@ function InboxPage() {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [qc, activeJid, user]);
+  }, [qc, activeJid, user, triggerTyping]);
 
   // Catch-up on missed messages after tab was hidden / offline / long idle.
   // Any gap > 30s triggers an immediate refetch of conversations + active
@@ -467,7 +486,14 @@ function InboxPage() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages.length, activeJid]);
+  }, [messages.length, activeJid, isTyping]);
+
+  // Reset typing indicator when switching conversations
+  useEffect(() => {
+    setIsTyping(false);
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+  }, [activeJid]);
+
 
   // Mark active conversation read
   useEffect(() => {
@@ -1124,7 +1150,26 @@ function InboxPage() {
             ) : (
               renderMessagesWithDays(messages, isAr, t)
             )}
+            {isTyping && activeJid && (
+              <div dir="ltr" className="flex justify-start px-1 pt-1">
+                <div
+                  dir={isAr ? "rtl" : "ltr"}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-card px-3.5 py-2.5 text-sm shadow-[0_1px_2px_rgba(0,0,0,0.06),0_1px_1px_rgba(0,0,0,0.04)] ring-1 ring-border/60"
+                  aria-live="polite"
+                >
+                  <span className="text-[11px] font-medium text-muted-foreground">
+                    {isAr ? "يكتب" : "typing"}
+                  </span>
+                  <span className="flex items-end gap-1">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70 [animation-delay:-0.3s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70 [animation-delay:-0.15s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70" />
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
+
 
           {/* Composer */}
           <form
