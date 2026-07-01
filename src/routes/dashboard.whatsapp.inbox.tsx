@@ -445,9 +445,6 @@ function InboxPage() {
 
   // Auto-scroll
   useEffect(() => {
-
-  // Auto-scroll
-  useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
