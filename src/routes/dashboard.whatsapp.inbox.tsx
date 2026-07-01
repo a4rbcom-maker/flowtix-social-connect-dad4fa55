@@ -64,6 +64,11 @@ import {
 
 import { MediaLightbox, openMedia } from "@/components/whatsapp/MediaLightbox";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+
 
 export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
   ssr: false,
@@ -1078,6 +1083,20 @@ function ContactInfoPanel({
   const name = conv.contact_name ?? jid.replace(/@.*/, "");
   const phone = conv.contact_phone ? `+${conv.contact_phone}` : jid;
 
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [saveEmail, setSaveEmail] = useState("");
+  const [saveCity, setSaveCity] = useState("");
+  const [saveNotes, setSaveNotes] = useState("");
+
+  function openSaveDialog() {
+    setSaveName(conv.contact_name ?? "");
+    setSaveEmail("");
+    setSaveCity("");
+    setSaveNotes("");
+    setSaveOpen(true);
+  }
+
   async function handleSaveCustomer() {
     if (saving) return;
     setSaving(true);
@@ -1090,9 +1109,11 @@ function ContactInfoPanel({
       const rawPhone = conv.contact_phone ?? jid.replace(/@.*/, "");
       const row = buildRow({
         user_id: user.id,
-        full_name: conv.contact_name ?? null,
+        full_name: saveName.trim() || null,
         phone: rawPhone,
-        notes: isAr ? "تم الحفظ من المحادثات" : "Saved from inbox",
+        email: saveEmail.trim() || null,
+        city: saveCity.trim() || null,
+        notes: saveNotes.trim() || (isAr ? "تم الحفظ من المحادثات" : "Saved from inbox"),
       });
       if (row.phone_norm) {
         const { data: existing } = await supabase
@@ -1102,13 +1123,15 @@ function ContactInfoPanel({
           .eq("phone_norm", row.phone_norm)
           .maybeSingle();
         if (existing) {
-          toast.info(isAr ? "العميل محفوظ بالفعل" : "Already saved");
+          toast.info(isAr ? "العميل محفوظ بالفعل — يمكنك تعديله من قاعدة العملاء" : "Already saved — edit from customers");
+          setSaveOpen(false);
           return;
         }
       }
       const { error } = await supabase.from("customer_database").insert(row);
       if (error) throw error;
       toast.success(isAr ? "تم حفظ العميل في قاعدة بياناتك" : "Customer saved");
+      setSaveOpen(false);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error((isAr ? "فشل الحفظ: " : "Save failed: ") + msg);
@@ -1116,6 +1139,7 @@ function ContactInfoPanel({
       setSaving(false);
     }
   }
+
 
   return (
     <aside dir={isAr ? "rtl" : "ltr"} className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card/40 backdrop-blur-sm">
@@ -1139,13 +1163,14 @@ function ContactInfoPanel({
         <div className="grid w-full grid-cols-2 gap-2">
           <button
             type="button"
-            onClick={handleSaveCustomer}
+            onClick={openSaveDialog}
             disabled={saving}
             className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-border bg-background/60 px-2 py-2 text-[11px] font-semibold transition hover:border-primary/40 hover:bg-primary/5 disabled:opacity-60"
           >
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> : <UserPlus className="h-3.5 w-3.5 text-primary" />}
             {isAr ? "حفظ" : "Save"}
           </button>
+
           <button
             type="button"
             onClick={() => toast.info(isAr ? "قريباً" : "Soon")}
@@ -1219,9 +1244,53 @@ function ContactInfoPanel({
           </div>
         )}
       </div>
+
+      <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
+        <DialogContent className="max-w-md" dir={isAr ? "rtl" : "ltr"}>
+          <DialogHeader>
+            <DialogTitle>{isAr ? "حفظ العميل في قاعدة بياناتي" : "Save customer to my database"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">{isAr ? "الموبايل" : "Phone"}</label>
+              <Input value={phone} readOnly disabled className="font-mono" dir="ltr" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">
+                {isAr ? "الاسم (اختياري)" : "Name (optional)"}
+              </label>
+              <Input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder={isAr ? "اترك فارغاً إذا لم تعرف الاسم" : "Leave blank if unknown"} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">{isAr ? "الإيميل (اختياري)" : "Email (optional)"}</label>
+                <Input value={saveEmail} onChange={(e) => setSaveEmail(e.target.value)} type="email" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">{isAr ? "المدينة (اختياري)" : "City (optional)"}</label>
+                <Input value={saveCity} onChange={(e) => setSaveCity(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">{isAr ? "ملاحظات (اختياري)" : "Notes (optional)"}</label>
+              <Textarea value={saveNotes} onChange={(e) => setSaveNotes(e.target.value)} rows={2} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSaveOpen(false)} disabled={saving}>
+              {isAr ? "إلغاء" : "Cancel"}
+            </Button>
+            <Button onClick={handleSaveCustomer} disabled={saving} className="gap-2">
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isAr ? "حفظ" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </aside>
   );
 }
+
 
 function InfoRow({ label, value, ltr }: { label: string; value: string; ltr?: boolean }) {
   return (

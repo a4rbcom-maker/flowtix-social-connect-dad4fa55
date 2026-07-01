@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { Database, Upload, Search, Trash2, Loader2, FileSpreadsheet, Users, UserPlus, ClipboardPaste } from "lucide-react";
+import { Database, Upload, Search, Trash2, Loader2, FileSpreadsheet, Users, UserPlus, ClipboardPaste, Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -62,6 +62,69 @@ function CustomersPage() {
   const [mNotes, setMNotes] = useState("");
   const [pasteText, setPasteText] = useState("");
   const [savingManual, setSavingManual] = useState(false);
+
+  // Edit state
+  const [editOpen, setEditOpen] = useState(false);
+  const [editing, setEditing] = useState<CustomerRow | null>(null);
+  const [eName, setEName] = useState("");
+  const [ePhone, setEPhone] = useState("");
+  const [eEmail, setEEmail] = useState("");
+  const [eCity, setECity] = useState("");
+  const [eGov, setEGov] = useState("");
+  const [eAddress, setEAddress] = useState("");
+  const [eNotes, setENotes] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  function openEdit(r: CustomerRow) {
+    setEditing(r);
+    setEName(r.full_name ?? "");
+    setEPhone(r.phone ?? "");
+    setEEmail(r.email ?? "");
+    setECity(r.city ?? "");
+    setEGov(r.governorate ?? "");
+    setEAddress(r.address ?? "");
+    setENotes(r.notes ?? "");
+    setEditOpen(true);
+  }
+
+  async function saveEdit() {
+    if (!editing?.id) return;
+    setSavingEdit(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { toast.error("Auth required"); return; }
+      const row = buildRow({
+        user_id: user.id,
+        full_name: eName || null,
+        phone: ePhone || null,
+        email: eEmail || null,
+        city: eCity || null,
+        governorate: eGov || null,
+        address: eAddress || null,
+        notes: eNotes || null,
+      });
+      const { error } = await supabase
+        .from("customer_database")
+        .update({
+          full_name: row.full_name,
+          phone: row.phone,
+          phone_norm: row.phone_norm,
+          email: row.email,
+          city: row.city,
+          governorate: row.governorate,
+          address: row.address,
+          notes: row.notes,
+        })
+        .eq("id", editing.id);
+      if (error) throw error;
+      toast.success(isAr ? "تم حفظ التعديل" : "Saved");
+      setEditOpen(false);
+      setEditing(null);
+      loadRows();
+    } catch (err) { toast.error(String((err as Error).message ?? err)); }
+    finally { setSavingEdit(false); }
+  }
+
 
   const loadRows = useCallback(async () => {
     setBusy(true);
@@ -434,10 +497,16 @@ function CustomersPage() {
                       <td className="px-3 py-2">{r.city ?? r.governorate ?? "—"}</td>
                       <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{r.fb_id ?? "—"}</td>
                       <td className="px-3 py-2 text-end">
-                        <Button size="icon" variant="ghost" onClick={() => deleteOne(r.id!)}>
-                          <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                        </Button>
+                        <div className="inline-flex items-center gap-1">
+                          <Button size="icon" variant="ghost" onClick={() => openEdit(r)} title={isAr ? "تعديل" : "Edit"}>
+                            <Pencil className="h-4 w-4 text-muted-foreground hover:text-primary" />
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => deleteOne(r.id!)} title={isAr ? "حذف" : "Delete"}>
+                            <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                          </Button>
+                        </div>
                       </td>
+
                     </tr>
                   ))}
                 </tbody>
@@ -450,7 +519,55 @@ function CustomersPage() {
             </div>
           )}
         </Card>
+
+        <Dialog open={editOpen} onOpenChange={setEditOpen}>
+          <DialogContent className="max-w-lg" dir={isAr ? "rtl" : "ltr"}>
+            <DialogHeader>
+              <DialogTitle>{isAr ? "تعديل بيانات العميل" : "Edit customer"}</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-xs text-muted-foreground">{labels.full_name}</label>
+                <Input value={eName} onChange={(e) => setEName(e.target.value)} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">{labels.phone}</label>
+                <Input value={ePhone} onChange={(e) => setEPhone(e.target.value)} dir="ltr" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">{labels.email}</label>
+                <Input value={eEmail} onChange={(e) => setEEmail(e.target.value)} type="email" dir="ltr" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">{labels.city}</label>
+                <Input value={eCity} onChange={(e) => setECity(e.target.value)} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">{labels.governorate}</label>
+                <Input value={eGov} onChange={(e) => setEGov(e.target.value)} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-xs text-muted-foreground">{labels.address}</label>
+                <Input value={eAddress} onChange={(e) => setEAddress(e.target.value)} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-xs text-muted-foreground">{labels.notes}</label>
+                <Textarea value={eNotes} onChange={(e) => setENotes(e.target.value)} rows={3} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditOpen(false)} disabled={savingEdit}>
+                {isAr ? "إلغاء" : "Cancel"}
+              </Button>
+              <Button onClick={saveEdit} disabled={savingEdit} className="gap-2">
+                {savingEdit && <Loader2 className="h-4 w-4 animate-spin" />}
+                {isAr ? "حفظ التعديل" : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );
 }
+
