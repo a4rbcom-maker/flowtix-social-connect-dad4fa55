@@ -1733,6 +1733,15 @@ async function fetchInboxConnectionState(userId: string): Promise<{ status: stri
   return data?.status ? { status: data.status } : null;
 }
 
+async function fetchInboxStats(userId: string): Promise<{ messages: number }> {
+  const { count, error } = await supabase
+    .from("wa_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  return { messages: count ?? 0 };
+}
+
 async function fetchInboxQuickReplies(userId: string): Promise<QuickReply[]> {
   const { data, error } = await supabase
     .from("wa_quick_replies")
