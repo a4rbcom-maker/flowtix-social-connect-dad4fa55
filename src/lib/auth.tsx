@@ -25,9 +25,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     // Then restore any persisted session.
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.error("[auth] failed to restore session", error);
+        void supabase.auth.signOut({ scope: "local" });
+        setSession(null);
+        setUser(null);
+      } else {
+        setSession(session);
+        setUser(session?.user ?? null);
+      }
+      setLoading(false);
+    }).catch((error) => {
+      console.error("[auth] session restore crashed", error);
+      void supabase.auth.signOut({ scope: "local" });
+      setSession(null);
+      setUser(null);
       setLoading(false);
     });
 

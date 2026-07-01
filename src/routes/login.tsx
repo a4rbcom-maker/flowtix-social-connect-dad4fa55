@@ -100,7 +100,19 @@ function LoginPage() {
       };
 
   const getFriendlyAuthError = (err: unknown) => {
-    const rawMsg = err instanceof Error ? err.message : String(err ?? "");
+    const parts: string[] = [];
+    if (err instanceof Error) {
+      parts.push(err.name, err.message);
+    } else if (err && typeof err === "object") {
+      const record = err as Record<string, unknown>;
+      for (const key of ["name", "message", "code", "status", "error", "error_description"]) {
+        const value = record[key];
+        if (typeof value === "string" || typeof value === "number") parts.push(String(value));
+      }
+    } else {
+      parts.push(String(err ?? ""));
+    }
+    const rawMsg = parts.filter(Boolean).join(" ");
     const message = rawMsg.toLowerCase();
 
     if (message.includes("invalid login credentials") || message.includes("invalid_credentials"))
@@ -114,8 +126,8 @@ function LoginPage() {
       message.includes("timed out")
     ) {
       return lang === "ar"
-        ? "تعذّر الاتصال بالخادم. تحقق من الإنترنت وحاول مرة أخرى."
-        : "Could not reach the server. Check your connection and try again.";
+        ? "تعذّر الاتصال بخدمة تسجيل الدخول الآن. تم مسح الجلسة القديمة؛ حدّث الصفحة وحاول مرة أخرى."
+        : "Could not reach sign-in right now. The old local session was cleared; refresh and try again.";
     }
     if (message.includes("rate limit") || message.includes("too many")) {
       return lang === "ar"
@@ -143,6 +155,7 @@ function LoginPage() {
     try {
       if (isLogin) {
         localStorage.setItem("flowtix_remember_me", rememberMe ? "true" : "false");
+        await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
         const { error } = await withTimeout(
           supabase.auth.signInWithPassword({ email: email.trim(), password }),
           20_000,
