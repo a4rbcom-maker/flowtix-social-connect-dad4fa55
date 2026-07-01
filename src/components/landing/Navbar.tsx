@@ -95,9 +95,8 @@ export function Navbar() {
             >
               {lang === "ar" ? "English" : "العربية"}
             </button>
-            {!authLoading && (
-              <Link to={user ? "/dashboard" : "/login"} onClick={() => setOpen(false)} className="btn-luxury-base btn-luxury !px-4 !py-2 text-sm">{user ? t.nav.dashboardShort : t.nav.loginShort}</Link>
-            )}
+            <Link to={user ? "/dashboard" : "/login"} onClick={() => setOpen(false)} className="btn-luxury-base btn-luxury !px-4 !py-2 text-sm">{user ? t.nav.dashboardShort : t.nav.loginShort}</Link>
+
           </div>
         </div>
       )}
