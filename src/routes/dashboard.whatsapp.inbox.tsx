@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/resizable";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { SmartAudio } from "@/components/wa/SmartAudio";
 import { Zap } from "lucide-react";
 import {
   sendChatMessage,
