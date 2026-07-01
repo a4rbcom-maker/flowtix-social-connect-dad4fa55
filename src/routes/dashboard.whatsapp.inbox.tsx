@@ -33,6 +33,7 @@ import {
   Info,
   Sun,
   Moon,
+  PlayCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "@/lib/theme";
@@ -161,6 +162,9 @@ function InboxPage() {
         refresh: "تحديث",
         soundOn: "إشعارات: مشغّلة",
         soundOff: "إشعارات: متوقفة",
+        testSound: "اختبار الصوت",
+        testSoundOk: "تم تشغيل الصوت التجريبي بنجاح",
+        testSoundFail: "فشل تشغيل الصوت. اضغط على الصفحة أولاً لتفعيل الصوت في المتصفح.",
         syncHistory: "مزامنة المحادثات القديمة",
         resync: "إعادة مزامنة",
         resyncing: "جارٍ المزامنة…",
@@ -205,6 +209,9 @@ function InboxPage() {
         refresh: "Refresh",
         soundOn: "Sound: on",
         soundOff: "Sound: off",
+        testSound: "Test sound",
+        testSoundOk: "Test sound played successfully",
+        testSoundFail: "Playback failed. Click anywhere on the page to unlock audio.",
         syncHistory: "Sync old conversations",
         resync: "Resync",
         resyncing: "Syncing…",
@@ -596,6 +603,36 @@ function InboxPage() {
     }
   };
 
+  const testPlayback = async () => {
+    try {
+      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) throw new Error("no-audio");
+      if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
+      const ctx = audioCtxRef.current;
+      if (ctx.state === "suspended") await ctx.resume();
+      audioUnlockedRef.current = true;
+      const now = ctx.currentTime;
+      const playTone = (freq: number, start: number, duration: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, now + start);
+        gain.gain.exponentialRampToValueAtTime(0.3, now + start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + start + duration);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(now + start);
+        osc.stop(now + start + duration + 0.02);
+      };
+      playTone(660, 0, 0.15);
+      playTone(880, 0.16, 0.18);
+      playTone(1175, 0.34, 0.22);
+      toast.success(t.testSoundOk);
+    } catch {
+      toast.error(t.testSoundFail);
+    }
+  };
+
   const toggleSound = () => {
     setSoundOn((p) => {
       const next = !p;
@@ -658,6 +695,15 @@ function InboxPage() {
               title={soundOn ? t.soundOn : t.soundOff}
             >
               {soundOn ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={testPlayback}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+              aria-label={t.testSound}
+              title={t.testSound}
+            >
+              <PlayCircle className="h-4 w-4" />
             </button>
           </div>
         </div>
