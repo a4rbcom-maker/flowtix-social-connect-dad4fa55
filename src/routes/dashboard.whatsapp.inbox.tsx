@@ -250,6 +250,8 @@ function InboxPage() {
     enabled: !!user?.id,
     placeholderData: [],
     refetchInterval: 15000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: "always",
   });
   const msgsQuery = useQuery<ChatMessageRow[]>({
     queryKey: ["wa-messages", user?.id, activeJid],
@@ -260,6 +262,8 @@ function InboxPage() {
     enabled: !!activeJid && !!user?.id,
     placeholderData: [],
     refetchInterval: 5000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: "always",
   });
   const conversations = useMemo<ConversationRow[]>(
     () => {
@@ -374,6 +378,70 @@ function InboxPage() {
       supabase.removeChannel(ch);
     };
   }, [qc, activeJid, user]);
+
+  // Catch-up on missed messages after tab was hidden / offline / long idle.
+  // Any gap > 30s triggers an immediate refetch of conversations + active
+  // messages + connection state, plus a bridge history-sync when > 90s so
+  // messages received while the socket/tab was down are pulled in fast.
+  useEffect(() => {
+    if (!user?.id) return;
+    if (typeof window === "undefined") return;
+
+    let lastActiveAt = Date.now();
+    let lastSyncAt = 0;
+
+    const catchUp = (reason: "focus" | "visible" | "online" | "interval") => {
+      const now = Date.now();
+      const gapMs = now - lastActiveAt;
+      lastActiveAt = now;
+      if (gapMs < 30_000 && reason !== "online") return;
+
+      qc.invalidateQueries({ queryKey: ["wa-conversations", user.id] });
+      qc.invalidateQueries({ queryKey: ["wa-connection-state", user.id] });
+      qc.invalidateQueries({ queryKey: ["wa-inbox-stats", user.id] });
+      if (activeJid) {
+        qc.invalidateQueries({ queryKey: ["wa-messages", user.id, activeJid] });
+      }
+
+      // Ask the bridge to backfill anything it buffered while we were gone.
+      const heavyGap = gapMs > 90_000 || reason === "online";
+      if (heavyGap && now - lastSyncAt > 60_000) {
+        lastSyncAt = now;
+        requestHistorySyncFn()
+          .then(() => {
+            window.setTimeout(() => {
+              qc.invalidateQueries({ queryKey: ["wa-conversations", user.id] });
+              if (activeJid) {
+                qc.invalidateQueries({ queryKey: ["wa-messages", user.id, activeJid] });
+              }
+            }, 3000);
+          })
+          .catch((err: unknown) => console.warn("[inbox] catch-up sync failed", err));
+      }
+    };
+
+    const onFocus = () => catchUp("focus");
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") catchUp("visible");
+      else lastActiveAt = Date.now();
+    };
+    const onOnline = () => catchUp("online");
+    const heartbeat = window.setInterval(() => {
+      // Watchdog for suspended tabs / laptops waking from sleep where no
+      // focus/visibility event fires. If the wall clock jumped, catch up.
+      catchUp("interval");
+    }, 20_000);
+
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.clearInterval(heartbeat);
+    };
+  }, [qc, user?.id, activeJid, requestHistorySyncFn]);
 
   // Auto-scroll
   useEffect(() => {
