@@ -131,6 +131,16 @@ function InboxPage() {
     if (typeof window !== "undefined") localStorage.setItem("flowtix-inbox-timerange", timeRange);
   }, [timeRange]);
   const [draft, setDraft] = useState("");
+  // Real image attachment: hold the picked File + a local object URL preview.
+  // On submit we upload to `wa-media` and forward the signed URL to the bridge.
+  const [attachment, setAttachment] = useState<{ file: File; previewUrl: string } | null>(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  useEffect(() => {
+    // Revoke the object URL when the attachment changes or unmounts to avoid leaks.
+    return () => {
+      if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+    };
+  }, [attachment]);
   const [soundOn, setSoundOn] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("flowtix-inbox-sound") !== "false";
@@ -593,14 +603,56 @@ function InboxPage() {
   }, [draft]);
 
   const sendMut = useMutation({
-    mutationFn: (text: string) => sendFn({ data: { remoteJid: activeJid!, text } }),
+    mutationFn: async ({ text, file }: { text: string; file: File | null }) => {
+      let mediaUrl: string | undefined;
+      let mediaType: "image" | "video" | "document" | "audio" | undefined;
+      let mimeType: string | undefined;
+      let fileName: string | undefined;
+      if (file) {
+        setUploadingAttachment(true);
+        try {
+          const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+          const path = `${user!.id}/outgoing/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+          const { error: upErr } = await supabase.storage
+            .from("wa-media")
+            .upload(path, file, { upsert: false, contentType: file.type });
+          if (upErr) throw new Error(upErr.message);
+          const { data: signed, error: sErr } = await supabase.storage
+            .from("wa-media")
+            .createSignedUrl(path, 60 * 60 * 24 * 7);
+          if (sErr || !signed) throw new Error(sErr?.message || "Failed to sign media URL");
+          mediaUrl = signed.signedUrl;
+          mediaType = file.type.startsWith("video/")
+            ? "video"
+            : file.type.startsWith("audio/")
+              ? "audio"
+              : file.type.startsWith("image/")
+                ? "image"
+                : "document";
+          mimeType = file.type || undefined;
+          fileName = file.name;
+        } finally {
+          setUploadingAttachment(false);
+        }
+      }
+      return sendFn({
+        data: {
+          remoteJid: activeJid!,
+          text,
+          ...(mediaUrl ? { mediaUrl, mediaType, mimeType, fileName } : {}),
+        },
+      });
+    },
     onSuccess: () => {
       setDraft("");
+      if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+      setAttachment(null);
       qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
       qc.invalidateQueries({ queryKey: ["wa-conversations"] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
+
 
   const historySyncMut = useMutation({
     mutationFn: () => requestHistorySyncFn(),
@@ -1283,11 +1335,44 @@ function InboxPage() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (!draft.trim() || sendMut.isPending) return;
-              sendMut.mutate(draft.trim());
+              const text = draft.trim();
+              if ((!text && !attachment) || sendMut.isPending || uploadingAttachment) return;
+              sendMut.mutate({ text, file: attachment?.file ?? null });
             }}
             className="min-w-0 border-t border-border/60 bg-card/80 p-2.5 backdrop-blur sm:p-3"
           >
+            {attachment && (
+              <div className="mb-2 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 p-2">
+                <img
+                  src={attachment.previewUrl}
+                  alt={attachment.file.name}
+                  className="h-14 w-14 rounded-lg object-cover ring-1 ring-border"
+                />
+                <div className="min-w-0 flex-1 text-xs">
+                  <div className="truncate font-medium">{attachment.file.name}</div>
+                  <div className="text-muted-foreground">
+                    {(attachment.file.size / 1024).toFixed(1)} KB
+                    {uploadingAttachment ? (
+                      <span className="ms-2 inline-flex items-center gap-1 text-primary">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        {isAr ? "جاري الرفع…" : "Uploading…"}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+                    setAttachment(null);
+                  }}
+                  disabled={uploadingAttachment}
+                  className="rounded-lg px-2 py-1 text-xs text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
+                >
+                  {isAr ? "إزالة" : "Remove"}
+                </button>
+              </div>
+            )}
             <div className="flex min-w-0 items-end gap-1.5 rounded-2xl border border-input bg-background px-2 py-1.5 shadow-sm transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 sm:gap-2 sm:px-2.5">
               <Popover>
                 <PopoverTrigger asChild>
@@ -1319,15 +1404,12 @@ function InboxPage() {
                     const f = e.target.files?.[0];
                     if (!f) return;
                     e.target.value = "";
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                      const dataUrl = String(reader.result || "");
-                      setDraft((d) => `${d || ""}${d ? "\n" : ""}[${isAr ? "صورة" : "image"}] ${f.name}`);
-                      toast.info(isAr
-                        ? `تم اختيار الصورة "${f.name}" — سترسل مع الرسالة القادمة (${Math.round(dataUrl.length / 1024)}KB).`
-                        : `Selected "${f.name}" (${Math.round(dataUrl.length / 1024)}KB) — will attach with next send.`);
-                    };
-                    reader.readAsDataURL(f);
+                    if (f.size > 16 * 1024 * 1024) {
+                      toast.error(isAr ? "الحد الأقصى للصورة 16 ميجابايت" : "Image must be ≤ 16MB");
+                      return;
+                    }
+                    if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+                    setAttachment({ file: f, previewUrl: URL.createObjectURL(f) });
                   }}
                 />
                 <Paperclip className="h-5 w-5" />
@@ -1369,20 +1451,23 @@ function InboxPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    if (draft.trim() && !sendMut.isPending) sendMut.mutate(draft.trim());
+                    const text = draft.trim();
+                    if ((text || attachment) && !sendMut.isPending && !uploadingAttachment) {
+                      sendMut.mutate({ text, file: attachment?.file ?? null });
+                    }
                   }
                 }}
-                placeholder={t.typeMessage}
+                placeholder={attachment ? (isAr ? "أضف تعليقاً (اختياري)…" : "Add a caption (optional)…") : t.typeMessage}
                 rows={1}
                 className="max-h-32 min-w-0 flex-1 resize-none bg-transparent px-1 py-2 text-sm outline-none placeholder:text-muted-foreground"
               />
               <button
                 type="submit"
-                disabled={!draft.trim() || sendMut.isPending}
+                disabled={(!draft.trim() && !attachment) || sendMut.isPending || uploadingAttachment}
                 className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[oklch(0.52_0.28_290)] text-primary-foreground shadow-md shadow-primary/30 transition hover:opacity-95 disabled:opacity-40"
                 aria-label={t.send}
               >
-                {sendMut.isPending ? (
+                {sendMut.isPending || uploadingAttachment ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Send className="h-4 w-4 rtl:rotate-180" />
@@ -1390,6 +1475,7 @@ function InboxPage() {
               </button>
             </div>
           </form>
+
         </>
       )}
     </section>

@@ -2,7 +2,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { assertBridgeSendQueued, bridgeSendQueuedMessage, waBridge, BridgeError, sendTextWithReconnect } from "./wa-bridge.server";
+import { assertBridgeSendQueued, bridgeSendQueuedMessage, waBridge, BridgeError, sendTextWithReconnect, sendMediaWithReconnect } from "./wa-bridge.server";
 import { deriveWebhookUrl } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
 import { isBridgeSessionMissingError, resetWaSessionAfterBridgeLoss } from "./wa-session-repair.server";
@@ -191,7 +191,14 @@ export const sendChatMessage = createServerFn({ method: "POST" })
     z
       .object({
         remoteJid: z.string().min(1).max(64),
-        text: z.string().trim().min(1).max(4000),
+        text: z.string().trim().max(4000).optional().default(""),
+        mediaUrl: z.string().url().max(2048).optional(),
+        mediaType: z.enum(["image", "video", "document", "audio"]).optional(),
+        mimeType: z.string().max(120).optional(),
+        fileName: z.string().max(200).optional(),
+      })
+      .refine((v) => (v.text && v.text.length > 0) || !!v.mediaUrl, {
+        message: "Provide text or media",
       })
       .parse(input),
   )
@@ -231,14 +238,23 @@ export const sendChatMessage = createServerFn({ method: "POST" })
     const phoneDigits = target.phoneDigits || data.remoteJid.replace(/[^0-9]/g, "");
     const to = target.jid;
     const sentAt = new Date().toISOString();
+    const hasMedia = !!data.mediaUrl;
+    const mediaType = data.mediaType ?? "image";
     try {
       const webhookUrl = await deriveWebhookUrl().catch(() => null);
-      const res = await sendTextWithReconnect(sess.session_id, to, data.text, {
-        webhookUrl: webhookUrl ?? undefined,
-        tenantId: userId,
-        recipientPhone: phoneDigits,
-      });
-      // Bridge may return 200 with ok:false / error message — surface it.
+      const res = hasMedia
+        ? await sendMediaWithReconnect(sess.session_id, to, data.mediaUrl!, {
+            caption: data.text,
+            mediaType,
+            mimeType: data.mimeType,
+            fileName: data.fileName,
+            recipientPhone: phoneDigits,
+          })
+        : await sendTextWithReconnect(sess.session_id, to, data.text, {
+            webhookUrl: webhookUrl ?? undefined,
+            tenantId: userId,
+            recipientPhone: phoneDigits,
+          });
       const queuedId = bridgeSendQueuedMessage(res);
       let providerMessageId: string | null = null;
       let status = "sent";
@@ -246,9 +262,6 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       try {
         providerMessageId = assertBridgeSendQueued(res);
       } catch (err) {
-        // Bot-Xtra v1.8.x can accept a message into its internal queue and only
-        // return { queued: true, queuedId }. That is NOT proof that WhatsApp
-        // received it, so store it as pending instead of showing a false sent tick.
         if (!queuedId) throw err;
         status = "pending";
         delivery = "bridge_queued_waiting_for_whatsapp_ack";
@@ -259,8 +272,9 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         direction: "out",
         remote_jid: data.remoteJid,
         to_phone: phoneDigits || to,
-        msg_type: "text",
-        text_body: data.text,
+        msg_type: hasMedia ? mediaType : "text",
+        text_body: data.text || null,
+        media_url: hasMedia ? data.mediaUrl : null,
         status,
         provider_message_id: providerMessageId,
         wa_timestamp: sentAt,
@@ -270,6 +284,9 @@ export const sendChatMessage = createServerFn({ method: "POST" })
           delivery,
           targetJid: to,
           usedLid: target.usedLid,
+          ...(hasMedia
+            ? { mediaData: { url: data.mediaUrl, mimeType: data.mimeType, fileName: data.fileName, caption: data.text } }
+            : {}),
           bridgeResponse: res,
         } as never,
       });
@@ -293,7 +310,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       remoteJid: data.remoteJid,
       contactName: null,
       contactPhone: phoneDigits || null,
-      text: data.text,
+      text: data.text || (hasMedia ? `[${mediaType}]` : ""),
       direction: "out",
       messageAt: sentAt,
     });
@@ -301,6 +318,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
 
     return { ok: true };
   });
+
 
 // ─── Test Message ──────────────────────────────────────────────────────────
 
