@@ -1617,7 +1617,7 @@ function ContactInfoPanel({
           </div>
           {summaryMeta && !summarizing && (
             <p className="text-[11px] text-muted-foreground">
-              {isAr ? "المزوّد" : "Provider"}: kie.ai · {isAr ? "الموديل" : "model"}: {summaryMeta.model} · {summaryMeta.count} {isAr ? "رسالة" : "messages"}
+              {summaryMeta.count} {isAr ? "رسالة" : "messages"}
             </p>
           )}
           <DialogFooter>
