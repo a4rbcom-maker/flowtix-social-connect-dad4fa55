@@ -1395,15 +1395,16 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
   if (sessionError) throw new Error(sessionError.message);
   if (!sessionRow?.session_id || sessionRow.status !== "connected") return [];
 
-  // NOTE: نجلب المحادثات لكل جلسات المستخدم (وليس session_id الحالي فقط)
-  // لأن عند إعادة الربط يتم إنشاء session_id جديد وتظل المحادثات القديمة مرتبطة بالـ session_id السابق لنفس الرقم.
+  // نجلب المحادثات المرتبطة بالجلسة الحالية فقط (رقم المستخدم المربوط الآن)
   const { data, error } = await supabase
     .from("wa_conversations")
     .select("id, session_id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
     .eq("user_id", userId)
+    .eq("session_id", sessionRow.session_id)
     .eq("is_archived", false)
     .order("last_message_at", { ascending: false })
     .limit(200);
+
   if (error) throw new Error(error.message);
 
   const rows = (data ?? []) as Omit<ConversationRow, "profile_pic_url">[];
