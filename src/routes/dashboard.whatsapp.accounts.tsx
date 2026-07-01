@@ -15,6 +15,7 @@ import {
   Plus,
   Wifi,
   WifiOff,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
@@ -399,13 +400,15 @@ function WhatsAppPage() {
                       </div>
                     )}
 
-                    <SessionDiagnostics
-                      events={eventsQuery.data ?? []}
-                      loading={eventsQuery.isLoading}
-                      ar={ar}
-                      t={t}
-                      fmtTime={fmtTime}
-                    />
+                    {state.phoneNumber && (
+                      <SessionDiagnostics
+                        events={eventsQuery.data ?? []}
+                        loading={eventsQuery.isLoading}
+                        ar={ar}
+                        t={t}
+                        fmtTime={fmtTime}
+                      />
+                    )}
 
                     {/* Actions */}
                     <div className="mt-5 flex flex-wrap gap-2">
@@ -627,48 +630,58 @@ function SessionDiagnostics({
     return map[source] ?? source;
   };
 
-  return (
-    <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-sm">
-      <div className="flex items-start gap-2">
-        <History className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
-        <div className="min-w-0 flex-1">
-          <div className="font-bold text-foreground">{t.diagnosticsTitle}</div>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{t.diagnosticsDesc}</p>
+  const latest = importantEvents[0];
+  const summaryText = loading
+    ? (ar ? "جارٍ تحميل السجل…" : "Loading log…")
+    : latest
+      ? `${fmtTime(latest.createdAt)} — ${latest.reason || latest.bridgeEvent || latest.rawStatus || sourceLabel(latest.source)}`
+      : t.noDiagnostics;
 
-          {loading ? (
-            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              {ar ? "جارٍ تحميل سجل الأسباب…" : "Loading diagnostics…"}
-            </div>
-          ) : importantEvents.length === 0 ? (
-            <p className="mt-3 rounded-lg bg-background/70 px-3 py-2 text-xs text-muted-foreground">{t.noDiagnostics}</p>
-          ) : (
-            <div className="mt-3 space-y-2">
-              {importantEvents.map((event, index) => (
-                <div key={`${event.createdAt}-${index}`} className="rounded-lg bg-background/80 px-3 py-2 text-xs">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-semibold text-foreground">{fmtTime(event.createdAt)}</span>
-                    <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground" dir="ltr">
-                      {t.statusChangeLabel}: {event.fromStatus ?? "—"} → {event.toStatus}
-                    </span>
+  return (
+    <details className="group mt-4 rounded-xl border border-border/60 bg-muted/30 text-sm">
+      <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-2.5 list-none [&::-webkit-details-marker]:hidden">
+        <div className="flex min-w-0 items-center gap-2">
+          <History className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="font-medium text-foreground">{t.diagnosticsTitle}</span>
+          <span className="hidden truncate text-xs text-muted-foreground sm:inline">· {summaryText}</span>
+        </div>
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="border-t border-border/60 px-4 py-3">
+        <p className="text-xs leading-relaxed text-muted-foreground">{t.diagnosticsDesc}</p>
+        {loading ? (
+          <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {ar ? "جارٍ تحميل سجل الأسباب…" : "Loading diagnostics…"}
+          </div>
+        ) : importantEvents.length === 0 ? (
+          <p className="mt-3 rounded-lg bg-background/70 px-3 py-2 text-xs text-muted-foreground">{t.noDiagnostics}</p>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {importantEvents.map((event, index) => (
+              <div key={`${event.createdAt}-${index}`} className="rounded-lg bg-background/80 px-3 py-2 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold text-foreground">{fmtTime(event.createdAt)}</span>
+                  <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground" dir="ltr">
+                    {t.statusChangeLabel}: {event.fromStatus ?? "—"} → {event.toStatus}
+                  </span>
+                </div>
+                <div className="mt-1.5 grid gap-1 text-muted-foreground sm:grid-cols-2">
+                  <div>
+                    <span className="font-medium text-foreground">{t.sourceLabel}: </span>
+                    {sourceLabel(event.source)}
                   </div>
-                  <div className="mt-1.5 grid gap-1 text-muted-foreground sm:grid-cols-2">
-                    <div>
-                      <span className="font-medium text-foreground">{t.sourceLabel}: </span>
-                      {sourceLabel(event.source)}
-                    </div>
-                    <div>
-                      <span className="font-medium text-foreground">{t.reasonLabel}: </span>
-                      {event.reason || event.bridgeEvent || event.rawStatus || (ar ? "غير محدد" : "Not specified")}
-                    </div>
+                  <div>
+                    <span className="font-medium text-foreground">{t.reasonLabel}: </span>
+                    {event.reason || event.bridgeEvent || event.rawStatus || (ar ? "غير محدد" : "Not specified")}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-    </div>
+    </details>
   );
 }
 
