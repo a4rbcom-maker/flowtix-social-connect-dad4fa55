@@ -158,17 +158,11 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
             try {
               const caption = rendered.trim();
               if (job.image_url) {
-                // Send as image with optional caption via bridge /send
-                const res = await (waBridge as unknown as {
-                  sendText: (id: string, to: string, text: string, opts?: { phone?: string | null }) => Promise<unknown>;
-                }).sendText(sess.session_id, phone, caption || "");
-                // Then follow up with the image URL as a text if bridge lacks media
+                const res = await waBridge.sendText(sess.session_id, phone, caption || "");
                 providerId = assertBridgeSendQueued(res);
-                // Best-effort image: send URL as second text so recipient can open it
+                // Best-effort second message with the image URL (bridge has no media helper)
                 try {
-                  await (waBridge as unknown as {
-                    sendText: (id: string, to: string, text: string) => Promise<unknown>;
-                  }).sendText(sess.session_id, phone, job.image_url);
+                  await waBridge.sendText(sess.session_id, phone, job.image_url);
                 } catch {
                   // ignore secondary failure
                 }
@@ -177,7 +171,7 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
                 providerId = assertBridgeSendQueued(res);
               }
             } catch (err) {
-              errorMessage = describeBridgeError(err);
+              errorMessage = describeErr(err);
             }
 
             if (errorMessage) {
