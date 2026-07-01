@@ -746,7 +746,7 @@ export const summarizeConversation = createServerFn({ method: "POST" })
     const transcript = ordered
       .map((r) => {
         const who = r.direction === "out" ? "AGENT" : "CUSTOMER";
-        const text = cleanMessageText(r.text_body) || previewTextFromRaw(r.raw, r.msg_type) || `[${r.msg_type ?? "media"}]`;
+        const text = previewTextFromRaw(r.raw, r.text_body, r.msg_type) || `[${r.msg_type ?? "media"}]`;
         return `${who}: ${text}`;
       })
       .join("\n")
