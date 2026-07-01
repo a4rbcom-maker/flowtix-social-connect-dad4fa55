@@ -516,7 +516,10 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         userId,
         sessionId,
         remoteJid,
-        contactName: name,
+        // Direct-chat "name" from the chat list is often the business's own
+        // WhatsApp display name (Baileys echoes it back). Only trust group
+        // subjects; leave DM names to real inbound message events.
+        contactName: isGroup ? name : null,
         contactPhone: isGroup ? null : phone || null,
         text: lastText,
         direction: "in",
