@@ -88,6 +88,10 @@ function WhatsAppPage() {
     typeof window !== "undefined" && localStorage.getItem(WA_BRIDGE_MODE_STORAGE_KEY) === "cloud",
   );
   const startedRef = useRef(false);
+  const [qrIssuedAt, setQrIssuedAt] = useState<number | null>(null);
+  const [qrSecondsLeft, setQrSecondsLeft] = useState<number>(60);
+  const lastQrValueRef = useRef<string | null>(null);
+  const autoRefreshingRef = useRef(false);
 
   const t = ar
     ? {
