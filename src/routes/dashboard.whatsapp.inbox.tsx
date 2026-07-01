@@ -64,6 +64,11 @@ import {
 
 import { MediaLightbox, openMedia } from "@/components/whatsapp/MediaLightbox";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+
 
 export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
   ssr: false,
