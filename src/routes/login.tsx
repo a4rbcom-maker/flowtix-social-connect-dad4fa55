@@ -100,13 +100,39 @@ function LoginPage() {
       };
 
   const getFriendlyAuthError = (err: unknown) => {
-    const message = err instanceof Error ? err.message.toLowerCase() : "";
+    const rawMsg = err instanceof Error ? err.message : String(err ?? "");
+    const message = rawMsg.toLowerCase();
 
-    if (message.includes("invalid login credentials")) return labels.invalidCredentials;
+    if (message.includes("invalid login credentials") || message.includes("invalid_credentials"))
+      return labels.invalidCredentials;
     if (message.includes("email not confirmed")) return labels.emailNotConfirmed;
+    if (
+      message.includes("failed to fetch") ||
+      message.includes("networkerror") ||
+      message.includes("network request failed") ||
+      message.includes("timeout") ||
+      message.includes("timed out")
+    ) {
+      return lang === "ar"
+        ? "تعذّر الاتصال بالخادم. تحقق من الإنترنت وحاول مرة أخرى."
+        : "Could not reach the server. Check your connection and try again.";
+    }
+    if (message.includes("rate limit") || message.includes("too many")) {
+      return lang === "ar"
+        ? "محاولات كثيرة متتالية. انتظر قليلًا ثم حاول مجددًا."
+        : "Too many attempts. Please wait a moment and try again.";
+    }
 
     return labels.defaultError;
   };
+
+  const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T> =>
+    Promise.race([
+      p,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error("Request timed out")), ms),
+      ),
+    ]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,25 +143,30 @@ function LoginPage() {
     try {
       if (isLogin) {
         localStorage.setItem("flowtix_remember_me", rememberMe ? "true" : "false");
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await withTimeout(
+          supabase.auth.signInWithPassword({ email: email.trim(), password }),
+          20_000,
+        );
         if (error) throw error;
         // Don't navigate manually — the role-aware <Navigate> gate above
-        // redirects to /admin or /dashboard once useIsAdmin resolves. This
-        // avoids a race where an admin is sent to /dashboard before the
-        // server-side role check completes.
+        // redirects to /admin or /dashboard once useIsAdmin resolves.
       } else {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: { full_name: fullName, phone },
-            emailRedirectTo: window.location.origin,
-          },
-        });
+        const { error } = await withTimeout(
+          supabase.auth.signUp({
+            email: email.trim(),
+            password,
+            options: {
+              data: { full_name: fullName, phone },
+              emailRedirectTo: window.location.origin,
+            },
+          }),
+          20_000,
+        );
         if (error) throw error;
         setSuccess(labels.checkEmail);
       }
     } catch (err: unknown) {
+      console.error("[login] auth error", err);
       setError(getFriendlyAuthError(err));
     } finally {
       setLoading(false);
