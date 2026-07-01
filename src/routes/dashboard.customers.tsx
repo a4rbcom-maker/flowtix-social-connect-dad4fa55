@@ -63,6 +63,69 @@ function CustomersPage() {
   const [pasteText, setPasteText] = useState("");
   const [savingManual, setSavingManual] = useState(false);
 
+  // Edit state
+  const [editOpen, setEditOpen] = useState(false);
+  const [editing, setEditing] = useState<CustomerRow | null>(null);
+  const [eName, setEName] = useState("");
+  const [ePhone, setEPhone] = useState("");
+  const [eEmail, setEEmail] = useState("");
+  const [eCity, setECity] = useState("");
+  const [eGov, setEGov] = useState("");
+  const [eAddress, setEAddress] = useState("");
+  const [eNotes, setENotes] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  function openEdit(r: CustomerRow) {
+    setEditing(r);
+    setEName(r.full_name ?? "");
+    setEPhone(r.phone ?? "");
+    setEEmail(r.email ?? "");
+    setECity(r.city ?? "");
+    setEGov(r.governorate ?? "");
+    setEAddress(r.address ?? "");
+    setENotes(r.notes ?? "");
+    setEditOpen(true);
+  }
+
+  async function saveEdit() {
+    if (!editing?.id) return;
+    setSavingEdit(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { toast.error("Auth required"); return; }
+      const row = buildRow({
+        user_id: user.id,
+        full_name: eName || null,
+        phone: ePhone || null,
+        email: eEmail || null,
+        city: eCity || null,
+        governorate: eGov || null,
+        address: eAddress || null,
+        notes: eNotes || null,
+      });
+      const { error } = await supabase
+        .from("customer_database")
+        .update({
+          full_name: row.full_name,
+          phone: row.phone,
+          phone_norm: row.phone_norm,
+          email: row.email,
+          city: row.city,
+          governorate: row.governorate,
+          address: row.address,
+          notes: row.notes,
+        })
+        .eq("id", editing.id);
+      if (error) throw error;
+      toast.success(isAr ? "تم حفظ التعديل" : "Saved");
+      setEditOpen(false);
+      setEditing(null);
+      loadRows();
+    } catch (err) { toast.error(String((err as Error).message ?? err)); }
+    finally { setSavingEdit(false); }
+  }
+
+
   const loadRows = useCallback(async () => {
     setBusy(true);
     try {
