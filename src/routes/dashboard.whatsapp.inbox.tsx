@@ -2007,7 +2007,28 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
           </button>
         )}
         {m.media_url && m.msg_type === "audio" && (
-          <audio src={m.media_url} controls className="mb-1.5 w-full" />
+          <div dir="ltr" className="mb-1.5 flex flex-col gap-1">
+            <audio
+              controls
+              preload="metadata"
+              className="w-full min-w-[240px]"
+              controlsList="nodownload noplaybackrate"
+            >
+              <source src={m.media_url} type="audio/ogg; codecs=opus" />
+              <source src={m.media_url} type="audio/ogg" />
+              <source src={m.media_url} type="audio/mpeg" />
+              <source src={m.media_url} />
+            </audio>
+            <a
+              href={m.media_url}
+              target="_blank"
+              rel="noreferrer"
+              download
+              className={`text-[10px] underline ${isOut ? "text-white/80" : "text-muted-foreground"}`}
+            >
+              تنزيل المقطع الصوتي
+            </a>
+          </div>
         )}
         {m.media_url && m.msg_type === "document" && (
           <button
