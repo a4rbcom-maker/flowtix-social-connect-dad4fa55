@@ -89,7 +89,7 @@ function collectRecordArraysDeep(root: unknown, keys: string[], maxDepth = 5): R
 }
 
 function pickContactArray(payload: Record<string, unknown>, data: Record<string, unknown>): Record<string, unknown>[] {
-  const candidates = [data.contacts, payload.contacts, data.items, payload.items, data.chats, payload.chats];
+  const candidates = [data.contacts, payload.contacts, data.items, payload.items, data.chats, payload.chats, payload.data];
   for (const value of candidates) {
     const rows = recordsFromUnknown(value);
     if (rows.length) return rows;
@@ -98,7 +98,7 @@ function pickContactArray(payload: Record<string, unknown>, data: Record<string,
 }
 
 function pickHistoryMessages(payload: Record<string, unknown>, data: Record<string, unknown>): Record<string, unknown>[] {
-  const direct = [data.messages, payload.messages, data.items, payload.items]
+  const direct = [data.messages, payload.messages, data.items, payload.items, payload.data]
     .flatMap(recordsFromUnknown)
     .filter((item) => Object.keys(item).length > 0);
   if (direct.length) return direct;
@@ -504,15 +504,18 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   const event = String(payload.event || payload.type || "").toLowerCase();
   const data = asObj(payload.data);
 
-  if (event === "contacts" || event === "contacts.update" || event === "contacts.upsert") {
+  if (CONTACT_EVENTS.has(event)) {
     const contacts = pickContactArray(payload, data);
+    const chatUpserted = event.includes("chat")
+      ? await importHistoryChats({ userId, sessionId, chats: contacts })
+      : 0;
     const updated = await updateConversationContacts({
       userId,
       sessionId,
       businessPhone: digits(sess.phone_number),
       contacts,
     });
-    return new Response(JSON.stringify({ ok: true, contacts: contacts.length, updated }), {
+    return new Response(JSON.stringify({ ok: true, contacts: contacts.length, updated, chats: chatUpserted }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
@@ -596,41 +599,8 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
 
   // ── HISTORY SYNC: chats catalogue ──
   if (event === "history_chats") {
-    const chats = Array.isArray(data.chats) ? (data.chats as Record<string, unknown>[]) : [];
-    let upserted = 0;
-    for (const c of chats) {
-      const rawJid = pickStr(c, "rawJid", "jid", "id");
-      const phone = digits(pickStr(c, "jid") ?? rawJid);
-      const remoteJid =
-        rawJid && (rawJid.includes("@") ? rawJid : `${rawJid}@s.whatsapp.net`) ||
-        (phone ? `${phone}@s.whatsapp.net` : null);
-      if (!remoteJid) continue;
-      const isGroup = Boolean(c.isGroup) || String(remoteJid).endsWith("@g.us");
-      const name = pickStr(c, "name", "subject") ?? null;
-      const lastTsRaw = c.lastMessageTimestamp;
-      const lastTs =
-        typeof lastTsRaw === "number"
-          ? new Date(lastTsRaw * 1000).toISOString()
-          : typeof lastTsRaw === "string" && lastTsRaw
-            ? new Date(Number(lastTsRaw) * 1000).toISOString()
-            : undefined;
-      const lastText = pickStr(c, "lastMessage") ?? null;
-      const cid = await upsertConversationFromMessage({
-        userId,
-        sessionId,
-        remoteJid,
-        // Direct-chat "name" from the chat list is often the business's own
-        // WhatsApp display name (Baileys echoes it back). Only trust group
-        // subjects; leave DM names to real inbound message events.
-        contactName: isGroup ? name : null,
-        contactPhone: isGroup ? null : phone || null,
-        text: lastText,
-        direction: "in",
-        messageAt: lastTs,
-        historical: true,
-      });
-      if (cid) upserted++;
-    }
+    const chats = pickContactArray(payload, data);
+    const upserted = await importHistoryChats({ userId, sessionId, chats });
     return new Response(JSON.stringify({ ok: true, historyChats: upserted }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -639,7 +609,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
 
   // ── HISTORY SYNC: backfilled messages ──
   if (HISTORY_EVENTS.has(event)) {
-    const msgs = Array.isArray(data.messages) ? (data.messages as Record<string, unknown>[]) : [];
+    const msgs = pickHistoryMessages(payload, data);
     let saved = 0;
     let dup = 0;
     for (const h of msgs) {
