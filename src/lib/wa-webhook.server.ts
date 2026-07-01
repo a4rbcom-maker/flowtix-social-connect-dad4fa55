@@ -74,7 +74,20 @@ function collectRecordArraysDeep(root: unknown, keys: string[], maxDepth = 5): R
       const rows = recordsFromUnknown(rec[key]);
       if (rows.length) found.push(...rows);
     }
-    for (const key of ["data", "payload", "result", "response", "body", "history", "sync", "messagingHistory", "messaging_history"]) {
+    for (const key of [
+      "data",
+      "payload",
+      "result",
+      "response",
+      "body",
+      "history",
+      "sync",
+      "messagingHistory",
+      "messaging_history",
+      "chats",
+      "contacts",
+      "items",
+    ]) {
       if (rec[key] && rec[key] !== node) visit(rec[key], depth + 1);
     }
   };
