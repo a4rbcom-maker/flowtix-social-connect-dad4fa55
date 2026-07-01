@@ -250,6 +250,8 @@ function InboxPage() {
     enabled: !!user?.id,
     placeholderData: [],
     refetchInterval: 15000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: "always",
   });
   const msgsQuery = useQuery<ChatMessageRow[]>({
     queryKey: ["wa-messages", user?.id, activeJid],
@@ -260,6 +262,8 @@ function InboxPage() {
     enabled: !!activeJid && !!user?.id,
     placeholderData: [],
     refetchInterval: 5000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: "always",
   });
   const conversations = useMemo<ConversationRow[]>(
     () => {
