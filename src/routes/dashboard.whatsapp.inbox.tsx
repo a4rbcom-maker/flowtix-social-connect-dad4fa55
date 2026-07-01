@@ -139,6 +139,7 @@ function InboxPage() {
         refresh: "تحديث",
         soundOn: "إشعارات: مشغّلة",
         soundOff: "إشعارات: متوقفة",
+        syncHistory: "مزامنة المحادثات القديمة",
         soon: "قريباً",
         photo: "صورة",
         voice: "رسالة صوتية",
@@ -175,6 +176,7 @@ function InboxPage() {
         refresh: "Refresh",
         soundOn: "Sound: on",
         soundOff: "Sound: off",
+        syncHistory: "Sync old conversations",
         soon: "Coming soon",
         photo: "Photo",
         voice: "Voice message",
@@ -350,6 +352,27 @@ function InboxPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const historySyncMut = useMutation({
+    mutationFn: () => requestHistorySyncFn(),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["wa-conversations", user?.id] });
+      if (activeJid) qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
+      const beforeMessages = res.before?.messages ?? 0;
+      const afterMessages = res.after?.messages ?? beforeMessages;
+      const imported = Math.max(0, afterMessages - beforeMessages);
+      if (res.ok) {
+        toast.success(isAr ? `تم جلب ${imported} رسالة قديمة` : `Imported ${imported} old messages`);
+        return;
+      }
+      toast.error(
+        isAr
+          ? "الجسر لم يرسل أي رسائل قديمة بعد طلب المزامنة؛ الرسائل الجديدة فقط هي التي تصل حالياً."
+          : "The bridge did not deliver any old messages after sync; only new messages are arriving now.",
+      );
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const aiToggleMut = useMutation({
     mutationFn: async (vars: { id: string; enabled: boolean }) => {
       const { error } = await supabase
@@ -490,12 +513,13 @@ function InboxPage() {
           <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
-              onClick={() => qc.invalidateQueries({ queryKey: ["wa-conversations"] })}
+              onClick={() => historySyncMut.mutate()}
               className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
-              aria-label={t.refresh}
-              title={t.refresh}
+              aria-label={t.syncHistory}
+              title={t.syncHistory}
+              disabled={historySyncMut.isPending}
             >
-              <RefreshCw className={`h-4 w-4 ${convQuery.isFetching ? "animate-spin" : ""}`} />
+              <RefreshCw className={`h-4 w-4 ${convQuery.isFetching || historySyncMut.isPending ? "animate-spin" : ""}`} />
             </button>
             <button
               type="button"

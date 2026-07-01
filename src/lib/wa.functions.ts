@@ -160,7 +160,23 @@ export interface WaHistorySyncResult {
   requested: boolean;
   attempts: Array<{ path: string; ok: boolean; status?: number; error?: string }>;
   error: string | null;
+  before?: { conversations: number; messages: number };
+  after?: { conversations: number; messages: number };
+  fetchedKnownChats?: number;
 }
+
+function onlyDigits(value: unknown): string | null {
+  if (typeof value !== "string" && typeof value !== "number" && typeof value !== "bigint") return null;
+  const d = String(value).replace(/[^0-9]/g, "");
+  return d.length >= 6 ? d : null;
+}
+
+function jidFromPhone(value: unknown): string | null {
+  const phone = onlyDigits(value);
+  return phone ? `${phone}@s.whatsapp.net` : null;
+}
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const requestWaHistorySync = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -176,46 +192,112 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
     if (row.status !== "connected") {
       return { ok: false, sessionId: row.session_id, requested: false, attempts: [], error: "session_not_connected" };
     }
+
+    const countStored = async () => {
+      const [{ count: conversations }, { count: messages }] = await Promise.all([
+        supabase
+          .from("wa_conversations")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .eq("session_id", row.session_id),
+        supabase
+          .from("wa_messages")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .eq("session_id", row.session_id),
+      ]);
+      return { conversations: conversations ?? 0, messages: messages ?? 0 };
+    };
+
+    const before = await countStored();
     const result = await waBridge.requestHistorySync(row.session_id);
-    if (!result.ok) {
-      const { data: chats } = await supabase
+
+    const knownJids = new Set<string>();
+    const addJid = (value: unknown) => {
+      if (typeof value !== "string" || !value.trim() || value === "status@broadcast") return;
+      knownJids.add(value.includes("@") ? value.trim() : `${value.replace(/[^0-9]/g, "")}@s.whatsapp.net`);
+    };
+    const addPhone = (value: unknown) => {
+      const jid = jidFromPhone(value);
+      if (jid) knownJids.add(jid);
+    };
+
+    const [{ data: chats }, { data: contacts }, { data: customers }, { data: recipients }, { data: logs }] = await Promise.all([
+      supabase
         .from("wa_conversations")
-        .select("remote_jid")
+        .select("remote_jid, contact_phone")
         .eq("user_id", userId)
         .eq("session_id", row.session_id)
         .order("updated_at", { ascending: false })
-        .limit(40);
-      for (const chat of chats ?? []) {
-        const jid = typeof chat.remote_jid === "string" ? chat.remote_jid : "";
-        if (!jid || jid === "status@broadcast") continue;
-        try {
-          await waBridge.fetchMessages(row.session_id, jid, 50);
-          result.attempts.push({ path: `/api/sessions/${row.session_id}/fetch-messages`, ok: true });
-          result.ok = true;
-        } catch (err) {
-          result.attempts.push({
-            path: `/api/sessions/${row.session_id}/fetch-messages`,
-            ok: false,
-            status: err instanceof BridgeError ? err.status : undefined,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
+        .limit(80),
+      supabase.from("contacts").select("phone").eq("user_id", userId).limit(80),
+      supabase.from("customer_database").select("phone, phone_norm").eq("user_id", userId).limit(80),
+      supabase.from("bulk_job_recipients").select("phone").eq("user_id", userId).limit(80),
+      supabase.from("send_log").select("recipient").eq("user_id", userId).eq("channel", "whatsapp").limit(80),
+    ]);
+
+    for (const chat of chats ?? []) {
+      addJid(chat.remote_jid);
+      addPhone(chat.contact_phone);
+    }
+    for (const contact of contacts ?? []) addPhone(contact.phone);
+    for (const customer of customers ?? []) addPhone(customer.phone_norm || customer.phone);
+    for (const recipient of recipients ?? []) addPhone(recipient.phone);
+    for (const log of logs ?? []) addPhone(log.recipient);
+
+    let fetchedKnownChats = 0;
+    for (const jid of Array.from(knownJids).slice(0, 120)) {
+      if (!jid || jid === "@s.whatsapp.net" || jid.endsWith("@broadcast")) continue;
+      try {
+        await waBridge.fetchMessages(row.session_id, jid, 100);
+        fetchedKnownChats++;
+        result.attempts.push({ path: `/api/sessions/${row.session_id}/fetch-messages`, ok: true });
+      } catch (err) {
+        result.attempts.push({
+          path: `/api/sessions/${row.session_id}/fetch-messages`,
+          ok: false,
+          status: err instanceof BridgeError ? err.status : undefined,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
+
+    if (!result.ok) {
+      result.ok = fetchedKnownChats > 0;
+    }
+
+    let after = await countStored();
+    for (let i = 0; i < 4 && after.messages === before.messages && after.conversations === before.conversations; i++) {
+      await wait(1500);
+      after = await countStored();
+    }
+
+    const actuallyImported = after.messages > before.messages || after.conversations > before.conversations;
     await logWaSessionEvent(supabase, {
       userId,
       sessionId: row.session_id,
       fromStatus: "connected",
       toStatus: "connected",
       source: "history_sync",
-      reason: result.ok ? "history_sync_requested" : "history_sync_endpoint_unavailable",
+      reason: actuallyImported
+        ? "history_sync_imported_messages"
+        : result.ok
+          ? "history_sync_requested_no_new_messages"
+          : "history_sync_endpoint_unavailable",
     });
     return {
-      ok: result.ok,
+      ok: actuallyImported,
       sessionId: row.session_id,
       requested: true,
       attempts: result.attempts,
-      error: result.ok ? null : "bridge_history_sync_endpoint_unavailable",
+      error: actuallyImported
+        ? null
+        : result.ok
+          ? "no_new_messages_after_sync"
+          : "bridge_history_sync_endpoint_unavailable",
+      before,
+      after,
+      fetchedKnownChats,
     };
   });
 
