@@ -52,9 +52,21 @@ function CustomersPage() {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
 
+  // Manual-add state
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualTab, setManualTab] = useState<"single" | "paste">("single");
+  const [mName, setMName] = useState("");
+  const [mPhone, setMPhone] = useState("");
+  const [mEmail, setMEmail] = useState("");
+  const [mCity, setMCity] = useState("");
+  const [mNotes, setMNotes] = useState("");
+  const [pasteText, setPasteText] = useState("");
+  const [savingManual, setSavingManual] = useState(false);
+
   const loadRows = useCallback(async () => {
     setBusy(true);
     try {
+
       const { count: c } = await supabase
         .from("customer_database")
         .select("id", { count: "exact", head: true });
