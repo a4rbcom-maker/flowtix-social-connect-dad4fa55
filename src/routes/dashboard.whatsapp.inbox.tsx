@@ -1244,9 +1244,53 @@ function ContactInfoPanel({
           </div>
         )}
       </div>
+
+      <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
+        <DialogContent className="max-w-md" dir={isAr ? "rtl" : "ltr"}>
+          <DialogHeader>
+            <DialogTitle>{isAr ? "حفظ العميل في قاعدة بياناتي" : "Save customer to my database"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">{isAr ? "الموبايل" : "Phone"}</label>
+              <Input value={phone} readOnly disabled className="font-mono" dir="ltr" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">
+                {isAr ? "الاسم (اختياري)" : "Name (optional)"}
+              </label>
+              <Input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder={isAr ? "اترك فارغاً إذا لم تعرف الاسم" : "Leave blank if unknown"} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">{isAr ? "الإيميل (اختياري)" : "Email (optional)"}</label>
+                <Input value={saveEmail} onChange={(e) => setSaveEmail(e.target.value)} type="email" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">{isAr ? "المدينة (اختياري)" : "City (optional)"}</label>
+                <Input value={saveCity} onChange={(e) => setSaveCity(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">{isAr ? "ملاحظات (اختياري)" : "Notes (optional)"}</label>
+              <Textarea value={saveNotes} onChange={(e) => setSaveNotes(e.target.value)} rows={2} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSaveOpen(false)} disabled={saving}>
+              {isAr ? "إلغاء" : "Cancel"}
+            </Button>
+            <Button onClick={handleSaveCustomer} disabled={saving} className="gap-2">
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isAr ? "حفظ" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </aside>
   );
 }
+
 
 function InfoRow({ label, value, ltr }: { label: string; value: string; ltr?: boolean }) {
   return (
