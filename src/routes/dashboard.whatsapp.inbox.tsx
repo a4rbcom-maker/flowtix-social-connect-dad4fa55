@@ -1609,7 +1609,7 @@ function ContactInfoPanel({
             {summarizing ? (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                {isAr ? "جارٍ توليد الملخص عبر kie.ai…" : "Generating summary via kie.ai…"}
+                {isAr ? "جارٍ توليد الملخص…" : "Generating summary…"}
               </div>
             ) : (
               summaryText || (isAr ? "لا يوجد ملخص" : "No summary")
@@ -1617,7 +1617,7 @@ function ContactInfoPanel({
           </div>
           {summaryMeta && !summarizing && (
             <p className="text-[11px] text-muted-foreground">
-              {isAr ? "المزوّد" : "Provider"}: kie.ai · {isAr ? "الموديل" : "model"}: {summaryMeta.model} · {summaryMeta.count} {isAr ? "رسالة" : "messages"}
+              {summaryMeta.count} {isAr ? "رسالة" : "messages"}
             </p>
           )}
           <DialogFooter>
