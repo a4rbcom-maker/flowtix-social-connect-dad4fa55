@@ -255,6 +255,36 @@ function WhatsAppPage() {
     if (errorMsg && polling) setPolling(false);
   }, [errorMsg, polling]);
 
+  // Track when a new QR is issued to compute expiry
+  useEffect(() => {
+    if (qrValue && qrValue !== lastQrValueRef.current) {
+      lastQrValueRef.current = qrValue;
+      setQrIssuedAt(Date.now());
+      setQrSecondsLeft(60);
+      autoRefreshingRef.current = false;
+    }
+    if (!qrValue) {
+      lastQrValueRef.current = null;
+      setQrIssuedAt(null);
+    }
+  }, [qrValue]);
+
+  // Countdown ticker + auto-refresh expired QR silently
+  useEffect(() => {
+    if (!qrIssuedAt || status === "connected") return;
+    const timer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - qrIssuedAt) / 1000);
+      const left = Math.max(0, 60 - elapsed);
+      setQrSecondsLeft(left);
+      if (left === 0 && !autoRefreshingRef.current && (status === "qr" || status === "connecting" || status === "disconnected")) {
+        autoRefreshingRef.current = true;
+        resetMut.mutate();
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [qrIssuedAt, status]);
+
+
   const connectMut = useMutation({
     mutationFn: async () => {
       if (useCloudBridge) return callCloud<WaConnectionState>("connect");
