@@ -541,13 +541,25 @@ function InboxPage() {
           <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
-              onClick={() => historySyncMut.mutate()}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
-              aria-label={t.syncHistory}
-              title={t.syncHistory}
-              disabled={historySyncMut.isPending}
+              onClick={async () => {
+                await Promise.all([
+                  qc.invalidateQueries({ queryKey: ["wa-conversations", user?.id] }),
+                  qc.invalidateQueries({ queryKey: ["wa-messages"] }),
+                  qc.invalidateQueries({ queryKey: ["wa-connection"] }),
+                ]);
+                historySyncMut.mutate(undefined, {
+                  onSuccess: () => toast.success(t.resyncDone),
+                });
+              }}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 text-xs font-semibold text-primary transition hover:bg-primary/20 disabled:opacity-60"
+              aria-label={t.resync}
+              title={t.resync}
+              disabled={historySyncMut.isPending || convQuery.isFetching}
             >
-              <RefreshCw className={`h-4 w-4 ${convQuery.isFetching || historySyncMut.isPending ? "animate-spin" : ""}`} />
+              <RefreshCw className={`h-3.5 w-3.5 ${convQuery.isFetching || historySyncMut.isPending ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">
+                {historySyncMut.isPending ? t.resyncing : t.resync}
+              </span>
             </button>
             <button
               type="button"
