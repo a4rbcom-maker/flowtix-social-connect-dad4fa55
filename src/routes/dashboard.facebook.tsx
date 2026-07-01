@@ -311,6 +311,27 @@ function FacebookPage() {
   const [connecting, setConnecting] = useState(false);
   const [inspectingToken, setInspectingToken] = useState(false);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
+  const toggleGroupSelect = (id: string) => {
+    setSelectedGroupIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  };
+  const selectAllGroups = () => setSelectedGroupIds(new Set(groups.map((g) => g.id)));
+  const clearGroupSelection = () => setSelectedGroupIds(new Set());
+  const startSendToSelectedGroups = () => {
+    if (selectedGroupIds.size === 0) return;
+    const chosen = groups.filter((g) => selectedGroupIds.has(g.id));
+    try {
+      sessionStorage.setItem(
+        "fb_preselect_groups",
+        JSON.stringify({ groups: chosen, ts: Date.now() }),
+      );
+    } catch { /* ignore quota errors */ }
+    navigate({ to: "/dashboard/facebook/groups" });
+  };
   const [pages, setPages] = useState<Page[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [loadingPages, setLoadingPages] = useState(false);
