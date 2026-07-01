@@ -1395,11 +1395,12 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
   if (sessionError) throw new Error(sessionError.message);
   if (!sessionRow?.session_id || sessionRow.status !== "connected") return [];
 
+  // NOTE: نجلب المحادثات لكل جلسات المستخدم (وليس session_id الحالي فقط)
+  // لأن عند إعادة الربط يتم إنشاء session_id جديد وتظل المحادثات القديمة مرتبطة بالـ session_id السابق لنفس الرقم.
   const { data, error } = await supabase
     .from("wa_conversations")
     .select("id, session_id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
     .eq("user_id", userId)
-    .eq("session_id", sessionRow.session_id)
     .eq("is_archived", false)
     .order("last_message_at", { ascending: false })
     .limit(200);
@@ -1412,11 +1413,11 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
     .from("wa_messages")
     .select("remote_jid, text_body, msg_type, raw, wa_timestamp, created_at")
     .eq("user_id", userId)
-    .eq("session_id", sessionRow.session_id)
     .in("remote_jid", rows.map((row) => row.remote_jid))
     .not("raw", "is", null)
     .order("wa_timestamp", { ascending: false })
     .limit(1000);
+
 
 
   const metaByJid = new Map<string, { phone: string | null; profile: string | null; preview: string | null }>();
@@ -1456,11 +1457,11 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     .from("wa_messages")
     .select("id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw")
     .eq("user_id", userId)
-    .eq("session_id", sessionRow.session_id)
     .eq("remote_jid", remoteJid)
     .order("wa_timestamp", { ascending: true })
     .limit(1000);
   if (error) throw new Error(error.message);
+
 
   return Promise.all((data ?? []).map(async (row) => {
     const raw = asRecord(row.raw);
