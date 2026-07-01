@@ -1,7 +1,7 @@
 import * as React from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   MessageCircle,
@@ -138,6 +138,11 @@ function InboxPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const historySyncRequestedRef = useRef<string | null>(null);
+  const PAGE_SIZE = 40;
+  const [visibleCount, setVisibleCount] = useState<number>(PAGE_SIZE);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const preserveScrollRef = useRef<number | null>(null);
+  const prevMsgLenRef = useRef<number>(0);
 
   type SyncStatus = "idle" | "running" | "pending" | "done" | "error";
   const [syncState, setSyncState] = useState<{
@@ -325,6 +330,11 @@ function InboxPage() {
     () => (Array.isArray(msgsQuery.data) ? msgsQuery.data : []),
     [msgsQuery.data],
   );
+  const visibleMessages = useMemo<ChatMessageRow[]>(
+    () => (messages.length > visibleCount ? messages.slice(messages.length - visibleCount) : messages),
+    [messages, visibleCount],
+  );
+  const hasMoreOlder = messages.length > visibleMessages.length;
 
   // Track connection so we can show the right empty-state CTA.
   const connQuery = useQuery<{ status: string } | null>({
@@ -481,12 +491,56 @@ function InboxPage() {
     };
   }, [qc, user?.id, activeJid, requestHistorySyncFn]);
 
-  // Auto-scroll
+  // Reset progressive pagination when conversation changes
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    setVisibleCount(PAGE_SIZE);
+    setIsLoadingOlder(false);
+    preserveScrollRef.current = null;
+    prevMsgLenRef.current = 0;
+  }, [activeJid]);
+
+  // Preserve scroll position when loading older messages; auto-scroll to bottom on new tail
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (preserveScrollRef.current != null) {
+      // We just prepended older messages — keep the previously-visible message anchored.
+      const delta = el.scrollHeight - preserveScrollRef.current;
+      el.scrollTop = el.scrollTop + delta;
+      preserveScrollRef.current = null;
+      setIsLoadingOlder(false);
+      prevMsgLenRef.current = messages.length;
+      return;
     }
-  }, [messages.length, activeJid, isTyping]);
+    const prev = prevMsgLenRef.current;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+    if (messages.length !== prev) {
+      // New message(s) appended or conversation switched — scroll to bottom if user is near it.
+      if (nearBottom || prev === 0) {
+        el.scrollTop = el.scrollHeight;
+      }
+      prevMsgLenRef.current = messages.length;
+    }
+  }, [visibleMessages, messages.length, activeJid]);
+
+  // Scroll to bottom for typing indicator only when already near bottom
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !isTyping) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+    if (nearBottom) el.scrollTop = el.scrollHeight;
+  }, [isTyping]);
+
+  const handleMessagesScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (el.scrollTop <= 60 && hasMoreOlder && !isLoadingOlder) {
+      setIsLoadingOlder(true);
+      preserveScrollRef.current = el.scrollHeight;
+      setVisibleCount((c) => Math.min(c + PAGE_SIZE, messages.length));
+    }
+  }, [hasMoreOlder, isLoadingOlder, messages.length]);
+
 
   // Reset typing indicator when switching conversations
   useEffect(() => {
@@ -1121,6 +1175,7 @@ function InboxPage() {
           {/* Messages */}
           <div
             ref={scrollRef}
+            onScroll={handleMessagesScroll}
             className="relative min-w-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-6"
             style={{
               backgroundImage:
@@ -1148,7 +1203,36 @@ function InboxPage() {
                 </p>
               </div>
             ) : (
-              renderMessagesWithDays(messages, isAr, t)
+              <>
+                {hasMoreOlder && (
+                  <div className="flex justify-center py-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const el = scrollRef.current;
+                        if (!el || isLoadingOlder) return;
+                        setIsLoadingOlder(true);
+                        preserveScrollRef.current = el.scrollHeight;
+                        setVisibleCount((c) => Math.min(c + PAGE_SIZE, messages.length));
+                      }}
+                      className="rounded-full bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm ring-1 ring-border/60 transition hover:text-foreground disabled:opacity-60"
+                      disabled={isLoadingOlder}
+                    >
+                      {isLoadingOlder
+                        ? (isAr ? "جارٍ التحميل…" : "Loading…")
+                        : (isAr ? "تحميل رسائل أقدم" : "Load older messages")}
+                    </button>
+                  </div>
+                )}
+                {!hasMoreOlder && messages.length > PAGE_SIZE && (
+                  <div className="flex justify-center py-2">
+                    <span className="rounded-full bg-muted/60 px-3 py-1 text-[10px] text-muted-foreground">
+                      {isAr ? "بداية المحادثة" : "Start of conversation"}
+                    </span>
+                  </div>
+                )}
+                {renderMessagesWithDays(visibleMessages, isAr, t)}
+              </>
             )}
             {isTyping && activeJid && (
               <div dir="ltr" className="flex justify-start px-1 pt-1">
