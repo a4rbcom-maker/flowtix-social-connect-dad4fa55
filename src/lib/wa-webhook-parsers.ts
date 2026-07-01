@@ -24,8 +24,8 @@ export function verifySignature(rawBody: string, header: string | null, secret: 
 }
 
 export function digits(s: unknown): string | null {
-  if (typeof s !== "string") return null;
-  const d = s.replace(/[^0-9]/g, "");
+  if (typeof s !== "string" && typeof s !== "number" && typeof s !== "bigint") return null;
+  const d = String(s).replace(/[^0-9]/g, "");
   return d || null;
 }
 
@@ -35,6 +35,7 @@ export function pickStr(obj: unknown, ...keys: string[]): string | null {
   for (const k of keys) {
     const v = rec[k];
     if (typeof v === "string" && v.length > 0) return v;
+    if ((typeof v === "number" || typeof v === "bigint") && String(v).length > 0) return String(v);
   }
   return null;
 }
@@ -73,6 +74,7 @@ function looksLikeMessage(v: unknown): v is Record<string, unknown> {
 
 function pickContactRef(value: unknown): string | null {
   if (typeof value === "string" && value.length > 0) return value;
+  if ((typeof value === "number" || typeof value === "bigint") && String(value).length > 0) return String(value);
   const obj = asObj(value);
   return pickStr(obj, "jid", "id", "remoteJid", "phoneNumber", "phone", "number", "user", "pn");
 }
