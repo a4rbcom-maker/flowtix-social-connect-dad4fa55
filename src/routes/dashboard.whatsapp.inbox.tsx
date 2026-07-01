@@ -1150,7 +1150,26 @@ function InboxPage() {
             ) : (
               renderMessagesWithDays(messages, isAr, t)
             )}
+            {isTyping && activeJid && (
+              <div dir="ltr" className="flex justify-start px-1 pt-1">
+                <div
+                  dir={isAr ? "rtl" : "ltr"}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-card px-3.5 py-2.5 text-sm shadow-[0_1px_2px_rgba(0,0,0,0.06),0_1px_1px_rgba(0,0,0,0.04)] ring-1 ring-border/60"
+                  aria-live="polite"
+                >
+                  <span className="text-[11px] font-medium text-muted-foreground">
+                    {isAr ? "يكتب" : "typing"}
+                  </span>
+                  <span className="flex items-end gap-1">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70 [animation-delay:-0.3s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70 [animation-delay:-0.15s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70" />
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
+
 
           {/* Composer */}
           <form
