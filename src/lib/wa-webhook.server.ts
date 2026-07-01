@@ -618,44 +618,32 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       }
     }
 
-    const { error: insErr, data: insertedRows } = await supabaseAdmin
-      .from("wa_messages")
-      .upsert(
-        {
-          user_id: userId,
-          session_id: sessionId,
-          direction: m.fromMe ? "out" : "in",
-          remote_jid: m.remoteJid,
-          from_phone: m.fromMe ? null : m.fromPhone,
-          to_phone: m.fromMe ? m.fromPhone : null,
-          msg_type: msgType,
-          text_body: text,
-          media_url: mediaUrl,
-          status: m.status,
-          provider_message_id: m.providerMessageId,
-          wa_timestamp: waTimestamp,
-          raw: {
-            ...entry,
-            normalizedRemoteJid: m.remoteJid,
-            normalizedContactPhone: m.fromPhone,
-            normalizedStatus: m.status,
-            normalizedWaTimestamp: waTimestamp,
-            providerMessageId: m.providerMessageId,
-            ...(isHistorical ? { is_historical: true } : {}),
-            storedMediaUrl: mediaUrl?.startsWith("wa-media:") ? mediaUrl : null,
-          } as never,
-        },
-        {
-          onConflict: "user_id,session_id,provider_message_id",
-          ignoreDuplicates: true,
-        },
-      )
-      .select("id");
+    const { error: insErr } = await supabaseAdmin.from("wa_messages").insert({
+      user_id: userId,
+      session_id: sessionId,
+      direction: m.fromMe ? "out" : "in",
+      remote_jid: m.remoteJid,
+      from_phone: m.fromMe ? null : m.fromPhone,
+      to_phone: m.fromMe ? m.fromPhone : null,
+      msg_type: msgType,
+      text_body: text,
+      media_url: mediaUrl,
+      status: m.status,
+      provider_message_id: m.providerMessageId,
+      wa_timestamp: waTimestamp,
+      raw: {
+        ...entry,
+        normalizedRemoteJid: m.remoteJid,
+        normalizedContactPhone: m.fromPhone,
+        normalizedStatus: m.status,
+        normalizedWaTimestamp: waTimestamp,
+        providerMessageId: m.providerMessageId,
+        ...(isHistorical ? { is_historical: true } : {}),
+        storedMediaUrl: mediaUrl?.startsWith("wa-media:") ? mediaUrl : null,
+      } as never,
+    });
     if (insErr) {
       console.error("[wa-webhook] insert wa_messages failed:", insErr.message);
-      continue;
-    }
-    if (m.providerMessageId && (!insertedRows || insertedRows.length === 0)) {
       continue;
     }
     saved++;
