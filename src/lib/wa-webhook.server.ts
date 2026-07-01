@@ -32,6 +32,66 @@ const WA_MEDIA_BUCKET = "wa-media";
 const HISTORY_EVENTS = new Set(["history_messages", "messaging-history.set", "messaging_history.set", "history.sync", "history_sync"]);
 const HISTORICAL_MESSAGE_AGE_MS = 10 * 60 * 1000;
 
+function pickContactArray(payload: Record<string, unknown>, data: Record<string, unknown>): Record<string, unknown>[] {
+  const candidates = [data.contacts, payload.contacts, data.items, payload.items, data.chats, payload.chats];
+  for (const value of candidates) {
+    if (Array.isArray(value)) return value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"));
+  }
+  return [];
+}
+
+function bestContactName(contact: Record<string, unknown>): string | null {
+  const name = pickStr(contact, "pushName", "notifyName", "verifiedName", "displayName", "shortName", "name", "subject");
+  const cleaned = name?.trim();
+  if (!cleaned || /^\+?\d{6,}$/.test(cleaned.replace(/\s+/g, ""))) return null;
+  return cleaned;
+}
+
+async function updateConversationContacts(params: {
+  userId: string;
+  sessionId: string;
+  businessPhone: string | null;
+  contacts: Record<string, unknown>[];
+}): Promise<number> {
+  let updated = 0;
+  const businessPhone = params.businessPhone?.replace(/[^0-9]/g, "") || null;
+  for (const c of params.contacts.slice(0, 1000)) {
+    const rawJid = pickStr(c, "jid", "id", "rawJid", "remoteJid", "chatId");
+    const phone = digits(pickStr(c, "phoneNumber", "phone", "number", "user", "pn") || rawJid);
+    if (!rawJid && !phone) continue;
+    if (phone && businessPhone && phone === businessPhone) continue;
+    const remoteJid = rawJid?.includes("@") ? rawJid : phone ? `${phone}@s.whatsapp.net` : null;
+    if (!remoteJid || remoteJid === "status@broadcast" || remoteJid.endsWith("@broadcast") || remoteJid.endsWith("@g.us")) continue;
+
+    const name = bestContactName(c);
+    const { data: rows } = await supabaseAdmin
+      .from("wa_conversations")
+      .select("id, contact_name, contact_phone, remote_jid")
+      .eq("user_id", params.userId)
+      .eq("session_id", params.sessionId)
+      .or(`remote_jid.eq.${remoteJid}${phone ? `,contact_phone.eq.${phone}` : ""}`)
+      .limit(5);
+
+    for (const row of rows ?? []) {
+      const currentName = String(row.contact_name ?? "").trim();
+      const currentLooksLikePlaceholder =
+        !currentName ||
+        currentName === row.remote_jid ||
+        currentName === row.contact_phone ||
+        currentName.replace(/[^0-9]/g, "") === (row.contact_phone || "");
+      const patch: Record<string, unknown> = {
+        ...(phone && !row.contact_phone ? { contact_phone: phone } : {}),
+        ...(name && currentLooksLikePlaceholder ? { contact_name: name } : {}),
+      };
+      if (!Object.keys(patch).length) continue;
+      const { error } = await supabaseAdmin.from("wa_conversations").update(patch).eq("id", row.id);
+      if (!error) updated++;
+      else console.error("[wa-webhook] contact update failed:", error.message);
+    }
+  }
+  return updated;
+}
+
 function isTruthyFlag(value: unknown): boolean {
   return value === true || ["true", "1", "yes", "history", "historical"].includes(String(value ?? "").toLowerCase());
 }
@@ -284,7 +344,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
 
   const { data: sess, error: sessErr } = await supabaseAdmin
     .from("wa_sessions")
-    .select("user_id")
+    .select("user_id, phone_number")
     .eq("session_id", sessionId)
     .maybeSingle();
   if (sessErr) {
@@ -302,6 +362,20 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   const userId = sess.user_id;
   const event = String(payload.event || payload.type || "").toLowerCase();
   const data = asObj(payload.data);
+
+  if (event === "contacts" || event === "contacts.update" || event === "contacts.upsert") {
+    const contacts = pickContactArray(payload, data);
+    const updated = await updateConversationContacts({
+      userId,
+      sessionId,
+      businessPhone: digits(sess.phone_number),
+      contacts,
+    });
+    return new Response(JSON.stringify({ ok: true, contacts: contacts.length, updated }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   const eventStatus = SESSION_STATUS_MAP[event];
   if (eventStatus) {
