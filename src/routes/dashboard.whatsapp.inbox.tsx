@@ -148,6 +148,9 @@ function InboxPage() {
         video: "فيديو",
         today: "اليوم",
         yesterday: "أمس",
+        savedStats: (chats: number, messages: number) => `${chats} محادثات ظاهرة · ${messages} رسالة محفوظة`,
+        connected: "متصل",
+        disconnected: "غير متصل",
       }
     : {
         title: "Conversations",
@@ -185,6 +188,9 @@ function InboxPage() {
         video: "Video",
         today: "Today",
         yesterday: "Yesterday",
+        savedStats: (chats: number, messages: number) => `${chats} visible chats · ${messages} saved messages`,
+        connected: "Connected",
+        disconnected: "Not connected",
       };
 
   // Data
@@ -259,6 +265,13 @@ function InboxPage() {
     queryFn: () => safeCall(() => fetchInboxConnectionState(user!.id), null),
     enabled: !!user?.id,
     refetchInterval: 30000,
+  });
+
+  const inboxStatsQuery = useQuery<{ messages: number }>({
+    queryKey: ["wa-inbox-stats", user?.id],
+    queryFn: () => safeCall(() => fetchInboxStats(user!.id), { messages: 0 }),
+    enabled: !!user?.id,
+    refetchInterval: 15000,
   });
 
   const quickRepliesQuery = useQuery<QuickReply[]>({
@@ -604,6 +617,14 @@ function InboxPage() {
               </button>
             );
           })}
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-[11px] font-semibold text-muted-foreground">
+          <span className="truncate">
+            {t.savedStats(conversations.length, inboxStatsQuery.data?.messages ?? 0)}
+          </span>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 ${connQuery.data?.status === "connected" ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+            {connQuery.data?.status === "connected" ? t.connected : t.disconnected}
+          </span>
         </div>
       </div>
 
@@ -1580,34 +1601,32 @@ function EmptyChat({
 
 async function fetchInboxConversations(userId: string): Promise<ConversationRow[]> {
   // نجلب تاريخ محادثات المستخدم كله حتى لا يختفي بعد فصل الجلسة وإعادة الربط.
-  const { data, error } = await supabase
-    .from("wa_conversations")
-    .select("id, session_id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
-    .eq("user_id", userId)
-    .eq("is_archived", false)
-    .order("last_message_at", { ascending: false })
-    .limit(200);
+  const [{ data, error }, { data: rawMessages, error: msgError }] = await Promise.all([
+    supabase
+      .from("wa_conversations")
+      .select("id, session_id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
+      .eq("user_id", userId)
+      .eq("is_archived", false)
+      .order("last_message_at", { ascending: false })
+      .limit(200),
+    supabase
+      .from("wa_messages")
+      .select("session_id, remote_jid, direction, text_body, msg_type, raw, wa_timestamp, created_at")
+      .eq("user_id", userId)
+      .order("wa_timestamp", { ascending: false })
+      .limit(1000),
+  ]);
 
   if (error) throw new Error(error.message);
+  if (msgError) throw new Error(msgError.message);
 
   const rows = (data ?? []) as Omit<ConversationRow, "profile_pic_url">[];
-  if (!rows.length) return [];
-
-  const { data: rawMessages } = await supabase
-    .from("wa_messages")
-    .select("remote_jid, text_body, msg_type, raw, wa_timestamp, created_at")
-    .eq("user_id", userId)
-    .in("remote_jid", rows.map((row) => row.remote_jid))
-    .not("raw", "is", null)
-    .order("wa_timestamp", { ascending: false })
-    .limit(1000);
-
-
-
   const metaByJid = new Map<string, { phone: string | null; profile: string | null; preview: string | null }>();
+  const latestMessageByJid = new Map<string, NonNullable<typeof rawMessages>[number]>();
   for (const msg of rawMessages ?? []) {
     const jid = String(msg.remote_jid ?? "");
     if (!jid) continue;
+    if (!latestMessageByJid.has(jid)) latestMessageByJid.set(jid, msg);
     const current = metaByJid.get(jid) ?? { phone: null, profile: null, preview: null };
     metaByJid.set(jid, {
       phone: current.phone ?? phoneFromRaw(msg.raw),
@@ -1616,7 +1635,8 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
     });
   }
 
-  return rows.map((row) => {
+  const existingJids = new Set(rows.map((row) => row.remote_jid));
+  const visibleRows: ConversationRow[] = rows.map((row) => {
     const meta = metaByJid.get(row.remote_jid);
     const isGroup = row.remote_jid.endsWith("@g.us");
     return {
@@ -1626,6 +1646,34 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
       profile_pic_url: meta?.profile ?? null,
     };
   });
+
+  // بعض رسائل التاريخ تصل قبل إنشاء صف في wa_conversations. لا نخفيها؛
+  // ننشئ صف محادثة افتراضي من آخر رسالة محفوظة حتى يظهر التاريخ فورًا في الشات.
+  for (const [jid, msg] of latestMessageByJid) {
+    if (existingJids.has(jid)) continue;
+    const raw = msg.raw;
+    const isGroup = jid.endsWith("@g.us");
+    const direction = msg.direction === "out" ? "out" : "in";
+    const phone = isGroup ? null : phoneFromRaw(raw);
+    const name = direction === "in" || isGroup ? usefulContactName(contactNameFromRaw(raw), phone, jid) : null;
+    visibleRows.push({
+      id: `virtual:${jid}`,
+      session_id: msg.session_id ?? undefined,
+      remote_jid: jid,
+      contact_name: name,
+      contact_phone: phone,
+      profile_pic_url: profilePicFromRaw(raw),
+      last_message_text: previewTextFromRaw(raw, msg.text_body, msg.msg_type),
+      last_message_at: msg.wa_timestamp ?? msg.created_at,
+      last_direction: direction,
+      unread_count: 0,
+      ai_enabled: false,
+    });
+  }
+
+  return visibleRows
+    .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime())
+    .slice(0, 200);
 }
 
 async function fetchInboxMessages(userId: string, remoteJid: string): Promise<ChatMessageRow[]> {
@@ -1710,6 +1758,15 @@ async function fetchInboxConnectionState(userId: string): Promise<{ status: stri
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data?.status ? { status: data.status } : null;
+}
+
+async function fetchInboxStats(userId: string): Promise<{ messages: number }> {
+  const { count, error } = await supabase
+    .from("wa_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  return { messages: count ?? 0 };
 }
 
 async function fetchInboxQuickReplies(userId: string): Promise<QuickReply[]> {
@@ -1811,6 +1868,11 @@ function mergeConversationAliases(items: ConversationRow[]): ConversationRow {
 function phoneFromRaw(raw: unknown): string | null {
   const obj = asRecord(raw);
   return digits(pickString(obj, "normalizedContactPhone", "senderPn", "participantPn", "phoneNumber", "phone"));
+}
+
+function contactNameFromRaw(raw: unknown): string | null {
+  const obj = asRecord(raw);
+  return pickString(obj, "contactName", "pushName", "senderName", "notifyName", "name", "verifiedName", "subject");
 }
 
 function profilePicFromRaw(raw: unknown): string | null {
