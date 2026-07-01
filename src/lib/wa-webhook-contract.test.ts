@@ -152,6 +152,23 @@ const BOTXTRA_V18_BARE_FROM_MESSAGE = {
   },
 };
 
+const BOTXTRA_V18_NUMERIC_FROM_MESSAGE = {
+  event: "message",
+  sessionId: "flowtix-abcdef0123456789-l4k2j",
+  data: {
+    tenantId: "4f4b101d-b785-4719-82a3-6f378584739e",
+    from: 201508776669,
+    fromMe: "false",
+    pushName: "Customer",
+    body: "رسالة وصلت الآن",
+    type: "text",
+    id: "3EB0BX1.8.NUMERIC001",
+    isGroup: false,
+    sender: 201508776669,
+    timestamp: 1_730_000_055,
+  },
+};
+
 const BOTXTRA_V18_OWN_BARE_FROM_MESSAGE = {
   event: "message",
   sessionId: "flowtix-abcdef0123456789-l4k2j",
@@ -290,6 +307,17 @@ describe("Bot-Xtra v1.8.x: parseMessageEntry", () => {
     expect(m.fromPhone).toBe("201508776669");
     expect(m.remoteJid).toBe("201508776669@s.whatsapp.net");
     expect(m.providerMessageId).toBe("3EB0BX1.8.BARE001");
+  });
+
+  it("parses Bot-Xtra flat messages where from/sender arrive as numbers", () => {
+    const [entry] = collectMessageEntries(BOTXTRA_V18_NUMERIC_FROM_MESSAGE);
+    const m = parseMessageEntry(entry)!;
+    expect(m).not.toBeNull();
+    expect(m.text).toBe("رسالة وصلت الآن");
+    expect(m.fromMe).toBe(false);
+    expect(m.fromPhone).toBe("201508776669");
+    expect(m.remoteJid).toBe("201508776669@s.whatsapp.net");
+    expect(m.providerMessageId).toBe("3EB0BX1.8.NUMERIC001");
   });
 
   it("keeps own historical flat messages even when Bot-Xtra omits a separate recipient field", () => {
