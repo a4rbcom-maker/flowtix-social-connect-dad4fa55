@@ -1027,9 +1027,7 @@ function InboxPage() {
               disabled={historySyncMut.isPending || convQuery.isFetching}
             >
               <RefreshCw className={`h-3.5 w-3.5 ${convQuery.isFetching || historySyncMut.isPending ? "animate-spin" : ""}`} />
-              <span className="hidden sm:inline">
-                {historySyncMut.isPending ? t.resyncing : t.resync}
-              </span>
+              <span className="hidden sm:inline">{t.resync}</span>
             </button>
           </div>
         </div>
