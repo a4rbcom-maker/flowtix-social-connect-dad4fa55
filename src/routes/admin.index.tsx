@@ -79,6 +79,14 @@ function AdminOverviewPage() {
     retry: false,
   });
   const actQ = useQuery({ queryKey: ["admin", "activity"], queryFn: () => fetchActivity(), staleTime: 20_000, refetchInterval: 30_000, enabled: canLoadAdminData, retry: false });
+  const fetchVisitors = useServerFn(getVisitorStats);
+  const visitorsQ = useQuery({
+    queryKey: ["admin", "visitors", 30],
+    queryFn: () => fetchVisitors({ data: { days: 30 } }),
+    staleTime: 60_000,
+    enabled: canLoadAdminData,
+    retry: false,
+  });
 
 
   const k = (kpisQ.data?.kpis ?? {}) as Record<string, number | Record<string, number>>;
