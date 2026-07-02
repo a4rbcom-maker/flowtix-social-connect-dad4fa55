@@ -402,23 +402,26 @@ function InboxPage() {
     enabled: !!user?.id,
   });
 
+  // Auto-trigger a full history sync the moment the session becomes "connected".
+  // Goes through historySyncMut (not the bare fn) so the progress bar / % /
+  // imported counts appear right after QR scan — no user action required.
   useEffect(() => {
     if (!user?.id) return;
     if (connQuery.data?.status !== "connected") return;
     if (convQuery.isFetching) return;
-    const raw = Array.isArray(convQuery.data) ? convQuery.data : [];
-    if (raw.length > 0) return;
-    const key = `${user.id}:${connQuery.data.status}`;
+    const key = `${user.id}:connected`;
     if (historySyncRequestedRef.current === key) return;
     historySyncRequestedRef.current = key;
-    requestHistorySyncFn()
-      .then(() => {
-        window.setTimeout(() => {
-          qc.invalidateQueries({ queryKey: ["wa-conversations", user.id] });
-        }, 4000);
-      })
-      .catch((err: unknown) => console.warn("[inbox] history sync request failed", err));
-  }, [connQuery.data?.status, convQuery.data, convQuery.isFetching, qc, requestHistorySyncFn, user?.id]);
+    // Fire-and-track: the mutation's onMutate sets syncState → progress UI shows.
+    historySyncMut.mutate();
+    // On disconnect, allow re-trigger on the next connect.
+    return () => {
+      if (connQuery.data?.status !== "connected") {
+        historySyncRequestedRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connQuery.data?.status, convQuery.isFetching, user?.id]);
 
 
 
