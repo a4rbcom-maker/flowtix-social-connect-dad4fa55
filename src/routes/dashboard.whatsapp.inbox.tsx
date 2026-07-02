@@ -809,6 +809,16 @@ function InboxPage() {
 
   }, [syncTick, inboxStatsQuery.data?.messages, conversations.length, syncState.status, syncState.baselineMsg, syncState.baselineConv, syncState.deadlineAt, syncState.importedMsg, syncState.importedConv, t.syncUnavailable]);
 
+  // Auto-hide the sync banner shortly after it completes, regardless of source.
+  useEffect(() => {
+    if (syncState.status !== "done") return;
+    const id = window.setTimeout(() => {
+      setSyncState((s) => (s.status === "done" ? { ...s, status: "idle" } : s));
+    }, 4000);
+    return () => window.clearTimeout(id);
+  }, [syncState.status]);
+
+
 
   const aiToggleMut = useMutation({
     mutationFn: async (vars: { id: string; enabled: boolean }) => {
