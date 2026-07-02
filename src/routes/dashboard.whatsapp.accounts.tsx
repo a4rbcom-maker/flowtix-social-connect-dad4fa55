@@ -755,12 +755,9 @@ function TestSendCard({ ar, defaultPhone }: { ar: boolean; defaultPhone: string 
                 {ar ? "✅ تم الحفظ في wa_messages" : "✅ Saved to wa_messages"}
               </div>
               <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 font-mono">
-                <span>status: {result.status}</span>
-                <span>delivery: {result.delivery}</span>
-                <span>phone: {result.phone}</span>
-                <span>id: {result.messageId?.slice(0, 8)}…</span>
-                {result.providerMessageId && <span>provider: {result.providerMessageId.slice(0, 12)}…</span>}
-                {result.queuedId && <span>queued: {result.queuedId.slice(0, 12)}…</span>}
+                <span>{ar ? "الحالة" : "Status"}: {result.status}</span>
+                <span>{ar ? "الرقم" : "Phone"}: {result.phone}</span>
+                <span>{ar ? "رقم العملية" : "Ref"}: {result.messageId?.slice(0, 8)}…</span>
               </div>
             </div>
           ) : (
