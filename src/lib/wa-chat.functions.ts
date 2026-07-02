@@ -60,52 +60,30 @@ export const listConversations = createServerFn({ method: "POST" })
     const { data, error } = await supabase
       .from("wa_conversations")
       .select(
-        "id, session_id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled",
+        "id, session_id, remote_jid, contact_name, contact_phone, profile_pic_url, last_message_text, last_message_at, last_direction, unread_count, ai_enabled",
       )
       .eq("user_id", userId)
       .eq("is_archived", false)
       .order("last_message_at", { ascending: false })
       .limit(200);
     if (error) throw new Error(error.message);
-    const rows = (data ?? []) as Omit<ConversationRow, "profile_pic_url">[];
+    const rows = (data ?? []) as ConversationRow[];
     if (!rows.length) return [];
 
-    const remoteJids = rows.map((row) => row.remote_jid);
-    const { data: rawMessages } = await supabase
-      .from("wa_messages")
-      .select("remote_jid, text_body, msg_type, raw, wa_timestamp, created_at")
-      .eq("user_id", userId)
-      .in("remote_jid", remoteJids)
-      .not("raw", "is", null)
-      .order("wa_timestamp", { ascending: false })
-      .limit(1000);
-
-
-
-    const metaByJid = new Map<string, { phone: string | null; profile: string | null; preview: string | null }>();
-    for (const msg of rawMessages ?? []) {
-      const jid = String(msg.remote_jid ?? "");
-      if (!jid) continue;
-      const current = metaByJid.get(jid) ?? { phone: null, profile: null, preview: null };
-      const next = {
-        phone: current.phone ?? phoneFromRaw(msg.raw),
-        profile: current.profile ?? profilePicFromRaw(msg.raw),
-        preview: current.preview ?? previewTextFromRaw(msg.raw, msg.text_body, msg.msg_type),
-      };
-      metaByJid.set(jid, next);
-    }
-
+    // NOTE: We intentionally do NOT scan wa_messages.raw here anymore.
+    // That JSONB blob is TOASTed and heavy; fetching it on every inbox open
+    // saturated disk IO. Preview text, phone and profile pic are now stored
+    // directly on wa_conversations by the webhook.
     return rows.map((row) => {
-      const meta = metaByJid.get(row.remote_jid);
       const isGroup = row.remote_jid.endsWith("@g.us");
       return {
         ...row,
-        contact_phone: isGroup ? null : (meta?.phone ?? row.contact_phone),
-        last_message_text: meta?.preview ?? row.last_message_text,
-        profile_pic_url: meta?.profile ?? null,
+        contact_phone: isGroup ? null : row.contact_phone,
+        profile_pic_url: row.profile_pic_url ?? null,
       };
     });
   });
+
 
 export const getConversationMessages = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
