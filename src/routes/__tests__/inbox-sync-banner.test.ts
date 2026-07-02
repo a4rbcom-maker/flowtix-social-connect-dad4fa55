@@ -23,6 +23,10 @@ describe("inbox sync UI is invisible to customers", () => {
   const forbiddenLabels = [
     "اكتملت المزامنة",
     "Sync complete",
+    "Sync completed",
+    "تم تحديث المحادثات والرسائل",
+    "Conversations and messages refreshed",
+    "resyncDone",
     "جاري جلب كل المحادثات",
     "جارٍ جلب كل المحادثات",
     "Fetching all chats",
@@ -33,10 +37,19 @@ describe("inbox sync UI is invisible to customers", () => {
     it(`does not render the label "${label}"`, () => {
       expect(
         code.includes(label),
-        `The label "${label}" must not appear in the inbox — the sync banner is disabled and any variant of it counts as a regression.`,
+        `The label "${label}" must not appear in the inbox — sync completion indicators are forbidden and any variant of it counts as a regression.`,
       ).toBe(false);
     });
   }
+
+  // 1b) Forbid any "done" completion state on syncState — completion must be silent.
+  it("never transitions syncState to a 'done' status", () => {
+    const doneTransition = /status:\s*["']done["']/;
+    expect(
+      doneTransition.test(code),
+      "syncState must never be set to status 'done' — completion has to stay silent (transition straight to 'idle').",
+    ).toBe(false);
+  });
 
   // 2) Forbid any active JSX render branch keyed off syncState.status.
   //    Only allowed occurrences: reads inside effects / handlers / setState

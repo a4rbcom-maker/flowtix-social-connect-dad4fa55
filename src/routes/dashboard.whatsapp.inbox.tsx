@@ -253,7 +253,6 @@ function InboxPage() {
         syncHistory: "مزامنة المحادثات القديمة",
         resync: "إعادة مزامنة",
         resyncing: "جارٍ المزامنة…",
-        resyncDone: "تم تحديث المحادثات والرسائل",
         resyncQueued: "تم إرسال طلب المزامنة للجسر، وسيتم تحديث الشات تلقائيًا عند وصول الدفعات.",
         syncNeedsConnection: "لا يمكن جلب المحادثات القديمة لأن واتساب غير متصل. أعد الربط وامسح QR جديد أولاً.",
         syncUnavailable: "لم تصل دفعات الأرشيف بعد. أبقِ الهاتف متصلاً وأعد المحاولة.",
@@ -305,7 +304,6 @@ function InboxPage() {
         syncHistory: "Sync old conversations",
         resync: "Resync",
         resyncing: "Syncing…",
-        resyncDone: "Conversations and messages refreshed",
         resyncQueued: "Sync request sent to the bridge; chats will update automatically when batches arrive.",
         syncNeedsConnection: "Old chats cannot be fetched because WhatsApp is not connected. Reconnect and scan a new QR first.",
         syncUnavailable: "Old-chat batches haven't arrived yet. Keep the phone online and retry.",
@@ -769,11 +767,12 @@ function InboxPage() {
         }));
         return;
       }
-      setSyncState((s) => ({ ...s, status: "done" }));
+      // Silent completion — never surface a "done" state to the UI.
+      setSyncState((s) => ({ ...s, status: "idle" }));
       qc.invalidateQueries({ queryKey: ["wa", "history-sync-job", user?.id ?? "anon"] });
     },
     onError: () => {
-      setSyncState((s) => ({ ...s, status: "done" }));
+      setSyncState((s) => ({ ...s, status: "idle" }));
       qc.invalidateQueries({ queryKey: ["wa", "history-sync-job", user?.id ?? "anon"] });
     },
   });
@@ -801,20 +800,15 @@ function InboxPage() {
       setSyncState((s) => ({ ...s, importedMsg, importedConv }));
     }
     if (Date.now() >= syncState.deadlineAt) {
-      setSyncState((s) => ({ ...s, status: "done", message: undefined }));
-      window.setTimeout(() => setSyncState((s) => (s.status === "done" ? { ...s, status: "idle" } : s)), 6000);
+      // Deadline reached — end silently. No "done" state, no banner.
+      setSyncState((s) => ({ ...s, status: "idle", message: undefined }));
     }
 
   }, [syncTick, inboxStatsQuery.data?.messages, conversations.length, syncState.status, syncState.baselineMsg, syncState.baselineConv, syncState.deadlineAt, syncState.importedMsg, syncState.importedConv, t.syncUnavailable]);
 
-  // Auto-hide the sync banner shortly after it completes, regardless of source.
-  useEffect(() => {
-    if (syncState.status !== "done") return;
-    const id = window.setTimeout(() => {
-      setSyncState((s) => (s.status === "done" ? { ...s, status: "idle" } : s));
-    }, 4000);
-    return () => window.clearTimeout(id);
-  }, [syncState.status]);
+  // No "done" state ever surfaces to the UI — historySyncMut transitions
+  // directly from running/pending → idle on success or error. This block
+  // used to auto-hide a completion banner; it is intentionally removed.
 
 
 
@@ -1112,10 +1106,15 @@ function InboxPage() {
                 <p className="px-6 text-sm font-medium">
                   {isAr ? "لا توجد محادثات بعد." : "No conversations yet."}
                 </p>
-                <p className="px-6 text-xs text-muted-foreground">
+                <p className="max-w-xs px-6 text-xs text-muted-foreground">
                   {isAr
                     ? "بمجرد وصول رسالة جديدة على رقم واتساب المرتبط، ستظهر هنا تلقائيًا."
                     : "As soon as a new message arrives on the linked WhatsApp number, it will show up here automatically."}
+                </p>
+                <p className="mt-1 max-w-xs rounded-full bg-muted/60 px-3 py-1 text-[11px] text-muted-foreground/90">
+                  {isAr
+                    ? "المحادثات القديمة قد تظهر تدريجيًا — لا حاجة لأي إجراء."
+                    : "Older chats may appear gradually — no action needed."}
                 </p>
               </>
             ) : (
