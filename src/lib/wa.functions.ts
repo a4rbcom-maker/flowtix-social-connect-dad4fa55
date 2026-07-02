@@ -6,6 +6,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requireAdmin } from "./admin-middleware";
 import {
   assertBridgeSendQueued,
+  bridgeSendQueuedMessage,
   waBridge,
   inferStatus,
   BridgeError,
