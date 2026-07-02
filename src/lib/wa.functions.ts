@@ -712,8 +712,9 @@ export const sendWaMessage = createServerFn({ method: "POST" })
       .eq("user_id", userId)
       .maybeSingle();
     if (rowErr) throw new Error(rowErr.message);
-    if (!row?.session_id) throw new Error("WhatsApp is not connected");
-    if (row.status !== "connected") throw new Error("WhatsApp is not connected");
+    const notConnectedMsg = "الجلسة غير متصلة. افتح صفحة WhatsApp واضغط «إعادة الاقتران» وامسح رمز QR من جوالك.";
+    if (!row?.session_id) throw new Error(notConnectedMsg);
+    if (row.status !== "connected") throw new Error(notConnectedMsg);
 
     const phone = data.to.replace(/[^0-9]/g, "");
     let providerMessageId: string | null = null;
