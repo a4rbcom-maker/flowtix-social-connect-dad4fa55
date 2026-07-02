@@ -739,13 +739,40 @@ function NewCampaignPage() {
               </div>
 
               <VirtualGroupList
-                items={filteredGroups}
+                items={visibleGroups}
                 selectedTargets={selectedTargets}
                 onToggle={(id) => setSelectedTargets((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; })}
                 isManualGroup={isManualGroup}
                 emptyLabel={t.empty}
                 manualBadge={t.manualBadge}
               />
+              {filteredGroups.length > 0 && (
+                <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>
+                    {lang === "ar"
+                      ? `عرض ${visibleGroups.length} من ${filteredGroups.length}`
+                      : `Showing ${visibleGroups.length} of ${filteredGroups.length}`}
+                  </span>
+                  {hasMoreGroups && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setVisibleCount((v) => v + PAGE_SIZE)}
+                        className="px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-accent text-xs font-semibold transition"
+                      >
+                        {lang === "ar" ? `تحميل ${Math.min(PAGE_SIZE, filteredGroups.length - visibleGroups.length)} إضافية` : `Load ${Math.min(PAGE_SIZE, filteredGroups.length - visibleGroups.length)} more`}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVisibleCount(filteredGroups.length)}
+                        className="px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-accent text-xs font-semibold transition"
+                      >
+                        {lang === "ar" ? "عرض الكل" : "Show all"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
