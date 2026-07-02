@@ -64,6 +64,10 @@ function BulkSendPage() {
   const [scheduleNow, setScheduleNow] = useState(true);
   const [scheduleAt, setScheduleAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [testPhone, setTestPhone] = useState("");
+  const [testSending, setTestSending] = useState(false);
+  const sendWaMessageFn = useServerFn(sendWaMessage);
+
   const [pickedList, setPickedList] = useState<string | null>(null);
   const [extraContactIds, setExtraContactIds] = useState<Set<string>>(new Set());
   const [imageUrl, setImageUrl] = useState<string | null>(null);
