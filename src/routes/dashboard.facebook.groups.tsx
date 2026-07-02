@@ -445,8 +445,9 @@ function FacebookGroupsPage() {
           })}
         </div>
 
-        {/* Not connected via Graph API */}
-        {connected === false && (
+        {/* Not connected via Graph API AND no bot-imported groups yet */}
+        {connected === false && groups.length === 0 && (
+
           <div className="rounded-2xl border border-border bg-card p-8 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
               <AlertCircle className="h-6 w-6" />
