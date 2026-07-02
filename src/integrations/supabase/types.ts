@@ -1500,6 +1500,7 @@ export type Database = {
           last_direction: string
           last_message_at: string
           last_message_text: string | null
+          profile_pic_url: string | null
           remote_jid: string
           session_id: string
           unread_count: number
@@ -1516,6 +1517,7 @@ export type Database = {
           last_direction?: string
           last_message_at?: string
           last_message_text?: string | null
+          profile_pic_url?: string | null
           remote_jid: string
           session_id: string
           unread_count?: number
@@ -1532,6 +1534,7 @@ export type Database = {
           last_direction?: string
           last_message_at?: string
           last_message_text?: string | null
+          profile_pic_url?: string | null
           remote_jid?: string
           session_id?: string
           unread_count?: number
