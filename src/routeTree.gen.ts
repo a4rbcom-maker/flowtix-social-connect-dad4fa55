@@ -60,6 +60,7 @@ import { Route as ApiPublicWaClientRouteImport } from './routes/api/public/wa-cl
 import { Route as ApiPublicWaBridgeSessionsRouteImport } from './routes/api/public/wa-bridge-sessions'
 import { Route as ApiPublicWaBridgeSessionStatusRouteImport } from './routes/api/public/wa-bridge-session-status'
 import { Route as ApiPublicWaBridgeHealthRouteImport } from './routes/api/public/wa-bridge-health'
+import { Route as ApiPublicTrackVisitRouteImport } from './routes/api/public/track-visit'
 import { Route as ApiPublicHealthRouteImport } from './routes/api/public/health'
 import { Route as ApiPublicFbPeopleIngestRouteImport } from './routes/api/public/fb-people-ingest'
 import { Route as DashboardFacebookCampaignsIndexRouteImport } from './routes/dashboard.facebook.campaigns.index'
@@ -342,6 +343,11 @@ const ApiPublicWaBridgeHealthRoute = ApiPublicWaBridgeHealthRouteImport.update({
   path: '/api/public/wa-bridge-health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicTrackVisitRoute = ApiPublicTrackVisitRouteImport.update({
+  id: '/api/public/track-visit',
+  path: '/api/public/track-visit',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHealthRoute = ApiPublicHealthRouteImport.update({
   id: '/api/public/health',
   path: '/api/public/health',
@@ -447,6 +453,7 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/api/public/fb-people-ingest': typeof ApiPublicFbPeopleIngestRoute
   '/api/public/health': typeof ApiPublicHealthRoute
+  '/api/public/track-visit': typeof ApiPublicTrackVisitRoute
   '/api/public/wa-bridge-health': typeof ApiPublicWaBridgeHealthRoute
   '/api/public/wa-bridge-session-status': typeof ApiPublicWaBridgeSessionStatusRoute
   '/api/public/wa-bridge-sessions': typeof ApiPublicWaBridgeSessionsRoute
@@ -513,6 +520,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/api/public/fb-people-ingest': typeof ApiPublicFbPeopleIngestRoute
   '/api/public/health': typeof ApiPublicHealthRoute
+  '/api/public/track-visit': typeof ApiPublicTrackVisitRoute
   '/api/public/wa-bridge-health': typeof ApiPublicWaBridgeHealthRoute
   '/api/public/wa-bridge-session-status': typeof ApiPublicWaBridgeSessionStatusRoute
   '/api/public/wa-bridge-sessions': typeof ApiPublicWaBridgeSessionsRoute
@@ -579,6 +587,7 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/api/public/fb-people-ingest': typeof ApiPublicFbPeopleIngestRoute
   '/api/public/health': typeof ApiPublicHealthRoute
+  '/api/public/track-visit': typeof ApiPublicTrackVisitRoute
   '/api/public/wa-bridge-health': typeof ApiPublicWaBridgeHealthRoute
   '/api/public/wa-bridge-session-status': typeof ApiPublicWaBridgeSessionStatusRoute
   '/api/public/wa-bridge-sessions': typeof ApiPublicWaBridgeSessionsRoute
@@ -647,6 +656,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/api/public/fb-people-ingest'
     | '/api/public/health'
+    | '/api/public/track-visit'
     | '/api/public/wa-bridge-health'
     | '/api/public/wa-bridge-session-status'
     | '/api/public/wa-bridge-sessions'
@@ -713,6 +723,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/api/public/fb-people-ingest'
     | '/api/public/health'
+    | '/api/public/track-visit'
     | '/api/public/wa-bridge-health'
     | '/api/public/wa-bridge-session-status'
     | '/api/public/wa-bridge-sessions'
@@ -778,6 +789,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/api/public/fb-people-ingest'
     | '/api/public/health'
+    | '/api/public/track-visit'
     | '/api/public/wa-bridge-health'
     | '/api/public/wa-bridge-session-status'
     | '/api/public/wa-bridge-sessions'
@@ -835,6 +847,7 @@ export interface RootRouteChildren {
   AdminIndexRoute: typeof AdminIndexRoute
   ApiPublicFbPeopleIngestRoute: typeof ApiPublicFbPeopleIngestRoute
   ApiPublicHealthRoute: typeof ApiPublicHealthRoute
+  ApiPublicTrackVisitRoute: typeof ApiPublicTrackVisitRoute
   ApiPublicWaBridgeHealthRoute: typeof ApiPublicWaBridgeHealthRoute
   ApiPublicWaBridgeSessionStatusRoute: typeof ApiPublicWaBridgeSessionStatusRoute
   ApiPublicWaBridgeSessionsRoute: typeof ApiPublicWaBridgeSessionsRoute
@@ -1208,6 +1221,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicWaBridgeHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/track-visit': {
+      id: '/api/public/track-visit'
+      path: '/api/public/track-visit'
+      fullPath: '/api/public/track-visit'
+      preLoaderRoute: typeof ApiPublicTrackVisitRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/health': {
       id: '/api/public/health'
       path: '/api/public/health'
@@ -1437,6 +1457,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminIndexRoute: AdminIndexRoute,
   ApiPublicFbPeopleIngestRoute: ApiPublicFbPeopleIngestRoute,
   ApiPublicHealthRoute: ApiPublicHealthRoute,
+  ApiPublicTrackVisitRoute: ApiPublicTrackVisitRoute,
   ApiPublicWaBridgeHealthRoute: ApiPublicWaBridgeHealthRoute,
   ApiPublicWaBridgeSessionStatusRoute: ApiPublicWaBridgeSessionStatusRoute,
   ApiPublicWaBridgeSessionsRoute: ApiPublicWaBridgeSessionsRoute,
