@@ -181,10 +181,18 @@ function InboxPage() {
     staleTime: 0,
   });
 
+  const handledDoneJobRef = useRef<string | null>(null);
   useEffect(() => {
-    const job = historyJobQuery.data;
+    const job = historyJobQuery.data as any;
     if (!job) return;
     if (job.status === "idle") {
+      setSyncHydrated(true);
+      handledDoneJobRef.current = null;
+      return;
+    }
+    const jobKey = String(job.id ?? job.startedAt ?? "");
+    // لا نعيد إحياء بطاقة "اكتملت" لمهمة سبق التعامل معها (بعد الإخفاء التلقائي).
+    if ((job.status === "done" || job.status === "error") && handledDoneJobRef.current === jobKey) {
       setSyncHydrated(true);
       return;
     }
@@ -202,14 +210,12 @@ function InboxPage() {
     });
     setSyncHydrated(true);
     if (job.status === "done" || job.status === "error") {
-      // Auto-clear the card after a short delay so it doesn't linger forever.
-      const timer = window.setTimeout(() => {
-        dismissHistorySyncJobFn().catch(() => {});
-        setSyncState((s) => ({ ...s, status: "idle" }));
-      }, 8000);
-      return () => window.clearTimeout(timer);
+      handledDoneJobRef.current = jobKey;
+      // نستدعي dismiss فورًا حتى لا يعود الاستعلام التالي يعيد الحالة إلى done.
+      dismissHistorySyncJobFn().catch(() => {});
     }
   }, [historyJobQuery.data, dismissHistorySyncJobFn]);
+
 
 
   const t = isAr
