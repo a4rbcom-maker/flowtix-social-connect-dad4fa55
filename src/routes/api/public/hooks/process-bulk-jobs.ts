@@ -35,6 +35,7 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
           "@/lib/wa-bridge.server"
         );
         const { normalizeWhatsappPhone } = await import("@/lib/wa-chat-helpers.server");
+        const { resolveOutgoingWhatsappTarget } = await import("@/lib/wa-recipient.server");
         const describeErr = (err: unknown): string => {
           if (err instanceof BridgeError) {
             return bridgeSendFailureMessage(err.body) || err.message || "Bridge error";
@@ -367,20 +368,32 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
             let errorMessage: string | null = null;
             let providerId: string | null = null;
             let queuedOnly = false;
+            let targetJid = `${phone}@s.whatsapp.net`;
+            let targetPhone: string | null = phone;
+            let usedLid = false;
 
             try {
+              const resolvedTarget = await resolveOutgoingWhatsappTarget({
+                userId: job.user_id,
+                sessionId: sess.session_id,
+                remoteJid: `${phone}@s.whatsapp.net`,
+                fallbackPhoneOrJid: phone,
+              });
+              targetJid = resolvedTarget.jid;
+              targetPhone = resolvedTarget.phoneDigits || phone;
+              usedLid = resolvedTarget.usedLid;
               const caption = rendered.trim();
               if (job.image_url) {
-                const res = await waBridge.sendMedia(sess.session_id, phone, job.image_url, {
+                const res = await waBridge.sendMedia(sess.session_id, targetJid, job.image_url, {
                   caption,
                   mediaType: "image",
-                  phone,
+                  phone: targetPhone,
                 });
                 const parsed = acceptedBridgeId(res);
                 providerId = parsed.id;
                 queuedOnly = parsed.queuedOnly;
               } else {
-                const res = await waBridge.sendText(sess.session_id, phone, caption);
+                const res = await waBridge.sendText(sess.session_id, targetJid, caption, { phone: targetPhone });
                 const parsed = acceptedBridgeId(res);
                 providerId = parsed.id;
                 queuedOnly = parsed.queuedOnly;
@@ -425,7 +438,9 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
                 bulkJobId: job.id,
                 bulkRecipientId: r.id,
                 targetPhone: phone,
-                targetJid: `${phone}@s.whatsapp.net`,
+                targetJid,
+                targetPhoneResolved: targetPhone,
+                usedLid,
                 bridgeAcceptedAt: new Date().toISOString(),
                 delivery: queuedOnly ? "bridge_queued_waiting_for_whatsapp_ack" : "waiting_for_whatsapp_ack",
                 queuedId: queuedOnly ? providerId : null,
@@ -447,8 +462,8 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
                 user_id: job.user_id,
                 session_id: sess.session_id,
                 direction: "out",
-                remote_jid: `${phone}@s.whatsapp.net`,
-                to_phone: phone,
+                remote_jid: targetJid,
+                to_phone: targetPhone || phone,
                 msg_type: job.image_url ? "image" : "text",
                 text_body: rendered,
                 media_url: job.image_url ?? null,
@@ -473,6 +488,9 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
                 provider_message_id: queuedOnly ? null : providerId,
                 queued_id: queuedOnly ? providerId : null,
                 queued_only: queuedOnly,
+                target_jid: targetJid,
+                target_phone: targetPhone,
+                used_lid: usedLid,
                 awaiting_whatsapp_ack: !errorMessage,
               },
             });
