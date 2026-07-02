@@ -712,8 +712,9 @@ export const sendWaMessage = createServerFn({ method: "POST" })
       .eq("user_id", userId)
       .maybeSingle();
     if (rowErr) throw new Error(rowErr.message);
-    if (!row?.session_id) throw new Error("WhatsApp is not connected");
-    if (row.status !== "connected") throw new Error("WhatsApp is not connected");
+    const notConnectedMsg = "الجلسة غير متصلة. افتح صفحة WhatsApp واضغط «إعادة الاقتران» وامسح رمز QR من جوالك.";
+    if (!row?.session_id) throw new Error(notConnectedMsg);
+    if (row.status !== "connected") throw new Error(notConnectedMsg);
 
     const phone = data.to.replace(/[^0-9]/g, "");
     let providerMessageId: string | null = null;
@@ -721,7 +722,16 @@ export const sendWaMessage = createServerFn({ method: "POST" })
       const res = await waBridge.sendText(row.session_id, phone, data.text);
       providerMessageId = assertBridgeSendQueued(res);
     } catch (err) {
-      throw new Error(describeBridgeError(err));
+      const msg = describeBridgeError(err);
+      // If the bridge says the session is gone, sync DB so UI shows QR prompt.
+      if (/غير متصلة على خادم الربط/.test(msg)) {
+        await supabase
+          .from("wa_sessions")
+          .update({ status: "disconnected", last_seen_at: new Date().toISOString() })
+          .eq("user_id", userId)
+          .eq("session_id", row.session_id);
+      }
+      throw new Error(msg);
     }
 
     const remoteJid = `${phone}@s.whatsapp.net`;
