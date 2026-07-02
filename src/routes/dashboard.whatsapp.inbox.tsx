@@ -97,8 +97,8 @@ function InboxPage() {
   const [rePairing, setRePairing] = useState(false);
   const handleRePairForFullHistory = async () => {
     const confirmMsg = isAr
-      ? "لجلب الأرشيف الكامل من واتساب يجب إعادة الاقتران وقراءة رمز QR جديد. لن يتم حذف الرسائل الحالية. المتابعة؟"
-      : "To fetch the full archive from WhatsApp you must re-pair and scan a fresh QR code. Existing messages are kept. Continue?";
+      ? "لجلب المحادثات القديمة كلها من واتساب سيتم إنشاء جلسة جديدة ويجب مسح رمز QR مرة أخرى. المتابعة؟"
+      : "To fetch all your old chats from WhatsApp, a new session will be created and you must scan a new QR. Continue?";
     if (!window.confirm(confirmMsg)) return;
     try {
       setRePairing(true);
@@ -1157,8 +1157,8 @@ function InboxPage() {
                   </div>
                   <div className="mt-1 text-amber-800/90 dark:text-amber-200/90">
                     {isAr
-                      ? "واتساب يرسل الأرشيف الكامل مرة واحدة فقط عند مسح رمز QR لأول مرة. لجلب المحادثات القديمة كلها اضغط الزر أدناه لإعادة الاقتران — لن تُحذف الرسائل الحالية."
-                      : "WhatsApp only pushes the full archive once, right after QR pairing. To retrieve all old chats, re-pair below — your current messages are kept."}
+                      ? "واتساب يرسل المحادثات القديمة مرة واحدة فقط عند أول اقتران للرمز. لإحضارها كلها اضغط الزر أدناه لبدء جلسة جديدة ومسح رمز QR جديد."
+                      : "WhatsApp only sends old chats once, right after the first QR pairing. To fetch them all, start a new session and scan a fresh QR."}
                   </div>
                   <Button
                     type="button"
@@ -1169,7 +1169,7 @@ function InboxPage() {
                     className="mt-2 h-7 gap-1.5 border-amber-500/40 bg-amber-500/10 text-[11px] font-semibold text-amber-900 hover:bg-amber-500/20 dark:text-amber-100"
                   >
                     {rePairing && <Loader2 className="h-3 w-3 animate-spin" />}
-                    {isAr ? "إعادة الاقتران لجلب الأرشيف الكامل" : "Re-pair for full archive"}
+                    {isAr ? "جلسة جديدة لإحضار كل المحادثات" : "New session to fetch all chats"}
                   </Button>
                 </div>
               )}

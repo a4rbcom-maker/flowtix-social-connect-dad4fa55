@@ -653,6 +653,15 @@ export const disconnectWaSession = createServerFn({ method: "POST" })
         reason: "manual_disconnect",
       });
     }
+    // Wipe ALL WhatsApp data for this user on disconnect. Behavior expected by
+    // users: "when I disconnect, my chats are gone from the platform." This
+    // matches native WhatsApp behavior (logging out removes local history) and
+    // ensures no stale conversations show up on next pairing.
+    // Order: messages → conversations → sessions (children before parents).
+    const { error: msgErr } = await supabase.from("wa_messages").delete().eq("user_id", userId);
+    if (msgErr) throw new Error(`Failed to clear WhatsApp messages: ${msgErr.message}`);
+    const { error: convErr } = await supabase.from("wa_conversations").delete().eq("user_id", userId);
+    if (convErr) throw new Error(`Failed to clear WhatsApp conversations: ${convErr.message}`);
     const { error: sessErr } = await supabase.from("wa_sessions").delete().eq("user_id", userId);
     if (sessErr) throw new Error(`Failed to clear WhatsApp session: ${sessErr.message}`);
     const { error: settingsErr } = await supabase
