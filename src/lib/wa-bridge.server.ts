@@ -53,6 +53,7 @@ function getConfig() {
 // (and used to trigger an unnecessary session rebuild upstream).
 const RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const MAX_ATTEMPTS = 3;
+const MAX_INLINE_MEDIA_BYTES = 5 * 1024 * 1024;
 
 async function bridgeFetch<T>(path: string, init: RequestInit = {}, attempt = 1): Promise<T> {
   const { url, apiKey } = getConfig();
@@ -130,6 +131,84 @@ function safeParse(text: string): unknown {
     return JSON.parse(text);
   } catch {
     return text;
+  }
+}
+
+function guessMimeTypeFromUrl(url: string, fallback: string): string {
+  const clean = url.split("?")[0]?.toLowerCase() ?? "";
+  if (clean.endsWith(".png")) return "image/png";
+  if (clean.endsWith(".webp")) return "image/webp";
+  if (clean.endsWith(".gif")) return "image/gif";
+  if (clean.endsWith(".jpg") || clean.endsWith(".jpeg")) return "image/jpeg";
+  if (clean.endsWith(".mp4")) return "video/mp4";
+  if (clean.endsWith(".webm")) return "video/webm";
+  if (clean.endsWith(".ogg") || clean.endsWith(".opus")) return "audio/ogg";
+  if (clean.endsWith(".mp3")) return "audio/mpeg";
+  if (clean.endsWith(".pdf")) return "application/pdf";
+  return fallback;
+}
+
+function fileNameFromUrl(url: string, fallback: string): string {
+  try {
+    const u = new URL(url);
+    const last = u.pathname.split("/").filter(Boolean).pop();
+    if (last) return decodeURIComponent(last).replace(/[^\w.()\-\u0600-\u06ff]+/g, "_").slice(0, 120) || fallback;
+  } catch {
+    // ignore and use fallback
+  }
+  return fallback;
+}
+
+async function inlineMediaPayload(
+  mediaUrl: string,
+  opts: { mediaType: "image" | "video" | "document" | "audio"; mimeType?: string; fileName?: string },
+): Promise<{ base64: string; dataUrl: string; mimeType: string; fileName: string } | null> {
+  const fallbackMime =
+    opts.mediaType === "image"
+      ? "image/jpeg"
+      : opts.mediaType === "video"
+        ? "video/mp4"
+        : opts.mediaType === "audio"
+          ? "audio/ogg"
+          : "application/octet-stream";
+
+  const dataUrlMatch = mediaUrl.match(/^data:([^;,]+);base64,(.+)$/i);
+  if (dataUrlMatch?.[2]) {
+    const mimeType = opts.mimeType || dataUrlMatch[1] || fallbackMime;
+    return {
+      base64: dataUrlMatch[2],
+      dataUrl: mediaUrl,
+      mimeType,
+      fileName: opts.fileName || `flowtix-${Date.now()}`,
+    };
+  }
+
+  if (!/^https?:\/\//i.test(mediaUrl)) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await fetch(mediaUrl, {
+      signal: controller.signal,
+      headers: { Accept: "image/*,video/*,audio/*,application/pdf,*/*" },
+    });
+    if (!res.ok) return null;
+    const declaredSize = Number(res.headers.get("content-length") || 0);
+    if (declaredSize > MAX_INLINE_MEDIA_BYTES) return null;
+    const bytes = await res.arrayBuffer();
+    if (bytes.byteLength > MAX_INLINE_MEDIA_BYTES) return null;
+    const mimeType = opts.mimeType || res.headers.get("content-type")?.split(";")[0]?.trim() || guessMimeTypeFromUrl(mediaUrl, fallbackMime);
+    const base64 = Buffer.from(bytes).toString("base64");
+    return {
+      base64,
+      dataUrl: `data:${mimeType};base64,${base64}`,
+      mimeType,
+      fileName: opts.fileName || fileNameFromUrl(mediaUrl, `flowtix-${Date.now()}`),
+    };
+  } catch (err) {
+    console.warn("[wa-bridge] media inline preload failed; falling back to URL", err instanceof Error ? err.message : String(err));
+    return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -461,7 +540,7 @@ export const waBridge = {
       },
     );
   },
-  sendMedia: (
+  sendMedia: async (
     id: string,
     to: string,
     mediaUrl: string,
@@ -480,8 +559,26 @@ export const waBridge = {
     const publicJid = explicitPhone ? `${explicitPhone}@s.whatsapp.net` : null;
     const mediaType = opts.mediaType ?? "image";
     const caption = opts.caption ?? "";
+    const inline = await inlineMediaPayload(mediaUrl, {
+      mediaType,
+      mimeType: opts.mimeType,
+      fileName: opts.fileName,
+    });
+    const resolvedMimeType = opts.mimeType || inline?.mimeType;
+    const resolvedFileName = opts.fileName || inline?.fileName;
+    const mediaObject = {
+      url: mediaUrl,
+      mediaUrl,
+      caption,
+      ...(resolvedMimeType ? { mimetype: resolvedMimeType, mimeType: resolvedMimeType } : {}),
+      ...(resolvedFileName ? { fileName: resolvedFileName, filename: resolvedFileName } : {}),
+      ...(inline ? { base64: inline.base64, dataUrl: inline.dataUrl } : {}),
+    };
     // Bot-Xtra/Baileys accept several field shapes for media; supply the common
-    // variants so the bridge picks whichever matches its handler.
+    // variants so the bridge picks whichever matches its handler. We also inline
+    // small Supabase signed files as base64; some bridge containers can accept a
+    // queued media request but fail to fetch the signed URL afterwards, leaving
+    // campaigns stuck without any WhatsApp ACK.
     return bridgeFetch<BridgeSendResponse>(
       `/api/sessions/${encodeURIComponent(id)}/send`,
       {
@@ -496,12 +593,18 @@ export const waBridge = {
           mediaType,
           mediaUrl,
           url: mediaUrl,
-          [mediaType]: { url: mediaUrl, caption, mimetype: opts.mimeType, fileName: opts.fileName },
+          fileUrl: mediaUrl,
+          downloadUrl: mediaUrl,
+          [`${mediaType}Url`]: mediaUrl,
+          [mediaType]: mediaObject,
+          media: mediaObject,
+          attachment: mediaObject,
+          ...(inline ? { base64: inline.base64, mediaBase64: inline.base64, dataUrl: inline.dataUrl } : {}),
           caption,
           text: caption,
           message: caption,
-          ...(opts.mimeType ? { mimetype: opts.mimeType, mimeType: opts.mimeType } : {}),
-          ...(opts.fileName ? { fileName: opts.fileName, filename: opts.fileName } : {}),
+          ...(resolvedMimeType ? { mimetype: resolvedMimeType, mimeType: resolvedMimeType } : {}),
+          ...(resolvedFileName ? { fileName: resolvedFileName, filename: resolvedFileName } : {}),
         }),
       },
     );
