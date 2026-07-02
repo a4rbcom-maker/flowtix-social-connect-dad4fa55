@@ -71,8 +71,9 @@ export const reauthOnExpiredSession = createMiddleware({ type: "function" }).cli
 
     try {
       const result = await next({ fetch: fetchWithReauth });
-      if (isAuthError(result.error)) throw result.error;
-      if (isAuthError(result.result)) return redirectToLogin(result.result);
+      const middlewareResult = result as { error?: unknown; result?: unknown };
+      if (isAuthError(middlewareResult.error)) throw middlewareResult.error;
+      if (isAuthError(middlewareResult.result)) return redirectToLogin(middlewareResult.result);
       return result;
     } catch (err: unknown) {
       if (!isAuthError(err)) throw err;
