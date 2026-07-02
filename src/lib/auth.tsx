@@ -31,14 +31,18 @@ function isPublicPath(pathname: string): boolean {
   return pathname.startsWith("/auth/") || pathname.startsWith("/reset-password");
 }
 
+type RedirectReason = "expired" | "signed_out" | "auth_required";
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [redirecting, setRedirecting] = useState<RedirectReason | null>(null);
   // Track whether we've ever seen an authenticated session in this tab.
   const hadSessionRef = useRef(false);
   // Prevent stacking multiple redirects/toasts when several serverFn calls fail at once.
   const expiredHandledRef = useRef(false);
+
 
   useEffect(() => {
     let cancelled = false;
