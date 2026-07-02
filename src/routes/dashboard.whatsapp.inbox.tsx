@@ -1403,54 +1403,46 @@ function InboxPage() {
           </div>
 
 
-          {/* Send failure alert — replaces the previous raw error toast */}
+          {/* Send failure alert — unified with toast tokens */}
           {sendError && (
-            <div
-              role="alert"
-              className="mx-2.5 mb-0 mt-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm sm:mx-3"
-            >
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-semibold text-destructive">
-                      {isAr ? sendError.title.ar : sendError.title.en}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setSendError(null)}
-                      className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                      aria-label={isAr ? "إغلاق" : "Dismiss"}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                  <p className="mt-1 text-muted-foreground">
-                    {isAr ? sendError.reason.ar : sendError.reason.en}
-                  </p>
-                  <ol className="mt-2 list-decimal space-y-0.5 ps-5 text-xs text-foreground/80">
-                    {sendError.steps.map((s, i) => (
-                      <li key={i}>{isAr ? s.ar : s.en}</li>
-                    ))}
-                  </ol>
-                  {sendError.retryable && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const text = draft.trim();
-                        if ((!text && !attachment) || sendMut.isPending || uploadingAttachment) return;
-                        sendMut.mutate({ text, file: attachment?.file ?? null });
-                      }}
-                      className="mt-2 inline-flex items-center gap-1 rounded-md border border-destructive/30 bg-background px-2.5 py-1 text-xs font-medium text-destructive hover:bg-destructive/10"
-                    >
-                      <RefreshCw className="h-3 w-3" />
-                      {isAr ? "إعادة المحاولة" : "Retry"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
+            <Alert variant="destructive" className="mx-2.5 mt-2 sm:mx-3">
+              <AlertTriangle />
+              <button
+                type="button"
+                onClick={() => setSendError(null)}
+                className="absolute end-2 top-2 rounded-md p-1 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                aria-label={isAr ? "إغلاق" : "Dismiss"}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+              <AlertTitle>{isAr ? sendError.title.ar : sendError.title.en}</AlertTitle>
+              <AlertDescription>
+                <p>{isAr ? sendError.reason.ar : sendError.reason.en}</p>
+                <ol className="mt-2 list-decimal space-y-0.5 ps-5 text-xs text-foreground/80">
+                  {sendError.steps.map((s, i) => (
+                    <li key={i}>{isAr ? s.ar : s.en}</li>
+                  ))}
+                </ol>
+                {sendError.retryable && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = draft.trim();
+                      if ((!text && !attachment) || sendMut.isPending || uploadingAttachment) return;
+                      sendMut.mutate({ text, file: attachment?.file ?? null });
+                    }}
+                    className="mt-2 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium hover:bg-muted/60"
+                    style={{ color: "var(--status-error)" }}
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    {isAr ? "إعادة المحاولة" : "Retry"}
+                  </button>
+                )}
+              </AlertDescription>
+            </Alert>
           )}
+
+
 
           {/* Composer */}
           <form
