@@ -1107,7 +1107,7 @@ function InboxPage() {
             </button>
           )}
         </div>
-        {syncState.status !== "idle" && syncState.status !== "error" && (() => {
+        {false && syncState.status !== "idle" && syncState.status !== "error" && (() => {
           const elapsed = Math.max(0, Date.now() - syncState.startedAt);
           const total = Math.max(1, syncState.deadlineAt - syncState.startedAt);
           const timePct = Math.min(100, Math.round((elapsed / total) * 100));
