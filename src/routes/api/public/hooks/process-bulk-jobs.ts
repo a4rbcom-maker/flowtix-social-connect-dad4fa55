@@ -44,7 +44,7 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
         const acceptedBridgeId = (res: unknown): string => {
           const queuedId = bridgeSendQueuedMessage(res);
           try {
-            return assertBridgeSendQueued(res);
+            return assertBridgeSendQueued(res as Parameters<typeof assertBridgeSendQueued>[0]);
           } catch (err) {
             if (queuedId) return queuedId;
             throw err;
