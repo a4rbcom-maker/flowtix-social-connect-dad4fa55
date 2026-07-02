@@ -506,7 +506,7 @@ function FacebookGroupsPage() {
 
 
         {/* Step 1: Browse + select */}
-        {connected && step === "browse" && (
+        {(connected || groups.length > 0) && step === "browse" && (
           <div className="space-y-4">
             {/* Toolbar */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
