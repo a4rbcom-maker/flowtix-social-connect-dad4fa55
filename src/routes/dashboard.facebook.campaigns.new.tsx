@@ -180,6 +180,40 @@ function NewCampaignPage() {
     // eslint-disable-next-line
   }, [user]);
 
+  // Consume preselected groups handoff from /dashboard/facebook/groups
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = sessionStorage.getItem("fb_preselect_groups");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { groups?: Group[]; ts?: number };
+      if (!parsed?.groups?.length) return;
+      if (parsed.ts && Date.now() - parsed.ts > 10 * 60 * 1000) {
+        sessionStorage.removeItem("fb_preselect_groups");
+        return;
+      }
+      setGroups((prev) => {
+        const map = new Map(prev.map((g) => [g.id, g] as const));
+        for (const g of parsed.groups!) map.set(g.id, { id: g.id, name: g.name });
+        return Array.from(map.values());
+      });
+      setSelectedTargets((prev) => {
+        const next = new Set(prev);
+        for (const g of parsed.groups!) next.add(g.id);
+        return next;
+      });
+      sessionStorage.removeItem("fb_preselect_groups");
+      toast.success(
+        lang === "ar"
+          ? `تم تحديد ${parsed.groups.length} جروب من صفحة جروباتي`
+          : `${parsed.groups.length} groups preselected`,
+      );
+    } catch {
+      // ignore
+    }
+  }, [lang]);
+
+
   const loadGroups = async () => {
     setGroupsLoading(true);
     try {
