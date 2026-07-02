@@ -99,6 +99,15 @@
   --pricing-popular-muted: oklch(0.48 0.025 290);
   --pricing-card-bg: oklch(1 0 0);
   --pricing-card-border: oklch(0.92 0.014 295);
+  /* Unified status tokens — single source of truth for toasts, alerts, badges */
+  --status-success: oklch(0.62 0.16 155);
+  --status-error:   oklch(0.58 0.22 25);
+  --status-warning: oklch(0.68 0.17 75);
+  --status-info:    oklch(0.6 0.16 240);
+  --status-success-foreground: oklch(1 0 0);
+  --status-error-foreground:   oklch(1 0 0);
+  --status-warning-foreground: oklch(0.20 0.04 60);
+  --status-info-foreground:    oklch(1 0 0);
 }
 
 .dark {
@@ -141,6 +150,15 @@
   --pricing-popular-muted: oklch(0.72 0.02 295);
   --pricing-card-bg: oklch(0.18 0.025 270);
   --pricing-card-border: oklch(0.28 0.025 270);
+  /* Status tokens — dark tuned */
+  --status-success: oklch(0.78 0.17 155);
+  --status-error:   oklch(0.72 0.2 25);
+  --status-warning: oklch(0.82 0.16 75);
+  --status-info:    oklch(0.76 0.15 240);
+  --status-success-foreground: oklch(0.14 0.03 155);
+  --status-error-foreground:   oklch(0.14 0.03 25);
+  --status-warning-foreground: oklch(0.16 0.04 60);
+  --status-info-foreground:    oklch(0.14 0.03 240);
 }
 
 html {
@@ -1039,11 +1057,11 @@ html {
   --toast-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.18),
                   0 4px 12px -4px rgba(0, 0, 0, 0.08);
 
-  /* Type accents (single source of truth) */
-  --toast-success: oklch(0.62 0.16 155);
-  --toast-error:   oklch(0.58 0.22 25);
-  --toast-warning: oklch(0.68 0.17 75);
-  --toast-info:    oklch(0.6 0.16 240);
+  /* Type accents (aliased to global status tokens) */
+  --toast-success: var(--status-success);
+  --toast-error:   var(--status-error);
+  --toast-warning: var(--status-warning);
+  --toast-info:    var(--status-info);
 }
 
 .dark [data-sonner-toaster] {
@@ -1054,11 +1072,12 @@ html {
   --toast-shadow: 0 14px 40px -12px rgba(0, 0, 0, 0.65),
                   0 0 0 1px color-mix(in oklab, var(--primary) 14%, transparent) inset;
 
-  --toast-success: oklch(0.78 0.17 155);
-  --toast-error:   oklch(0.72 0.2 25);
-  --toast-warning: oklch(0.82 0.16 75);
-  --toast-info:    oklch(0.76 0.15 240);
+  --toast-success: var(--status-success);
+  --toast-error:   var(--status-error);
+  --toast-warning: var(--status-warning);
+  --toast-info:    var(--status-info);
 }
+
 
 [data-sonner-toaster][dir="rtl"] [data-sonner-toast] {
   direction: rtl;
@@ -1190,4 +1209,87 @@ html {
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* ============================================================
+   Unified Alert styling — shares status tokens with Sonner toasts
+   ============================================================ */
+[data-slot="alert"],
+[role="alert"].flowtix-alert {
+  --alert-bg: color-mix(in oklab, var(--popover) 96%, transparent);
+  --alert-fg: var(--popover-foreground);
+  --alert-desc: var(--muted-foreground);
+  --alert-border: color-mix(in oklab, var(--border) 80%, transparent);
+  --alert-accent: var(--primary);
+  --alert-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.14),
+                  0 4px 12px -4px rgba(0, 0, 0, 0.06);
+
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid var(--alert-border);
+  background: var(--alert-bg);
+  color: var(--alert-fg);
+  padding: 14px 16px;
+  backdrop-filter: saturate(1.4) blur(14px);
+  -webkit-backdrop-filter: saturate(1.4) blur(14px);
+  box-shadow: var(--alert-shadow);
+  font-family: 'Cairo', 'Inter', sans-serif;
+}
+
+.dark [data-slot="alert"],
+.dark [role="alert"].flowtix-alert {
+  --alert-bg: oklch(0.22 0.02 285);
+  --alert-fg: oklch(0.98 0 0);
+  --alert-desc: oklch(0.82 0.02 285);
+  --alert-border: color-mix(in oklab, var(--primary) 22%, transparent);
+  --alert-shadow: 0 14px 40px -12px rgba(0, 0, 0, 0.55),
+                  0 0 0 1px color-mix(in oklab, var(--primary) 14%, transparent) inset;
+}
+
+/* Left accent bar — same visual language as toasts */
+[data-slot="alert"]::before,
+[role="alert"].flowtix-alert::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 10%;
+  bottom: 10%;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--alert-accent);
+  opacity: 0.95;
+}
+
+[data-slot="alert"][data-variant="destructive"],
+[role="alert"].flowtix-alert[data-variant="destructive"] { --alert-accent: var(--status-error); color: var(--alert-fg); }
+[data-slot="alert"][data-variant="success"],
+[role="alert"].flowtix-alert[data-variant="success"]     { --alert-accent: var(--status-success); }
+[data-slot="alert"][data-variant="warning"],
+[role="alert"].flowtix-alert[data-variant="warning"]     { --alert-accent: var(--status-warning); }
+[data-slot="alert"][data-variant="info"],
+[role="alert"].flowtix-alert[data-variant="info"]        { --alert-accent: var(--status-info); }
+
+/* Icon inside alert takes accent color */
+[data-slot="alert"] > svg:first-of-type,
+[role="alert"].flowtix-alert > svg:first-of-type {
+  color: var(--alert-accent);
+}
+
+[data-slot="alert-title"] {
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: var(--alert-fg);
+  margin-bottom: 2px;
+}
+
+[data-slot="alert-description"] {
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--alert-desc);
+}
+
+[dir="rtl"] [data-slot="alert"],
+[dir="rtl"] [role="alert"].flowtix-alert {
+  text-align: right;
+}
 
