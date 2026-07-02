@@ -72,8 +72,6 @@ function BulkSendPage() {
   const [extraContactIds, setExtraContactIds] = useState<Set<string>>(new Set());
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
-  const [maxConcurrent, setMaxConcurrent] = useState<number>(3);
-  const [savingConcurrency, setSavingConcurrency] = useState(false);
 
   // Lists tab
   const [listName, setListName] = useState("");
@@ -86,28 +84,14 @@ function BulkSendPage() {
 
   const loadAll = async () => {
     if (!user) return;
-    const [{ data: c }, { data: j }, { data: s }] = await Promise.all([
+    const [{ data: c }, { data: j }] = await Promise.all([
       supabase.from("contacts").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
       supabase.from("bulk_jobs").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(50),
-      supabase.from("whatsapp_settings").select("max_concurrent_campaigns").eq("user_id", user.id).maybeSingle(),
     ]);
     setContacts(c ?? []);
     setJobs(j ?? []);
-    if (s?.max_concurrent_campaigns) setMaxConcurrent(s.max_concurrent_campaigns);
   };
 
-  const saveMaxConcurrent = async (n: number) => {
-    if (!user) return;
-    const val = Math.max(1, Math.min(10, Math.round(n)));
-    setMaxConcurrent(val);
-    setSavingConcurrency(true);
-    const { error } = await supabase
-      .from("whatsapp_settings")
-      .upsert({ user_id: user.id, max_concurrent_campaigns: val }, { onConflict: "user_id" });
-    setSavingConcurrency(false);
-    if (error) toast.error(error.message);
-    else toast.success(isAr ? `تم الحفظ — أقصى ${val} حملات متوازية` : `Saved — max ${val} parallel campaigns`);
-  };
 
   useEffect(() => { loadAll(); /* eslint-disable-next-line */ }, [user]);
 
@@ -947,43 +931,23 @@ function BulkSendPage() {
               )}
             </div>
 
-            {/* ============ CONCURRENCY SETTING ============ */}
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+            {/* ============ ONE-CAMPAIGN-AT-A-TIME NOTICE ============ */}
+            <div className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/5 p-4">
+              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/15 text-primary">
+                <ListChecks className="h-4 w-4" />
+              </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-foreground">
-                  {isAr ? "أقصى عدد حملات متوازية" : "Max parallel campaigns"}
+                  {isAr ? "حملة واحدة في المرة" : "One campaign at a time"}
                 </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
+                <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
                   {isAr
-                    ? "الحد الذي يطبقه المشغّل الخلفي تلقائياً. الحملات الزائدة تبقى في الانتظار وتُشغَّل بمجرد شغور مكان."
-                    : "The background worker enforces this cap automatically. Extra campaigns wait until a slot frees up."}
+                    ? "لحماية رقم واتساب من الحظر، يشتغل حملة واحدة فقط في نفس الوقت. أي حملات إضافية تفضل في قائمة الانتظار وتبدأ تلقائياً بمجرد ما اللي قبلها تخلص."
+                    : "To protect your WhatsApp number from bans, only one campaign runs at a time. Extra campaigns stay queued and start automatically as soon as the previous one finishes."}
                 </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => saveMaxConcurrent(maxConcurrent - 1)}
-                  disabled={savingConcurrency || maxConcurrent <= 1}
-                  className="grid h-9 w-9 place-items-center rounded-lg border border-border text-lg font-bold text-foreground hover:bg-muted disabled:opacity-40"
-                >−</button>
-                <input
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={maxConcurrent}
-                  onChange={(e) => setMaxConcurrent(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
-                  onBlur={(e) => saveMaxConcurrent(Number(e.target.value) || 1)}
-                  className="h-9 w-16 rounded-lg border border-border bg-background text-center text-sm font-semibold text-foreground focus:border-primary focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => saveMaxConcurrent(maxConcurrent + 1)}
-                  disabled={savingConcurrency || maxConcurrent >= 10}
-                  className="grid h-9 w-9 place-items-center rounded-lg border border-border text-lg font-bold text-foreground hover:bg-muted disabled:opacity-40"
-                >+</button>
-                <span className="text-xs text-muted-foreground">{isAr ? "(1 – 10)" : "(1 – 10)"}</span>
               </div>
             </div>
+
 
 
 
