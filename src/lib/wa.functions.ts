@@ -1293,17 +1293,19 @@ export const matchLidPhoneNumbers = createServerFn({ method: "POST" })
     if (convsErr) throw new Error(convsErr.message);
     if (!convs || convs.length === 0) return { scanned: 0, matched: 0 };
 
-    const jids = convs.map((c) => c.remote_jid).filter(Boolean);
+    const jids = convs
+      .map((c) => c.remote_jid)
+      .filter((jid): jid is string => typeof jid === "string" && jid.length > 0);
     const { data: phoneRows } = jids.length
       ? await supabase
           .from("wa_messages")
-          .select("remote_jid, from_phone, created_at")
+          .select("remote_jid, from_phone")
           .eq("user_id", userId)
           .in("remote_jid", jids)
           .not("from_phone", "is", null)
           .order("created_at", { ascending: false })
           .limit(5000)
-      : { data: [] as Array<{ remote_jid: string; from_phone: string | null; created_at?: string | null }> };
+      : { data: [] as Array<{ remote_jid: string; from_phone: string | null }> };
 
     const phoneByJid = new Map<string, string>();
     for (const row of phoneRows ?? []) {
