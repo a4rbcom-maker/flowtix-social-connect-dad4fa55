@@ -892,7 +892,11 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       direction: m.fromMe ? "out" : "in",
       messageAt: waTimestamp,
       historical: isHistorical,
+      profilePicUrl:
+        pickStr(entry, "profilePicUrl", "avatarUrl", "picture", "photoUrl") ||
+        (m.isGroup ? pickStr(entry, "groupProfilePicUrl") : null),
     });
+
 
 
     if (text && !m.fromMe && !isHistorical) {
