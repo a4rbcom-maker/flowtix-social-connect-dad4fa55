@@ -510,23 +510,23 @@ function WhatsAppPage() {
                             {status !== "connected" && (
                               <button
                                 type="button"
-                                onClick={() => setShowQr((v) => !v)}
-                                className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-sm font-semibold text-foreground hover:bg-muted/60"
+                                onClick={() => {
+                                  if (showQr) {
+                                    setShowQr(false);
+                                    return;
+                                  }
+                                  setShowQr(true);
+                                  // Always request a fresh QR when opening the panel
+                                  resetMut.mutate();
+                                }}
+                                disabled={resetMut.isPending}
+                                className="inline-flex h-10 items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-4 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-95 disabled:opacity-60"
                               >
-                                <QrCode className="h-4 w-4" />
+                                {resetMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
                                 {showQr ? t.hideQr : t.showQr}
                               </button>
                             )}
 
-                            <button
-                              type="button"
-                              onClick={() => resetMut.mutate()}
-                              disabled={resetMut.isPending}
-                              className="inline-flex h-10 items-center gap-2 rounded-xl bg-muted px-4 text-sm font-semibold text-foreground hover:bg-muted/80 disabled:opacity-60"
-                            >
-                              {resetMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                              {t.reconnect}
-                            </button>
 
                             {hasLinkedNumber && (
                               <button
