@@ -389,7 +389,7 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
         try {
           const anchorId = anchorByJid.get(jid) ?? null;
           const anchorTs = anchorTsByJid.get(jid) ?? null;
-          const fetchBody = await waBridge.fetchMessages(row.session_id, jid, 50, {
+          const fetchBody = await waBridge.fetchMessages(row.session_id, jid, 10, {
             anchorMessageId: anchorId,
             anchorTimestamp: anchorTs,
           });
