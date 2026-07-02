@@ -1876,6 +1876,27 @@ export type Database = {
         }
         Relationships: []
       }
+      wa_webhook_events: {
+        Row: {
+          event: string | null
+          event_key: string
+          received_at: string
+          session_id: string
+        }
+        Insert: {
+          event?: string | null
+          event_key: string
+          received_at?: string
+          session_id: string
+        }
+        Update: {
+          event?: string | null
+          event_key?: string
+          received_at?: string
+          session_id?: string
+        }
+        Relationships: []
+      }
       whatsapp_settings: {
         Row: {
           ai_blacklist: string[]

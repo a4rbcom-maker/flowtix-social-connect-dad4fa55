@@ -122,6 +122,20 @@ export async function logWaSessionEvent(
   }
 }
 
+async function hasActiveBulkCampaign(db: DbClient, userId: string): Promise<boolean> {
+  try {
+    const { data } = await db
+      .from("bulk_jobs")
+      .select("id")
+      .eq("user_id", userId)
+      .in("status", ["running", "scheduled"])
+      .limit(1);
+    return Array.isArray(data) && data.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export async function updateWaSessionStatus(
   db: DbClient,
   input: {
@@ -136,25 +150,55 @@ export async function updateWaSessionStatus(
     qrDataUrl?: string | null;
     payload?: Record<string, unknown> | null;
     logEvenIfUnchanged?: boolean;
+    /** Payload timestamp (seconds/ms epoch or ISO). Used to reject late webhooks. */
+    eventAt?: string | number | null;
   },
 ): Promise<string | null> {
   let previousStatus: string | null = null;
+  let previousLastSeen: string | null = null;
   try {
     const { data } = await db
       .from("wa_sessions")
-      .select("status")
+      .select("status,last_seen_at")
       .eq("user_id", input.userId)
       .eq("session_id", input.sessionId)
       .maybeSingle();
     previousStatus = data?.status ?? null;
+    previousLastSeen = data?.last_seen_at ?? null;
   } catch {
     // best effort only
   }
 
+  // Late-event guard: an older webhook arriving after fresher activity should
+  // not flip a "connected" session to "disconnected".
+  let isLateEvent = false;
+  if (input.eventAt != null && previousLastSeen) {
+    const raw = input.eventAt;
+    const eventMs =
+      typeof raw === "number"
+        ? raw < 1e12
+          ? raw * 1000
+          : raw
+        : Date.parse(String(raw));
+    const lastSeenMs = Date.parse(previousLastSeen);
+    if (Number.isFinite(eventMs) && Number.isFinite(lastSeenMs) && eventMs + 2_000 < lastSeenMs) {
+      isLateEvent = true;
+    }
+  }
+
   const trustedDisconnect = input.nextStatus === "disconnected" && isTrustedUserDisconnect(input);
+
+  // Debounce during bulk campaigns: transient disconnect events that arrive
+  // while a bulk campaign is running/scheduled for the same user are almost
+  // always spurious. Preserve the previous status unless we have a trusted
+  // logout signal.
+  const bulkActive =
+    input.nextStatus === "disconnected" && !trustedDisconnect
+      ? await hasActiveBulkCampaign(db, input.userId)
+      : false;
+
   const shouldPreserveConnectedSession =
-    input.nextStatus === "disconnected" &&
-    !trustedDisconnect;
+    input.nextStatus === "disconnected" && (!trustedDisconnect || isLateEvent);
   const nextStatus = shouldPreserveConnectedSession ? (previousStatus ?? "unknown") : input.nextStatus;
 
   const update: Record<string, unknown> = {
@@ -176,7 +220,7 @@ export async function updateWaSessionStatus(
         .from("whatsapp_settings")
         .update({ is_connected: true, last_connected_at: new Date().toISOString() })
         .eq("user_id", input.userId);
-    } else if (trustedDisconnect) {
+    } else if (trustedDisconnect && !isLateEvent) {
       await db
         .from("whatsapp_settings")
         .update({ is_connected: false, last_connected_at: null })
@@ -192,6 +236,11 @@ export async function updateWaSessionStatus(
     trustedDisconnect;
 
   if (shouldLog) {
+    const suppressedTag = isLateEvent
+      ? "late_event"
+      : bulkActive
+        ? "bulk_active_debounce"
+        : "untrusted_disconnect";
     await logWaSessionEvent(db, {
       userId: input.userId,
       sessionId: input.sessionId,
@@ -199,7 +248,7 @@ export async function updateWaSessionStatus(
       toStatus: nextStatus,
       source: input.source,
       reason: shouldPreserveConnectedSession
-        ? `ignored_transient_disconnect: ${input.reason ?? input.rawStatus ?? input.bridgeEvent ?? "untrusted_disconnect"}`
+        ? `ignored_transient_disconnect(${suppressedTag}): ${input.reason ?? input.rawStatus ?? input.bridgeEvent ?? ""}`
         : input.reason,
       rawStatus: input.rawStatus,
       bridgeEvent: input.bridgeEvent,
