@@ -72,21 +72,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const path = window.location.pathname;
       if (isPublicPath(path)) return;
       expiredHandledRef.current = true;
+
+      // Dedupe across redirects/reloads: only show one toast per reason
+      // within a short window so the user never sees the same notice twice.
+      let shouldToast = true;
       try {
-        toast.error(
-          reason === "signed_out"
-            ? "تم تسجيل خروجك، أعد تسجيل الدخول للمتابعة"
-            : reason === "auth_required"
-              ? "يجب تسجيل الدخول للوصول لهذه الصفحة"
-              : "انتهت جلستك، يرجى تسجيل الدخول مرة أخرى",
-        );
+        const key = "auth:lastReason";
+        const now = Date.now();
+        const raw = window.sessionStorage.getItem(key);
+        if (raw) {
+          const prev = JSON.parse(raw) as { reason?: string; at?: number };
+          if (prev?.reason === reason && typeof prev.at === "number" && now - prev.at < 10_000) {
+            shouldToast = false;
+          }
+        }
+        window.sessionStorage.setItem(key, JSON.stringify({ reason, at: now }));
       } catch {
-        /* toast unavailable during SSR — ignore */
+        /* sessionStorage unavailable — fall through and toast once */
       }
+
+      if (shouldToast) {
+        try {
+          toast.error(
+            reason === "signed_out"
+              ? "تم تسجيل خروجك، أعد تسجيل الدخول للمتابعة"
+              : reason === "auth_required"
+                ? "يجب تسجيل الدخول للوصول لهذه الصفحة"
+                : "انتهت جلستك، يرجى تسجيل الدخول مرة أخرى",
+            { id: `auth-reason-${reason}` },
+          );
+        } catch {
+          /* toast unavailable during SSR — ignore */
+        }
+      }
+
       const redirect = encodeURIComponent(path + window.location.search);
       // Use full navigation so router state + query cache reset cleanly.
       window.location.replace(`/login?reason=${reason}&redirect=${redirect}`);
     };
+
 
     // Guard: if user lands on a protected route without any session, redirect
     // immediately with a clear reason instead of showing a blank spinner.
