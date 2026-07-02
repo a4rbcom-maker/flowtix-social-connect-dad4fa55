@@ -117,7 +117,16 @@ export function useSendNotifications() {
   return ctx;
 }
 
+function isInternalArea(): boolean {
+  if (typeof window === "undefined") return false;
+  const p = window.location.pathname || "";
+  // Only surface operational toasts inside authenticated internal areas.
+  // Never show them on the public marketing site / landing / auth pages.
+  return p.startsWith("/dashboard") || p.startsWith("/admin");
+}
+
 function showStatusToast(row: SendLogRow, lang: "ar" | "en") {
+  if (!isInternalArea()) return;
   const map: Record<SendStatus, { ar: string; en: string }> = {
     pending: { ar: "قيد الانتظار", en: "Pending" },
     processing: { ar: "قيد المعالجة", en: "Processing" },
