@@ -466,6 +466,34 @@ function InboxPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connQuery.data?.status, convQuery.isFetching, user?.id]);
 
+  // Auto-match @lid conversations to real phone numbers once per session.
+  // Silently backfills contact_phone using stored senderPn data so old chats
+  // stop showing "محادثة واتساب" and merge with their sibling direct chats.
+  const lidMatchMut = useMutation({
+    mutationFn: () => matchLidPhonesFn(),
+    onSuccess: (res) => {
+      if (res && res.matched > 0) {
+        qc.invalidateQueries({ queryKey: ["wa-conversations", user?.id] });
+        toast.success(
+          isAr
+            ? `تم ربط ${res.matched} محادثة برقم الجوال الحقيقي`
+            : `Linked ${res.matched} chat(s) to their real phone number`
+        );
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const key = `wa-lid-match:${user.id}`;
+    if (typeof window === "undefined") return;
+    if (window.sessionStorage.getItem(key)) return;
+    window.sessionStorage.setItem(key, "1");
+    lidMatchMut.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+
 
 
 
