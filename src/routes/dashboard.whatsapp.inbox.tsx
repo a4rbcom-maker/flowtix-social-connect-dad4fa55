@@ -774,10 +774,12 @@ function InboxPage() {
       }
       toast.error(t.syncUnavailable);
       setSyncState((s) => ({ ...s, status: "error", message: t.syncUnavailable }));
+      qc.invalidateQueries({ queryKey: ["wa", "history-sync-job", user?.id ?? "anon"] });
     },
     onError: (err: Error) => {
       toast.error(err.message);
       setSyncState((s) => ({ ...s, status: "error", message: err.message }));
+      qc.invalidateQueries({ queryKey: ["wa", "history-sync-job", user?.id ?? "anon"] });
     },
   });
 
