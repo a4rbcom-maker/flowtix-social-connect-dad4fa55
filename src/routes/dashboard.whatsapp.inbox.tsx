@@ -2401,13 +2401,13 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
       .eq("user_id", userId)
       .eq("is_archived", false)
       .order("last_message_at", { ascending: false })
-      .limit(200),
+      .limit(2000),
     supabase
       .from("wa_messages")
       .select("session_id, remote_jid, direction, text_body, msg_type, media_url, from_phone, to_phone, wa_timestamp, created_at")
       .eq("user_id", userId)
       .order("wa_timestamp", { ascending: false })
-      .limit(1000),
+      .limit(5000),
   ]);
 
   if (error) throw new Error(error.message);
@@ -2465,7 +2465,7 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
 
   return visibleRows
     .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime())
-    .slice(0, 200);
+    .slice(0, 2000);
 }
 
 async function fetchInboxMessages(userId: string, remoteJid: string): Promise<ChatMessageRow[]> {
