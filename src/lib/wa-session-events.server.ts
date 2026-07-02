@@ -148,9 +148,8 @@ export async function updateWaSessionStatus(
   const trustedDisconnect = input.nextStatus === "disconnected" && isTrustedUserDisconnect(input);
   const shouldPreserveConnectedSession =
     input.nextStatus === "disconnected" &&
-    previousStatus === "connected" &&
     !trustedDisconnect;
-  const nextStatus = shouldPreserveConnectedSession ? "connected" : input.nextStatus;
+  const nextStatus = shouldPreserveConnectedSession ? (previousStatus ?? "unknown") : input.nextStatus;
 
   const update: Record<string, unknown> = {
     status: nextStatus,
