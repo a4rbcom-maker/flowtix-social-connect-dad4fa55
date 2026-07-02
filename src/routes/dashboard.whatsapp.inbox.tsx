@@ -177,10 +177,10 @@ function InboxPage() {
     enabled: !!user?.id,
     refetchInterval: (query) => {
       const data = query.state.data as any;
-      return data && (data.status === "running" || data.status === "pending") ? 4000 : false;
+      return data && (data.status === "running" || data.status === "pending") ? 15000 : false;
     },
     refetchOnWindowFocus: true,
-    staleTime: 0,
+    staleTime: 10000,
   });
 
   const handledDoneJobRef = useRef<string | null>(null);
