@@ -42,6 +42,7 @@ import {
   getAdminKpis,
   getAdminTimeseries,
   getRecentActivity,
+  getVisitorStats,
 } from "@/lib/admin.functions";
 
 export const Route = createFileRoute("/admin/")({
