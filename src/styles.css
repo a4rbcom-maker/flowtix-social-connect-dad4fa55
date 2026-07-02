@@ -1063,6 +1063,36 @@ html {
   --toast-error:   var(--status-error);
   --toast-warning: var(--status-warning);
   --toast-info:    var(--status-info);
+
+  /* ── Sizing & spacing tokens — shared by every state
+     (default / success / warning / info / error / destructive / loading).
+     Override the token values in a media query to reshape all states at once. */
+  --toast-radius: 16px;
+  --toast-padding-y: 14px;
+  --toast-padding-x: 16px;
+  --toast-gap: 12px;
+
+  --toast-title-size: 0.95rem;
+  --toast-title-line: 1.4;
+  --toast-title-tracking: 0.005em;
+  --toast-title-weight: 700;
+
+  --toast-desc-size: 0.85rem;
+  --toast-desc-line: 1.55;
+  --toast-desc-mt: 2px;
+
+  --toast-icon-size: 22px;
+  --toast-icon-svg: 20px;
+
+  --toast-btn-radius: 10px;
+  --toast-btn-padding-y: 6px;
+  --toast-btn-padding-x: 12px;
+  --toast-btn-font: 0.85rem;
+  --toast-btn-weight: 600;
+  --toast-btn-min-h: auto;
+
+  --toast-close-size: 22px;
+  --toast-accent-width: 3px;
 }
 
 .dark [data-sonner-toaster] {
@@ -1085,12 +1115,14 @@ html {
   text-align: right;
 }
 
-/* Base toast — force unified tokens so richColors variants don't win */
+/* Base toast — force unified tokens so richColors variants don't win.
+   All sizing/spacing pulls from the tokens defined on [data-sonner-toaster],
+   so every state (success/warning/info/destructive/loading) stays in sync. */
 [data-sonner-toast].flowtix-toast-root,
 [data-sonner-toast][data-styled="true"].flowtix-toast-root {
-  border-radius: 16px !important;
-  padding: 14px 16px !important;
-  gap: 12px !important;
+  border-radius: var(--toast-radius) !important;
+  padding: var(--toast-padding-y) var(--toast-padding-x) !important;
+  gap: var(--toast-gap) !important;
   border: 1px solid var(--toast-border) !important;
   background: var(--toast-bg) !important;
   color: var(--toast-fg) !important;
@@ -1102,24 +1134,24 @@ html {
 
 [data-sonner-toast] .flowtix-toast-title,
 [data-sonner-toast] [data-title] {
-  font-weight: 700 !important;
-  font-size: 0.95rem !important;
-  line-height: 1.4 !important;
-  letter-spacing: 0.005em;
+  font-weight: var(--toast-title-weight) !important;
+  font-size: var(--toast-title-size) !important;
+  line-height: var(--toast-title-line) !important;
+  letter-spacing: var(--toast-title-tracking);
   color: var(--toast-fg) !important;
 }
 
 [data-sonner-toast] .flowtix-toast-desc,
 [data-sonner-toast] [data-description] {
-  font-size: 0.85rem !important;
-  line-height: 1.55 !important;
+  font-size: var(--toast-desc-size) !important;
+  line-height: var(--toast-desc-line) !important;
   color: var(--toast-desc) !important;
-  margin-top: 2px;
+  margin-top: var(--toast-desc-mt);
 }
 
 [data-sonner-toast] [data-icon] {
-  width: 22px !important;
-  height: 22px !important;
+  width: var(--toast-icon-size) !important;
+  height: var(--toast-icon-size) !important;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1127,8 +1159,8 @@ html {
 }
 
 [data-sonner-toast] [data-icon] > svg {
-  width: 20px;
-  height: 20px;
+  width: var(--toast-icon-svg);
+  height: var(--toast-icon-svg);
 }
 
 /* Type-specific: color icon + left accent bar only; keep unified surface */
@@ -1138,8 +1170,8 @@ html {
   inset-inline-start: 0;
   top: 10%;
   bottom: 10%;
-  width: 3px;
-  border-radius: 3px;
+  width: var(--toast-accent-width);
+  border-radius: var(--toast-accent-width);
   background: var(--primary);
   opacity: 0.95;
 }
@@ -1155,11 +1187,13 @@ html {
 [data-sonner-toast][data-type="warning"] [data-icon] { color: var(--toast-warning) !important; }
 [data-sonner-toast][data-type="info"]    [data-icon] { color: var(--toast-info) !important; }
 
-/* Buttons */
+/* Buttons — sizing pulled from shared tokens */
 [data-sonner-toast] .flowtix-toast-action {
-  border-radius: 10px !important;
-  padding: 6px 12px !important;
-  font-weight: 600 !important;
+  border-radius: var(--toast-btn-radius) !important;
+  padding: var(--toast-btn-padding-y) var(--toast-btn-padding-x) !important;
+  font-size: var(--toast-btn-font) !important;
+  font-weight: var(--toast-btn-weight) !important;
+  min-height: var(--toast-btn-min-h) !important;
   background: var(--primary) !important;
   color: var(--primary-foreground) !important;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -1170,8 +1204,11 @@ html {
 }
 
 [data-sonner-toast] .flowtix-toast-cancel {
-  border-radius: 10px !important;
-  padding: 6px 12px !important;
+  border-radius: var(--toast-btn-radius) !important;
+  padding: var(--toast-btn-padding-y) var(--toast-btn-padding-x) !important;
+  font-size: var(--toast-btn-font) !important;
+  font-weight: var(--toast-btn-weight) !important;
+  min-height: var(--toast-btn-min-h) !important;
   background: color-mix(in oklab, var(--muted) 80%, transparent) !important;
   color: var(--foreground) !important;
 }
@@ -1182,8 +1219,8 @@ html {
   border: 1px solid var(--toast-border) !important;
   color: var(--toast-fg) !important;
   border-radius: 999px !important;
-  width: 22px !important;
-  height: 22px !important;
+  width: var(--toast-close-size) !important;
+  height: var(--toast-close-size) !important;
   inset-inline-end: -8px !important;
   inset-inline-start: auto !important;
   left: auto !important;
@@ -1210,7 +1247,8 @@ html {
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* Mobile & low-DPI: larger type, roomier spacing, wider surface for comfortable reading */
+/* Mobile: reshape every state at once by overriding tokens only.
+   No per-element rules needed — all base selectors already read the tokens. */
 @media (max-width: 640px) {
   [data-sonner-toaster] {
     width: calc(100vw - 24px) !important;
@@ -1218,53 +1256,44 @@ html {
     inset-inline: 12px !important;
     left: 12px !important;
     right: 12px !important;
+
+    --toast-radius: 18px;
+    --toast-padding-y: 16px;
+    --toast-padding-x: 18px;
+    --toast-gap: 14px;
+
+    --toast-title-size: 1.02rem;
+    --toast-title-line: 1.5;
+
+    --toast-desc-size: 0.94rem;
+    --toast-desc-line: 1.65;
+    --toast-desc-mt: 4px;
+
+    --toast-icon-size: 26px;
+    --toast-icon-svg: 24px;
+
+    --toast-btn-padding-y: 10px;
+    --toast-btn-padding-x: 14px;
+    --toast-btn-font: 0.95rem;
+    --toast-btn-min-h: 40px;
+
+    --toast-close-size: 28px;
   }
   [data-sonner-toast].flowtix-toast-root,
   [data-sonner-toast][data-styled="true"].flowtix-toast-root {
     width: 100% !important;
     max-width: 100% !important;
-    padding: 16px 18px !important;
-    gap: 14px !important;
-    border-radius: 18px !important;
-  }
-  [data-sonner-toast] .flowtix-toast-title,
-  [data-sonner-toast] [data-title] {
-    font-size: 1.02rem !important;
-    line-height: 1.5 !important;
-  }
-  [data-sonner-toast] .flowtix-toast-desc,
-  [data-sonner-toast] [data-description] {
-    font-size: 0.94rem !important;
-    line-height: 1.65 !important;
-    margin-top: 4px;
-  }
-  [data-sonner-toast] [data-icon] {
-    width: 26px !important;
-    height: 26px !important;
-  }
-  [data-sonner-toast] [data-icon] > svg {
-    width: 24px;
-    height: 24px;
-  }
-  [data-sonner-toast] .flowtix-toast-action,
-  [data-sonner-toast] .flowtix-toast-cancel {
-    padding: 10px 14px !important;
-    font-size: 0.95rem !important;
-    min-height: 40px;
   }
   /* Always-visible close button on touch (no hover state) */
   [data-sonner-toast] [data-close-button] {
     opacity: 1 !important;
-    width: 28px !important;
-    height: 28px !important;
   }
 }
 
 /* Low-DPI displays (≤1x) — nudge body text up for legibility */
 @media (max-resolution: 1dppx) and (max-width: 900px) {
-  [data-sonner-toast] [data-description],
-  [data-sonner-toast] .flowtix-toast-desc {
-    font-size: 0.92rem !important;
+  [data-sonner-toaster] {
+    --toast-desc-size: 0.92rem;
   }
 }
 
