@@ -257,7 +257,7 @@ function InboxPage() {
         resyncDone: "Conversations and messages refreshed",
         resyncQueued: "Sync request sent to the bridge; chats will update automatically when batches arrive.",
         syncNeedsConnection: "Old chats cannot be fetched because WhatsApp is not connected. Reconnect and scan a new QR first.",
-        syncUnavailable: "Pairing succeeded, but WhatsApp has not sent old-chat batches yet. Keep the phone online, then press Fetch all chats now again.",
+        syncUnavailable: "Old-chat batches haven't arrived yet. Keep the phone online and retry.",
         soon: "Coming soon",
         photo: "Photo",
         voice: "Voice message",
