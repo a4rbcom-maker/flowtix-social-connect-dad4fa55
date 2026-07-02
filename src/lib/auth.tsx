@@ -99,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Subscribe FIRST so we don't miss the initial SIGNED_IN event.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
       window.clearTimeout(restoreTimeout);
+      clearGuard();
       finishSessionRestore(nextSession);
 
       if (nextSession) {
@@ -110,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Refresh failure or expiration → supabase emits SIGNED_OUT with no session.
       if ((event === "SIGNED_OUT" || event === "USER_UPDATED") && !nextSession && hadSessionRef.current) {
-        handleExpiredSession();
+        handleExpiredSession("expired");
       }
     });
 
@@ -134,9 +135,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
       window.clearTimeout(restoreTimeout);
+      clearGuard();
       subscription.unsubscribe();
     };
   }, []);
+
 
   const signOut = async () => {
     // Manual sign-out shouldn't trigger the "expired" toast.
