@@ -1,12 +1,12 @@
 import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { Navbar } from "@/components/landing/Navbar";
 import { AlertCircle, Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff, ShieldCheck, Clock, LogIn } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { signInWithPasswordResilient, signUpWithPasswordResilient } from "@/lib/auth-proxy.client";
 
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -117,6 +117,7 @@ function LoginPage() {
         invalidCredentials: "البريد الإلكتروني أو كلمة المرور غير صحيحة. تأكد من البيانات أو استخدم نسيت كلمة المرور.",
         emailNotConfirmed: "حسابك لم يتم تأكيده بعد. تحقق من بريدك الإلكتروني ثم حاول مرة أخرى.",
         defaultError: "حدث خطأ غير متوقع. حاول مرة أخرى بعد لحظات.",
+        unreachable: "تعذّر تسجيل الدخول حالياً حتى عبر الاتصال الاحتياطي من الخادم. تحقق من اتصال الإنترنت أو جرّب بعد لحظات.",
       }
     : {
         login: "Sign In",
@@ -143,6 +144,7 @@ function LoginPage() {
         invalidCredentials: "The email or password is incorrect. Check your details or use Forgot password.",
         emailNotConfirmed: "Your account is not confirmed yet. Check your email, then try again.",
         defaultError: "Something went wrong. Please try again in a moment.",
+        unreachable: "Sign-in is currently unreachable even through the server fallback. Check your connection or try again shortly.",
       };
 
   const getFriendlyAuthError = (err: unknown) => {
@@ -178,9 +180,7 @@ function LoginPage() {
           ? "لا يوجد اتصال بالإنترنت على جهازك. تحقق من الشبكة وحاول مجدداً."
           : "Your device is offline. Check your network and try again.";
       }
-      return lang === "ar"
-        ? "تعذّر الوصول لخدمة تسجيل الدخول. قد يكون هناك حاجب إعلانات أو امتداد يحجب النطاق supabase.co — عطّله وحاول مجدداً، أو جرّب متصفحاً آخر."
-        : "Couldn't reach sign-in. An ad blocker or extension may be blocking supabase.co — disable it or try another browser.";
+      return labels.unreachable;
     }
     if (message.includes("rate limit") || message.includes("too many")) {
       return lang === "ar"
@@ -191,14 +191,6 @@ function LoginPage() {
     return labels.defaultError;
   };
 
-  const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T> =>
-    Promise.race([
-      p,
-      new Promise<T>((_, reject) =>
-        setTimeout(() => reject(new Error("Request timed out")), ms),
-      ),
-    ]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -208,27 +200,18 @@ function LoginPage() {
     try {
       if (isLogin) {
         localStorage.setItem("flowtix_remember_me", rememberMe ? "true" : "false");
-        const { error } = await withTimeout(
-          supabase.auth.signInWithPassword({ email: email.trim(), password }),
-          20_000,
-        );
-        if (error) throw error;
+        await signInWithPasswordResilient({ email: email.trim(), password }, 8_000);
         // Don't navigate manually — the role-aware <Navigate> gate above
         // redirects to /admin or /dashboard once useIsAdmin resolves.
 
       } else {
-        const { error } = await withTimeout(
-          supabase.auth.signUp({
-            email: email.trim(),
-            password,
-            options: {
-              data: { full_name: fullName, phone },
-              emailRedirectTo: window.location.origin,
-            },
-          }),
-          20_000,
-        );
-        if (error) throw error;
+        await signUpWithPasswordResilient({
+          email: email.trim(),
+          password,
+          fullName,
+          phone,
+          emailRedirectTo: window.location.origin,
+        }, 8_000);
         setSuccess(labels.checkEmail);
       }
     } catch (err: unknown) {
