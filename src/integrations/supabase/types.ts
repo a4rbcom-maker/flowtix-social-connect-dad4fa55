@@ -2044,6 +2044,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      wa_reconcile_conversation_order: {
+        Args: { _user_id?: string }
+        Returns: number
+      }
     }
     Enums: {
       ai_account_status: "active" | "exhausted" | "disabled" | "error"
