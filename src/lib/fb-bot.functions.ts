@@ -406,7 +406,7 @@ async function assertExtractionQuota(
     .from("fb_jobs")
     .select("id, status, created_at")
     .eq("user_id", userId)
-    .in("job_type", EXTRACTION_JOB_TYPES as unknown as readonly string[])
+    .in("job_type", EXTRACTION_JOB_TYPES as any)
     .gte("created_at", sinceIso)
     .order("created_at", { ascending: false })
     .limit(200);
@@ -450,7 +450,7 @@ export const getExtractionQuotaStatus = createServerFn({ method: "GET" })
       .from("fb_jobs")
       .select("id, status, created_at")
       .eq("user_id", userId)
-      .in("job_type", EXTRACTION_JOB_TYPES as unknown as readonly string[])
+      .in("job_type", EXTRACTION_JOB_TYPES as any)
       .gte("created_at", sinceIso)
       .order("created_at", { ascending: false })
       .limit(200);
