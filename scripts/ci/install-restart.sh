@@ -15,12 +15,17 @@ fi
 __SELF_PATH="${BASH_SOURCE[0]:-$0}"
 cleanup_self() {
   rm -f "$__SELF_PATH" 2>/dev/null || true
-  find /tmp -maxdepth 1 -type f -name 'install-restart-*.sh' -mtime +1 \
-    -delete 2>/dev/null || true
+  # Sweep every stale install-restart-*.sh from prior runs, regardless of age.
+  find /tmp -maxdepth 1 -type f -name 'install-restart-*.sh' \
+    ! -path "$__SELF_PATH" -delete 2>/dev/null || true
+  # Wipe the entire staging root — after promotion, no staging dir is needed.
+  # This is the last line of defense in case the CI-side cleanup step is skipped.
   if [ -n "${STAGING_PATH:-}" ]; then
     case "$STAGING_PATH" in
-      "$HOME"/.flowtixtools-web-staging/*)
-        rm -rf "$STAGING_PATH" 2>/dev/null || true
+      "$HOME"/.flowtixtools-web-staging/*|.flowtixtools-web-staging/*)
+        local staging_root
+        staging_root="$(dirname "$STAGING_PATH")"
+        find "$staging_root" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
         ;;
     esac
   fi
