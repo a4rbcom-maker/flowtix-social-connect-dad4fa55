@@ -320,61 +320,112 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
         .eq("user_id", userId)
         .not("provider_message_id", "is", null)
         .order("wa_timestamp", { ascending: true })
-        .limit(500),
+        .limit(2000),
     ]);
 
+    // Track oldest message per JID (both id + timestamp) so we can paginate
+    // backwards page-by-page as recommended by Bot-Xtra: each /fetch-messages
+    // call returns up to ~50 messages older than the anchor.
     const anchorByJid = new Map<string, string>();
-    const addAnchor = (jid: unknown, providerMessageId: unknown) => {
+    const anchorTsByJid = new Map<string, number>();
+    const addAnchor = (jid: unknown, providerMessageId: unknown, ts?: unknown) => {
       if (typeof jid !== "string" || typeof providerMessageId !== "string" || !jid.trim() || !providerMessageId.trim()) return;
       const cleanJid = jid.trim();
-      if (!anchorByJid.has(cleanJid)) anchorByJid.set(cleanJid, providerMessageId.trim());
+      const tsNum = typeof ts === "number" ? ts : ts ? Number(new Date(ts as string).getTime() / 1000) : NaN;
+      if (!anchorByJid.has(cleanJid)) {
+        anchorByJid.set(cleanJid, providerMessageId.trim());
+        if (Number.isFinite(tsNum)) anchorTsByJid.set(cleanJid, Math.floor(tsNum));
+      }
       const local = cleanJid.split("@")[0] ?? "";
       if (/^\d{8,}$/.test(local)) {
-        if (cleanJid.endsWith("@lid") && !anchorByJid.has(`${local}@s.whatsapp.net`)) anchorByJid.set(`${local}@s.whatsapp.net`, providerMessageId.trim());
-        if (cleanJid.endsWith("@s.whatsapp.net") && !anchorByJid.has(`${local}@lid`)) anchorByJid.set(`${local}@lid`, providerMessageId.trim());
+        const altSuffix = cleanJid.endsWith("@lid") ? "@s.whatsapp.net" : cleanJid.endsWith("@s.whatsapp.net") ? "@lid" : null;
+        if (altSuffix) {
+          const altJid = `${local}${altSuffix}`;
+          if (!anchorByJid.has(altJid)) {
+            anchorByJid.set(altJid, providerMessageId.trim());
+            if (Number.isFinite(tsNum)) anchorTsByJid.set(altJid, Math.floor(tsNum));
+          }
+        }
       }
     };
-    for (const msg of oldMessages ?? []) addAnchor(msg.remote_jid, msg.provider_message_id);
+    for (const msg of oldMessages ?? []) addAnchor(msg.remote_jid, msg.provider_message_id, msg.wa_timestamp);
 
     for (const chat of chats ?? []) {
       addJid(chat.remote_jid);
       addPhone(chat.contact_phone);
       const anchor = anchorByJid.get(chat.remote_jid);
-      if (chat.contact_phone && anchor) addAnchor(jidFromPhone(chat.contact_phone), anchor);
+      if (chat.contact_phone && anchor) addAnchor(jidFromPhone(chat.contact_phone), anchor, anchorTsByJid.get(chat.remote_jid));
     }
     for (const contact of contacts ?? []) addPhone(contact.phone);
     for (const customer of customers ?? []) addPhone(customer.phone_norm || customer.phone);
     for (const recipient of recipients ?? []) addPhone(recipient.phone);
     for (const log of logs ?? []) addPhone(log.recipient);
 
+    // Refresh oldest-anchor for a specific JID after each imported page, so
+    // the next iteration walks further back in history.
+    const refreshAnchor = async (jid: string) => {
+      const { data } = await supabase
+        .from("wa_messages")
+        .select("provider_message_id, wa_timestamp")
+        .eq("user_id", userId)
+        .eq("remote_jid", jid)
+        .not("provider_message_id", "is", null)
+        .order("wa_timestamp", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (data?.provider_message_id) {
+        anchorByJid.set(jid, data.provider_message_id);
+        const ts = data.wa_timestamp ? Math.floor(new Date(data.wa_timestamp).getTime() / 1000) : NaN;
+        if (Number.isFinite(ts)) anchorTsByJid.set(jid, ts);
+      }
+    };
+
+    const MAX_PAGES_PER_JID = 6; // ~300 older messages per chat per sync run
     let fetchedKnownChats = 0;
     for (const jid of Array.from(knownJids).slice(0, 120)) {
       if (!jid || jid === "@s.whatsapp.net" || jid.endsWith("@broadcast")) continue;
-      try {
-        const fetchBody = await waBridge.fetchMessages(row.session_id, jid, 100, {
-          // Bot-Xtra v1.8.4 accepts this and asks Baileys for messages older
-          // than a message we already have in that chat. Without an anchor,
-          // WhatsApp often returns only future/live messages.
-          anchorMessageId: anchorByJid.get(jid) ?? null,
-        });
-        const imported = await replayBridgeHistoryPayload(row.session_id, fetchBody).catch((err) => ({
-          messages: 0,
-          chats: 0,
-          error: err instanceof Error ? err.message : String(err),
-        }));
-        directImports.messages += imported.messages;
-        directImports.chats += imported.chats;
-        directImports.error = directImports.error ?? imported.error;
-        fetchedKnownChats++;
-        result.attempts.push({ path: `/api/sessions/${row.session_id}/fetch-messages`, ok: true, importedMessages: imported.messages, importedChats: imported.chats });
-      } catch (err) {
-        result.attempts.push({
-          path: `/api/sessions/${row.session_id}/fetch-messages`,
-          ok: false,
-          status: err instanceof BridgeError ? err.status : undefined,
-          error: err instanceof Error ? err.message : String(err),
-        });
+      let jidTouched = false;
+      for (let page = 0; page < MAX_PAGES_PER_JID; page++) {
+        try {
+          const anchorId = anchorByJid.get(jid) ?? null;
+          const anchorTs = anchorTsByJid.get(jid) ?? null;
+          const fetchBody = await waBridge.fetchMessages(row.session_id, jid, 50, {
+            anchorMessageId: anchorId,
+            anchorTimestamp: anchorTs,
+          });
+          const imported = await replayBridgeHistoryPayload(row.session_id, fetchBody).catch((err) => ({
+            messages: 0,
+            chats: 0,
+            error: err instanceof Error ? err.message : String(err),
+          }));
+          directImports.messages += imported.messages;
+          directImports.chats += imported.chats;
+          directImports.error = directImports.error ?? imported.error;
+          if (imported.messages > 0) {
+            jidTouched = true;
+            // Bot-Xtra delivers older batches via webhook events; give the
+            // pipeline a moment before we re-anchor for the next page.
+            await wait(600);
+            await refreshAnchor(jid);
+            result.attempts.push({ path: `/api/sessions/${row.session_id}/fetch-messages`, ok: true, importedMessages: imported.messages, importedChats: imported.chats });
+            continue;
+          }
+          // No new messages returned for this page — stop paginating this JID.
+          if (page === 0) {
+            result.attempts.push({ path: `/api/sessions/${row.session_id}/fetch-messages`, ok: true, importedMessages: 0, importedChats: 0 });
+          }
+          break;
+        } catch (err) {
+          result.attempts.push({
+            path: `/api/sessions/${row.session_id}/fetch-messages`,
+            ok: false,
+            status: err instanceof BridgeError ? err.status : undefined,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          break;
+        }
       }
+      if (jidTouched) fetchedKnownChats++;
     }
 
     if (!result.ok) {
