@@ -1172,32 +1172,12 @@ function InboxPage() {
                   </span>
                 )}
               </div>
-              {syncState.status === "error" && (
+              {false && (
                 <div className="mt-1.5 flex items-center justify-between gap-2 text-[10.5px] text-muted-foreground">
-                  <span className="truncate">
-                    {isAr ? "تعذّر إكمال المزامنة." : "Sync didn't finish."}
-                  </span>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      type="button"
-                      disabled={historySyncMut.isPending}
-                      onClick={() => historySyncMut.mutate()}
-                      className="inline-flex h-6 items-center gap-1 rounded-md border border-border/60 bg-background px-2 text-[10.5px] font-medium text-foreground hover:bg-muted disabled:opacity-60"
-                      title={isAr ? "إعادة المحاولة" : "Retry"}
-                    >
-                      {historySyncMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                      <span>{isAr ? "إعادة" : "Retry"}</span>
-                    </button>
-                    <Link
-                      to="/dashboard/whatsapp/accounts"
-                      className="inline-flex h-6 items-center gap-1 rounded-md px-2 text-[10.5px] font-medium text-primary hover:underline"
-                      title={t.repairForHistory}
-                    >
-                      {isAr ? "إعادة الاقتران" : "Repair"}
-                    </Link>
-                  </div>
+                  <span className="truncate" />
                 </div>
               )}
+
 
             </div>
           );
