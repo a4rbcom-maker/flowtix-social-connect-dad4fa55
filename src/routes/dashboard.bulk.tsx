@@ -1021,10 +1021,16 @@ function BulkSendPage() {
                         </div>
                       </div>
                       {(j.status === "scheduled" || j.status === "running") && (
-                        <button onClick={() => cancelJob(j.id)} className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10">
-                          <Pause className="h-3 w-3" /> {isAr ? "إلغاء" : "Cancel"}
-                        </button>
+                        <div className="flex flex-wrap gap-1.5">
+                          <button onClick={() => pauseJob(j.id)} className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-600 hover:bg-amber-500/20 dark:text-amber-400">
+                            <Pause className="h-3 w-3" /> {isAr ? "إيقاف مؤقت" : "Pause"}
+                          </button>
+                          <button onClick={() => cancelJob(j.id)} className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10">
+                            <XCircle className="h-3 w-3" /> {isAr ? "إلغاء" : "Cancel"}
+                          </button>
+                        </div>
                       )}
+
                       {(j.status === "cancelled" || j.status === "paused" || j.status === "failed") && (
                         <button onClick={() => resumeJob(j.id)} className="inline-flex items-center gap-1 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20">
                           <Play className="h-3 w-3" /> {isAr ? "استئناف" : "Resume"}
