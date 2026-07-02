@@ -2340,12 +2340,14 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
   ]);
 
   if (error) throw new Error(error.message);
-  if (msgError) throw new Error(msgError.message);
+  // لا تجعل فشل/بطء استعلام إثراء الرسائل يخفي قائمة المحادثات بالكامل.
+  // كان هذا يسبب ظهور "0 محادثات" عند انتهاء مهلة استعلام آخر الرسائل.
+  if (msgError) console.warn("[inbox] message enrichment skipped", msgError.message);
 
   const rows = (data ?? []) as Omit<ConversationRow, "profile_pic_url">[];
   const metaByJid = new Map<string, { phone: string | null; profile: string | null; preview: string | null }>();
   const latestMessageByJid = new Map<string, NonNullable<typeof rawMessages>[number]>();
-  for (const msg of rawMessages ?? []) {
+  for (const msg of msgError ? [] : (rawMessages ?? [])) {
     const jid = String(msg.remote_jid ?? "");
     if (!jid) continue;
     if (!latestMessageByJid.has(jid)) latestMessageByJid.set(jid, msg);
