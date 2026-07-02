@@ -1032,11 +1032,10 @@ function InboxPage() {
           />
         </div>
 
-        {/* Filters + time range unified in one wrap block */}
+        {/* Filters — compact */}
         <div className="flex flex-wrap items-center gap-1.5">
           {([
             { k: "all" as FilterKey, label: t.all },
-            { k: "unread" as FilterKey, label: t.filterUnread },
             { k: "ai" as FilterKey, label: t.filterAi },
           ]).map((f) => {
             const active = filter === f.k;
@@ -1055,31 +1054,8 @@ function InboxPage() {
               </button>
             );
           })}
-          <span className="mx-1 h-4 w-px bg-border/70" aria-hidden />
-          {([
-            { k: "all" as TimeRangeKey, label: isAr ? "كل الوقت" : "All time" },
-            { k: "1d" as TimeRangeKey, label: isAr ? "24 ساعة" : "24h" },
-            { k: "7d" as TimeRangeKey, label: isAr ? "7 أيام" : "7d" },
-            { k: "30d" as TimeRangeKey, label: isAr ? "30 يوم" : "30d" },
-            { k: "90d" as TimeRangeKey, label: isAr ? "90 يوم" : "90d" },
-          ]).map((f) => {
-            const active = timeRange === f.k;
-            return (
-              <button
-                key={f.k}
-                type="button"
-                onClick={() => setTimeRange(f.k)}
-                className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
-                  active
-                    ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                    : "bg-muted/40 text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                {f.label}
-              </button>
-            );
-          })}
         </div>
+
 
         {/* Status strip */}
         <div className="flex items-center justify-between gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-[11px] font-medium text-muted-foreground">
@@ -1114,7 +1090,7 @@ function InboxPage() {
             </button>
           )}
         </div>
-        {syncState.status !== "idle" && (() => {
+        {syncState.status !== "idle" && syncState.status !== "error" && (() => {
           const elapsed = Math.max(0, Date.now() - syncState.startedAt);
           const total = Math.max(1, syncState.deadlineAt - syncState.startedAt);
           const timePct = Math.min(100, Math.round((elapsed / total) * 100));
@@ -1123,9 +1099,7 @@ function InboxPage() {
           const pct =
             syncState.status === "done"
               ? 100
-              : syncState.status === "error"
-                ? Math.max(timePct, msgPct)
-                : Math.max(msgPct, Math.min(95, timePct));
+              : Math.max(msgPct, Math.min(95, timePct));
           const toneFor = (kind: "running" | "pending" | "done" | "error") => statusBadgeTone(kind);
           const meta =
             syncState.status === "running"
@@ -1144,21 +1118,14 @@ function InboxPage() {
                       ? "الجسر جاهز وسيبدأ إرسال الدفعات خلال ثوانٍ."
                       : "The bridge is ready and will start sending batches in a few seconds.",
                   }
-                : syncState.status === "done"
-                  ? {
-                      label: isAr ? "اكتملت المزامنة" : "Sync complete",
-                      ...toneFor("done"),
-                      hint: isAr
-                        ? "تمت المزامنة بنجاح. يمكنك متابعة استخدام صندوق الوارد بشكل طبيعي."
-                        : "Sync finished successfully. You can continue using the inbox normally.",
-                    }
-                  : {
-                      label: isAr ? "تعذّرت المزامنة" : "Sync failed",
-                      ...toneFor("error"),
-                      hint: isAr
-                        ? "توقفت المزامنة قبل الاكتمال. جرّب إعادة المحاولة، وإن استمر الفشل استخدم زر إعادة الاقتران."
-                        : "Sync stopped before completing. Retry after keeping your phone online.",
-                    };
+                : {
+                    label: isAr ? "اكتملت المزامنة" : "Sync complete",
+                    ...toneFor("done"),
+                    hint: isAr
+                      ? "تمت المزامنة بنجاح. يمكنك متابعة استخدام صندوق الوارد بشكل طبيعي."
+                      : "Sync finished successfully. You can continue using the inbox normally.",
+                  };
+
           const active = syncState.status === "running" || syncState.status === "pending";
           return (
             <div className={`mt-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-[11px] ring-1 ${meta.border}`}>
@@ -1205,32 +1172,12 @@ function InboxPage() {
                   </span>
                 )}
               </div>
-              {syncState.status === "error" && (
+              {false && (
                 <div className="mt-1.5 flex items-center justify-between gap-2 text-[10.5px] text-muted-foreground">
-                  <span className="truncate">
-                    {isAr ? "تعذّر إكمال المزامنة." : "Sync didn't finish."}
-                  </span>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      type="button"
-                      disabled={historySyncMut.isPending}
-                      onClick={() => historySyncMut.mutate()}
-                      className="inline-flex h-6 items-center gap-1 rounded-md border border-border/60 bg-background px-2 text-[10.5px] font-medium text-foreground hover:bg-muted disabled:opacity-60"
-                      title={isAr ? "إعادة المحاولة" : "Retry"}
-                    >
-                      {historySyncMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                      <span>{isAr ? "إعادة" : "Retry"}</span>
-                    </button>
-                    <Link
-                      to="/dashboard/whatsapp/accounts"
-                      className="inline-flex h-6 items-center gap-1 rounded-md px-2 text-[10.5px] font-medium text-primary hover:underline"
-                      title={t.repairForHistory}
-                    >
-                      {isAr ? "إعادة الاقتران" : "Repair"}
-                    </Link>
-                  </div>
+                  <span className="truncate" />
                 </div>
               )}
+
 
             </div>
           );
