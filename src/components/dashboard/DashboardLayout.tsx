@@ -149,14 +149,20 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     } catch {}
   }, [sidebarOpen, isDesktop, isWhatsappInbox]);
 
-  // On route change, re-apply the preference for the new context so entering
-  // the chat auto-collapses (unless the user chose otherwise for chat) and
-  // leaving the chat restores the general preference untouched.
+  // On route change, re-apply the preference for the new context. Entering
+  // the chat ALWAYS auto-collapses the sidebar (WhatsApp-like behaviour) —
+  // any saved chat preference is ignored on entry so it never opens by
+  // accident when landing on the inbox.
   useEffect(() => {
+    if (isWhatsappInbox) {
+      setSidebarOpen(false);
+      return;
+    }
     const saved = readPref(isDesktop, isWhatsappInbox);
     setSidebarOpen(saved !== null ? saved : defaultFor(isDesktop, isWhatsappInbox));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
+
 
 
   // Lock body scroll while the mobile sidebar overlay is open.
