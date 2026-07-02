@@ -198,6 +198,27 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
           let sent = 0;
           let failed = 0;
 
+          // Sweep stale "processing" recipients: bridge accepted them but never confirmed delivery.
+          const staleCutoff = new Date(Date.now() - QUEUED_STALE_MS).toISOString();
+          const { data: stale } = await supabaseAdmin
+            .from("bulk_job_recipients")
+            .select("id")
+            .eq("job_id", job.id)
+            .eq("status", "processing")
+            .lt("sent_at", staleCutoff);
+          if (stale && stale.length > 0) {
+            const ids = stale.map((s) => s.id);
+            await supabaseAdmin
+              .from("bulk_job_recipients")
+              .update({
+                status: "failed",
+                error_message: "قبل الجسر الطلب لكن لم يتم تأكيد التسليم — أعد ربط واتساب ثم استأنف",
+                sent_at: new Date().toISOString(),
+              })
+              .in("id", ids);
+            failed += ids.length;
+          }
+
           for (const r of pending) {
             const phone = normalizeWhatsappPhone(r.phone) || "";
             if (!phone || phone.length < 6) {
@@ -212,6 +233,7 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
             const rendered = renderTemplate(job.message || "", { name: r.name, phone });
             let errorMessage: string | null = null;
             let providerId: string | null = null;
+            let queuedOnly = false;
 
             try {
               const caption = rendered.trim();
@@ -221,10 +243,14 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
                   mediaType: "image",
                   phone,
                 });
-                providerId = acceptedBridgeId(res);
+                const parsed = acceptedBridgeId(res);
+                providerId = parsed.id;
+                queuedOnly = parsed.queuedOnly;
               } else {
                 const res = await waBridge.sendText(sess.session_id, phone, caption);
-                providerId = acceptedBridgeId(res);
+                const parsed = acceptedBridgeId(res);
+                providerId = parsed.id;
+                queuedOnly = parsed.queuedOnly;
               }
             } catch (err) {
               errorMessage = describeErr(err);
@@ -256,6 +282,17 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
                   sent_at: new Date().toISOString(),
                 })
                 .eq("id", r.id);
+            } else if (queuedOnly) {
+              // Bridge accepted but did not return a real message id yet.
+              // Mark as processing and let the stale-sweep decide later.
+              await supabaseAdmin
+                .from("bulk_job_recipients")
+                .update({
+                  status: "processing",
+                  sent_at: new Date().toISOString(),
+                  error_message: null,
+                })
+                .eq("id", r.id);
             } else {
               sent++;
               await supabaseAdmin
@@ -285,14 +322,15 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
               user_id: job.user_id,
               channel: "bulk",
               action: "bulk_send",
-              status: errorMessage ? "failed" : "success",
+              status: errorMessage ? "failed" : queuedOnly ? "pending" : "success",
               title: job.title,
-              description: rendered.slice(0, 140),
+              description: (queuedOnly ? "قيد التأكيد من الجسر — " : "") + rendered.slice(0, 140),
               recipient: `${r.name} (${phone})`,
               error_message: errorMessage,
-              metadata: { job_id: job.id, provider_message_id: providerId },
+              metadata: { job_id: job.id, provider_message_id: providerId, queued_only: queuedOnly },
             });
           }
+
 
           summary.sent += sent;
           summary.failed += failed;
