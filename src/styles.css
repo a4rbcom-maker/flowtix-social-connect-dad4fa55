@@ -150,6 +150,15 @@
   --pricing-popular-muted: oklch(0.72 0.02 295);
   --pricing-card-bg: oklch(0.18 0.025 270);
   --pricing-card-border: oklch(0.28 0.025 270);
+  /* Status tokens — dark tuned */
+  --status-success: oklch(0.78 0.17 155);
+  --status-error:   oklch(0.72 0.2 25);
+  --status-warning: oklch(0.82 0.16 75);
+  --status-info:    oklch(0.76 0.15 240);
+  --status-success-foreground: oklch(0.14 0.03 155);
+  --status-error-foreground:   oklch(0.14 0.03 25);
+  --status-warning-foreground: oklch(0.16 0.04 60);
+  --status-info-foreground:    oklch(0.14 0.03 240);
 }
 
 html {
