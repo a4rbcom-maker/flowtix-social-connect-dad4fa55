@@ -1047,7 +1047,35 @@ function InboxPage() {
               <RefreshCw className={`h-3.5 w-3.5 ${convQuery.isFetching || historySyncMut.isPending ? "animate-spin" : ""}`} />
               <span className="hidden sm:inline">{t.resync}</span>
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                lidMatchMut.mutate(undefined, {
+                  onSuccess: (res) => {
+                    if (!res || res.matched === 0) {
+                      toast.info(
+                        isAr
+                          ? "لا توجد أرقام جديدة لربطها الآن"
+                          : "No new phone numbers to link right now"
+                      );
+                    }
+                  },
+                });
+              }}
+              disabled={lidMatchMut.isPending}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-primary/30 bg-background px-2.5 text-[11px] font-semibold text-primary transition hover:bg-primary/10 disabled:opacity-60 sm:text-xs"
+              aria-label={isAr ? "مطابقة الأرقام" : "Match numbers"}
+              title={
+                isAr
+                  ? "ربط محادثات @lid بأرقام الجوال الحقيقية"
+                  : "Link @lid chats to real phone numbers"
+              }
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${lidMatchMut.isPending ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">{isAr ? "مطابقة الأرقام" : "Match numbers"}</span>
+            </button>
           </div>
+
         </div>
 
         {/* Search */}
