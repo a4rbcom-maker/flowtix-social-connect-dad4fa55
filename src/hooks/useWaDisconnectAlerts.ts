@@ -120,6 +120,10 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
         firstRunRef.current = false;
         return;
       }
+      if (effectiveDisconnectedCount <= 0) {
+        firstRunRef.current = false;
+        return;
+      }
       const latest = latestDisconnect;
       if (latest) {
         setLastReason(latest.reason ?? null);
