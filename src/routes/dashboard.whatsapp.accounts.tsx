@@ -242,15 +242,17 @@ function WhatsAppPage() {
     }
   }, [status, polling, t.successConnected]);
 
-  // Auto-start polling if QR/connecting on load
+  // Do NOT auto-show QR on page load. QR appears only after the user
+  // explicitly clicks Connect / Reconnect / Deep reset. We still resume
+  // polling silently so the status stays up to date.
   useEffect(() => {
     if (startedRef.current || !state) return;
     if (state.status === "qr" || state.status === "connecting") {
       startedRef.current = true;
       setPolling(true);
-      setShowQr(true);
     }
   }, [state]);
+
 
   // Stop polling if bridge unreachable
   useEffect(() => {
