@@ -255,6 +255,32 @@ function BulkSendPage() {
     return true;
   };
 
+  const sendSessionTest = async () => {
+    const raw = testPhone.trim().replace(/[^0-9+]/g, "");
+    if (raw.length < 8) {
+      toast.error(isAr ? "أدخل رقماً صحيحاً بصيغة دولية (مثال: 201234567890)" : "Enter a valid international number (e.g., 201234567890)");
+      return;
+    }
+    if (!(await ensureWaConnected())) return;
+    setTestSending(true);
+    const stamp = new Date().toLocaleTimeString();
+    try {
+      await sendWaMessageFn({
+        data: {
+          to: raw,
+          text: (isAr ? `✅ رسالة اختبار من Flowtix — الجلسة تعمل بنجاح (${stamp})` : `✅ Flowtix test — session is working (${stamp})`),
+        },
+      });
+      toast.success(isAr ? "تم إرسال رسالة الاختبار — تحقق من واتساب المستلم" : "Test message sent — check the recipient's WhatsApp");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : (isAr ? "فشل الإرسال" : "Send failed"));
+    } finally {
+      setTestSending(false);
+    }
+  };
+
+
+
   const launchCampaign = async () => {
     if (!user) return;
     if (!title.trim()) { toast.error(isAr ? "أضف عنواناً للحملة" : "Add a title"); return; }
