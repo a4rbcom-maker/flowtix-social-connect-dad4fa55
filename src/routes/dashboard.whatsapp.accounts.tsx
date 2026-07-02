@@ -174,8 +174,9 @@ function WhatsAppPage() {
         deepResetHint: "If your number shows connected but no messages arrive, run this — it wipes every stale session tied to your account on the bridge and creates a fresh one with a new QR.",
         deepResetConfirm: "This will wipe every WhatsApp session on the bridge tied to your account and start a fresh one. Continue?",
         deepResetDone: "Deep reset done — scan the new QR",
-        showQr: "Show QR to scan",
+        showQr: "Generate new QR",
         hideQr: "Hide QR",
+
         refresh: "Refresh status",
         ping: "Test bridge",
         cloudBridge: "Central bridge fallback is active for this server.",
