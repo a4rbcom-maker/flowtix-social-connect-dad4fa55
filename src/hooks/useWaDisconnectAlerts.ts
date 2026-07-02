@@ -57,25 +57,30 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
       ]);
       if (!mounted.current) return;
 
-      const dCount = disc ?? 0;
+      const rawDisconnectedCount = disc ?? 0;
       const cCount = conn ?? 0;
       const gCount = connecting ?? 0;
+      const effectiveDisconnectedCount = cCount > 0 ? 0 : rawDisconnectedCount;
 
-      setDisconnectedCount(dCount);
+      setDisconnectedCount(effectiveDisconnectedCount);
       setConnectedCount(cCount);
       setStatus(
         cCount > 0 ? "connected"
         : gCount > 0 ? "connecting"
-        : dCount > 0 ? "disconnected"
+        : rawDisconnectedCount > 0 ? "disconnected"
         : "unknown",
       );
+      if (cCount > 0) {
+        setLastReason(null);
+        setLastAt(null);
+      }
 
       // Reconnected toast: previously disconnected, now not.
       if (
         !firstRunRef.current &&
         prevDisconnectedRef.current != null &&
         prevDisconnectedRef.current > 0 &&
-        dCount === 0 &&
+        effectiveDisconnectedCount === 0 &&
         cCount > (prevConnectedRef.current ?? 0)
       ) {
         toast.success(
@@ -88,10 +93,14 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
           },
         );
       }
-      prevDisconnectedRef.current = dCount;
+      prevDisconnectedRef.current = effectiveDisconnectedCount;
       prevConnectedRef.current = cCount;
 
       // Most recent disconnect event → one-shot toast on new id.
+      if (cCount > 0) {
+        firstRunRef.current = false;
+        return;
+      }
       const { data: events } = await supabase
         .from("wa_session_events")
         .select("id, reason, created_at, to_status")

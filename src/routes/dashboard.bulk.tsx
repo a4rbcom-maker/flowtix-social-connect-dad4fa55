@@ -249,14 +249,13 @@ function BulkSendPage() {
       .select("status")
       .eq("user_id", user.id)
       .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(5);
     if (error) {
       toast.error(error.message);
       return false;
     }
-    const status = data?.status ?? null;
-    if (status !== "connected") {
+    const hasConnectedSession = data?.some((row) => row.status === "connected") ?? false;
+    if (!hasConnectedSession) {
       const msg = isAr
         ? "لا يمكن بدء الحملة: جلسة واتساب غير متصلة. سيتم تحويلك لإعادة الاقتران."
         : "Cannot start campaign: WhatsApp session is not connected. Redirecting to reconnect.";
