@@ -23,6 +23,7 @@ import {
   fetchFacebookGroups,
   getFacebookConnection,
 } from "@/lib/facebook.functions";
+import { createListMyGroupsJob } from "@/lib/fb-bot.functions";
 import { logSendActivity, updateSendStatus } from "@/lib/notifications";
 import { GraphApiConnectWizard } from "@/components/facebook/GraphApiConnectWizard";
 
@@ -48,6 +49,8 @@ function FacebookGroupsPage() {
   const navigate = useNavigate();
 
   const [connected, setConnected] = useState<boolean | null>(null);
+  const [botAccountId, setBotAccountId] = useState<string | null>(null);
+  const [botImporting, setBotImporting] = useState(false);
   const [hasBotAccount, setHasBotAccount] = useState(false);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(false);
@@ -151,7 +154,9 @@ function FacebookGroupsPage() {
           supabase.from("fb_bot_accounts").select("id").eq("user_id", user.id).limit(1),
         ]);
         setConnected(!!connRes.connection);
-        setHasBotAccount((botRes.data?.length ?? 0) > 0);
+        const firstBot = botRes.data?.[0]?.id ?? null;
+        setBotAccountId(firstBot);
+        setHasBotAccount(!!firstBot);
       } catch {
         setConnected(false);
       }
@@ -238,6 +243,24 @@ function FacebookGroupsPage() {
       toast.error(msg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleBotImport = async () => {
+    if (!botAccountId) return;
+    setBotImporting(true);
+    try {
+      await callServerFn(createListMyGroupsJob, { accountId: botAccountId, max: 500 });
+      toast.success(
+        lang === "ar"
+          ? "بدأنا استيراد جروباتك عبر البوت — النتائج ستظهر خلال دقائق في سجل المهام"
+          : "Started importing your groups via the bot — results appear in Jobs within minutes",
+      );
+      navigate({ to: "/dashboard/facebook/history" });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBotImporting(false);
     }
   };
 
@@ -391,24 +414,36 @@ function FacebookGroupsPage() {
             <p className="mt-1 text-sm text-muted-foreground">
               {hasBotAccount
                 ? (lang === "ar"
-                    ? "حساب البوت مربوط بنجاح. لاستيراد قائمة جروباتك تلقائياً تحتاج ربط Facebook API أيضاً، أو يمكنك استخدام الحملات ولصق معرّفات الجروبات يدوياً مع البوت."
-                    : "Your bot account is linked. To auto-import your groups list you also need to link the Facebook API, or use Campaigns and paste group IDs manually with the bot.")
+                    ? "حساب البوت مربوط بنجاح. يمكنك استيراد جروباتك مباشرة عبر البوت بضغطة زر، أو ربط Facebook API للاستيراد التلقائي الفوري."
+                    : "Your bot account is linked. You can import your groups directly via the bot in one click, or link the Facebook API for instant auto-import.")
                 : t.notConnectedDesc}
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
+              {hasBotAccount && botAccountId && (
+                <button
+                  onClick={handleBotImport}
+                  disabled={botImporting}
+                  className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
+                >
+                  {botImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  {lang === "ar" ? "استيراد جروباتي عبر البوت" : "Import my groups via bot"}
+                </button>
+              )}
               <button
                 onClick={() => setWizardOpen(true)}
-                className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-              >
-                <Sparkles className="h-4 w-4" />
-                {lang === "ar" ? "ابدأ الربط خطوة بخطوة" : "Start guided setup"}
-              </button>
-              <Link
-                to="/dashboard/facebook"
                 className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-accent"
               >
-                {t.goConnect}
-              </Link>
+                <Sparkles className="h-4 w-4" />
+                {lang === "ar" ? "ربط Facebook API" : "Link Facebook API"}
+              </button>
+              {!hasBotAccount && (
+                <Link
+                  to="/dashboard/facebook"
+                  className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-accent"
+                >
+                  {t.goConnect}
+                </Link>
+              )}
               {hasBotAccount && (
                 <Link
                   to="/dashboard/facebook/campaigns/new"
