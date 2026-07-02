@@ -915,12 +915,13 @@ function StatusDot({ status }: { status: string }) {
 
 function MetaRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 px-3 py-2">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      <span className="min-w-0 text-end text-xs font-semibold text-foreground">{value}</span>
+    <div className="flex flex-col gap-1 rounded-lg bg-muted/30 px-3 py-2">
+      <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="min-w-0 text-xs font-semibold text-foreground">{value}</span>
     </div>
   );
 }
+
 
 function QrView({ qr, polling, secondsLeft, autoRefreshing, ar, t }: { qr: string; polling: boolean; secondsLeft: number; autoRefreshing: boolean; ar: boolean; t: { scan: string; scanWaiting: string } }) {
   const isDataUrl = qr.startsWith("data:image");
