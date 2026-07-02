@@ -497,12 +497,27 @@ async function updateMessageStatuses(userId: string, sessionId: string, payload:
 
     // Bot-Xtra v1.8.x may acknowledge queued sends with a later webhook shaped as:
     //   { event: "status", data: { messageId, status: "delivered" } }
-    // That payload has no text/target/queuedId, so it cannot be parsed as a normal
-    // message. Match it to the newest pending outbound row for this session. This
-    // is the missing link that makes queued AI sends become confirmed deliveries
-    // instead of timing out as "accepted by bridge but not sent".
+    // Media sends often start with only raw.queuedId=q_* and no provider id.
+    // Match the q_* token first; only then fall back to the newest pending row.
     if (!["sent", "delivered", "read", "failed"].includes(status)) continue;
-    const { data: pendingAi, error: pendingErr } = await supabaseAdmin
+    const { data: queuedMatch, error: queuedErr } = await supabaseAdmin
+      .from("wa_messages")
+      .select("id, raw, remote_jid, text_body, to_phone, created_at")
+      .eq("user_id", userId)
+      .eq("session_id", sessionId)
+      .eq("direction", "out")
+      .eq("status", "pending")
+      .is("provider_message_id", null)
+      .or(`raw->>queuedId.eq.${providerMessageId},raw->>queued_id.eq.${providerMessageId},raw->>queueId.eq.${providerMessageId}`)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (queuedErr) {
+      console.error("[wa-webhook] queued status match failed:", queuedErr.message);
+    }
+
+    const fallbackAllowed = !queuedMatch?.id;
+    const { data: fallbackPending, error: pendingErr } = fallbackAllowed ? await supabaseAdmin
       .from("wa_messages")
       .select("id, raw, remote_jid, text_body, to_phone, created_at")
       .eq("user_id", userId)
@@ -512,11 +527,12 @@ async function updateMessageStatuses(userId: string, sessionId: string, payload:
       .is("provider_message_id", null)
       .order("created_at", { ascending: false })
       .limit(1)
-      .maybeSingle();
+      .maybeSingle() : { data: null, error: null };
     if (pendingErr) {
       console.error("[wa-webhook] pending status match failed:", pendingErr.message);
       continue;
     }
+    const pendingAi = queuedMatch?.id ? queuedMatch : fallbackPending;
     if (!pendingAi?.id) continue;
 
     const raw = asObj(pendingAi.raw);
