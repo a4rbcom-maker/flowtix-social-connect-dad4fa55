@@ -57,21 +57,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       finishSessionRestore(null);
     }, 8_000);
 
-    const handleExpiredSession = () => {
+    const handleExpiredSession = (reason: "expired" | "signed_out" | "auth_required" = "expired") => {
       if (typeof window === "undefined") return;
       if (expiredHandledRef.current) return;
       const path = window.location.pathname;
       if (isPublicPath(path)) return;
       expiredHandledRef.current = true;
       try {
-        toast.error("انتهت جلستك، يرجى تسجيل الدخول مرة أخرى");
+        toast.error(
+          reason === "signed_out"
+            ? "تم تسجيل خروجك، أعد تسجيل الدخول للمتابعة"
+            : reason === "auth_required"
+              ? "يجب تسجيل الدخول للوصول لهذه الصفحة"
+              : "انتهت جلستك، يرجى تسجيل الدخول مرة أخرى",
+        );
       } catch {
         /* toast unavailable during SSR — ignore */
       }
       const redirect = encodeURIComponent(path + window.location.search);
       // Use full navigation so router state + query cache reset cleanly.
-      window.location.replace(`/login?reason=expired&redirect=${redirect}`);
+      window.location.replace(`/login?reason=${reason}&redirect=${redirect}`);
     };
+
+    // Guard: if user lands on a protected route without any session, redirect
+    // immediately with a clear reason instead of showing a blank spinner.
+    const guardTimeout = window.setTimeout(() => {
+      if (cancelled) return;
+      if (typeof window === "undefined") return;
+      const path = window.location.pathname;
+      if (isPublicPath(path)) return;
+      // Only trigger if we still have no session after restore completes.
+      supabase.auth.getSession().then(({ data }) => {
+        if (cancelled) return;
+        if (!data.session) handleExpiredSession("auth_required");
+      });
+    }, 2_500);
+    // Cancel the guard as soon as auth resolves (either signed in or handled elsewhere).
+    const clearGuard = () => window.clearTimeout(guardTimeout);
+
 
     // Subscribe FIRST so we don't miss the initial SIGNED_IN event.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
