@@ -96,6 +96,8 @@ function InboxPage() {
   const requestHistorySyncFn = useServerFn(requestWaHistorySync);
   const getHistorySyncJobFn = useServerFn(getWaHistorySyncJob);
   const dismissHistorySyncJobFn = useServerFn(dismissWaHistorySyncJob);
+  const matchLidPhonesFn = useServerFn(matchLidPhoneNumbers);
+
 
 
 
