@@ -41,11 +41,16 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
           }
           return err instanceof Error ? err.message : "Send failed";
         };
+        const isQueueToken = (value: unknown): boolean => {
+          if (typeof value !== "string") return false;
+          const id = value.trim().toLowerCase();
+          return id === "queued" || /^q[_-]/.test(id) || /^queue[_-]/.test(id);
+        };
         const acceptedBridgeId = (res: unknown): { id: string; queuedOnly: boolean } => {
           const queuedId = bridgeSendQueuedMessage(res);
           try {
             const confirmed = assertBridgeSendQueued(res as Parameters<typeof assertBridgeSendQueued>[0]);
-            const isQueuedOnly = !confirmed || /^q_/i.test(confirmed) || confirmed.toLowerCase() === "queued";
+            const isQueuedOnly = !confirmed || isQueueToken(confirmed);
             return { id: confirmed || queuedId || "queued", queuedOnly: isQueuedOnly };
           } catch (err) {
             if (queuedId) return { id: queuedId, queuedOnly: true };
@@ -53,6 +58,93 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
           }
         };
         const QUEUED_STALE_MS = 5 * 60 * 1000; // 5 min: bridge accepted but never confirmed
+
+        const parseMetadata = (metadata: unknown): Record<string, unknown> => {
+          return metadata && typeof metadata === "object" && !Array.isArray(metadata)
+            ? (metadata as Record<string, unknown>)
+            : {};
+        };
+        const extractRecipientPhone = (recipient: unknown): string | null => {
+          const text = String(recipient ?? "");
+          const match = text.match(/\(([^()]+)\)\s*$/) || text.match(/(\+?\d[\d\s().-]{5,}\d)/);
+          const raw = (match?.[1] ?? match?.[0] ?? "").replace(/[^\d+]/g, "");
+          return normalizeWhatsappPhone(raw) || raw.replace(/\D/g, "") || null;
+        };
+
+        const recomputeJobCounts = async (jobId: string) => {
+          const { data: rows } = await supabaseAdmin
+            .from("bulk_job_recipients")
+            .select("status")
+            .eq("job_id", jobId);
+          const sentCount = (rows ?? []).filter((r) => r.status === "success").length;
+          const failedCount = (rows ?? []).filter((r) => r.status === "failed").length;
+          const unresolvedCount = (rows ?? []).filter((r) => r.status === "pending" || r.status === "processing").length;
+          const update: Record<string, unknown> = {
+            sent_count: sentCount,
+            failed_count: failedCount,
+            updated_at: new Date().toISOString(),
+          };
+          if (failedCount > 0 && unresolvedCount === 0) {
+            update.status = "failed";
+            update.error_message = "قبل الجسر الطلب لكن لم يتم تأكيد التسليم — أعد ربط واتساب ثم استأنف الحملة";
+            update.next_send_at = null;
+          }
+          await supabaseAdmin.from("bulk_jobs").update(update).eq("id", jobId);
+        };
+
+        const repairFalseQueuedSuccesses = async () => {
+          const cutoffIso = new Date(Date.now() - QUEUED_STALE_MS).toISOString();
+          const { data: logs } = await supabaseAdmin
+            .from("send_log")
+            .select("id, recipient, metadata, created_at")
+            .eq("channel", "bulk")
+            .eq("action", "bulk_send")
+            .eq("status", "success")
+            .order("created_at", { ascending: false })
+            .limit(500);
+
+          const affectedJobs = new Set<string>();
+          for (const log of logs ?? []) {
+            const meta = parseMetadata(log.metadata);
+            const providerMessageId = meta.provider_message_id;
+            const jobId = typeof meta.job_id === "string" ? meta.job_id : null;
+            if (!jobId || !isQueueToken(providerMessageId) || String(log.created_at) > cutoffIso) continue;
+
+            await supabaseAdmin
+              .from("send_log")
+              .update({
+                status: "failed",
+                error_message: "قبل الجسر الطلب لكن لم يتم تأكيد التسليم — أعد ربط واتساب ثم استأنف",
+                metadata: { ...meta, queued_only: true, auto_repaired: true },
+              })
+              .eq("id", log.id);
+
+            const phone = extractRecipientPhone(log.recipient);
+            const { data: recipients } = await supabaseAdmin
+              .from("bulk_job_recipients")
+              .select("id, phone")
+              .eq("job_id", jobId)
+              .eq("status", "success");
+            const matching = (recipients ?? []).filter((r) => {
+              const normalized = normalizeWhatsappPhone(r.phone) || String(r.phone ?? "").replace(/\D/g, "");
+              return !phone || normalized === phone || String(r.phone ?? "").replace(/\D/g, "") === phone;
+            });
+            for (const recipient of matching) {
+              await supabaseAdmin
+                .from("bulk_job_recipients")
+                .update({
+                  status: "failed",
+                  error_message: "قبل الجسر الطلب لكن لم يتم تأكيد التسليم — أعد ربط واتساب ثم استأنف",
+                  sent_at: new Date().toISOString(),
+                })
+                .eq("id", recipient.id);
+            }
+            affectedJobs.add(jobId);
+          }
+
+          for (const jobId of affectedJobs) await recomputeJobCounts(jobId);
+          return affectedJobs.size;
+        };
 
 
         const now = new Date();
@@ -63,7 +155,10 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
           failed: 0,
           completed: 0,
           skipped_no_session: 0,
+          repaired_false_success: 0,
         };
+
+        summary.repaired_false_success = await repairFalseQueuedSuccesses();
 
         // 1) Promote scheduled → running
         const { data: due } = await supabaseAdmin
