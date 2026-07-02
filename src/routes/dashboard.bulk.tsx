@@ -691,46 +691,67 @@ function BulkSendPage() {
                 </div>
               </div>
 
-              {/* Preview: what the customer will receive */}
-              {(message.trim() || imageUrl) && (
-                <div className="rounded-xl border border-border bg-card p-3">
-                  <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-foreground">
-                    <span className="grid h-5 w-5 place-items-center rounded-full bg-emerald-500/15 text-[10px] text-emerald-600 dark:text-emerald-400">✓</span>
-                    {isAr ? "معاينة ما سيصل للعميل" : "Preview — what the customer receives"}
-                  </p>
-                  <div
-                    className="space-y-2 rounded-lg p-3"
-                    style={{
-                      backgroundColor: "#e5ddd5",
-                      backgroundImage:
-                        "radial-gradient(circle at 20% 20%, rgba(255,255,255,0.4) 0, transparent 40%), radial-gradient(circle at 80% 60%, rgba(0,0,0,0.03) 0, transparent 40%)",
-                    }}
-                    dir={dir}
-                  >
-                    {message.trim() && (
-                      <div className="flex justify-end">
-                        <div className="relative max-w-[85%] rounded-lg bg-[#dcf8c6] px-3 py-2 text-sm text-gray-900 shadow-sm">
-                          <p className="whitespace-pre-wrap break-words leading-relaxed">{message}</p>
-                          <span className="mt-1 block text-end text-[10px] text-gray-500">12:00 ✓✓</span>
+              {/* Preview: mirrors exactly what the server sends (renderTemplate + send order) */}
+              {(() => {
+                // Match server: replace {{name}} / {{phone}} then trim
+                const sample = selectedRecipients[0];
+                const sampleName = sample?.name?.trim() || (isAr ? "أحمد" : "Ahmed");
+                const samplePhone = sample?.phone?.trim() || "201000000000";
+                const rendered = message
+                  .replace(/\{\{?\s*name\s*\}?\}/gi, sampleName)
+                  .replace(/\{\{?\s*phone\s*\}?\}/gi, samplePhone)
+                  .trim();
+                const nowLabel = new Date().toLocaleTimeString(isAr ? "ar-EG" : "en-US", { hour: "2-digit", minute: "2-digit" });
+                if (!rendered && !imageUrl) return null;
+                return (
+                  <div className="rounded-xl border border-border bg-card p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                        <span className="grid h-5 w-5 place-items-center rounded-full bg-emerald-500/15 text-[10px] text-emerald-600 dark:text-emerald-400">✓</span>
+                        {isAr ? "معاينة مطابقة لما سيصل للعميل" : "Exact preview of what the customer receives"}
+                      </p>
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                        {isAr ? `عينة: ${sampleName}` : `Sample: ${sampleName}`}
+                      </span>
+                    </div>
+                    <div
+                      className="space-y-2 rounded-lg p-3"
+                      style={{
+                        backgroundColor: "#e5ddd5",
+                        backgroundImage:
+                          "radial-gradient(circle at 20% 20%, rgba(255,255,255,0.4) 0, transparent 40%), radial-gradient(circle at 80% 60%, rgba(0,0,0,0.03) 0, transparent 40%)",
+                      }}
+                      dir="auto"
+                    >
+                      {/* 1) TEXT bubble first — exactly as server sends via sendText */}
+                      {rendered && (
+                        <div className="flex justify-end">
+                          <div className="relative max-w-[85%] rounded-lg bg-[#dcf8c6] px-3 py-2 text-[13px] leading-relaxed text-gray-900 shadow-sm" dir="auto">
+                            <p className="whitespace-pre-wrap break-words">{rendered}</p>
+                            <span className="mt-1 block text-end text-[10px] text-gray-500">{nowLabel} ✓✓</span>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {imageUrl && (
-                      <div className="flex justify-end">
-                        <div className="max-w-[85%] rounded-lg bg-[#dcf8c6] p-1 shadow-sm">
-                          <img src={imageUrl} alt="preview" className="max-h-56 w-auto rounded-md object-cover" />
-                          <span className="mt-1 block px-2 pb-1 text-end text-[10px] text-gray-500">12:00 ✓✓</span>
+                      )}
+                      {/* 2) IMAGE bubble second — no caption, matches sendMedia */}
+                      {imageUrl && (
+                        <div className="flex justify-end">
+                          <div className="max-w-[85%] rounded-lg bg-[#dcf8c6] p-1 shadow-sm">
+                            <img src={imageUrl} alt="preview" className="max-h-56 w-auto rounded-md object-cover" />
+                            <span className="mt-1 block px-2 pb-1 text-end text-[10px] text-gray-500">{nowLabel} ✓✓</span>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
+                    <ul className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+                      <li>• {isAr ? "الترتيب: النص أولاً ثم الصورة كرسالتين منفصلتين." : "Order: text first, then image, as two separate messages."}</li>
+                      <li>• {isAr ? "المتغيرات {{name}} و {{phone}} تُستبدل ببيانات كل مستلم." : "Placeholders {{name}} and {{phone}} are replaced per recipient."}</li>
+                      {imageUrl && <li>• {isAr ? "الصورة تُرسل بدون تعليق (caption) — النص في الرسالة الأولى." : "The image is sent without a caption — text goes in message #1."}</li>}
+                    </ul>
                   </div>
-                  <p className="mt-2 text-[11px] text-muted-foreground">
-                    {isAr
-                      ? "سيتم إرسال النص أولًا ثم الصورة كرسالتين منفصلتين لضمان الوصول."
-                      : "Text is sent first, then the image, as two separate messages to guarantee delivery."}
-                  </p>
-                </div>
-              )}
+                );
+              })()}
+
+
 
               <button
 
