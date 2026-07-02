@@ -103,7 +103,11 @@ async function auditPage(page, url, mode) {
   console.log(`\n🎨  WCAG contrast audit — ${BASE_URL}`);
   console.log(`    routes: ${routes.length}  ·  modes: ${MODES.join(", ")}\n`);
 
-  const browser = await chromium.launch({ headless: true });
+  const launchOpts = { headless: true };
+  if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE) {
+    launchOpts.executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE;
+  }
+  const browser = await chromium.launch(launchOpts);
   const report = [];
   let totalFailures = 0;
 
