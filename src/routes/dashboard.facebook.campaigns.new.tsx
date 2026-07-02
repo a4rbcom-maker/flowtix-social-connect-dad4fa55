@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate, Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Save, Loader2, ChevronDown, FileText, Image as ImageIcon, Type, Layers, ArrowLeft,
   Users, Search, AlertCircle, Check, AlertTriangle, ClipboardPaste, X, Hash, Upload,
