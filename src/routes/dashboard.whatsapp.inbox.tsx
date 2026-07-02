@@ -97,8 +97,8 @@ function InboxPage() {
   const [rePairing, setRePairing] = useState(false);
   const handleRePairForFullHistory = async () => {
     const confirmMsg = isAr
-      ? "لجلب الأرشيف الكامل من واتساب يجب إعادة الاقتران وقراءة رمز QR جديد. لن يتم حذف الرسائل الحالية. المتابعة؟"
-      : "To fetch the full archive from WhatsApp you must re-pair and scan a fresh QR code. Existing messages are kept. Continue?";
+      ? "لجلب المحادثات القديمة كلها من واتساب سيتم إنشاء جلسة جديدة ويجب مسح رمز QR مرة أخرى. المتابعة؟"
+      : "To fetch all your old chats from WhatsApp, a new session will be created and you must scan a new QR. Continue?";
     if (!window.confirm(confirmMsg)) return;
     try {
       setRePairing(true);
