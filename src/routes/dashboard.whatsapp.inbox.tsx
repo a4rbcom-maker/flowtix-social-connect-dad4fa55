@@ -1301,7 +1301,28 @@ function InboxPage() {
                 />
               </div>
             )}
+            {!isMobile && !listVisible && (
+              <button
+                type="button"
+                onClick={() => setListVisible(true)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-muted"
+                aria-label={isAr ? "إظهار قائمة المحادثات" : "Show conversations"}
+                title={isAr ? "إظهار قائمة المحادثات" : "Show conversations"}
+              >
+                <InboxIcon className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setActiveJid(null)}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-muted"
+              aria-label={isAr ? "إغلاق المحادثة" : "Close chat"}
+              title={isAr ? "إغلاق المحادثة" : "Close chat"}
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
+
 
           {/* Messages */}
           <div
