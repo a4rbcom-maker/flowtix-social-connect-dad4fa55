@@ -127,7 +127,7 @@ export function useChannelStatus(lang: "ar" | "en") {
       setWhatsapp({ ...s, label: fmtLabel(s, lang) });
     } catch {
       if (!mounted.current) return;
-      const s: Omit<ChannelState, "label"> = { status: "disconnected" };
+      const s: Omit<ChannelState, "label"> = { status: "loading" };
       setWhatsapp({ ...s, label: fmtLabel(s, lang) });
     }
   }, [lang]);

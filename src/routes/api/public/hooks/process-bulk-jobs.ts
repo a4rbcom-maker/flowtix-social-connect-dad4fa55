@@ -433,7 +433,7 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
           } catch (err) {
             const status = err instanceof BridgeError ? err.status : 0;
             const msg = err instanceof Error ? err.message : String(err);
-            const trustedGone = status === 401 || /logged.?out|logout|unauthorized|removed.*device|device.*removed|unlinked/i.test(msg);
+            const trustedGone = /logged.?out|logout|removed.*device|device.*removed|unlinked/i.test(msg);
             await supabaseAdmin
               .from("bulk_jobs")
               .update({
@@ -649,7 +649,7 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
               }
             } catch (err) {
               errorMessage = describeErr(err);
-              if (/logged.?out|logout|unauthorized|removed.*device|device.*removed|unlinked/i.test(errorMessage)) {
+              if (/logged.?out|logout|removed.*device|device.*removed|unlinked/i.test(errorMessage)) {
                 await supabaseAdmin
                   .from("bulk_jobs")
                   .update({

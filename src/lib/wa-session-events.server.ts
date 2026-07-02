@@ -81,7 +81,13 @@ export function isTrustedUserDisconnect(input: {
     .join(" ")
     .toLowerCase();
 
-  return /logged[\s_-]*out|logout|log[\s_-]*out|removed.*device|device.*removed|unlinked|unlink|signed[\s_-]*out|401|unauthorized/.test(text);
+  const hasLogoutWords = /logged[\s_-]*out|logout|log[\s_-]*out|removed.*device|device.*removed|unlinked|unlink|signed[\s_-]*out/.test(text);
+  const hasWebhookLogoutCode =
+    (input.source === "webhook_status" || input.source === "history_sync") &&
+    /\b401\b|unauthorized/.test(text) &&
+    /disconnect|logged|logout|unlinked|closed/.test(text);
+
+  return hasLogoutWords || hasWebhookLogoutCode;
 }
 
 export async function logWaSessionEvent(
