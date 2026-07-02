@@ -273,9 +273,9 @@ function WhatsAppPage() {
     }
   }, [qrValue]);
 
-  // Countdown ticker + auto-refresh expired QR silently
+  // Countdown ticker + auto-refresh expired QR silently (only when QR panel is open)
   useEffect(() => {
-    if (!qrIssuedAt || status === "connected") return;
+    if (!qrIssuedAt || status === "connected" || !showQr) return;
     const timer = setInterval(() => {
       const elapsed = Math.floor((Date.now() - qrIssuedAt) / 1000);
       const left = Math.max(0, 60 - elapsed);
@@ -286,7 +286,8 @@ function WhatsAppPage() {
       }
     }, 1000);
     return () => clearInterval(timer);
-  }, [qrIssuedAt, status]);
+  }, [qrIssuedAt, status, showQr]);
+
 
 
   const connectMut = useMutation({
