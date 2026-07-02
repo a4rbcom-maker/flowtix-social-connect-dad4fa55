@@ -114,11 +114,23 @@ function NotificationCenter() {
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1 rounded-lg border border-border p-1">
-              {(["all", "unread"] as const).map((f) => (
-                <button key={f} onClick={() => setFilter(f)}
-                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${filter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-                  {f === "all" ? (lang === "ar" ? "الكل" : "All") : (lang === "ar" ? "غير مقروء" : "Unread")}
+            <div role="tablist" className="flex items-center gap-1 rounded-lg border border-border p-1">
+              {([
+                { v: "all", ar: "الكل", en: "All", count: rows.length },
+                { v: "unread", ar: "غير مقروء", en: "Unread", count: unreadTotal },
+                { v: "read", ar: "مقروء", en: "Read", count: rows.length - unreadTotal },
+              ] as const).map((f) => (
+                <button
+                  key={f.v}
+                  role="tab"
+                  aria-selected={filter === f.v}
+                  onClick={() => setFilter(f.v as typeof filter)}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold transition ${filter === f.v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  {lang === "ar" ? f.ar : f.en}
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${filter === f.v ? "bg-primary-foreground/20" : "bg-muted"}`}>
+                    {f.count}
+                  </span>
                 </button>
               ))}
             </div>
@@ -129,14 +141,41 @@ function NotificationCenter() {
                 {TYPES.map((t) => <option key={t.v} value={t.v}>{lang === "ar" ? t.ar : t.en}</option>)}
               </select>
             </div>
+            {isFetching && !isLoading && (
+              <span className="text-[11px] text-muted-foreground">
+                {lang === "ar" ? "جاري التحديث..." : "Refreshing..."}
+              </span>
+            )}
           </div>
         </div>
 
         {isLoading ? (
-          <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
-            {lang === "ar" ? "جاري التحميل..." : "Loading..."}
+          <div className="grid gap-3" aria-busy="true">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="rounded-2xl border border-border bg-card/50 p-5">
+                <div className="flex items-start gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-muted animate-pulse" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 w-1/3 rounded bg-muted animate-pulse" />
+                    <div className="h-3 w-2/3 rounded bg-muted animate-pulse" />
+                    <div className="h-3 w-1/2 rounded bg-muted animate-pulse" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : isError ? (
+          <div className="rounded-2xl border border-dashed border-rose-500/40 bg-rose-500/5 p-8 text-center">
+            <AlertTriangle className="h-8 w-8 mx-auto mb-2 text-rose-500" />
+            <p className="text-sm text-muted-foreground mb-3">
+              {lang === "ar" ? "تعذر تحميل الإشعارات." : "Couldn't load notifications."}
+            </p>
+            <button onClick={() => refetch()} className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted">
+              {lang === "ar" ? "إعادة المحاولة" : "Retry"}
+            </button>
           </div>
         ) : filtered.length === 0 ? (
+
           <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground">
             <Megaphone className="h-10 w-10 mx-auto mb-3 opacity-40" />
             {lang === "ar" ? "لا توجد إشعارات" : "No notifications"}
