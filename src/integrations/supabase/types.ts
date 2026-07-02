@@ -1543,6 +1543,54 @@ export type Database = {
         }
         Relationships: []
       }
+      wa_history_sync_jobs: {
+        Row: {
+          baseline_conv: number
+          baseline_msg: number
+          deadline_at: string
+          finished_at: string | null
+          id: string
+          imported_conv: number
+          imported_msg: number
+          message: string | null
+          session_id: string
+          started_at: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          baseline_conv?: number
+          baseline_msg?: number
+          deadline_at?: string
+          finished_at?: string | null
+          id?: string
+          imported_conv?: number
+          imported_msg?: number
+          message?: string | null
+          session_id: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          baseline_conv?: number
+          baseline_msg?: number
+          deadline_at?: string
+          finished_at?: string | null
+          id?: string
+          imported_conv?: number
+          imported_msg?: number
+          message?: string | null
+          session_id?: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       wa_keyword_rules: {
         Row: {
           created_at: string
