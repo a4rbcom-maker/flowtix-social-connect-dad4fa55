@@ -49,6 +49,7 @@ import { AnnouncementModal } from "@/components/dashboard/AnnouncementModal";
 import { ChannelStatusDot } from "@/components/dashboard/ChannelStatusDot";
 import { ChannelQuickActions } from "@/components/dashboard/ChannelQuickActions";
 import { WaDisconnectBanner } from "@/components/dashboard/WaDisconnectBanner";
+import { WaStatusPill } from "@/components/dashboard/WaStatusPill";
 import { useChannelStatus } from "@/hooks/useChannelStatus";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 const flowtixLogo = "/flowtix-logo.webp";
@@ -662,6 +663,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
             <h1 className="text-base font-semibold text-foreground md:text-lg truncate">{title}</h1>
           </div>
           <div className="flex items-center gap-2">
+            <WaStatusPill lang={lang} />
             <AnnouncementsBell />
             <NotificationsBell />
             <button onClick={() => setLang(lang === "ar" ? "en" : "ar")} className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent">

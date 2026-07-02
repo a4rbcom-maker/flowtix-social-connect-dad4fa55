@@ -1,37 +1,45 @@
-// Polls `wa_session_events` for new disconnect transitions and surfaces an
-// instant toast + a persistent banner-count so the dashboard can warn the
-// user BEFORE they launch a bulk campaign on a dead session.
+// Watches WhatsApp session state and fires:
+//   • persistent banner count (disconnectedCount)
+//   • instant toast when a session drops offline
+//   • success toast when a previously-offline session comes back online
 //
-// Design notes:
-// - Uses the browser Supabase client. RLS on wa_session_events + wa_sessions
-//   scopes rows to the current user automatically.
-// - Persists the "last seen event id" in localStorage per-user so a fresh
-//   tab doesn't spam toasts for old disconnects, but a genuinely NEW event
-//   (id > last seen) always fires exactly one toast.
-// - Runs while the tab is visible; refetches immediately on focus.
+// Uses Supabase Realtime on wa_sessions + wa_session_events for instant
+// reaction (no more waiting up to 30s for the poll), with a poll as
+// safety net + initial hydration.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-const POLL_MS = 30_000;
+const POLL_MS = 60_000;
 const LS_KEY = (uid: string) => `flowtix.waDisconnectAlert.lastId:${uid}`;
 
+export type WaAggregateStatus =
+  | "unknown"
+  | "connected"
+  | "disconnected"
+  | "connecting";
+
 export interface WaDisconnectAlertsState {
-  /** How many wa_sessions are currently in the `disconnected` state. */
   disconnectedCount: number;
-  /** The last (most recent) reason string for a disconnect, if any. */
+  connectedCount: number;
+  status: WaAggregateStatus;
   lastReason: string | null;
-  /** Timestamp of the most recent disconnect event (ISO). */
   lastAt: string | null;
   refresh: () => void;
 }
 
 export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsState {
   const [disconnectedCount, setDisconnectedCount] = useState(0);
+  const [connectedCount, setConnectedCount] = useState(0);
+  const [status, setStatus] = useState<WaAggregateStatus>("unknown");
   const [lastReason, setLastReason] = useState<string | null>(null);
   const [lastAt, setLastAt] = useState<string | null>(null);
   const mounted = useRef(true);
   const firstRunRef = useRef(true);
+  const prevDisconnectedRef = useRef<number | null>(null);
+  const prevConnectedRef = useRef<number | null>(null);
+
+  const isAr = lang === "ar";
 
   const check = useCallback(async () => {
     try {
@@ -39,17 +47,51 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
       const uid = sess.session?.user?.id;
       if (!uid) return;
 
-      // 1) Current disconnected sessions (drives the persistent banner).
-      const { count } = await supabase
-        .from("wa_sessions")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", uid)
-        .eq("status", "disconnected");
+      const [{ count: disc }, { count: conn }, { count: connecting }] = await Promise.all([
+        supabase.from("wa_sessions").select("id", { count: "exact", head: true })
+          .eq("user_id", uid).eq("status", "disconnected"),
+        supabase.from("wa_sessions").select("id", { count: "exact", head: true })
+          .eq("user_id", uid).eq("status", "connected"),
+        supabase.from("wa_sessions").select("id", { count: "exact", head: true })
+          .eq("user_id", uid).in("status", ["connecting", "qr", "pairing"]),
+      ]);
       if (!mounted.current) return;
-      setDisconnectedCount(count ?? 0);
 
-      // 2) Most recent disconnect event — only toast when its id is newer
-      //    than the last one we've already surfaced.
+      const dCount = disc ?? 0;
+      const cCount = conn ?? 0;
+      const gCount = connecting ?? 0;
+
+      setDisconnectedCount(dCount);
+      setConnectedCount(cCount);
+      setStatus(
+        cCount > 0 ? "connected"
+        : gCount > 0 ? "connecting"
+        : dCount > 0 ? "disconnected"
+        : "unknown",
+      );
+
+      // Reconnected toast: previously disconnected, now not.
+      if (
+        !firstRunRef.current &&
+        prevDisconnectedRef.current != null &&
+        prevDisconnectedRef.current > 0 &&
+        dCount === 0 &&
+        cCount > (prevConnectedRef.current ?? 0)
+      ) {
+        toast.success(
+          isAr ? "تم استعادة اتصال واتساب" : "WhatsApp reconnected",
+          {
+            description: isAr
+              ? "الجلسة عادت للعمل — تقدر تستأنف حملاتك بأمان."
+              : "Your session is back online — safe to resume campaigns.",
+            duration: 8_000,
+          },
+        );
+      }
+      prevDisconnectedRef.current = dCount;
+      prevConnectedRef.current = cCount;
+
+      // Most recent disconnect event → one-shot toast on new id.
       const { data: events } = await supabase
         .from("wa_session_events")
         .select("id, reason, created_at, to_status")
@@ -60,44 +102,31 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
       if (!mounted.current) return;
 
       const latest = events?.[0];
-      if (!latest) return;
+      if (latest) {
+        setLastReason(latest.reason ?? null);
+        setLastAt(latest.created_at ?? null);
 
-      setLastReason(latest.reason ?? null);
-      setLastAt(latest.created_at ?? null);
+        let lastSeen: string | null = null;
+        try { lastSeen = window.localStorage.getItem(LS_KEY(uid)); } catch {}
 
-      let lastSeen: string | null = null;
-      try {
-        lastSeen = window.localStorage.getItem(LS_KEY(uid));
-      } catch {
-        // localStorage unavailable — fall back to no-toast on first run.
-      }
-
-      const isNew = latest.id !== lastSeen;
-      // Skip toast on the very first hydration if we've never seen an event
-      // before; we don't want to spam the user on every reload.
-      if (isNew && !firstRunRef.current) {
-        const title = lang === "ar"
-          ? "انقطع اتصال واتساب"
-          : "WhatsApp session disconnected";
-        const desc = lang === "ar"
-          ? "أعد الاقتران قبل إطلاق أي حملة جماعية حتى لا تفشل الرسائل."
-          : "Reconnect before launching any bulk campaign — messages will otherwise fail.";
-        toast.error(title, {
-          description: latest.reason ? `${desc}\n${latest.reason}` : desc,
-          duration: 12_000,
-        });
-      }
-
-      try {
-        window.localStorage.setItem(LS_KEY(uid), latest.id);
-      } catch {
-        // ignore
+        const isNew = latest.id !== lastSeen;
+        if (isNew && !firstRunRef.current) {
+          const title = isAr ? "انقطع اتصال واتساب" : "WhatsApp session disconnected";
+          const desc = isAr
+            ? "أعد الاقتران قبل إطلاق أي حملة جماعية حتى لا تفشل الرسائل."
+            : "Reconnect before launching any bulk campaign — messages will otherwise fail.";
+          toast.error(title, {
+            description: latest.reason ? `${desc}\n${latest.reason}` : desc,
+            duration: 12_000,
+          });
+        }
+        try { window.localStorage.setItem(LS_KEY(uid), latest.id); } catch {}
       }
       firstRunRef.current = false;
     } catch {
-      // best-effort background check; never surface to UI
+      // best-effort background check
     }
-  }, [lang]);
+  }, [isAr]);
 
   useEffect(() => {
     mounted.current = true;
@@ -107,12 +136,43 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
       if (document.visibilityState === "visible") void check();
     };
     document.addEventListener("visibilitychange", onVis);
+
+    // Realtime: react instantly to any wa_sessions / wa_session_events change
+    // for the current user. RLS scopes rows automatically.
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    (async () => {
+      const { data: sess } = await supabase.auth.getSession();
+      const uid = sess.session?.user?.id;
+      if (!uid || !mounted.current) return;
+      channel = supabase
+        .channel(`wa-status-${uid}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "wa_sessions", filter: `user_id=eq.${uid}` },
+          () => { void check(); },
+        )
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "wa_session_events", filter: `user_id=eq.${uid}` },
+          () => { void check(); },
+        )
+        .subscribe();
+    })();
+
     return () => {
       mounted.current = false;
       window.clearInterval(id);
       document.removeEventListener("visibilitychange", onVis);
+      if (channel) supabase.removeChannel(channel);
     };
   }, [check]);
 
-  return { disconnectedCount, lastReason, lastAt, refresh: () => void check() };
+  return {
+    disconnectedCount,
+    connectedCount,
+    status,
+    lastReason,
+    lastAt,
+    refresh: () => void check(),
+  };
 }
