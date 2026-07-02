@@ -2401,14 +2401,14 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
   const [{ data, error }, { data: rawMessages, error: msgError }] = await Promise.all([
     supabase
       .from("wa_conversations")
-      .select("id, session_id, remote_jid, contact_name, contact_phone, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
+      .select("id, session_id, remote_jid, contact_name, contact_phone, profile_pic_url, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
       .eq("user_id", userId)
       .eq("is_archived", false)
       .order("last_message_at", { ascending: false })
       .limit(200),
     supabase
       .from("wa_messages")
-      .select("session_id, remote_jid, direction, text_body, msg_type, raw, wa_timestamp, created_at")
+      .select("session_id, remote_jid, direction, text_body, msg_type, media_url, from_phone, to_phone, wa_timestamp, created_at")
       .eq("user_id", userId)
       .order("wa_timestamp", { ascending: false })
       .limit(1000),
@@ -2419,18 +2419,17 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
   // كان هذا يسبب ظهور "0 محادثات" عند انتهاء مهلة استعلام آخر الرسائل.
   if (msgError) console.warn("[inbox] message enrichment skipped", msgError.message);
 
-  const rows = (data ?? []) as Omit<ConversationRow, "profile_pic_url">[];
-  const metaByJid = new Map<string, { phone: string | null; profile: string | null; preview: string | null }>();
+  const rows = (data ?? []) as ConversationRow[];
+  const metaByJid = new Map<string, { phone: string | null; preview: string | null }>();
   const latestMessageByJid = new Map<string, NonNullable<typeof rawMessages>[number]>();
   for (const msg of msgError ? [] : (rawMessages ?? [])) {
     const jid = String(msg.remote_jid ?? "");
     if (!jid) continue;
     if (!latestMessageByJid.has(jid)) latestMessageByJid.set(jid, msg);
-    const current = metaByJid.get(jid) ?? { phone: null, profile: null, preview: null };
+    const current = metaByJid.get(jid) ?? { phone: null, preview: null };
     metaByJid.set(jid, {
-      phone: current.phone ?? phoneFromRaw(msg.raw),
-      profile: current.profile ?? profilePicFromRaw(msg.raw),
-      preview: current.preview ?? previewTextFromRaw(msg.raw, msg.text_body, msg.msg_type),
+      phone: current.phone ?? phoneFromMessageRow(jid, msg.from_phone, msg.to_phone),
+      preview: current.preview ?? previewTextFromStoredFields(msg.text_body, msg.msg_type, msg.media_url),
     });
   }
 
@@ -2442,7 +2441,7 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
       ...row,
       contact_phone: isGroup ? null : (meta?.phone ?? row.contact_phone),
       last_message_text: meta?.preview ?? row.last_message_text,
-      profile_pic_url: meta?.profile ?? null,
+      profile_pic_url: row.profile_pic_url ?? null,
     };
   });
 
@@ -2450,19 +2449,17 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
   // ننشئ صف محادثة افتراضي من آخر رسالة محفوظة حتى يظهر التاريخ فورًا في الشات.
   for (const [jid, msg] of latestMessageByJid) {
     if (existingJids.has(jid)) continue;
-    const raw = msg.raw;
     const isGroup = jid.endsWith("@g.us");
     const direction = msg.direction === "out" ? "out" : "in";
-    const phone = isGroup ? null : phoneFromRaw(raw);
-    const name = direction === "in" || isGroup ? usefulContactName(contactNameFromRaw(raw), phone, jid) : null;
+    const phone = isGroup ? null : phoneFromMessageRow(jid, msg.from_phone, msg.to_phone);
     visibleRows.push({
       id: `virtual:${jid}`,
       session_id: msg.session_id ?? undefined,
       remote_jid: jid,
-      contact_name: name,
+      contact_name: null,
       contact_phone: phone,
-      profile_pic_url: profilePicFromRaw(raw),
-      last_message_text: previewTextFromRaw(raw, msg.text_body, msg.msg_type),
+      profile_pic_url: null,
+      last_message_text: previewTextFromStoredFields(msg.text_body, msg.msg_type, msg.media_url),
       last_message_at: msg.wa_timestamp ?? msg.created_at,
       last_direction: direction,
       unread_count: 0,
@@ -2688,6 +2685,10 @@ function phoneFromRaw(raw: unknown): string | null {
   return digits(pickString(obj, "normalizedContactPhone", "senderPn", "participantPn", "phoneNumber", "phone"));
 }
 
+function phoneFromMessageRow(jid: string, fromPhone: string | null | undefined, toPhone: string | null | undefined): string | null {
+  return cleanAliasPhone(fromPhone, jid) ?? cleanAliasPhone(toPhone, jid);
+}
+
 function contactNameFromRaw(raw: unknown): string | null {
   const obj = asRecord(raw);
   return pickString(obj, "contactName", "pushName", "senderName", "notifyName", "name", "verifiedName", "subject");
@@ -2809,6 +2810,18 @@ function previewTextFromRaw(raw: unknown, currentText: string | null | undefined
   if (msgType === "document") return "[file]";
   if (msgType === "sticker") return "[sticker]";
   return currentText?.trim() || null;
+}
+
+function previewTextFromStoredFields(currentText: string | null | undefined, fallbackType?: string | null, mediaUrl?: string | null): string | null {
+  const text = currentText?.trim();
+  if (text && !looksLikeInternalMediaPath(text)) return text;
+  const msgType = normalizeWaMessageType(fallbackType || (mediaUrl ? "media" : "text"));
+  if (msgType === "image") return "[image]";
+  if (msgType === "video") return "[video]";
+  if (msgType === "audio") return "[audio]";
+  if (msgType === "document") return "[file]";
+  if (msgType === "sticker") return "[sticker]";
+  return null;
 }
 
 function initials(s: string): string {
