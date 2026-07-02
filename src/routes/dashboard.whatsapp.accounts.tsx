@@ -463,10 +463,11 @@ function WhatsAppPage() {
                     </div>
 
                     {/* Meta */}
-                    <dl className="mt-5 grid grid-cols-1 gap-2.5 text-sm sm:grid-cols-2">
-                      <MetaRow label={t.sessionLabel} value={<span className="truncate font-mono text-xs" dir="ltr">{state.sessionId}</span>} />
-                      <MetaRow label={t.lastSeenLabel} value={fmtTime(state.lastSeenAt)} />
+                    <dl className="mt-5 space-y-2 text-sm">
+                      <MetaRow label={t.sessionLabel} value={<span className="break-all font-mono text-[11px] leading-tight" dir="ltr">{state.sessionId}</span>} />
+                      <MetaRow label={t.lastSeenLabel} value={<span dir="ltr">{fmtTime(state.lastSeenAt)}</span>} />
                     </dl>
+
 
                     {errorMsg && (
                       <div className="mt-4 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
