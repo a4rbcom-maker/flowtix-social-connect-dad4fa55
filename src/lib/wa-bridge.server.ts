@@ -187,9 +187,9 @@ export function extractBridgeMessageId(res: unknown, depth = 0): string | null {
   if (!res || depth > 3) return null;
   const obj = asRecord(res);
   const direct = pickString(obj, "id", "messageId", "message_id", "msgId", "msg_id", "wamid");
-  if (direct) return direct;
+  if (direct && !isBridgeQueueToken(direct)) return direct;
   const keyId = pickString(asRecord(obj.key), "id");
-  if (keyId) return keyId;
+  if (keyId && !isBridgeQueueToken(keyId)) return keyId;
   for (const key of ["data", "result", "payload", "message"]) {
     const nested = extractBridgeMessageId(obj[key], depth + 1);
     if (nested) return nested;
@@ -197,11 +197,21 @@ export function extractBridgeMessageId(res: unknown, depth = 0): string | null {
   return null;
 }
 
+export function isBridgeQueueToken(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const id = value.trim().toLowerCase();
+  return id === "queued" || /^q[_-]/.test(id) || /^queue[_-]/.test(id);
+}
+
 export function extractBridgeQueuedId(res: unknown, depth = 0): string | null {
   if (!res || depth > 3) return null;
   const obj = asRecord(res);
+  const queuedToken = pickString(obj, "id", "messageId", "message_id", "msgId", "msg_id", "wamid");
+  if (isBridgeQueueToken(queuedToken)) return queuedToken;
   const direct = pickString(obj, "queuedId", "queued_id", "queueId", "queue_id", "requestId", "request_id", "jobId", "job_id");
   if (direct) return direct;
+  const keyId = pickString(asRecord(obj.key), "id");
+  if (isBridgeQueueToken(keyId)) return keyId;
   for (const key of ["data", "result", "payload", "message"]) {
     const nested = extractBridgeQueuedId(obj[key], depth + 1);
     if (nested) return nested;
@@ -237,7 +247,7 @@ export function assertBridgeSendQueued(res: BridgeSendResponse | null | undefine
   const failure = bridgeSendFailureMessage(res);
   if (failure) throw new BridgeError(failure, 200, res ?? null);
   const messageId = extractBridgeMessageId(res);
-  if (!messageId) {
+  if (!messageId || isBridgeQueueToken(messageId)) {
     throw new BridgeError(
       `Bridge accepted request but returned no message id (response: ${JSON.stringify(res ?? null).slice(0, 240)})`,
       200,
