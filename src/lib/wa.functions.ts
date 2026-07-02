@@ -264,7 +264,53 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!row?.session_id) return { ok: false, sessionId: null, requested: false, attempts: [], error: "no_session" };
-    if (row.status !== "connected") {
+
+    let liveStatus = row.status as BridgeSessionStatus;
+    try {
+      const live = await waBridge.getStatus(row.session_id);
+      liveStatus = inferStatus(live);
+      const livePhone = typeof live.phoneNumber === "string" ? live.phoneNumber : typeof live.phone === "string" ? live.phone : null;
+      if (liveStatus === "connected") {
+        await updateWaSessionStatus(supabase, {
+          userId,
+          sessionId: row.session_id,
+          nextStatus: "connected",
+          source: "history_sync_probe",
+          reason: "bridge_session_confirmed_connected",
+          rawStatus: String(live.status ?? live.state ?? "connected"),
+          phoneNumber: livePhone,
+        });
+      } else if (live.exists === false || liveStatus === "disconnected") {
+        await updateWaSessionStatus(supabase, {
+          userId,
+          sessionId: row.session_id,
+          nextStatus: "disconnected",
+          source: "history_sync_probe",
+          reason: live.exists === false ? "bridge_session_missing" : "bridge_session_not_connected",
+          rawStatus: String(live.status ?? live.state ?? "disconnected"),
+          phoneNumber: livePhone,
+        });
+        return {
+          ok: false,
+          sessionId: row.session_id,
+          requested: false,
+          attempts: [{ path: `/api/sessions/${row.session_id}/status`, ok: false, status: live.exists === false ? 404 : undefined, error: live.exists === false ? "bridge_session_missing" : "session_not_connected" }],
+          error: live.exists === false ? "bridge_session_missing" : "session_not_connected",
+        };
+      }
+    } catch (err) {
+      if (row.status !== "connected") {
+        return {
+          ok: false,
+          sessionId: row.session_id,
+          requested: false,
+          attempts: [{ path: `/api/sessions/${row.session_id}/status`, ok: false, status: err instanceof BridgeError ? err.status : undefined, error: err instanceof Error ? err.message : String(err) }],
+          error: "session_not_connected",
+        };
+      }
+    }
+
+    if (liveStatus !== "connected" && row.status !== "connected") {
       return { ok: false, sessionId: row.session_id, requested: false, attempts: [], error: "session_not_connected" };
     }
 
