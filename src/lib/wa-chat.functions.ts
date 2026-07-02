@@ -2,8 +2,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { assertBridgeSendQueued, bridgeSendQueuedMessage, waBridge, BridgeError, sendTextWithReconnect, sendMediaWithReconnect } from "./wa-bridge.server";
-import { deriveWebhookUrl } from "./wa-helpers.server";
+import { assertBridgeSendQueued, bridgeSendQueuedMessage, waBridge, sendTextWithReconnect, sendMediaWithReconnect } from "./wa-bridge.server";
+import { deriveWebhookUrl, describeBridgeError } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
 import { isBridgeSessionMissingError, resetWaSessionAfterBridgeLoss } from "./wa-session-repair.server";
 import { resolveOutgoingWhatsappTarget } from "./wa-recipient.server";
@@ -13,6 +13,7 @@ import {
   digits,
   mediaTypeFromRaw,
   mediaUrlFromRaw,
+  normalizeWhatsappPhone,
   phoneFromRaw,
   pickString,
   previewTextFromRaw,
@@ -213,7 +214,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       remoteJid: data.remoteJid,
       fallbackPhoneOrJid: rawPhone || conv?.contact_phone || data.remoteJid,
     });
-    const phoneDigits = target.phoneDigits || data.remoteJid.replace(/[^0-9]/g, "");
+    const phoneDigits = target.phoneDigits || normalizeWhatsappPhone(data.remoteJid) || data.remoteJid.replace(/[^0-9]/g, "");
     const to = target.jid;
     const sentAt = new Date().toISOString();
     const hasMedia = !!data.mediaUrl;
@@ -276,8 +277,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
           reason: "manual chat send failed",
         });
       }
-      const msg =
-        err instanceof BridgeError ? err.message : err instanceof Error ? err.message : "Bridge error";
+      const msg = describeBridgeError(err);
       console.error("[wa-chat] sendText failed:", msg, "to=", to);
       throw new Error(msg);
     }
@@ -320,7 +320,7 @@ export const sendTestMessage = createServerFn({ method: "POST" })
     if (!sess?.session_id) throw new Error("WhatsApp is not connected");
     if (sess.status !== "connected") throw new Error("WhatsApp is not connected");
 
-    const phoneDigits = data.phone.replace(/[^0-9]/g, "");
+    const phoneDigits = normalizeWhatsappPhone(data.phone);
     if (!phoneDigits || phoneDigits.length < 6) throw new Error("Invalid phone number");
     const to = `${phoneDigits}@s.whatsapp.net`;
     const text = data.text?.trim() || `✅ رسالة اختبار من Flowtix — ${new Date().toLocaleString("ar-EG")}`;
@@ -401,8 +401,7 @@ export const sendTestMessage = createServerFn({ method: "POST" })
           reason: "test send failed",
         });
       }
-      const msg =
-        err instanceof BridgeError ? err.message : err instanceof Error ? err.message : "Bridge error";
+      const msg = describeBridgeError(err);
       throw new Error(msg);
     }
   });

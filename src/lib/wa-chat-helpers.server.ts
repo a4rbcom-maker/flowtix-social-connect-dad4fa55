@@ -18,9 +18,36 @@ export function digits(value: string | null): string | null {
   return cleaned || null;
 }
 
+export function normalizeWhatsappPhone(value: string | null | undefined, defaultCountryCode = "20"): string | null {
+  let cleaned = value?.trim() ?? "";
+  if (!cleaned) return null;
+  cleaned = cleaned.replace(/[^0-9+]/g, "");
+  if (cleaned.startsWith("+")) cleaned = cleaned.slice(1);
+  cleaned = cleaned.replace(/[^0-9]/g, "");
+  if (cleaned.startsWith("00")) cleaned = cleaned.slice(2);
+  if (!cleaned) return null;
+
+  // Egypt local mobile format: 01xxxxxxxxx → 201xxxxxxxxx.
+  if (defaultCountryCode === "20" && /^01[0125][0-9]{8}$/.test(cleaned)) {
+    return `20${cleaned.slice(1)}`;
+  }
+
+  // Egypt mobile without leading zero: 1xxxxxxxxx → 201xxxxxxxxx.
+  if (defaultCountryCode === "20" && /^1[0125][0-9]{8}$/.test(cleaned)) {
+    return `20${cleaned}`;
+  }
+
+  // Generic local national format: leading 0 means replace it with default country code.
+  if (cleaned.startsWith("0") && cleaned.length >= 8) {
+    return `${defaultCountryCode}${cleaned.replace(/^0+/, "")}`;
+  }
+
+  return cleaned;
+}
+
 export function phoneFromRaw(raw: unknown): string | null {
   const obj = asRecord(raw);
-  return digits(pickString(obj, "normalizedContactPhone", "senderPn", "participantPn", "phoneNumber", "phone"));
+  return normalizeWhatsappPhone(pickString(obj, "normalizedContactPhone", "senderPn", "participantPn", "phoneNumber", "phone"));
 }
 
 export function profilePicFromRaw(raw: unknown): string | null {
