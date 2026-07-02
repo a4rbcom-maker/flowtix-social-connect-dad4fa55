@@ -947,6 +947,46 @@ function BulkSendPage() {
               )}
             </div>
 
+            {/* ============ CONCURRENCY SETTING ============ */}
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">
+                  {isAr ? "أقصى عدد حملات متوازية" : "Max parallel campaigns"}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {isAr
+                    ? "الحد الذي يطبقه المشغّل الخلفي تلقائياً. الحملات الزائدة تبقى في الانتظار وتُشغَّل بمجرد شغور مكان."
+                    : "The background worker enforces this cap automatically. Extra campaigns wait until a slot frees up."}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => saveMaxConcurrent(maxConcurrent - 1)}
+                  disabled={savingConcurrency || maxConcurrent <= 1}
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-border text-lg font-bold text-foreground hover:bg-muted disabled:opacity-40"
+                >−</button>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={maxConcurrent}
+                  onChange={(e) => setMaxConcurrent(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
+                  onBlur={(e) => saveMaxConcurrent(Number(e.target.value) || 1)}
+                  className="h-9 w-16 rounded-lg border border-border bg-background text-center text-sm font-semibold text-foreground focus:border-primary focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => saveMaxConcurrent(maxConcurrent + 1)}
+                  disabled={savingConcurrency || maxConcurrent >= 10}
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-border text-lg font-bold text-foreground hover:bg-muted disabled:opacity-40"
+                >+</button>
+                <span className="text-xs text-muted-foreground">{isAr ? "(1 – 10)" : "(1 – 10)"}</span>
+              </div>
+            </div>
+
+
+
             {/* ============ LIVE STATUS: active campaigns running in the background ============ */}
             {(() => {
               const active = jobs.filter((j) => j.status === "scheduled" || j.status === "running");
