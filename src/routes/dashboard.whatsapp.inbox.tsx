@@ -220,6 +220,7 @@ function InboxPage() {
         resyncing: "جارٍ المزامنة…",
         resyncDone: "تم تحديث المحادثات والرسائل",
         resyncQueued: "تم إرسال طلب المزامنة للجسر، وسيتم تحديث الشات تلقائيًا عند وصول الدفعات.",
+        syncNeedsConnection: "لا يمكن جلب المحادثات القديمة لأن واتساب غير متصل. أعد الربط وامسح QR جديد أولاً.",
         soon: "قريباً",
         photo: "صورة",
         voice: "رسالة صوتية",
@@ -267,6 +268,7 @@ function InboxPage() {
         resyncing: "Syncing…",
         resyncDone: "Conversations and messages refreshed",
         resyncQueued: "Sync request sent to the bridge; chats will update automatically when batches arrive.",
+        syncNeedsConnection: "Old chats cannot be fetched because WhatsApp is not connected. Reconnect and scan a new QR first.",
         soon: "Coming soon",
         photo: "Photo",
         voice: "Voice message",
@@ -688,6 +690,11 @@ function InboxPage() {
       qc.invalidateQueries({ queryKey: ["wa-conversations", user?.id] });
       qc.invalidateQueries({ queryKey: ["wa-inbox-stats", user?.id] });
       if (activeJid) qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
+      if (!res.ok && (res.error === "session_not_connected" || res.error === "no_session" || res.error === "bridge_session_missing")) {
+        toast.error(t.syncNeedsConnection);
+        setSyncState((s) => ({ ...s, status: "error", message: t.syncNeedsConnection }));
+        return;
+      }
       const beforeMessages = res.before?.messages ?? 0;
       const afterMessages = res.after?.messages ?? beforeMessages;
       const imported = Math.max(0, afterMessages - beforeMessages);

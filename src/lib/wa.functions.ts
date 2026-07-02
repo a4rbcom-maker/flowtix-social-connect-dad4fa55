@@ -264,7 +264,53 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!row?.session_id) return { ok: false, sessionId: null, requested: false, attempts: [], error: "no_session" };
-    if (row.status !== "connected") {
+
+    let liveStatus = row.status as BridgeSessionStatus;
+    try {
+      const live = await waBridge.getStatus(row.session_id);
+      liveStatus = inferStatus(live);
+      const livePhone = typeof live.phoneNumber === "string" ? live.phoneNumber : typeof live.phone === "string" ? live.phone : null;
+      if (liveStatus === "connected") {
+        await updateWaSessionStatus(supabase, {
+          userId,
+          sessionId: row.session_id,
+          nextStatus: "connected",
+          source: "history_sync",
+          reason: "bridge_session_confirmed_connected",
+          rawStatus: String(live.status ?? live.state ?? "connected"),
+          phoneNumber: livePhone,
+        });
+      } else if (live.exists === false || liveStatus === "disconnected") {
+        await updateWaSessionStatus(supabase, {
+          userId,
+          sessionId: row.session_id,
+          nextStatus: "disconnected",
+          source: "history_sync",
+          reason: live.exists === false ? "bridge_session_missing" : "bridge_session_not_connected",
+          rawStatus: String(live.status ?? live.state ?? "disconnected"),
+          phoneNumber: livePhone,
+        });
+        return {
+          ok: false,
+          sessionId: row.session_id,
+          requested: false,
+          attempts: [{ path: `/api/sessions/${row.session_id}/status`, ok: false, status: live.exists === false ? 404 : undefined, error: live.exists === false ? "bridge_session_missing" : "session_not_connected" }],
+          error: live.exists === false ? "bridge_session_missing" : "session_not_connected",
+        };
+      }
+    } catch (err) {
+      if (row.status !== "connected") {
+        return {
+          ok: false,
+          sessionId: row.session_id,
+          requested: false,
+          attempts: [{ path: `/api/sessions/${row.session_id}/status`, ok: false, status: err instanceof BridgeError ? err.status : undefined, error: err instanceof Error ? err.message : String(err) }],
+          error: "session_not_connected",
+        };
+      }
+    }
+
+    if (liveStatus !== "connected" && row.status !== "connected") {
       return { ok: false, sessionId: row.session_id, requested: false, attempts: [], error: "session_not_connected" };
     }
 
@@ -283,14 +329,46 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
     };
 
     const before = await countStored();
+    const chatCatalogue = await waBridge.fetchChats(row.session_id).catch((err) => ({
+      ok: false,
+      attempts: [
+        {
+          path: `/api/sessions/${row.session_id}/fetch-chats`,
+          ok: false,
+          status: err instanceof BridgeError ? err.status : undefined,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      ],
+      body: null as unknown,
+    }));
     const result = await waBridge.requestHistorySync(row.session_id);
+    result.attempts.push(...chatCatalogue.attempts);
     let directImports = { messages: 0, chats: 0, error: null as string | null };
-    if (result.body) {
-      directImports = await replayBridgeHistoryPayload(row.session_id, result.body).catch((err) => ({
+    if (chatCatalogue.body) {
+      const importedChats = await replayBridgeHistoryPayload(row.session_id, chatCatalogue.body).catch((err) => ({
         messages: 0,
         chats: 0,
         error: err instanceof Error ? err.message : String(err),
       }));
+      directImports.messages += importedChats.messages;
+      directImports.chats += importedChats.chats;
+      directImports.error = directImports.error ?? importedChats.error;
+      result.attempts.push({
+        path: "/api/sessions/:id/chats",
+        ok: chatCatalogue.ok,
+        importedMessages: importedChats.messages,
+        importedChats: importedChats.chats,
+      });
+    }
+    if (result.body) {
+      const importedHistory = await replayBridgeHistoryPayload(row.session_id, result.body).catch((err) => ({
+        messages: 0,
+        chats: 0,
+        error: err instanceof Error ? err.message : String(err),
+      }));
+      directImports.messages += importedHistory.messages;
+      directImports.chats += importedHistory.chats;
+      directImports.error = directImports.error ?? importedHistory.error;
     }
 
     const knownJids = new Set<string>();
@@ -1012,7 +1090,7 @@ async function readState(
       shouldRequestHistory = (count ?? 0) === 0;
     }
     if (shouldRequestHistory) {
-      waBridge.requestHistorySync(sessionId).catch((err) => {
+      Promise.allSettled([waBridge.fetchChats(sessionId), waBridge.requestHistorySync(sessionId)]).catch((err) => {
         console.warn("[wa] requestHistorySync failed:", err instanceof Error ? err.message : err);
       });
     }
