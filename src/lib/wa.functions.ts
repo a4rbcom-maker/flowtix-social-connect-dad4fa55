@@ -21,6 +21,7 @@ import {
 import { upsertConversationFromMessage } from "./wa-ai.server";
 import { isHardSessionGoneError, logWaSessionEvent, updateWaSessionStatus } from "./wa-session-events.server";
 import { normalizeWhatsappPhone } from "./wa-chat-helpers.server";
+import { resolveOutgoingWhatsappTarget } from "./wa-recipient.server";
 
 export type { WaBridgeHealth };
 
@@ -719,12 +720,20 @@ export const sendWaMessage = createServerFn({ method: "POST" })
     if (row.status !== "connected") throw new Error(notConnectedMsg);
 
     const phone = normalizeWhatsappPhone(data.to) || data.to.replace(/[^0-9]/g, "");
+    const target = await resolveOutgoingWhatsappTarget({
+      userId,
+      sessionId: row.session_id,
+      remoteJid: `${phone}@s.whatsapp.net`,
+      fallbackPhoneOrJid: phone,
+    });
+    const targetJid = target.jid;
+    const targetPhone = target.phoneDigits || phone;
     let providerMessageId: string | null = null;
     let queuedId: string | null = null;
     let delivery = "whatsapp_acknowledged";
     let status = "sent";
     try {
-      const res = await waBridge.sendText(row.session_id, phone, data.text);
+      const res = await waBridge.sendText(row.session_id, targetJid, data.text, { phone: targetPhone });
       queuedId = bridgeSendQueuedMessage(res);
       try {
         providerMessageId = assertBridgeSendQueued(res);
@@ -746,27 +755,25 @@ export const sendWaMessage = createServerFn({ method: "POST" })
       throw new Error(msg);
     }
 
-    const remoteJid = `${phone}@s.whatsapp.net`;
-
     await supabase.from("wa_messages").insert({
       user_id: userId,
       session_id: row.session_id,
       direction: "out",
-      remote_jid: remoteJid,
-      to_phone: phone,
+      remote_jid: targetJid,
+      to_phone: targetPhone,
       msg_type: "text",
       text_body: data.text,
       status,
       provider_message_id: providerMessageId,
-      raw: { bridgeMessageId: providerMessageId, queuedId, delivery } as never,
+      raw: { bridgeMessageId: providerMessageId, queuedId, delivery, targetJid, targetPhone, usedLid: target.usedLid } as never,
     });
 
     await upsertConversationFromMessage({
       userId,
       sessionId: row.session_id,
-      remoteJid,
+      remoteJid: targetJid,
       contactName: null,
-      contactPhone: phone,
+      contactPhone: targetPhone,
       text: data.text,
       direction: "out",
     });

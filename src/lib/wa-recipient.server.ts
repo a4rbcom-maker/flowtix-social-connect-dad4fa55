@@ -60,20 +60,32 @@ export async function resolveOutgoingWhatsappTarget(params: {
     return { jid: params.remoteJid, phoneDigits: fallbackPhoneDigits, usedLid: false };
   }
 
-  let query = supabaseAdmin
-    .from("wa_messages")
-    .select("raw, from_phone, remote_jid")
-    .eq("user_id", params.userId)
-    .eq("remote_jid", params.remoteJid)
-    .eq("direction", "in")
-    .not("raw", "is", null);
-  if (params.sessionId) query = query.eq("session_id", params.sessionId);
-  const { data } = await query.order("created_at", { ascending: false }).limit(20);
+  const loadRows = async (mode: "remote_jid" | "from_phone", value: string) => {
+    let query = supabaseAdmin
+      .from("wa_messages")
+      .select("raw, from_phone, remote_jid")
+      .eq("user_id", params.userId)
+      .eq(mode, value)
+      .eq("direction", "in")
+      .not("raw", "is", null);
+    if (params.sessionId) query = query.eq("session_id", params.sessionId);
+    const { data } = await query.order("created_at", { ascending: false }).limit(20);
+    return data ?? [];
+  };
+
+  const rows = await loadRows("remote_jid", params.remoteJid);
+  const phoneMatchedRows = fallbackPhoneDigits ? await loadRows("from_phone", fallbackPhoneDigits) : [];
+  const data = [...rows, ...phoneMatchedRows].filter((row, index, all) => {
+    const key = `${row.remote_jid}|${row.from_phone}|${JSON.stringify(row.raw).slice(0, 160)}`;
+    return all.findIndex((candidate) => `${candidate.remote_jid}|${candidate.from_phone}|${JSON.stringify(candidate.raw).slice(0, 160)}` === key) === index;
+  });
 
   let bestPhone = fallbackPhoneDigits;
-  for (const row of data ?? []) {
+  for (const row of data) {
     const raw = asRecord(row.raw);
     bestPhone = bestPhone || normalizeWhatsappPhone(row.from_phone) || normalizeWhatsappPhone(pickString(raw, "senderPn", "participantPn", "phoneNumber", "phone"));
+    const rowJid = toJid(row.remote_jid);
+    if (rowJid?.endsWith("@lid")) return { jid: rowJid, phoneDigits: bestPhone, usedLid: true };
     const jid = pickNestedJid(raw, bestPhone);
     if (jid?.endsWith("@lid")) return { jid, phoneDigits: bestPhone, usedLid: true };
   }
