@@ -721,7 +721,16 @@ export const sendWaMessage = createServerFn({ method: "POST" })
       const res = await waBridge.sendText(row.session_id, phone, data.text);
       providerMessageId = assertBridgeSendQueued(res);
     } catch (err) {
-      throw new Error(describeBridgeError(err));
+      const msg = describeBridgeError(err);
+      // If the bridge says the session is gone, sync DB so UI shows QR prompt.
+      if (/غير متصلة على خادم الربط/.test(msg)) {
+        await supabase
+          .from("wa_sessions")
+          .update({ status: "disconnected", last_seen_at: new Date().toISOString() })
+          .eq("user_id", userId)
+          .eq("session_id", row.session_id);
+      }
+      throw new Error(msg);
     }
 
     const remoteJid = `${phone}@s.whatsapp.net`;
