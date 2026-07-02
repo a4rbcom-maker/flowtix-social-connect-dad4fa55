@@ -1293,36 +1293,50 @@ export const matchLidPhoneNumbers = createServerFn({ method: "POST" })
     if (convsErr) throw new Error(convsErr.message);
     if (!convs || convs.length === 0) return { scanned: 0, matched: 0 };
 
+    const jids = convs.map((c) => c.remote_jid).filter(Boolean);
+    const { data: phoneRows } = jids.length
+      ? await supabase
+          .from("wa_messages")
+          .select("remote_jid, from_phone, created_at")
+          .eq("user_id", userId)
+          .in("remote_jid", jids)
+          .not("from_phone", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(5000)
+      : { data: [] as Array<{ remote_jid: string; from_phone: string | null; created_at?: string | null }> };
+
+    const phoneByJid = new Map<string, string>();
+    for (const row of phoneRows ?? []) {
+      if (phoneByJid.has(row.remote_jid)) continue;
+      const lidLocal = String(row.remote_jid ?? "").split("@")[0] ?? "";
+      const phone = (row.from_phone ?? "").replace(/[^0-9]/g, "");
+      if (phone && phone.length >= 6 && phone !== lidLocal) phoneByJid.set(row.remote_jid, phone);
+    }
+
+    const phones = Array.from(new Set(phoneByJid.values()));
+    const { data: siblings } = phones.length
+      ? await supabase
+          .from("wa_conversations")
+          .select("contact_phone, contact_name")
+          .eq("user_id", userId)
+          .in("contact_phone", phones)
+          .not("contact_name", "is", null)
+          .limit(2000)
+      : { data: [] as Array<{ contact_phone: string | null; contact_name: string | null }> };
+    const nameByPhone = new Map<string, string>();
+    for (const row of siblings ?? []) {
+      const phone = (row.contact_phone ?? "").replace(/[^0-9]/g, "");
+      if (phone && row.contact_name && !nameByPhone.has(phone)) nameByPhone.set(phone, row.contact_name);
+    }
+
     let matched = 0;
 
     for (const conv of convs) {
-      const lidLocal = String(conv.remote_jid ?? "").split("@")[0] ?? "";
-      // Latest inbound message with a real from_phone that differs from LID digits.
-      const { data: msgs } = await supabase
-        .from("wa_messages")
-        .select("from_phone")
-        .eq("user_id", userId)
-        .eq("remote_jid", conv.remote_jid)
-        .not("from_phone", "is", null)
-        .order("created_at", { ascending: false })
-        .limit(20);
-      const realPhone = (msgs ?? [])
-        .map((m: { from_phone: string | null }) => (m.from_phone ?? "").replace(/[^0-9]/g, ""))
-        .find((p) => p && p.length >= 6 && p !== lidLocal);
+      const realPhone = phoneByJid.get(conv.remote_jid);
       if (!realPhone) continue;
 
       // Optionally borrow a name from a sibling conv that already knows this phone.
-      let borrowedName: string | null = null;
-      if (!conv.contact_name) {
-        const { data: sibling } = await supabase
-          .from("wa_conversations")
-          .select("contact_name")
-          .eq("user_id", userId)
-          .eq("contact_phone", realPhone)
-          .not("contact_name", "is", null)
-          .limit(1);
-        borrowedName = sibling?.[0]?.contact_name ?? null;
-      }
+      const borrowedName = conv.contact_name ? null : nameByPhone.get(realPhone) ?? null;
 
       const patch: { contact_phone: string; contact_name?: string } = { contact_phone: realPhone };
       if (borrowedName) patch.contact_name = borrowedName;
