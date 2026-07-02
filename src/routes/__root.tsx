@@ -9,6 +9,7 @@ import { NotificationsProvider } from "@/hooks/useSendNotifications";
 import { GlobalAnnouncements } from "@/components/dashboard/GlobalAnnouncements";
 import { UserPreferencesSync } from "@/components/shared/UserPreferencesSync";
 import { installStaleChunkReload, staleChunkReloadInlineScript } from "@/lib/stale-chunk-reload";
+import { useTrackVisit } from "@/hooks/useTrackVisit";
 
 import appCss from "../styles.css?url";
 
