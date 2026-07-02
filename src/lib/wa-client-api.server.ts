@@ -192,11 +192,14 @@ async function readState(supabase: ReturnType<typeof getSupabaseForToken>, userI
   if (status === "connected") {
     let shouldRequestHistory = previous?.status !== "connected";
     if (!shouldRequestHistory) {
-      const { count } = await supabase
-        .from("wa_messages")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId);
-      shouldRequestHistory = (count ?? 0) === 0;
+      const { data: existingConversation } = await supabase
+        .from("wa_conversations")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("session_id", sessionId)
+        .limit(1)
+        .maybeSingle();
+      shouldRequestHistory = !existingConversation;
     }
     if (shouldRequestHistory) {
       waBridge.requestHistorySync(sessionId).catch((err) => {

@@ -167,7 +167,6 @@ function InboxPage() {
     startedAt: 0,
     deadlineAt: 0,
   });
-  const [syncTick, setSyncTick] = useState(0);
   const [syncHydrated, setSyncHydrated] = useState(false);
 
   // Persisted background sync: keep progress alive across reloads / device sleep.
@@ -177,10 +176,10 @@ function InboxPage() {
     enabled: !!user?.id,
     refetchInterval: (query) => {
       const data = query.state.data as any;
-      return data && (data.status === "running" || data.status === "pending") ? 4000 : false;
+      return data && (data.status === "running" || data.status === "pending") ? 15000 : false;
     },
     refetchOnWindowFocus: true,
-    staleTime: 0,
+    staleTime: 10000,
   });
 
   const handledDoneJobRef = useRef<string | null>(null);
@@ -265,7 +264,7 @@ function InboxPage() {
         video: "فيديو",
         today: "اليوم",
         yesterday: "أمس",
-        savedStats: (chats: number, messages: number) => `${chats} محادثات ظاهرة · ${messages} رسالة محفوظة`,
+        savedStats: (chats: number) => `${chats} محادثات ظاهرة`,
         connected: "متصل",
         disconnected: "غير متصل",
         repairForHistory: "أعد الاقتران لاستيراد كل المحادثات",
@@ -316,7 +315,7 @@ function InboxPage() {
         video: "Video",
         today: "Today",
         yesterday: "Yesterday",
-        savedStats: (chats: number, messages: number) => `${chats} visible chats · ${messages} saved messages`,
+        savedStats: (chats: number) => `${chats} visible chats`,
         connected: "Connected",
         disconnected: "Not connected",
         repairForHistory: "Re-pair to import all chats",
@@ -343,8 +342,8 @@ function InboxPage() {
     queryFn: () => safeCall<ConversationRow[]>(() => fetchInboxConversations(user!.id), []),
     enabled: !!user?.id,
     placeholderData: (prev) => prev,
-    staleTime: 10_000,
-    refetchInterval: 60_000, // safety net; realtime drives updates
+    staleTime: 30_000,
+    refetchInterval: 300_000, // safety net فقط؛ Realtime هو المصدر الأساسي
     refetchOnWindowFocus: true,
     refetchOnReconnect: "always",
   });
@@ -356,8 +355,8 @@ function InboxPage() {
         : Promise.resolve([]),
     enabled: !!activeJid && !!user?.id,
     placeholderData: (prev) => prev,
-    staleTime: 15_000,
-    refetchInterval: 45_000, // safety net; realtime drives updates
+    staleTime: 30_000,
+    refetchInterval: 300_000, // safety net فقط؛ Realtime هو المصدر الأساسي
     refetchOnWindowFocus: false,
     refetchOnReconnect: "always",
   });
@@ -369,7 +368,7 @@ function InboxPage() {
     t.conv = setTimeout(() => {
       t.conv = undefined;
       qc.invalidateQueries({ queryKey: ["wa-conversations"], refetchType: "active" });
-    }, 600);
+    }, 1500);
   }, [qc]);
   const scheduleInvalidateMessages = useCallback((uid: string, jid: string) => {
     const t = invalidateTimersRef.current;
@@ -432,13 +431,6 @@ function InboxPage() {
     refetchInterval: 30000,
   });
 
-  const inboxStatsQuery = useQuery<{ messages: number }>({
-    queryKey: ["wa-inbox-stats", user?.id],
-    queryFn: () => safeCall(() => fetchInboxStats(user!.id), { messages: 0 }),
-    enabled: !!user?.id,
-    refetchInterval: 15000,
-  });
-
   const quickRepliesQuery = useQuery<QuickReply[]>({
     queryKey: ["wa-quick-replies", user?.id],
     queryFn: () => safeCall<QuickReply[]>(() => fetchInboxQuickReplies(user!.id), []),
@@ -452,6 +444,9 @@ function InboxPage() {
     if (!user?.id) return;
     if (connQuery.data?.status !== "connected") return;
     if (convQuery.isFetching) return;
+    // لا نشغل مزامنة تاريخ ثقيلة إذا كان لدى المستخدم محادثات بالفعل.
+    // الترتيب الآن يتحدث من قاعدة البيانات عند كل رسالة، والمزامنة هنا للحساب الفارغ فقط.
+    if (conversations.length > 0) return;
     const key = `${user.id}:connected`;
     if (historySyncRequestedRef.current === key) return;
     historySyncRequestedRef.current = key;
@@ -464,7 +459,7 @@ function InboxPage() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connQuery.data?.status, convQuery.isFetching, user?.id]);
+  }, [connQuery.data?.status, convQuery.isFetching, user?.id, conversations.length]);
 
   // Auto-match @lid conversations to real phone numbers once per session.
   // Silently backfills contact_phone using stored senderPn data so old chats
@@ -521,7 +516,8 @@ function InboxPage() {
         "postgres_changes",
         { event: "*", schema: "public", table: "wa_messages", filter: `user_id=eq.${uid}` },
         (payload) => {
-          scheduleInvalidateConversations();
+          // لا نعيد تحميل قائمة المحادثات من wa_messages؛ التريجر يحدث wa_conversations
+          // وستصلنا إشارة منفصلة من جدول المحادثات. هذا يمنع refetch مزدوج لكل رسالة.
           const row = payload.new as { remote_jid?: string; direction?: string; raw?: { is_historical?: boolean } | null };
           if (activeJid && (payload.eventType === "DELETE" || row?.remote_jid === activeJid || payload.eventType === "UPDATE")) {
             scheduleInvalidateMessages(uid, activeJid);
@@ -564,14 +560,14 @@ function InboxPage() {
 
       qc.invalidateQueries({ queryKey: ["wa-conversations", user.id] });
       qc.invalidateQueries({ queryKey: ["wa-connection-state", user.id] });
-      qc.invalidateQueries({ queryKey: ["wa-inbox-stats", user.id] });
       if (activeJid) {
         qc.invalidateQueries({ queryKey: ["wa-messages", user.id, activeJid] });
       }
 
-      // Ask the bridge to backfill anything it buffered while we were gone.
-      const heavyGap = gapMs > 90_000 || reason === "online";
-      if (heavyGap && now - lastSyncAt > 60_000) {
+      // لا نشغل history sync ثقيل عند كل رجوع للتاب. فقط للحساب الفارغ جدًا،
+      // وبحد زمني واسع، لتجنب استهلاك Disk IO بسبب محاولات متكررة.
+      const heavyGap = (gapMs > 30 * 60_000 || reason === "online") && conversations.length === 0;
+      if (heavyGap && now - lastSyncAt > 30 * 60_000) {
         lastSyncAt = now;
         requestHistorySyncFn()
           .then(() => {
@@ -607,7 +603,7 @@ function InboxPage() {
       document.removeEventListener("visibilitychange", onVisibility);
       window.clearInterval(heartbeat);
     };
-  }, [qc, user?.id, activeJid, requestHistorySyncFn]);
+  }, [qc, user?.id, activeJid, requestHistorySyncFn, conversations.length]);
 
   // Reset progressive pagination when conversation changes
   useEffect(() => {
@@ -747,12 +743,11 @@ function InboxPage() {
   const historySyncMut = useMutation({
     mutationFn: () => requestHistorySyncFn(),
     onMutate: () => {
-      const baseMsg = inboxStatsQuery.data?.messages ?? 0;
       const baseConv = conversations.length;
       const now = Date.now();
       setSyncState({
         status: "running",
-        baselineMsg: baseMsg,
+        baselineMsg: 0,
         baselineConv: baseConv,
         importedMsg: 0,
         importedConv: 0,
@@ -762,7 +757,6 @@ function InboxPage() {
     },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["wa-conversations", user?.id] });
-      qc.invalidateQueries({ queryKey: ["wa-inbox-stats", user?.id] });
       if (activeJid) qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
       if (!res.ok && (res.error === "session_not_connected" || res.error === "no_session" || res.error === "bridge_session_missing")) {
         // إخفاء تنبيهات المزامنة عن العملاء — نُنهي بصمت.
@@ -773,9 +767,6 @@ function InboxPage() {
         setSyncState((s) => ({ ...s, status: "idle" }));
         return;
       }
-      const beforeMessages = res.before?.messages ?? 0;
-      const afterMessages = res.after?.messages ?? beforeMessages;
-      const imported = Math.max(0, afterMessages - beforeMessages);
       if (res.ok && res.pending) {
         setSyncState((s) => ({
           ...s,
@@ -784,7 +775,6 @@ function InboxPage() {
         }));
         window.setTimeout(() => {
           qc.invalidateQueries({ queryKey: ["wa-conversations", user?.id] });
-          qc.invalidateQueries({ queryKey: ["wa-inbox-stats", user?.id] });
           if (activeJid) qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
         }, 8000);
         return;
@@ -793,7 +783,7 @@ function InboxPage() {
         setSyncState((s) => ({
           ...s,
           status: "idle",
-          importedMsg: Math.max(s.importedMsg, imported),
+          importedMsg: s.importedMsg,
         }));
         return;
       }
@@ -808,23 +798,11 @@ function InboxPage() {
   });
 
 
-  // Poll stats while a sync is running/pending and update imported counts.
-  useEffect(() => {
-    if (syncState.status !== "running" && syncState.status !== "pending") return;
-    const id = window.setInterval(() => {
-      qc.invalidateQueries({ queryKey: ["wa-inbox-stats", user?.id] });
-      qc.invalidateQueries({ queryKey: ["wa-conversations", user?.id] });
-      setSyncTick((n) => n + 1);
-    }, 4000);
-    return () => window.clearInterval(id);
-  }, [syncState.status, qc, user?.id]);
-
   // Update imported delta from live stats and finish when deadline reached.
   useEffect(() => {
     if (syncState.status !== "running" && syncState.status !== "pending") return;
-    const curMsg = inboxStatsQuery.data?.messages ?? 0;
     const curConv = conversations.length;
-    const importedMsg = Math.max(0, curMsg - syncState.baselineMsg);
+    const importedMsg = syncState.importedMsg;
     const importedConv = Math.max(0, curConv - syncState.baselineConv);
     if (importedMsg !== syncState.importedMsg || importedConv !== syncState.importedConv) {
       setSyncState((s) => ({ ...s, importedMsg, importedConv }));
@@ -834,7 +812,7 @@ function InboxPage() {
       setSyncState((s) => ({ ...s, status: "idle", message: undefined }));
     }
 
-  }, [syncTick, inboxStatsQuery.data?.messages, conversations.length, syncState.status, syncState.baselineMsg, syncState.baselineConv, syncState.deadlineAt, syncState.importedMsg, syncState.importedConv, t.syncUnavailable]);
+  }, [conversations.length, syncState.status, syncState.baselineConv, syncState.deadlineAt, syncState.importedMsg, syncState.importedConv]);
 
   // No "done" state ever surfaces to the UI — historySyncMut transitions
   // directly from running/pending → idle on success or error. This block
@@ -1124,7 +1102,7 @@ function InboxPage() {
             </span>
             <span className="text-muted-foreground/50" aria-hidden>·</span>
             <span className="truncate">
-              {t.savedStats(conversations.length, inboxStatsQuery.data?.messages ?? 0)}
+              {t.savedStats(conversations.length)}
             </span>
           </div>
           {/* Manual "Fetch all chats" button removed: the full history sync
@@ -2368,167 +2346,27 @@ function EmptyChat({
 // ──────────────────────────────────────────────────────────────────────────
 
 async function fetchInboxConversations(userId: string): Promise<ConversationRow[]> {
-  // نجلب تاريخ محادثات المستخدم كله حتى لا يختفي بعد فصل الجلسة وإعادة الربط.
-  const [{ data, error }, { data: rawMessages, error: msgError }, { data: createdMessages, error: createdMsgError }] = await Promise.all([
-    supabase
-      .from("wa_conversations")
-      .select("id, session_id, remote_jid, contact_name, contact_phone, profile_pic_url, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
-      .eq("user_id", userId)
-      .eq("is_archived", false)
-      .order("last_message_at", { ascending: false })
-      .limit(2000),
-    supabase
-      .from("wa_messages")
-      .select("session_id, remote_jid, direction, text_body, msg_type, media_url, from_phone, to_phone, wa_timestamp, created_at")
-      .eq("user_id", userId)
-      .order("wa_timestamp", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .limit(5000),
-    supabase
-      .from("wa_messages")
-      .select("session_id, remote_jid, direction, text_body, msg_type, media_url, from_phone, to_phone, wa_timestamp, created_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(5000),
-  ]);
+  // الترتيب أصبح مضمونًا من قاعدة البيانات عبر trigger عند كل رسالة،
+  // لذلك لا نقرأ آلاف الرسائل عند فتح الوارد حتى لا نضغط Disk IO.
+  const { data, error } = await supabase
+    .from("wa_conversations")
+    .select("id, session_id, remote_jid, contact_name, contact_phone, profile_pic_url, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
+    .eq("user_id", userId)
+    .eq("is_archived", false)
+    .order("last_message_at", { ascending: false })
+    .limit(2000);
 
   if (error) throw new Error(error.message);
-  // لا تجعل فشل/بطء استعلام إثراء الرسائل يخفي قائمة المحادثات بالكامل.
-  // كان هذا يسبب ظهور "0 محادثات" عند انتهاء مهلة استعلام آخر الرسائل.
-  if (msgError) console.warn("[inbox] message enrichment skipped", msgError.message);
-  if (createdMsgError) console.warn("[inbox] created-at message enrichment skipped", createdMsgError.message);
-
-  const rows = (data ?? []) as ConversationRow[];
-  const metaByJid = new Map<string, { phone: string | null; preview: string | null }>();
-  const latestMessageByJid = new Map<string, NonNullable<typeof rawMessages>[number]>();
-  const messageWindows = [
-    ...(msgError ? [] : (rawMessages ?? [])),
-    ...(createdMsgError ? [] : (createdMessages ?? [])),
-  ];
-  const orderedMessages = Array.from(
-    new Map(messageWindows.map((msg) => [`${msg.remote_jid}|${msg.wa_timestamp ?? ""}|${msg.created_at ?? ""}|${msg.direction}|${msg.text_body ?? ""}`, msg])).values(),
-  ).sort(
-    (a, b) => messageRowTimeMs(b) - messageRowTimeMs(a),
-  );
-  for (const msg of orderedMessages) {
-    const jid = String(msg.remote_jid ?? "");
-    if (!jid) continue;
-    const currentLatest = latestMessageByJid.get(jid);
-    if (!currentLatest || messageRowTimeMs(msg) > messageRowTimeMs(currentLatest)) latestMessageByJid.set(jid, msg);
-    const current = metaByJid.get(jid) ?? { phone: null, preview: null };
-    metaByJid.set(jid, {
-      phone: current.phone ?? phoneFromMessageRow(jid, msg.from_phone, msg.to_phone),
-      preview: current.preview ?? previewTextFromStoredFields(msg.text_body, msg.msg_type, msg.media_url),
-    });
-  }
-
-  // Fallback: أي محادثة ليست ضمن آخر 5000 رسالة، أو محادثة بها رسائل غير مقروءة
-  // (يجب أن يكون ترتيبها دقيقًا دائمًا)، اجلب لها آخر رسالة حقيقية بشكل مستقل
-  // حتى لا يعتمد الترتيب على وقت إنشاء صف wa_conversations.
-  const jidsNeedingLatest = rows
-    .filter((r) => r.remote_jid && (!latestMessageByJid.has(r.remote_jid) || (r.unread_count || 0) > 0))
-    .map((r) => r.remote_jid);
-  const missingJids = Array.from(new Set(jidsNeedingLatest));
-  if (missingJids.length > 0) {
-    const CHUNK = 12;
-    for (let i = 0; i < missingJids.length; i += CHUNK) {
-      const batch = missingJids.slice(i, i + CHUNK);
-      const results = await Promise.all(
-        batch.map(async (jid) => {
-          const { data: last } = await supabase
-            .from("wa_messages")
-            .select("session_id, remote_jid, direction, text_body, msg_type, media_url, from_phone, to_phone, wa_timestamp, created_at")
-            .eq("user_id", userId)
-            .eq("remote_jid", jid)
-            .order("wa_timestamp", { ascending: false, nullsFirst: false })
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          return { jid, last };
-        }),
-      );
-      for (const { jid, last } of results) {
-        if (!last) continue;
-        latestMessageByJid.set(jid, last);
-        const current = metaByJid.get(jid) ?? { phone: null, preview: null };
-        metaByJid.set(jid, {
-          phone: current.phone ?? phoneFromMessageRow(jid, last.from_phone, last.to_phone),
-          preview: current.preview ?? previewTextFromStoredFields(last.text_body, last.msg_type, last.media_url),
-        });
-      }
-    }
-  }
-
-  const existingJids = new Set(rows.map((row) => row.remote_jid));
-  const staleConversationFixes: PromiseLike<unknown>[] = [];
-  const visibleRows: RankedConversationRow[] = rows.map((row): RankedConversationRow => {
-    const meta = metaByJid.get(row.remote_jid);
-    const latestMessage = latestMessageByJid.get(row.remote_jid);
+  const visibleRows: RankedConversationRow[] = ((data ?? []) as ConversationRow[]).map((row): RankedConversationRow => {
     const isGroup = row.remote_jid.endsWith("@g.us");
-    const latestMessageAt = latestMessage ? messageRowIso(latestMessage) : null;
-    if (latestMessageAt && !row.id.startsWith("virtual:")) {
-      const latestPreview = meta?.preview ?? row.last_message_text;
-      const latestDirection = latestMessage?.direction ?? row.last_direction;
-      const storedAt = safeTimeMs(row.last_message_at);
-      const actualAt = safeTimeMs(latestMessageAt);
-      const needsFix =
-        actualAt > 0 &&
-        (Math.abs(actualAt - storedAt) > 1000 || row.last_message_text !== latestPreview || row.last_direction !== latestDirection);
-      if (needsFix && staleConversationFixes.length < 100) {
-        staleConversationFixes.push(
-          supabase
-            .from("wa_conversations")
-            .update({
-              last_message_at: latestMessageAt,
-              last_message_text: latestPreview,
-              last_direction: latestDirection,
-            })
-            .eq("id", row.id)
-            .eq("user_id", userId)
-            .then(({ error }) => {
-              if (error) console.warn("[inbox] conversation sort repair skipped", error.message);
-            }),
-        );
-      }
-    }
     return {
       ...row,
-      contact_phone: isGroup ? null : (meta?.phone ?? row.contact_phone),
-      last_message_text: meta?.preview ?? row.last_message_text,
-      // ترتيب الواتساب لازم يعتمد على آخر رسالة فعلية محفوظة، وليس وقت إنشاء
-      // صف المحادثة أثناء إعادة الاقتران/كتالوج الشاتات.
-      last_message_at: latestMessageAt ?? row.last_message_at,
-      last_direction: latestMessage?.direction ?? row.last_direction,
+      contact_phone: isGroup ? null : row.contact_phone,
       profile_pic_url: row.profile_pic_url ?? null,
-      _sort_at: latestMessageAt,
-      _has_stored_message: Boolean(latestMessageAt),
+      _sort_at: row.last_message_at,
+      _has_stored_message: true,
     };
   });
-  if (staleConversationFixes.length > 0) void Promise.allSettled(staleConversationFixes);
-
-  // بعض رسائل التاريخ تصل قبل إنشاء صف في wa_conversations. لا نخفيها؛
-  // ننشئ صف محادثة افتراضي من آخر رسالة محفوظة حتى يظهر التاريخ فورًا في الشات.
-  for (const [jid, msg] of latestMessageByJid) {
-    if (existingJids.has(jid)) continue;
-    const isGroup = jid.endsWith("@g.us");
-    const direction = msg.direction === "out" ? "out" : "in";
-    const phone = isGroup ? null : phoneFromMessageRow(jid, msg.from_phone, msg.to_phone);
-    visibleRows.push({
-      id: `virtual:${jid}`,
-      session_id: msg.session_id ?? undefined,
-      remote_jid: jid,
-      contact_name: null,
-      contact_phone: phone,
-      profile_pic_url: null,
-      last_message_text: previewTextFromStoredFields(msg.text_body, msg.msg_type, msg.media_url),
-      last_message_at: msg.wa_timestamp ?? msg.created_at,
-      last_direction: direction,
-      unread_count: 0,
-      ai_enabled: false,
-      _sort_at: messageRowIso(msg),
-      _has_stored_message: true,
-    });
-  }
 
   return visibleRows
     .sort(compareConversationsByLastRealActivity)
@@ -2548,17 +2386,21 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
   const messageAliases = inboxJidAliases(remoteJid, convAliases?.contact_phone ?? null);
   const { data, error } = await supabase
     .from("wa_messages")
-    .select("id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw")
+    // لا نسحب raw هنا لأنه قد يحتوي Base64/JSON كبير جدًا للميديا ويستهلك Disk IO.
+    // واجهة الشات تعتمد على الأعمدة الخفيفة المخزنة: text_body / msg_type / media_url / status.
+    .select("id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at")
     .eq("user_id", userId)
     .in("remote_jid", messageAliases)
-    .order("wa_timestamp", { ascending: true })
-    .limit(1000);
+    .order("wa_timestamp", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(200);
 
   if (error) throw new Error(error.message);
 
 
-  return Promise.all((data ?? []).map(async (row) => {
-    const raw = asRecord(row.raw);
+  const rows = [...(data ?? [])].reverse();
+  return Promise.all(rows.map(async (row) => {
+    const raw = {} as Record<string, unknown>;
     const msgType = mediaTypeFromRaw(raw, row.msg_type);
     const storedMediaUrl = typeof row.media_url === "string" && row.media_url.trim() ? row.media_url.trim() : null;
     const rawMediaUrl = mediaUrlFromRaw(raw, msgType);
@@ -2617,15 +2459,6 @@ async function fetchInboxConnectionState(userId: string): Promise<{ status: stri
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data?.status ? { status: data.status } : null;
-}
-
-async function fetchInboxStats(userId: string): Promise<{ messages: number }> {
-  const { count, error } = await supabase
-    .from("wa_messages")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId);
-  if (error) throw new Error(error.message);
-  return { messages: count ?? 0 };
 }
 
 async function fetchInboxQuickReplies(userId: string): Promise<QuickReply[]> {

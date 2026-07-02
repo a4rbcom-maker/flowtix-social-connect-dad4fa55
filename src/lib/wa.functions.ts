@@ -317,23 +317,8 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       return { ok: false, sessionId: row.session_id, requested: false, attempts: [], error: "session_not_connected" };
     }
 
-    const countStored = async () => {
-      const [{ count: conversations }, { count: messages }] = await Promise.all([
-        supabase
-          .from("wa_conversations")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", userId)
-          .eq("session_id", row.session_id),
-        supabase
-          .from("wa_messages")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", userId)
-          .eq("session_id", row.session_id),
-      ]);
-      return { conversations: conversations ?? 0, messages: messages ?? 0 };
-    };
-
-    const before = await countStored();
+    // لا نستخدم count exact أثناء المزامنة نهائيًا؛ أرقام التقدم تأتي من الاستيراد المباشر فقط.
+    const before = { conversations: 0, messages: 0 };
 
     // Persist the sync job so progress survives across browser reloads / device sleep.
     const deadlineMs = Date.now() + 90_000;
@@ -533,13 +518,9 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       result.ok = fetchedKnownChats > 0;
     }
 
-    let after = await countStored();
-    for (let i = 0; i < 6 && after.messages === before.messages && after.conversations === before.conversations; i++) {
-      await wait(2000);
-      after = await countStored();
-    }
+    const after = { conversations: directImports.chats, messages: directImports.messages };
 
-    const actuallyImported = after.messages > before.messages || after.conversations > before.conversations;
+    const actuallyImported = directImports.messages > 0 || directImports.chats > 0 || after.conversations > before.conversations;
     const requestAccepted = result.ok || fetchedKnownChats > 0;
     const pending = requestAccepted && !actuallyImported;
     await logWaSessionEvent(supabase, {
@@ -554,8 +535,8 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
           ? `history_sync_requested_waiting_for_bridge_batches${directImports.error ? ` (${directImports.error})` : ""}`
           : "history_sync_endpoint_unavailable",
     });
-    const importedMsgDelta = Math.max(0, after.messages - before.messages);
-    const importedConvDelta = Math.max(0, after.conversations - before.conversations);
+    const importedMsgDelta = Math.max(0, directImports.messages);
+    const importedConvDelta = Math.max(0, directImports.chats);
     const finalStatus = actuallyImported ? "done" : requestAccepted ? "pending" : "error";
     const finalMessage = finalStatus === "error"
       ? "bridge_history_sync_endpoint_unavailable"
@@ -622,16 +603,7 @@ export const getWaHistorySyncJob = createServerFn({ method: "GET" })
     let message = data.message;
     let finishedAt = data.finished_at;
 
-    // Recompute live counts while the job is active so progress advances
-    // even if the client that started it is offline.
     if (status === "running" || status === "pending") {
-      const [{ count: liveConv }, { count: liveMsg }] = await Promise.all([
-        supabase.from("wa_conversations").select("id", { count: "exact", head: true }).eq("user_id", userId),
-        supabase.from("wa_messages").select("id", { count: "exact", head: true }).eq("user_id", userId),
-      ]);
-      importedMsg = Math.max(0, (liveMsg ?? 0) - data.baseline_msg);
-      importedConv = Math.max(0, (liveConv ?? 0) - data.baseline_conv);
-
       const deadlinePassed = data.deadline_at ? Date.now() >= new Date(data.deadline_at).getTime() : false;
       if (deadlinePassed) {
         const hasImports = importedMsg > 0 || importedConv > 0;
@@ -1244,12 +1216,14 @@ async function readState(
   if (status === "connected") {
     let shouldRequestHistory = previousStatus !== "connected";
     if (!shouldRequestHistory) {
-      const { count } = await supabase
-        .from("wa_messages")
-        .select("id", { count: "exact", head: true })
+      const { data: existingConversation } = await supabase
+        .from("wa_conversations")
+        .select("id")
         .eq("user_id", userId)
-        .eq("session_id", sessionId);
-      shouldRequestHistory = (count ?? 0) === 0;
+        .eq("session_id", sessionId)
+        .limit(1)
+        .maybeSingle();
+      shouldRequestHistory = !existingConversation;
     }
     if (shouldRequestHistory) {
       Promise.allSettled([waBridge.fetchChats(sessionId), waBridge.requestHistorySync(sessionId)]).catch((err) => {
@@ -1319,36 +1293,52 @@ export const matchLidPhoneNumbers = createServerFn({ method: "POST" })
     if (convsErr) throw new Error(convsErr.message);
     if (!convs || convs.length === 0) return { scanned: 0, matched: 0 };
 
+    const jids = convs
+      .map((c) => c.remote_jid)
+      .filter((jid): jid is string => typeof jid === "string" && jid.length > 0);
+    const { data: phoneRows } = jids.length
+      ? await supabase
+          .from("wa_messages")
+          .select("remote_jid, from_phone")
+          .eq("user_id", userId)
+          .in("remote_jid", jids)
+          .not("from_phone", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(5000)
+      : { data: [] as Array<{ remote_jid: string; from_phone: string | null }> };
+
+    const phoneByJid = new Map<string, string>();
+    for (const row of phoneRows ?? []) {
+      if (phoneByJid.has(row.remote_jid)) continue;
+      const lidLocal = String(row.remote_jid ?? "").split("@")[0] ?? "";
+      const phone = (row.from_phone ?? "").replace(/[^0-9]/g, "");
+      if (phone && phone.length >= 6 && phone !== lidLocal) phoneByJid.set(row.remote_jid, phone);
+    }
+
+    const phones = Array.from(new Set(phoneByJid.values()));
+    const { data: siblings } = phones.length
+      ? await supabase
+          .from("wa_conversations")
+          .select("contact_phone, contact_name")
+          .eq("user_id", userId)
+          .in("contact_phone", phones)
+          .not("contact_name", "is", null)
+          .limit(2000)
+      : { data: [] as Array<{ contact_phone: string | null; contact_name: string | null }> };
+    const nameByPhone = new Map<string, string>();
+    for (const row of siblings ?? []) {
+      const phone = (row.contact_phone ?? "").replace(/[^0-9]/g, "");
+      if (phone && row.contact_name && !nameByPhone.has(phone)) nameByPhone.set(phone, row.contact_name);
+    }
+
     let matched = 0;
 
     for (const conv of convs) {
-      const lidLocal = String(conv.remote_jid ?? "").split("@")[0] ?? "";
-      // Latest inbound message with a real from_phone that differs from LID digits.
-      const { data: msgs } = await supabase
-        .from("wa_messages")
-        .select("from_phone")
-        .eq("user_id", userId)
-        .eq("remote_jid", conv.remote_jid)
-        .not("from_phone", "is", null)
-        .order("created_at", { ascending: false })
-        .limit(20);
-      const realPhone = (msgs ?? [])
-        .map((m: { from_phone: string | null }) => (m.from_phone ?? "").replace(/[^0-9]/g, ""))
-        .find((p) => p && p.length >= 6 && p !== lidLocal);
+      const realPhone = phoneByJid.get(conv.remote_jid);
       if (!realPhone) continue;
 
       // Optionally borrow a name from a sibling conv that already knows this phone.
-      let borrowedName: string | null = null;
-      if (!conv.contact_name) {
-        const { data: sibling } = await supabase
-          .from("wa_conversations")
-          .select("contact_name")
-          .eq("user_id", userId)
-          .eq("contact_phone", realPhone)
-          .not("contact_name", "is", null)
-          .limit(1);
-        borrowedName = sibling?.[0]?.contact_name ?? null;
-      }
+      const borrowedName = conv.contact_name ? null : nameByPhone.get(realPhone) ?? null;
 
       const patch: { contact_phone: string; contact_name?: string } = { contact_phone: realPhone };
       if (borrowedName) patch.contact_name = borrowedName;
