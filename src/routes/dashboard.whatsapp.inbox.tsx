@@ -2465,7 +2465,7 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
 
   return visibleRows
     .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime())
-    .slice(0, 200);
+    .slice(0, 2000);
 }
 
 async function fetchInboxMessages(userId: string, remoteJid: string): Promise<ChatMessageRow[]> {
