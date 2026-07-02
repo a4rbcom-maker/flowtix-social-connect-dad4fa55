@@ -6,7 +6,7 @@ import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { Navbar } from "@/components/landing/Navbar";
 import { AlertCircle, Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff, ShieldCheck, Clock, LogIn } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { signInWithPasswordResilient, signUpWithPasswordResilient } from "@/lib/auth-proxy.client";
+import { signInWithPasswordResilient, signUpWithPasswordResilient } from "@/lib/auth-proxy";
 
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>) => ({
