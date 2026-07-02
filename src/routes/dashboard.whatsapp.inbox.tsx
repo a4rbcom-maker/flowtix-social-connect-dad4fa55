@@ -2659,7 +2659,7 @@ function usefulContactName(name: string | null | undefined, phone: string | null
   return cleaned;
 }
 
-function mergeConversationAliases(items: ConversationRow[]): ConversationRow {
+function mergeConversationAliases(items: ConversationRow[]): RankedConversationRow {
   const sorted = [...items].sort(compareConversationsByLastRealActivity);
   const preferred = items.find((c) => c.remote_jid.endsWith("@lid")) ?? sorted[0];
   const newest = sorted[0];
