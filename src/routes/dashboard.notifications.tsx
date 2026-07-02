@@ -49,17 +49,16 @@ function NotificationCenter() {
   const readFn = useServerFn(markNotificationRead);
   const allReadFn = useServerFn(markAllNotificationsRead);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["my-notifications"],
     queryFn: async () => {
-      try {
-        return await fetchFn();
-      } catch {
-        return { rows: [], unreadCount: 0, popupId: null as string | null };
-      }
+      return await fetchFn();
     },
-    retry: false,
+    retry: 1,
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
   });
+
 
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [type, setType] = useState<string>("all");
