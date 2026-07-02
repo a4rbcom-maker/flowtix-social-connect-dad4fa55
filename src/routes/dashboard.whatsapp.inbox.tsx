@@ -743,19 +743,18 @@ function InboxPage() {
       qc.invalidateQueries({ queryKey: ["wa-inbox-stats", user?.id] });
       if (activeJid) qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
       if (!res.ok && (res.error === "session_not_connected" || res.error === "no_session" || res.error === "bridge_session_missing")) {
-        toast.error(t.syncNeedsConnection);
-        setSyncState((s) => ({ ...s, status: "error", message: t.syncNeedsConnection }));
+        // إخفاء تنبيهات المزامنة عن العملاء — نُنهي بصمت.
+        setSyncState((s) => ({ ...s, status: "idle" }));
         return;
       }
       if (!res.ok && res.error === "bridge_history_sync_endpoint_unavailable") {
-        setSyncState((s) => ({ ...s, status: "done" }));
+        setSyncState((s) => ({ ...s, status: "idle" }));
         return;
       }
       const beforeMessages = res.before?.messages ?? 0;
       const afterMessages = res.after?.messages ?? beforeMessages;
       const imported = Math.max(0, afterMessages - beforeMessages);
       if (res.ok && res.pending) {
-        toast.success(t.resyncQueued);
         setSyncState((s) => ({
           ...s,
           status: "pending",
@@ -769,13 +768,11 @@ function InboxPage() {
         return;
       }
       if (res.ok) {
-        toast.success(isAr ? `تم جلب ${imported} رسالة قديمة` : `Imported ${imported} old messages`);
         setSyncState((s) => ({
           ...s,
-          status: "done",
+          status: "idle",
           importedMsg: Math.max(s.importedMsg, imported),
         }));
-        window.setTimeout(() => setSyncState((s) => (s.status === "done" ? { ...s, status: "idle" } : s)), 6000);
         return;
       }
       setSyncState((s) => ({ ...s, status: "done" }));
@@ -1107,7 +1104,7 @@ function InboxPage() {
             </button>
           )}
         </div>
-        {syncState.status !== "idle" && syncState.status !== "error" && (() => {
+        {false && syncState.status !== "idle" && syncState.status !== "error" && (() => {
           const elapsed = Math.max(0, Date.now() - syncState.startedAt);
           const total = Math.max(1, syncState.deadlineAt - syncState.startedAt);
           const timePct = Math.min(100, Math.round((elapsed / total) * 100));
