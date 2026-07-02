@@ -6,6 +6,7 @@
   "description": "Facebook bot worker for Flowtix — runs a real Chromium browser on a residential IP and executes jobs from the Lovable backend.",
   "scripts": {
     "start": "node index.mjs",
+    "worker": "node index.mjs",
     "install:browsers": "playwright install chromium"
   },
   "dependencies": {
