@@ -347,11 +347,32 @@ function NewCampaignPage() {
 
   const manualPreview = useMemo(() => parseManualIds(manualRaw), [manualRaw]);
 
+  const isManualGroup = (g: Group) => g.name === `Group ${g.id}`;
+
   const filteredGroups = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return groups;
-    return groups.filter((g) => g.name.toLowerCase().includes(q) || g.id.includes(q));
-  }, [groups, search]);
+    let list = groups;
+    if (q) list = list.filter((g) => g.name.toLowerCase().includes(q) || g.id.includes(q));
+    if (filterMode === "selected") list = list.filter((g) => selectedTargets.has(g.id));
+    else if (filterMode === "unselected") list = list.filter((g) => !selectedTargets.has(g.id));
+    else if (filterMode === "manual") list = list.filter(isManualGroup);
+    const sorted = [...list];
+    if (sortMode === "name") sorted.sort((a, b) => a.name.localeCompare(b.name, lang === "ar" ? "ar" : "en"));
+    else if (sortMode === "id") sorted.sort((a, b) => a.id.localeCompare(b.id));
+    else if (sortMode === "selected") sorted.sort((a, b) => {
+      const sa = selectedTargets.has(a.id) ? 0 : 1;
+      const sb = selectedTargets.has(b.id) ? 0 : 1;
+      return sa - sb || a.name.localeCompare(b.name);
+    });
+    return sorted;
+  }, [groups, search, filterMode, sortMode, selectedTargets, lang]);
+
+  const filterCounts = useMemo(() => ({
+    all: groups.length,
+    selected: groups.filter((g) => selectedTargets.has(g.id)).length,
+    unselected: groups.filter((g) => !selectedTargets.has(g.id)).length,
+    manual: groups.filter(isManualGroup).length,
+  }), [groups, selectedTargets]);
 
 
   const validate = (): boolean => {
