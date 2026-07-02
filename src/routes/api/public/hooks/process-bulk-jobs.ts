@@ -41,15 +41,19 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
           }
           return err instanceof Error ? err.message : "Send failed";
         };
-        const acceptedBridgeId = (res: unknown): string => {
+        const acceptedBridgeId = (res: unknown): { id: string; queuedOnly: boolean } => {
           const queuedId = bridgeSendQueuedMessage(res);
           try {
-            return assertBridgeSendQueued(res as Parameters<typeof assertBridgeSendQueued>[0]);
+            const confirmed = assertBridgeSendQueued(res as Parameters<typeof assertBridgeSendQueued>[0]);
+            const isQueuedOnly = !confirmed || /^q_/i.test(confirmed) || confirmed.toLowerCase() === "queued";
+            return { id: confirmed || queuedId || "queued", queuedOnly: isQueuedOnly };
           } catch (err) {
-            if (queuedId) return queuedId;
+            if (queuedId) return { id: queuedId, queuedOnly: true };
             throw err;
           }
         };
+        const QUEUED_STALE_MS = 5 * 60 * 1000; // 5 min: bridge accepted but never confirmed
+
 
         const now = new Date();
         const summary = {
@@ -170,6 +174,30 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
             continue;
           }
 
+          let sent = 0;
+          let failed = 0;
+
+          // Sweep stale "processing" recipients (bridge accepted but never confirmed).
+          const staleCutoff = new Date(Date.now() - QUEUED_STALE_MS).toISOString();
+          const { data: stale } = await supabaseAdmin
+            .from("bulk_job_recipients")
+            .select("id")
+            .eq("job_id", job.id)
+            .eq("status", "processing")
+            .lt("sent_at", staleCutoff);
+          if (stale && stale.length > 0) {
+            const ids = stale.map((s) => s.id);
+            await supabaseAdmin
+              .from("bulk_job_recipients")
+              .update({
+                status: "failed",
+                error_message: "قبل الجسر الطلب لكن لم يتم تأكيد التسليم — أعد ربط واتساب ثم استأنف",
+                sent_at: new Date().toISOString(),
+              })
+              .in("id", ids);
+            failed += ids.length;
+          }
+
           const { data: pending } = await supabaseAdmin
             .from("bulk_job_recipients")
             .select("id, name, phone")
@@ -179,20 +207,35 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
             .limit(batchSize);
 
           if (!pending || pending.length === 0) {
-            await supabaseAdmin
-              .from("bulk_jobs")
-              .update({
-                status: "completed",
-                completed_at: new Date().toISOString(),
-                next_send_at: null,
-              })
-              .eq("id", job.id);
-            summary.completed++;
+            const { count: stillProcessing } = await supabaseAdmin
+              .from("bulk_job_recipients")
+              .select("id", { head: true, count: "exact" })
+              .eq("job_id", job.id)
+              .eq("status", "processing");
+            if ((stillProcessing ?? 0) === 0) {
+              await supabaseAdmin
+                .from("bulk_jobs")
+                .update({
+                  status: "completed",
+                  completed_at: new Date().toISOString(),
+                  next_send_at: null,
+                  failed_count: (job.failed_count ?? 0) + failed,
+                })
+                .eq("id", job.id);
+              summary.completed++;
+            } else {
+              await supabaseAdmin
+                .from("bulk_jobs")
+                .update({
+                  next_send_at: new Date(Date.now() + 60_000).toISOString(),
+                  failed_count: (job.failed_count ?? 0) + failed,
+                })
+                .eq("id", job.id);
+            }
+            summary.failed += failed;
             continue;
           }
 
-          let sent = 0;
-          let failed = 0;
 
           for (const r of pending) {
             const phone = normalizeWhatsappPhone(r.phone) || "";
@@ -208,6 +251,7 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
             const rendered = renderTemplate(job.message || "", { name: r.name, phone });
             let errorMessage: string | null = null;
             let providerId: string | null = null;
+            let queuedOnly = false;
 
             try {
               const caption = rendered.trim();
@@ -217,10 +261,14 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
                   mediaType: "image",
                   phone,
                 });
-                providerId = acceptedBridgeId(res);
+                const parsed = acceptedBridgeId(res);
+                providerId = parsed.id;
+                queuedOnly = parsed.queuedOnly;
               } else {
                 const res = await waBridge.sendText(sess.session_id, phone, caption);
-                providerId = acceptedBridgeId(res);
+                const parsed = acceptedBridgeId(res);
+                providerId = parsed.id;
+                queuedOnly = parsed.queuedOnly;
               }
             } catch (err) {
               errorMessage = describeErr(err);
@@ -252,6 +300,17 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
                   sent_at: new Date().toISOString(),
                 })
                 .eq("id", r.id);
+            } else if (queuedOnly) {
+              // Bridge accepted but did not return a real message id yet.
+              // Mark as processing and let the stale-sweep decide later.
+              await supabaseAdmin
+                .from("bulk_job_recipients")
+                .update({
+                  status: "processing",
+                  sent_at: new Date().toISOString(),
+                  error_message: null,
+                })
+                .eq("id", r.id);
             } else {
               sent++;
               await supabaseAdmin
@@ -281,14 +340,15 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
               user_id: job.user_id,
               channel: "bulk",
               action: "bulk_send",
-              status: errorMessage ? "failed" : "success",
+              status: errorMessage ? "failed" : queuedOnly ? "pending" : "success",
               title: job.title,
-              description: rendered.slice(0, 140),
+              description: (queuedOnly ? "قيد التأكيد من الجسر — " : "") + rendered.slice(0, 140),
               recipient: `${r.name} (${phone})`,
               error_message: errorMessage,
-              metadata: { job_id: job.id, provider_message_id: providerId },
+              metadata: { job_id: job.id, provider_message_id: providerId, queued_only: queuedOnly },
             });
           }
+
 
           summary.sent += sent;
           summary.failed += failed;
