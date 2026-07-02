@@ -445,6 +445,9 @@ function InboxPage() {
     if (!user?.id) return;
     if (connQuery.data?.status !== "connected") return;
     if (convQuery.isFetching) return;
+    // لا نشغل مزامنة تاريخ ثقيلة إذا كان لدى المستخدم محادثات بالفعل.
+    // الترتيب الآن يتحدث من قاعدة البيانات عند كل رسالة، والمزامنة هنا للحساب الفارغ فقط.
+    if (conversations.length > 0) return;
     const key = `${user.id}:connected`;
     if (historySyncRequestedRef.current === key) return;
     historySyncRequestedRef.current = key;
@@ -457,7 +460,7 @@ function InboxPage() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connQuery.data?.status, convQuery.isFetching, user?.id]);
+  }, [connQuery.data?.status, convQuery.isFetching, user?.id, conversations.length]);
 
   // Auto-match @lid conversations to real phone numbers once per session.
   // Silently backfills contact_phone using stored senderPn data so old chats
