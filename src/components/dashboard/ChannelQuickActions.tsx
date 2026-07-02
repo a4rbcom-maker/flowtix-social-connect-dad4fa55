@@ -40,7 +40,10 @@ export function ChannelQuickActions({ channel, state, lang, onChanged, onNavigat
         disconnect: "فصل",
         refresh: "تحديث",
         confirmTitle: channel === "facebook" ? "فصل حساب فيسبوك؟" : "فصل واتساب؟",
-        confirmYes: "تأكيد الفصل",
+        confirmBody: channel === "whatsapp"
+          ? "سيتم حذف كل المحادثات والرسائل من حسابك نهائياً ولا يمكن التراجع. عند إعادة المسح تبدأ من الصفر."
+          : null,
+        confirmYes: "تأكيد الفصل والحذف",
         confirmNo: "إلغاء",
         loading: "جارٍ التحقق…",
         successDisc: channel === "facebook" ? "تم فصل فيسبوك" : "تم فصل واتساب",
@@ -53,7 +56,10 @@ export function ChannelQuickActions({ channel, state, lang, onChanged, onNavigat
         disconnect: "Disconnect",
         refresh: "Refresh",
         confirmTitle: channel === "facebook" ? "Disconnect Facebook?" : "Disconnect WhatsApp?",
-        confirmYes: "Yes, disconnect",
+        confirmBody: channel === "whatsapp"
+          ? "All your chats and messages will be permanently deleted. This cannot be undone. Re-scanning starts fresh."
+          : null,
+        confirmYes: "Disconnect & delete",
         confirmNo: "Cancel",
         loading: "Checking…",
         successDisc: channel === "facebook" ? "Facebook disconnected" : "WhatsApp disconnected",
@@ -103,12 +109,15 @@ export function ChannelQuickActions({ channel, state, lang, onChanged, onNavigat
     <div
       role="dialog"
       aria-label={L.confirmTitle}
-      className="absolute bottom-full left-1/2 z-30 mb-2 w-[200px] -translate-x-1/2 rounded-xl border border-border/60 bg-popover p-2.5 shadow-[0_10px_30px_-12px_rgba(124,58,237,0.35)]"
+      className="absolute bottom-full left-1/2 z-30 mb-2 w-[240px] -translate-x-1/2 rounded-xl border border-border/60 bg-popover p-2.5 shadow-[0_10px_30px_-12px_rgba(124,58,237,0.35)]"
     >
-      <div className="mb-2 flex items-start gap-1.5 text-[12px] font-semibold text-foreground">
+      <div className="mb-1.5 flex items-start gap-1.5 text-[12px] font-semibold text-foreground">
         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
         <span className="leading-snug">{L.confirmTitle}</span>
       </div>
+      {L.confirmBody && (
+        <p className="mb-2 text-[11px] leading-relaxed text-muted-foreground">{L.confirmBody}</p>
+      )}
       <div className="flex gap-1.5">
         <button
           type="button"
