@@ -16,18 +16,34 @@ export const reauthOnExpiredSession = createMiddleware({ type: "function" }).cli
     try {
       return await next();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err ?? "");
-      const isAuthError = /unauthorized|401|jwt|token/i.test(message);
+      const status =
+        err instanceof Response
+          ? err.status
+          : (err as { status?: number; statusCode?: number })?.status ??
+            (err as { statusCode?: number })?.statusCode;
+      const message = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+      const isAuthError =
+        status === 401 ||
+        status === 403 ||
+        /unauthorized|401|jwt|invalid.*token|token.*expired/i.test(message);
       if (!isAuthError) throw err;
 
       // Try to refresh the session once. If it works, retry the call.
       const { data, error } = await supabase.auth.refreshSession();
       if (!error && data.session) {
-        return await next();
+        try {
+          return await next();
+        } catch (retryErr) {
+          err = retryErr;
+        }
       }
 
-      // Refresh failed → signal SIGNED_OUT so AuthProvider handles the redirect.
-      await supabase.auth.signOut({ scope: "local" });
+      // Refresh failed → sign out locally and redirect to /login (prevents blank screen).
+      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+        const current = window.location.pathname + window.location.search;
+        window.location.replace(`/login?reason=expired&redirect=${encodeURIComponent(current)}`);
+      }
       throw err;
     }
   },
