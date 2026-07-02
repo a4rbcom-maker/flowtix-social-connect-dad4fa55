@@ -611,6 +611,24 @@ async function updateMessageStatuses(userId: string, sessionId: string, payload:
   return updated;
 }
 
+async function markSessionAlive(params: {
+  userId: string;
+  sessionId: string;
+  phoneNumber?: string | null;
+  source: "webhook_status" | "history_sync";
+  reason: string;
+}) {
+  await updateWaSessionStatus(supabaseAdmin, {
+    userId: params.userId,
+    sessionId: params.sessionId,
+    nextStatus: "connected",
+    source: params.source,
+    reason: params.reason,
+    rawStatus: "activity",
+    phoneNumber: params.phoneNumber ?? null,
+  });
+}
+
 function isMessageStatusOnlyEvent(event: string, payload: Record<string, unknown>, data: Record<string, unknown>): boolean {
   if (event !== "status" && event !== "message.status" && event !== "messages.update") return false;
   const providerMessageId = messageIdFrom(data) || messageIdFrom(payload);
@@ -804,6 +822,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     const history = event.includes("chat")
       ? await importHistoryMessages({ userId, sessionId, payload, data })
       : { saved: 0, duplicates: 0, total: 0 };
+    await markSessionAlive({ userId, sessionId, phoneNumber: sess.phone_number, source: "webhook_status", reason: "webhook_contacts_activity" });
     return new Response(JSON.stringify({ ok: true, contacts: contacts.length, updated, chats: chatUpserted, historyMessages: history.saved, historyDuplicates: history.duplicates }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -890,6 +909,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   if (event === "history_chats") {
     const chats = pickContactArray(payload, data);
     const upserted = await importHistoryChats({ userId, sessionId, chats });
+    await markSessionAlive({ userId, sessionId, phoneNumber: sess.phone_number, source: "history_sync", reason: "history_chats_activity" });
     return new Response(JSON.stringify({ ok: true, historyChats: upserted }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -899,6 +919,9 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   // ── HISTORY SYNC: backfilled messages ──
   if (HISTORY_EVENTS.has(event)) {
     const history = await importHistoryMessages({ userId, sessionId, payload, data });
+    if (history.saved > 0 || history.total > 0) {
+      await markSessionAlive({ userId, sessionId, phoneNumber: sess.phone_number, source: "history_sync", reason: "history_messages_activity" });
+    }
     return new Response(JSON.stringify({ ok: true, historyMessages: history.saved, duplicates: history.duplicates }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -908,6 +931,9 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
 
 
   const statusUpdates = await updateMessageStatuses(userId, sessionId, payload);
+  if (statusUpdates > 0) {
+    await markSessionAlive({ userId, sessionId, phoneNumber: sess.phone_number, source: "webhook_status", reason: "message_status_ack_activity" });
+  }
 
   // ── inbound/outbound messages ──
   const entries = collectMessageEntries(payload);
@@ -1168,6 +1194,10 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       skipped,
       entryKeys: entries.map((entry) => Object.keys(entry).slice(0, 12)),
     });
+  }
+
+  if (saved > 0) {
+    await markSessionAlive({ userId, sessionId, phoneNumber: sess.phone_number, source: "webhook_status", reason: "message_activity" });
   }
 
   return new Response(JSON.stringify({ ok: true, saved, skipped, statusUpdates }), {

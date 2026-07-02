@@ -38,6 +38,7 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
   const firstRunRef = useRef(true);
   const prevDisconnectedRef = useRef<number | null>(null);
   const prevConnectedRef = useRef<number | null>(null);
+  const channelKeyRef = useRef(`wa-status-${Math.random().toString(36).slice(2, 10)}`);
 
   const isAr = lang === "ar";
 
@@ -47,30 +48,34 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
       const uid = sess.session?.user?.id;
       if (!uid) return;
 
-      const [{ count: disc }, { count: conn }, { count: connecting }] = await Promise.all([
-        supabase.from("wa_sessions").select("id", { count: "exact", head: true })
-          .eq("user_id", uid).eq("status", "disconnected"),
-        supabase.from("wa_sessions").select("id", { count: "exact", head: true })
-          .eq("user_id", uid).eq("status", "connected"),
-        supabase.from("wa_sessions").select("id", { count: "exact", head: true })
-          .eq("user_id", uid).in("status", ["connecting", "qr", "pairing"]),
+      const [{ data: sessionRows }, { data: settings }] = await Promise.all([
+        supabase.from("wa_sessions").select("id, status, last_seen_at, updated_at")
+          .eq("user_id", uid)
+          .order("updated_at", { ascending: false })
+          .limit(5),
+        supabase.from("whatsapp_settings").select("is_connected, last_connected_at")
+          .eq("user_id", uid)
+          .maybeSingle(),
       ]);
       if (!mounted.current) return;
 
-      const rawDisconnectedCount = disc ?? 0;
-      const cCount = conn ?? 0;
-      const gCount = connecting ?? 0;
-      const effectiveDisconnectedCount = cCount > 0 ? 0 : rawDisconnectedCount;
+      const rows = sessionRows ?? [];
+      const rawDisconnectedCount = rows.filter((row) => row.status === "disconnected").length;
+      const cCount = rows.filter((row) => row.status === "connected").length;
+      const gCount = rows.filter((row) => ["connecting", "qr", "pairing"].includes(String(row.status))).length;
+      const settingsConnected = settings?.is_connected === true;
+      const effectiveConnectedCount = cCount > 0 || (settingsConnected && gCount === 0) ? Math.max(1, cCount) : 0;
+      const effectiveDisconnectedCount = effectiveConnectedCount > 0 ? 0 : rawDisconnectedCount;
 
       setDisconnectedCount(effectiveDisconnectedCount);
-      setConnectedCount(cCount);
+      setConnectedCount(effectiveConnectedCount);
       setStatus(
-        cCount > 0 ? "connected"
+        effectiveConnectedCount > 0 ? "connected"
         : gCount > 0 ? "connecting"
         : rawDisconnectedCount > 0 ? "disconnected"
         : "unknown",
       );
-      if (cCount > 0) {
+      if (effectiveConnectedCount > 0) {
         setLastReason(null);
         setLastAt(null);
       }
@@ -81,7 +86,7 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
         prevDisconnectedRef.current != null &&
         prevDisconnectedRef.current > 0 &&
         effectiveDisconnectedCount === 0 &&
-        cCount > (prevConnectedRef.current ?? 0)
+        effectiveConnectedCount > (prevConnectedRef.current ?? 0)
       ) {
         toast.success(
           isAr ? "تم استعادة اتصال واتساب" : "WhatsApp reconnected",
@@ -94,10 +99,10 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
         );
       }
       prevDisconnectedRef.current = effectiveDisconnectedCount;
-      prevConnectedRef.current = cCount;
+      prevConnectedRef.current = effectiveConnectedCount;
 
       // Most recent disconnect event → one-shot toast on new id.
-      if (cCount > 0) {
+      if (effectiveConnectedCount > 0) {
         firstRunRef.current = false;
         return;
       }
@@ -154,7 +159,7 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
       const uid = sess.session?.user?.id;
       if (!uid || !mounted.current) return;
       channel = supabase
-        .channel(`wa-status-${uid}`)
+        .channel(`${channelKeyRef.current}-${uid}`)
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "wa_sessions", filter: `user_id=eq.${uid}` },

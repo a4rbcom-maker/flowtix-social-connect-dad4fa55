@@ -106,6 +106,11 @@ export function useChannelStatus(lang: "ar" | "en") {
         setWhatsapp({ ...s, label: fmtLabel(s, lang) });
         return;
       }
+      if (!sessionError && sessionRows?.some((row) => ["qr", "connecting", "pairing"].includes(String(row.status)))) {
+        const s: Omit<ChannelState, "label"> = { status: "loading" };
+        setWhatsapp({ ...s, label: fmtLabel(s, lang) });
+        return;
+      }
 
       const { data, error } = await supabase
         .from("whatsapp_settings")

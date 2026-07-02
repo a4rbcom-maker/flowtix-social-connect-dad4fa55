@@ -37,11 +37,6 @@ export async function resetWaSessionAfterBridgeLoss(params: {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err ?? "Bridge session reset failed");
-    await supabaseAdmin
-      .from("wa_sessions")
-      .update({ status: "disconnected", qr_data_url: null, last_seen_at: now })
-      .eq("user_id", userId)
-      .eq("session_id", oldSessionId);
     console.error("[wa-session-repair] create fresh session failed:", message);
     return { sessionId: oldSessionId, error: message };
   }

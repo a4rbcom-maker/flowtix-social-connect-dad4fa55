@@ -369,4 +369,6 @@ export const SESSION_STATUS_MAP: Record<string, string> = {
   disconnected: "disconnected",
   closed: "disconnected",
   logged_out: "disconnected",
+  logout: "disconnected",
+  loggedout: "disconnected",
 };

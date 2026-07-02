@@ -68,6 +68,22 @@ export function isHardSessionGoneError(err: unknown): boolean {
   return /session.*(not.?found|closed|logged.?out)/i.test(message) || /logged.?out|closed/.test(message);
 }
 
+export function isTrustedUserDisconnect(input: {
+  source?: WaSessionEventSource | string | null;
+  reason?: string | null;
+  rawStatus?: string | null;
+  bridgeEvent?: string | null;
+}): boolean {
+  if (input.source === "disconnect") return true;
+
+  const text = [input.reason, input.rawStatus, input.bridgeEvent]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return /logged[\s_-]*out|logout|log[\s_-]*out|removed.*device|device.*removed|unlinked|unlink|signed[\s_-]*out|401|unauthorized/.test(text);
+}
+
 export async function logWaSessionEvent(
   db: DbClient,
   event: {
@@ -129,8 +145,15 @@ export async function updateWaSessionStatus(
     // best effort only
   }
 
+  const trustedDisconnect = input.nextStatus === "disconnected" && isTrustedUserDisconnect(input);
+  const shouldPreserveConnectedSession =
+    input.nextStatus === "disconnected" &&
+    previousStatus === "connected" &&
+    !trustedDisconnect;
+  const nextStatus = shouldPreserveConnectedSession ? "connected" : input.nextStatus;
+
   const update: Record<string, unknown> = {
-    status: input.nextStatus,
+    status: nextStatus,
     last_seen_at: new Date().toISOString(),
   };
   if (input.phoneNumber) update.phone_number = input.phoneNumber;
@@ -142,19 +165,37 @@ export async function updateWaSessionStatus(
     .eq("user_id", input.userId)
     .eq("session_id", input.sessionId);
 
+  try {
+    if (nextStatus === "connected") {
+      await db
+        .from("whatsapp_settings")
+        .update({ is_connected: true, last_connected_at: new Date().toISOString() })
+        .eq("user_id", input.userId);
+    } else if (trustedDisconnect) {
+      await db
+        .from("whatsapp_settings")
+        .update({ is_connected: false, last_connected_at: null })
+        .eq("user_id", input.userId);
+    }
+  } catch {
+    // Session status is the source of truth; settings sync is best-effort.
+  }
+
   const shouldLog =
     input.logEvenIfUnchanged ||
-    previousStatus !== input.nextStatus ||
-    input.nextStatus === "disconnected";
+    previousStatus !== nextStatus ||
+    trustedDisconnect;
 
   if (shouldLog) {
     await logWaSessionEvent(db, {
       userId: input.userId,
       sessionId: input.sessionId,
       fromStatus: previousStatus,
-      toStatus: input.nextStatus,
+      toStatus: nextStatus,
       source: input.source,
-      reason: input.reason,
+      reason: shouldPreserveConnectedSession
+        ? `ignored_transient_disconnect: ${input.reason ?? input.rawStatus ?? input.bridgeEvent ?? "untrusted_disconnect"}`
+        : input.reason,
       rawStatus: input.rawStatus,
       bridgeEvent: input.bridgeEvent,
       payload: input.payload,
