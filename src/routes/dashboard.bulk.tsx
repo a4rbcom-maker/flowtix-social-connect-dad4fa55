@@ -104,6 +104,19 @@ function BulkSendPage() {
     // eslint-disable-next-line
   }, [user]);
 
+  // Live polling every 4s while any campaign is scheduled/running so counts move
+  // in near-real-time even if the realtime channel drops.
+  useEffect(() => {
+    if (!user) return;
+    const anyActive = jobs.some((j) => j.status === "scheduled" || j.status === "running");
+    if (!anyActive) return;
+    const t = setInterval(loadAll, 4000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line
+  }, [user, jobs]);
+
+
+
   // Build named lists from contacts.tags
   const lists = useMemo(() => {
     const map = new Map<string, Contact[]>();
@@ -281,16 +294,18 @@ function BulkSendPage() {
 
 
 
+  const MESSAGE_MAX = 4000;
+
   const launchCampaign = async () => {
     if (!user) return;
     if (!title.trim()) { toast.error(isAr ? "أضف عنواناً للحملة" : "Add a title"); return; }
-    if (!message.trim() && !imageUrl) { toast.error(isAr ? "أضف رسالة أو صورة" : "Add a message or image"); return; }
-    // Guard: if a message was typed, don't allow launching image-only by mistake
-    if (imageUrl && message.length > 0 && !message.trim()) {
-      toast.error(isAr ? "الرسالة تحتوي على مسافات فقط — اكتب نصاً أو احذفها قبل الإطلاق" : "Message contains only whitespace — write text or clear it before launch");
+    // Message is REQUIRED; image is optional
+    if (!message.trim()) { toast.error(isAr ? "نص الرسالة مطلوب" : "Message text is required"); return; }
+    if (message.length > MESSAGE_MAX) {
+      toast.error(isAr ? `الرسالة تتجاوز الحد الأقصى (${MESSAGE_MAX} حرف)` : `Message exceeds the ${MESSAGE_MAX}-char limit`);
       return;
     }
-    if (imageUrl && message.trim()) {
+    if (imageUrl) {
       const ok = window.confirm(
         isAr
           ? `سيتم إرسال رسالتين لكل عميل:\n\n1) النص:\n${message.trim().slice(0, 120)}${message.trim().length > 120 ? "…" : ""}\n\n2) الصورة المرفقة\n\nهل تريد المتابعة؟`
@@ -301,6 +316,7 @@ function BulkSendPage() {
     if (selectedRecipients.length === 0) { toast.error(isAr ? "اختر قائمة أو جهة اتصال" : "Pick a list or contacts"); return; }
     if (!scheduleNow && !scheduleAt) { toast.error(isAr ? "حدد موعد التشغيل" : "Pick a schedule"); return; }
     if (!(await ensureWaConnected())) return;
+
 
 
     setSubmitting(true);
@@ -349,11 +365,18 @@ function BulkSendPage() {
   };
 
   const cancelJob = async (id: string) => {
-    if (!confirm(isAr ? "إلغاء هذه الحملة؟" : "Cancel this campaign?")) return;
+    if (!confirm(isAr ? "إلغاء هذه الحملة نهائياً؟ لن يتم استئنافها تلقائياً." : "Cancel this campaign permanently?")) return;
     const { error } = await supabase.from("bulk_jobs").update({ status: "cancelled" }).eq("id", id);
     if (error) toast.error(error.message);
     else { toast.success(isAr ? "تم الإلغاء" : "Cancelled"); loadAll(); }
   };
+
+  const pauseJob = async (id: string) => {
+    const { error } = await supabase.from("bulk_jobs").update({ status: "paused" }).eq("id", id);
+    if (error) toast.error(error.message);
+    else { toast.success(isAr ? "تم إيقاف الحملة مؤقتاً — اضغط استئناف للمتابعة" : "Campaign paused — click resume to continue"); loadAll(); }
+  };
+
 
   const resumeJobCore = async (id: string) => {
     const { error: rErr } = await supabase
@@ -581,22 +604,40 @@ function BulkSendPage() {
               </div>
 
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">{isAr ? "نص الرسالة" : "Message text"}</label>
+                <label className="mb-1.5 flex items-center gap-1 text-sm font-medium text-foreground">
+                  <span>{isAr ? "نص الرسالة" : "Message text"}</span>
+                  <span className="text-destructive" aria-label="required">*</span>
+                  <span className="ms-1 rounded-full bg-destructive/10 px-1.5 text-[10px] font-semibold text-destructive">
+                    {isAr ? "مطلوب" : "required"}
+                  </span>
+                </label>
                 <textarea
                   value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder={isAr ? "اكتب الرسالة..." : "Type the message..."}
+                  onChange={(e) => setMessage(e.target.value.slice(0, MESSAGE_MAX))}
+                  placeholder={isAr ? "اكتب الرسالة... (مطلوب)" : "Type the message... (required)"}
                   rows={5}
+                  maxLength={MESSAGE_MAX}
+                  required
+                  aria-required="true"
                   className="w-full resize-none rounded-xl border border-border bg-background p-3 text-sm focus:border-primary focus:outline-none"
                 />
-                <p className="mt-1 text-end text-xs text-muted-foreground">{message.length} {isAr ? "حرف" : "chars"}</p>
+                <div className="mt-1 flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">{isAr ? "متغيرات مسموحة: {{name}}, {{phone}}" : "Placeholders: {{name}}, {{phone}}"}</span>
+                  <span className={message.length > MESSAGE_MAX * 0.9 ? "font-semibold text-destructive" : "text-muted-foreground"}>
+                    {message.length} / {MESSAGE_MAX} {isAr ? "حرف" : "chars"}
+                  </span>
+                </div>
               </div>
 
               {/* Image attach */}
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">
-                  {isAr ? "إرفاق صورة (اختياري)" : "Attach image (optional)"}
+                <label className="mb-1.5 flex items-center gap-1 text-sm font-medium text-foreground">
+                  <span>{isAr ? "إرفاق صورة" : "Attach image"}</span>
+                  <span className="ms-1 rounded-full bg-muted px-1.5 text-[10px] font-semibold text-muted-foreground">
+                    {isAr ? "اختياري" : "optional"}
+                  </span>
                 </label>
+
                 {imageUrl ? (
                   <div className="relative inline-block rounded-xl border border-border bg-background p-2">
                     <img src={imageUrl} alt="attached" className="h-32 w-auto rounded-lg object-cover" />
@@ -889,6 +930,64 @@ function BulkSendPage() {
               )}
             </div>
 
+            {/* ============ LIVE STATUS: active campaigns running in the background ============ */}
+            {(() => {
+              const active = jobs.filter((j) => j.status === "scheduled" || j.status === "running");
+              if (active.length === 0) return null;
+              const totals = active.reduce(
+                (a, j) => ({
+                  total: a.total + (j.total_recipients || 0),
+                  sent: a.sent + (j.sent_count || 0),
+                  failed: a.failed + (j.failed_count || 0),
+                }),
+                { total: 0, sent: 0, failed: 0 },
+              );
+              const processed = totals.sent + totals.failed;
+              const pct = totals.total > 0 ? Math.round((processed / totals.total) * 100) : 0;
+              return (
+                <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 to-transparent p-5">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                      </span>
+                      <h3 className="text-sm font-bold text-foreground">
+                        {isAr ? `يعمل الآن — ${active.length} حملة نشطة` : `Live — ${active.length} active campaign${active.length > 1 ? "s" : ""}`}
+                      </h3>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{isAr ? "يُحدَّث تلقائياً كل 4 ثوانٍ" : "Auto-refresh every 4s"}</span>
+                  </div>
+                  <div className="mb-3 grid grid-cols-4 gap-2">
+                    <Stat label={isAr ? "الإجمالي" : "Total"} value={totals.total} />
+                    <Stat label={isAr ? "ناجحة" : "Sent"} value={totals.sent} />
+                    <Stat label={isAr ? "فاشلة" : "Failed"} value={totals.failed} />
+                    <Stat label={isAr ? "المتبقي" : "Remaining"} value={Math.max(0, totals.total - processed)} />
+                  </div>
+                  <div className="mb-1 flex justify-between text-xs text-muted-foreground">
+                    <span>{isAr ? "التقدم الإجمالي" : "Overall progress"}</span>
+                    <span>{processed} / {totals.total} • {pct}%</span>
+                  </div>
+                  <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {active.map((j) => (
+                      <button
+                        key={j.id}
+                        onClick={() => pauseJob(j.id)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-600 hover:bg-amber-500/20 dark:text-amber-400"
+                        title={j.title}
+                      >
+                        <Pause className="h-3 w-3" /> {isAr ? "إيقاف مؤقت:" : "Pause:"} <span className="max-w-[10rem] truncate">{j.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+
             {jobs.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border bg-card/40 p-10 text-center">
                 <ListChecks className="mx-auto h-10 w-10 text-muted-foreground" />
@@ -922,10 +1021,16 @@ function BulkSendPage() {
                         </div>
                       </div>
                       {(j.status === "scheduled" || j.status === "running") && (
-                        <button onClick={() => cancelJob(j.id)} className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10">
-                          <Pause className="h-3 w-3" /> {isAr ? "إلغاء" : "Cancel"}
-                        </button>
+                        <div className="flex flex-wrap gap-1.5">
+                          <button onClick={() => pauseJob(j.id)} className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-600 hover:bg-amber-500/20 dark:text-amber-400">
+                            <Pause className="h-3 w-3" /> {isAr ? "إيقاف مؤقت" : "Pause"}
+                          </button>
+                          <button onClick={() => cancelJob(j.id)} className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10">
+                            <XCircle className="h-3 w-3" /> {isAr ? "إلغاء" : "Cancel"}
+                          </button>
+                        </div>
                       )}
+
                       {(j.status === "cancelled" || j.status === "paused" || j.status === "failed") && (
                         <button onClick={() => resumeJob(j.id)} className="inline-flex items-center gap-1 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20">
                           <Play className="h-3 w-3" /> {isAr ? "استئناف" : "Resume"}
