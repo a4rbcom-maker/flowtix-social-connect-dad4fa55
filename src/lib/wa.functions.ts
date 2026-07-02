@@ -283,8 +283,37 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
     };
 
     const before = await countStored();
+    const chatCatalogue = await waBridge.fetchChats(row.session_id).catch((err) => ({
+      ok: false,
+      attempts: [
+        {
+          path: `/api/sessions/${row.session_id}/fetch-chats`,
+          ok: false,
+          status: err instanceof BridgeError ? err.status : undefined,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      ],
+      body: null as unknown,
+    }));
     const result = await waBridge.requestHistorySync(row.session_id);
+    result.attempts.push(...chatCatalogue.attempts);
     let directImports = { messages: 0, chats: 0, error: null as string | null };
+    if (chatCatalogue.body) {
+      const importedChats = await replayBridgeHistoryPayload(row.session_id, chatCatalogue.body).catch((err) => ({
+        messages: 0,
+        chats: 0,
+        error: err instanceof Error ? err.message : String(err),
+      }));
+      directImports.messages += importedChats.messages;
+      directImports.chats += importedChats.chats;
+      directImports.error = directImports.error ?? importedChats.error;
+      result.attempts.push({
+        path: "/api/sessions/:id/chats",
+        ok: chatCatalogue.ok,
+        importedMessages: importedChats.messages,
+        importedChats: importedChats.chats,
+      });
+    }
     if (result.body) {
       directImports = await replayBridgeHistoryPayload(row.session_id, result.body).catch((err) => ({
         messages: 0,
