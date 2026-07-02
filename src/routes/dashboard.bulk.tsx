@@ -734,12 +734,21 @@ function BulkSendPage() {
           <div className="space-y-3">
             <div className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3 text-sm">
               <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              <p className="text-foreground">
+              <p className="flex-1 text-foreground">
                 {isAr
-                  ? "تعمل المهمة في الخلفية: المعالج يدور كل دقيقة ويرسل دفعات بحسب الفاصل الزمني الذي اخترته."
-                  : "Jobs run in the background. The worker ticks every minute and sends batches respecting your interval."}
+                  ? "تعمل المهمة في الخلفية: المعالج يدور كل دقيقة ويرسل دفعات بحسب الفاصل الزمني الذي اخترته. يتم استئناف الحملات المعلقة تلقائياً بمجرد اتصال واتساب."
+                  : "Jobs run in the background. Paused/failed campaigns auto-resume as soon as WhatsApp reconnects."}
               </p>
+              {pendingJobIds.length > 0 && (
+                <button
+                  onClick={() => resumeAllPending()}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20"
+                >
+                  <Play className="h-3 w-3" /> {isAr ? `استئناف الكل (${pendingJobIds.length})` : `Resume all (${pendingJobIds.length})`}
+                </button>
+              )}
             </div>
+
             {jobs.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border bg-card/40 p-10 text-center">
                 <ListChecks className="mx-auto h-10 w-10 text-muted-foreground" />
