@@ -584,22 +584,40 @@ function BulkSendPage() {
               </div>
 
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">{isAr ? "نص الرسالة" : "Message text"}</label>
+                <label className="mb-1.5 flex items-center gap-1 text-sm font-medium text-foreground">
+                  <span>{isAr ? "نص الرسالة" : "Message text"}</span>
+                  <span className="text-destructive" aria-label="required">*</span>
+                  <span className="ms-1 rounded-full bg-destructive/10 px-1.5 text-[10px] font-semibold text-destructive">
+                    {isAr ? "مطلوب" : "required"}
+                  </span>
+                </label>
                 <textarea
                   value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder={isAr ? "اكتب الرسالة..." : "Type the message..."}
+                  onChange={(e) => setMessage(e.target.value.slice(0, MESSAGE_MAX))}
+                  placeholder={isAr ? "اكتب الرسالة... (مطلوب)" : "Type the message... (required)"}
                   rows={5}
+                  maxLength={MESSAGE_MAX}
+                  required
+                  aria-required="true"
                   className="w-full resize-none rounded-xl border border-border bg-background p-3 text-sm focus:border-primary focus:outline-none"
                 />
-                <p className="mt-1 text-end text-xs text-muted-foreground">{message.length} {isAr ? "حرف" : "chars"}</p>
+                <div className="mt-1 flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">{isAr ? "متغيرات مسموحة: {{name}}, {{phone}}" : "Placeholders: {{name}}, {{phone}}"}</span>
+                  <span className={message.length > MESSAGE_MAX * 0.9 ? "font-semibold text-destructive" : "text-muted-foreground"}>
+                    {message.length} / {MESSAGE_MAX} {isAr ? "حرف" : "chars"}
+                  </span>
+                </div>
               </div>
 
               {/* Image attach */}
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">
-                  {isAr ? "إرفاق صورة (اختياري)" : "Attach image (optional)"}
+                <label className="mb-1.5 flex items-center gap-1 text-sm font-medium text-foreground">
+                  <span>{isAr ? "إرفاق صورة" : "Attach image"}</span>
+                  <span className="ms-1 rounded-full bg-muted px-1.5 text-[10px] font-semibold text-muted-foreground">
+                    {isAr ? "اختياري" : "optional"}
+                  </span>
                 </label>
+
                 {imageUrl ? (
                   <div className="relative inline-block rounded-xl border border-border bg-background p-2">
                     <img src={imageUrl} alt="attached" className="h-32 w-auto rounded-lg object-cover" />
