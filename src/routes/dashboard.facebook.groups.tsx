@@ -246,7 +246,25 @@ function FacebookGroupsPage() {
     }
   };
 
-  const filtered = useMemo(() => {
+  const handleBotImport = async () => {
+    if (!botAccountId) return;
+    setBotImporting(true);
+    try {
+      await callServerFn(createListMyGroupsJob, { accountId: botAccountId, max: 500 });
+      toast.success(
+        lang === "ar"
+          ? "بدأنا استيراد جروباتك عبر البوت — النتائج ستظهر خلال دقائق في سجل المهام"
+          : "Started importing your groups via the bot — results appear in Jobs within minutes",
+      );
+      navigate({ to: "/dashboard/facebook/history" });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBotImporting(false);
+    }
+  };
+
+
     const q = search.trim().toLowerCase();
     if (!q) return groups;
     return groups.filter((g) => g.name.toLowerCase().includes(q));
