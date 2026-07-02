@@ -49,6 +49,8 @@ function FacebookGroupsPage() {
   const navigate = useNavigate();
 
   const [connected, setConnected] = useState<boolean | null>(null);
+  const [botAccountId, setBotAccountId] = useState<string | null>(null);
+  const [botImporting, setBotImporting] = useState(false);
   const [hasBotAccount, setHasBotAccount] = useState(false);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(false);
