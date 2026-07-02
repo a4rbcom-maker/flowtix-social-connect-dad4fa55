@@ -244,21 +244,30 @@ function BulkSendPage() {
 
   const ensureWaConnected = async (): Promise<boolean> => {
     if (!user) return false;
-    const { data, error } = await supabase
-      .from("wa_sessions")
-      .select("status")
-      .eq("user_id", user.id)
-      .order("updated_at", { ascending: false })
-      .limit(5);
+    const [{ data, error }, { data: settings }] = await Promise.all([
+      supabase
+        .from("wa_sessions")
+        .select("session_id, status")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false })
+        .limit(5),
+      supabase
+        .from("whatsapp_settings")
+        .select("is_connected")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+    ]);
     if (error) {
       toast.error(error.message);
       return false;
     }
+    const hasSession = (data?.length ?? 0) > 0;
     const hasConnectedSession = data?.some((row) => row.status === "connected") ?? false;
-    if (!hasConnectedSession) {
+    const canUseSession = hasSession && (hasConnectedSession || settings?.is_connected === true);
+    if (!canUseSession) {
       const msg = isAr
-        ? "لا يمكن بدء الحملة: جلسة واتساب غير متصلة. سيتم تحويلك لإعادة الاقتران."
-        : "Cannot start campaign: WhatsApp session is not connected. Redirecting to reconnect.";
+        ? "لا توجد جلسة واتساب مربوطة. افتح صفحة الحسابات واضغط ربط واتساب."
+        : "No WhatsApp session is linked. Open accounts and connect WhatsApp.";
       toast.error(msg);
       setTimeout(() => {
         navigate({ to: "/dashboard/whatsapp/accounts" });

@@ -418,21 +418,18 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
             const live = await waBridge.getStatus(sess.session_id);
             const liveStatus = inferStatus(live);
             if (liveStatus !== "connected") {
+              console.warn("[bulk-worker] live status was not connected; continuing with send attempt", {
+                jobId: job.id,
+                userId: job.user_id,
+                liveStatus,
+              });
+            } else {
               await supabaseAdmin
-                .from("bulk_jobs")
-                .update({
-                  error_message: "تعذر تأكيد حالة واتساب من الخادم — سنحاول تلقائياً في الدورة القادمة",
-                  next_send_at: new Date(Date.now() + 60_000).toISOString(),
-                })
-                .eq("id", job.id);
-              summary.skipped_no_session++;
-              continue;
+                .from("wa_sessions")
+                .update({ status: "connected", last_seen_at: new Date().toISOString() })
+                .eq("user_id", job.user_id)
+                .eq("session_id", sess.session_id);
             }
-            await supabaseAdmin
-              .from("wa_sessions")
-              .update({ status: "connected", last_seen_at: new Date().toISOString() })
-              .eq("user_id", job.user_id)
-              .eq("session_id", sess.session_id);
           } catch (err) {
             const status = err instanceof BridgeError ? err.status : 0;
             const msg = err instanceof Error ? err.message : String(err);
