@@ -116,6 +116,30 @@ function apiRouteMethodFallback(request: Request): Response | null {
   return methodNotAllowedResponse(allowed);
 }
 
+function isNoRouteResponseError(error: unknown) {
+  return error instanceof Error && error.message.includes("forgot to return a response from your server route handler");
+}
+
+function noRouteResponseFallback(request: Request) {
+  const { pathname } = new URL(request.url);
+  console.warn("[server] route handler returned no response", {
+    method: request.method,
+    pathname,
+  });
+
+  if (pathname.startsWith("/api/")) {
+    return Response.json(
+      { ok: false, error: "not_found", path: pathname },
+      { status: 404, headers: { "cache-control": "no-store, max-age=0" } },
+    );
+  }
+
+  return new Response(renderErrorPage(), {
+    status: 404,
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store, max-age=0" },
+  });
+}
+
 async function getServerEntry(): Promise<ServerEntry> {
   if (!serverEntryPromise) {
     serverEntryPromise = import("@tanstack/react-start/server-entry").then(
@@ -184,6 +208,7 @@ export default {
       }
       return normalized;
     } catch (error) {
+      if (isNoRouteResponseError(error)) return noRouteResponseFallback(request);
       console.error(error);
       return new Response(renderErrorPage(), {
         status: 500,
