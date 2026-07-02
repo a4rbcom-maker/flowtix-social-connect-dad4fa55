@@ -648,7 +648,37 @@ function BulkSendPage() {
                 )}
               </div>
 
+              <div className="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-3">
+                <p className="mb-2 text-xs font-semibold text-foreground">
+                  {isAr ? "اختبر الجلسة قبل الإطلاق" : "Test the session before launch"}
+                </p>
+                <p className="mb-2 text-[11px] text-muted-foreground">
+                  {isAr ? "أرسل رسالة تجريبية لرقمك للتأكد أن الجلسة تعمل." : "Send a test message to your own number to verify the session."}
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    placeholder={isAr ? "رقم دولي، مثال: 201234567890" : "Intl. number, e.g., 201234567890"}
+                    value={testPhone}
+                    onChange={(e) => setTestPhone(e.target.value)}
+                    className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                    dir="ltr"
+                  />
+                  <button
+                    type="button"
+                    onClick={sendSessionTest}
+                    disabled={testSending}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-60"
+                  >
+                    {testSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                    {testSending ? (isAr ? "جارٍ..." : "Sending…") : (isAr ? "اختبار" : "Test")}
+                  </button>
+                </div>
+              </div>
+
               <button
+
                 onClick={launchCampaign}
                 disabled={submitting}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 hover:opacity-95 disabled:opacity-60"
