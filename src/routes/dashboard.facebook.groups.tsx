@@ -264,7 +264,7 @@ function FacebookGroupsPage() {
     }
   };
 
-
+  const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return groups;
     return groups.filter((g) => g.name.toLowerCase().includes(q));
