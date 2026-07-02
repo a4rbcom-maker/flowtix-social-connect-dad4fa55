@@ -342,7 +342,12 @@ export const waBridge = {
     }
     return { ok: false, attempts, body: null as unknown };
   },
-  fetchMessages: (id: string, jid: string, limit = 50, opts: { anchorMessageId?: string | null } = {}) =>
+  fetchMessages: (
+    id: string,
+    jid: string,
+    limit = 50,
+    opts: { anchorMessageId?: string | null; anchorTimestamp?: number | null; fromMe?: boolean | null } = {},
+  ) =>
     bridgeFetch<unknown>(
       `/api/sessions/${encodeURIComponent(id)}/fetch-messages`,
       {
@@ -356,6 +361,8 @@ export const waBridge = {
           fullHistory: true,
           historySyncMode: "full",
           ...(opts.anchorMessageId ? { anchorMessageId: opts.anchorMessageId } : {}),
+          ...(opts.anchorTimestamp ? { anchorTimestamp: opts.anchorTimestamp } : {}),
+          ...(opts.fromMe != null ? { fromMe: opts.fromMe } : {}),
         }),
       },
     ),
