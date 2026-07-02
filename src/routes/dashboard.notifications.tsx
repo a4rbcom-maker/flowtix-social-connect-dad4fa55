@@ -60,19 +60,25 @@ function NotificationCenter() {
   });
 
 
-  const [filter, setFilter] = useState<"all" | "unread">("all");
+  const [filter, setFilter] = useState<"all" | "unread" | "read">("all");
   const [type, setType] = useState<string>("all");
 
   type Row = NonNullable<typeof data>["rows"][number];
   const rows: Row[] = data?.rows ?? [];
+  const unreadTotal = useMemo(
+    () => rows.filter((r) => !r._read?.read_at && !r._read?.ack_at).length,
+    [rows]
+  );
   const filtered = useMemo(() => {
     return rows.filter((r) => {
       const isUnread = !r._read?.read_at && !r._read?.ack_at;
       if (filter === "unread" && !isUnread) return false;
+      if (filter === "read" && isUnread) return false;
       if (type !== "all" && (r.notif_type ?? "info") !== type) return false;
       return true;
     });
   }, [rows, filter, type]);
+
 
   const readMut = useMutation({
     mutationFn: (it: Row) => readFn({ data: { announcementId: it.id, ack: !!it.require_ack } }),
