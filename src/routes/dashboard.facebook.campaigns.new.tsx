@@ -60,6 +60,8 @@ function NewCampaignPage() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [filterMode, setFilterMode] = useState<"all" | "selected" | "unselected" | "manual">("all");
+  const [sortMode, setSortMode] = useState<"name" | "id" | "selected">("name");
 
   // Form
   const [name, setName] = useState("");
@@ -87,8 +89,12 @@ function NewCampaignPage() {
     name: "اسم الحملة", namePh: "مثلاً: حملة سبتمبر للمنتج X",
     account: "اختيار قناة", accountPh: "اختر حساب فيسبوك",
     targets: "اختيار الوجهات", targetsHint: "حدد الجروبات التي ستُنشَر فيها الحملة",
-    loadGroups: "جلب الجروبات", searchPh: "ابحث عن جروب...",
-    selectAll: "تحديد الكل", clearAll: "إلغاء التحديد", selected: "محدد",
+    loadGroups: "جلب الجروبات", searchPh: "ابحث بالاسم أو المعرف...",
+    selectAll: "تحديد الكل", selectAllVisible: "تحديد الظاهر", invert: "عكس التحديد",
+    clearAll: "إلغاء التحديد", selected: "محدد",
+    filterAll: "الكل", filterSelected: "المحدد", filterUnselected: "غير المحدد", filterManual: "يدوي",
+    sortLabel: "ترتيب", sortName: "الاسم", sortId: "المعرف", sortSelected: "المحدد أولاً",
+    empty: "لا نتائج مطابقة للفلتر الحالي",
     noGroups: "اضغط \"جلب الجروبات\" لاستيراد جروباتك",
     sendType: "نوع الإرسال", text: "نص", mediaType: "وسائط",
     template: "اختر قالباً (اختياري)", noTemplate: "بدون قالب — اكتب نصاً مباشرة",
@@ -121,8 +127,12 @@ function NewCampaignPage() {
     name: "Campaign name", namePh: "e.g.: September campaign for Product X",
     account: "Choose channel", accountPh: "Select Facebook account",
     targets: "Choose destinations", targetsHint: "Pick the groups to post the campaign in",
-    loadGroups: "Load groups", searchPh: "Search group...",
-    selectAll: "Select all", clearAll: "Clear", selected: "selected",
+    loadGroups: "Load groups", searchPh: "Search name or ID...",
+    selectAll: "Select all", selectAllVisible: "Select visible", invert: "Invert",
+    clearAll: "Clear", selected: "selected",
+    filterAll: "All", filterSelected: "Selected", filterUnselected: "Unselected", filterManual: "Manual",
+    sortLabel: "Sort", sortName: "Name", sortId: "ID", sortSelected: "Selected first",
+    empty: "No groups match the current filter",
     noGroups: "Click \"Load groups\" to import your groups",
     sendType: "Send type", text: "Text", mediaType: "Media",
     template: "Pick a template (optional)", noTemplate: "No template — write text directly",
