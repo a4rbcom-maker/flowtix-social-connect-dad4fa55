@@ -376,8 +376,17 @@ export const waBridge = {
     jid: string,
     limit = 50,
     opts: { anchorMessageId?: string | null; anchorTimestamp?: number | null; fromMe?: boolean | null } = {},
-  ) =>
-    bridgeFetch<unknown>(
+  ) => {
+    // Bot-Xtra's /fetch-messages endpoint divides a provided anchorTimestamp
+    // by 1000 before passing it to Baileys. Our DB anchors are seconds, so send
+    // milliseconds here; otherwise the bridge asks WhatsApp for history around
+    // 1970 and returns no older messages.
+    const anchorTimestampMs = opts.anchorTimestamp
+      ? opts.anchorTimestamp < 1_000_000_000_000
+        ? opts.anchorTimestamp * 1000
+        : opts.anchorTimestamp
+      : null;
+    return bridgeFetch<unknown>(
       `/api/sessions/${encodeURIComponent(id)}/fetch-messages`,
       {
         method: "POST",
@@ -390,11 +399,12 @@ export const waBridge = {
           fullHistory: true,
           historySyncMode: "full",
           ...(opts.anchorMessageId ? { anchorMessageId: opts.anchorMessageId } : {}),
-          ...(opts.anchorTimestamp ? { anchorTimestamp: opts.anchorTimestamp } : {}),
+          ...(anchorTimestampMs ? { anchorTimestamp: anchorTimestampMs } : {}),
           ...(opts.fromMe != null ? { fromMe: opts.fromMe } : {}),
         }),
       },
-    ),
+    );
+  },
   getStatus: (id: string) =>
     bridgeFetch<BridgeStatusResponse>(`/api/sessions/${encodeURIComponent(id)}/status`),
   getQr: (id: string) =>
