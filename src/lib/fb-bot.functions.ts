@@ -381,6 +381,107 @@ async function assertUsableBotAccount(
   }
 }
 
+// ---------- Extraction quotas (per-user) ----------
+// Friendly, user-facing limits to guarantee stable, high-quality extraction
+// and to protect the Facebook accounts themselves from safety triggers.
+// Applies to: extract_pages, extract_commenters, extract_group_members, extract_page_audience.
+const EXTRACTION_JOB_TYPES = [
+  "extract_pages",
+  "extract_commenters",
+  "extract_group_members",
+  "extract_page_audience",
+] as const;
+const EXTRACTION_MAX_CONCURRENT = 1;      // one active extraction at a time
+const EXTRACTION_COOLDOWN_SECONDS = 45;   // gap between two extractions
+const EXTRACTION_DAILY_CAP = 25;          // total extractions per rolling 24h
+
+async function assertExtractionQuota(
+  supabase: { from: (table: string) => any },
+  userId: string,
+) {
+  const nowMs = Date.now();
+  const sinceIso = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: recent, error } = await supabase
+    .from("fb_jobs")
+    .select("id, status, created_at")
+    .eq("user_id", userId)
+    .in("job_type", EXTRACTION_JOB_TYPES as unknown as string[])
+    .gte("created_at", sinceIso)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) throw new Error(error.message);
+
+  const rows = (recent ?? []) as Array<{ status: string; created_at: string }>;
+
+  const active = rows.filter((r) => r.status === "pending" || r.status === "running");
+  if (active.length >= EXTRACTION_MAX_CONCURRENT) {
+    throw new Error(
+      `لضمان جودة الاستخراج وأمان حسابك، يُسمح بمهمة استخراج واحدة نشطة فقط في كل مرة. انتظر انتهاء المهمة الحالية ثم أعد المحاولة.`,
+    );
+  }
+
+  if (rows.length >= EXTRACTION_DAILY_CAP) {
+    throw new Error(
+      `وصلت للحد اليومي (${EXTRACTION_DAILY_CAP} عملية استخراج خلال 24 ساعة). هذا الحد يحمي حسابك من قيود فيسبوك ويحافظ على استقرار الاستخراج. حاول لاحقاً.`,
+    );
+  }
+
+  const last = rows[0];
+  if (last) {
+    const elapsed = Math.floor((nowMs - new Date(last.created_at).getTime()) / 1000);
+    if (elapsed < EXTRACTION_COOLDOWN_SECONDS) {
+      const remain = EXTRACTION_COOLDOWN_SECONDS - elapsed;
+      throw new Error(
+        `يوجد فاصل زمني قصير بين عمليات الاستخراج لضمان أعلى جودة وحماية حسابك. حاول بعد ${remain} ثانية.`,
+      );
+    }
+  }
+}
+
+// Public read-only quota status for the UI (banner + disabled buttons).
+export const getExtractionQuotaStatus = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const nowMs = Date.now();
+    const sinceIso = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from("fb_jobs")
+      .select("id, status, created_at")
+      .eq("user_id", userId)
+      .in("job_type", EXTRACTION_JOB_TYPES as unknown as string[])
+      .gte("created_at", sinceIso)
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as Array<{ status: string; created_at: string }>;
+    const active = rows.filter((r) => r.status === "pending" || r.status === "running").length;
+    const usedToday = rows.length;
+    const last = rows[0];
+    const cooldownRemaining = last
+      ? Math.max(
+          0,
+          EXTRACTION_COOLDOWN_SECONDS -
+            Math.floor((nowMs - new Date(last.created_at).getTime()) / 1000),
+        )
+      : 0;
+    return {
+      maxConcurrent: EXTRACTION_MAX_CONCURRENT,
+      activeCount: active,
+      dailyCap: EXTRACTION_DAILY_CAP,
+      usedToday,
+      remainingToday: Math.max(0, EXTRACTION_DAILY_CAP - usedToday),
+      cooldownSeconds: EXTRACTION_COOLDOWN_SECONDS,
+      cooldownRemaining,
+      canStart:
+        active < EXTRACTION_MAX_CONCURRENT &&
+        usedToday < EXTRACTION_DAILY_CAP &&
+        cooldownRemaining === 0,
+    };
+  });
+
+
 // ---------- listBotAccounts ----------
 export const listBotAccounts = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
