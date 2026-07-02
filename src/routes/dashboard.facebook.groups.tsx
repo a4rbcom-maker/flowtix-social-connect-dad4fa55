@@ -423,8 +423,9 @@ function FacebookGroupsPage() {
         <GraphApiConnectWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
 
 
-        {/* Step 1: Browse + select */}
-        {(connected || groups.length > 0) && step === "browse" && (
+        {/* Browse + select */}
+        {(connected || groups.length > 0) && (
+
           <div className="space-y-4">
             {/* Toolbar */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
