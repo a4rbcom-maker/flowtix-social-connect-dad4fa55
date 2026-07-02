@@ -19,20 +19,24 @@ export const reauthOnExpiredSession = createMiddleware({ type: "function" }).cli
         : (err as { status?: number; statusCode?: number } | null)?.status ??
           (err as { statusCode?: number } | null)?.statusCode;
 
+    const AUTH_ERROR_MESSAGE = /unauthorized|401|jwt|invalid.*token|token.*expired|session.*expired|انتهت.*الجلسة/i;
+
     const isAuthError = (err: unknown) => {
       const status = getStatus(err);
       const message = err instanceof Error ? err.message : typeof err === "string" ? err : "";
-      return (
-        status === 401 ||
-        status === 403 ||
-        /unauthorized|401|403|jwt|invalid.*token|token.*expired/i.test(message)
-      );
+      if (status === 401) return true;
+      // 403 can also be CSRF / permissions / edge protection. Treat it as an
+      // auth-expired signal only when the message explicitly says token/session.
+      if (status === 403) return AUTH_ERROR_MESSAGE.test(message);
+      return AUTH_ERROR_MESSAGE.test(message);
     };
 
     const responseToError = async (response: Response) => {
       const body = await response.clone().text().catch(() => "");
+      const contentType = response.headers.get("content-type") ?? "";
+      const readableBody = contentType.includes("text/html") ? "" : body.trim();
       const normalized = new Error(
-        body?.trim() || `REQUEST_FAILED: تعذر تنفيذ الطلب (${response.status})`,
+        readableBody || `REQUEST_FAILED: تعذر تنفيذ الطلب (${response.status})`,
       );
       (normalized as { status?: number }).status = response.status;
       (normalized as { cause?: unknown }).cause = response;
