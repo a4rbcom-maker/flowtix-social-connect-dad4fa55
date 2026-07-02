@@ -256,6 +256,8 @@ function GroupExtractionStatusPage() {
           </div>
         </div>
 
+        <ExtractionQuotaBanner />
+
         {/* KPIs */}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Card className="p-4">
