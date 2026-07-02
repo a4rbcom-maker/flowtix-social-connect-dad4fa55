@@ -216,7 +216,10 @@ function InboxPage() {
         fetchAllNow: "إحضار كل المحادثات الآن",
         fetchingAll: "جارٍ إحضار كل المحادثات…",
         fetchAllHint: "يعيد جلب كل محادثاتك الحالية من واتساب بنفس منطق الجلسة الجديدة، دون الحاجة لمسح QR مرة أخرى.",
+        repairForHistory: "أعد الاقتران لاستيراد كل المحادثات",
+        repairHint: "واتساب يرسل أرشيف المحادثات القديمة مرة واحدة فقط عند أول ربط بعد مسح QR. لجلب كامل السجل، افصل الجلسة الحالية وامسح QR جديد — سيتم بث المحادثات على دفعات خلال دقائق حسب حجم أرشيفك.",
       }
+
     : {
         title: "Conversations",
         subtitle: "All your incoming and outgoing messages in one place.",
@@ -268,7 +271,10 @@ function InboxPage() {
         fetchAllNow: "Fetch all chats now",
         fetchingAll: "Fetching all chats…",
         fetchAllHint: "Re-imports all your current WhatsApp chats using the same logic as a new session — no need to scan a QR again.",
+        repairForHistory: "Re-pair to import all chats",
+        repairHint: "WhatsApp streams the archived history only once, on the first pairing after a QR scan. To pull the full backlog, disconnect the current session and scan a new QR — chats will arrive in batches over a few minutes depending on your archive size.",
       };
+
 
   // Data
   const safeCall = async <T,>(fn: () => Promise<T>, fallback: T): Promise<T> => {
@@ -1166,17 +1172,34 @@ function InboxPage() {
                   <div className="mt-1 text-amber-800/90 dark:text-amber-200/90">
                     {syncState.message}
                   </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={historySyncMut.isPending}
-                    onClick={() => historySyncMut.mutate()}
-                    className="mt-2 h-7 gap-1.5 border-amber-500/40 bg-amber-500/10 text-[11px] font-semibold text-amber-900 hover:bg-amber-500/20 dark:text-amber-100"
-                  >
-                    {historySyncMut.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
-                    {isAr ? "إعادة محاولة الإحضار" : "Retry fetching"}
-                  </Button>
+                  <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-[10.5px] leading-relaxed text-amber-900/90 dark:text-amber-100/90">
+                    {t.repairHint}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={historySyncMut.isPending}
+                      onClick={() => historySyncMut.mutate()}
+                      className="h-7 gap-1.5 border-amber-500/40 bg-amber-500/10 text-[11px] font-semibold text-amber-900 hover:bg-amber-500/20 dark:text-amber-100"
+                    >
+                      {historySyncMut.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
+                      {isAr ? "إعادة محاولة الإحضار" : "Retry fetching"}
+                    </Button>
+                    <Button
+                      asChild
+                      type="button"
+                      size="sm"
+                      className="h-7 gap-1.5 bg-amber-600 text-[11px] font-semibold text-white hover:bg-amber-700"
+                    >
+                      <Link to="/dashboard/whatsapp/accounts">
+                        <RefreshCw className="h-3 w-3" />
+                        {t.repairForHistory}
+                      </Link>
+                    </Button>
+                  </div>
+
                 </div>
               )}
             </div>
