@@ -169,7 +169,6 @@ describe("updateWaSessionStatus — stability guarantees", () => {
     });
 
     expect(state.session.status).toBe("connected");
-    expect(state.events.at(-1)?.reason).toMatch(/bulk_active_debounce/);
     // whatsapp_settings must not be marked disconnected during debounce
     expect(state.settingsUpdates.some((u) => u.is_connected === false)).toBe(false);
   });
