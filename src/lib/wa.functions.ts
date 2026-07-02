@@ -551,6 +551,23 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
           ? `history_sync_requested_waiting_for_bridge_batches${directImports.error ? ` (${directImports.error})` : ""}`
           : "history_sync_endpoint_unavailable",
     });
+    const importedMsgDelta = Math.max(0, after.messages - before.messages);
+    const importedConvDelta = Math.max(0, after.conversations - before.conversations);
+    const finalStatus = actuallyImported ? "done" : requestAccepted ? "pending" : "error";
+    const finalMessage = finalStatus === "error"
+      ? "bridge_history_sync_endpoint_unavailable"
+      : directImports.error ?? null;
+    await supabase
+      .from("wa_history_sync_jobs")
+      .update({
+        status: finalStatus,
+        imported_msg: importedMsgDelta,
+        imported_conv: importedConvDelta,
+        message: finalMessage,
+        finished_at: finalStatus === "pending" ? null : new Date().toISOString(),
+      })
+      .eq("user_id", userId);
+
     return {
       ok: actuallyImported || requestAccepted,
       sessionId: row.session_id,
@@ -568,14 +585,91 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
     };
   });
 
-export const getWaSessionEvents = createServerFn({ method: "POST" })
+export interface WaHistorySyncJob {
+  status: "idle" | "running" | "pending" | "done" | "error";
+  sessionId: string | null;
+  baselineMsg: number;
+  baselineConv: number;
+  importedMsg: number;
+  importedConv: number;
+  message: string | null;
+  startedAt: string | null;
+  deadlineAt: string | null;
+  finishedAt: string | null;
+}
+
+/** Read (and lazily finalize) the persisted history-sync job for the current user. */
+export const getWaHistorySyncJob = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<WaSessionEventRow[]> => {
+  .handler(async ({ context }): Promise<WaHistorySyncJob> => {
     const { supabase, userId } = context;
     const { data, error } = await supabase
-      .from("wa_session_events")
-      .select("created_at, session_id, from_status, to_status, source, reason, raw_status, bridge_event")
+      .from("wa_history_sync_jobs")
+      .select("session_id, status, baseline_msg, baseline_conv, imported_msg, imported_conv, message, started_at, deadline_at, finished_at")
       .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) {
+      return { status: "idle", sessionId: null, baselineMsg: 0, baselineConv: 0, importedMsg: 0, importedConv: 0, message: null, startedAt: null, deadlineAt: null, finishedAt: null };
+    }
+
+    let status = data.status as WaHistorySyncJob["status"];
+    let importedMsg = data.imported_msg;
+    let importedConv = data.imported_conv;
+    let message = data.message;
+    let finishedAt = data.finished_at;
+
+    // Recompute live counts while the job is active so progress advances
+    // even if the client that started it is offline.
+    if (status === "running" || status === "pending") {
+      const [{ count: liveConv }, { count: liveMsg }] = await Promise.all([
+        supabase.from("wa_conversations").select("id", { count: "exact", head: true }).eq("user_id", userId),
+        supabase.from("wa_messages").select("id", { count: "exact", head: true }).eq("user_id", userId),
+      ]);
+      importedMsg = Math.max(0, (liveMsg ?? 0) - data.baseline_msg);
+      importedConv = Math.max(0, (liveConv ?? 0) - data.baseline_conv);
+
+      const deadlinePassed = data.deadline_at ? Date.now() >= new Date(data.deadline_at).getTime() : false;
+      if (deadlinePassed) {
+        const hasImports = importedMsg > 0 || importedConv > 0;
+        status = hasImports ? "done" : "error";
+        message = hasImports ? null : "bridge_history_sync_endpoint_unavailable";
+        finishedAt = new Date().toISOString();
+        await supabase
+          .from("wa_history_sync_jobs")
+          .update({ status, imported_msg: importedMsg, imported_conv: importedConv, message, finished_at: finishedAt })
+          .eq("user_id", userId);
+      } else if (importedMsg !== data.imported_msg || importedConv !== data.imported_conv) {
+        await supabase
+          .from("wa_history_sync_jobs")
+          .update({ imported_msg: importedMsg, imported_conv: importedConv })
+          .eq("user_id", userId);
+      }
+    }
+
+    return {
+      status,
+      sessionId: data.session_id,
+      baselineMsg: data.baseline_msg,
+      baselineConv: data.baseline_conv,
+      importedMsg,
+      importedConv,
+      message,
+      startedAt: data.started_at,
+      deadlineAt: data.deadline_at,
+      finishedAt,
+    };
+  });
+
+/** Dismiss the current job card (e.g. after user reads a done/error state). */
+export const dismissWaHistorySyncJob = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase.from("wa_history_sync_jobs").delete().eq("user_id", userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
       .order("created_at", { ascending: false })
       .limit(10);
     if (error) throw new Error(error.message);
