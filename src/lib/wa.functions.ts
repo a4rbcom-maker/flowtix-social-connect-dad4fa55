@@ -380,7 +380,7 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       }
     };
 
-    const MAX_PAGES_PER_JID = 6; // ~300 older messages per chat per sync run
+    const MAX_PAGES_PER_JID = 1; // خفيف: 10 رسائل أقدم لكل محادثة في كل ضغطة
     let fetchedKnownChats = 0;
     for (const jid of Array.from(knownJids).slice(0, 120)) {
       if (!jid || jid === "@s.whatsapp.net" || jid.endsWith("@broadcast")) continue;
@@ -389,7 +389,7 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
         try {
           const anchorId = anchorByJid.get(jid) ?? null;
           const anchorTs = anchorTsByJid.get(jid) ?? null;
-          const fetchBody = await waBridge.fetchMessages(row.session_id, jid, 50, {
+          const fetchBody = await waBridge.fetchMessages(row.session_id, jid, 10, {
             anchorMessageId: anchorId,
             anchorTimestamp: anchorTs,
           });
