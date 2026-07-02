@@ -187,7 +187,7 @@ function WhatsAppPage() {
         step3: "Menu → Linked Devices → Link a Device",
         step4: "Point the camera at the QR shown",
         qrExpire: "QR expires every ~60s. If you can't scan in time, click «Reconnect».",
-        confirmDisconnect: "Disconnect permanently? You'll need to re-scan later.",
+        confirmDisconnect: "Warning: all your chats and messages will be permanently deleted. This cannot be undone. Re-scanning starts fresh. Continue?",
         successConnected: "WhatsApp linked successfully",
         successDisc: "Disconnected",
         errorTitle: "An error occurred",
