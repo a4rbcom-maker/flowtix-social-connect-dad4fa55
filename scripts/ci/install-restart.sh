@@ -17,6 +17,13 @@ cleanup_self() {
   rm -f "$__SELF_PATH" 2>/dev/null || true
   find /tmp -maxdepth 1 -type f -name 'install-restart-*.sh' -mtime +1 \
     -delete 2>/dev/null || true
+  if [ -n "${STAGING_PATH:-}" ]; then
+    case "$STAGING_PATH" in
+      "$HOME"/.flowtixtools-web-staging/*)
+        rm -rf "$STAGING_PATH" 2>/dev/null || true
+        ;;
+    esac
+  fi
 }
 
 # ===== Failure diagnostic dump =====

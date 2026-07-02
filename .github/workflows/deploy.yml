@@ -302,9 +302,10 @@ jobs:
           USER="${SERVER_USER:-${SSH_USER:-}}"
           HOST="${SERVER_IP:-${SSH_HOST:-}}"
           PORT="${SSH_PORT:-22}"
-          REMOTE_STAGING=".flowtixtools-web-staging/${GITHUB_RUN_ID}"
+          REMOTE_STAGING_ROOT=".flowtixtools-web-staging"
+          REMOTE_STAGING="${REMOTE_STAGING_ROOT}/${GITHUB_RUN_ID}"
           ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
-            "${USER}@${HOST}" "rm -rf '${REMOTE_STAGING}' && mkdir -p '${REMOTE_STAGING}'"
+            "${USER}@${HOST}" "mkdir -p '${REMOTE_STAGING_ROOT}' && find '${REMOTE_STAGING_ROOT}' -mindepth 1 -maxdepth 1 -type d -mtime +1 -exec rm -rf {} + 2>/dev/null || true; rm -rf '${REMOTE_STAGING}' && mkdir -p '${REMOTE_STAGING}'"
           rsync -az --delete \
             --exclude='.env' --exclude='.user.ini' --exclude='.htaccess' \
             --exclude='.well-known/' --exclude='var/' --exclude='*.log' \
@@ -354,6 +355,24 @@ jobs:
             fi
             exit "$SSH_EXIT"
           fi
+
+      - name: Cleanup remote staging bundle
+        if: always() && steps.lock.outputs.skip != 'true'
+        env:
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -eu
+          [ -n "${REMOTE_STAGING:-}" ] || exit 0
+          USER="${SERVER_USER:-${SSH_USER:-}}"
+          HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          PORT="${SSH_PORT:-22}"
+          ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
+            "${USER}@${HOST}" \
+            "case '${REMOTE_STAGING}' in .flowtixtools-web-staging/*) rm -rf '${REMOTE_STAGING}' ;; esac; find '.flowtixtools-web-staging' -mindepth 1 -maxdepth 1 -type d -mtime +1 -exec rm -rf {} + 2>/dev/null || true"
 
       # ─── 10. Local health check on the VPS itself ──────────────────────
       - name: Verify SSR app on 127.0.0.1
