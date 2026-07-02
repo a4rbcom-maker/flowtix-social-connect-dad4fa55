@@ -1063,6 +1063,36 @@ html {
   --toast-error:   var(--status-error);
   --toast-warning: var(--status-warning);
   --toast-info:    var(--status-info);
+
+  /* ── Sizing & spacing tokens — shared by every state
+     (default / success / warning / info / error / destructive / loading).
+     Override the token values in a media query to reshape all states at once. */
+  --toast-radius: 16px;
+  --toast-padding-y: 14px;
+  --toast-padding-x: 16px;
+  --toast-gap: 12px;
+
+  --toast-title-size: 0.95rem;
+  --toast-title-line: 1.4;
+  --toast-title-tracking: 0.005em;
+  --toast-title-weight: 700;
+
+  --toast-desc-size: 0.85rem;
+  --toast-desc-line: 1.55;
+  --toast-desc-mt: 2px;
+
+  --toast-icon-size: 22px;
+  --toast-icon-svg: 20px;
+
+  --toast-btn-radius: 10px;
+  --toast-btn-padding-y: 6px;
+  --toast-btn-padding-x: 12px;
+  --toast-btn-font: 0.85rem;
+  --toast-btn-weight: 600;
+  --toast-btn-min-h: auto;
+
+  --toast-close-size: 22px;
+  --toast-accent-width: 3px;
 }
 
 .dark [data-sonner-toaster] {
