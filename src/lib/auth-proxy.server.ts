@@ -2,6 +2,10 @@ import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database } from "@/integrations/supabase/types";
 
+const AUTH_ATTEMPTS = 3;
+const AUTH_ATTEMPT_TIMEOUT_MS = 10_000;
+const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504, 521, 522, 523, 524]);
+
 const loginSchema = z.object({
   email: z.string().trim().email().max(255),
   password: z.string().min(1).max(200),
@@ -52,9 +56,50 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   ]);
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableAuthFailure(err: unknown) {
+  const record = err && typeof err === "object" ? (err as Record<string, unknown>) : null;
+  const status =
+    typeof record?.status === "number"
+      ? record.status
+      : typeof record?.statusCode === "number"
+        ? record.statusCode
+        : undefined;
+  const message = err instanceof Error ? err.message.toLowerCase() : String(record?.message ?? err ?? "").toLowerCase();
+
+  return (
+    (typeof status === "number" && RETRYABLE_STATUS_CODES.has(status)) ||
+    message.includes("timed out") ||
+    message.includes("timeout") ||
+    message.includes("failed to fetch") ||
+    message.includes("fetch failed") ||
+    message.includes("network") ||
+    message === "{}"
+  );
+}
+
+async function retryAuthRequest<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= AUTH_ATTEMPTS; attempt += 1) {
+    try {
+      return await withTimeout(operation(), AUTH_ATTEMPT_TIMEOUT_MS);
+    } catch (err) {
+      lastError = err;
+      if (attempt === AUTH_ATTEMPTS || !isRetryableAuthFailure(err)) break;
+      await delay(350 * attempt);
+    }
+  }
+
+  throw lastError;
+}
+
 function authErrorResponse(err: unknown) {
   const record = err && typeof err === "object" ? (err as Record<string, unknown>) : null;
-  const message =
+  const rawMessage =
     typeof record?.message === "string"
       ? record.message
       : err instanceof Error
@@ -65,7 +110,7 @@ function authErrorResponse(err: unknown) {
       ? record.status
       : typeof record?.statusCode === "number"
         ? record.statusCode
-        : message.toLowerCase().includes("timed out")
+        : rawMessage.toLowerCase().includes("timed out")
           ? 504
           : 502;
   const code =
@@ -74,6 +119,10 @@ function authErrorResponse(err: unknown) {
       : typeof record?.error_code === "string"
         ? record.error_code
         : "auth_proxy_error";
+  const message =
+    rawMessage === "{}" || rawMessage.toLowerCase().includes("timed out")
+      ? "Authentication service is temporarily unavailable. Please try again in a moment."
+      : rawMessage;
 
   // Keep messages useful for the UI, but never include credentials or internals.
   console.warn("[auth-proxy] authentication failed", { status, code, message });
@@ -107,9 +156,8 @@ export async function handlePasswordLogin(request: Request) {
 
   try {
     const supabase = getSupabaseAuthClient();
-    const { data, error } = await withTimeout(
+    const { data, error } = await retryAuthRequest(() =>
       supabase.auth.signInWithPassword({ email: parsed.data.email, password: parsed.data.password }),
-      25_000,
     );
     if (error) return authErrorResponse(error);
     if (!data.session || !data.user) {
@@ -129,7 +177,7 @@ export async function handlePasswordSignup(request: Request) {
 
   try {
     const supabase = getSupabaseAuthClient();
-    const { data, error } = await withTimeout(
+    const { data, error } = await retryAuthRequest(() =>
       supabase.auth.signUp({
         email: parsed.data.email,
         password: parsed.data.password,
@@ -141,7 +189,6 @@ export async function handlePasswordSignup(request: Request) {
           emailRedirectTo: safeRedirect(request, parsed.data.emailRedirectTo),
         },
       }),
-      25_000,
     );
     if (error) return authErrorResponse(error);
     return json({ ok: true, session: data.session, user: data.user });
