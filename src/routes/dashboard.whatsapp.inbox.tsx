@@ -271,7 +271,10 @@ function InboxPage() {
         fetchAllNow: "Fetch all chats now",
         fetchingAll: "Fetching all chats…",
         fetchAllHint: "Re-imports all your current WhatsApp chats using the same logic as a new session — no need to scan a QR again.",
+        repairForHistory: "Re-pair to import all chats",
+        repairHint: "WhatsApp streams the archived history only once, on the first pairing after a QR scan. To pull the full backlog, disconnect the current session and scan a new QR — chats will arrive in batches over a few minutes depending on your archive size.",
       };
+
 
   // Data
   const safeCall = async <T,>(fn: () => Promise<T>, fallback: T): Promise<T> => {
