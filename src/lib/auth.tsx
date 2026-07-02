@@ -111,9 +111,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const redirect = encodeURIComponent(path + window.location.search);
-      // Use full navigation so router state + query cache reset cleanly.
-      window.location.replace(`/login?reason=${reason}&redirect=${redirect}`);
+      // Show an overlay so the user never sees a blank screen during navigation.
+      setRedirecting(reason);
+      // Small delay lets React paint the overlay before the hard navigation.
+      window.setTimeout(() => {
+        window.location.replace(`/login?reason=${reason}&redirect=${redirect}`);
+      }, 30);
     };
+
 
 
     // Guard: if user lands on a protected route without any session, redirect
