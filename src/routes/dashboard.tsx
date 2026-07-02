@@ -55,29 +55,35 @@ function DashboardOverview() {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const [{ data: prof }, { data: fb }, { data: wa }] = await Promise.all([
-        supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
-        supabase
-          .from("facebook_connections")
-          .select("fb_user_name")
-          .eq("user_id", user.id)
-          .maybeSingle(),
-        supabase
-          .from("whatsapp_settings")
-          .select("is_connected, connection_type, ai_enabled")
-          .eq("user_id", user.id)
-          .maybeSingle(),
-      ]);
-      setProfile(prof);
-      setStatus({
-        facebook: { connected: !!fb, name: fb?.fb_user_name },
-        whatsapp: {
-          connected: !!wa?.is_connected,
-          type: wa?.connection_type,
-          ai_enabled: !!wa?.ai_enabled,
-        },
-      });
-      setLoading(false);
+      setLoading(true);
+      try {
+        const [{ data: prof }, { data: fb }, { data: wa }] = await Promise.all([
+          supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+          supabase
+            .from("facebook_connections")
+            .select("fb_user_name")
+            .eq("user_id", user.id)
+            .maybeSingle(),
+          supabase
+            .from("whatsapp_settings")
+            .select("is_connected, connection_type, ai_enabled")
+            .eq("user_id", user.id)
+            .maybeSingle(),
+        ]);
+        setProfile(prof);
+        setStatus({
+          facebook: { connected: !!fb, name: fb?.fb_user_name },
+          whatsapp: {
+            connected: !!wa?.is_connected,
+            type: wa?.connection_type,
+            ai_enabled: !!wa?.ai_enabled,
+          },
+        });
+      } catch (error) {
+        console.warn("[dashboard] failed to load overview", error);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [user]);
 
