@@ -172,15 +172,44 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
 
         summary.repaired_false_success = await repairFalseQueuedSuccesses();
 
-        // 1) Promote scheduled → running
+        // Per-user concurrency cap (default 3, configurable via whatsapp_settings.max_concurrent_campaigns).
+        const concurrencyCache = new Map<string, number>();
+        async function getUserMaxConcurrent(userId: string): Promise<number> {
+          if (concurrencyCache.has(userId)) return concurrencyCache.get(userId)!;
+          const { data } = await supabaseAdmin
+            .from("whatsapp_settings")
+            .select("max_concurrent_campaigns")
+            .eq("user_id", userId)
+            .maybeSingle();
+          const n = Math.max(1, Math.min(10, data?.max_concurrent_campaigns ?? 3));
+          concurrencyCache.set(userId, n);
+          return n;
+        }
+        // Track running jobs per user across this tick (seeded from DB).
+        const runningPerUser = new Map<string, number>();
+        {
+          const { data: currentlyRunning } = await supabaseAdmin
+            .from("bulk_jobs")
+            .select("user_id")
+            .eq("status", "running");
+          for (const r of currentlyRunning ?? []) {
+            runningPerUser.set(r.user_id, (runningPerUser.get(r.user_id) ?? 0) + 1);
+          }
+        }
+
+        // 1) Promote scheduled → running, respecting per-user cap
         const { data: due } = await supabaseAdmin
           .from("bulk_jobs")
-          .select("id")
+          .select("id, user_id, scheduled_at")
           .eq("status", "scheduled")
           .lte("scheduled_at", now.toISOString())
+          .order("scheduled_at", { ascending: true })
           .limit(MAX_JOBS_PER_TICK);
 
         for (const job of due ?? []) {
+          const cap = await getUserMaxConcurrent(job.user_id);
+          const active = runningPerUser.get(job.user_id) ?? 0;
+          if (active >= cap) continue; // leave scheduled; will retry next tick
           await supabaseAdmin
             .from("bulk_jobs")
             .update({
@@ -189,16 +218,24 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
               next_send_at: now.toISOString(),
             })
             .eq("id", job.id);
+          runningPerUser.set(job.user_id, active + 1);
           summary.promoted++;
         }
 
         // 2) Process running jobs whose next_send_at is due
+        // Enforce per-user cap here too: if user has more running than cap
+        // (e.g. cap was lowered after they were promoted), only process the
+        // oldest N and skip the rest this tick.
         const { data: running } = await supabaseAdmin
           .from("bulk_jobs")
           .select("*")
           .eq("status", "running")
           .lte("next_send_at", now.toISOString())
+          .order("started_at", { ascending: true })
           .limit(MAX_JOBS_PER_TICK);
+
+        const processedPerUser = new Map<string, number>();
+
 
         // Cache wa_sessions per user for this tick
         const sessionCache = new Map<string, { session_id: string; status: string } | null>();
