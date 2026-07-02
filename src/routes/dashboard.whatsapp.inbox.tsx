@@ -2429,6 +2429,41 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
     });
   }
 
+  // Fallback: أي محادثة ليست ضمن آخر 5000 رسالة، اجلب لها آخر رسالة حقيقية
+  // بشكل مستقل حتى لا يعتمد الترتيب على وقت إنشاء صف wa_conversations.
+  const missingJids = rows
+    .map((r) => r.remote_jid)
+    .filter((jid) => jid && !latestMessageByJid.has(jid));
+  if (missingJids.length > 0) {
+    const CHUNK = 12;
+    for (let i = 0; i < missingJids.length; i += CHUNK) {
+      const batch = missingJids.slice(i, i + CHUNK);
+      const results = await Promise.all(
+        batch.map(async (jid) => {
+          const { data: last } = await supabase
+            .from("wa_messages")
+            .select("session_id, remote_jid, direction, text_body, msg_type, media_url, from_phone, to_phone, wa_timestamp, created_at")
+            .eq("user_id", userId)
+            .eq("remote_jid", jid)
+            .order("wa_timestamp", { ascending: false, nullsFirst: false })
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          return { jid, last };
+        }),
+      );
+      for (const { jid, last } of results) {
+        if (!last) continue;
+        latestMessageByJid.set(jid, last);
+        const current = metaByJid.get(jid) ?? { phone: null, preview: null };
+        metaByJid.set(jid, {
+          phone: current.phone ?? phoneFromMessageRow(jid, last.from_phone, last.to_phone),
+          preview: current.preview ?? previewTextFromStoredFields(last.text_body, last.msg_type, last.media_url),
+        });
+      }
+    }
+  }
+
   const existingJids = new Set(rows.map((row) => row.remote_jid));
   const visibleRows: RankedConversationRow[] = rows.map((row): RankedConversationRow => {
     const meta = metaByJid.get(row.remote_jid);
