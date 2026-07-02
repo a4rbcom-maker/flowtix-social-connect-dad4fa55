@@ -12,44 +12,72 @@ import { supabase } from "@/integrations/supabase/client";
  * toast — instead of surfacing a raw "حدث خطأ غير متوقع" to the user.
  */
 export const reauthOnExpiredSession = createMiddleware({ type: "function" }).client(
-  async ({ next }) => {
-    try {
-      return await next();
-    } catch (err: unknown) {
-      const status =
-        err instanceof Response
-          ? err.status
-          : (err as { status?: number; statusCode?: number })?.status ??
-            (err as { statusCode?: number })?.statusCode;
+  async ({ next, fetch }) => {
+    const getStatus = (err: unknown) =>
+      err instanceof Response
+        ? err.status
+        : (err as { status?: number; statusCode?: number } | null)?.status ??
+          (err as { statusCode?: number } | null)?.statusCode;
+
+    const isAuthError = (err: unknown) => {
+      const status = getStatus(err);
       const message = err instanceof Error ? err.message : typeof err === "string" ? err : "";
-      const isAuthError =
+      return (
         status === 401 ||
         status === 403 ||
-        /unauthorized|401|jwt|invalid.*token|token.*expired/i.test(message);
-      if (!isAuthError) throw err;
+        /unauthorized|401|403|jwt|invalid.*token|token.*expired/i.test(message)
+      );
+    };
 
-      // Try to refresh the session once. If it works, retry the call.
-      const { data, error } = await supabase.auth.refreshSession();
-      if (!error && data.session) {
-        try {
-          return await next();
-        } catch (retryErr) {
-          err = retryErr;
-        }
-      }
-
-      // Refresh failed → sign out locally and redirect to /login (prevents blank screen).
+    const redirectToLogin = async (cause: unknown): Promise<never> => {
       await supabase.auth.signOut({ scope: "local" }).catch(() => {});
       if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
         const current = window.location.pathname + window.location.search;
         window.location.replace(`/login?reason=expired&redirect=${encodeURIComponent(current)}`);
       }
-      // Normalize the thrown Response into a real Error so callers/boundaries
-      // don't render "[object Response]" when they stringify it.
+
+      // Normalize raw Response objects into a real Error so React/TanStack
+      // boundaries never stringify them as "[object Response]".
       const authError = new Error("SESSION_EXPIRED: انتهت الجلسة، جارٍ إعادة تسجيل الدخول…");
-      (authError as { status?: number }).status = 401;
-      (authError as { cause?: unknown }).cause = err;
+      (authError as { status?: number }).status = getStatus(cause) ?? 401;
+      (authError as { cause?: unknown }).cause = cause;
       throw authError;
+    };
+
+    let refreshAttempted = false;
+    const baseFetch = fetch ?? globalThis.fetch.bind(globalThis);
+    const fetchWithReauth: typeof fetch = async (input, init = {}) => {
+      const response = await baseFetch(input, init);
+      if (response.status !== 401 && response.status !== 403) return response;
+
+      if (!refreshAttempted) {
+        refreshAttempted = true;
+        const { data, error } = await supabase.auth.refreshSession();
+        const token = data.session?.access_token;
+
+        if (!error && token) {
+          const headers = new Headers(init.headers);
+          headers.set("Authorization", `Bearer ${token}`);
+          const retryResponse = await baseFetch(input, { ...init, headers });
+          if (retryResponse.status !== 401 && retryResponse.status !== 403) {
+            return retryResponse;
+          }
+          return redirectToLogin(retryResponse);
+        }
+      }
+
+      return redirectToLogin(response);
+    };
+
+    try {
+      const result = await next({ fetch: fetchWithReauth });
+      const middlewareResult = result as { error?: unknown; result?: unknown };
+      if (isAuthError(middlewareResult.error)) throw middlewareResult.error;
+      if (isAuthError(middlewareResult.result)) return redirectToLogin(middlewareResult.result);
+      return result;
+    } catch (err: unknown) {
+      if (!isAuthError(err)) throw err;
+      return redirectToLogin(err);
     }
   },
 );

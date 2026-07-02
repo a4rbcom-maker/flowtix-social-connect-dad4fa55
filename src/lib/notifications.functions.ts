@@ -2,14 +2,46 @@
 // Authenticated via requireSupabaseAuth — RLS on platform_announcements +
 // notification_reads scopes data to the current user.
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
+import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { Database } from "@/integrations/supabase/types";
+
+const EMPTY_NOTIFICATIONS = { rows: [], unreadCount: 0, popupId: null as string | null };
+
+async function getNotificationAuth() {
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
+  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+    throw new Error("Missing Supabase environment variables");
+  }
+
+  const authHeader = getRequest()?.headers?.get("authorization");
+  if (!authHeader?.startsWith("Bearer ")) return null;
+
+  const token = authHeader.replace("Bearer ", "");
+  if (!token) return null;
+
+  const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
+  });
+
+  const { data, error } = await supabase.auth.getClaims(token);
+  const userId = data?.claims?.sub;
+  if (error || !userId) return null;
+
+  return { supabase, userId };
+}
 
 // List active announcements targeted at the current user, with read-state joined.
 export const getMyNotifications = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { supabase, userId } = context;
+  .handler(async () => {
+    const auth = await getNotificationAuth();
+    if (!auth) return EMPTY_NOTIFICATIONS;
+
+    const { supabase, userId } = auth;
     // RLS does the targeting filter for us. Pull all rows visible to the user.
     const { data: anns, error } = await supabase
       .from("platform_announcements")
