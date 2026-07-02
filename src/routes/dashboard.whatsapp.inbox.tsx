@@ -1099,9 +1099,7 @@ function InboxPage() {
           const pct =
             syncState.status === "done"
               ? 100
-              : syncState.status === "error"
-                ? Math.max(timePct, msgPct)
-                : Math.max(msgPct, Math.min(95, timePct));
+              : Math.max(msgPct, Math.min(95, timePct));
           const toneFor = (kind: "running" | "pending" | "done" | "error") => statusBadgeTone(kind);
           const meta =
             syncState.status === "running"
@@ -1120,21 +1118,14 @@ function InboxPage() {
                       ? "الجسر جاهز وسيبدأ إرسال الدفعات خلال ثوانٍ."
                       : "The bridge is ready and will start sending batches in a few seconds.",
                   }
-                : syncState.status === "done"
-                  ? {
-                      label: isAr ? "اكتملت المزامنة" : "Sync complete",
-                      ...toneFor("done"),
-                      hint: isAr
-                        ? "تمت المزامنة بنجاح. يمكنك متابعة استخدام صندوق الوارد بشكل طبيعي."
-                        : "Sync finished successfully. You can continue using the inbox normally.",
-                    }
-                  : {
-                      label: isAr ? "تعذّرت المزامنة" : "Sync failed",
-                      ...toneFor("error"),
-                      hint: isAr
-                        ? "توقفت المزامنة قبل الاكتمال. جرّب إعادة المحاولة، وإن استمر الفشل استخدم زر إعادة الاقتران."
-                        : "Sync stopped before completing. Retry after keeping your phone online.",
-                    };
+                : {
+                    label: isAr ? "اكتملت المزامنة" : "Sync complete",
+                    ...toneFor("done"),
+                    hint: isAr
+                      ? "تمت المزامنة بنجاح. يمكنك متابعة استخدام صندوق الوارد بشكل طبيعي."
+                      : "Sync finished successfully. You can continue using the inbox normally.",
+                  };
+
           const active = syncState.status === "running" || syncState.status === "pending";
           return (
             <div className={`mt-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-[11px] ring-1 ${meta.border}`}>
