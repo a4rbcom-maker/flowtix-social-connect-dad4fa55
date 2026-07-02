@@ -271,7 +271,7 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
       ? `${rawFromDigits}@lid`
       : null;
   const realPhone =
-    explicitPhone || (!rawFromLidJid ? rawFromDigits : null);
+    explicitPhone || (!rawFromLidJid && jidType !== "lid" ? rawFromDigits : null);
   const keyRemote = pickStr(key, "remoteJid");
   const groupJid = pickStr(entry, "groupJid", "groupId") || (keyRemote?.endsWith("@g.us") ? keyRemote : null);
   const directChatJid = pickStr(entry, "rawJid", "remoteJid", "remote_jid", "jid", "chatId");
