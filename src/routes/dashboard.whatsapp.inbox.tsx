@@ -34,7 +34,9 @@ import {
   Sun,
   Moon,
   PlayCircle,
+  AlertTriangle,
 } from "lucide-react";
+import { classifySendError, type SendErrorInfo } from "@/lib/wa-send-error";
 import { toast } from "sonner";
 import { useTheme } from "@/lib/theme";
 import { useI18n } from "@/lib/i18n";
