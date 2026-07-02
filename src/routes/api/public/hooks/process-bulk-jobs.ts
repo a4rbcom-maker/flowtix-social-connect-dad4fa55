@@ -79,17 +79,28 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
           const sentCount = (rows ?? []).filter((r) => r.status === "success").length;
           const failedCount = (rows ?? []).filter((r) => r.status === "failed").length;
           const unresolvedCount = (rows ?? []).filter((r) => r.status === "pending" || r.status === "processing").length;
-          const update: Record<string, unknown> = {
-            sent_count: sentCount,
-            failed_count: failedCount,
-            updated_at: new Date().toISOString(),
-          };
           if (failedCount > 0 && unresolvedCount === 0) {
-            update.status = "failed";
-            update.error_message = "قبل الجسر الطلب لكن لم يتم تأكيد التسليم — أعد ربط واتساب ثم استأنف الحملة";
-            update.next_send_at = null;
+            await supabaseAdmin
+              .from("bulk_jobs")
+              .update({
+                sent_count: sentCount,
+                failed_count: failedCount,
+                updated_at: new Date().toISOString(),
+                status: "failed",
+                error_message: "قبل الجسر الطلب لكن لم يتم تأكيد التسليم — أعد ربط واتساب ثم استأنف الحملة",
+                next_send_at: null,
+              })
+              .eq("id", jobId);
+            return;
           }
-          await supabaseAdmin.from("bulk_jobs").update(update).eq("id", jobId);
+          await supabaseAdmin
+            .from("bulk_jobs")
+            .update({
+              sent_count: sentCount,
+              failed_count: failedCount,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", jobId);
         };
 
         const repairFalseQueuedSuccesses = async () => {
