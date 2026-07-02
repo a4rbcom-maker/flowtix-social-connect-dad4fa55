@@ -1106,10 +1106,15 @@ function InboxPage() {
                 <p className="px-6 text-sm font-medium">
                   {isAr ? "لا توجد محادثات بعد." : "No conversations yet."}
                 </p>
-                <p className="px-6 text-xs text-muted-foreground">
+                <p className="max-w-xs px-6 text-xs text-muted-foreground">
                   {isAr
                     ? "بمجرد وصول رسالة جديدة على رقم واتساب المرتبط، ستظهر هنا تلقائيًا."
                     : "As soon as a new message arrives on the linked WhatsApp number, it will show up here automatically."}
+                </p>
+                <p className="mt-1 max-w-xs rounded-full bg-muted/60 px-3 py-1 text-[11px] text-muted-foreground/90">
+                  {isAr
+                    ? "المحادثات القديمة قد تظهر تدريجيًا — لا حاجة لأي إجراء."
+                    : "Older chats may appear gradually — no action needed."}
                 </p>
               </>
             ) : (
