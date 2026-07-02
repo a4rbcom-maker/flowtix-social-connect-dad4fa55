@@ -506,6 +506,10 @@ function NewCampaignPage() {
         await callFn(startCampaign, { id: c.id });
         toast.success(t.started);
       }
+      // Clear persisted selection now that the campaign was created
+      try {
+        if (user) localStorage.removeItem(`${SELECTION_STORAGE_KEY}.${user.id}`);
+      } catch { /* ignore */ }
       navigate({ to: "/dashboard/facebook/campaigns" });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
