@@ -125,8 +125,9 @@ function WhatsAppPage() {
         deepResetHint: "لو الرقم متصل لكن مافيش رسائل بتوصل، جرّب ده — بيمسح كل الجلسات المعلقة على الخادم ويعمل جلسة نظيفة بـ QR جديد.",
         deepResetConfirm: "سيتم مسح كل جلسات واتساب المرتبطة بحسابك على الخادم ثم إنشاء جلسة جديدة. متابعة؟",
         deepResetDone: "تم الفصل العميق — امسح الـ QR الجديد",
-        showQr: "عرض QR للمسح",
-        hideQr: "إخفاء QR",
+        showQr: "توليد كود QR جديد",
+        hideQr: "إخفاء الكود",
+
         refresh: "تحديث الحالة",
         ping: "اختبار خادم الربط",
         cloudBridge: "تم تفعيل الجسر المركزي تلقائياً لهذا السيرفر.",
@@ -173,8 +174,9 @@ function WhatsAppPage() {
         deepResetHint: "If your number shows connected but no messages arrive, run this — it wipes every stale session tied to your account on the bridge and creates a fresh one with a new QR.",
         deepResetConfirm: "This will wipe every WhatsApp session on the bridge tied to your account and start a fresh one. Continue?",
         deepResetDone: "Deep reset done — scan the new QR",
-        showQr: "Show QR to scan",
+        showQr: "Generate new QR",
         hideQr: "Hide QR",
+
         refresh: "Refresh status",
         ping: "Test bridge",
         cloudBridge: "Central bridge fallback is active for this server.",
@@ -273,9 +275,9 @@ function WhatsAppPage() {
     }
   }, [qrValue]);
 
-  // Countdown ticker + auto-refresh expired QR silently
+  // Countdown ticker + auto-refresh expired QR silently (only when QR panel is open)
   useEffect(() => {
-    if (!qrIssuedAt || status === "connected") return;
+    if (!qrIssuedAt || status === "connected" || !showQr) return;
     const timer = setInterval(() => {
       const elapsed = Math.floor((Date.now() - qrIssuedAt) / 1000);
       const left = Math.max(0, 60 - elapsed);
@@ -286,7 +288,8 @@ function WhatsAppPage() {
       }
     }, 1000);
     return () => clearInterval(timer);
-  }, [qrIssuedAt, status]);
+  }, [qrIssuedAt, status, showQr]);
+
 
 
   const connectMut = useMutation({
@@ -326,10 +329,11 @@ function WhatsAppPage() {
         return;
       }
       setPolling(true);
-      setShowQr(true);
+      // QR panel visibility is controlled explicitly by the user; do not auto-open.
     },
     onError: (err: Error) => toast.error(t.errorTitle, { description: err.message }),
   });
+
 
   const deepResetMut = useMutation({
     mutationFn: () => deepResetFn(),
@@ -459,10 +463,11 @@ function WhatsAppPage() {
                     </div>
 
                     {/* Meta */}
-                    <dl className="mt-5 grid grid-cols-1 gap-2.5 text-sm sm:grid-cols-2">
-                      <MetaRow label={t.sessionLabel} value={<span className="truncate font-mono text-xs" dir="ltr">{state.sessionId}</span>} />
-                      <MetaRow label={t.lastSeenLabel} value={fmtTime(state.lastSeenAt)} />
+                    <dl className="mt-5 space-y-2 text-sm">
+                      <MetaRow label={t.sessionLabel} value={<span className="break-all font-mono text-[11px] leading-tight" dir="ltr">{state.sessionId}</span>} />
+                      <MetaRow label={t.lastSeenLabel} value={<span dir="ltr">{fmtTime(state.lastSeenAt)}</span>} />
                     </dl>
+
 
                     {errorMsg && (
                       <div className="mt-4 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
@@ -505,23 +510,23 @@ function WhatsAppPage() {
                             {status !== "connected" && (
                               <button
                                 type="button"
-                                onClick={() => setShowQr((v) => !v)}
-                                className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-sm font-semibold text-foreground hover:bg-muted/60"
+                                onClick={() => {
+                                  if (showQr) {
+                                    setShowQr(false);
+                                    return;
+                                  }
+                                  setShowQr(true);
+                                  // Always request a fresh QR when opening the panel
+                                  resetMut.mutate();
+                                }}
+                                disabled={resetMut.isPending}
+                                className="inline-flex h-10 items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] px-4 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-95 disabled:opacity-60"
                               >
-                                <QrCode className="h-4 w-4" />
+                                {resetMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
                                 {showQr ? t.hideQr : t.showQr}
                               </button>
                             )}
 
-                            <button
-                              type="button"
-                              onClick={() => resetMut.mutate()}
-                              disabled={resetMut.isPending}
-                              className="inline-flex h-10 items-center gap-2 rounded-xl bg-muted px-4 text-sm font-semibold text-foreground hover:bg-muted/80 disabled:opacity-60"
-                            >
-                              {resetMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                              {t.reconnect}
-                            </button>
 
                             {hasLinkedNumber && (
                               <button
@@ -910,12 +915,13 @@ function StatusDot({ status }: { status: string }) {
 
 function MetaRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 px-3 py-2">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      <span className="min-w-0 text-end text-xs font-semibold text-foreground">{value}</span>
+    <div className="flex flex-col gap-1 rounded-lg bg-muted/30 px-3 py-2">
+      <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="min-w-0 text-xs font-semibold text-foreground">{value}</span>
     </div>
   );
 }
+
 
 function QrView({ qr, polling, secondsLeft, autoRefreshing, ar, t }: { qr: string; polling: boolean; secondsLeft: number; autoRefreshing: boolean; ar: boolean; t: { scan: string; scanWaiting: string } }) {
   const isDataUrl = qr.startsWith("data:image");
