@@ -34,7 +34,9 @@ import {
   Sun,
   Moon,
   PlayCircle,
+  AlertTriangle,
 } from "lucide-react";
+import { classifySendError, type SendErrorInfo } from "@/lib/wa-send-error";
 import { toast } from "sonner";
 import { useTheme } from "@/lib/theme";
 import { useI18n } from "@/lib/i18n";
@@ -682,6 +684,10 @@ function InboxPage() {
     el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
   }, [draft]);
 
+  const [sendError, setSendError] = useState<SendErrorInfo | null>(null);
+  // Auto-dismiss the inline alert when user switches chat or starts typing again.
+  useEffect(() => { setSendError(null); }, [activeJid]);
+
   const sendMut = useMutation({
     mutationFn: async ({ text, file }: { text: string; file: File | null }) => {
       let mediaUrl: string | undefined;
@@ -726,6 +732,7 @@ function InboxPage() {
     onSuccess: (_res, vars) => {
       const hadFile = !!vars.file;
       setDraft("");
+      setSendError(null);
       if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
       setAttachment(null);
       qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
@@ -736,8 +743,11 @@ function InboxPage() {
           : isAr ? "تم إرسال الرسالة بنجاح" : "Message sent successfully",
       );
     },
-    onError: (err: Error) => toast.error(err.message),
+    // Show a rich, dismissible inline alert instead of a noisy toast so the
+    // user sees the reason + retry steps without spam on repeated attempts.
+    onError: (err: Error) => setSendError(classifySendError(err)),
   });
+
 
 
   const historySyncMut = useMutation({
@@ -1391,6 +1401,55 @@ function InboxPage() {
             )}
           </div>
 
+
+          {/* Send failure alert — replaces the previous raw error toast */}
+          {sendError && (
+            <div
+              role="alert"
+              className="mx-2.5 mb-0 mt-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm sm:mx-3"
+            >
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold text-destructive">
+                      {isAr ? sendError.title.ar : sendError.title.en}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setSendError(null)}
+                      className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      aria-label={isAr ? "إغلاق" : "Dismiss"}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <p className="mt-1 text-muted-foreground">
+                    {isAr ? sendError.reason.ar : sendError.reason.en}
+                  </p>
+                  <ol className="mt-2 list-decimal space-y-0.5 ps-5 text-xs text-foreground/80">
+                    {sendError.steps.map((s, i) => (
+                      <li key={i}>{isAr ? s.ar : s.en}</li>
+                    ))}
+                  </ol>
+                  {sendError.retryable && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const text = draft.trim();
+                        if ((!text && !attachment) || sendMut.isPending || uploadingAttachment) return;
+                        sendMut.mutate({ text, file: attachment?.file ?? null });
+                      }}
+                      className="mt-2 inline-flex items-center gap-1 rounded-md border border-destructive/30 bg-background px-2.5 py-1 text-xs font-medium text-destructive hover:bg-destructive/10"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      {isAr ? "إعادة المحاولة" : "Retry"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Composer */}
           <form
