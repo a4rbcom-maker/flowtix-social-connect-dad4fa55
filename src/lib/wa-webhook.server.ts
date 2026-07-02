@@ -750,6 +750,49 @@ async function importHistoryMessages(params: {
   return { saved, duplicates: dup, total: msgs.length };
 }
 
+// Idempotency: dedupe repeated webhook deliveries. The bridge may retry the
+// same event (e.g. after a 5xx or network timeout); processing it twice can
+// re-toggle session status or duplicate messages. We accept the first delivery
+// and answer 200 for the rest without side effects.
+async function isDuplicateWebhookDelivery(params: {
+  sessionId: string;
+  event: string;
+  payload: Record<string, unknown>;
+  data: Record<string, unknown>;
+  rawBody: string;
+}): Promise<boolean> {
+  const { sessionId, event, payload, data, rawBody } = params;
+  const providerId =
+    messageIdFrom(data) ||
+    messageIdFrom(payload) ||
+    pickStr(data, "eventId", "event_id", "id", "deliveryId", "delivery_id") ||
+    pickStr(payload, "eventId", "event_id", "id", "deliveryId", "delivery_id");
+  const tsRaw =
+    pickStr(data, "timestamp", "ts", "t") ||
+    pickStr(payload, "timestamp", "ts", "t") ||
+    "";
+  let eventKey: string;
+  if (providerId) {
+    eventKey = `${sessionId}:${event}:${providerId}`;
+  } else {
+    // Fall back to a content hash so identical retried payloads still dedupe.
+    let hash = 0;
+    for (let i = 0; i < rawBody.length; i++) hash = (hash * 31 + rawBody.charCodeAt(i)) | 0;
+    eventKey = `${sessionId}:${event}:${tsRaw}:h${hash.toString(36)}`;
+  }
+  if (eventKey.length > 240) eventKey = eventKey.slice(0, 240);
+
+  const { error } = await supabaseAdmin
+    .from("wa_webhook_events")
+    .insert({ event_key: eventKey, session_id: sessionId, event });
+  if (!error) return false;
+  const code = (error as { code?: string }).code;
+  if (code === "23505") return true; // primary-key conflict → duplicate
+  // Best-effort table: if insert fails for another reason, do not block delivery.
+  console.warn("[wa-webhook] dedup insert failed, proceeding:", error.message);
+  return false;
+}
+
 export async function handleWaWebhook(request: Request): Promise<Response> {
   const secret = process.env.WA_BRIDGE_WEBHOOK_SECRET;
   const raw = await request.text();
@@ -804,6 +847,16 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   const userId = sess.user_id;
   const event = String(payload.event || payload.type || "").toLowerCase();
   const data = asObj(payload.data);
+
+  if (
+    await isDuplicateWebhookDelivery({ sessionId, event, payload, data, rawBody: raw })
+  ) {
+    return new Response(JSON.stringify({ ok: true, deduped: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
 
   if (CONTACT_EVENTS.has(event)) {
     const contacts = pickContactArray(payload, data);
