@@ -317,18 +317,8 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       return { ok: false, sessionId: row.session_id, requested: false, attempts: [], error: "session_not_connected" };
     }
 
-    const countStored = async () => {
-      const { count: conversations } = await supabase
-        .from("wa_conversations")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId)
-        .eq("session_id", row.session_id);
-      // لا نعدّ wa_messages هنا: count exact على الرسائل أثناء مزامنة التاريخ
-      // كان يضغط Disk IO بلا فائدة للعميل. نعتمد على عدد المحادثات + أرقام الاستيراد المباشر.
-      return { conversations: conversations ?? 0, messages: 0 };
-    };
-
-    const before = await countStored();
+    // لا نستخدم count exact أثناء المزامنة نهائيًا؛ أرقام التقدم تأتي من الاستيراد المباشر فقط.
+    const before = { conversations: 0, messages: 0 };
 
     // Persist the sync job so progress survives across browser reloads / device sleep.
     const deadlineMs = Date.now() + 90_000;
@@ -528,11 +518,7 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       result.ok = fetchedKnownChats > 0;
     }
 
-    let after = await countStored();
-    for (let i = 0; i < 6 && after.messages === before.messages && after.conversations === before.conversations; i++) {
-      await wait(2000);
-      after = await countStored();
-    }
+    const after = { conversations: directImports.chats, messages: directImports.messages };
 
     const actuallyImported = directImports.messages > 0 || directImports.chats > 0 || after.conversations > before.conversations;
     const requestAccepted = result.ok || fetchedKnownChats > 0;
@@ -550,7 +536,7 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
           : "history_sync_endpoint_unavailable",
     });
     const importedMsgDelta = Math.max(0, directImports.messages);
-    const importedConvDelta = Math.max(0, after.conversations - before.conversations);
+    const importedConvDelta = Math.max(0, directImports.chats);
     const finalStatus = actuallyImported ? "done" : requestAccepted ? "pending" : "error";
     const finalMessage = finalStatus === "error"
       ? "bridge_history_sync_endpoint_unavailable"
