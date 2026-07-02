@@ -163,6 +163,51 @@ function FacebookGroupsPage() {
     })();
   }, [user]);
 
+  // Load previously imported groups from the most recent completed list_my_groups job
+  // so the user doesn't have to re-import every time they revisit the page.
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const { data: lastJob } = await supabase
+          .from("fb_jobs")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("job_type", "list_my_groups")
+          .eq("status", "completed")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (!lastJob?.id) return;
+        const { data: rows } = await supabase
+          .from("fb_job_results")
+          .select("target,data")
+          .eq("job_id", lastJob.id)
+          .eq("status", "success")
+          .limit(1000);
+        if (!rows?.length) return;
+        const imported: Group[] = rows.map((r) => {
+          const d = (r.data ?? {}) as { name?: string; group_id?: string; id?: string; member_count?: number; privacy?: string };
+          return {
+            id: d.group_id ?? d.id ?? r.target ?? "",
+            name: d.name ?? r.target ?? "—",
+            member_count: d.member_count,
+            privacy: d.privacy,
+          };
+        }).filter((g) => g.id);
+        if (imported.length) {
+          setGroups((prev) => {
+            if (prev.length) return prev;
+            return imported;
+          });
+        }
+      } catch {
+        // ignore — user can always re-import manually
+      }
+    })();
+  }, [user]);
+
+
   // Consume handoff from the main Facebook page (preselected groups + jump to compose)
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -400,8 +445,9 @@ function FacebookGroupsPage() {
           })}
         </div>
 
-        {/* Not connected via Graph API */}
-        {connected === false && (
+        {/* Not connected via Graph API AND no bot-imported groups yet */}
+        {connected === false && groups.length === 0 && (
+
           <div className="rounded-2xl border border-border bg-card p-8 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
               <AlertCircle className="h-6 w-6" />
@@ -460,7 +506,7 @@ function FacebookGroupsPage() {
 
 
         {/* Step 1: Browse + select */}
-        {connected && step === "browse" && (
+        {(connected || groups.length > 0) && step === "browse" && (
           <div className="space-y-4">
             {/* Toolbar */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -484,13 +530,14 @@ function FacebookGroupsPage() {
                 {lang === "ar" ? "كيف يعمل؟" : "How it works"}
               </button>
               <button
-                onClick={handleImport}
-                disabled={loading}
+                onClick={connected ? handleImport : handleBotImport}
+                disabled={loading || botImporting || (!connected && !botAccountId)}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
               >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                {loading ? t.importing : groups.length > 0 ? t.reimport : t.import}
+                {(loading || botImporting) ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                {(loading || botImporting) ? t.importing : groups.length > 0 ? t.reimport : t.import}
               </button>
+
             </div>
 
 
