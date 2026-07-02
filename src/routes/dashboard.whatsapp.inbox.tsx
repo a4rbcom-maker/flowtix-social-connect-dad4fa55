@@ -83,6 +83,7 @@ export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
 
 type FilterKey = "all" | "unread" | "ai";
 type TimeRangeKey = "all" | "1d" | "7d" | "30d" | "90d";
+type RankedConversationRow = ConversationRow & { _sort_at?: string | null; _has_stored_message?: boolean };
 
 function InboxPage() {
   const { lang } = useI18n();
@@ -2440,6 +2441,8 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
       last_message_at: latestMessageAt ?? row.last_message_at,
       last_direction: latestMessage?.direction ?? row.last_direction,
       profile_pic_url: row.profile_pic_url ?? null,
+      _sort_at: latestMessageAt,
+      _has_stored_message: Boolean(latestMessageAt),
     };
   });
 
@@ -2462,6 +2465,8 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
       last_direction: direction,
       unread_count: 0,
       ai_enabled: false,
+      _sort_at: messageRowIso(msg),
+      _has_stored_message: true,
     });
   }
 
@@ -2689,8 +2694,12 @@ function hasConversationPreview(conv: ConversationRow): boolean {
 }
 
 function conversationSortMs(conv: ConversationRow): number {
+  const ranked = conv as RankedConversationRow;
+  if (ranked._sort_at === null) return 0;
+  if (ranked._sort_at) return safeTimeMs(ranked._sort_at);
   // محادثات كتالوج واتساب التي لم يصل لها أي رسالة بعد لا يجب أن تصعد للأعلى
   // لمجرد أنها أُنشئت وقت إعادة الاقتران.
+  if (ranked._has_stored_message === false) return 0;
   if (!hasConversationPreview(conv) && (conv.unread_count || 0) === 0) return 0;
   return safeTimeMs(conv.last_message_at);
 }
