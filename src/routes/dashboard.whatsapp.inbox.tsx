@@ -408,7 +408,7 @@ function InboxPage() {
       }
       return Array.from(groups.values())
         .map((items) => mergeConversationAliases(items))
-        .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
+        .sort(compareConversationsByLastRealActivity);
     },
     [convQuery.data],
   );
@@ -843,7 +843,7 @@ function InboxPage() {
       const daysMap: Record<Exclude<TimeRangeKey, "all">, number> = { "1d": 1, "7d": 7, "30d": 30, "90d": 90 };
       const cutoff = Date.now() - daysMap[timeRange] * 24 * 60 * 60 * 1000;
       out = out.filter((c) => {
-        const ts = c.last_message_at ? new Date(c.last_message_at).getTime() : 0;
+        const ts = conversationSortMs(c);
         return ts >= cutoff;
       });
     }
@@ -2397,7 +2397,8 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
       .from("wa_messages")
       .select("session_id, remote_jid, direction, text_body, msg_type, media_url, from_phone, to_phone, wa_timestamp, created_at")
       .eq("user_id", userId)
-      .order("wa_timestamp", { ascending: false })
+      .order("wa_timestamp", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
       .limit(5000),
   ]);
 
@@ -2409,10 +2410,14 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
   const rows = (data ?? []) as ConversationRow[];
   const metaByJid = new Map<string, { phone: string | null; preview: string | null }>();
   const latestMessageByJid = new Map<string, NonNullable<typeof rawMessages>[number]>();
-  for (const msg of msgError ? [] : (rawMessages ?? [])) {
+  const orderedMessages = (msgError ? [] : (rawMessages ?? [])).sort(
+    (a, b) => messageRowTimeMs(b) - messageRowTimeMs(a),
+  );
+  for (const msg of orderedMessages) {
     const jid = String(msg.remote_jid ?? "");
     if (!jid) continue;
-    if (!latestMessageByJid.has(jid)) latestMessageByJid.set(jid, msg);
+    const currentLatest = latestMessageByJid.get(jid);
+    if (!currentLatest || messageRowTimeMs(msg) > messageRowTimeMs(currentLatest)) latestMessageByJid.set(jid, msg);
     const current = metaByJid.get(jid) ?? { phone: null, preview: null };
     metaByJid.set(jid, {
       phone: current.phone ?? phoneFromMessageRow(jid, msg.from_phone, msg.to_phone),
@@ -2423,11 +2428,17 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
   const existingJids = new Set(rows.map((row) => row.remote_jid));
   const visibleRows: ConversationRow[] = rows.map((row) => {
     const meta = metaByJid.get(row.remote_jid);
+    const latestMessage = latestMessageByJid.get(row.remote_jid);
     const isGroup = row.remote_jid.endsWith("@g.us");
+    const latestMessageAt = latestMessage ? messageRowIso(latestMessage) : null;
     return {
       ...row,
       contact_phone: isGroup ? null : (meta?.phone ?? row.contact_phone),
       last_message_text: meta?.preview ?? row.last_message_text,
+      // ترتيب الواتساب لازم يعتمد على آخر رسالة فعلية محفوظة، وليس وقت إنشاء
+      // صف المحادثة أثناء إعادة الاقتران/كتالوج الشاتات.
+      last_message_at: latestMessageAt ?? row.last_message_at,
+      last_direction: latestMessage?.direction ?? row.last_direction,
       profile_pic_url: row.profile_pic_url ?? null,
     };
   });
@@ -2455,7 +2466,7 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
   }
 
   return visibleRows
-    .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime())
+    .sort(compareConversationsByLastRealActivity)
     .slice(0, 2000);
 }
 
@@ -2644,7 +2655,7 @@ function usefulContactName(name: string | null | undefined, phone: string | null
 }
 
 function mergeConversationAliases(items: ConversationRow[]): ConversationRow {
-  const sorted = [...items].sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
+  const sorted = [...items].sort(compareConversationsByLastRealActivity);
   const preferred = items.find((c) => c.remote_jid.endsWith("@lid")) ?? sorted[0];
   const newest = sorted[0];
   const phone = items
@@ -2665,6 +2676,43 @@ function mergeConversationAliases(items: ConversationRow[]): ConversationRow {
     unread_count: items.reduce((sum, c) => sum + (c.unread_count || 0), 0),
     ai_enabled: items.some((c) => c.ai_enabled),
   };
+}
+
+function safeTimeMs(iso: string | null | undefined): number {
+  if (!iso) return 0;
+  const time = new Date(iso).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function hasConversationPreview(conv: ConversationRow): boolean {
+  return Boolean(conv.last_message_text?.trim());
+}
+
+function conversationSortMs(conv: ConversationRow): number {
+  // محادثات كتالوج واتساب التي لم يصل لها أي رسالة بعد لا يجب أن تصعد للأعلى
+  // لمجرد أنها أُنشئت وقت إعادة الاقتران.
+  if (!hasConversationPreview(conv) && (conv.unread_count || 0) === 0) return 0;
+  return safeTimeMs(conv.last_message_at);
+}
+
+function compareConversationsByLastRealActivity(a: ConversationRow, b: ConversationRow): number {
+  const byActivity = conversationSortMs(b) - conversationSortMs(a);
+  if (byActivity !== 0) return byActivity;
+  return (a.contact_name || a.contact_phone || a.remote_jid).localeCompare(b.contact_name || b.contact_phone || b.remote_jid);
+}
+
+function messageRowIso(msg: {
+  wa_timestamp?: string | null;
+  created_at?: string | null;
+}): string | null {
+  return msg.wa_timestamp ?? msg.created_at ?? null;
+}
+
+function messageRowTimeMs(msg: {
+  wa_timestamp?: string | null;
+  created_at?: string | null;
+}): number {
+  return Math.max(safeTimeMs(msg.wa_timestamp), safeTimeMs(msg.created_at));
 }
 
 function phoneFromRaw(raw: unknown): string | null {
