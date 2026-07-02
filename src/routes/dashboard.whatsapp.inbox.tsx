@@ -1238,13 +1238,49 @@ function InboxPage() {
                 size="md"
               />
               <div className="min-w-0 flex-1 overflow-hidden">
-                <p className="truncate text-sm font-bold">
-                  {activeConv ? displayConversationTitle(activeConv, isAr) : activeJid.replace(/@.*/, "")}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="truncate text-sm font-bold">
+                    {activeConv ? displayConversationTitle(activeConv, isAr) : activeJid.replace(/@.*/, "")}
+                  </p>
+                  {(() => {
+                    const jid = activeConv?.remote_jid ?? activeJid ?? "";
+                    const isLid = jid.endsWith("@lid");
+                    const isGroup = jid.endsWith("@g.us");
+                    if (isGroup) return null;
+                    return (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
+                              isLid
+                                ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                                : "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                            }`}
+                          >
+                            <Info className="h-3 w-3" />
+                            {isLid
+                              ? isAr ? "معرّف مرتبط" : "Linked ID"
+                              : isAr ? "رقم فعلي" : "Real number"}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="max-w-xs text-xs leading-relaxed">
+                          {isLid
+                            ? isAr
+                              ? "هذه محادثة بمعرف واتساب مرتبط (@lid) يُخفي الرقم الحقيقي لحماية خصوصية المرسل. سيتم ربط الرقم الفعلي تلقائياً عند وصول أول رسالة يظهر فيها الرقم، أو يمكنك الضغط على «مطابقة الأرقام»."
+                              : "This chat uses WhatsApp's Linked ID (@lid) which hides the real phone number for privacy. The real number will link automatically once a message reveals it, or you can run \"Match numbers\" manually."
+                            : isAr
+                              ? "هذه محادثة برقم هاتف فعلي مكشوف من واتساب."
+                              : "This chat exposes the contact's real phone number."}
+                        </TooltipContent>
+                      </Tooltip>
+                    );
+                  })()}
+                </div>
                 <p className="truncate text-xs text-muted-foreground" dir="ltr">
-                  {activeConv ? displayConversationSubtitle(activeConv, isAr) : activeJid}
+                  {activeConv ? displayConversationSubtitle(activeConv, isAr) : activeJid.replace(/@.*/, "")}
                 </p>
               </div>
+
             </div>
             {activeConv && (
               <div className="flex max-w-[46vw] shrink-0 items-center gap-2 rounded-2xl border border-border/60 bg-background/60 px-2.5 py-1.5 sm:max-w-none sm:px-3">
