@@ -60,7 +60,7 @@ import {
   type ConversationRow,
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
-import { requestWaHistorySync } from "@/lib/wa.functions";
+import { requestWaHistorySync, getWaHistorySyncJob, dismissWaHistorySyncJob } from "@/lib/wa.functions";
 import {
   createQuickReply,
   updateQuickReply,
@@ -93,6 +93,8 @@ function InboxPage() {
   const sendFn = useServerFn(sendChatMessage);
   const markReadFn = useServerFn(markConversationRead);
   const requestHistorySyncFn = useServerFn(requestWaHistorySync);
+  const getHistorySyncJobFn = useServerFn(getWaHistorySyncJob);
+  const dismissHistorySyncJobFn = useServerFn(dismissWaHistorySyncJob);
 
 
 
@@ -163,6 +165,51 @@ function InboxPage() {
     deadlineAt: 0,
   });
   const [syncTick, setSyncTick] = useState(0);
+  const [syncHydrated, setSyncHydrated] = useState(false);
+
+  // Persisted background sync: keep progress alive across reloads / device sleep.
+  const historyJobQuery = useQuery({
+    queryKey: ["wa", "history-sync-job", user?.id ?? "anon"],
+    queryFn: () => getHistorySyncJobFn(),
+    enabled: !!user?.id,
+    refetchInterval: (query) => {
+      const data = query.state.data as any;
+      return data && (data.status === "running" || data.status === "pending") ? 4000 : false;
+    },
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
+
+  useEffect(() => {
+    const job = historyJobQuery.data;
+    if (!job) return;
+    if (job.status === "idle") {
+      setSyncHydrated(true);
+      return;
+    }
+    const startedAt = job.startedAt ? new Date(job.startedAt).getTime() : Date.now();
+    const deadlineAt = job.deadlineAt ? new Date(job.deadlineAt).getTime() : startedAt + 90_000;
+    setSyncState({
+      status: job.status as SyncStatus,
+      baselineMsg: job.baselineMsg,
+      baselineConv: job.baselineConv,
+      importedMsg: job.importedMsg,
+      importedConv: job.importedConv,
+      startedAt,
+      deadlineAt,
+      message: job.message ?? undefined,
+    });
+    setSyncHydrated(true);
+    if (job.status === "done" || job.status === "error") {
+      // Auto-clear the card after a short delay so it doesn't linger forever.
+      const timer = window.setTimeout(() => {
+        dismissHistorySyncJobFn().catch(() => {});
+        setSyncState((s) => ({ ...s, status: "idle" }));
+      }, 8000);
+      return () => window.clearTimeout(timer);
+    }
+  }, [historyJobQuery.data, dismissHistorySyncJobFn]);
+
 
   const t = isAr
     ? {
@@ -727,10 +774,12 @@ function InboxPage() {
       }
       toast.error(t.syncUnavailable);
       setSyncState((s) => ({ ...s, status: "error", message: t.syncUnavailable }));
+      qc.invalidateQueries({ queryKey: ["wa", "history-sync-job", user?.id ?? "anon"] });
     },
     onError: (err: Error) => {
       toast.error(err.message);
       setSyncState((s) => ({ ...s, status: "error", message: err.message }));
+      qc.invalidateQueries({ queryKey: ["wa", "history-sync-job", user?.id ?? "anon"] });
     },
   });
 
