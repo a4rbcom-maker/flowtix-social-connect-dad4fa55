@@ -1057,11 +1057,25 @@ html {
   --toast-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.18),
                   0 4px 12px -4px rgba(0, 0, 0, 0.08);
 
-  /* Type accents (single source of truth) */
-  --toast-success: oklch(0.62 0.16 155);
-  --toast-error:   oklch(0.58 0.22 25);
-  --toast-warning: oklch(0.68 0.17 75);
-  --toast-info:    oklch(0.6 0.16 240);
+  /* Type accents (aliased to global status tokens) */
+  --toast-success: var(--status-success);
+  --toast-error:   var(--status-error);
+  --toast-warning: var(--status-warning);
+  --toast-info:    var(--status-info);
+}
+
+.dark [data-sonner-toaster] {
+  --toast-bg: oklch(0.22 0.02 285);
+  --toast-fg: oklch(0.98 0 0);
+  --toast-desc: oklch(0.82 0.02 285);
+  --toast-border: color-mix(in oklab, var(--primary) 22%, transparent);
+  --toast-shadow: 0 14px 40px -12px rgba(0, 0, 0, 0.65),
+                  0 0 0 1px color-mix(in oklab, var(--primary) 14%, transparent) inset;
+
+  --toast-success: var(--status-success);
+  --toast-error:   var(--status-error);
+  --toast-warning: var(--status-warning);
+  --toast-info:    var(--status-info);
 }
 
 .dark [data-sonner-toaster] {
