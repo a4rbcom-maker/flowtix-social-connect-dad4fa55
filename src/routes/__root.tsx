@@ -167,14 +167,15 @@ function RootComponent() {
               <Outlet />
               <GlobalAnnouncements />
               <Toaster
-                position="top-center"
+                position={isMobile ? "top-center" : "top-center"}
                 richColors
                 closeButton
-                expand
-                visibleToasts={4}
-                gap={10}
-                offset={20}
-                duration={4500}
+                expand={!isMobile}
+                visibleToasts={isMobile ? 2 : 4}
+                gap={isMobile ? 6 : 10}
+                offset={isMobile ? 8 : 20}
+                mobileOffset={8}
+                duration={isMobile ? 3500 : 4500}
                 toastOptions={{
                   className: "flowtix-toast",
                   style: {
