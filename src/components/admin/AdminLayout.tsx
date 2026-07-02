@@ -52,7 +52,7 @@ async function checkIsAdminClient(userId: string): Promise<{ isAdmin: boolean }>
 }
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { signInWithPasswordResilient } from "@/lib/auth-proxy.client";
+import { signInWithPasswordResilient } from "@/lib/auth-proxy";
 
 const flowtixLogo = "/flowtix-logo.webp";
 
