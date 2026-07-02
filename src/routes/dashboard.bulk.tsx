@@ -285,9 +285,23 @@ function BulkSendPage() {
     if (!user) return;
     if (!title.trim()) { toast.error(isAr ? "أضف عنواناً للحملة" : "Add a title"); return; }
     if (!message.trim() && !imageUrl) { toast.error(isAr ? "أضف رسالة أو صورة" : "Add a message or image"); return; }
+    // Guard: if a message was typed, don't allow launching image-only by mistake
+    if (imageUrl && message.length > 0 && !message.trim()) {
+      toast.error(isAr ? "الرسالة تحتوي على مسافات فقط — اكتب نصاً أو احذفها قبل الإطلاق" : "Message contains only whitespace — write text or clear it before launch");
+      return;
+    }
+    if (imageUrl && message.trim()) {
+      const ok = window.confirm(
+        isAr
+          ? `سيتم إرسال رسالتين لكل عميل:\n\n1) النص:\n${message.trim().slice(0, 120)}${message.trim().length > 120 ? "…" : ""}\n\n2) الصورة المرفقة\n\nهل تريد المتابعة؟`
+          : `Each contact will receive TWO messages:\n\n1) Text:\n${message.trim().slice(0, 120)}${message.trim().length > 120 ? "…" : ""}\n\n2) The attached image\n\nContinue?`
+      );
+      if (!ok) return;
+    }
     if (selectedRecipients.length === 0) { toast.error(isAr ? "اختر قائمة أو جهة اتصال" : "Pick a list or contacts"); return; }
     if (!scheduleNow && !scheduleAt) { toast.error(isAr ? "حدد موعد التشغيل" : "Pick a schedule"); return; }
     if (!(await ensureWaConnected())) return;
+
 
     setSubmitting(true);
     try {
