@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link, useRouter } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Save, Loader2, ChevronDown, FileText, Image as ImageIcon, Type, Layers, ArrowLeft,
@@ -470,8 +470,9 @@ function NewCampaignPage() {
 
   const isManualGroup = (g: Group) => g.name === `Group ${g.id}`;
 
+  const deferredSearch = useDeferredValue(search);
   const filteredGroups = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
     let list = groups;
     if (q) list = list.filter((g) => g.name.toLowerCase().includes(q) || g.id.includes(q));
     if (filterMode === "selected") list = list.filter((g) => selectedTargets.has(g.id));
@@ -486,7 +487,17 @@ function NewCampaignPage() {
       return sa - sb || a.name.localeCompare(b.name);
     });
     return sorted;
-  }, [groups, search, filterMode, sortMode, selectedTargets, lang]);
+  }, [groups, deferredSearch, filterMode, sortMode, selectedTargets, lang]);
+
+  // Progressive rendering: cap items shown initially, expose "Load more" to reveal in chunks.
+  const PAGE_SIZE = 200;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [deferredSearch, filterMode, sortMode]);
+  const visibleGroups = useMemo(
+    () => (filteredGroups.length > visibleCount ? filteredGroups.slice(0, visibleCount) : filteredGroups),
+    [filteredGroups, visibleCount],
+  );
+  const hasMoreGroups = filteredGroups.length > visibleGroups.length;
 
   const filterCounts = useMemo(() => ({
     all: groups.length,
@@ -728,13 +739,40 @@ function NewCampaignPage() {
               </div>
 
               <VirtualGroupList
-                items={filteredGroups}
+                items={visibleGroups}
                 selectedTargets={selectedTargets}
                 onToggle={(id) => setSelectedTargets((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; })}
                 isManualGroup={isManualGroup}
                 emptyLabel={t.empty}
                 manualBadge={t.manualBadge}
               />
+              {filteredGroups.length > 0 && (
+                <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>
+                    {lang === "ar"
+                      ? `عرض ${visibleGroups.length} من ${filteredGroups.length}`
+                      : `Showing ${visibleGroups.length} of ${filteredGroups.length}`}
+                  </span>
+                  {hasMoreGroups && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setVisibleCount((v) => v + PAGE_SIZE)}
+                        className="px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-accent text-xs font-semibold transition"
+                      >
+                        {lang === "ar" ? `تحميل ${Math.min(PAGE_SIZE, filteredGroups.length - visibleGroups.length)} إضافية` : `Load ${Math.min(PAGE_SIZE, filteredGroups.length - visibleGroups.length)} more`}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVisibleCount(filteredGroups.length)}
+                        className="px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-accent text-xs font-semibold transition"
+                      >
+                        {lang === "ar" ? "عرض الكل" : "Show all"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
