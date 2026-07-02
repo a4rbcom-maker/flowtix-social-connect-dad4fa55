@@ -342,6 +342,35 @@ export const waBridge = {
     }
     return { ok: false, attempts, body: null as unknown };
   },
+  fetchChats: async (id: string) => {
+    const encoded = encodeURIComponent(id);
+    const attempts: Array<{ path: string; ok: boolean; status?: number; error?: string }> = [];
+    const candidates: Array<{ method: "GET" | "POST"; path: string; body?: Record<string, unknown> }> = [
+      { method: "GET", path: `/api/sessions/${encoded}/chats` },
+      { method: "GET", path: `/api/sessions/${encoded}/contacts` },
+      { method: "POST", path: `/api/sessions/${encoded}/fetch-chats`, body: { limit: 1000, syncFullHistory: true } },
+      { method: "POST", path: `/api/sessions/${encoded}/fetch-contacts`, body: { limit: 1000, syncFullHistory: true } },
+      { method: "POST", path: `/api/sessions/${encoded}/chats/sync`, body: { limit: 1000, syncFullHistory: true } },
+    ];
+
+    for (const candidate of candidates) {
+      try {
+        const body = await bridgeFetch<unknown>(candidate.path, {
+          method: candidate.method,
+          ...(candidate.body ? { body: JSON.stringify(candidate.body) } : {}),
+        });
+        attempts.push({ path: candidate.path, ok: true });
+        return { ok: true, attempts, body };
+      } catch (err) {
+        const status = err instanceof BridgeError ? err.status : undefined;
+        const error = err instanceof Error ? err.message : String(err);
+        attempts.push({ path: candidate.path, ok: false, status, error });
+        if (status && ![400, 404, 405, 501].includes(status)) break;
+      }
+    }
+
+    return { ok: false, attempts, body: null as unknown };
+  },
   fetchMessages: (
     id: string,
     jid: string,
