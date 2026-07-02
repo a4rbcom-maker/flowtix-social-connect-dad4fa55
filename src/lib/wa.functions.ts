@@ -315,11 +315,14 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       });
     }
     if (result.body) {
-      directImports = await replayBridgeHistoryPayload(row.session_id, result.body).catch((err) => ({
+      const importedHistory = await replayBridgeHistoryPayload(row.session_id, result.body).catch((err) => ({
         messages: 0,
         chats: 0,
         error: err instanceof Error ? err.message : String(err),
       }));
+      directImports.messages += importedHistory.messages;
+      directImports.chats += importedHistory.chats;
+      directImports.error = directImports.error ?? importedHistory.error;
     }
 
     const knownJids = new Set<string>();
