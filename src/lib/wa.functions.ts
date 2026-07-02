@@ -1260,10 +1260,11 @@ async function readState(
   // Preserve last-known phone_number when bridge transiently reports null
   // (e.g. session re-paired). Only overwrite when we actually got a number.
   const trustedDisconnect = status === "disconnected" && isTrustedUserDisconnect({ source: error ? "poll_error" : "poll", reason: error, rawStatus: status });
+  const effectiveStatus = status === "disconnected" && previousStatus === "connected" && !trustedDisconnect ? "connected" : status;
   await updateWaSessionStatus(supabase, {
     userId,
     sessionId,
-    nextStatus: status === "disconnected" && previousStatus === "connected" && !trustedDisconnect ? "connected" : status,
+    nextStatus: effectiveStatus,
     source: error ? "poll_error" : "poll",
     reason: error,
     rawStatus: status,
@@ -1286,10 +1287,10 @@ async function readState(
   }
 
   return {
-    status,
+    status: effectiveStatus,
     sessionId,
     qrDataUrl: null,
-    qrRaw: status === "qr" ? qrRaw : null,
+    qrRaw: effectiveStatus === "qr" ? qrRaw : null,
     phoneNumber: surfacedPhone,
     lastSeenAt: now,
     error,
