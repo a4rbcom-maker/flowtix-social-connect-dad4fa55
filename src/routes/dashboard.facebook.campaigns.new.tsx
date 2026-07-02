@@ -60,6 +60,8 @@ function NewCampaignPage() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [filterMode, setFilterMode] = useState<"all" | "selected" | "unselected" | "manual">("all");
+  const [sortMode, setSortMode] = useState<"name" | "id" | "selected">("name");
 
   // Form
   const [name, setName] = useState("");
@@ -87,8 +89,12 @@ function NewCampaignPage() {
     name: "اسم الحملة", namePh: "مثلاً: حملة سبتمبر للمنتج X",
     account: "اختيار قناة", accountPh: "اختر حساب فيسبوك",
     targets: "اختيار الوجهات", targetsHint: "حدد الجروبات التي ستُنشَر فيها الحملة",
-    loadGroups: "جلب الجروبات", searchPh: "ابحث عن جروب...",
-    selectAll: "تحديد الكل", clearAll: "إلغاء التحديد", selected: "محدد",
+    loadGroups: "جلب الجروبات", searchPh: "ابحث بالاسم أو المعرف...",
+    selectAll: "تحديد الكل", selectAllVisible: "تحديد الظاهر", invert: "عكس التحديد",
+    clearAll: "إلغاء التحديد", selected: "محدد",
+    filterAll: "الكل", filterSelected: "المحدد", filterUnselected: "غير المحدد", filterManual: "يدوي",
+    sortLabel: "ترتيب", sortName: "الاسم", sortId: "المعرف", sortSelected: "المحدد أولاً",
+    empty: "لا نتائج مطابقة للفلتر الحالي",
     noGroups: "اضغط \"جلب الجروبات\" لاستيراد جروباتك",
     sendType: "نوع الإرسال", text: "نص", mediaType: "وسائط",
     template: "اختر قالباً (اختياري)", noTemplate: "بدون قالب — اكتب نصاً مباشرة",
@@ -121,8 +127,12 @@ function NewCampaignPage() {
     name: "Campaign name", namePh: "e.g.: September campaign for Product X",
     account: "Choose channel", accountPh: "Select Facebook account",
     targets: "Choose destinations", targetsHint: "Pick the groups to post the campaign in",
-    loadGroups: "Load groups", searchPh: "Search group...",
-    selectAll: "Select all", clearAll: "Clear", selected: "selected",
+    loadGroups: "Load groups", searchPh: "Search name or ID...",
+    selectAll: "Select all", selectAllVisible: "Select visible", invert: "Invert",
+    clearAll: "Clear", selected: "selected",
+    filterAll: "All", filterSelected: "Selected", filterUnselected: "Unselected", filterManual: "Manual",
+    sortLabel: "Sort", sortName: "Name", sortId: "ID", sortSelected: "Selected first",
+    empty: "No groups match the current filter",
     noGroups: "Click \"Load groups\" to import your groups",
     sendType: "Send type", text: "Text", mediaType: "Media",
     template: "Pick a template (optional)", noTemplate: "No template — write text directly",
@@ -337,11 +347,32 @@ function NewCampaignPage() {
 
   const manualPreview = useMemo(() => parseManualIds(manualRaw), [manualRaw]);
 
+  const isManualGroup = (g: Group) => g.name === `Group ${g.id}`;
+
   const filteredGroups = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return groups;
-    return groups.filter((g) => g.name.toLowerCase().includes(q) || g.id.includes(q));
-  }, [groups, search]);
+    let list = groups;
+    if (q) list = list.filter((g) => g.name.toLowerCase().includes(q) || g.id.includes(q));
+    if (filterMode === "selected") list = list.filter((g) => selectedTargets.has(g.id));
+    else if (filterMode === "unselected") list = list.filter((g) => !selectedTargets.has(g.id));
+    else if (filterMode === "manual") list = list.filter(isManualGroup);
+    const sorted = [...list];
+    if (sortMode === "name") sorted.sort((a, b) => a.name.localeCompare(b.name, lang === "ar" ? "ar" : "en"));
+    else if (sortMode === "id") sorted.sort((a, b) => a.id.localeCompare(b.id));
+    else if (sortMode === "selected") sorted.sort((a, b) => {
+      const sa = selectedTargets.has(a.id) ? 0 : 1;
+      const sb = selectedTargets.has(b.id) ? 0 : 1;
+      return sa - sb || a.name.localeCompare(b.name);
+    });
+    return sorted;
+  }, [groups, search, filterMode, sortMode, selectedTargets, lang]);
+
+  const filterCounts = useMemo(() => ({
+    all: groups.length,
+    selected: groups.filter((g) => selectedTargets.has(g.id)).length,
+    unselected: groups.filter((g) => !selectedTargets.has(g.id)).length,
+    manual: groups.filter(isManualGroup).length,
+  }), [groups, selectedTargets]);
 
 
   const validate = (): boolean => {
@@ -486,12 +517,95 @@ function NewCampaignPage() {
                     className={`w-full rounded-lg border border-border bg-background py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 ${dir === "rtl" ? "pr-9 pl-3" : "pl-9 pr-3"}`}
                   />
                 </div>
-                <button onClick={() => setSelectedTargets(new Set(filteredGroups.map((g) => g.id)))} className="rounded-lg border border-border px-3 py-2 text-xs hover:bg-accent">{t.selectAll}</button>
-                <button onClick={() => setSelectedTargets(new Set())} className="rounded-lg border border-border px-3 py-2 text-xs hover:bg-accent">{t.clearAll}</button>
+                <select
+                  value={sortMode}
+                  onChange={(e) => setSortMode(e.target.value as "name" | "id" | "selected")}
+                  aria-label={t.sortLabel}
+                  className="rounded-lg border border-border bg-background px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  <option value="name">{t.sortLabel}: {t.sortName}</option>
+                  <option value="id">{t.sortLabel}: {t.sortId}</option>
+                  <option value="selected">{t.sortLabel}: {t.sortSelected}</option>
+                </select>
               </div>
-              <div className="text-xs text-muted-foreground"><b className="text-foreground">{selectedTargets.size}</b> {t.selected} / {filteredGroups.length}</div>
+
+              {/* Filter chips */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {([
+                  ["all", t.filterAll, filterCounts.all],
+                  ["selected", t.filterSelected, filterCounts.selected],
+                  ["unselected", t.filterUnselected, filterCounts.unselected],
+                  ["manual", t.filterManual, filterCounts.manual],
+                ] as const).map(([key, label, count]) => {
+                  const active = filterMode === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setFilterMode(key)}
+                      aria-pressed={active}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
+                        active
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background text-foreground border-border hover:bg-accent"
+                      }`}
+                    >
+                      <span>{label}</span>
+                      <span className={`text-[10px] font-mono ${active ? "opacity-80" : "text-muted-foreground"}`}>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Bulk actions */}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="text-xs text-muted-foreground">
+                  <b className="text-foreground">{selectedTargets.size}</b> {t.selected} / {filteredGroups.length}
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTargets((prev) => {
+                      const n = new Set(prev);
+                      filteredGroups.forEach((g) => n.add(g.id));
+                      return n;
+                    })}
+                    className="rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent"
+                  >
+                    {t.selectAllVisible}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTargets((prev) => {
+                      const n = new Set(prev);
+                      filteredGroups.forEach((g) => (n.has(g.id) ? n.delete(g.id) : n.add(g.id)));
+                      return n;
+                    })}
+                    className="rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent"
+                  >
+                    {t.invert}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTargets(new Set(groups.map((g) => g.id)))}
+                    className="rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent"
+                  >
+                    {t.selectAll}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTargets(new Set())}
+                    className="rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent"
+                  >
+                    {t.clearAll}
+                  </button>
+                </div>
+              </div>
+
               <div className="max-h-64 overflow-y-auto rounded-lg border border-border divide-y divide-border">
-                {filteredGroups.map((g) => {
+                {filteredGroups.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-xs text-muted-foreground">{t.empty}</div>
+                ) : filteredGroups.map((g) => {
                   const sel = selectedTargets.has(g.id);
                   return (
                     <button
@@ -505,7 +619,7 @@ function NewCampaignPage() {
                       </span>
                       <span className="flex-1 text-start truncate flex items-center gap-2">
                         <span className="truncate">{g.name}</span>
-                        {g.name === `Group ${g.id}` && (
+                        {isManualGroup(g) && (
                           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/15 text-primary shrink-0">
                             {t.manualBadge}
                           </span>
