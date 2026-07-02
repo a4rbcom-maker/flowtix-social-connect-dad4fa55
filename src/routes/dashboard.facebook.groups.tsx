@@ -163,6 +163,51 @@ function FacebookGroupsPage() {
     })();
   }, [user]);
 
+  // Load previously imported groups from the most recent completed list_my_groups job
+  // so the user doesn't have to re-import every time they revisit the page.
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const { data: lastJob } = await supabase
+          .from("fb_jobs")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("job_type", "list_my_groups")
+          .eq("status", "completed")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (!lastJob?.id) return;
+        const { data: rows } = await supabase
+          .from("fb_job_results")
+          .select("target,data")
+          .eq("job_id", lastJob.id)
+          .eq("status", "success")
+          .limit(1000);
+        if (!rows?.length) return;
+        const imported: Group[] = rows.map((r) => {
+          const d = (r.data ?? {}) as { name?: string; group_id?: string; id?: string; member_count?: number; privacy?: string };
+          return {
+            id: d.group_id ?? d.id ?? r.target ?? "",
+            name: d.name ?? r.target ?? "—",
+            member_count: d.member_count,
+            privacy: d.privacy,
+          };
+        }).filter((g) => g.id);
+        if (imported.length) {
+          setGroups((prev) => {
+            if (prev.length) return prev;
+            return imported;
+          });
+        }
+      } catch {
+        // ignore — user can always re-import manually
+      }
+    })();
+  }, [user]);
+
+
   // Consume handoff from the main Facebook page (preselected groups + jump to compose)
   useEffect(() => {
     if (typeof window === "undefined") return;
