@@ -54,11 +54,8 @@ function FacebookGroupsPage() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [step, setStep] = useState<Step>("browse");
-  const [message, setMessage] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
-  const [sending, setSending] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
+
 
   const t = lang === "ar"
     ? {
