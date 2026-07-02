@@ -49,7 +49,9 @@ function recordsFromUnknown(value: unknown): Record<string, unknown>[] {
   if (value && typeof value === "object") {
     const rec = value as Record<string, unknown>;
     const values = Object.values(rec);
-    const records = values.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"));
+    const records = values.filter(
+      (item): item is Record<string, unknown> => Boolean(item && typeof item === "object" && !Array.isArray(item)),
+    );
     // Baileys sometimes sends maps keyed by jid. Treat object values as rows only
     // when most values are objects; otherwise this is one row, not a collection.
     if (records.length && records.length >= Math.max(1, Math.floor(values.length * 0.6))) return records;
@@ -114,8 +116,18 @@ function pickHistoryMessages(payload: Record<string, unknown>, data: Record<stri
   const direct = [data.messages, payload.messages, data.items, payload.items, payload.data]
     .flatMap(recordsFromUnknown)
     .filter((item) => Object.keys(item).length > 0);
-  if (direct.length) return direct;
-  return collectRecordArraysDeep({ payload, data }, ["messages", "items"]);
+  // Some Bot-Xtra/Baileys full-history batches arrive as event="chats.set"
+  // with messages nested inside each chat row. The old implementation returned
+  // `data.items`/`payload.data` early and therefore silently skipped those
+  // nested historical messages. Always merge the deep scan as well.
+  const deep = collectRecordArraysDeep({ payload, data }, ["messages", "items", "historyMessages", "history_messages"]);
+  const seen = new Set<string>();
+  return [...direct, ...deep].filter((item) => {
+    const id = messageIdFrom(item) || pickStr(item, "jid", "id", "rawJid", "remoteJid", "chatId") || JSON.stringify(item).slice(0, 300);
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
 }
 
 function bestContactName(contact: Record<string, unknown>): string | null {
