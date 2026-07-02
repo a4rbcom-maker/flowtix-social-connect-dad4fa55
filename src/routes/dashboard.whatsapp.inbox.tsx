@@ -116,6 +116,12 @@ function InboxPage() {
 
 
   const [activeJid, setActiveJid] = useState<string | null>(null);
+  const [listVisible, setListVisible] = useState(true);
+  useEffect(() => {
+    if (isMobile) return;
+    if (activeJid) setListVisible(false);
+    else setListVisible(true);
+  }, [activeJid, isMobile]);
   const [isTyping, setIsTyping] = useState(false);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerTyping = useCallback((ms = 1400) => {
@@ -1243,8 +1249,8 @@ function InboxPage() {
       ) : (
         <>
           {/* Chat Header */}
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/60 bg-card/80 px-3 py-3 backdrop-blur sm:px-4">
-            <div className="flex min-w-0 items-center gap-3 overflow-hidden">
+          <div className="flex items-center gap-2 border-b border-border/60 bg-card/80 px-3 py-3 backdrop-blur sm:px-4">
+            <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
               {isMobile && (
                 <button
                   type="button"
@@ -1295,7 +1301,28 @@ function InboxPage() {
                 />
               </div>
             )}
+            {!isMobile && !listVisible && (
+              <button
+                type="button"
+                onClick={() => setListVisible(true)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-muted"
+                aria-label={isAr ? "إظهار قائمة المحادثات" : "Show conversations"}
+                title={isAr ? "إظهار قائمة المحادثات" : "Show conversations"}
+              >
+                <InboxIcon className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setActiveJid(null)}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-muted"
+              aria-label={isAr ? "إغلاق المحادثة" : "Close chat"}
+              title={isAr ? "إغلاق المحادثة" : "Close chat"}
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
+
 
           {/* Messages */}
           <div
