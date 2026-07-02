@@ -1078,19 +1078,6 @@ html {
   --toast-info:    var(--status-info);
 }
 
-.dark [data-sonner-toaster] {
-  --toast-bg: oklch(0.22 0.02 285);
-  --toast-fg: oklch(0.98 0 0);
-  --toast-desc: oklch(0.82 0.02 285);
-  --toast-border: color-mix(in oklab, var(--primary) 22%, transparent);
-  --toast-shadow: 0 14px 40px -12px rgba(0, 0, 0, 0.65),
-                  0 0 0 1px color-mix(in oklab, var(--primary) 14%, transparent) inset;
-
-  --toast-success: oklch(0.78 0.17 155);
-  --toast-error:   oklch(0.72 0.2 25);
-  --toast-warning: oklch(0.82 0.16 75);
-  --toast-info:    oklch(0.76 0.15 240);
-}
 
 [data-sonner-toaster][dir="rtl"] [data-sonner-toast] {
   direction: rtl;
