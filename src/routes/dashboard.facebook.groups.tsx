@@ -530,13 +530,14 @@ function FacebookGroupsPage() {
                 {lang === "ar" ? "كيف يعمل؟" : "How it works"}
               </button>
               <button
-                onClick={handleImport}
-                disabled={loading}
+                onClick={connected ? handleImport : handleBotImport}
+                disabled={loading || botImporting || (!connected && !botAccountId)}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
               >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                {loading ? t.importing : groups.length > 0 ? t.reimport : t.import}
+                {(loading || botImporting) ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                {(loading || botImporting) ? t.importing : groups.length > 0 ? t.reimport : t.import}
               </button>
+
             </div>
 
 
