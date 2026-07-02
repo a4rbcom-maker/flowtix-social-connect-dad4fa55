@@ -34,6 +34,7 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
         const { waBridge, assertBridgeSendQueued, bridgeSendFailureMessage, BridgeError } = await import(
           "@/lib/wa-bridge.server"
         );
+        const { normalizeWhatsappPhone } = await import("@/lib/wa-chat-helpers.server");
         const describeErr = (err: unknown): string => {
           if (err instanceof BridgeError) {
             return bridgeSendFailureMessage(err.body) || err.message || "Bridge error";
@@ -142,7 +143,7 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
           let failed = 0;
 
           for (const r of pending) {
-            const phone = (r.phone || "").replace(/[^0-9]/g, "");
+            const phone = normalizeWhatsappPhone(r.phone) || "";
             if (!phone || phone.length < 6) {
               await supabaseAdmin
                 .from("bulk_job_recipients")

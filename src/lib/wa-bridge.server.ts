@@ -2,6 +2,8 @@
 // Wraps the bridge REST API with X-API-Key auth + typed helpers.
 // Never import from client code.
 
+import { normalizeWhatsappPhone } from "./wa-chat-helpers.server";
+
 const BRIDGE_TIMEOUT_MS = 15_000;
 const DEFAULT_BRIDGE_URL = "https://bridge.botxtra.com";
 const API_KEY_ENV_NAMES = [
@@ -420,8 +422,8 @@ export const waBridge = {
       method: "DELETE",
     }),
   sendText: (id: string, to: string, text: string, opts: { phone?: string | null } = {}) => {
-    const explicitPhone = opts.phone?.replace(/[^0-9]/g, "") || "";
-    const phone = explicitPhone || to.replace(/[^0-9]/g, "");
+    const explicitPhone = normalizeWhatsappPhone(opts.phone) || "";
+    const phone = explicitPhone || normalizeWhatsappPhone(to) || "";
     const jid = to.includes("@") ? to : `${phone}@s.whatsapp.net`;
     const isLid = jid.endsWith("@lid");
     const publicJid = explicitPhone ? `${explicitPhone}@s.whatsapp.net` : null;
@@ -461,8 +463,8 @@ export const waBridge = {
       phone?: string | null;
     } = {},
   ) => {
-    const explicitPhone = opts.phone?.replace(/[^0-9]/g, "") || "";
-    const phone = explicitPhone || to.replace(/[^0-9]/g, "");
+    const explicitPhone = normalizeWhatsappPhone(opts.phone) || "";
+    const phone = explicitPhone || normalizeWhatsappPhone(to) || "";
     const jid = to.includes("@") ? to : `${phone}@s.whatsapp.net`;
     const isLid = jid.endsWith("@lid");
     const publicJid = explicitPhone ? `${explicitPhone}@s.whatsapp.net` : null;

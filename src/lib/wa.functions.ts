@@ -19,6 +19,7 @@ import {
 } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
 import { isHardSessionGoneError, logWaSessionEvent, updateWaSessionStatus } from "./wa-session-events.server";
+import { normalizeWhatsappPhone } from "./wa-chat-helpers.server";
 
 export type { WaBridgeHealth };
 
@@ -716,7 +717,7 @@ export const sendWaMessage = createServerFn({ method: "POST" })
     if (!row?.session_id) throw new Error(notConnectedMsg);
     if (row.status !== "connected") throw new Error(notConnectedMsg);
 
-    const phone = data.to.replace(/[^0-9]/g, "");
+    const phone = normalizeWhatsappPhone(data.to) || data.to.replace(/[^0-9]/g, "");
     let providerMessageId: string | null = null;
     try {
       const res = await waBridge.sendText(row.session_id, phone, data.text);

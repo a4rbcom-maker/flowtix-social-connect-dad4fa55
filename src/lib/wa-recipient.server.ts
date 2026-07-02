@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { asRecord, digits, pickString } from "./wa-chat-helpers.server";
+import { asRecord, digits, normalizeWhatsappPhone, pickString } from "./wa-chat-helpers.server";
 
 function isUsableJid(value: string | null): value is string {
   if (!value) return false;
@@ -11,7 +11,7 @@ function toJid(value: string | null, kind: "phone" | "lid" | "unknown" = "unknow
   if (!value) return null;
   const trimmed = value.trim();
   if (isUsableJid(trimmed)) return trimmed;
-  const d = digits(trimmed);
+  const d = normalizeWhatsappPhone(trimmed);
   if (!d) return null;
   if (kind === "lid") return `${d}@lid`;
   return `${d}@s.whatsapp.net`;
@@ -55,7 +55,7 @@ export async function resolveOutgoingWhatsappTarget(params: {
   remoteJid: string;
   fallbackPhoneOrJid: string | null;
 }): Promise<{ jid: string; phoneDigits: string | null; usedLid: boolean }> {
-  const fallbackPhoneDigits = digits(params.fallbackPhoneOrJid) || digits(params.remoteJid);
+  const fallbackPhoneDigits = normalizeWhatsappPhone(params.fallbackPhoneOrJid) || normalizeWhatsappPhone(params.remoteJid);
   if (params.remoteJid.endsWith("@g.us")) {
     return { jid: params.remoteJid, phoneDigits: fallbackPhoneDigits, usedLid: false };
   }
@@ -73,7 +73,7 @@ export async function resolveOutgoingWhatsappTarget(params: {
   let bestPhone = fallbackPhoneDigits;
   for (const row of data ?? []) {
     const raw = asRecord(row.raw);
-    bestPhone = bestPhone || digits(row.from_phone) || digits(pickString(raw, "senderPn", "participantPn", "phoneNumber", "phone"));
+    bestPhone = bestPhone || normalizeWhatsappPhone(row.from_phone) || normalizeWhatsappPhone(pickString(raw, "senderPn", "participantPn", "phoneNumber", "phone"));
     const jid = pickNestedJid(raw, bestPhone);
     if (jid?.endsWith("@lid")) return { jid, phoneDigits: bestPhone, usedLid: true };
   }

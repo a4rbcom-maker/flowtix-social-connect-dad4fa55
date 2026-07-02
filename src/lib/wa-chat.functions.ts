@@ -13,6 +13,7 @@ import {
   digits,
   mediaTypeFromRaw,
   mediaUrlFromRaw,
+  normalizeWhatsappPhone,
   phoneFromRaw,
   pickString,
   previewTextFromRaw,
@@ -213,7 +214,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       remoteJid: data.remoteJid,
       fallbackPhoneOrJid: rawPhone || conv?.contact_phone || data.remoteJid,
     });
-    const phoneDigits = target.phoneDigits || data.remoteJid.replace(/[^0-9]/g, "");
+    const phoneDigits = target.phoneDigits || normalizeWhatsappPhone(data.remoteJid) || data.remoteJid.replace(/[^0-9]/g, "");
     const to = target.jid;
     const sentAt = new Date().toISOString();
     const hasMedia = !!data.mediaUrl;
@@ -320,7 +321,7 @@ export const sendTestMessage = createServerFn({ method: "POST" })
     if (!sess?.session_id) throw new Error("WhatsApp is not connected");
     if (sess.status !== "connected") throw new Error("WhatsApp is not connected");
 
-    const phoneDigits = data.phone.replace(/[^0-9]/g, "");
+    const phoneDigits = normalizeWhatsappPhone(data.phone);
     if (!phoneDigits || phoneDigits.length < 6) throw new Error("Invalid phone number");
     const to = `${phoneDigits}@s.whatsapp.net`;
     const text = data.text?.trim() || `✅ رسالة اختبار من Flowtix — ${new Date().toLocaleString("ar-EG")}`;
