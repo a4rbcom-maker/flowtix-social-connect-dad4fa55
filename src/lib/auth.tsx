@@ -31,14 +31,18 @@ function isPublicPath(pathname: string): boolean {
   return pathname.startsWith("/auth/") || pathname.startsWith("/reset-password");
 }
 
+type RedirectReason = "expired" | "signed_out" | "auth_required";
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [redirecting, setRedirecting] = useState<RedirectReason | null>(null);
   // Track whether we've ever seen an authenticated session in this tab.
   const hadSessionRef = useRef(false);
   // Prevent stacking multiple redirects/toasts when several serverFn calls fail at once.
   const expiredHandledRef = useRef(false);
+
 
   useEffect(() => {
     let cancelled = false;
@@ -107,9 +111,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const redirect = encodeURIComponent(path + window.location.search);
-      // Use full navigation so router state + query cache reset cleanly.
-      window.location.replace(`/login?reason=${reason}&redirect=${redirect}`);
+      // Show an overlay so the user never sees a blank screen during navigation.
+      setRedirecting(reason);
+      // Small delay lets React paint the overlay before the hard navigation.
+      window.setTimeout(() => {
+        window.location.replace(`/login?reason=${reason}&redirect=${redirect}`);
+      }, 30);
     };
+
 
 
     // Guard: if user lands on a protected route without any session, redirect
@@ -187,9 +196,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{ user, session, loading, signOut }}>
       {children}
+      {redirecting && <AuthRedirectOverlay reason={redirecting} />}
     </AuthContext.Provider>
   );
 }
+
+function AuthRedirectOverlay({ reason }: { reason: RedirectReason }) {
+  const title =
+    reason === "signed_out"
+      ? "جارٍ تسجيل خروجك…"
+      : reason === "auth_required"
+        ? "يلزم تسجيل الدخول"
+        : "انتهت جلستك";
+  const subtitle =
+    reason === "signed_out"
+      ? "نُحوّلك لصفحة تسجيل الدخول الآن"
+      : reason === "auth_required"
+        ? "نُحوّلك لصفحة تسجيل الدخول للمتابعة"
+        : "نُحوّلك لتسجيل الدخول مرة أخرى";
+  return (
+    <div
+      dir="rtl"
+      role="status"
+      aria-live="polite"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/85 backdrop-blur-md"
+    >
+      <div className="w-[92%] max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl">
+        <div className="flex items-center gap-3">
+          <span className="relative flex h-3 w-3">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-70" />
+            <span className="relative inline-flex h-3 w-3 rounded-full bg-primary" />
+          </span>
+          <div className="text-sm font-bold text-foreground">{title}</div>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">{subtitle}</p>
+        <div className="mt-5 space-y-2">
+          <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
+          <div className="h-3 w-full animate-pulse rounded bg-muted" />
+          <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
+        </div>
+        <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div className="h-full w-1/3 animate-[loading_1.2s_ease-in-out_infinite] rounded-full bg-primary" />
+        </div>
+      </div>
+      <style>{`@keyframes loading { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }`}</style>
+    </div>
+  );
+}
+
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
