@@ -803,16 +803,10 @@ function InboxPage() {
       setSyncState((s) => ({ ...s, importedMsg, importedConv }));
     }
     if (Date.now() >= syncState.deadlineAt) {
-      const hasImports = importedMsg > 0 || importedConv > 0;
-      setSyncState((s) => ({
-        ...s,
-        status: hasImports ? "done" : "error",
-        message: hasImports
-          ? undefined
-          : t.syncUnavailable,
-      }));
+      setSyncState((s) => ({ ...s, status: "done", message: undefined }));
       window.setTimeout(() => setSyncState((s) => (s.status === "done" ? { ...s, status: "idle" } : s)), 6000);
     }
+
   }, [syncTick, inboxStatsQuery.data?.messages, conversations.length, syncState.status, syncState.baselineMsg, syncState.baselineConv, syncState.deadlineAt, syncState.importedMsg, syncState.importedConv, t.syncUnavailable]);
 
 
