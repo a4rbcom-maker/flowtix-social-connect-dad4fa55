@@ -427,7 +427,7 @@ function QuickAction({
   icon: typeof Key;
   title: string;
   desc: string;
-  to: "/dashboard" | "/dashboard/facebook" | "/dashboard/whatsapp";
+  to: "/dashboard" | "/dashboard/facebook" | "/dashboard/whatsapp" | "/dashboard/bulk";
   gradient: string;
   badge?: string;
 }) {
