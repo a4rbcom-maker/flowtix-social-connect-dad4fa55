@@ -84,6 +84,8 @@ export async function resolveOutgoingWhatsappTarget(params: {
   for (const row of data) {
     const raw = asRecord(row.raw);
     bestPhone = bestPhone || normalizeWhatsappPhone(row.from_phone) || normalizeWhatsappPhone(pickString(raw, "senderPn", "participantPn", "phoneNumber", "phone"));
+    const rowJid = toJid(row.remote_jid);
+    if (rowJid?.endsWith("@lid")) return { jid: rowJid, phoneDigits: bestPhone, usedLid: true };
     const jid = pickNestedJid(raw, bestPhone);
     if (jid?.endsWith("@lid")) return { jid, phoneDigits: bestPhone, usedLid: true };
   }
