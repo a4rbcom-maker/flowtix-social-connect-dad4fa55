@@ -318,19 +318,14 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
     }
 
     const countStored = async () => {
-      const [{ count: conversations }, { count: messages }] = await Promise.all([
-        supabase
-          .from("wa_conversations")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", userId)
-          .eq("session_id", row.session_id),
-        supabase
-          .from("wa_messages")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", userId)
-          .eq("session_id", row.session_id),
-      ]);
-      return { conversations: conversations ?? 0, messages: messages ?? 0 };
+      const { count: conversations } = await supabase
+        .from("wa_conversations")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("session_id", row.session_id);
+      // لا نعدّ wa_messages هنا: count exact على الرسائل أثناء مزامنة التاريخ
+      // كان يضغط Disk IO بلا فائدة للعميل. نعتمد على عدد المحادثات + أرقام الاستيراد المباشر.
+      return { conversations: conversations ?? 0, messages: 0 };
     };
 
     const before = await countStored();
@@ -554,7 +549,7 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
           ? `history_sync_requested_waiting_for_bridge_batches${directImports.error ? ` (${directImports.error})` : ""}`
           : "history_sync_endpoint_unavailable",
     });
-    const importedMsgDelta = Math.max(0, after.messages - before.messages);
+    const importedMsgDelta = Math.max(0, directImports.messages);
     const importedConvDelta = Math.max(0, after.conversations - before.conversations);
     const finalStatus = actuallyImported ? "done" : requestAccepted ? "pending" : "error";
     const finalMessage = finalStatus === "error"
