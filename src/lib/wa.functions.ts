@@ -603,15 +603,7 @@ export const getWaHistorySyncJob = createServerFn({ method: "GET" })
     let message = data.message;
     let finishedAt = data.finished_at;
 
-    // Recompute only conversation count while active. Avoid count exact on
-    // wa_messages because it was a major Disk IO consumer during sync polling.
     if (status === "running" || status === "pending") {
-      const { count: liveConv } = await supabase
-        .from("wa_conversations")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId);
-      importedConv = Math.max(0, (liveConv ?? 0) - data.baseline_conv);
-
       const deadlinePassed = data.deadline_at ? Date.now() >= new Date(data.deadline_at).getTime() : false;
       if (deadlinePassed) {
         const hasImports = importedMsg > 0 || importedConv > 0;
