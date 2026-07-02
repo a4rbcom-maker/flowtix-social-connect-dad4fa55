@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_settings ADD COLUMN IF NOT EXISTS max_concurrent_campaigns integer NOT NULL DEFAULT 3 CHECK (max_concurrent_campaigns BETWEEN 1 AND 10);
