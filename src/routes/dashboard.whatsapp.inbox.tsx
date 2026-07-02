@@ -202,7 +202,7 @@ function InboxPage() {
         resyncDone: "تم تحديث المحادثات والرسائل",
         resyncQueued: "تم إرسال طلب المزامنة للجسر، وسيتم تحديث الشات تلقائيًا عند وصول الدفعات.",
         syncNeedsConnection: "لا يمكن جلب المحادثات القديمة لأن واتساب غير متصل. أعد الربط وامسح QR جديد أولاً.",
-        syncUnavailable: "تم الربط بنجاح، لكن خدمة واتساب لم ترسل دفعات المحادثات القديمة حتى الآن. اترك الهاتف متصلًا بالإنترنت ثم اضغط إحضار كل المحادثات الآن مرة أخرى.",
+        syncUnavailable: "لم تصل دفعات الأرشيف بعد. أبقِ الهاتف متصلاً وأعد المحاولة.",
         soon: "قريباً",
         photo: "صورة",
         voice: "رسالة صوتية",
@@ -217,7 +217,7 @@ function InboxPage() {
         fetchingAll: "جارٍ إحضار كل المحادثات…",
         fetchAllHint: "يعيد جلب كل محادثاتك الحالية من واتساب بنفس منطق الجلسة الجديدة، دون الحاجة لمسح QR مرة أخرى.",
         repairForHistory: "أعد الاقتران لاستيراد كل المحادثات",
-        repairHint: "واتساب يرسل أرشيف المحادثات القديمة مرة واحدة فقط عند أول ربط بعد مسح QR. لجلب كامل السجل، افصل الجلسة الحالية وامسح QR جديد — سيتم بث المحادثات على دفعات خلال دقائق حسب حجم أرشيفك.",
+        repairHint: "واتساب يرسل الأرشيف مرة واحدة فقط بعد أول مسح QR. لجلب كل السجل، افصل الجلسة وامسح QR جديد.",
       }
 
     : {
@@ -257,7 +257,7 @@ function InboxPage() {
         resyncDone: "Conversations and messages refreshed",
         resyncQueued: "Sync request sent to the bridge; chats will update automatically when batches arrive.",
         syncNeedsConnection: "Old chats cannot be fetched because WhatsApp is not connected. Reconnect and scan a new QR first.",
-        syncUnavailable: "Pairing succeeded, but WhatsApp has not sent old-chat batches yet. Keep the phone online, then press Fetch all chats now again.",
+        syncUnavailable: "Old-chat batches haven't arrived yet. Keep the phone online and retry.",
         soon: "Coming soon",
         photo: "Photo",
         voice: "Voice message",
@@ -272,7 +272,7 @@ function InboxPage() {
         fetchingAll: "Fetching all chats…",
         fetchAllHint: "Re-imports all your current WhatsApp chats using the same logic as a new session — no need to scan a QR again.",
         repairForHistory: "Re-pair to import all chats",
-        repairHint: "WhatsApp streams the archived history only once, on the first pairing after a QR scan. To pull the full backlog, disconnect the current session and scan a new QR — chats will arrive in batches over a few minutes depending on your archive size.",
+        repairHint: "WhatsApp streams the archive only once, after the first QR scan. To pull the full backlog, disconnect and scan a new QR.",
       };
 
 
@@ -1165,33 +1165,30 @@ function InboxPage() {
                 )}
               </div>
               {syncState.status === "error" && syncState.message && (
-                <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-2 text-[10.5px] leading-relaxed text-amber-900 dark:text-amber-200">
-                  <div className="font-semibold">
-                    {isAr ? "لم تصل دفعات المحادثات القديمة" : "Old-chat batches did not arrive"}
+                <div className="mt-2 rounded-lg border border-amber-500/25 bg-amber-500/5 p-2.5 text-[11px] leading-relaxed text-amber-900 dark:text-amber-200">
+                  <div className="font-semibold text-[11.5px]">
+                    {isAr ? "لم تصل دفعات الأرشيف" : "Archive batches not received"}
                   </div>
-                  <div className="mt-1 text-amber-800/90 dark:text-amber-200/90">
-                    {syncState.message}
-                  </div>
-                  <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-[10.5px] leading-relaxed text-amber-900/90 dark:text-amber-100/90">
+                  <p className="mt-1 text-amber-800/90 dark:text-amber-200/90">
                     {t.repairHint}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
                       disabled={historySyncMut.isPending}
                       onClick={() => historySyncMut.mutate()}
-                      className="h-7 gap-1.5 border-amber-500/40 bg-amber-500/10 text-[11px] font-semibold text-amber-900 hover:bg-amber-500/20 dark:text-amber-100"
+                      className="h-7 gap-1.5 border-amber-500/40 bg-amber-500/10 px-2 text-[11px] font-semibold text-amber-900 hover:bg-amber-500/20 dark:text-amber-100"
                     >
                       {historySyncMut.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
-                      {isAr ? "إعادة محاولة الإحضار" : "Retry fetching"}
+                      {isAr ? "إعادة المحاولة" : "Retry"}
                     </Button>
                     <Button
                       asChild
                       type="button"
                       size="sm"
-                      className="h-7 gap-1.5 bg-amber-600 text-[11px] font-semibold text-white hover:bg-amber-700"
+                      className="h-7 gap-1.5 bg-amber-600 px-2 text-[11px] font-semibold text-white hover:bg-amber-700"
                     >
                       <Link to="/dashboard/whatsapp/accounts">
                         <RefreshCw className="h-3 w-3" />
@@ -1199,7 +1196,6 @@ function InboxPage() {
                       </Link>
                     </Button>
                   </div>
-
                 </div>
               )}
             </div>
