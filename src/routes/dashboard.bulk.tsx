@@ -86,12 +86,27 @@ function BulkSendPage() {
 
   const loadAll = async () => {
     if (!user) return;
-    const [{ data: c }, { data: j }] = await Promise.all([
+    const [{ data: c }, { data: j }, { data: s }] = await Promise.all([
       supabase.from("contacts").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
       supabase.from("bulk_jobs").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(50),
+      supabase.from("whatsapp_settings").select("max_concurrent_campaigns").eq("user_id", user.id).maybeSingle(),
     ]);
     setContacts(c ?? []);
     setJobs(j ?? []);
+    if (s?.max_concurrent_campaigns) setMaxConcurrent(s.max_concurrent_campaigns);
+  };
+
+  const saveMaxConcurrent = async (n: number) => {
+    if (!user) return;
+    const val = Math.max(1, Math.min(10, Math.round(n)));
+    setMaxConcurrent(val);
+    setSavingConcurrency(true);
+    const { error } = await supabase
+      .from("whatsapp_settings")
+      .upsert({ user_id: user.id, max_concurrent_campaigns: val }, { onConflict: "user_id" });
+    setSavingConcurrency(false);
+    if (error) toast.error(error.message);
+    else toast.success(isAr ? `تم الحفظ — أقصى ${val} حملات متوازية` : `Saved — max ${val} parallel campaigns`);
   };
 
   useEffect(() => { loadAll(); /* eslint-disable-next-line */ }, [user]);
