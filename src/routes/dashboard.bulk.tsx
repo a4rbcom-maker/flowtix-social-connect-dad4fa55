@@ -1028,18 +1028,31 @@ function BulkSendPage() {
                   <div className="h-2.5 overflow-hidden rounded-full bg-muted">
                     <div className="h-full bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] transition-all" style={{ width: `${pct}%` }} />
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {active.map((j) => (
-                      <button
-                        key={j.id}
-                        onClick={() => pauseJob(j.id)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-600 hover:bg-amber-500/20 dark:text-amber-400"
-                        title={j.title}
-                      >
-                        <Pause className="h-3 w-3" /> {isAr ? "إيقاف مؤقت:" : "Pause:"} <span className="max-w-[10rem] truncate">{j.title}</span>
-                      </button>
-                    ))}
-                  </div>
+                  {active.length > 0 && (
+                    <div className="mt-4 rounded-xl border border-border/60 bg-background/60 p-3">
+                      <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold text-muted-foreground">
+                        <Pause className="h-3.5 w-3.5 text-amber-500" />
+                        {isAr
+                          ? "اضغط على اسم الحملة لإيقافها مؤقتاً (تقدر تستأنفها لاحقاً):"
+                          : "Click a campaign name to pause it (you can resume later):"}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {active.map((j) => (
+                          <button
+                            key={j.id}
+                            onClick={() => pauseJob(j.id)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-500/20 dark:text-amber-300"
+                            title={isAr ? `إيقاف حملة: ${j.title}` : `Pause campaign: ${j.title}`}
+                          >
+                            <Pause className="h-3 w-3" />
+                            <span className="text-muted-foreground">{isAr ? "إيقاف:" : "Pause:"}</span>
+                            <span className="max-w-[12rem] truncate">{j.title}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               );
             })()}
