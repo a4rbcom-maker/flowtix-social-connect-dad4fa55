@@ -203,7 +203,7 @@ function FacebookGroupsPage() {
   }, [user]);
 
 
-  // Consume handoff from the main Facebook page (preselected groups + jump to compose)
+  // Consume handoff from the main Facebook page (preselected groups)
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -211,7 +211,6 @@ function FacebookGroupsPage() {
       if (!raw) return;
       const parsed = JSON.parse(raw) as { groups?: Group[]; ts?: number };
       if (!parsed?.groups?.length) return;
-      // Discard entries older than 10 minutes to avoid stale handoffs.
       if (parsed.ts && Date.now() - parsed.ts > 10 * 60 * 1000) {
         sessionStorage.removeItem("fb_preselect_groups");
         return;
@@ -222,17 +221,17 @@ function FacebookGroupsPage() {
         return Array.from(map.values());
       });
       setSelected(new Set(parsed.groups.map((g) => g.id)));
-      setStep("compose");
       sessionStorage.removeItem("fb_preselect_groups");
       toast.success(
         lang === "ar"
-          ? `تم تحديد ${parsed.groups.length} جروب — اكتب رسالتك`
-          : `${parsed.groups.length} groups preselected — compose your message`,
+          ? `تم تحديد ${parsed.groups.length} جروب`
+          : `${parsed.groups.length} groups preselected`,
       );
     } catch {
       // ignore parse errors
     }
   }, [lang]);
+
 
   const callServerFn = async <T,>(fn: (opts: never) => Promise<T>, body?: unknown): Promise<T> => {
     const { data: { session } } = await supabase.auth.getSession();
