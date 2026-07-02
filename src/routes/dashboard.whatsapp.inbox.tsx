@@ -60,7 +60,7 @@ import {
   type ConversationRow,
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
-import { requestWaHistorySync, getWaHistorySyncJob, dismissWaHistorySyncJob } from "@/lib/wa.functions";
+import { requestWaHistorySync, getWaHistorySyncJob, dismissWaHistorySyncJob, matchLidPhoneNumbers } from "@/lib/wa.functions";
 import {
   createQuickReply,
   updateQuickReply,
