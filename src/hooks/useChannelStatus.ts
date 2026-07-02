@@ -94,13 +94,14 @@ export function useChannelStatus(lang: "ar" | "en") {
         if (mounted.current) setWhatsapp({ ...s, label: fmtLabel(s, lang) });
         return;
       }
-      const { data: sessionRow, error: sessionError } = await supabase
+      const { data: sessionRows, error: sessionError } = await supabase
         .from("wa_sessions")
         .select("status, phone_number, last_seen_at")
         .eq("user_id", sess.session.user.id)
-        .maybeSingle();
+        .order("updated_at", { ascending: false })
+        .limit(5);
       if (!mounted.current) return;
-      if (!sessionError && sessionRow?.status === "connected") {
+      if (!sessionError && sessionRows?.some((row) => row.status === "connected")) {
         const s: Omit<ChannelState, "label"> = { status: "connected" };
         setWhatsapp({ ...s, label: fmtLabel(s, lang) });
         return;
