@@ -384,8 +384,19 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
               usedLid = resolvedTarget.usedLid;
               const caption = rendered.trim();
               if (job.image_url) {
+                // Some bridge builds silently drop the `caption` field on media
+                // sends, so users saw the image arrive without the message.
+                // Send the text FIRST as its own message (only when there is
+                // one), then the image — guarantees both parts reach the
+                // recipient regardless of bridge caption support.
+                if (caption) {
+                  try {
+                    await waBridge.sendText(sess.session_id, targetJid, caption, { phone: targetPhone });
+                  } catch (textErr) {
+                    console.warn("[bulk] caption send failed; continuing with image", describeErr(textErr));
+                  }
+                }
                 const res = await waBridge.sendMedia(sess.session_id, targetJid, job.image_url, {
-                  caption,
                   mediaType: "image",
                   phone: targetPhone,
                 });
