@@ -279,6 +279,31 @@ function BulkSendPage() {
     else { toast.success(isAr ? "تم الإلغاء" : "Cancelled"); loadAll(); }
   };
 
+  const resumeJob = async (id: string) => {
+    if (!confirm(isAr ? "استئناف الحملة الآن؟ سيتم إعادة إرسال الأرقام التي فشلت." : "Resume campaign now? Failed recipients will be retried.")) return;
+    try {
+      // Reset failed recipients back to pending so the worker retries them
+      const { error: rErr } = await supabase
+        .from("bulk_job_recipients")
+        .update({ status: "pending", error_message: null, sent_at: null })
+        .eq("job_id", id)
+        .eq("status", "failed");
+      if (rErr) throw new Error(rErr.message);
+
+      // Re-schedule the job for immediate pickup by the background worker
+      const { error: jErr } = await supabase
+        .from("bulk_jobs")
+        .update({ status: "scheduled", scheduled_at: new Date().toISOString() })
+        .eq("id", id);
+      if (jErr) throw new Error(jErr.message);
+
+      toast.success(isAr ? "تم استئناف الحملة — سيتم البدء خلال دقيقة" : "Campaign resumed — will start within a minute");
+      loadAll();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  };
+
   if (authLoading || !user) return null;
 
   const statusLabels: Record<string, string> = isAr
