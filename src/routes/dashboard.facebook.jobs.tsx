@@ -356,6 +356,9 @@ function JobsHubPage() {
           )}
         </Card>
 
+        <ExtractionQuotaBanner />
+
+
 
         <Tabs value={activeTab} onValueChange={(v) => navigate({ search: { tab: v as typeof activeTab }, replace: true })}>
           <TabsList className="grid w-full grid-cols-5">
