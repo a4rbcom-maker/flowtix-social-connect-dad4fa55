@@ -310,7 +310,9 @@ function BulkSendPage() {
 
   const resumeJob = async (id: string) => {
     if (!confirm(isAr ? "استئناف الحملة الآن؟ سيتم إعادة إرسال الأرقام التي فشلت." : "Resume campaign now? Failed recipients will be retried.")) return;
+    if (!(await ensureWaConnected())) return;
     try {
+
       // Reset failed recipients back to pending so the worker retries them
       const { error: rErr } = await supabase
         .from("bulk_job_recipients")
