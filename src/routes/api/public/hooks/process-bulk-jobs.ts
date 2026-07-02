@@ -252,7 +252,14 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
         }
 
         for (const job of running ?? []) {
+          // Enforce per-user concurrency cap during processing too.
+          const cap = await getUserMaxConcurrent(job.user_id);
+          const done = processedPerUser.get(job.user_id) ?? 0;
+          if (done >= cap) continue;
+          processedPerUser.set(job.user_id, done + 1);
           summary.processed++;
+
+
 
           const batchSize = Math.max(
             1,
