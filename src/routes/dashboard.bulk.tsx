@@ -352,11 +352,18 @@ function BulkSendPage() {
   };
 
   const cancelJob = async (id: string) => {
-    if (!confirm(isAr ? "إلغاء هذه الحملة؟" : "Cancel this campaign?")) return;
+    if (!confirm(isAr ? "إلغاء هذه الحملة نهائياً؟ لن يتم استئنافها تلقائياً." : "Cancel this campaign permanently?")) return;
     const { error } = await supabase.from("bulk_jobs").update({ status: "cancelled" }).eq("id", id);
     if (error) toast.error(error.message);
     else { toast.success(isAr ? "تم الإلغاء" : "Cancelled"); loadAll(); }
   };
+
+  const pauseJob = async (id: string) => {
+    const { error } = await supabase.from("bulk_jobs").update({ status: "paused" }).eq("id", id);
+    if (error) toast.error(error.message);
+    else { toast.success(isAr ? "تم إيقاف الحملة مؤقتاً — اضغط استئناف للمتابعة" : "Campaign paused — click resume to continue"); loadAll(); }
+  };
+
 
   const resumeJobCore = async (id: string) => {
     const { error: rErr } = await supabase
