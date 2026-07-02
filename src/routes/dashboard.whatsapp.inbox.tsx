@@ -1027,9 +1027,7 @@ function InboxPage() {
               disabled={historySyncMut.isPending || convQuery.isFetching}
             >
               <RefreshCw className={`h-3.5 w-3.5 ${convQuery.isFetching || historySyncMut.isPending ? "animate-spin" : ""}`} />
-              <span className="hidden sm:inline">
-                {historySyncMut.isPending ? t.resyncing : t.resync}
-              </span>
+              <span className="hidden sm:inline">{t.resync}</span>
             </button>
           </div>
         </div>
@@ -1089,98 +1087,8 @@ function InboxPage() {
               chats were missing. Silent auto-sync only. */}
 
         </div>
-        {false && syncState.status !== "idle" && syncState.status !== "error" && (() => {
-          const elapsed = Math.max(0, Date.now() - syncState.startedAt);
-          const total = Math.max(1, syncState.deadlineAt - syncState.startedAt);
-          const timePct = Math.min(100, Math.round((elapsed / total) * 100));
-          // Progress heuristic: mix of time elapsed and messages imported (cap at 500).
-          const msgPct = Math.min(100, Math.round((syncState.importedMsg / 500) * 100));
-          const pct =
-            syncState.status === "done"
-              ? 100
-              : Math.max(msgPct, Math.min(95, timePct));
-          const toneFor = (kind: "running" | "pending" | "done" | "error") => statusBadgeTone(kind);
-          const meta =
-            syncState.status === "running"
-              ? {
-                  label: isAr ? "جاري جلب كل المحادثات…" : "Fetching all chats…",
-                  ...toneFor("running"),
-                  hint: isAr
-                    ? "واتساب يرسل الآن كل محادثاتك بعد مسح رمز QR. اترك الصفحة مفتوحة — قد يستغرق حتى دقيقة حسب حجم أرشيفك."
-                    : "WhatsApp is streaming all your chats after the QR scan. Keep this page open — may take up to a minute depending on your archive size.",
-                }
-              : syncState.status === "pending"
-                ? {
-                    label: isAr ? "بانتظار بدء المزامنة" : "Waiting to start",
-                    ...toneFor("pending"),
-                    hint: isAr
-                      ? "الجسر جاهز وسيبدأ إرسال الدفعات خلال ثوانٍ."
-                      : "The bridge is ready and will start sending batches in a few seconds.",
-                  }
-                : {
-                    label: isAr ? "اكتملت المزامنة" : "Sync complete",
-                    ...toneFor("done"),
-                    hint: isAr
-                      ? "تمت المزامنة بنجاح. يمكنك متابعة استخدام صندوق الوارد بشكل طبيعي."
-                      : "Sync finished successfully. You can continue using the inbox normally.",
-                  };
-
-          const active = syncState.status === "running" || syncState.status === "pending";
-          return (
-            <div className={`mt-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-[11px] ring-1 ${meta.border}`}>
-
-              <div className="flex items-center justify-between gap-2 font-semibold">
-                <span className="inline-flex items-center gap-1.5 truncate">
-                  {active && <Loader2 className="h-3 w-3 animate-spin" />}
-                  <TooltipProvider delayDuration={150}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          aria-label={meta.label}
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 outline-none focus-visible:ring-2 focus-visible:ring-primary/40 cursor-help ${meta.tone}`}
-                        >
-                          {meta.label}
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" align={isAr ? "end" : "start"} className="max-w-[260px] text-[11px] leading-relaxed">
-                        <div className="font-semibold">{meta.label}</div>
-                        <div className="mt-1 opacity-90">{meta.hint}</div>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </span>
-                <span className="shrink-0 tabular-nums text-muted-foreground">{pct}%</span>
-              </div>
-              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className={`h-full rounded-full ${meta.bar} transition-[width] duration-500`}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
-                <span className="truncate">
-                  {isAr
-                    ? `+${syncState.importedMsg} رسالة · +${syncState.importedConv} محادثة`
-                    : `+${syncState.importedMsg} messages · +${syncState.importedConv} chats`}
-                </span>
-                {active && (
-                  <span className="shrink-0 tabular-nums">
-                    {Math.round(elapsed / 1000)}
-                    {isAr ? " ث" : "s"}
-                  </span>
-                )}
-              </div>
-              {false && (
-                <div className="mt-1.5 flex items-center justify-between gap-2 text-[10.5px] text-muted-foreground">
-                  <span className="truncate" />
-                </div>
-              )}
-
-
-            </div>
-          );
-        })()}
+        {/* Sync banner intentionally removed — sync runs silently in the background
+            and must never surface toasts or status messages to end customers. */}
       </div>
 
       {/* List */}
