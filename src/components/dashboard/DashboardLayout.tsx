@@ -48,6 +48,7 @@ import { AnnouncementsBell } from "@/components/dashboard/AnnouncementsBell";
 import { AnnouncementModal } from "@/components/dashboard/AnnouncementModal";
 import { ChannelStatusDot } from "@/components/dashboard/ChannelStatusDot";
 import { ChannelQuickActions } from "@/components/dashboard/ChannelQuickActions";
+import { WaDisconnectBanner } from "@/components/dashboard/WaDisconnectBanner";
 import { useChannelStatus } from "@/hooks/useChannelStatus";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 const flowtixLogo = "/flowtix-logo.webp";
@@ -678,7 +679,10 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
           </div>
         </header>
 
-        <div className="min-w-0 overflow-x-hidden p-4 md:p-6">{children}</div>
+        <div className="min-w-0 overflow-x-hidden p-4 md:p-6">
+          <WaDisconnectBanner lang={lang} />
+          {children}
+        </div>
       </main>
 
       {/* Floating reopen button — only inside the chat, when the sidebar is collapsed/hidden. */}
