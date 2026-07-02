@@ -216,7 +216,10 @@ function InboxPage() {
         fetchAllNow: "إحضار كل المحادثات الآن",
         fetchingAll: "جارٍ إحضار كل المحادثات…",
         fetchAllHint: "يعيد جلب كل محادثاتك الحالية من واتساب بنفس منطق الجلسة الجديدة، دون الحاجة لمسح QR مرة أخرى.",
+        repairForHistory: "أعد الاقتران لاستيراد كل المحادثات",
+        repairHint: "واتساب يرسل أرشيف المحادثات القديمة مرة واحدة فقط عند أول ربط بعد مسح QR. لجلب كامل السجل، افصل الجلسة الحالية وامسح QR جديد — سيتم بث المحادثات على دفعات خلال دقائق حسب حجم أرشيفك.",
       }
+
     : {
         title: "Conversations",
         subtitle: "All your incoming and outgoing messages in one place.",
