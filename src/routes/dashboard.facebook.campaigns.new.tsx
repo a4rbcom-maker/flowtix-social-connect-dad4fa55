@@ -223,6 +223,64 @@ function NewCampaignPage() {
     }
   }, [lang]);
 
+  // Persist selection across visits (per-user) — restores selectedTargets + any
+  // manually-added groups so the user's picks survive navigating away and back.
+  const SELECTION_STORAGE_KEY = "flowtix.fb.campaign.new.selection.v1";
+  const selectionHydrated = useRef(false);
+
+  useEffect(() => {
+    if (!user || selectionHydrated.current || typeof window === "undefined") return;
+    selectionHydrated.current = true;
+    try {
+      const raw = localStorage.getItem(`${SELECTION_STORAGE_KEY}.${user.id}`);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { selected?: string[]; groups?: Group[]; ts?: number };
+      // Expire after 7 days
+      if (parsed.ts && Date.now() - parsed.ts > 7 * 24 * 60 * 60 * 1000) {
+        localStorage.removeItem(`${SELECTION_STORAGE_KEY}.${user.id}`);
+        return;
+      }
+      if (parsed.groups?.length) {
+        setGroups((prev) => {
+          const map = new Map(prev.map((g) => [g.id, g] as const));
+          for (const g of parsed.groups!) if (!map.has(g.id)) map.set(g.id, g);
+          return Array.from(map.values());
+        });
+      }
+      if (parsed.selected?.length) {
+        setSelectedTargets(new Set(parsed.selected));
+      }
+    } catch {
+      // ignore corrupt storage
+    }
+  }, [user]);
+
+  // Save selection whenever it changes (only after hydration, to avoid clobbering).
+  useEffect(() => {
+    if (!user || !selectionHydrated.current || typeof window === "undefined") return;
+    try {
+      const key = `${SELECTION_STORAGE_KEY}.${user.id}`;
+      if (selectedTargets.size === 0) {
+        localStorage.removeItem(key);
+        return;
+      }
+      const selected = Array.from(selectedTargets);
+      // Keep the metadata of selected groups only — enough to rehydrate labels
+      // for manual entries that aren't served by the API.
+      const savedGroups = groups
+        .filter((g) => selectedTargets.has(g.id))
+        .map((g) => ({ id: g.id, name: g.name }));
+      localStorage.setItem(
+        key,
+        JSON.stringify({ selected, groups: savedGroups, ts: Date.now() }),
+      );
+    } catch {
+      // ignore quota / private mode
+    }
+  }, [user, selectedTargets, groups]);
+
+
+
 
   const loadGroupsFromBotResults = async (): Promise<Group[]> => {
     if (!user) return [];
@@ -448,6 +506,10 @@ function NewCampaignPage() {
         await callFn(startCampaign, { id: c.id });
         toast.success(t.started);
       }
+      // Clear persisted selection now that the campaign was created
+      try {
+        if (user) localStorage.removeItem(`${SELECTION_STORAGE_KEY}.${user.id}`);
+      } catch { /* ignore */ }
       navigate({ to: "/dashboard/facebook/campaigns" });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
