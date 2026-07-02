@@ -214,13 +214,77 @@ function NewCampaignPage() {
   }, [lang]);
 
 
+  const loadGroupsFromBotResults = async (): Promise<Group[]> => {
+    if (!user) return [];
+    const { data: lastJob } = await supabase
+      .from("fb_jobs")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("job_type", "list_my_groups")
+      .eq("status", "completed")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!lastJob?.id) return [];
+    const { data: rows } = await supabase
+      .from("fb_job_results")
+      .select("target,data")
+      .eq("job_id", lastJob.id)
+      .eq("status", "success")
+      .limit(1000);
+    if (!rows?.length) return [];
+    return rows
+      .map((r) => {
+        const d = (r.data ?? {}) as { name?: string; group_id?: string; id?: string };
+        return { id: d.group_id ?? d.id ?? r.target ?? "", name: d.name ?? r.target ?? "—" };
+      })
+      .filter((g) => g.id);
+  };
+
+  // Auto-load previously imported groups (from bot's list_my_groups job) on mount
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const imported = await loadGroupsFromBotResults();
+        if (imported.length) {
+          setGroups((prev) => (prev.length ? prev : imported));
+        }
+      } catch {
+        // ignore
+      }
+    })();
+    // eslint-disable-next-line
+  }, [user]);
+
   const loadGroups = async () => {
     setGroupsLoading(true);
     try {
-      const res = await callFn<{ groups?: unknown; error: unknown }>(fetchFacebookGroups);
-      if (res.error) throw new Error("Connect your Facebook account first");
-      const list = safeArray<Group>(res.groups);
-      setGroups(list);
+      // Try Graph API first
+      let list: Group[] = [];
+      try {
+        const res = await callFn<{ groups?: unknown; error: unknown }>(fetchFacebookGroups);
+        if (!res.error) list = safeArray<Group>(res.groups);
+      } catch {
+        // ignore — fall back to bot results
+      }
+      // Fallback: load from the last completed list_my_groups bot job
+      if (list.length === 0) {
+        list = await loadGroupsFromBotResults();
+      }
+      if (list.length === 0) {
+        toast.error(
+          lang === "ar"
+            ? "لا توجد جروبات محفوظة. استورد جروباتك من صفحة «جروباتي» أولاً."
+            : "No saved groups. Import your groups from the Groups page first.",
+        );
+        return;
+      }
+      setGroups((prev) => {
+        const map = new Map(prev.map((g) => [g.id, g] as const));
+        for (const g of list) map.set(g.id, g);
+        return Array.from(map.values());
+      });
       toast.success(`${list.length} ${lang === "ar" ? "جروب" : "groups"}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
