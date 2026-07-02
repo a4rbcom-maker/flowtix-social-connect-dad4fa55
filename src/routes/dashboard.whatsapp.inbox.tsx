@@ -93,6 +93,8 @@ function InboxPage() {
   const sendFn = useServerFn(sendChatMessage);
   const markReadFn = useServerFn(markConversationRead);
   const requestHistorySyncFn = useServerFn(requestWaHistorySync);
+  const getHistorySyncJobFn = useServerFn(getWaHistorySyncJob);
+  const dismissHistorySyncJobFn = useServerFn(dismissWaHistorySyncJob);
 
 
 
