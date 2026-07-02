@@ -279,6 +279,31 @@ function BulkSendPage() {
     else { toast.success(isAr ? "تم الإلغاء" : "Cancelled"); loadAll(); }
   };
 
+  const resumeJob = async (id: string) => {
+    if (!confirm(isAr ? "استئناف الحملة الآن؟ سيتم إعادة إرسال الأرقام التي فشلت." : "Resume campaign now? Failed recipients will be retried.")) return;
+    try {
+      // Reset failed recipients back to pending so the worker retries them
+      const { error: rErr } = await supabase
+        .from("bulk_job_recipients")
+        .update({ status: "pending", error_message: null, sent_at: null })
+        .eq("job_id", id)
+        .eq("status", "failed");
+      if (rErr) throw new Error(rErr.message);
+
+      // Re-schedule the job for immediate pickup by the background worker
+      const { error: jErr } = await supabase
+        .from("bulk_jobs")
+        .update({ status: "scheduled", scheduled_at: new Date().toISOString() })
+        .eq("id", id);
+      if (jErr) throw new Error(jErr.message);
+
+      toast.success(isAr ? "تم استئناف الحملة — سيتم البدء خلال دقيقة" : "Campaign resumed — will start within a minute");
+      loadAll();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  };
+
   if (authLoading || !user) return null;
 
   const statusLabels: Record<string, string> = isAr
@@ -657,6 +682,11 @@ function BulkSendPage() {
                       {(j.status === "scheduled" || j.status === "running") && (
                         <button onClick={() => cancelJob(j.id)} className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10">
                           <Pause className="h-3 w-3" /> {isAr ? "إلغاء" : "Cancel"}
+                        </button>
+                      )}
+                      {(j.status === "cancelled" || j.status === "paused" || j.status === "failed") && (
+                        <button onClick={() => resumeJob(j.id)} className="inline-flex items-center gap-1 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20">
+                          <Play className="h-3 w-3" /> {isAr ? "استئناف" : "Resume"}
                         </button>
                       )}
                     </div>
