@@ -116,6 +116,12 @@ function InboxPage() {
 
 
   const [activeJid, setActiveJid] = useState<string | null>(null);
+  const [listVisible, setListVisible] = useState(true);
+  useEffect(() => {
+    if (isMobile) return;
+    if (activeJid) setListVisible(false);
+    else setListVisible(true);
+  }, [activeJid, isMobile]);
   const [isTyping, setIsTyping] = useState(false);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerTyping = useCallback((ms = 1400) => {
