@@ -514,7 +514,8 @@ function InboxPage() {
         "postgres_changes",
         { event: "*", schema: "public", table: "wa_messages", filter: `user_id=eq.${uid}` },
         (payload) => {
-          scheduleInvalidateConversations();
+          // لا نعيد تحميل قائمة المحادثات من wa_messages؛ التريجر يحدث wa_conversations
+          // وستصلنا إشارة منفصلة من جدول المحادثات. هذا يمنع refetch مزدوج لكل رسالة.
           const row = payload.new as { remote_jid?: string; direction?: string; raw?: { is_historical?: boolean } | null };
           if (activeJid && (payload.eventType === "DELETE" || row?.remote_jid === activeJid || payload.eventType === "UPDATE")) {
             scheduleInvalidateMessages(uid, activeJid);
