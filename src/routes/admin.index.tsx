@@ -206,6 +206,56 @@ function AdminOverviewPage() {
         })}
       </motion.div>
 
+      {/* Real visitors (bots filtered) */}
+      <div className="mt-4 rounded-2xl border border-border bg-card/70 backdrop-blur-xl p-5">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center shadow-lg">
+              <Eye className="h-4 w-4 text-white" />
+            </div>
+            <div>
+              <h3 className="font-bold">{t("زوار حقيقيون (بدون بوتات)", "Real visitors (bots filtered)")}</h3>
+              <p className="text-xs text-muted-foreground">
+                {t("زيارات بشرية فقط بعد استبعاد الزواحف وروبوتات المعاينة", "Human traffic only — crawlers & preview bots excluded")}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-muted text-muted-foreground">
+            <Bot className="h-3 w-3" />
+            {t("مفلتر", "Filtered")}: {(visitorsQ.data?.bot_pageviews ?? 0).toLocaleString()}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { label: t("مشاهدات (30ي)", "Pageviews (30d)"), value: visitorsQ.data?.human_pageviews ?? 0 },
+            { label: t("جلسات فريدة", "Unique sessions"), value: visitorsQ.data?.unique_sessions ?? 0 },
+            { label: t("اليوم", "Today"), value: visitorsQ.data?.human_pageviews_today ?? 0 },
+            { label: t("مستبعد كبوت", "Excluded as bot"), value: visitorsQ.data?.bot_pageviews ?? 0 },
+          ].map((s, i) => (
+            <div key={i} className="rounded-xl bg-muted/40 p-3">
+              <div className="text-xs text-muted-foreground">{s.label}</div>
+              <div className="text-xl font-bold mt-1">
+                {visitorsQ.isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : s.value.toLocaleString()}
+              </div>
+            </div>
+          ))}
+        </div>
+        {(visitorsQ.data?.top_paths?.length ?? 0) > 0 && (
+          <div className="mt-4">
+            <div className="text-xs font-semibold text-muted-foreground mb-2">{t("أكثر الصفحات زيارة", "Top pages")}</div>
+            <div className="space-y-1.5">
+              {visitorsQ.data!.top_paths.map((p) => (
+                <div key={p.path} className="flex items-center justify-between text-xs px-2 py-1.5 rounded-lg hover:bg-muted/60">
+                  <span className="truncate font-mono text-foreground/80">{p.path}</span>
+                  <span className="font-semibold">{p.count.toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-6">
         {/* Users growth */}
