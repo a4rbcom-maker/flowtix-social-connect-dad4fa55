@@ -29,21 +29,59 @@ function LoginPage() {
   const { isAdmin, isLoading: isAdminLoading } = useIsAdmin();
   
   const { redirect: redirectParam, reason: reasonParam } = Route.useSearch();
-  const expiredNotice = reasonParam === "expired"
-    ? (lang === "ar"
-        ? "انتهت جلستك بسبب طول فترة عدم النشاط. سجّل الدخول لمتابعة عملك."
-        : "Your session expired due to inactivity. Sign in to continue.")
-    : "";
+
+  const sessionNotice = (() => {
+    if (!reasonParam) return null;
+    const ar = lang === "ar";
+    if (reasonParam === "expired") {
+      return {
+        icon: Clock,
+        tone: "warning" as const,
+        title: ar ? "انتهت جلستك" : "Your session expired",
+        description: ar
+          ? "لأسباب أمنية انتهت صلاحية جلستك بسبب طول فترة عدم النشاط. سجّل الدخول مجدداً للمتابعة من حيث توقفت."
+          : "For your security, your session ended due to inactivity. Sign in again to pick up where you left off.",
+      };
+    }
+    if (reasonParam === "signed_out") {
+      return {
+        icon: LogIn,
+        tone: "info" as const,
+        title: ar ? "تم تسجيل الخروج" : "You have been signed out",
+        description: ar
+          ? "تم إنهاء جلستك. سجّل الدخول مرة أخرى للوصول لحسابك."
+          : "Your session has ended. Sign in again to access your account.",
+      };
+    }
+    if (reasonParam === "auth_required") {
+      return {
+        icon: ShieldCheck,
+        tone: "info" as const,
+        title: ar ? "يلزم تسجيل الدخول" : "Sign-in required",
+        description: ar
+          ? "الصفحة التي حاولت فتحها تتطلب حساباً مسجلاً. سجّل الدخول لمتابعة الوصول."
+          : "The page you tried to open requires an account. Sign in to continue.",
+      };
+    }
+    return {
+      icon: AlertCircle,
+      tone: "warning" as const,
+      title: ar ? "الرجاء تسجيل الدخول" : "Please sign in",
+      description: ar ? "أعد تسجيل الدخول للمتابعة." : "Sign in again to continue.",
+    };
+  })();
+
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
-  const [error, setError] = useState(expiredNotice);
+  const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+
 
 
   if (user && !isAdminLoading) {
