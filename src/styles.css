@@ -1115,12 +1115,14 @@ html {
   text-align: right;
 }
 
-/* Base toast — force unified tokens so richColors variants don't win */
+/* Base toast — force unified tokens so richColors variants don't win.
+   All sizing/spacing pulls from the tokens defined on [data-sonner-toaster],
+   so every state (success/warning/info/destructive/loading) stays in sync. */
 [data-sonner-toast].flowtix-toast-root,
 [data-sonner-toast][data-styled="true"].flowtix-toast-root {
-  border-radius: 16px !important;
-  padding: 14px 16px !important;
-  gap: 12px !important;
+  border-radius: var(--toast-radius) !important;
+  padding: var(--toast-padding-y) var(--toast-padding-x) !important;
+  gap: var(--toast-gap) !important;
   border: 1px solid var(--toast-border) !important;
   background: var(--toast-bg) !important;
   color: var(--toast-fg) !important;
@@ -1132,24 +1134,24 @@ html {
 
 [data-sonner-toast] .flowtix-toast-title,
 [data-sonner-toast] [data-title] {
-  font-weight: 700 !important;
-  font-size: 0.95rem !important;
-  line-height: 1.4 !important;
-  letter-spacing: 0.005em;
+  font-weight: var(--toast-title-weight) !important;
+  font-size: var(--toast-title-size) !important;
+  line-height: var(--toast-title-line) !important;
+  letter-spacing: var(--toast-title-tracking);
   color: var(--toast-fg) !important;
 }
 
 [data-sonner-toast] .flowtix-toast-desc,
 [data-sonner-toast] [data-description] {
-  font-size: 0.85rem !important;
-  line-height: 1.55 !important;
+  font-size: var(--toast-desc-size) !important;
+  line-height: var(--toast-desc-line) !important;
   color: var(--toast-desc) !important;
-  margin-top: 2px;
+  margin-top: var(--toast-desc-mt);
 }
 
 [data-sonner-toast] [data-icon] {
-  width: 22px !important;
-  height: 22px !important;
+  width: var(--toast-icon-size) !important;
+  height: var(--toast-icon-size) !important;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1157,8 +1159,8 @@ html {
 }
 
 [data-sonner-toast] [data-icon] > svg {
-  width: 20px;
-  height: 20px;
+  width: var(--toast-icon-svg);
+  height: var(--toast-icon-svg);
 }
 
 /* Type-specific: color icon + left accent bar only; keep unified surface */
@@ -1168,8 +1170,8 @@ html {
   inset-inline-start: 0;
   top: 10%;
   bottom: 10%;
-  width: 3px;
-  border-radius: 3px;
+  width: var(--toast-accent-width);
+  border-radius: var(--toast-accent-width);
   background: var(--primary);
   opacity: 0.95;
 }
