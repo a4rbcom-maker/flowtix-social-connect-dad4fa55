@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate, Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Save, Loader2, ChevronDown, FileText, Image as ImageIcon, Type, Layers, ArrowLeft,
   Users, Search, AlertCircle, Check, AlertTriangle, ClipboardPaste, X, Hash, Upload,
@@ -48,6 +49,68 @@ type BotAccount = { id: string; display_name: string };
 type Template = Tables<"fb_text_templates">;
 type Media = Tables<"fb_media_assets">;
 type Group = { id: string; name: string };
+
+function VirtualGroupList({
+  items, selectedTargets, onToggle, isManualGroup, emptyLabel, manualBadge,
+}: {
+  items: Group[];
+  selectedTargets: Set<string>;
+  onToggle: (id: string) => void;
+  isManualGroup: (g: Group) => boolean;
+  emptyLabel: string;
+  manualBadge: string;
+}) {
+  const parentRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 40,
+    overscan: 10,
+  });
+
+  if (items.length === 0) {
+    return (
+      <div className="max-h-64 overflow-y-auto rounded-lg border border-border">
+        <div className="px-3 py-6 text-center text-xs text-muted-foreground">{emptyLabel}</div>
+      </div>
+    );
+  }
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  return (
+    <div ref={parentRef} className="max-h-64 overflow-y-auto rounded-lg border border-border" style={{ contain: "strict" }}>
+      <div style={{ height: rowVirtualizer.getTotalSize(), width: "100%", position: "relative" }}>
+        {virtualItems.map((vi) => {
+          const g = items[vi.index];
+          const sel = selectedTargets.has(g.id);
+          return (
+            <button
+              type="button"
+              key={g.id}
+              onClick={() => onToggle(g.id)}
+              className={`absolute top-0 left-0 w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-accent transition-colors border-b border-border ${sel ? "bg-primary/5" : ""}`}
+              style={{ height: `${vi.size}px`, transform: `translateY(${vi.start}px)` }}
+            >
+              <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${sel ? "bg-primary border-primary" : "border-border"}`}>
+                {sel && <Check className="w-3 h-3 text-primary-foreground" />}
+              </span>
+              <span className="flex-1 text-start truncate flex items-center gap-2 min-w-0">
+                <span className="truncate">{g.name}</span>
+                {isManualGroup(g) && (
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/15 text-primary shrink-0">
+                    {manualBadge}
+                  </span>
+                )}
+              </span>
+              <span className="text-[10px] text-muted-foreground font-mono shrink-0">{g.id}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 
 function NewCampaignPage() {
   const { user, loading } = useAuth();
@@ -664,34 +727,14 @@ function NewCampaignPage() {
                 </div>
               </div>
 
-              <div className="max-h-64 overflow-y-auto rounded-lg border border-border divide-y divide-border">
-                {filteredGroups.length === 0 ? (
-                  <div className="px-3 py-6 text-center text-xs text-muted-foreground">{t.empty}</div>
-                ) : filteredGroups.map((g) => {
-                  const sel = selectedTargets.has(g.id);
-                  return (
-                    <button
-                      type="button"
-                      key={g.id}
-                      onClick={() => setSelectedTargets((prev) => { const n = new Set(prev); n.has(g.id) ? n.delete(g.id) : n.add(g.id); return n; })}
-                      className={`w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-accent transition-colors ${sel ? "bg-primary/5" : ""}`}
-                    >
-                      <span className={`w-4 h-4 rounded border flex items-center justify-center ${sel ? "bg-primary border-primary" : "border-border"}`}>
-                        {sel && <Check className="w-3 h-3 text-primary-foreground" />}
-                      </span>
-                      <span className="flex-1 text-start truncate flex items-center gap-2">
-                        <span className="truncate">{g.name}</span>
-                        {isManualGroup(g) && (
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/15 text-primary shrink-0">
-                            {t.manualBadge}
-                          </span>
-                        )}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground font-mono shrink-0">{g.id}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              <VirtualGroupList
+                items={filteredGroups}
+                selectedTargets={selectedTargets}
+                onToggle={(id) => setSelectedTargets((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; })}
+                isManualGroup={isManualGroup}
+                emptyLabel={t.empty}
+                manualBadge={t.manualBadge}
+              />
             </div>
           )}
 
