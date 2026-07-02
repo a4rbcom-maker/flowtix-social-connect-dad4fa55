@@ -669,6 +669,7 @@ export const createExtractPagesJob = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     await assertUsableBotAccount(supabase, userId, data.accountId);
+    await assertExtractionQuota(supabase, userId);
     const { data: row, error } = await supabase
       .from("fb_jobs")
       .insert({
@@ -699,6 +700,7 @@ export const createExtractCommentersJob = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     await assertUsableBotAccount(supabase, userId, data.accountId);
+    await assertExtractionQuota(supabase, userId);
     const { data: row, error } = await supabase
       .from("fb_jobs")
       .insert({
@@ -731,6 +733,7 @@ export const createExtractGroupMembersJob = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     await assertUsableBotAccount(supabase, userId, data.accountId);
+    await assertExtractionQuota(supabase, userId);
     // Accept either raw ID or URL — extract the ID from URLs
     const idMatch = data.groupId.match(/groups\/([^/?]+)/);
     const groupId = idMatch ? idMatch[1] : data.groupId;
@@ -766,6 +769,7 @@ export const createExtractPageAudienceJob = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     await assertUsableBotAccount(supabase, userId, data.accountId);
+    await assertExtractionQuota(supabase, userId);
     const idMatch = data.pageId.match(/facebook\.com\/([^/?]+)/);
     const pageId = idMatch ? idMatch[1] : data.pageId;
     const { data: row, error } = await supabase
