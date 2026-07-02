@@ -4,7 +4,7 @@ import { z } from "zod";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { Navbar } from "@/components/landing/Navbar";
-import { extractErrorText, signUpWithPasswordResilient } from "@/lib/auth-proxy.client";
+import { extractErrorText, signUpWithPasswordResilient } from "@/lib/auth-proxy";
 import {
   Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff,
   CheckCircle2, ShieldCheck, Sparkles, AlertCircle,
