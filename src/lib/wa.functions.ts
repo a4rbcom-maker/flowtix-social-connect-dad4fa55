@@ -97,7 +97,7 @@ export const connectWaSession = createServerFn({ method: "POST" })
         const now = new Date().toISOString();
         const errMsg = describeBridgeError(err);
         console.warn("[wa] createSession bridge error:", errMsg);
-        if (existing?.session_id && !isHardSessionGoneError(err)) {
+        if (existing?.session_id && (existing.status === "connected" || !isHardSessionGoneError(err))) {
           await updateWaSessionStatus(supabase, {
             userId,
             sessionId,

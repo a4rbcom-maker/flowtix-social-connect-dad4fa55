@@ -204,13 +204,20 @@ async function readState(supabase: ReturnType<typeof getSupabaseForToken>, userI
       });
     }
   }
+  const effectiveStatus = status === "disconnected" && previous?.status === "connected" ? "connected" : status;
   const update: Database["public"]["Tables"]["wa_sessions"]["Update"] = {
-    status,
+    status: effectiveStatus,
     qr_data_url: null,
     last_seen_at: now,
   };
   if (phoneNumber) update.phone_number = phoneNumber;
   await supabase.from("wa_sessions").update(update).eq("user_id", userId).eq("session_id", sessionId);
+  if (effectiveStatus === "connected") {
+    await supabase
+      .from("whatsapp_settings")
+      .update({ is_connected: true, last_connected_at: now })
+      .eq("user_id", userId);
+  }
 
   let surfacedPhone = phoneNumber;
   if (!surfacedPhone) {
@@ -223,7 +230,7 @@ async function readState(supabase: ReturnType<typeof getSupabaseForToken>, userI
     surfacedPhone = data?.phone_number ?? null;
   }
 
-  return stateDto(status, sessionId, null, status === "qr" ? qrRaw : null, surfacedPhone, now, error);
+  return stateDto(effectiveStatus, sessionId, null, effectiveStatus === "qr" ? qrRaw : null, surfacedPhone, now, error);
 }
 
 function stateDto(
