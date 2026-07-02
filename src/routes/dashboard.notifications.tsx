@@ -51,7 +51,14 @@ function NotificationCenter() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["my-notifications"],
-    queryFn: () => fetchFn(),
+    queryFn: async () => {
+      try {
+        return await fetchFn();
+      } catch {
+        return { rows: [], unreadCount: 0, popupId: null as string | null };
+      }
+    },
+    retry: false,
   });
 
   const [filter, setFilter] = useState<"all" | "unread">("all");
