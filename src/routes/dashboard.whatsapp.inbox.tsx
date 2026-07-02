@@ -60,7 +60,7 @@ import {
   type ConversationRow,
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
-import { requestWaHistorySync, getWaHistorySyncJob, dismissWaHistorySyncJob } from "@/lib/wa.functions";
+import { requestWaHistorySync, getWaHistorySyncJob, dismissWaHistorySyncJob, matchLidPhoneNumbers } from "@/lib/wa.functions";
 import {
   createQuickReply,
   updateQuickReply,
@@ -96,6 +96,8 @@ function InboxPage() {
   const requestHistorySyncFn = useServerFn(requestWaHistorySync);
   const getHistorySyncJobFn = useServerFn(getWaHistorySyncJob);
   const dismissHistorySyncJobFn = useServerFn(dismissWaHistorySyncJob);
+  const matchLidPhonesFn = useServerFn(matchLidPhoneNumbers);
+
 
 
 
@@ -463,6 +465,34 @@ function InboxPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connQuery.data?.status, convQuery.isFetching, user?.id]);
+
+  // Auto-match @lid conversations to real phone numbers once per session.
+  // Silently backfills contact_phone using stored senderPn data so old chats
+  // stop showing "محادثة واتساب" and merge with their sibling direct chats.
+  const lidMatchMut = useMutation({
+    mutationFn: () => matchLidPhonesFn(),
+    onSuccess: (res) => {
+      if (res && res.matched > 0) {
+        qc.invalidateQueries({ queryKey: ["wa-conversations", user?.id] });
+        toast.success(
+          isAr
+            ? `تم ربط ${res.matched} محادثة برقم الجوال الحقيقي`
+            : `Linked ${res.matched} chat(s) to their real phone number`
+        );
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const key = `wa-lid-match:${user.id}`;
+    if (typeof window === "undefined") return;
+    if (window.sessionStorage.getItem(key)) return;
+    window.sessionStorage.setItem(key, "1");
+    lidMatchMut.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
 
 
 
@@ -1017,7 +1047,35 @@ function InboxPage() {
               <RefreshCw className={`h-3.5 w-3.5 ${convQuery.isFetching || historySyncMut.isPending ? "animate-spin" : ""}`} />
               <span className="hidden sm:inline">{t.resync}</span>
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                lidMatchMut.mutate(undefined, {
+                  onSuccess: (res) => {
+                    if (!res || res.matched === 0) {
+                      toast.info(
+                        isAr
+                          ? "لا توجد أرقام جديدة لربطها الآن"
+                          : "No new phone numbers to link right now"
+                      );
+                    }
+                  },
+                });
+              }}
+              disabled={lidMatchMut.isPending}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-primary/30 bg-background px-2.5 text-[11px] font-semibold text-primary transition hover:bg-primary/10 disabled:opacity-60 sm:text-xs"
+              aria-label={isAr ? "مطابقة الأرقام" : "Match numbers"}
+              title={
+                isAr
+                  ? "ربط محادثات @lid بأرقام الجوال الحقيقية"
+                  : "Link @lid chats to real phone numbers"
+              }
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${lidMatchMut.isPending ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">{isAr ? "مطابقة الأرقام" : "Match numbers"}</span>
+            </button>
           </div>
+
         </div>
 
         {/* Search */}
