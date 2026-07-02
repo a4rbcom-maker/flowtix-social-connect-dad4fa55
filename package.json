@@ -14,7 +14,8 @@
     "worker:vps": "npm --prefix vps-worker run worker",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "audit:contrast": "node scripts/contrast-audit.mjs"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",
