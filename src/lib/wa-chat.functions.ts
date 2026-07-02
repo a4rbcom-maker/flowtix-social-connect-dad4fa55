@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { assertBridgeSendQueued, bridgeSendQueuedMessage, waBridge, BridgeError, sendTextWithReconnect, sendMediaWithReconnect } from "./wa-bridge.server";
-import { deriveWebhookUrl } from "./wa-helpers.server";
+import { deriveWebhookUrl, describeBridgeError } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
 import { isBridgeSessionMissingError, resetWaSessionAfterBridgeLoss } from "./wa-session-repair.server";
 import { resolveOutgoingWhatsappTarget } from "./wa-recipient.server";
@@ -277,8 +277,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
           reason: "manual chat send failed",
         });
       }
-      const msg =
-        err instanceof BridgeError ? err.message : err instanceof Error ? err.message : "Bridge error";
+      const msg = describeBridgeError(err);
       console.error("[wa-chat] sendText failed:", msg, "to=", to);
       throw new Error(msg);
     }
@@ -402,8 +401,7 @@ export const sendTestMessage = createServerFn({ method: "POST" })
           reason: "test send failed",
         });
       }
-      const msg =
-        err instanceof BridgeError ? err.message : err instanceof Error ? err.message : "Bridge error";
+      const msg = describeBridgeError(err);
       throw new Error(msg);
     }
   });
