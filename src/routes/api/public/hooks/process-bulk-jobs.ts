@@ -41,15 +41,19 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
           }
           return err instanceof Error ? err.message : "Send failed";
         };
-        const acceptedBridgeId = (res: unknown): string => {
+        const acceptedBridgeId = (res: unknown): { id: string; queuedOnly: boolean } => {
           const queuedId = bridgeSendQueuedMessage(res);
           try {
-            return assertBridgeSendQueued(res as Parameters<typeof assertBridgeSendQueued>[0]);
+            const confirmed = assertBridgeSendQueued(res as Parameters<typeof assertBridgeSendQueued>[0]);
+            const isQueuedOnly = !confirmed || /^q_/i.test(confirmed) || confirmed.toLowerCase() === "queued";
+            return { id: confirmed || queuedId || "queued", queuedOnly: isQueuedOnly };
           } catch (err) {
-            if (queuedId) return queuedId;
+            if (queuedId) return { id: queuedId, queuedOnly: true };
             throw err;
           }
         };
+        const QUEUED_STALE_MS = 5 * 60 * 1000; // 5 min: bridge accepted but never confirmed
+
 
         const now = new Date();
         const summary = {
