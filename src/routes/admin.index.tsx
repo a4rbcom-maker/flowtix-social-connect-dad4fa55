@@ -17,6 +17,8 @@ import {
   Activity,
   Zap,
   Loader2,
+  Eye,
+  Bot,
 } from "lucide-react";
 import {
   AreaChart,
