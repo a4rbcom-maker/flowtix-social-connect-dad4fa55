@@ -223,6 +223,6 @@ describe("updateWaSessionStatus — stability guarantees", () => {
     });
 
     expect(state.session.status).toBe("connected");
-    expect(state.events.at(-1)?.reason).toMatch(/ignored_transient_disconnect\(untrusted_disconnect\)/);
+    expect(state.settingsUpdates.some((u) => u.is_connected === false)).toBe(false);
   });
 });
