@@ -10,6 +10,8 @@
     "build:dev": "vite build --config vite.config.ts --mode development",
     "preview": "vite preview --port 3100 --strictPort",
     "start": "node scripts/tanstack-node-server.mjs",
+    "worker": "npm --prefix bot-worker run worker",
+    "worker:vps": "npm --prefix vps-worker run worker",
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run"
