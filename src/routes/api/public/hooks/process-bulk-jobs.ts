@@ -31,7 +31,7 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
         }
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { waBridge, assertBridgeSendQueued, bridgeSendFailureMessage, BridgeError } = await import(
+        const { waBridge, assertBridgeSendQueued, bridgeSendFailureMessage, BridgeError, inferStatus } = await import(
           "@/lib/wa-bridge.server"
         );
         const { normalizeWhatsappPhone } = await import("@/lib/wa-chat-helpers.server");
@@ -102,7 +102,8 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
             Math.min(job.batch_size ?? DEFAULT_BATCH_SIZE, HARD_CAP_SENDS_PER_JOB_PER_TICK),
           );
 
-          // Verify user has a connected WA session
+          // Verify user has a connected WA session in DB and on the bridge.
+          // A stale DB "connected" row must pause the campaign instead of marking every recipient failed.
           const sess = await getSession(job.user_id);
           if (!sess || sess.status !== "connected") {
             // Pause the job with a clear error until user reconnects
@@ -114,6 +115,48 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
                 next_send_at: null,
               })
               .eq("id", job.id);
+            summary.skipped_no_session++;
+            continue;
+          }
+          try {
+            const live = await waBridge.getStatus(sess.session_id);
+            if (inferStatus(live) !== "connected") {
+              await supabaseAdmin
+                .from("bulk_jobs")
+                .update({
+                  status: "paused",
+                  error_message: "جلسة واتساب غير جاهزة — افتح واتساب وأعد تحديث الحالة ثم استأنف الحملة",
+                  next_send_at: null,
+                })
+                .eq("id", job.id);
+              await supabaseAdmin
+                .from("wa_sessions")
+                .update({ status: inferStatus(live), last_seen_at: new Date().toISOString() })
+                .eq("user_id", job.user_id)
+                .eq("session_id", sess.session_id);
+              summary.skipped_no_session++;
+              continue;
+            }
+          } catch (err) {
+            const status = err instanceof BridgeError ? err.status : 0;
+            const hardGone = status === 404 || /session.*(not.?found|closed|logged.?out)/i.test(err instanceof Error ? err.message : String(err));
+            await supabaseAdmin
+              .from("bulk_jobs")
+              .update({
+                status: "paused",
+                error_message: hardGone
+                  ? "جلسة واتساب غير موجودة على خادم الربط — أعد الربط ثم استأنف الحملة"
+                  : "تعذر فحص جلسة واتساب مؤقتاً — سيتم الاستئناف بعد التأكد من الاتصال",
+                next_send_at: null,
+              })
+              .eq("id", job.id);
+            if (hardGone) {
+              await supabaseAdmin
+                .from("wa_sessions")
+                .update({ status: "disconnected", last_seen_at: new Date().toISOString() })
+                .eq("user_id", job.user_id)
+                .eq("session_id", sess.session_id);
+            }
             summary.skipped_no_session++;
             continue;
           }
@@ -174,6 +217,22 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
               }
             } catch (err) {
               errorMessage = describeErr(err);
+              if (/session.*(not.?found|closed|logged.?out|not connected)/i.test(errorMessage)) {
+                await supabaseAdmin
+                  .from("bulk_jobs")
+                  .update({
+                    status: "paused",
+                    error_message: "توقفت جلسة واتساب أثناء الإرسال — أعد الربط/تحديث الحالة ثم استأنف الحملة",
+                    next_send_at: null,
+                  })
+                  .eq("id", job.id);
+                await supabaseAdmin
+                  .from("wa_sessions")
+                  .update({ status: "disconnected", last_seen_at: new Date().toISOString() })
+                  .eq("user_id", job.user_id)
+                  .eq("session_id", sess.session_id);
+                break;
+              }
             }
 
             if (errorMessage) {
