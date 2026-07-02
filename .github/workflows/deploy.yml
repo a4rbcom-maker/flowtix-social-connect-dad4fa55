@@ -373,9 +373,12 @@ jobs:
           USER="${SERVER_USER:-${SSH_USER:-}}"
           HOST="${SERVER_IP:-${SSH_HOST:-}}"
           PORT="${SSH_PORT:-22}"
+          # Post-deploy sweep: after promotion, the entire staging root is
+          # disposable. Wipe every subdir (including current run's) so nothing
+          # is left behind on success or failure.
           ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
             "${USER}@${HOST}" \
-            "case '${REMOTE_STAGING}' in .flowtixtools-web-staging/*) rm -rf '${REMOTE_STAGING}' ;; esac; find '.flowtixtools-web-staging' -mindepth 1 -maxdepth 1 -type d -mtime +1 -exec rm -rf {} + 2>/dev/null || true"
+            "find '.flowtixtools-web-staging' -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true"
 
       # ─── 10. Local health check on the VPS itself ──────────────────────
       - name: Verify SSR app on 127.0.0.1
