@@ -36,7 +36,7 @@ function AdminStoragePage() {
   const buckets = useMemo(() => data?.buckets ?? [], [data]);
 
   return (
-    <AdminLayout>
+    <AdminLayout title={t("فحص التخزين", "Storage scan")}>
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
