@@ -1165,33 +1165,30 @@ function InboxPage() {
                 )}
               </div>
               {syncState.status === "error" && syncState.message && (
-                <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-2 text-[10.5px] leading-relaxed text-amber-900 dark:text-amber-200">
-                  <div className="font-semibold">
-                    {isAr ? "لم تصل دفعات المحادثات القديمة" : "Old-chat batches did not arrive"}
+                <div className="mt-2 rounded-lg border border-amber-500/25 bg-amber-500/5 p-2.5 text-[11px] leading-relaxed text-amber-900 dark:text-amber-200">
+                  <div className="font-semibold text-[11.5px]">
+                    {isAr ? "لم تصل دفعات الأرشيف" : "Archive batches not received"}
                   </div>
-                  <div className="mt-1 text-amber-800/90 dark:text-amber-200/90">
-                    {syncState.message}
-                  </div>
-                  <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-[10.5px] leading-relaxed text-amber-900/90 dark:text-amber-100/90">
+                  <p className="mt-1 text-amber-800/90 dark:text-amber-200/90">
                     {t.repairHint}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
                       disabled={historySyncMut.isPending}
                       onClick={() => historySyncMut.mutate()}
-                      className="h-7 gap-1.5 border-amber-500/40 bg-amber-500/10 text-[11px] font-semibold text-amber-900 hover:bg-amber-500/20 dark:text-amber-100"
+                      className="h-7 gap-1.5 border-amber-500/40 bg-amber-500/10 px-2 text-[11px] font-semibold text-amber-900 hover:bg-amber-500/20 dark:text-amber-100"
                     >
                       {historySyncMut.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
-                      {isAr ? "إعادة محاولة الإحضار" : "Retry fetching"}
+                      {isAr ? "إعادة المحاولة" : "Retry"}
                     </Button>
                     <Button
                       asChild
                       type="button"
                       size="sm"
-                      className="h-7 gap-1.5 bg-amber-600 text-[11px] font-semibold text-white hover:bg-amber-700"
+                      className="h-7 gap-1.5 bg-amber-600 px-2 text-[11px] font-semibold text-white hover:bg-amber-700"
                     >
                       <Link to="/dashboard/whatsapp/accounts">
                         <RefreshCw className="h-3 w-3" />
@@ -1199,7 +1196,6 @@ function InboxPage() {
                       </Link>
                     </Button>
                   </div>
-
                 </div>
               )}
             </div>
