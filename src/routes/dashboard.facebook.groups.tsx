@@ -6,14 +6,12 @@ import {
   RefreshCw,
   Loader2,
   CheckCircle2,
-  Eye,
-  Send,
   ArrowLeft,
   AlertCircle,
-  Image as ImageIcon,
-  X,
+  Send,
   Sparkles,
 } from "lucide-react";
+
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
