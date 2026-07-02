@@ -930,6 +930,64 @@ function BulkSendPage() {
               )}
             </div>
 
+            {/* ============ LIVE STATUS: active campaigns running in the background ============ */}
+            {(() => {
+              const active = jobs.filter((j) => j.status === "scheduled" || j.status === "running");
+              if (active.length === 0) return null;
+              const totals = active.reduce(
+                (a, j) => ({
+                  total: a.total + (j.total_recipients || 0),
+                  sent: a.sent + (j.sent_count || 0),
+                  failed: a.failed + (j.failed_count || 0),
+                }),
+                { total: 0, sent: 0, failed: 0 },
+              );
+              const processed = totals.sent + totals.failed;
+              const pct = totals.total > 0 ? Math.round((processed / totals.total) * 100) : 0;
+              return (
+                <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 to-transparent p-5">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                      </span>
+                      <h3 className="text-sm font-bold text-foreground">
+                        {isAr ? `يعمل الآن — ${active.length} حملة نشطة` : `Live — ${active.length} active campaign${active.length > 1 ? "s" : ""}`}
+                      </h3>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{isAr ? "يُحدَّث تلقائياً كل 4 ثوانٍ" : "Auto-refresh every 4s"}</span>
+                  </div>
+                  <div className="mb-3 grid grid-cols-4 gap-2">
+                    <Stat label={isAr ? "الإجمالي" : "Total"} value={totals.total} />
+                    <Stat label={isAr ? "ناجحة" : "Sent"} value={totals.sent} />
+                    <Stat label={isAr ? "فاشلة" : "Failed"} value={totals.failed} />
+                    <Stat label={isAr ? "المتبقي" : "Remaining"} value={Math.max(0, totals.total - processed)} />
+                  </div>
+                  <div className="mb-1 flex justify-between text-xs text-muted-foreground">
+                    <span>{isAr ? "التقدم الإجمالي" : "Overall progress"}</span>
+                    <span>{processed} / {totals.total} • {pct}%</span>
+                  </div>
+                  <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full bg-gradient-to-r from-primary to-[oklch(0.66_0.26_320)] transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {active.map((j) => (
+                      <button
+                        key={j.id}
+                        onClick={() => pauseJob(j.id)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-600 hover:bg-amber-500/20 dark:text-amber-400"
+                        title={j.title}
+                      >
+                        <Pause className="h-3 w-3" /> {isAr ? "إيقاف مؤقت:" : "Pause:"} <span className="max-w-[10rem] truncate">{j.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+
             {jobs.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border bg-card/40 p-10 text-center">
                 <ListChecks className="mx-auto h-10 w-10 text-muted-foreground" />
