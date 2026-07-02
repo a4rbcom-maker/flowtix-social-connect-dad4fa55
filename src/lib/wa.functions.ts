@@ -319,11 +319,13 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
         supabase
           .from("wa_conversations")
           .select("id", { count: "exact", head: true })
-          .eq("user_id", userId),
+          .eq("user_id", userId)
+          .eq("session_id", row.session_id),
         supabase
           .from("wa_messages")
           .select("id", { count: "exact", head: true })
-          .eq("user_id", userId),
+          .eq("user_id", userId)
+          .eq("session_id", row.session_id),
       ]);
       return { conversations: conversations ?? 0, messages: messages ?? 0 };
     };
