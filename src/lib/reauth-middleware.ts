@@ -44,7 +44,12 @@ export const reauthOnExpiredSession = createMiddleware({ type: "function" }).cli
         const current = window.location.pathname + window.location.search;
         window.location.replace(`/login?reason=expired&redirect=${encodeURIComponent(current)}`);
       }
-      throw err;
+      // Normalize the thrown Response into a real Error so callers/boundaries
+      // don't render "[object Response]" when they stringify it.
+      const authError = new Error("SESSION_EXPIRED: انتهت الجلسة، جارٍ إعادة تسجيل الدخول…");
+      (authError as { status?: number }).status = 401;
+      (authError as { cause?: unknown }).cause = err;
+      throw authError;
     }
   },
 );
