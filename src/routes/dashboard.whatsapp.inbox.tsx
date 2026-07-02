@@ -2424,7 +2424,7 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
   }
 
   const existingJids = new Set(rows.map((row) => row.remote_jid));
-  const staleConversationFixes: Promise<unknown>[] = [];
+  const staleConversationFixes: PromiseLike<unknown>[] = [];
   const visibleRows: RankedConversationRow[] = rows.map((row): RankedConversationRow => {
     const meta = metaByJid.get(row.remote_jid);
     const latestMessage = latestMessageByJid.get(row.remote_jid);
