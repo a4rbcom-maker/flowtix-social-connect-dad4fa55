@@ -565,9 +565,10 @@ function InboxPage() {
         qc.invalidateQueries({ queryKey: ["wa-messages", user.id, activeJid] });
       }
 
-      // Ask the bridge to backfill anything it buffered while we were gone.
-      const heavyGap = gapMs > 90_000 || reason === "online";
-      if (heavyGap && now - lastSyncAt > 60_000) {
+      // لا نشغل history sync ثقيل عند كل رجوع للتاب. فقط للحساب الفارغ جدًا،
+      // وبحد زمني واسع، لتجنب استهلاك Disk IO بسبب محاولات متكررة.
+      const heavyGap = (gapMs > 30 * 60_000 || reason === "online") && conversations.length === 0;
+      if (heavyGap && now - lastSyncAt > 30 * 60_000) {
         lastSyncAt = now;
         requestHistorySyncFn()
           .then(() => {
@@ -603,7 +604,7 @@ function InboxPage() {
       document.removeEventListener("visibilitychange", onVisibility);
       window.clearInterval(heartbeat);
     };
-  }, [qc, user?.id, activeJid, requestHistorySyncFn]);
+  }, [qc, user?.id, activeJid, requestHistorySyncFn, conversations.length]);
 
   // Reset progressive pagination when conversation changes
   useEffect(() => {
