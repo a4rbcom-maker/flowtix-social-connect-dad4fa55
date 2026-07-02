@@ -80,6 +80,43 @@ export const getRecentActivity = createServerFn({ method: "GET" })
     return { events: events.slice(0, 25) };
   });
 
+// ---------- Real (non-bot) visitor analytics ----------
+export const getVisitorStats = createServerFn({ method: "GET" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { days?: number }) => ({ days: Math.min(Math.max(d?.days ?? 30, 1), 90) }))
+  .handler(async ({ data }) => {
+    const db = admin();
+    const since = new Date(Date.now() - data.days * 24 * 60 * 60 * 1000).toISOString();
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const todayIso = today.toISOString();
+
+    const [humanTotal, botTotal, humanToday, humanSessions, topPaths] = await Promise.all([
+      db.from("site_visits").select("id", { count: "exact", head: true }).eq("is_bot", false).gte("created_at", since),
+      db.from("site_visits").select("id", { count: "exact", head: true }).eq("is_bot", true).gte("created_at", since),
+      db.from("site_visits").select("id", { count: "exact", head: true }).eq("is_bot", false).gte("created_at", todayIso),
+      db.from("site_visits").select("session_id").eq("is_bot", false).gte("created_at", since).not("session_id", "is", null).limit(20000),
+      db.from("site_visits").select("path").eq("is_bot", false).gte("created_at", since).limit(20000),
+    ]);
+
+    const uniqueSessions = new Set((humanSessions.data ?? []).map((r: any) => r.session_id)).size;
+    const pathCounts = new Map<string, number>();
+    (topPaths.data ?? []).forEach((r: any) => pathCounts.set(r.path, (pathCounts.get(r.path) ?? 0) + 1));
+    const top = Array.from(pathCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([path, count]) => ({ path, count }));
+
+    return {
+      days: data.days,
+      human_pageviews: humanTotal.count ?? 0,
+      bot_pageviews: botTotal.count ?? 0,
+      human_pageviews_today: humanToday.count ?? 0,
+      unique_sessions: uniqueSessions,
+      top_paths: top,
+    };
+  });
+
 // ---------- Users list ----------
 const listUsersSchema = z.object({
   search: z.string().trim().max(200).optional().default(""),

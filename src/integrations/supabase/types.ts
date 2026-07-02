@@ -1412,6 +1412,45 @@ export type Database = {
         }
         Relationships: []
       }
+      site_visits: {
+        Row: {
+          bot_reason: string | null
+          country: string | null
+          created_at: string
+          id: number
+          is_bot: boolean
+          lang: string | null
+          path: string
+          referrer: string | null
+          session_id: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          bot_reason?: string | null
+          country?: string | null
+          created_at?: string
+          id?: number
+          is_bot?: boolean
+          lang?: string | null
+          path: string
+          referrer?: string | null
+          session_id?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          bot_reason?: string | null
+          country?: string | null
+          created_at?: string
+          id?: number
+          is_bot?: boolean
+          lang?: string | null
+          path?: string
+          referrer?: string | null
+          session_id?: string | null
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           id: string
