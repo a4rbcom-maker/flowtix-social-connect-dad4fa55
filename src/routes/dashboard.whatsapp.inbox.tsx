@@ -1032,11 +1032,10 @@ function InboxPage() {
           />
         </div>
 
-        {/* Filters + time range unified in one wrap block */}
+        {/* Filters — compact */}
         <div className="flex flex-wrap items-center gap-1.5">
           {([
             { k: "all" as FilterKey, label: t.all },
-            { k: "unread" as FilterKey, label: t.filterUnread },
             { k: "ai" as FilterKey, label: t.filterAi },
           ]).map((f) => {
             const active = filter === f.k;
@@ -1055,31 +1054,8 @@ function InboxPage() {
               </button>
             );
           })}
-          <span className="mx-1 h-4 w-px bg-border/70" aria-hidden />
-          {([
-            { k: "all" as TimeRangeKey, label: isAr ? "كل الوقت" : "All time" },
-            { k: "1d" as TimeRangeKey, label: isAr ? "24 ساعة" : "24h" },
-            { k: "7d" as TimeRangeKey, label: isAr ? "7 أيام" : "7d" },
-            { k: "30d" as TimeRangeKey, label: isAr ? "30 يوم" : "30d" },
-            { k: "90d" as TimeRangeKey, label: isAr ? "90 يوم" : "90d" },
-          ]).map((f) => {
-            const active = timeRange === f.k;
-            return (
-              <button
-                key={f.k}
-                type="button"
-                onClick={() => setTimeRange(f.k)}
-                className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
-                  active
-                    ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                    : "bg-muted/40 text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                {f.label}
-              </button>
-            );
-          })}
         </div>
+
 
         {/* Status strip */}
         <div className="flex items-center justify-between gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-[11px] font-medium text-muted-foreground">
