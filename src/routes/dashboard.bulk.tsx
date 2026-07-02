@@ -104,6 +104,19 @@ function BulkSendPage() {
     // eslint-disable-next-line
   }, [user]);
 
+  // Live polling every 4s while any campaign is scheduled/running so counts move
+  // in near-real-time even if the realtime channel drops.
+  useEffect(() => {
+    if (!user) return;
+    const anyActive = jobs.some((j) => j.status === "scheduled" || j.status === "running");
+    if (!anyActive) return;
+    const t = setInterval(loadAll, 4000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line
+  }, [user, jobs]);
+
+
+
   // Build named lists from contacts.tags
   const lists = useMemo(() => {
     const map = new Map<string, Contact[]>();
