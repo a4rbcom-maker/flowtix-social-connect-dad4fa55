@@ -72,6 +72,8 @@ function BulkSendPage() {
   const [extraContactIds, setExtraContactIds] = useState<Set<string>>(new Set());
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
+  const [maxConcurrent, setMaxConcurrent] = useState<number>(3);
+  const [savingConcurrency, setSavingConcurrency] = useState(false);
 
   // Lists tab
   const [listName, setListName] = useState("");
