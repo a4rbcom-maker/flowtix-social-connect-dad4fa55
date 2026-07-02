@@ -470,8 +470,9 @@ function NewCampaignPage() {
 
   const isManualGroup = (g: Group) => g.name === `Group ${g.id}`;
 
+  const deferredSearch = useDeferredValue(search);
   const filteredGroups = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
     let list = groups;
     if (q) list = list.filter((g) => g.name.toLowerCase().includes(q) || g.id.includes(q));
     if (filterMode === "selected") list = list.filter((g) => selectedTargets.has(g.id));
@@ -486,7 +487,17 @@ function NewCampaignPage() {
       return sa - sb || a.name.localeCompare(b.name);
     });
     return sorted;
-  }, [groups, search, filterMode, sortMode, selectedTargets, lang]);
+  }, [groups, deferredSearch, filterMode, sortMode, selectedTargets, lang]);
+
+  // Progressive rendering: cap items shown initially, expose "Load more" to reveal in chunks.
+  const PAGE_SIZE = 200;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [deferredSearch, filterMode, sortMode]);
+  const visibleGroups = useMemo(
+    () => (filteredGroups.length > visibleCount ? filteredGroups.slice(0, visibleCount) : filteredGroups),
+    [filteredGroups, visibleCount],
+  );
+  const hasMoreGroups = filteredGroups.length > visibleGroups.length;
 
   const filterCounts = useMemo(() => ({
     all: groups.length,
