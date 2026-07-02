@@ -719,9 +719,19 @@ export const sendWaMessage = createServerFn({ method: "POST" })
 
     const phone = normalizeWhatsappPhone(data.to) || data.to.replace(/[^0-9]/g, "");
     let providerMessageId: string | null = null;
+    let queuedId: string | null = null;
+    let delivery = "whatsapp_acknowledged";
+    let status = "sent";
     try {
       const res = await waBridge.sendText(row.session_id, phone, data.text);
-      providerMessageId = assertBridgeSendQueued(res);
+      queuedId = bridgeSendQueuedMessage(res);
+      try {
+        providerMessageId = assertBridgeSendQueued(res);
+      } catch (err) {
+        if (!queuedId) throw err;
+        status = "pending";
+        delivery = "bridge_queued_waiting_for_whatsapp_ack";
+      }
     } catch (err) {
       const msg = describeBridgeError(err);
       // If the bridge says the session is gone, sync DB so UI shows QR prompt.
@@ -745,9 +755,9 @@ export const sendWaMessage = createServerFn({ method: "POST" })
       to_phone: phone,
       msg_type: "text",
       text_body: data.text,
-      status: "sent",
+      status,
       provider_message_id: providerMessageId,
-      raw: providerMessageId ? ({ bridgeMessageId: providerMessageId } as never) : null,
+      raw: { bridgeMessageId: providerMessageId, queuedId, delivery } as never,
     });
 
     await upsertConversationFromMessage({
@@ -760,7 +770,7 @@ export const sendWaMessage = createServerFn({ method: "POST" })
       direction: "out",
     });
 
-    return { ok: true };
+    return { ok: true, pending: status === "pending" };
   });
 
 export const disconnectWaSession = createServerFn({ method: "POST" })

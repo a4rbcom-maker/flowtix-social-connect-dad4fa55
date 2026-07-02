@@ -126,7 +126,7 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
               .update({
                 status: "failed",
                 error_message: "قبل الجسر الطلب لكن لم يتم تأكيد التسليم — أعد ربط واتساب ثم استأنف",
-                metadata: { ...meta, queued_only: true, auto_repaired: true },
+                metadata: { ...meta, queued_only: true, auto_repaired: true } as never,
               })
               .eq("id", log.id);
 

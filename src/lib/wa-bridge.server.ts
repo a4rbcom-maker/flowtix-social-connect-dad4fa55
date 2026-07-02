@@ -206,8 +206,12 @@ export function isBridgeQueueToken(value: unknown): boolean {
 export function extractBridgeQueuedId(res: unknown, depth = 0): string | null {
   if (!res || depth > 3) return null;
   const obj = asRecord(res);
+  const queuedToken = pickString(obj, "id", "messageId", "message_id", "msgId", "msg_id", "wamid");
+  if (isBridgeQueueToken(queuedToken)) return queuedToken;
   const direct = pickString(obj, "queuedId", "queued_id", "queueId", "queue_id", "requestId", "request_id", "jobId", "job_id");
   if (direct) return direct;
+  const keyId = pickString(asRecord(obj.key), "id");
+  if (isBridgeQueueToken(keyId)) return keyId;
   for (const key of ["data", "result", "payload", "message"]) {
     const nested = extractBridgeQueuedId(obj[key], depth + 1);
     if (nested) return nested;
