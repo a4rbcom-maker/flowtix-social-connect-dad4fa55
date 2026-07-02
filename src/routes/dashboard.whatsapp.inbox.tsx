@@ -267,9 +267,6 @@ function InboxPage() {
         savedStats: (chats: number, messages: number) => `${chats} محادثات ظاهرة · ${messages} رسالة محفوظة`,
         connected: "متصل",
         disconnected: "غير متصل",
-        fetchAllNow: "إحضار كل المحادثات الآن",
-        fetchingAll: "جارٍ إحضار كل المحادثات…",
-        fetchAllHint: "يعيد جلب كل محادثاتك الحالية من واتساب بنفس منطق الجلسة الجديدة، دون الحاجة لمسح QR مرة أخرى.",
         repairForHistory: "أعد الاقتران لاستيراد كل المحادثات",
         repairHint: "واتساب يرسل الأرشيف مرة واحدة فقط بعد أول مسح QR. لجلب كل السجل، افصل الجلسة وامسح QR جديد.",
       }
@@ -322,9 +319,6 @@ function InboxPage() {
         savedStats: (chats: number, messages: number) => `${chats} visible chats · ${messages} saved messages`,
         connected: "Connected",
         disconnected: "Not connected",
-        fetchAllNow: "Fetch all chats now",
-        fetchingAll: "Fetching all chats…",
-        fetchAllHint: "Re-imports all your current WhatsApp chats using the same logic as a new session — no need to scan a QR again.",
         repairForHistory: "Re-pair to import all chats",
         repairHint: "WhatsApp streams the archive only once, after the first QR scan. To pull the full backlog, disconnect and scan a new QR.",
       };
