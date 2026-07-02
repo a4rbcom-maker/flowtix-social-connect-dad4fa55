@@ -158,10 +158,30 @@ function RootComponent() {
                 position="top-center"
                 richColors
                 closeButton
+                expand
+                visibleToasts={4}
+                gap={10}
+                offset={20}
+                duration={4500}
                 toastOptions={{
-                  style: { fontFamily: "'Cairo', 'Inter', sans-serif" },
+                  className: "flowtix-toast",
+                  style: {
+                    fontFamily: "'Cairo', 'Inter', sans-serif",
+                    fontSize: "0.95rem",
+                    fontWeight: 500,
+                    letterSpacing: "0.01em",
+                  },
+                  classNames: {
+                    toast: "flowtix-toast-root",
+                    title: "flowtix-toast-title",
+                    description: "flowtix-toast-desc",
+                    actionButton: "flowtix-toast-action",
+                    cancelButton: "flowtix-toast-cancel",
+                    closeButton: "flowtix-toast-close",
+                  },
                 }}
               />
+
             </NotificationsProvider>
           </AuthProvider>
         </I18nProvider>
