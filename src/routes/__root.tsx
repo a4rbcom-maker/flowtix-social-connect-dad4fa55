@@ -146,6 +146,16 @@ function RootComponent() {
   useEffect(() => {
     installStaleChunkReload();
   }, []);
+  // Track viewport to tune toast stacking on small screens (avoid covering key UI).
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 640px)");
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
   useTrackVisit(typeof window !== "undefined" ? window.location.pathname : "/");
   return (
     <QueryClientProvider client={queryClient}>
@@ -157,14 +167,15 @@ function RootComponent() {
               <Outlet />
               <GlobalAnnouncements />
               <Toaster
-                position="top-center"
+                position={isMobile ? "top-center" : "top-center"}
                 richColors
                 closeButton
-                expand
-                visibleToasts={4}
-                gap={10}
-                offset={20}
-                duration={4500}
+                expand={!isMobile}
+                visibleToasts={isMobile ? 2 : 4}
+                gap={isMobile ? 6 : 10}
+                offset={isMobile ? 8 : 20}
+                mobileOffset={8}
+                duration={isMobile ? 3500 : 4500}
                 toastOptions={{
                   className: "flowtix-toast",
                   style: {
