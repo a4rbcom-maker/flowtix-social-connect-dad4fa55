@@ -312,7 +312,24 @@ describe("Bot-Xtra v1.8.x: parseMessageEntry", () => {
     })!;
     expect(m).not.toBeNull();
     expect(m.remoteJid).toBe("182239858000081@lid");
-    expect(m.fromPhone).toBe("182239858000081");
+    expect(m.fromPhone).toBeNull();
+  });
+
+  it("parses Baileys Long timestamp objects from history sync", () => {
+    const m = parseMessageEntry({
+      id: "3EB0BX1.8.LONGTS001",
+      from: "108417893040260",
+      rawJid: "108417893040260@lid",
+      jidType: "lid",
+      fromMe: true,
+      body: "رسالة قديمة بطابع Long",
+      type: "text",
+      timestamp: { low: 1_763_432_179, high: 0, unsigned: true },
+    })!;
+    expect(m).not.toBeNull();
+    expect(m.remoteJid).toBe("108417893040260@lid");
+    expect(m.fromPhone).toBeNull();
+    expect(m.waTimestamp).toBe(new Date(1_763_432_179_000).toISOString());
   });
 
   it("parses Bot-Xtra flat messages where from is a bare phone and fromMe is a string", () => {

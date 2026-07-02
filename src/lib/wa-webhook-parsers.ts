@@ -120,6 +120,20 @@ export function findSessionId(payload: Record<string, unknown>, headers: Headers
 }
 
 export function parseWaTimestamp(entry: Record<string, unknown>): string | null {
+  const timestampNumber = (raw: unknown): number | null => {
+    if (typeof raw === "number") return raw;
+    if (typeof raw === "string" && raw.trim()) return Number(raw.trim());
+    const obj = asObj(raw);
+    // Baileys/Long timestamps can arrive as { low, high, unsigned }. Reading
+    // only Number(object) returns NaN, which made old history messages look
+    // like "now" and broke WhatsApp-style ordering.
+    if (typeof obj.low === "number" || typeof obj.low === "string") {
+      const low = Number(obj.low);
+      const high = Number(obj.high ?? 0);
+      if (Number.isFinite(low) && Number.isFinite(high)) return high * 2 ** 32 + (low >>> 0);
+    }
+    return null;
+  };
   const candidates: unknown[] = [
     entry.messageTimestamp,
     entry.timestamp,
@@ -130,8 +144,8 @@ export function parseWaTimestamp(entry: Record<string, unknown>): string | null 
   ];
   for (const raw of candidates) {
     if (raw == null) continue;
-    const num = typeof raw === "number" ? raw : Number(String(raw).trim());
-    if (!Number.isFinite(num) || num <= 0) continue;
+    const num = timestampNumber(raw);
+    if (num == null || !Number.isFinite(num) || num <= 0) continue;
     const ms = num < 1_000_000_000_000 ? num * 1000 : num;
     const d = new Date(ms);
     if (!Number.isNaN(d.getTime())) return d.toISOString();
@@ -280,11 +294,19 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
       ? (recipientJid || directChatJid || keyRemote)
       : (inboundLidJid || directChatJid || keyRemote || senderJid || realPhone);
 
+  const digitsUnlessLid = (value: string | null | undefined): string | null => {
+    const d = digits(value);
+    if (!d) return null;
+    if (value?.endsWith("@lid")) return null;
+    if (jidType === "lid" && rawFromDigits && d === rawFromDigits) return null;
+    return d;
+  };
+
   const fromPhone = isGroup
-    ? realPhone || digits(senderJid)
+    ? realPhone || digitsUnlessLid(senderJid)
     : fromMe
-      ? digits(recipientJid || directChatJid || keyRemote || remoteJid) || realPhone
-      : realPhone || digits(senderJid) || digits(remoteJid);
+      ? digitsUnlessLid(recipientJid || directChatJid || keyRemote || remoteJid) || realPhone
+      : realPhone || digitsUnlessLid(senderJid) || digitsUnlessLid(remoteJid);
 
   const { text, type, mediaUrl } = extractTextFromMessage(entry);
   const outboundRecipientName =

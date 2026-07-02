@@ -1298,16 +1298,16 @@ function InboxPage() {
                 </button>
               )}
               <ContactAvatar
-                name={activeConv?.contact_name ?? activeJid}
+                name={activeConv ? displayConversationTitle(activeConv, isAr) : activeJid}
                 src={activeConv?.profile_pic_url ?? null}
                 size="md"
               />
               <div className="min-w-0 flex-1 overflow-hidden">
                 <p className="truncate text-sm font-bold">
-                  {activeConv?.contact_name ?? activeJid.replace(/@.*/, "")}
+                  {activeConv ? displayConversationTitle(activeConv, isAr) : activeJid.replace(/@.*/, "")}
                 </p>
                 <p className="truncate text-xs text-muted-foreground" dir="ltr">
-                  {activeConv?.contact_phone ? `+${activeConv.contact_phone}` : activeJid}
+                  {activeConv ? displayConversationSubtitle(activeConv, isAr) : activeJid}
                 </p>
               </div>
             </div>
@@ -1920,8 +1920,9 @@ function ContactInfoPanel({
 }) {
   const [tab, setTab] = useState<"info" | "notes" | "media">("info");
   const [saving, setSaving] = useState(false);
-  const name = conv.contact_name ?? jid.replace(/@.*/, "");
-  const phone = conv.contact_phone ? `+${conv.contact_phone}` : jid;
+  const name = displayConversationTitle(conv, isAr);
+  const phone = displayConversationSubtitle(conv, isAr);
+  const canSaveCustomer = Boolean(conv.contact_phone);
 
   const summarizeFn = useServerFn(summarizeConversation);
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -1970,7 +1971,11 @@ function ContactInfoPanel({
         toast.error(isAr ? "يجب تسجيل الدخول" : "Login required");
         return;
       }
-      const rawPhone = conv.contact_phone ?? jid.replace(/@.*/, "");
+      if (!canSaveCustomer || !conv.contact_phone) {
+        toast.error(isAr ? "لا يوجد رقم موبايل حقيقي لهذه المحادثة حتى الآن" : "This chat does not have a real phone number yet");
+        return;
+      }
+      const rawPhone = conv.contact_phone;
       const row = buildRow({
         user_id: user.id,
         full_name: saveName.trim() || null,
@@ -2028,7 +2033,7 @@ function ContactInfoPanel({
           <button
             type="button"
             onClick={openSaveDialog}
-            disabled={saving}
+            disabled={saving || !canSaveCustomer}
             className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-border bg-background/60 px-2 py-2 text-[11px] font-semibold transition hover:border-primary/40 hover:bg-primary/5 disabled:opacity-60"
           >
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> : <UserPlus className="h-3.5 w-3.5 text-primary" />}
@@ -2267,6 +2272,8 @@ function ConversationRow({
 }) {
   const media = detectMedia(conv.last_message_text, mediaLabels);
   const hasUnread = (conv.unread_count ?? 0) > 0;
+  const title = displayConversationTitle(conv, isAr);
+  const subtitle = displayConversationSubtitle(conv, isAr);
   return (
     <li className="relative">
       <button
@@ -2287,7 +2294,7 @@ function ConversationRow({
           <span className="absolute top-3 bottom-3 w-[3px] rounded-full bg-gradient-to-b from-primary to-[oklch(0.52_0.28_290)] ltr:left-0 rtl:right-0" />
         )}
         <div className="relative shrink-0">
-          <ContactAvatar name={conv.contact_name ?? conv.remote_jid} src={conv.profile_pic_url ?? null} size="sm" />
+          <ContactAvatar name={title} src={conv.profile_pic_url ?? null} size="sm" />
           {hasUnread && (
             <span className="absolute -top-0.5 -end-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />
           )}
@@ -2295,7 +2302,7 @@ function ConversationRow({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center justify-between gap-2">
             <span className={`min-w-0 flex-1 truncate text-sm ${hasUnread ? "font-bold text-foreground" : "font-semibold"}`}>
-              {conv.contact_name ?? conv.remote_jid.replace(/@.*/, "")}
+              {title}
             </span>
             <span className={`flex shrink-0 flex-col items-end leading-tight ${hasUnread ? "text-primary" : "text-muted-foreground/90"}`} dir="ltr">
               <span className={`text-[10px] tabular-nums ${hasUnread ? "font-bold" : "font-medium"}`}>
@@ -2320,6 +2327,11 @@ function ConversationRow({
                 conv.last_message_text ?? "—"
               )}
             </p>
+            {subtitle && !conv.contact_name && (
+              <span className="hidden max-w-[86px] shrink-0 truncate text-[10px] text-muted-foreground sm:inline" dir="ltr">
+                {subtitle}
+              </span>
+            )}
             {conv.ai_enabled && (
               <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary" title="AI">
                 <Bot className="h-2.5 w-2.5" />
@@ -2591,6 +2603,25 @@ function jidLocal(jid: string): string {
 
 function isLidLocal(local: string): boolean {
   return /^\d{14,}$/.test(local);
+}
+
+function isLidJid(jid: string): boolean {
+  return jid.endsWith("@lid") || (jid.endsWith("@s.whatsapp.net") && isLidLocal(jidLocal(jid)));
+}
+
+function displayConversationTitle(conv: ConversationRow, isAr: boolean): string {
+  const name = usefulContactName(conv.contact_name, conv.contact_phone, conv.remote_jid);
+  if (name) return name;
+  if (conv.contact_phone) return `+${conv.contact_phone}`;
+  if (conv.remote_jid.endsWith("@g.us")) return conv.remote_jid.replace(/@.*/, "");
+  if (isLidJid(conv.remote_jid)) return isAr ? "محادثة واتساب" : "WhatsApp chat";
+  return conv.remote_jid.replace(/@.*/, "");
+}
+
+function displayConversationSubtitle(conv: ConversationRow, isAr: boolean): string {
+  if (conv.contact_phone) return `+${conv.contact_phone}`;
+  if (isLidJid(conv.remote_jid)) return isAr ? "معرّف واتساب خاص" : "Private WhatsApp ID";
+  return conv.remote_jid;
 }
 
 function inboxJidAliases(remoteJid: string, contactPhone?: string | null): string[] {
