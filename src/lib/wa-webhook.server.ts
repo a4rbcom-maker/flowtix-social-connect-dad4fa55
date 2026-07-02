@@ -19,6 +19,7 @@ import {
   findSessionId,
   messageIdFrom,
   normalizeMessageStatus,
+  parseWaTimestamp,
   parseMessageEntry,
   pickStr,
   SESSION_STATUS_MAP,
@@ -138,13 +139,11 @@ function bestContactName(contact: Record<string, unknown>): string | null {
 }
 
 function timestampFromContact(contact: Record<string, unknown>): string | undefined {
-  const raw = contact.lastMessageTimestamp ?? contact.last_msg_timestamp ?? contact.timestamp ?? contact.t;
-  if (raw == null) return undefined;
-  const num = typeof raw === "number" ? raw : Number(String(raw).trim());
-  if (!Number.isFinite(num) || num <= 0) return undefined;
-  const ms = num < 1_000_000_000_000 ? num * 1000 : num;
-  const date = new Date(ms);
-  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+  return parseWaTimestamp({
+    messageTimestamp: contact.lastMessageTimestamp ?? contact.last_msg_timestamp ?? contact.conversationTimestamp ?? contact.lastMsgTimestamp,
+    timestamp: contact.timestamp,
+    t: contact.t,
+  }) ?? undefined;
 }
 
 function contactLooksLikeChat(contact: Record<string, unknown>): boolean {
@@ -260,6 +259,23 @@ async function updateConversationContacts(params: {
 
 function isTruthyFlag(value: unknown): boolean {
   return value === true || ["true", "1", "yes", "history", "historical"].includes(String(value ?? "").toLowerCase());
+}
+
+function jidLocal(jid: string | null | undefined): string {
+  return String(jid ?? "").split("@")[0] ?? "";
+}
+
+function isLidLocal(local: string | null | undefined): boolean {
+  return /^\d{14,}$/.test(String(local ?? ""));
+}
+
+function phoneDigitsUnlessLidAlias(value: unknown, remoteJid: string | null | undefined, jidType: unknown): string | null {
+  const d = digits(value);
+  if (!d) return null;
+  const local = jidLocal(remoteJid);
+  const looksLid = String(remoteJid ?? "").endsWith("@lid") || String(jidType ?? "").toLowerCase() === "lid";
+  if (looksLid && (d === local || isLidLocal(d))) return null;
+  return d;
 }
 
 function isHistoricalMessage(event: string, payload: Record<string, unknown>, data: Record<string, unknown>, waTimestamp: string | null): boolean {
@@ -508,9 +524,12 @@ async function importHistoryMessages(params: {
   let dup = 0;
   for (const h of msgs) {
     const parsed = parseMessageEntry(h);
-    const providerMessageId = parsed?.providerMessageId || pickStr(h, "id", "messageId", "message_id", "msgId", "msg_id") || null;
-    const phone = parsed?.fromPhone || digits(pickStr(h, "from", "to", "sender", "participant"));
     const rawJid = parsed?.remoteJid || pickStr(h, "rawJid", "remoteJid", "remote_jid", "jid", "chatId") || pickStr(asObj(h.key), "remoteJid") || null;
+    const providerMessageId = parsed?.providerMessageId || pickStr(h, "id", "messageId", "message_id", "msgId", "msg_id") || null;
+    const phone =
+      parsed?.fromPhone ||
+      phoneDigitsUnlessLidAlias(pickStr(h, "senderPn", "participantPn", "phoneNumber", "phone"), rawJid, h.jidType) ||
+      phoneDigitsUnlessLidAlias(pickStr(h, "from", "to", "sender", "participant"), rawJid, h.jidType);
     const isGroup = Boolean(parsed?.isGroup) || Boolean(h.isGroup) || (rawJid?.endsWith("@g.us") ?? false);
     const remoteJid =
       rawJid ||
