@@ -342,8 +342,8 @@ function InboxPage() {
     queryFn: () => safeCall<ConversationRow[]>(() => fetchInboxConversations(user!.id), []),
     enabled: !!user?.id,
     placeholderData: (prev) => prev,
-    staleTime: 10_000,
-    refetchInterval: 60_000, // safety net; realtime drives updates
+    staleTime: 30_000,
+    refetchInterval: 300_000, // safety net فقط؛ Realtime هو المصدر الأساسي
     refetchOnWindowFocus: true,
     refetchOnReconnect: "always",
   });
@@ -356,7 +356,7 @@ function InboxPage() {
     enabled: !!activeJid && !!user?.id,
     placeholderData: (prev) => prev,
     staleTime: 30_000,
-    refetchInterval: 120_000, // safety net; realtime drives updates
+    refetchInterval: 300_000, // safety net فقط؛ Realtime هو المصدر الأساسي
     refetchOnWindowFocus: false,
     refetchOnReconnect: "always",
   });
@@ -368,7 +368,7 @@ function InboxPage() {
     t.conv = setTimeout(() => {
       t.conv = undefined;
       qc.invalidateQueries({ queryKey: ["wa-conversations"], refetchType: "active" });
-    }, 600);
+    }, 1500);
   }, [qc]);
   const scheduleInvalidateMessages = useCallback((uid: string, jid: string) => {
     const t = invalidateTimersRef.current;
