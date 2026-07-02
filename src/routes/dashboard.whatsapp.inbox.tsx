@@ -319,9 +319,6 @@ function InboxPage() {
         savedStats: (chats: number, messages: number) => `${chats} visible chats · ${messages} saved messages`,
         connected: "Connected",
         disconnected: "Not connected",
-        fetchAllNow: "Fetch all chats now",
-        fetchingAll: "Fetching all chats…",
-        fetchAllHint: "Re-imports all your current WhatsApp chats using the same logic as a new session — no need to scan a QR again.",
         repairForHistory: "Re-pair to import all chats",
         repairHint: "WhatsApp streams the archive only once, after the first QR scan. To pull the full backlog, disconnect and scan a new QR.",
       };
