@@ -1,5 +1,4 @@
 import type { Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
 
 type PasswordLoginInput = { email: string; password: string };
 type PasswordSignupInput = PasswordLoginInput & {
@@ -132,43 +131,15 @@ async function postAuthProxy(path: string, body: unknown): Promise<AuthProxyResp
 }
 
 export async function signInWithPasswordResilient(input: PasswordLoginInput, timeoutMs = 7_000) {
-  try {
-    const payload = await postAuthProxy("/api/public/auth/password-login", input);
-    persistServerSession(payload.session);
-    return { session: payload.session, user: payload.user, usedProxy: true };
-  } catch (err) {
-    const status = err instanceof AuthProxyError ? err.status ?? 0 : 0;
-    const canTryDirect = status === 0 || status === 404 || status >= 500 || isLikelyAuthReachabilityError(err);
-    if (!canTryDirect) throw err;
-    console.warn("[auth] same-origin auth proxy unavailable; falling back to direct Supabase login", err);
-    const result = await withTimeout(supabase.auth.signInWithPassword(input), timeoutMs);
-    if (result.error) throw result.error;
-    return { ...result.data, usedProxy: false };
-  }
+  void timeoutMs;
+  const payload = await postAuthProxy("/api/public/auth/password-login", input);
+  persistServerSession(payload.session);
+  return { session: payload.session, user: payload.user, usedProxy: true };
 }
 
 export async function signUpWithPasswordResilient(input: PasswordSignupInput, timeoutMs = 7_000) {
-  try {
-    const payload = await postAuthProxy("/api/public/auth/password-signup", input);
-    persistServerSession(payload.session);
-    return { session: payload.session, user: payload.user, usedProxy: true };
-  } catch (err) {
-    const status = err instanceof AuthProxyError ? err.status ?? 0 : 0;
-    const canTryDirect = status === 0 || status === 404 || status >= 500 || isLikelyAuthReachabilityError(err);
-    if (!canTryDirect) throw err;
-    console.warn("[auth] same-origin auth proxy unavailable; falling back to direct Supabase signup", err);
-    const result = await withTimeout(
-      supabase.auth.signUp({
-        email: input.email,
-        password: input.password,
-        options: {
-          data: { full_name: input.fullName ?? "", phone: input.phone ?? "" },
-          emailRedirectTo: input.emailRedirectTo,
-        },
-      }),
-      timeoutMs,
-    );
-    if (result.error) throw result.error;
-    return { ...result.data, usedProxy: false };
-  }
+  void timeoutMs;
+  const payload = await postAuthProxy("/api/public/auth/password-signup", input);
+  persistServerSession(payload.session);
+  return { session: payload.session, user: payload.user, usedProxy: true };
 }
