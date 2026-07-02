@@ -243,6 +243,7 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
   // senderPn as fromPhone/contact_phone.
   const rawFromRef = pickContactRef(entry.from);
   const rawFromDigits = digits(rawFromRef);
+  const jidType = String(entry.jidType ?? entry.jid_type ?? "").toLowerCase();
   const explicitPhone =
     digits(pickStr(entry, "senderPn", "participantPn", "phoneNumber", "phone")) ||
     digits(pickContactRef(senderObj)) ||
@@ -252,15 +253,14 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
     !isGroup &&
     !fromMe &&
     rawFromDigits &&
-    explicitPhone &&
-    rawFromDigits !== explicitPhone
+    ((explicitPhone && rawFromDigits !== explicitPhone) || jidType === "lid")
       ? `${rawFromDigits}@lid`
       : null;
   const realPhone =
     explicitPhone || (!rawFromLidJid ? rawFromDigits : null);
   const keyRemote = pickStr(key, "remoteJid");
   const groupJid = pickStr(entry, "groupJid", "groupId") || (keyRemote?.endsWith("@g.us") ? keyRemote : null);
-  const directChatJid = pickStr(entry, "remoteJid", "remote_jid", "jid", "chatId");
+  const directChatJid = pickStr(entry, "rawJid", "remoteJid", "remote_jid", "jid", "chatId");
   const recipientJid =
     pickStr(entry, "recipientJid", "targetJid", "toJid") ||
     pickContactRef(entry.to) ||

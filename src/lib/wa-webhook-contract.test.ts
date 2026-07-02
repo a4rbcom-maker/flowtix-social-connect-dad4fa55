@@ -298,6 +298,23 @@ describe("Bot-Xtra v1.8.x: parseMessageEntry", () => {
     expect(m.providerMessageId).toBe("3EB0BX1.8.LID001");
   });
 
+  it("uses rawJid/jidType from history sync so LID chats are not converted to phone JIDs", () => {
+    const m = parseMessageEntry({
+      id: "3EB0BX1.8.HISTLID001",
+      from: "182239858000081",
+      to: "182239858000081",
+      rawJid: "182239858000081@lid",
+      jidType: "lid",
+      fromMe: false,
+      body: "رسالة من الأرشيف",
+      type: "text",
+      timestamp: 1_730_000_045,
+    })!;
+    expect(m).not.toBeNull();
+    expect(m.remoteJid).toBe("182239858000081@lid");
+    expect(m.fromPhone).toBe("182239858000081");
+  });
+
   it("parses Bot-Xtra flat messages where from is a bare phone and fromMe is a string", () => {
     const [entry] = collectMessageEntries(BOTXTRA_V18_BARE_FROM_MESSAGE);
     const m = parseMessageEntry(entry)!;
