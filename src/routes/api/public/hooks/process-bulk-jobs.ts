@@ -319,16 +319,25 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
               .eq("job_id", job.id)
               .eq("status", "processing");
             if ((stillProcessing ?? 0) === 0) {
+              const { data: finalRows } = await supabaseAdmin
+                .from("bulk_job_recipients")
+                .select("status")
+                .eq("job_id", job.id);
+              const finalSent = (finalRows ?? []).filter((r) => r.status === "success").length;
+              const finalFailed = (finalRows ?? []).filter((r) => r.status === "failed").length;
+              const finalStatus = finalSent === 0 && finalFailed > 0 ? "failed" : "completed";
               await supabaseAdmin
                 .from("bulk_jobs")
                 .update({
-                  status: "completed",
-                  completed_at: new Date().toISOString(),
+                  status: finalStatus,
+                  completed_at: finalStatus === "completed" ? new Date().toISOString() : null,
                   next_send_at: null,
-                  failed_count: (job.failed_count ?? 0) + failed,
+                  sent_count: finalSent,
+                  failed_count: finalFailed,
+                  error_message: finalStatus === "failed" ? "فشلت كل الرسائل — أعد ربط واتساب ثم استأنف الحملة" : null,
                 })
                 .eq("id", job.id);
-              summary.completed++;
+              if (finalStatus === "completed") summary.completed++;
             } else {
               await supabaseAdmin
                 .from("bulk_jobs")
