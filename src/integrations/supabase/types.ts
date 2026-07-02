@@ -1591,6 +1591,30 @@ export type Database = {
         }
         Relationships: []
       }
+      wa_invalid_phones: {
+        Row: {
+          failure_count: number
+          last_failure_at: string
+          last_reason: string | null
+          phone: string
+          user_id: string
+        }
+        Insert: {
+          failure_count?: number
+          last_failure_at?: string
+          last_reason?: string | null
+          phone: string
+          user_id: string
+        }
+        Update: {
+          failure_count?: number
+          last_failure_at?: string
+          last_reason?: string | null
+          phone?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       wa_keyword_rules: {
         Row: {
           created_at: string
@@ -1767,33 +1791,45 @@ export type Database = {
       }
       wa_sessions: {
         Row: {
+          batch_counter: number
           created_at: string
+          daily_sent_count: number
+          daily_sent_date: string | null
           id: string
           last_seen_at: string | null
           phone_number: string | null
           qr_data_url: string | null
+          rest_until: string | null
           session_id: string
           status: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          batch_counter?: number
           created_at?: string
+          daily_sent_count?: number
+          daily_sent_date?: string | null
           id?: string
           last_seen_at?: string | null
           phone_number?: string | null
           qr_data_url?: string | null
+          rest_until?: string | null
           session_id: string
           status?: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          batch_counter?: number
           created_at?: string
+          daily_sent_count?: number
+          daily_sent_date?: string | null
           id?: string
           last_seen_at?: string | null
           phone_number?: string | null
           qr_data_url?: string | null
+          rest_until?: string | null
           session_id?: string
           status?: string
           updated_at?: string
@@ -1819,16 +1855,24 @@ export type Database = {
           ai_welcome_message: string | null
           ai_working_hours_end: string | null
           ai_working_hours_start: string | null
+          batch_rest_seconds: number
           connection_type: string
           created_at: string
+          daily_message_cap: number
+          enable_spintax: boolean
           id: string
           is_connected: boolean
+          jitter_max_seconds: number
+          jitter_min_seconds: number
           last_connected_at: string | null
           max_concurrent_campaigns: number
+          messages_per_batch: number
           meta_access_token: string | null
           meta_business_account_id: string | null
           meta_phone_number_id: string | null
           meta_verify_token: string | null
+          prioritize_existing_contacts: boolean
+          skip_after_failures: number
           updated_at: string
           user_id: string
         }
@@ -1849,16 +1893,24 @@ export type Database = {
           ai_welcome_message?: string | null
           ai_working_hours_end?: string | null
           ai_working_hours_start?: string | null
+          batch_rest_seconds?: number
           connection_type?: string
           created_at?: string
+          daily_message_cap?: number
+          enable_spintax?: boolean
           id?: string
           is_connected?: boolean
+          jitter_max_seconds?: number
+          jitter_min_seconds?: number
           last_connected_at?: string | null
           max_concurrent_campaigns?: number
+          messages_per_batch?: number
           meta_access_token?: string | null
           meta_business_account_id?: string | null
           meta_phone_number_id?: string | null
           meta_verify_token?: string | null
+          prioritize_existing_contacts?: boolean
+          skip_after_failures?: number
           updated_at?: string
           user_id: string
         }
@@ -1879,16 +1931,24 @@ export type Database = {
           ai_welcome_message?: string | null
           ai_working_hours_end?: string | null
           ai_working_hours_start?: string | null
+          batch_rest_seconds?: number
           connection_type?: string
           created_at?: string
+          daily_message_cap?: number
+          enable_spintax?: boolean
           id?: string
           is_connected?: boolean
+          jitter_max_seconds?: number
+          jitter_min_seconds?: number
           last_connected_at?: string | null
           max_concurrent_campaigns?: number
+          messages_per_batch?: number
           meta_access_token?: string | null
           meta_business_account_id?: string | null
           meta_phone_number_id?: string | null
           meta_verify_token?: string | null
+          prioritize_existing_contacts?: boolean
+          skip_after_failures?: number
           updated_at?: string
           user_id?: string
         }
