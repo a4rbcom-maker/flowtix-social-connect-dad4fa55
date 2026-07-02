@@ -60,7 +60,7 @@ import {
   type ConversationRow,
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
-import { requestWaHistorySync, deepResetWaSession } from "@/lib/wa.functions";
+import { requestWaHistorySync } from "@/lib/wa.functions";
 import {
   createQuickReply,
   updateQuickReply,
@@ -93,25 +93,6 @@ function InboxPage() {
   const sendFn = useServerFn(sendChatMessage);
   const markReadFn = useServerFn(markConversationRead);
   const requestHistorySyncFn = useServerFn(requestWaHistorySync);
-  const deepResetFn = useServerFn(deepResetWaSession);
-  const [rePairing, setRePairing] = useState(false);
-  const handleRePairForFullHistory = async () => {
-    const confirmMsg = isAr
-      ? "لجلب المحادثات القديمة كلها من واتساب سيتم إنشاء جلسة جديدة ويجب مسح رمز QR مرة أخرى. المتابعة؟"
-      : "To fetch all your old chats from WhatsApp, a new session will be created and you must scan a new QR. Continue?";
-    if (!window.confirm(confirmMsg)) return;
-    try {
-      setRePairing(true);
-      const r = await deepResetFn();
-      if (!r.ok) throw new Error(r.error || "reset failed");
-      toast.success(isAr ? "تم إنشاء جلسة جديدة — امسح رمز QR" : "New session created — scan the QR");
-      window.location.assign("/dashboard/whatsapp");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "reset failed");
-    } finally {
-      setRePairing(false);
-    }
-  };
 
 
 
@@ -221,6 +202,7 @@ function InboxPage() {
         resyncDone: "تم تحديث المحادثات والرسائل",
         resyncQueued: "تم إرسال طلب المزامنة للجسر، وسيتم تحديث الشات تلقائيًا عند وصول الدفعات.",
         syncNeedsConnection: "لا يمكن جلب المحادثات القديمة لأن واتساب غير متصل. أعد الربط وامسح QR جديد أولاً.",
+        syncUnavailable: "تم الربط بنجاح، لكن خدمة واتساب لم ترسل دفعات المحادثات القديمة حتى الآن. اترك الهاتف متصلًا بالإنترنت ثم اضغط إحضار كل المحادثات الآن مرة أخرى.",
         soon: "قريباً",
         photo: "صورة",
         voice: "رسالة صوتية",
@@ -272,6 +254,7 @@ function InboxPage() {
         resyncDone: "Conversations and messages refreshed",
         resyncQueued: "Sync request sent to the bridge; chats will update automatically when batches arrive.",
         syncNeedsConnection: "Old chats cannot be fetched because WhatsApp is not connected. Reconnect and scan a new QR first.",
+        syncUnavailable: "Pairing succeeded, but WhatsApp has not sent old-chat batches yet. Keep the phone online, then press Fetch all chats now again.",
         soon: "Coming soon",
         photo: "Photo",
         voice: "Voice message",
@@ -704,6 +687,11 @@ function InboxPage() {
         setSyncState((s) => ({ ...s, status: "error", message: t.syncNeedsConnection }));
         return;
       }
+      if (!res.ok && res.error === "bridge_history_sync_endpoint_unavailable") {
+        toast.error(t.syncUnavailable);
+        setSyncState((s) => ({ ...s, status: "error", message: t.syncUnavailable }));
+        return;
+      }
       const beforeMessages = res.before?.messages ?? 0;
       const afterMessages = res.after?.messages ?? beforeMessages;
       const imported = Math.max(0, afterMessages - beforeMessages);
@@ -731,14 +719,8 @@ function InboxPage() {
         window.setTimeout(() => setSyncState((s) => (s.status === "done" ? { ...s, status: "idle" } : s)), 6000);
         return;
       }
-      // Bridge responded but reported no new imports — this is not an error,
-      // it just means there's nothing older to fetch. Show a neutral info state.
-      const infoMsg = isAr
-        ? "الصندوق مُزامَن بالكامل — لا رسائل قديمة إضافية للجلب."
-        : "Inbox fully synced — no older messages available to import.";
-      toast.info(infoMsg);
-      setSyncState((s) => ({ ...s, status: "done", message: infoMsg }));
-      window.setTimeout(() => setSyncState((s) => (s.status === "done" ? { ...s, status: "idle" } : s)), 6000);
+      toast.error(t.syncUnavailable);
+      setSyncState((s) => ({ ...s, status: "error", message: t.syncUnavailable }));
     },
     onError: (err: Error) => {
       toast.error(err.message);
@@ -768,17 +750,17 @@ function InboxPage() {
       setSyncState((s) => ({ ...s, importedMsg, importedConv }));
     }
     if (Date.now() >= syncState.deadlineAt) {
-      // No error even when 0 imported — it just means the bridge has nothing older to send.
+      const hasImports = importedMsg > 0 || importedConv > 0;
       setSyncState((s) => ({
         ...s,
-        status: "done",
-        message: importedMsg > 0
+        status: hasImports ? "done" : "error",
+        message: hasImports
           ? undefined
-          : (isAr ? "الصندوق مُزامَن بالكامل — لا رسائل قديمة إضافية." : "Inbox fully synced — no older messages to import."),
+          : t.syncUnavailable,
       }));
       window.setTimeout(() => setSyncState((s) => (s.status === "done" ? { ...s, status: "idle" } : s)), 6000);
     }
-  }, [syncTick, inboxStatsQuery.data?.messages, conversations.length, syncState.status, syncState.baselineMsg, syncState.baselineConv, syncState.deadlineAt, syncState.importedMsg, syncState.importedConv, isAr]);
+  }, [syncTick, inboxStatsQuery.data?.messages, conversations.length, syncState.status, syncState.baselineMsg, syncState.baselineConv, syncState.deadlineAt, syncState.importedMsg, syncState.importedConv, t.syncUnavailable]);
 
 
   const aiToggleMut = useMutation({
@@ -1128,7 +1110,7 @@ function InboxPage() {
                       ...toneFor("error"),
                       hint: isAr
                         ? "توقفت المزامنة قبل الاكتمال. جرّب إعادة المحاولة، وإن استمر الفشل استخدم زر إعادة الاقتران."
-                        : "Sync stopped before completing. Retry, and if it keeps failing use the re-pair button.",
+                        : "Sync stopped before completing. Retry after keeping your phone online.",
                     };
           const active = syncState.status === "running" || syncState.status === "pending";
           return (
@@ -1179,26 +1161,24 @@ function InboxPage() {
               {syncState.status === "error" && syncState.message && (
                 <div className="mt-1 line-clamp-2 text-[10px] text-destructive/80">{syncState.message}</div>
               )}
-              {syncState.status === "done" && syncState.importedMsg === 0 && (
+              {syncState.status === "error" && syncState.message && (
                 <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-2 text-[10.5px] leading-relaxed text-amber-900 dark:text-amber-200">
                   <div className="font-semibold">
-                    {isAr ? "لماذا لا تظهر الرسائل القديمة؟" : "Why aren't old messages appearing?"}
+                    {isAr ? "لم تصل دفعات المحادثات القديمة" : "Old-chat batches did not arrive"}
                   </div>
                   <div className="mt-1 text-amber-800/90 dark:text-amber-200/90">
-                    {isAr
-                      ? "واتساب يرسل المحادثات القديمة مرة واحدة فقط عند أول اقتران للرمز. لإحضارها كلها اضغط الزر أدناه لبدء جلسة جديدة ومسح رمز QR جديد."
-                      : "WhatsApp only sends old chats once, right after the first QR pairing. To fetch them all, start a new session and scan a fresh QR."}
+                    {syncState.message}
                   </div>
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={rePairing}
-                    onClick={handleRePairForFullHistory}
+                    disabled={historySyncMut.isPending}
+                    onClick={() => historySyncMut.mutate()}
                     className="mt-2 h-7 gap-1.5 border-amber-500/40 bg-amber-500/10 text-[11px] font-semibold text-amber-900 hover:bg-amber-500/20 dark:text-amber-100"
                   >
-                    {rePairing && <Loader2 className="h-3 w-3 animate-spin" />}
-                    {isAr ? "جلسة جديدة لإحضار كل المحادثات" : "New session to fetch all chats"}
+                    {historySyncMut.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {isAr ? "إعادة محاولة الإحضار" : "Retry fetching"}
                   </Button>
                 </div>
               )}
