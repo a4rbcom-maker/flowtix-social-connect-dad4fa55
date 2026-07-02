@@ -694,6 +694,20 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
           <span>{lang === "ar" ? "القائمة" : "Menu"}</span>
         </button>
       )}
+      {/* Floating collapse button — inside the chat, when the sidebar is open, to close it in one tap. */}
+      {isWhatsappInbox && sidebarOpen && isDesktop && (
+        <button
+          onClick={() => setSidebarOpen(false)}
+          aria-label={lang === "ar" ? "طي القائمة الجانبية" : "Collapse sidebar"}
+          className={`fixed bottom-5 z-50 flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground shadow-lg transition-all hover:scale-[1.03] hover:border-primary/40 hover:text-primary ${
+            dir === "rtl" ? "right-[268px]" : "left-[268px]"
+          }`}
+        >
+          {dir === "rtl" ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
+          <span>{lang === "ar" ? "طي القائمة" : "Collapse"}</span>
+        </button>
+      )}
+
     </div>
   );
 }
