@@ -1209,6 +1209,64 @@ html {
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* Mobile & low-DPI: larger type, roomier spacing, wider surface for comfortable reading */
+@media (max-width: 640px) {
+  [data-sonner-toaster] {
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px) !important;
+    inset-inline: 12px !important;
+    left: 12px !important;
+    right: 12px !important;
+  }
+  [data-sonner-toast].flowtix-toast-root,
+  [data-sonner-toast][data-styled="true"].flowtix-toast-root {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 16px 18px !important;
+    gap: 14px !important;
+    border-radius: 18px !important;
+  }
+  [data-sonner-toast] .flowtix-toast-title,
+  [data-sonner-toast] [data-title] {
+    font-size: 1.02rem !important;
+    line-height: 1.5 !important;
+  }
+  [data-sonner-toast] .flowtix-toast-desc,
+  [data-sonner-toast] [data-description] {
+    font-size: 0.94rem !important;
+    line-height: 1.65 !important;
+    margin-top: 4px;
+  }
+  [data-sonner-toast] [data-icon] {
+    width: 26px !important;
+    height: 26px !important;
+  }
+  [data-sonner-toast] [data-icon] > svg {
+    width: 24px;
+    height: 24px;
+  }
+  [data-sonner-toast] .flowtix-toast-action,
+  [data-sonner-toast] .flowtix-toast-cancel {
+    padding: 10px 14px !important;
+    font-size: 0.95rem !important;
+    min-height: 40px;
+  }
+  /* Always-visible close button on touch (no hover state) */
+  [data-sonner-toast] [data-close-button] {
+    opacity: 1 !important;
+    width: 28px !important;
+    height: 28px !important;
+  }
+}
+
+/* Low-DPI displays (≤1x) — nudge body text up for legibility */
+@media (max-resolution: 1dppx) and (max-width: 900px) {
+  [data-sonner-toast] [data-description],
+  [data-sonner-toast] .flowtix-toast-desc {
+    font-size: 0.92rem !important;
+  }
+}
+
 /* ============================================================
    Unified Alert styling — shares status tokens with Sonner toasts
    ============================================================ */
