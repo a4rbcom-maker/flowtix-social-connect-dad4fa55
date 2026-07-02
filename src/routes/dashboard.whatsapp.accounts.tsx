@@ -327,10 +327,11 @@ function WhatsAppPage() {
         return;
       }
       setPolling(true);
-      setShowQr(true);
+      // QR panel visibility is controlled explicitly by the user; do not auto-open.
     },
     onError: (err: Error) => toast.error(t.errorTitle, { description: err.message }),
   });
+
 
   const deepResetMut = useMutation({
     mutationFn: () => deepResetFn(),
