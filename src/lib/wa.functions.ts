@@ -1238,12 +1238,14 @@ async function readState(
   if (status === "connected") {
     let shouldRequestHistory = previousStatus !== "connected";
     if (!shouldRequestHistory) {
-      const { count } = await supabase
-        .from("wa_messages")
-        .select("id", { count: "exact", head: true })
+      const { data: existingConversation } = await supabase
+        .from("wa_conversations")
+        .select("id")
         .eq("user_id", userId)
-        .eq("session_id", sessionId);
-      shouldRequestHistory = (count ?? 0) === 0;
+        .eq("session_id", sessionId)
+        .limit(1)
+        .maybeSingle();
+      shouldRequestHistory = !existingConversation;
     }
     if (shouldRequestHistory) {
       Promise.allSettled([waBridge.fetchChats(sessionId), waBridge.requestHistorySync(sessionId)]).catch((err) => {
