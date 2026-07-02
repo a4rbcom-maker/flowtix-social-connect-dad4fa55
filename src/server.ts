@@ -83,7 +83,15 @@ function apiRouteMethodFallback(request: Request): Response | null {
   };
 
   const allowed = routeMethods[pathname];
-  if (!allowed) return null;
+  if (!allowed) {
+    if (pathname.startsWith("/api/")) {
+      return Response.json(
+        { ok: false, error: "not_found", path: rawPathname },
+        { status: 404, headers: { "cache-control": "no-store, max-age=0" } },
+      );
+    }
+    return null;
+  }
 
   // TanStack Start does not always synthesize HEAD from GET for server route
   // handlers. If a crawler / proxy / browser preflight sends HEAD to a route
