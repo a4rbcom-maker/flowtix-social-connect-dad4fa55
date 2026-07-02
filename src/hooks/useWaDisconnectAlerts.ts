@@ -39,6 +39,7 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
   const prevDisconnectedRef = useRef<number | null>(null);
   const prevConnectedRef = useRef<number | null>(null);
   const channelKeyRef = useRef(`wa-status-${Math.random().toString(36).slice(2, 10)}`);
+  const effectSeqRef = useRef(0);
 
   const isAr = lang === "ar";
 
@@ -158,10 +159,11 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
     // Realtime: react instantly to any wa_sessions / wa_session_events change
     // for the current user. RLS scopes rows automatically.
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    const seq = ++effectSeqRef.current;
     (async () => {
       const { data: sess } = await supabase.auth.getSession();
       const uid = sess.session?.user?.id;
-      if (!uid || !mounted.current) return;
+      if (!uid || !mounted.current || effectSeqRef.current !== seq) return;
       channel = supabase
         .channel(`${channelKeyRef.current}-${uid}`)
         .on(
@@ -178,6 +180,7 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
     })();
 
     return () => {
+      effectSeqRef.current++;
       mounted.current = false;
       window.clearInterval(id);
       document.removeEventListener("visibilitychange", onVis);
