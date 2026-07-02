@@ -167,7 +167,6 @@ function InboxPage() {
     startedAt: 0,
     deadlineAt: 0,
   });
-  const [syncTick, setSyncTick] = useState(0);
   const [syncHydrated, setSyncHydrated] = useState(false);
 
   // Persisted background sync: keep progress alive across reloads / device sleep.
@@ -799,16 +798,6 @@ function InboxPage() {
   });
 
 
-  // Poll stats while a sync is running/pending and update imported counts.
-  useEffect(() => {
-    if (syncState.status !== "running" && syncState.status !== "pending") return;
-    const id = window.setInterval(() => {
-      qc.invalidateQueries({ queryKey: ["wa-conversations", user?.id] });
-      setSyncTick((n) => n + 1);
-    }, 8000);
-    return () => window.clearInterval(id);
-  }, [syncState.status, qc, user?.id]);
-
   // Update imported delta from live stats and finish when deadline reached.
   useEffect(() => {
     if (syncState.status !== "running" && syncState.status !== "pending") return;
@@ -823,7 +812,7 @@ function InboxPage() {
       setSyncState((s) => ({ ...s, status: "idle", message: undefined }));
     }
 
-  }, [syncTick, conversations.length, syncState.status, syncState.baselineConv, syncState.deadlineAt, syncState.importedMsg, syncState.importedConv, t.syncUnavailable]);
+  }, [conversations.length, syncState.status, syncState.baselineConv, syncState.deadlineAt, syncState.importedMsg, syncState.importedConv]);
 
   // No "done" state ever surfaces to the UI — historySyncMut transitions
   // directly from running/pending → idle on success or error. This block
