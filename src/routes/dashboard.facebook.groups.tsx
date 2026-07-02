@@ -323,72 +323,31 @@ function FacebookGroupsPage() {
 
   const clearSelection = () => setSelected(new Set());
 
-  const goCompose = () => {
-    if (selected.size === 0) {
-      toast.error(t.noSelection);
-      return;
-    }
-    setStep("compose");
-  };
-
-  const goPreview = () => {
-    if (!message.trim()) {
-      toast.error(t.emptyMsg);
-      return;
-    }
-    setStep("preview");
-  };
-
   const selectedGroups = useMemo(
     () => groups.filter((g) => selected.has(g.id)),
     [groups, selected],
   );
 
-  const handleSend = async () => {
-    if (!user) return;
-    setSending(true);
+  const useInCampaign = () => {
+    if (selected.size === 0) {
+      toast.error(t.noSelection);
+      return;
+    }
     try {
-      // Log one activity per group as pending → processing → success.
-      // Real Graph API publishing requires per-group access tokens (publish_to_groups
-      // requires app review). We log the intent so it appears in the activity log
-      // and notifications. This is the same pattern the bulk feature uses.
-      const ids: { id: string | null; group: Group }[] = [];
-      for (const g of selectedGroups) {
-        const id = await logSendActivity({
-          userId: user.id,
-          channel: "facebook",
-          action: "post_to_group",
-          status: "processing",
-          title: lang === "ar" ? `نشر في ${g.name}` : `Post to ${g.name}`,
-          description: message.slice(0, 140),
-          recipient: g.name,
-          metadata: { group_id: g.id, has_image: !!imageUrl.trim() },
-        });
-        ids.push({ id, group: g });
-      }
-      // Mark all as success after a short delay (simulating queueing).
-      // Real publishing happens via Graph API in production deployments.
-      await Promise.all(
-        ids.map(async ({ id }) => {
-          if (!id) return;
-          await updateSendStatus(id, "success", {
-            description: lang === "ar" ? "تم وضعه في قائمة الإرسال" : "Queued for delivery",
-          });
+      sessionStorage.setItem(
+        "fb_preselect_groups",
+        JSON.stringify({
+          groups: selectedGroups.map((g) => ({ id: g.id, name: g.name })),
+          ts: Date.now(),
         }),
       );
-      toast.success(t.sentToast);
-      // Reset flow
-      setMessage("");
-      setImageUrl("");
-      setSelected(new Set());
-      setStep("browse");
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Send failed";
-      toast.error(msg);
-    } finally {
-      setSending(false);
+    } catch {
+      // ignore storage errors
     }
+    navigate({ to: "/dashboard/facebook/campaigns/new" });
   };
+
+
 
   if (authLoading || !user) return null;
 
