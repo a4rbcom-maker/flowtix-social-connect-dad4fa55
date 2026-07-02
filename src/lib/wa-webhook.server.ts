@@ -882,6 +882,12 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     });
   }
 
+  // Timestamp used for late-event rejection in updateWaSessionStatus.
+  const eventAt =
+    pickStr(data, "timestamp", "ts", "t") ||
+    pickStr(payload, "timestamp", "ts", "t") ||
+    null;
+
   const eventStatus = SESSION_STATUS_MAP[event];
   if (eventStatus) {
     const phoneNumber = digits(data.phoneNumber ?? data.phone ?? payload.phoneNumber ?? payload.phone);
@@ -895,6 +901,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       bridgeEvent: event,
       phoneNumber,
       payload,
+      eventAt,
     });
     return new Response("ok");
   }
@@ -934,9 +941,11 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       bridgeEvent: event,
       phoneNumber,
       payload,
+      eventAt,
     });
     return new Response("ok");
   }
+
 
   // ── QR refresh ──
   if (event === "qr" || event === "qr.update") {
