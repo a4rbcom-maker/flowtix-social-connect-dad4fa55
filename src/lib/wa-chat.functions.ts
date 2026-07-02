@@ -322,7 +322,17 @@ export const sendTestMessage = createServerFn({ method: "POST" })
 
     const phoneDigits = normalizeWhatsappPhone(data.phone);
     if (!phoneDigits || phoneDigits.length < 6) throw new Error("Invalid phone number");
-    const to = `${phoneDigits}@s.whatsapp.net`;
+    // Prefer known LID for this contact if we've received messages from them before —
+    // some contacts on WhatsApp are only addressable by their LID, and sending to the
+    // plain phone JID is silently accepted by the bridge but never delivered.
+    const phoneJid = `${phoneDigits}@s.whatsapp.net`;
+    const target = await resolveOutgoingWhatsappTarget({
+      userId,
+      sessionId: sess.session_id,
+      remoteJid: phoneJid,
+      fallbackPhoneOrJid: phoneDigits,
+    });
+    const to = target.jid || phoneJid;
     const text = data.text?.trim() || `✅ رسالة اختبار من Flowtix — ${new Date().toLocaleString("ar-EG")}`;
     const sentAt = new Date().toISOString();
 
