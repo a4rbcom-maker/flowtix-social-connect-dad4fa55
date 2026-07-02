@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { methodNotAllowedHandler } from "@/lib/http-method-not-allowed";
 
 function authorize(request: Request): Response | null {
   const secret = process.env.BOT_WORKER_SECRET;
@@ -159,6 +160,11 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
 
         return Response.json({ ok: true });
       },
+      GET: methodNotAllowedHandler(["POST"]),
+      HEAD: methodNotAllowedHandler(["POST"]),
+      PUT: methodNotAllowedHandler(["POST"]),
+      DELETE: methodNotAllowedHandler(["POST"]),
+      PATCH: methodNotAllowedHandler(["POST"]),
     },
   },
 });

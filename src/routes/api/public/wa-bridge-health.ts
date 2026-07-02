@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { methodNotAllowedHandler } from "@/lib/http-method-not-allowed";
 
 const headers = {
   "Content-Type": "application/json",
@@ -30,6 +31,11 @@ export const Route = createFileRoute("/api/public/wa-bridge-health")({
         );
       },
       OPTIONS: async () => new Response(null, { status: 204, headers }),
+      HEAD: methodNotAllowedHandler(["GET", "OPTIONS"]),
+      POST: methodNotAllowedHandler(["GET", "OPTIONS"]),
+      PUT: methodNotAllowedHandler(["GET", "OPTIONS"]),
+      DELETE: methodNotAllowedHandler(["GET", "OPTIONS"]),
+      PATCH: methodNotAllowedHandler(["GET", "OPTIONS"]),
     },
   },
 });

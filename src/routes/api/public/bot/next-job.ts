@@ -2,6 +2,7 @@
 // Auth: Authorization: Bearer <BOT_WORKER_SECRET>
 // Single round-trip via UPDATE…RETURNING with SKIP LOCKED to avoid contention.
 import { createFileRoute } from "@tanstack/react-router";
+import { methodNotAllowedHandler } from "@/lib/http-method-not-allowed";
 
 function authorize(request: Request): Response | null {
   const secret = process.env.BOT_WORKER_SECRET;
@@ -157,6 +158,11 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
           },
         });
       },
+      GET: methodNotAllowedHandler(["POST"]),
+      HEAD: methodNotAllowedHandler(["POST"]),
+      PUT: methodNotAllowedHandler(["POST"]),
+      DELETE: methodNotAllowedHandler(["POST"]),
+      PATCH: methodNotAllowedHandler(["POST"]),
     },
   },
 });

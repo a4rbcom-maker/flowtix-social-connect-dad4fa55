@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { methodNotAllowedHandler } from "@/lib/http-method-not-allowed";
 
 // Bulk ingest endpoint for the Egypt/Iraq Facebook people SQLite databases.
 // Used by scripts/etl-fb-people-db-http.mjs which streams pre-normalized
@@ -256,6 +257,11 @@ export const Route = createFileRoute("/api/public/fb-people-ingest")({
           counts_after: perCountryAfter,
         });
       },
+      GET: methodNotAllowedHandler(["POST"]),
+      HEAD: methodNotAllowedHandler(["POST"]),
+      PUT: methodNotAllowedHandler(["POST"]),
+      DELETE: methodNotAllowedHandler(["POST"]),
+      PATCH: methodNotAllowedHandler(["POST"]),
     },
   },
 });

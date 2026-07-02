@@ -4,6 +4,7 @@
 // Delivers real WhatsApp messages via the Bot-Xtra bridge using each
 // user's connected wa_sessions row.
 import { createFileRoute } from "@tanstack/react-router";
+import { methodNotAllowedHandler } from "@/lib/http-method-not-allowed";
 
 const MAX_JOBS_PER_TICK = 25;
 const DEFAULT_BATCH_SIZE = 10;
@@ -241,6 +242,11 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
           headers: { "Content-Type": "application/json" },
         });
       },
+      GET: methodNotAllowedHandler(["POST"]),
+      HEAD: methodNotAllowedHandler(["POST"]),
+      PUT: methodNotAllowedHandler(["POST"]),
+      DELETE: methodNotAllowedHandler(["POST"]),
+      PATCH: methodNotAllowedHandler(["POST"]),
     },
   },
 });
