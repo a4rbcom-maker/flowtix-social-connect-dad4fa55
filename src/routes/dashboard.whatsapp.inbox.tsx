@@ -1159,9 +1159,6 @@ function InboxPage() {
                 )}
               </div>
               {syncState.status === "error" && syncState.message && (
-                <div className="mt-1 line-clamp-2 text-[10px] text-destructive/80">{syncState.message}</div>
-              )}
-              {syncState.status === "error" && syncState.message && (
                 <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-2 text-[10.5px] leading-relaxed text-amber-900 dark:text-amber-200">
                   <div className="font-semibold">
                     {isAr ? "لم تصل دفعات المحادثات القديمة" : "Old-chat batches did not arrive"}
