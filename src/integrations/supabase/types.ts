@@ -1824,6 +1824,7 @@ export type Database = {
           id: string
           is_connected: boolean
           last_connected_at: string | null
+          max_concurrent_campaigns: number
           meta_access_token: string | null
           meta_business_account_id: string | null
           meta_phone_number_id: string | null
@@ -1853,6 +1854,7 @@ export type Database = {
           id?: string
           is_connected?: boolean
           last_connected_at?: string | null
+          max_concurrent_campaigns?: number
           meta_access_token?: string | null
           meta_business_account_id?: string | null
           meta_phone_number_id?: string | null
@@ -1882,6 +1884,7 @@ export type Database = {
           id?: string
           is_connected?: boolean
           last_connected_at?: string | null
+          max_concurrent_campaigns?: number
           meta_access_token?: string | null
           meta_business_account_id?: string | null
           meta_phone_number_id?: string | null
