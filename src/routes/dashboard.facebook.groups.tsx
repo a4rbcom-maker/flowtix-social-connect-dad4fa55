@@ -23,6 +23,7 @@ import {
   fetchFacebookGroups,
   getFacebookConnection,
 } from "@/lib/facebook.functions";
+import { createListMyGroupsJob } from "@/lib/fb-bot.functions";
 import { logSendActivity, updateSendStatus } from "@/lib/notifications";
 import { GraphApiConnectWizard } from "@/components/facebook/GraphApiConnectWizard";
 
