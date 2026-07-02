@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
 import { listJobs, getJob, cancelJob } from "@/lib/fb-bot.functions";
 import { loadEgyptData, extractEgyptPhone, detectLocation } from "@/lib/egypt-enrich";
+import { ExtractionQuotaBanner } from "@/components/facebook/ExtractionQuotaBanner";
 
 export const Route = createFileRoute("/dashboard/facebook/group-extraction")({
   ssr: false,
@@ -254,6 +255,8 @@ function GroupExtractionStatusPage() {
             <Link to="/dashboard/facebook/jobs" search={{ tab: "groupmembers" }}><Button>{t.create}</Button></Link>
           </div>
         </div>
+
+        <ExtractionQuotaBanner />
 
         {/* KPIs */}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

@@ -15,6 +15,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { listBotAccounts, createPostJob, createExtractPagesJob, createExtractCommentersJob, createExtractGroupMembersJob, createExtractPageAudienceJob } from "@/lib/fb-bot.functions";
+import { ExtractionQuotaBanner } from "@/components/facebook/ExtractionQuotaBanner";
 import { z } from "zod";
 
 export const Route = createFileRoute("/dashboard/facebook/jobs")({
@@ -354,6 +355,9 @@ function JobsHubPage() {
             <p className="mt-2 text-sm text-destructive">{t.invalidAccount}</p>
           )}
         </Card>
+
+        <ExtractionQuotaBanner />
+
 
 
         <Tabs value={activeTab} onValueChange={(v) => navigate({ search: { tab: v as typeof activeTab }, replace: true })}>
