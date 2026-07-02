@@ -2333,7 +2333,7 @@ function EmptyChat({
 
 async function fetchInboxConversations(userId: string): Promise<ConversationRow[]> {
   // نجلب تاريخ محادثات المستخدم كله حتى لا يختفي بعد فصل الجلسة وإعادة الربط.
-  const [{ data, error }, { data: rawMessages, error: msgError }] = await Promise.all([
+  const [{ data, error }, { data: rawMessages, error: msgError }, { data: createdMessages, error: createdMsgError }] = await Promise.all([
     supabase
       .from("wa_conversations")
       .select("id, session_id, remote_jid, contact_name, contact_phone, profile_pic_url, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
@@ -2348,17 +2348,30 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
       .order("wa_timestamp", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
       .limit(5000),
+    supabase
+      .from("wa_messages")
+      .select("session_id, remote_jid, direction, text_body, msg_type, media_url, from_phone, to_phone, wa_timestamp, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(5000),
   ]);
 
   if (error) throw new Error(error.message);
   // لا تجعل فشل/بطء استعلام إثراء الرسائل يخفي قائمة المحادثات بالكامل.
   // كان هذا يسبب ظهور "0 محادثات" عند انتهاء مهلة استعلام آخر الرسائل.
   if (msgError) console.warn("[inbox] message enrichment skipped", msgError.message);
+  if (createdMsgError) console.warn("[inbox] created-at message enrichment skipped", createdMsgError.message);
 
   const rows = (data ?? []) as ConversationRow[];
   const metaByJid = new Map<string, { phone: string | null; preview: string | null }>();
   const latestMessageByJid = new Map<string, NonNullable<typeof rawMessages>[number]>();
-  const orderedMessages = (msgError ? [] : (rawMessages ?? [])).sort(
+  const messageWindows = [
+    ...(msgError ? [] : (rawMessages ?? [])),
+    ...(createdMsgError ? [] : (createdMessages ?? [])),
+  ];
+  const orderedMessages = Array.from(
+    new Map(messageWindows.map((msg) => [`${msg.remote_jid}|${msg.wa_timestamp ?? ""}|${msg.created_at ?? ""}|${msg.direction}|${msg.text_body ?? ""}`, msg])).values(),
+  ).sort(
     (a, b) => messageRowTimeMs(b) - messageRowTimeMs(a),
   );
   for (const msg of orderedMessages) {
@@ -2411,11 +2424,37 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
   }
 
   const existingJids = new Set(rows.map((row) => row.remote_jid));
+  const staleConversationFixes: PromiseLike<unknown>[] = [];
   const visibleRows: RankedConversationRow[] = rows.map((row): RankedConversationRow => {
     const meta = metaByJid.get(row.remote_jid);
     const latestMessage = latestMessageByJid.get(row.remote_jid);
     const isGroup = row.remote_jid.endsWith("@g.us");
     const latestMessageAt = latestMessage ? messageRowIso(latestMessage) : null;
+    if (latestMessageAt && !row.id.startsWith("virtual:")) {
+      const latestPreview = meta?.preview ?? row.last_message_text;
+      const latestDirection = latestMessage?.direction ?? row.last_direction;
+      const storedAt = safeTimeMs(row.last_message_at);
+      const actualAt = safeTimeMs(latestMessageAt);
+      const needsFix =
+        actualAt > 0 &&
+        (Math.abs(actualAt - storedAt) > 1000 || row.last_message_text !== latestPreview || row.last_direction !== latestDirection);
+      if (needsFix && staleConversationFixes.length < 100) {
+        staleConversationFixes.push(
+          supabase
+            .from("wa_conversations")
+            .update({
+              last_message_at: latestMessageAt,
+              last_message_text: latestPreview,
+              last_direction: latestDirection,
+            })
+            .eq("id", row.id)
+            .eq("user_id", userId)
+            .then(({ error }) => {
+              if (error) console.warn("[inbox] conversation sort repair skipped", error.message);
+            }),
+        );
+      }
+    }
     return {
       ...row,
       contact_phone: isGroup ? null : (meta?.phone ?? row.contact_phone),
@@ -2429,6 +2468,7 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
       _has_stored_message: Boolean(latestMessageAt),
     };
   });
+  if (staleConversationFixes.length > 0) void Promise.allSettled(staleConversationFixes);
 
   // بعض رسائل التاريخ تصل قبل إنشاء صف في wa_conversations. لا نخفيها؛
   // ننشئ صف محادثة افتراضي من آخر رسالة محفوظة حتى يظهر التاريخ فورًا في الشات.
@@ -2708,7 +2748,10 @@ function messageRowTimeMs(msg: {
   wa_timestamp?: string | null;
   created_at?: string | null;
 }): number {
-  return Math.max(safeTimeMs(msg.wa_timestamp), safeTimeMs(msg.created_at));
+  // WhatsApp mobile orders chats by the message's own timestamp, not by when
+  // our database received/imported it. `created_at` is only a fallback for
+  // local/outgoing rows that genuinely arrived without a WhatsApp timestamp.
+  return safeTimeMs(msg.wa_timestamp) || safeTimeMs(msg.created_at);
 }
 
 function phoneFromRaw(raw: unknown): string | null {
