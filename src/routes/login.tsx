@@ -5,7 +5,7 @@ import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { Navbar } from "@/components/landing/Navbar";
-import { AlertCircle, Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { AlertCircle, Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff, ShieldCheck, Clock, LogIn } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 
 export const Route = createFileRoute("/login")({
@@ -29,21 +29,59 @@ function LoginPage() {
   const { isAdmin, isLoading: isAdminLoading } = useIsAdmin();
   
   const { redirect: redirectParam, reason: reasonParam } = Route.useSearch();
-  const expiredNotice = reasonParam === "expired"
-    ? (lang === "ar"
-        ? "انتهت جلستك بسبب طول فترة عدم النشاط. سجّل الدخول لمتابعة عملك."
-        : "Your session expired due to inactivity. Sign in to continue.")
-    : "";
+
+  const sessionNotice = (() => {
+    if (!reasonParam) return null;
+    const ar = lang === "ar";
+    if (reasonParam === "expired") {
+      return {
+        icon: Clock,
+        tone: "warning" as const,
+        title: ar ? "انتهت جلستك" : "Your session expired",
+        description: ar
+          ? "لأسباب أمنية انتهت صلاحية جلستك بسبب طول فترة عدم النشاط. سجّل الدخول مجدداً للمتابعة من حيث توقفت."
+          : "For your security, your session ended due to inactivity. Sign in again to pick up where you left off.",
+      };
+    }
+    if (reasonParam === "signed_out") {
+      return {
+        icon: LogIn,
+        tone: "info" as const,
+        title: ar ? "تم تسجيل الخروج" : "You have been signed out",
+        description: ar
+          ? "تم إنهاء جلستك. سجّل الدخول مرة أخرى للوصول لحسابك."
+          : "Your session has ended. Sign in again to access your account.",
+      };
+    }
+    if (reasonParam === "auth_required") {
+      return {
+        icon: ShieldCheck,
+        tone: "info" as const,
+        title: ar ? "يلزم تسجيل الدخول" : "Sign-in required",
+        description: ar
+          ? "الصفحة التي حاولت فتحها تتطلب حساباً مسجلاً. سجّل الدخول لمتابعة الوصول."
+          : "The page you tried to open requires an account. Sign in to continue.",
+      };
+    }
+    return {
+      icon: AlertCircle,
+      tone: "warning" as const,
+      title: ar ? "الرجاء تسجيل الدخول" : "Please sign in",
+      description: ar ? "أعد تسجيل الدخول للمتابعة." : "Sign in again to continue.",
+    };
+  })();
+
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
-  const [error, setError] = useState(expiredNotice);
+  const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+
 
 
   if (user && !isAdminLoading) {
@@ -233,7 +271,32 @@ function LoginPage() {
             </p>
           </div>
 
+          {/* Session-ended prominent notice */}
+          {sessionNotice && (
+            <div
+              role="alert"
+              className={`mb-5 flex items-start gap-3 rounded-2xl border p-4 shadow-lg backdrop-blur-md ${
+                sessionNotice.tone === "warning"
+                  ? "border-amber-400/40 bg-amber-50/80 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100"
+                  : "border-primary/30 bg-primary/10 text-foreground dark:text-foreground"
+              }`}
+            >
+              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                sessionNotice.tone === "warning"
+                  ? "bg-amber-500/20 text-amber-700 dark:text-amber-200"
+                  : "bg-primary/20 text-primary"
+              }`}>
+                <sessionNotice.icon className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-bold">{sessionNotice.title}</div>
+                <p className="mt-1 text-xs leading-6 opacity-90">{sessionNotice.description}</p>
+              </div>
+            </div>
+          )}
+
           {/* Card */}
+
           <div className="relative rounded-3xl border border-border/50 bg-card/80 p-7 shadow-2xl shadow-primary/5 backdrop-blur-xl sm:p-8">
             {/* Subtle inner glow */}
             <div className="pointer-events-none absolute inset-0 rounded-3xl bg-gradient-to-b from-primary/5 to-transparent" />
