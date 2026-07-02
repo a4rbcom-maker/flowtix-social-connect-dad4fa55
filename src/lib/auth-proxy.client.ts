@@ -133,20 +133,30 @@ async function postAuthProxy(path: string, body: unknown): Promise<AuthProxyResp
 
 export async function signInWithPasswordResilient(input: PasswordLoginInput, timeoutMs = 7_000) {
   try {
-    const result = await withTimeout(supabase.auth.signInWithPassword(input), timeoutMs);
-    if (result.error) throw result.error;
-    return { ...result.data, usedProxy: false };
-  } catch (err) {
-    if (!isLikelyAuthReachabilityError(err)) throw err;
-    console.warn("[auth] direct Supabase login blocked/unreachable; using same-origin proxy", err);
     const payload = await postAuthProxy("/api/public/auth/password-login", input);
     persistServerSession(payload.session);
     return { session: payload.session, user: payload.user, usedProxy: true };
+  } catch (err) {
+    const status = err instanceof AuthProxyError ? err.status ?? 0 : 0;
+    const canTryDirect = status === 0 || status === 404 || status >= 500 || isLikelyAuthReachabilityError(err);
+    if (!canTryDirect) throw err;
+    console.warn("[auth] same-origin auth proxy unavailable; falling back to direct Supabase login", err);
+    const result = await withTimeout(supabase.auth.signInWithPassword(input), timeoutMs);
+    if (result.error) throw result.error;
+    return { ...result.data, usedProxy: false };
   }
 }
 
 export async function signUpWithPasswordResilient(input: PasswordSignupInput, timeoutMs = 7_000) {
   try {
+    const payload = await postAuthProxy("/api/public/auth/password-signup", input);
+    persistServerSession(payload.session);
+    return { session: payload.session, user: payload.user, usedProxy: true };
+  } catch (err) {
+    const status = err instanceof AuthProxyError ? err.status ?? 0 : 0;
+    const canTryDirect = status === 0 || status === 404 || status >= 500 || isLikelyAuthReachabilityError(err);
+    if (!canTryDirect) throw err;
+    console.warn("[auth] same-origin auth proxy unavailable; falling back to direct Supabase signup", err);
     const result = await withTimeout(
       supabase.auth.signUp({
         email: input.email,
@@ -160,11 +170,5 @@ export async function signUpWithPasswordResilient(input: PasswordSignupInput, ti
     );
     if (result.error) throw result.error;
     return { ...result.data, usedProxy: false };
-  } catch (err) {
-    if (!isLikelyAuthReachabilityError(err)) throw err;
-    console.warn("[auth] direct Supabase signup blocked/unreachable; using same-origin proxy", err);
-    const payload = await postAuthProxy("/api/public/auth/password-signup", input);
-    persistServerSession(payload.session);
-    return { session: payload.session, user: payload.user, usedProxy: true };
   }
 }
