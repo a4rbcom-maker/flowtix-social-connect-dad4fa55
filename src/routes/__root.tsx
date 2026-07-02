@@ -146,6 +146,7 @@ function RootComponent() {
   useEffect(() => {
     installStaleChunkReload();
   }, []);
+  useTrackVisit(typeof window !== "undefined" ? window.location.pathname : "/");
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
