@@ -65,7 +65,7 @@ export const listConversations = createServerFn({ method: "POST" })
       .eq("user_id", userId)
       .eq("is_archived", false)
       .order("last_message_at", { ascending: false })
-      .limit(200);
+      .limit(2000);
     if (error) throw new Error(error.message);
     const rows = (data ?? []) as ConversationRow[];
     if (!rows.length) return [];
