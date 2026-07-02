@@ -1250,7 +1250,7 @@ function InboxPage() {
         <>
           {/* Chat Header */}
           <div className="flex items-center gap-2 border-b border-border/60 bg-card/80 px-3 py-3 backdrop-blur sm:px-4">
-            <div className="flex min-w-0 items-center gap-3 overflow-hidden">
+            <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
               {isMobile && (
                 <button
                   type="button"
