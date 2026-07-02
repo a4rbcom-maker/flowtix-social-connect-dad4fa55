@@ -39,7 +39,7 @@ interface Group {
   cover?: { source?: string };
 }
 
-type Step = "browse" | "compose" | "preview";
+
 
 function FacebookGroupsPage() {
   const { user, loading: authLoading } = useAuth();
