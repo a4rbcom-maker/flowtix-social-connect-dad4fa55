@@ -221,15 +221,44 @@ function BulkSendPage() {
     }
   };
 
+  const ensureWaConnected = async (): Promise<boolean> => {
+    if (!user) return false;
+    const { data, error } = await supabase
+      .from("wa_sessions")
+      .select("status")
+      .eq("user_id", user.id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      toast.error(error.message);
+      return false;
+    }
+    const status = data?.status ?? null;
+    if (status !== "connected") {
+      const msg = isAr
+        ? "لا يمكن بدء الحملة: جلسة واتساب غير متصلة. سيتم تحويلك لإعادة الاقتران."
+        : "Cannot start campaign: WhatsApp session is not connected. Redirecting to reconnect.";
+      toast.error(msg);
+      setTimeout(() => {
+        navigate({ to: "/dashboard/whatsapp/accounts" });
+      }, 1200);
+      return false;
+    }
+    return true;
+  };
+
   const launchCampaign = async () => {
     if (!user) return;
     if (!title.trim()) { toast.error(isAr ? "أضف عنواناً للحملة" : "Add a title"); return; }
     if (!message.trim() && !imageUrl) { toast.error(isAr ? "أضف رسالة أو صورة" : "Add a message or image"); return; }
     if (selectedRecipients.length === 0) { toast.error(isAr ? "اختر قائمة أو جهة اتصال" : "Pick a list or contacts"); return; }
     if (!scheduleNow && !scheduleAt) { toast.error(isAr ? "حدد موعد التشغيل" : "Pick a schedule"); return; }
+    if (!(await ensureWaConnected())) return;
 
     setSubmitting(true);
     try {
+
       const scheduledAt = scheduleNow ? new Date().toISOString() : new Date(scheduleAt).toISOString();
       const { data: job, error } = await supabase
         .from("bulk_jobs")
