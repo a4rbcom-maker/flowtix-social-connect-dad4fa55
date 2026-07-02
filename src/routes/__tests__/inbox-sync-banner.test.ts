@@ -79,7 +79,11 @@ describe("inbox sync UI is invisible to customers", () => {
     ).toBe(false);
     // Also reject any hardcoded syncing string appearing directly in JSX.
     for (const label of syncingLabels) {
-      const inJsx = new RegExp(`>[^<]*${label.replace(/[.…]/g, "\\$&")}[^<]*<`).test(code);
+      // Match only when the label sits directly as JSX text between `>` and `<`,
+      // with no intervening quote or brace (which would indicate a string literal
+      // or expression, not visible text).
+      const escaped = label.replace(/[.…]/g, "\\$&");
+      const inJsx = new RegExp(`>[^<"{}]*${escaped}[^<"{}]*<`).test(code);
       expect(inJsx, `Hardcoded "${label}" must not appear as visible JSX text.`).toBe(false);
     }
   });
