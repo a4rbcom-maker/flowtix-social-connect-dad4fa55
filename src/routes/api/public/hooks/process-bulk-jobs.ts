@@ -431,7 +431,6 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
                 .eq("session_id", sess.session_id);
             }
           } catch (err) {
-            const status = err instanceof BridgeError ? err.status : 0;
             const msg = err instanceof Error ? err.message : String(err);
             const trustedGone = /logged.?out|logout|removed.*device|device.*removed|unlinked/i.test(msg);
             await supabaseAdmin
