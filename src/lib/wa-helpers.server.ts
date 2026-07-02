@@ -84,18 +84,23 @@ export async function deriveWebhookUrl(): Promise<string | null> {
 }
 
 export function describeBridgeError(err: unknown): string {
+  const sessionGoneMsg =
+    "الجلسة غير متصلة على خادم الربط. افتح صفحة WhatsApp واضغط «إعادة الاقتران» ثم امسح رمز QR من جوالك.";
   if (err instanceof BridgeError) {
-    if (err.status === 404) return "الجلسة غير موجودة على خادم الربط";
+    const m = String(err.message || "");
+    if (err.status === 404 || /session.*(not.?found|closed|logged.?out|gone|expired)|no\s+session/i.test(m))
+      return sessionGoneMsg;
     if (err.status === 401 || err.status === 403)
       return "مفتاح خادم الربط غير صحيح (WA_BRIDGE_API_KEY)";
     if (err.status === 502 || err.status === 504)
-      return "تعذر الوصول إلى خادم الربط (Bot-Xtra Bridge). تحقق من WA_BRIDGE_URL أو أن الخادم يعمل.";
+      return "تعذر الوصول إلى خادم الربط. حاول بعد قليل.";
     return err.message;
   }
   if (err instanceof Error) {
     const m = err.message || "";
+    if (/session.*(not.?found|closed|logged.?out|gone|expired)|no\s+session/i.test(m)) return sessionGoneMsg;
     if (m.includes("ENOTFOUND") || m.includes("EAI_AGAIN"))
-      return "عنوان خادم الربط غير صالح أو غير قابل للوصول (DNS). راجع قيمة WA_BRIDGE_URL.";
+      return "عنوان خادم الربط غير صالح أو غير قابل للوصول (DNS).";
     if (m.includes("ECONNREFUSED")) return "خادم الربط رفض الاتصال. تأكد أنه يعمل.";
     if (m.includes("timed out")) return "انتهت مهلة الاتصال بخادم الربط.";
     return m;
