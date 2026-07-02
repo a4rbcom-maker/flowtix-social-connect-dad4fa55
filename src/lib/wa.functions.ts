@@ -1044,7 +1044,7 @@ async function readState(
       shouldRequestHistory = (count ?? 0) === 0;
     }
     if (shouldRequestHistory) {
-      waBridge.requestHistorySync(sessionId).catch((err) => {
+      Promise.allSettled([waBridge.fetchChats(sessionId), waBridge.requestHistorySync(sessionId)]).catch((err) => {
         console.warn("[wa] requestHistorySync failed:", err instanceof Error ? err.message : err);
       });
     }
