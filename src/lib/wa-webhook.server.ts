@@ -42,6 +42,15 @@ const CONTACT_EVENTS = new Set([
   "chats.upsert",
 ]);
 const HISTORICAL_MESSAGE_AGE_MS = 10 * 60 * 1000;
+// For bulk campaigns, a bridge/API "sent" ACK is not enough to tell the user
+// the campaign succeeded: it only means WhatsApp accepted the outbound message.
+// Count success only when WhatsApp confirms delivery/read. Otherwise the worker
+// will leave the recipient in processing and fail it after the stale timeout.
+const BULK_DELIVERY_SUCCESS_STATUSES = new Set(["delivered", "read"]);
+
+function isBulkDeliverySuccess(status: string): boolean {
+  return BULK_DELIVERY_SUCCESS_STATUSES.has(status);
+}
 
 function recordsFromUnknown(value: unknown): Record<string, unknown>[] {
   if (Array.isArray(value)) {
@@ -438,7 +447,7 @@ async function updateMessageStatuses(userId: string, sessionId: string, payload:
     if (error) console.error("[wa-webhook] status update failed:", error.message);
     else if (matchedRows?.length) {
       updated += matchedRows.length;
-      const successStatus = ["sent", "delivered", "read"].includes(status);
+      const successStatus = isBulkDeliverySuccess(status);
       const failureStatus = status === "failed";
       for (const row of matchedRows) {
         const raw = asObj(row.raw);
@@ -534,12 +543,12 @@ async function updateMessageStatuses(userId: string, sessionId: string, payload:
     updated++;
     const bulkRecipientId = pickStr(raw, "bulkRecipientId", "bulk_recipient_id");
     const bulkJobId = pickStr(raw, "bulkJobId", "bulk_job_id");
-    if (bulkRecipientId) {
+    if (bulkRecipientId && (isBulkDeliverySuccess(nextStatus) || nextStatus === "failed")) {
       await supabaseAdmin
         .from("bulk_job_recipients")
         .update({
-          status: nextStatus === "failed" ? "failed" : "success",
-          error_message: nextStatus === "failed" ? "فشل تأكيد الإرسال من واتساب" : null,
+          status: isBulkDeliverySuccess(nextStatus) ? "success" : "failed",
+          error_message: isBulkDeliverySuccess(nextStatus) ? null : "فشل تأكيد الإرسال من واتساب",
           sent_at: new Date().toISOString(),
         })
         .eq("id", bulkRecipientId);
@@ -557,8 +566,8 @@ async function updateMessageStatuses(userId: string, sessionId: string, payload:
         await supabaseAdmin
           .from("send_log")
           .update({
-            status: nextStatus === "failed" ? "failed" : "success",
-            error_message: nextStatus === "failed" ? "فشل تأكيد الإرسال من واتساب" : null,
+            status: isBulkDeliverySuccess(nextStatus) ? "success" : "failed",
+            error_message: isBulkDeliverySuccess(nextStatus) ? null : "فشل تأكيد الإرسال من واتساب",
             metadata: {
               ...raw,
               job_id: bulkJobId,
@@ -917,12 +926,12 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         const bulkJobId = pickStr(raw, "bulkJobId", "bulk_job_id");
         const nextStatus = m.status === "received" && m.fromMe ? "sent" : m.status;
         await supabaseAdmin.from("wa_messages").update({ status: nextStatus }).eq("id", existing.id);
-        if (m.fromMe && ["sent", "delivered", "read", "received", "failed"].includes(m.status) && bulkRecipientId) {
+        if (m.fromMe && (isBulkDeliverySuccess(nextStatus) || nextStatus === "failed") && bulkRecipientId) {
           await supabaseAdmin
             .from("bulk_job_recipients")
             .update({
-              status: nextStatus === "failed" ? "failed" : "success",
-              error_message: nextStatus === "failed" ? "فشل تأكيد الإرسال من واتساب" : null,
+              status: isBulkDeliverySuccess(nextStatus) ? "success" : "failed",
+              error_message: isBulkDeliverySuccess(nextStatus) ? null : "فشل تأكيد الإرسال من واتساب",
               sent_at: new Date().toISOString(),
             })
             .eq("id", bulkRecipientId);
@@ -940,8 +949,8 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
             await supabaseAdmin
               .from("send_log")
               .update({
-                status: nextStatus === "failed" ? "failed" : "success",
-                error_message: nextStatus === "failed" ? "فشل تأكيد الإرسال من واتساب" : null,
+                status: isBulkDeliverySuccess(nextStatus) ? "success" : "failed",
+                error_message: isBulkDeliverySuccess(nextStatus) ? null : "فشل تأكيد الإرسال من واتساب",
                 metadata: {
                   ...raw,
                   job_id: bulkJobId,
@@ -1006,10 +1015,14 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
           .eq("id", pendingAi.id);
         saved++;
 
-        if (bulkRecipientId) {
+        if (bulkRecipientId && (isBulkDeliverySuccess(nextStatus) || nextStatus === "failed")) {
           await supabaseAdmin
             .from("bulk_job_recipients")
-            .update({ status: "success", error_message: null, sent_at: new Date().toISOString() })
+            .update({
+              status: isBulkDeliverySuccess(nextStatus) ? "success" : "failed",
+              error_message: isBulkDeliverySuccess(nextStatus) ? null : "فشل تأكيد الإرسال من واتساب",
+              sent_at: new Date().toISOString(),
+            })
             .eq("id", bulkRecipientId);
           if (bulkJobId) {
             const { data: rows } = await supabaseAdmin
@@ -1025,8 +1038,8 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
             await supabaseAdmin
               .from("send_log")
               .update({
-                status: "success",
-                error_message: null,
+                status: isBulkDeliverySuccess(nextStatus) ? "success" : "failed",
+                error_message: isBulkDeliverySuccess(nextStatus) ? null : "فشل تأكيد الإرسال من واتساب",
                 metadata: {
                   ...raw,
                   job_id: bulkJobId,
