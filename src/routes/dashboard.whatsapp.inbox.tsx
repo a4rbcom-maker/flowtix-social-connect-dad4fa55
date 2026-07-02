@@ -2424,11 +2424,37 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
   }
 
   const existingJids = new Set(rows.map((row) => row.remote_jid));
+  const staleConversationFixes: Promise<unknown>[] = [];
   const visibleRows: RankedConversationRow[] = rows.map((row): RankedConversationRow => {
     const meta = metaByJid.get(row.remote_jid);
     const latestMessage = latestMessageByJid.get(row.remote_jid);
     const isGroup = row.remote_jid.endsWith("@g.us");
     const latestMessageAt = latestMessage ? messageRowIso(latestMessage) : null;
+    if (latestMessageAt && !row.id.startsWith("virtual:")) {
+      const latestPreview = meta?.preview ?? row.last_message_text;
+      const latestDirection = latestMessage?.direction ?? row.last_direction;
+      const storedAt = safeTimeMs(row.last_message_at);
+      const actualAt = safeTimeMs(latestMessageAt);
+      const needsFix =
+        actualAt > 0 &&
+        (Math.abs(actualAt - storedAt) > 1000 || row.last_message_text !== latestPreview || row.last_direction !== latestDirection);
+      if (needsFix && staleConversationFixes.length < 100) {
+        staleConversationFixes.push(
+          supabase
+            .from("wa_conversations")
+            .update({
+              last_message_at: latestMessageAt,
+              last_message_text: latestPreview,
+              last_direction: latestDirection,
+            })
+            .eq("id", row.id)
+            .eq("user_id", userId)
+            .then(({ error }) => {
+              if (error) console.warn("[inbox] conversation sort repair skipped", error.message);
+            }),
+        );
+      }
+    }
     return {
       ...row,
       contact_phone: isGroup ? null : (meta?.phone ?? row.contact_phone),
@@ -2442,6 +2468,7 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
       _has_stored_message: Boolean(latestMessageAt),
     };
   });
+  if (staleConversationFixes.length > 0) void Promise.allSettled(staleConversationFixes);
 
   // بعض رسائل التاريخ تصل قبل إنشاء صف في wa_conversations. لا نخفيها؛
   // ننشئ صف محادثة افتراضي من آخر رسالة محفوظة حتى يظهر التاريخ فورًا في الشات.
