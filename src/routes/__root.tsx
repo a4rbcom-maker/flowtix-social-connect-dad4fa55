@@ -146,6 +146,16 @@ function RootComponent() {
   useEffect(() => {
     installStaleChunkReload();
   }, []);
+  // Track viewport to tune toast stacking on small screens (avoid covering key UI).
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 640px)");
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
   useTrackVisit(typeof window !== "undefined" ? window.location.pathname : "/");
   return (
     <QueryClientProvider client={queryClient}>
