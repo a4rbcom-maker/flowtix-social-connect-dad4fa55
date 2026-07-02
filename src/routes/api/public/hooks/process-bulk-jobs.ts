@@ -31,7 +31,7 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
         }
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { waBridge, assertBridgeSendQueued, bridgeSendFailureMessage, BridgeError, inferStatus } = await import(
+        const { waBridge, assertBridgeSendQueued, bridgeSendQueuedMessage, bridgeSendFailureMessage, BridgeError, inferStatus } = await import(
           "@/lib/wa-bridge.server"
         );
         const { normalizeWhatsappPhone } = await import("@/lib/wa-chat-helpers.server");
@@ -40,6 +40,15 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
             return bridgeSendFailureMessage(err.body) || err.message || "Bridge error";
           }
           return err instanceof Error ? err.message : "Send failed";
+        };
+        const acceptedBridgeId = (res: unknown): string => {
+          const queuedId = bridgeSendQueuedMessage(res);
+          try {
+            return assertBridgeSendQueued(res as Parameters<typeof assertBridgeSendQueued>[0]);
+          } catch (err) {
+            if (queuedId) return queuedId;
+            throw err;
+          }
         };
 
         const now = new Date();
@@ -203,17 +212,15 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
             try {
               const caption = rendered.trim();
               if (job.image_url) {
-                const res = await waBridge.sendText(sess.session_id, phone, caption || "");
-                providerId = assertBridgeSendQueued(res);
-                // Best-effort second message with the image URL (bridge has no media helper)
-                try {
-                  await waBridge.sendText(sess.session_id, phone, job.image_url);
-                } catch {
-                  // ignore secondary failure
-                }
+                const res = await waBridge.sendMedia(sess.session_id, phone, job.image_url, {
+                  caption,
+                  mediaType: "image",
+                  phone,
+                });
+                providerId = acceptedBridgeId(res);
               } else {
                 const res = await waBridge.sendText(sess.session_id, phone, caption);
-                providerId = assertBridgeSendQueued(res);
+                providerId = acceptedBridgeId(res);
               }
             } catch (err) {
               errorMessage = describeErr(err);
