@@ -204,7 +204,7 @@ async function readState(supabase: ReturnType<typeof getSupabaseForToken>, userI
       });
     }
   }
-  const effectiveStatus = status === "disconnected" && previous?.status === "connected" ? "connected" : status;
+  const effectiveStatus = status === "disconnected" ? ((previous?.status as BridgeSessionStatus | undefined) ?? "unknown") : status;
   const update: Database["public"]["Tables"]["wa_sessions"]["Update"] = {
     status: effectiveStatus,
     qr_data_url: null,
