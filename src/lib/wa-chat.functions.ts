@@ -2,7 +2,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { assertBridgeSendQueued, bridgeSendQueuedMessage, waBridge, BridgeError, sendTextWithReconnect, sendMediaWithReconnect } from "./wa-bridge.server";
+import { assertBridgeSendQueued, bridgeSendQueuedMessage, waBridge, sendTextWithReconnect, sendMediaWithReconnect } from "./wa-bridge.server";
 import { deriveWebhookUrl, describeBridgeError } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
 import { isBridgeSessionMissingError, resetWaSessionAfterBridgeLoss } from "./wa-session-repair.server";
