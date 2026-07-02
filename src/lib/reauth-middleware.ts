@@ -29,6 +29,16 @@ export const reauthOnExpiredSession = createMiddleware({ type: "function" }).cli
       );
     };
 
+    const responseToError = async (response: Response) => {
+      const body = await response.clone().text().catch(() => "");
+      const normalized = new Error(
+        body?.trim() || `REQUEST_FAILED: تعذر تنفيذ الطلب (${response.status})`,
+      );
+      (normalized as { status?: number }).status = response.status;
+      (normalized as { cause?: unknown }).cause = response;
+      return normalized;
+    };
+
     const redirectToLogin = async (cause: unknown): Promise<never> => {
       await supabase.auth.signOut({ scope: "local" }).catch(() => {});
       if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
@@ -74,10 +84,13 @@ export const reauthOnExpiredSession = createMiddleware({ type: "function" }).cli
       const middlewareResult = result as { error?: unknown; result?: unknown };
       if (isAuthError(middlewareResult.error)) throw middlewareResult.error;
       if (isAuthError(middlewareResult.result)) return redirectToLogin(middlewareResult.result);
+      if (middlewareResult.error instanceof Response) throw await responseToError(middlewareResult.error);
+      if (middlewareResult.result instanceof Response) throw await responseToError(middlewareResult.result);
       return result;
     } catch (err: unknown) {
-      if (!isAuthError(err)) throw err;
-      return redirectToLogin(err);
+      if (isAuthError(err)) return redirectToLogin(err);
+      if (err instanceof Response) throw await responseToError(err);
+      throw err;
     }
   },
 );

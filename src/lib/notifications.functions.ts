@@ -10,78 +10,111 @@ import type { Database } from "@/integrations/supabase/types";
 
 const EMPTY_NOTIFICATIONS = { rows: [], unreadCount: 0, popupId: null as string | null };
 
+function logNotificationReadFailure(scope: string, err: unknown) {
+  const status = err instanceof Response
+    ? err.status
+    : (err as { status?: number; statusCode?: number } | null)?.status ??
+      (err as { statusCode?: number } | null)?.statusCode;
+  const message = err instanceof Error
+    ? err.message
+    : err instanceof Response
+      ? `Response ${err.status}`
+      : typeof err === "string"
+        ? err
+        : "Unknown notification error";
+  console.warn(`[notifications] ${scope}`, { status, message });
+}
+
 async function getNotificationAuth() {
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
-  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-    throw new Error("Missing Supabase environment variables");
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
+    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) return null;
+
+    const authHeader = getRequest()?.headers?.get("authorization");
+    if (!authHeader?.startsWith("Bearer ")) return null;
+
+    const token = authHeader.replace("Bearer ", "");
+    if (!token) return null;
+
+    const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
+    });
+
+    const { data, error } = await supabase.auth.getClaims(token);
+    const userId = data?.claims?.sub;
+    if (error || !userId) return null;
+
+    return { supabase, userId };
+  } catch (err) {
+    // Some auth failures are thrown as raw Response objects by the server-fn
+    // runtime/client. Notifications must be non-blocking, so never allow that
+    // object to escape and blank the dashboard.
+    logNotificationReadFailure("auth fallback", err);
+    return null;
   }
-
-  const authHeader = getRequest()?.headers?.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) return null;
-
-  const token = authHeader.replace("Bearer ", "");
-  if (!token) return null;
-
-  const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-    auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
-  });
-
-  const { data, error } = await supabase.auth.getClaims(token);
-  const userId = data?.claims?.sub;
-  if (error || !userId) return null;
-
-  return { supabase, userId };
 }
 
 // List active announcements targeted at the current user, with read-state joined.
 export const getMyNotifications = createServerFn({ method: "GET" })
   .handler(async () => {
-    const auth = await getNotificationAuth();
-    if (!auth) return EMPTY_NOTIFICATIONS;
+    try {
+      const auth = await getNotificationAuth();
+      if (!auth) return EMPTY_NOTIFICATIONS;
 
-    const { supabase, userId } = auth;
-    // RLS does the targeting filter for us. Pull all rows visible to the user.
-    const { data: anns, error } = await supabase
-      .from("platform_announcements")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(100);
-    if (error) throw new Error(error.message);
+      const { supabase, userId } = auth;
+      // RLS does the targeting filter for us. Pull all rows visible to the user.
+      const { data: anns, error } = await supabase
+        .from("platform_announcements")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) {
+        logNotificationReadFailure("announcements query fallback", error);
+        return EMPTY_NOTIFICATIONS;
+      }
 
-    const ids = (anns ?? []).map((a) => a.id);
-    let readsMap = new Map<string, {
-      opened_at: string | null;
-      read_at: string | null;
-      ack_at: string | null;
-      delivered_at: string;
-    }>();
-    if (ids.length) {
-      const { data: reads } = await supabase
-        .from("notification_reads")
-        .select("announcement_id,delivered_at,opened_at,read_at,ack_at")
-        .in("announcement_id", ids)
-        .eq("user_id", userId);
-      readsMap = new Map(
-        (reads ?? []).map((r) => [r.announcement_id, {
-          opened_at: r.opened_at,
-          read_at: r.read_at,
-          ack_at: r.ack_at,
-          delivered_at: r.delivered_at,
-        }]),
+      const ids = (anns ?? []).map((a) => a.id);
+      let readsMap = new Map<string, {
+        opened_at: string | null;
+        read_at: string | null;
+        ack_at: string | null;
+        delivered_at: string;
+      }>();
+      if (ids.length) {
+        const { data: reads, error: readsError } = await supabase
+          .from("notification_reads")
+          .select("announcement_id,delivered_at,opened_at,read_at,ack_at")
+          .in("announcement_id", ids)
+          .eq("user_id", userId);
+        if (readsError) {
+          logNotificationReadFailure("reads query fallback", readsError);
+        } else {
+          readsMap = new Map(
+            (reads ?? []).map((r) => [r.announcement_id, {
+              opened_at: r.opened_at,
+              read_at: r.read_at,
+              ack_at: r.ack_at,
+              delivered_at: r.delivered_at,
+            }]),
+          );
+        }
+      }
+
+      const rows = (anns ?? []).map((a) => ({
+        ...a,
+        _read: readsMap.get(a.id) ?? null,
+      }));
+      const unreadCount = rows.filter((r) => !r._read?.read_at && !r._read?.ack_at).length;
+      const popupCandidate = rows.find(
+        (r) => r.show_as_popup && !r._read?.read_at && !r._read?.ack_at,
       );
+      return { rows, unreadCount, popupId: popupCandidate?.id ?? null };
+    } catch (err) {
+      logNotificationReadFailure("safe fallback", err);
+      return EMPTY_NOTIFICATIONS;
     }
-
-    const rows = (anns ?? []).map((a) => ({
-      ...a,
-      _read: readsMap.get(a.id) ?? null,
-    }));
-    const unreadCount = rows.filter((r) => !r._read?.read_at && !r._read?.ack_at).length;
-    const popupCandidate = rows.find(
-      (r) => r.show_as_popup && !r._read?.read_at && !r._read?.ack_at,
-    );
-    return { rows, unreadCount, popupId: popupCandidate?.id ?? null };
   });
 
 // Mark delivered + opened (idempotent upsert).
