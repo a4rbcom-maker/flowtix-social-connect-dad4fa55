@@ -1,10 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { Navbar } from "@/components/landing/Navbar";
+import { extractErrorText, signUpWithPasswordResilient } from "@/lib/auth-proxy.client";
 import {
   Mail, Lock, User, Phone, Loader2, ArrowRight, Eye, EyeOff,
   CheckCircle2, ShieldCheck, Sparkles, AlertCircle,
@@ -69,6 +69,7 @@ function SignupPage() {
     errInvalidEmail: "بريد إلكتروني غير صالح",
     errWeakPassword: "كلمة المرور لا تستوفي المتطلبات",
     errShortName: "الاسم قصير جداً",
+    errNetwork: "تعذّر إنشاء الحساب حالياً حتى عبر الاتصال الاحتياطي من الخادم. تحقق من الإنترنت أو حاول بعد لحظات.",
   } : {
     title: "Create your account",
     subtitle: "Get started for free in under a minute — no credit card required",
@@ -103,6 +104,21 @@ function SignupPage() {
     errInvalidEmail: "Invalid email address",
     errWeakPassword: "Password doesn't meet the requirements",
     errShortName: "Name is too short",
+    errNetwork: "Unable to create the account even through the server fallback. Check your connection or try again shortly.",
+  };
+
+  const getFriendlySignupError = (err: unknown) => {
+    const message = extractErrorText(err).toLowerCase();
+    if (message.includes("user already registered") || message.includes("already registered")) {
+      return lang === "ar" ? "هذا البريد مسجل بالفعل. استخدم تسجيل الدخول أو نسيت كلمة المرور." : "This email is already registered. Sign in or use Forgot password.";
+    }
+    if (message.includes("rate limit") || message.includes("too many")) {
+      return lang === "ar" ? "محاولات كثيرة متتالية. انتظر قليلاً ثم حاول مجدداً." : "Too many attempts. Please wait a moment and try again.";
+    }
+    if (message.includes("failed to fetch") || message.includes("network") || message.includes("timeout") || message.includes("timed out") || message.includes("load failed")) {
+      return t.errNetwork;
+    }
+    return err instanceof Error ? err.message : (lang === "ar" ? "حدث خطأ أثناء إنشاء الحساب." : "An error occurred while creating the account.");
   };
 
   // Password strength + checks
@@ -149,21 +165,19 @@ function SignupPage() {
 
     setLoading(true);
     try {
-      const { error: signUpError } = await supabase.auth.signUp({
+      await signUpWithPasswordResilient({
         email: email.trim(),
         password,
-        options: {
-          data: { full_name: fullName.trim(), phone: phone.trim() },
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        },
-      });
-      if (signUpError) throw signUpError;
+        fullName: fullName.trim(),
+        phone: phone.trim(),
+        emailRedirectTo: `${window.location.origin}/dashboard`,
+      }, 8_000);
       setSuccess(t.success);
       // Reset sensitive fields
       setPassword("");
       setConfirmPassword("");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      setError(getFriendlySignupError(err));
     } finally {
       setLoading(false);
     }

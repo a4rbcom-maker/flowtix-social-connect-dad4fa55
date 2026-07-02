@@ -50,6 +50,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     };
 
+    const handleProxySession = (event: Event) => {
+      const nextSession = (event as CustomEvent<{ session?: Session | null }>).detail?.session ?? null;
+      if (!nextSession) return;
+      window.clearTimeout(restoreTimeout);
+      clearGuard();
+      finishSessionRestore(nextSession);
+      expiredHandledRef.current = false;
+    };
+
     // Supabase can occasionally hang while restoring a stale/corrupt session
     // from storage. Never leave protected pages on an endless blank spinner.
     const restoreTimeout = window.setTimeout(() => {
@@ -95,6 +104,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Cancel the guard as soon as auth resolves (either signed in or handled elsewhere).
     const clearGuard = () => window.clearTimeout(guardTimeout);
 
+    window.addEventListener("flowtix-auth-session", handleProxySession);
+
 
     // Subscribe FIRST so we don't miss the initial SIGNED_IN event.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
@@ -136,6 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       window.clearTimeout(restoreTimeout);
       clearGuard();
+      window.removeEventListener("flowtix-auth-session", handleProxySession);
       subscription.unsubscribe();
     };
   }, []);

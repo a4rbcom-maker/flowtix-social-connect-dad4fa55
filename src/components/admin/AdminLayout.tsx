@@ -52,6 +52,7 @@ async function checkIsAdminClient(userId: string): Promise<{ isAdmin: boolean }>
 }
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { signInWithPasswordResilient } from "@/lib/auth-proxy.client";
 
 const flowtixLogo = "/flowtix-logo.webp";
 
@@ -160,14 +161,12 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
     setLoginLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const loginResult = await signInWithPasswordResilient({
         email: adminEmail.trim(),
         password: adminPassword,
-      });
-      if (error) throw error;
+      }, 8_000);
 
-      const { data: sessionData } = await supabase.auth.getUser();
-      const uid = sessionData.user?.id;
+      const uid = loginResult.user?.id;
       const adminResult = uid ? await checkIsAdminClient(uid) : { isAdmin: false };
       if (!adminResult?.isAdmin) {
         await supabase.auth.signOut();

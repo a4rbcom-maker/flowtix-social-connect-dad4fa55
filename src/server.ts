@@ -69,6 +69,8 @@ function apiRouteMethodFallback(request: Request): Response | null {
 
   const routeMethods: Record<string, string[]> = {
     "/api/public/health": ["GET", "HEAD"],
+    "/api/public/auth/password-login": ["GET", "POST", "OPTIONS"],
+    "/api/public/auth/password-signup": ["GET", "POST", "OPTIONS"],
     "/api/public/wa-webhook": ["GET", "POST", "OPTIONS"],
     "/api/public/wa-client": ["POST", "OPTIONS"],
     "/api/public/wa-bridge-health": ["GET", "OPTIONS"],

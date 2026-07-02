@@ -70,6 +70,8 @@ import { Route as ApiPublicHooksProcessBulkJobsRouteImport } from './routes/api/
 import { Route as ApiPublicHooksCleanupOldMediaRouteImport } from './routes/api/public/hooks/cleanup-old-media'
 import { Route as ApiPublicBotNextJobRouteImport } from './routes/api/public/bot/next-job'
 import { Route as ApiPublicBotJobUpdateRouteImport } from './routes/api/public/bot/job-update'
+import { Route as ApiPublicAuthPasswordSignupRouteImport } from './routes/api/public/auth/password-signup'
+import { Route as ApiPublicAuthPasswordLoginRouteImport } from './routes/api/public/auth/password-login'
 import { Route as AdminJobsKindIdRouteImport } from './routes/admin.jobs.$kind.$id'
 
 const SignupRoute = SignupRouteImport.update({
@@ -396,6 +398,18 @@ const ApiPublicBotJobUpdateRoute = ApiPublicBotJobUpdateRouteImport.update({
   path: '/api/public/bot/job-update',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicAuthPasswordSignupRoute =
+  ApiPublicAuthPasswordSignupRouteImport.update({
+    id: '/api/public/auth/password-signup',
+    path: '/api/public/auth/password-signup',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicAuthPasswordLoginRoute =
+  ApiPublicAuthPasswordLoginRouteImport.update({
+    id: '/api/public/auth/password-login',
+    path: '/api/public/auth/password-login',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AdminJobsKindIdRoute = AdminJobsKindIdRouteImport.update({
   id: '/$kind/$id',
   path: '/$kind/$id',
@@ -457,6 +471,8 @@ export interface FileRoutesByFullPath {
   '/dashboard/whatsapp/inbox': typeof DashboardWhatsappInboxRoute
   '/dashboard/whatsapp/settings': typeof DashboardWhatsappSettingsRoute
   '/admin/jobs/$kind/$id': typeof AdminJobsKindIdRoute
+  '/api/public/auth/password-login': typeof ApiPublicAuthPasswordLoginRoute
+  '/api/public/auth/password-signup': typeof ApiPublicAuthPasswordSignupRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/cleanup-old-media': typeof ApiPublicHooksCleanupOldMediaRoute
@@ -520,6 +536,8 @@ export interface FileRoutesByTo {
   '/dashboard/whatsapp/inbox': typeof DashboardWhatsappInboxRoute
   '/dashboard/whatsapp/settings': typeof DashboardWhatsappSettingsRoute
   '/admin/jobs/$kind/$id': typeof AdminJobsKindIdRoute
+  '/api/public/auth/password-login': typeof ApiPublicAuthPasswordLoginRoute
+  '/api/public/auth/password-signup': typeof ApiPublicAuthPasswordSignupRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/cleanup-old-media': typeof ApiPublicHooksCleanupOldMediaRoute
@@ -585,6 +603,8 @@ export interface FileRoutesById {
   '/dashboard/whatsapp/inbox': typeof DashboardWhatsappInboxRoute
   '/dashboard/whatsapp/settings': typeof DashboardWhatsappSettingsRoute
   '/admin/jobs/$kind/$id': typeof AdminJobsKindIdRoute
+  '/api/public/auth/password-login': typeof ApiPublicAuthPasswordLoginRoute
+  '/api/public/auth/password-signup': typeof ApiPublicAuthPasswordSignupRoute
   '/api/public/bot/job-update': typeof ApiPublicBotJobUpdateRoute
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/cleanup-old-media': typeof ApiPublicHooksCleanupOldMediaRoute
@@ -651,6 +671,8 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp/inbox'
     | '/dashboard/whatsapp/settings'
     | '/admin/jobs/$kind/$id'
+    | '/api/public/auth/password-login'
+    | '/api/public/auth/password-signup'
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/cleanup-old-media'
@@ -714,6 +736,8 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp/inbox'
     | '/dashboard/whatsapp/settings'
     | '/admin/jobs/$kind/$id'
+    | '/api/public/auth/password-login'
+    | '/api/public/auth/password-signup'
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/cleanup-old-media'
@@ -778,6 +802,8 @@ export interface FileRouteTypes {
     | '/dashboard/whatsapp/inbox'
     | '/dashboard/whatsapp/settings'
     | '/admin/jobs/$kind/$id'
+    | '/api/public/auth/password-login'
+    | '/api/public/auth/password-signup'
     | '/api/public/bot/job-update'
     | '/api/public/bot/next-job'
     | '/api/public/hooks/cleanup-old-media'
@@ -814,6 +840,8 @@ export interface RootRouteChildren {
   ApiPublicWaBridgeSessionsRoute: typeof ApiPublicWaBridgeSessionsRoute
   ApiPublicWaClientRoute: typeof ApiPublicWaClientRoute
   ApiPublicWaWebhookRoute: typeof ApiPublicWaWebhookRoute
+  ApiPublicAuthPasswordLoginRoute: typeof ApiPublicAuthPasswordLoginRoute
+  ApiPublicAuthPasswordSignupRoute: typeof ApiPublicAuthPasswordSignupRoute
   ApiPublicBotJobUpdateRoute: typeof ApiPublicBotJobUpdateRoute
   ApiPublicBotNextJobRoute: typeof ApiPublicBotNextJobRoute
   ApiPublicHooksCleanupOldMediaRoute: typeof ApiPublicHooksCleanupOldMediaRoute
@@ -1250,6 +1278,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicBotJobUpdateRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/auth/password-signup': {
+      id: '/api/public/auth/password-signup'
+      path: '/api/public/auth/password-signup'
+      fullPath: '/api/public/auth/password-signup'
+      preLoaderRoute: typeof ApiPublicAuthPasswordSignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/auth/password-login': {
+      id: '/api/public/auth/password-login'
+      path: '/api/public/auth/password-login'
+      fullPath: '/api/public/auth/password-login'
+      preLoaderRoute: typeof ApiPublicAuthPasswordLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/jobs/$kind/$id': {
       id: '/admin/jobs/$kind/$id'
       path: '/$kind/$id'
@@ -1400,6 +1442,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicWaBridgeSessionsRoute: ApiPublicWaBridgeSessionsRoute,
   ApiPublicWaClientRoute: ApiPublicWaClientRoute,
   ApiPublicWaWebhookRoute: ApiPublicWaWebhookRoute,
+  ApiPublicAuthPasswordLoginRoute: ApiPublicAuthPasswordLoginRoute,
+  ApiPublicAuthPasswordSignupRoute: ApiPublicAuthPasswordSignupRoute,
   ApiPublicBotJobUpdateRoute: ApiPublicBotJobUpdateRoute,
   ApiPublicBotNextJobRoute: ApiPublicBotNextJobRoute,
   ApiPublicHooksCleanupOldMediaRoute: ApiPublicHooksCleanupOldMediaRoute,
