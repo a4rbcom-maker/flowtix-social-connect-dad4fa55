@@ -332,10 +332,10 @@ function DashboardOverview() {
               icon={Send}
               title={t.bulkSend}
               desc={t.bulkSendDesc}
-              to="/dashboard"
+              to="/dashboard/bulk"
               gradient="from-orange-500 to-amber-500"
-              badge={t.bulkSendSoon}
             />
+
           </div>
         </div>
 
@@ -427,7 +427,7 @@ function QuickAction({
   icon: typeof Key;
   title: string;
   desc: string;
-  to: "/dashboard" | "/dashboard/facebook" | "/dashboard/whatsapp";
+  to: "/dashboard" | "/dashboard/facebook" | "/dashboard/whatsapp" | "/dashboard/bulk";
   gradient: string;
   badge?: string;
 }) {
