@@ -725,8 +725,9 @@ export async function upsertConversationFromMessage(opts: {
   direction: "in" | "out";
   messageAt?: string;
   historical?: boolean;
+  profilePicUrl?: string | null;
 }): Promise<string | null> {
-  const { userId, sessionId, remoteJid, contactName, contactPhone, text, direction, historical } = opts;
+  const { userId, sessionId, remoteJid, contactName, contactPhone, text, direction, historical, profilePicUrl } = opts;
   const messageAt = opts.messageAt ?? new Date().toISOString();
   const safeContactName = direction === "in" || remoteJid.endsWith("@g.us") ? contactName : null;
   const localPart = remoteJid.split("@")[0] ?? "";
@@ -741,12 +742,9 @@ export async function upsertConversationFromMessage(opts: {
     ]),
   );
 
-  // Try update first. WhatsApp may send the same direct chat as both a LID
-  // (123...@lid) and a phone-looking alias (123...@s.whatsapp.net). Treat
-  // those as one conversation when the sibling row already exists.
   const { data: existingRows } = await supabaseAdmin
     .from("wa_conversations")
-    .select("id, session_id, unread_count, contact_name, contact_phone, last_message_at, remote_jid")
+    .select("id, session_id, unread_count, contact_name, contact_phone, profile_pic_url, last_message_at, remote_jid")
     .eq("user_id", userId)
     .in("remote_jid", aliasJids)
     .limit(aliasJids.length * 3);
@@ -758,8 +756,6 @@ export async function upsertConversationFromMessage(opts: {
     candidateRows.find((row) => row.id);
 
   if (existing) {
-    // Only bump the summary if this message is newer than the existing one,
-    // so historical/imported messages don't reorder the inbox.
     const existingAt = existing.last_message_at ? new Date(existing.last_message_at).getTime() : 0;
     const incomingAt = new Date(messageAt).getTime();
     const isNewer = incomingAt >= existingAt;
@@ -774,13 +770,13 @@ export async function upsertConversationFromMessage(opts: {
               last_direction: direction,
             }
           : {}),
-        // Never increment unread for historical (back-fill) inbound messages.
         unread_count:
           !historical && direction === "in"
             ? (existing.unread_count || 0) + 1
             : existing.unread_count,
         contact_name: existing.contact_name || safeContactName,
         contact_phone: safeContactPhone || existing.contact_phone,
+        profile_pic_url: profilePicUrl || (existing as { profile_pic_url?: string | null }).profile_pic_url || null,
       })
       .eq("id", existing.id);
     return existing.id;
@@ -794,6 +790,7 @@ export async function upsertConversationFromMessage(opts: {
       remote_jid: remoteJid,
       contact_name: safeContactName,
       contact_phone: safeContactPhone,
+      profile_pic_url: profilePicUrl ?? null,
       last_message_text: text ?? null,
       last_message_at: messageAt,
       last_direction: direction,
@@ -804,5 +801,6 @@ export async function upsertConversationFromMessage(opts: {
 
   return inserted?.id ?? null;
 }
+
 
 
