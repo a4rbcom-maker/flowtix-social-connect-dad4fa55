@@ -852,7 +852,10 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   // AI deliveries are attached to the pending outbound message instead of being
   // swallowed as a session status="unknown" update.
   if (isMessageStatusOnlyEvent(event, payload, data)) {
-    await updateMessageStatuses(userId, sessionId, payload);
+    const updated = await updateMessageStatuses(userId, sessionId, payload);
+    if (updated > 0) {
+      await markSessionAlive({ userId, sessionId, phoneNumber: sess.phone_number, source: "webhook_status", reason: "message_status_ack_activity" });
+    }
     return new Response("ok");
   }
 
