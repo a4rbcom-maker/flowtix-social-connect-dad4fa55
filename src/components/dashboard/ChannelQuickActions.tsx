@@ -40,7 +40,10 @@ export function ChannelQuickActions({ channel, state, lang, onChanged, onNavigat
         disconnect: "فصل",
         refresh: "تحديث",
         confirmTitle: channel === "facebook" ? "فصل حساب فيسبوك؟" : "فصل واتساب؟",
-        confirmYes: "تأكيد الفصل",
+        confirmBody: channel === "whatsapp"
+          ? "سيتم حذف كل المحادثات والرسائل من حسابك نهائياً ولا يمكن التراجع. عند إعادة المسح تبدأ من الصفر."
+          : null,
+        confirmYes: "تأكيد الفصل والحذف",
         confirmNo: "إلغاء",
         loading: "جارٍ التحقق…",
         successDisc: channel === "facebook" ? "تم فصل فيسبوك" : "تم فصل واتساب",
