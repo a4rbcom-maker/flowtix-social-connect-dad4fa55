@@ -362,7 +362,7 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
 
           // Verify WA session
           const sess = await getSession(job.user_id);
-          if (!sess || sess.status !== "connected") {
+          if (!sess?.session_id) {
             await supabaseAdmin
               .from("bulk_jobs")
               .update({
@@ -416,37 +416,34 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
 
           try {
             const live = await waBridge.getStatus(sess.session_id);
-            if (inferStatus(live) !== "connected") {
-              await supabaseAdmin
-                .from("bulk_jobs")
-                .update({
-                  status: "paused",
-                  error_message: "جلسة واتساب غير جاهزة — افتح واتساب وأعد تحديث الحالة ثم استأنف الحملة",
-                  next_send_at: null,
-                })
-                .eq("id", job.id);
+            const liveStatus = inferStatus(live);
+            if (liveStatus !== "connected") {
+              console.warn("[bulk-worker] live status was not connected; continuing with send attempt", {
+                jobId: job.id,
+                userId: job.user_id,
+                liveStatus,
+              });
+            } else {
               await supabaseAdmin
                 .from("wa_sessions")
-                .update({ status: inferStatus(live), last_seen_at: new Date().toISOString() })
+                .update({ status: "connected", last_seen_at: new Date().toISOString() })
                 .eq("user_id", job.user_id)
                 .eq("session_id", sess.session_id);
-              summary.skipped_no_session++;
-              continue;
             }
           } catch (err) {
-            const status = err instanceof BridgeError ? err.status : 0;
-            const hardGone = status === 404 || /session.*(not.?found|closed|logged.?out)/i.test(err instanceof Error ? err.message : String(err));
+            const msg = err instanceof Error ? err.message : String(err);
+            const trustedGone = /logged.?out|logout|removed.*device|device.*removed|unlinked/i.test(msg);
             await supabaseAdmin
               .from("bulk_jobs")
               .update({
-                status: "paused",
-                error_message: hardGone
-                  ? "جلسة واتساب غير موجودة على خادم الربط — أعد الربط ثم استأنف الحملة"
+                status: trustedGone ? "paused" : "running",
+                error_message: trustedGone
+                  ? "تم قطع واتساب من الجهاز أو الموقع — أعد الربط ثم استأنف الحملة"
                   : "تعذر فحص جلسة واتساب مؤقتاً — سيتم الاستئناف بعد التأكد من الاتصال",
-                next_send_at: null,
+                next_send_at: trustedGone ? null : new Date(Date.now() + 60_000).toISOString(),
               })
               .eq("id", job.id);
-            if (hardGone) {
+            if (trustedGone) {
               await supabaseAdmin
                 .from("wa_sessions")
                 .update({ status: "disconnected", last_seen_at: new Date().toISOString() })
@@ -591,6 +588,7 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
           // ──────────────────────────────────────────────────────────
           let batchCounter = sess.batch_counter;
           let restTriggered = false;
+          let deferJob = false;
 
           for (const r of pending) {
             if (globalBudget <= 0) {
@@ -650,7 +648,7 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
               }
             } catch (err) {
               errorMessage = describeErr(err);
-              if (/session.*(not.?found|closed|logged.?out|not connected)/i.test(errorMessage)) {
+              if (/logged.?out|logout|removed.*device|device.*removed|unlinked/i.test(errorMessage)) {
                 await supabaseAdmin
                   .from("bulk_jobs")
                   .update({
@@ -664,6 +662,19 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
                   .update({ status: "disconnected", last_seen_at: new Date().toISOString() })
                   .eq("user_id", job.user_id)
                   .eq("session_id", sess.session_id);
+                break;
+              }
+              if (/session.*(not.?found|closed|not connected)|not connected/i.test(errorMessage)) {
+                await supabaseAdmin
+                  .from("bulk_jobs")
+                  .update({
+                    status: "running",
+                    error_message: "تعذر الإرسال مؤقتاً بسبب حالة الخادم — سنحاول تلقائياً بدون فصل الجلسة",
+                    next_send_at: new Date(Date.now() + 60_000).toISOString(),
+                  })
+                  .eq("id", job.id);
+                errorMessage = null;
+                deferJob = true;
                 break;
               }
             }
@@ -748,6 +759,12 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
                 raw: pendingRaw,
               });
 
+              await supabaseAdmin
+                .from("wa_sessions")
+                .update({ status: "connected", last_seen_at: new Date().toISOString() })
+                .eq("user_id", job.user_id)
+                .eq("session_id", sess.session_id);
+
               // Counters
               dailySent++;
               batchCounter++;
@@ -820,13 +837,14 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
 
           if (!restTriggered) {
             // Random jitter for next send
-            const nextAt = new Date(Date.now() + jitterMs(settings.jitter_min_seconds, settings.jitter_max_seconds));
+            const nextAt = new Date(Date.now() + (deferJob ? 60_000 : jitterMs(settings.jitter_min_seconds, settings.jitter_max_seconds)));
             await supabaseAdmin
               .from("bulk_jobs")
               .update({
                 sent_count: (job.sent_count ?? 0) + sent,
                 failed_count: (job.failed_count ?? 0) + failed,
                 next_send_at: nextAt.toISOString(),
+                error_message: deferJob ? "تعذر الإرسال مؤقتاً بسبب حالة الخادم — سنحاول تلقائياً بدون فصل الجلسة" : job.error_message,
               })
               .eq("id", job.id);
           } else {

@@ -19,7 +19,7 @@ import {
   type WaBridgeHealth,
 } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
-import { isHardSessionGoneError, logWaSessionEvent, updateWaSessionStatus } from "./wa-session-events.server";
+import { isHardSessionGoneError, isTrustedUserDisconnect, logWaSessionEvent, updateWaSessionStatus } from "./wa-session-events.server";
 import { normalizeWhatsappPhone } from "./wa-chat-helpers.server";
 import { resolveOutgoingWhatsappTarget } from "./wa-recipient.server";
 
@@ -97,7 +97,7 @@ export const connectWaSession = createServerFn({ method: "POST" })
         const now = new Date().toISOString();
         const errMsg = describeBridgeError(err);
         console.warn("[wa] createSession bridge error:", errMsg);
-        if (existing?.session_id && !isHardSessionGoneError(err)) {
+        if (existing?.session_id && (existing.status === "connected" || !isHardSessionGoneError(err))) {
           await updateWaSessionStatus(supabase, {
             userId,
             sessionId,
@@ -283,7 +283,7 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
           rawStatus: String(live.status ?? live.state ?? "connected"),
           phoneNumber: livePhone,
         });
-      } else if (live.exists === false || liveStatus === "disconnected") {
+      } else if ((live.exists === false || liveStatus === "disconnected") && row.status !== "connected") {
         await updateWaSessionStatus(supabase, {
           userId,
           sessionId: row.session_id,
@@ -715,9 +715,8 @@ export const sendWaMessage = createServerFn({ method: "POST" })
       .eq("user_id", userId)
       .maybeSingle();
     if (rowErr) throw new Error(rowErr.message);
-    const notConnectedMsg = "الجلسة غير متصلة. افتح صفحة WhatsApp واضغط «إعادة الاقتران» وامسح رمز QR من جوالك.";
+    const notConnectedMsg = "لا توجد جلسة واتساب مربوطة. افتح صفحة WhatsApp واضغط ربط واتساب.";
     if (!row?.session_id) throw new Error(notConnectedMsg);
-    if (row.status !== "connected") throw new Error(notConnectedMsg);
 
     const phone = normalizeWhatsappPhone(data.to) || data.to.replace(/[^0-9]/g, "");
     const target = await resolveOutgoingWhatsappTarget({
@@ -744,16 +743,18 @@ export const sendWaMessage = createServerFn({ method: "POST" })
       }
     } catch (err) {
       const msg = describeBridgeError(err);
-      // If the bridge says the session is gone, sync DB so UI shows QR prompt.
-      if (/غير متصلة على خادم الربط/.test(msg)) {
-        await supabase
-          .from("wa_sessions")
-          .update({ status: "disconnected", last_seen_at: new Date().toISOString() })
-          .eq("user_id", userId)
-          .eq("session_id", row.session_id);
-      }
       throw new Error(msg);
     }
+
+    await updateWaSessionStatus(supabase, {
+      userId,
+      sessionId: row.session_id,
+      nextStatus: "connected",
+      source: "poll",
+      reason: "outgoing_message_accepted",
+      rawStatus: "connected",
+      phoneNumber: targetPhone,
+    });
 
     await supabase.from("wa_messages").insert({
       user_id: userId,
@@ -1209,7 +1210,7 @@ async function readState(
   } catch (err) {
     error = describeBridgeError(err);
     console.warn("[wa] readState bridge error:", error);
-    if (isHardSessionGoneError(err)) {
+    if (isHardSessionGoneError(err) && previousStatus !== "connected") {
       status = "disconnected";
     } else {
       // A timeout/502/temporary bridge failure is not proof that the WhatsApp
@@ -1258,10 +1259,12 @@ async function readState(
   }
   // Preserve last-known phone_number when bridge transiently reports null
   // (e.g. session re-paired). Only overwrite when we actually got a number.
+  const trustedDisconnect = status === "disconnected" && isTrustedUserDisconnect({ source: error ? "poll_error" : "poll", reason: error, rawStatus: status });
+  const effectiveStatus = status === "disconnected" && !trustedDisconnect ? (previousStatus || "unknown") : status;
   await updateWaSessionStatus(supabase, {
     userId,
     sessionId,
-    nextStatus: status,
+    nextStatus: effectiveStatus,
     source: error ? "poll_error" : "poll",
     reason: error,
     rawStatus: status,
@@ -1284,10 +1287,10 @@ async function readState(
   }
 
   return {
-    status,
+    status: effectiveStatus,
     sessionId,
     qrDataUrl: null,
-    qrRaw: status === "qr" ? qrRaw : null,
+    qrRaw: effectiveStatus === "qr" ? qrRaw : null,
     phoneNumber: surfacedPhone,
     lastSeenAt: now,
     error,
