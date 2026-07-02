@@ -56,7 +56,10 @@ export function ChannelQuickActions({ channel, state, lang, onChanged, onNavigat
         disconnect: "Disconnect",
         refresh: "Refresh",
         confirmTitle: channel === "facebook" ? "Disconnect Facebook?" : "Disconnect WhatsApp?",
-        confirmYes: "Yes, disconnect",
+        confirmBody: channel === "whatsapp"
+          ? "All your chats and messages will be permanently deleted. This cannot be undone. Re-scanning starts fresh."
+          : null,
+        confirmYes: "Disconnect & delete",
         confirmNo: "Cancel",
         loading: "Checking…",
         successDisc: channel === "facebook" ? "Facebook disconnected" : "WhatsApp disconnected",
