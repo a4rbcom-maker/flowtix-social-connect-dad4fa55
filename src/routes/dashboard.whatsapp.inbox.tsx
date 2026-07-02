@@ -37,6 +37,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { classifySendError, type SendErrorInfo } from "@/lib/wa-send-error";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { useTheme } from "@/lib/theme";
 import { useI18n } from "@/lib/i18n";
