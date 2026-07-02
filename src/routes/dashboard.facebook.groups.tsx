@@ -154,7 +154,9 @@ function FacebookGroupsPage() {
           supabase.from("fb_bot_accounts").select("id").eq("user_id", user.id).limit(1),
         ]);
         setConnected(!!connRes.connection);
-        setHasBotAccount((botRes.data?.length ?? 0) > 0);
+        const firstBot = botRes.data?.[0]?.id ?? null;
+        setBotAccountId(firstBot);
+        setHasBotAccount(!!firstBot);
       } catch {
         setConnected(false);
       }
