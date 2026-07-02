@@ -1,5 +1,8 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { sendWaMessage } from "@/lib/wa.functions";
+
 import {
   Send,
   Search,
