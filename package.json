@@ -15,7 +15,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
-    "audit:contrast": "node scripts/contrast-audit.mjs"
+    "audit:contrast": "node scripts/contrast-audit.mjs",
+    "audit:contrast:toasts": "node scripts/contrast-toasts.mjs"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",
