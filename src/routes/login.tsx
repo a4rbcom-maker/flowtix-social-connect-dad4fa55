@@ -271,7 +271,32 @@ function LoginPage() {
             </p>
           </div>
 
+          {/* Session-ended prominent notice */}
+          {sessionNotice && (
+            <div
+              role="alert"
+              className={`mb-5 flex items-start gap-3 rounded-2xl border p-4 shadow-lg backdrop-blur-md ${
+                sessionNotice.tone === "warning"
+                  ? "border-amber-400/40 bg-amber-50/80 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100"
+                  : "border-primary/30 bg-primary/10 text-foreground dark:text-foreground"
+              }`}
+            >
+              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                sessionNotice.tone === "warning"
+                  ? "bg-amber-500/20 text-amber-700 dark:text-amber-200"
+                  : "bg-primary/20 text-primary"
+              }`}>
+                <sessionNotice.icon className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-bold">{sessionNotice.title}</div>
+                <p className="mt-1 text-xs leading-6 opacity-90">{sessionNotice.description}</p>
+              </div>
+            </div>
+          )}
+
           {/* Card */}
+
           <div className="relative rounded-3xl border border-border/50 bg-card/80 p-7 shadow-2xl shadow-primary/5 backdrop-blur-xl sm:p-8">
             {/* Subtle inner glow */}
             <div className="pointer-events-none absolute inset-0 rounded-3xl bg-gradient-to-b from-primary/5 to-transparent" />
