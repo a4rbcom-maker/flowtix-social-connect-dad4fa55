@@ -63,7 +63,8 @@ function methodNotAllowedResponse(allowed: string[]) {
 }
 
 function apiRouteMethodFallback(request: Request): Response | null {
-  const { pathname } = new URL(request.url);
+  const { pathname: rawPathname } = new URL(request.url);
+  const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, "") : rawPathname;
   const method = request.method.toUpperCase();
 
   const routeMethods: Record<string, string[]> = {
@@ -121,7 +122,8 @@ function isNoRouteResponseError(error: unknown) {
 }
 
 function noRouteResponseFallback(request: Request) {
-  const { pathname } = new URL(request.url);
+  const { pathname: rawPathname } = new URL(request.url);
+  const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, "") : rawPathname;
   console.warn("[server] route handler returned no response", {
     method: request.method,
     pathname,
