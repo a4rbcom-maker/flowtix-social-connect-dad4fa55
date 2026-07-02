@@ -1294,3 +1294,71 @@ async function readState(
   };
 }
 
+/**
+ * Backfill contact_phone for existing @lid conversations by scanning the
+ * user's stored wa_messages for a real senderPn tied to the same JID.
+ * Also opportunistically copies contact_name from a sibling conversation
+ * that already has the same real phone. Runs under the user's RLS scope.
+ */
+export const matchLidPhoneNumbers = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<{ scanned: number; matched: number }> => {
+    const { supabase, userId } = context;
+
+    // Candidates: LID convs missing a real phone.
+    const { data: convs, error: convsErr } = await supabase
+      .from("wa_conversations")
+      .select("id, remote_jid, contact_phone, contact_name")
+      .eq("user_id", userId)
+      .like("remote_jid", "%@lid")
+      .is("contact_phone", null)
+      .limit(2000);
+    if (convsErr) throw new Error(convsErr.message);
+    if (!convs || convs.length === 0) return { scanned: 0, matched: 0 };
+
+    let matched = 0;
+
+    for (const conv of convs) {
+      const lidLocal = String(conv.remote_jid ?? "").split("@")[0] ?? "";
+      // Latest inbound message with a real from_phone that differs from LID digits.
+      const { data: msgs } = await supabase
+        .from("wa_messages")
+        .select("from_phone")
+        .eq("user_id", userId)
+        .eq("remote_jid", conv.remote_jid)
+        .not("from_phone", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      const realPhone = (msgs ?? [])
+        .map((m: { from_phone: string | null }) => (m.from_phone ?? "").replace(/[^0-9]/g, ""))
+        .find((p) => p && p.length >= 6 && p !== lidLocal);
+      if (!realPhone) continue;
+
+      // Optionally borrow a name from a sibling conv that already knows this phone.
+      let borrowedName: string | null = null;
+      if (!conv.contact_name) {
+        const { data: sibling } = await supabase
+          .from("wa_conversations")
+          .select("contact_name")
+          .eq("user_id", userId)
+          .eq("contact_phone", realPhone)
+          .not("contact_name", "is", null)
+          .limit(1);
+        borrowedName = sibling?.[0]?.contact_name ?? null;
+      }
+
+      const patch: { contact_phone: string; contact_name?: string } = { contact_phone: realPhone };
+      if (borrowedName) patch.contact_name = borrowedName;
+
+      const { error: updErr } = await supabase
+        .from("wa_conversations")
+        .update(patch)
+        .eq("id", conv.id)
+        .eq("user_id", userId);
+      if (!updErr) matched++;
+    }
+
+    return { scanned: convs.length, matched };
+  });
+
+
