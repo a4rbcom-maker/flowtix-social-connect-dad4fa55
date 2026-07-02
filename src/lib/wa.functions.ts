@@ -670,6 +670,15 @@ export const dismissWaHistorySyncJob = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+export const getWaSessionEvents = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<WaSessionEventRow[]> => {
+    const { supabase, userId } = context;
+    const { data, error } = await supabase
+      .from("wa_session_events")
+      .select("created_at, session_id, from_status, to_status, source, reason, raw_status, bridge_event")
+      .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(10);
     if (error) throw new Error(error.message);
