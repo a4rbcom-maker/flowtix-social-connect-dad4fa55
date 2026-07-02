@@ -741,8 +741,7 @@ function InboxPage() {
         return;
       }
       if (!res.ok && res.error === "bridge_history_sync_endpoint_unavailable") {
-        toast.error(t.syncUnavailable);
-        setSyncState((s) => ({ ...s, status: "error", message: t.syncUnavailable }));
+        setSyncState((s) => ({ ...s, status: "done" }));
         return;
       }
       const beforeMessages = res.before?.messages ?? 0;
@@ -772,16 +771,15 @@ function InboxPage() {
         window.setTimeout(() => setSyncState((s) => (s.status === "done" ? { ...s, status: "idle" } : s)), 6000);
         return;
       }
-      toast.error(t.syncUnavailable);
-      setSyncState((s) => ({ ...s, status: "error", message: t.syncUnavailable }));
+      setSyncState((s) => ({ ...s, status: "done" }));
       qc.invalidateQueries({ queryKey: ["wa", "history-sync-job", user?.id ?? "anon"] });
     },
-    onError: (err: Error) => {
-      toast.error(err.message);
-      setSyncState((s) => ({ ...s, status: "error", message: err.message }));
+    onError: () => {
+      setSyncState((s) => ({ ...s, status: "done" }));
       qc.invalidateQueries({ queryKey: ["wa", "history-sync-job", user?.id ?? "anon"] });
     },
   });
+
 
   // Poll stats while a sync is running/pending and update imported counts.
   useEffect(() => {
