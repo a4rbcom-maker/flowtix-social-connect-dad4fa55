@@ -684,6 +684,10 @@ function InboxPage() {
     el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
   }, [draft]);
 
+  const [sendError, setSendError] = useState<SendErrorInfo | null>(null);
+  // Auto-dismiss the inline alert when user switches chat or starts typing again.
+  useEffect(() => { setSendError(null); }, [activeJid]);
+
   const sendMut = useMutation({
     mutationFn: async ({ text, file }: { text: string; file: File | null }) => {
       let mediaUrl: string | undefined;
@@ -728,6 +732,7 @@ function InboxPage() {
     onSuccess: (_res, vars) => {
       const hadFile = !!vars.file;
       setDraft("");
+      setSendError(null);
       if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
       setAttachment(null);
       qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
@@ -738,8 +743,11 @@ function InboxPage() {
           : isAr ? "تم إرسال الرسالة بنجاح" : "Message sent successfully",
       );
     },
-    onError: (err: Error) => toast.error(err.message),
+    // Show a rich, dismissible inline alert instead of a noisy toast so the
+    // user sees the reason + retry steps without spam on repeated attempts.
+    onError: (err: Error) => setSendError(classifySendError(err)),
   });
+
 
 
   const historySyncMut = useMutation({
