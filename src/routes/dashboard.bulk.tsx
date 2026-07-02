@@ -316,7 +316,27 @@ function BulkSendPage() {
     }
     if (selectedRecipients.length === 0) { toast.error(isAr ? "اختر قائمة أو جهة اتصال" : "Pick a list or contacts"); return; }
     if (!scheduleNow && !scheduleAt) { toast.error(isAr ? "حدد موعد التشغيل" : "Pick a schedule"); return; }
+
+    // Enforce one active campaign at a time — inform the user before queuing.
+    const hasActive = jobs.some((j) => j.status === "running" || j.status === "scheduled");
+    if (hasActive) {
+      const proceed = window.confirm(
+        isAr
+          ? "لا يمكن تشغيل أكثر من حملة في نفس الوقت لحماية رقمك من الحظر.\n\nيوجد لديك حملة نشطة بالفعل — هل تريد إضافة هذه الحملة إلى قائمة الانتظار لتبدأ تلقائياً بعد انتهاء الحملة الحالية؟"
+          : "Only one campaign can run at a time to protect your number from bans.\n\nYou already have an active campaign — add this one to the queue and start it automatically once the current one finishes?"
+      );
+      if (!proceed) {
+        toast.info(isAr ? "تم الإلغاء — حملة واحدة فقط في المرة" : "Cancelled — only one campaign at a time");
+        return;
+      }
+      toast.message(
+        isAr ? "تمت الإضافة إلى قائمة الانتظار" : "Added to queue",
+        { description: isAr ? "ستبدأ تلقائياً بعد انتهاء الحملة الحالية." : "It will start automatically after the current campaign finishes." }
+      );
+    }
+
     if (!(await ensureWaConnected())) return;
+
 
 
 
