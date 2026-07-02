@@ -1213,40 +1213,33 @@ function InboxPage() {
                   </span>
                 )}
               </div>
-              {syncState.status === "error" && syncState.message && (
-                <div className="mt-2 rounded-lg border border-amber-500/25 bg-amber-500/5 p-2.5 text-[11px] leading-relaxed text-amber-900 dark:text-amber-200">
-                  <div className="font-semibold text-[11.5px]">
-                    {isAr ? "لم تصل دفعات الأرشيف" : "Archive batches not received"}
-                  </div>
-                  <p className="mt-1 text-amber-800/90 dark:text-amber-200/90">
-                    {t.repairHint}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <Button
+              {syncState.status === "error" && (
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-[10.5px] text-muted-foreground">
+                  <span className="truncate">
+                    {isAr ? "تعذّر إكمال المزامنة." : "Sync didn't finish."}
+                  </span>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
                       type="button"
-                      size="sm"
-                      variant="outline"
                       disabled={historySyncMut.isPending}
                       onClick={() => historySyncMut.mutate()}
-                      className="h-7 gap-1.5 border-amber-500/40 bg-amber-500/10 px-2 text-[11px] font-semibold text-amber-900 hover:bg-amber-500/20 dark:text-amber-100"
+                      className="inline-flex h-6 items-center gap-1 rounded-md border border-border/60 bg-background px-2 text-[10.5px] font-medium text-foreground hover:bg-muted disabled:opacity-60"
+                      title={isAr ? "إعادة المحاولة" : "Retry"}
                     >
-                      {historySyncMut.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
-                      {isAr ? "إعادة المحاولة" : "Retry"}
-                    </Button>
-                    <Button
-                      asChild
-                      type="button"
-                      size="sm"
-                      className="h-7 gap-1.5 bg-amber-600 px-2 text-[11px] font-semibold text-white hover:bg-amber-700"
+                      {historySyncMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                      <span>{isAr ? "إعادة" : "Retry"}</span>
+                    </button>
+                    <Link
+                      to="/dashboard/whatsapp/accounts"
+                      className="inline-flex h-6 items-center gap-1 rounded-md px-2 text-[10.5px] font-medium text-primary hover:underline"
+                      title={t.repairForHistory}
                     >
-                      <Link to="/dashboard/whatsapp/accounts">
-                        <RefreshCw className="h-3 w-3" />
-                        {t.repairForHistory}
-                      </Link>
-                    </Button>
+                      {isAr ? "إعادة الاقتران" : "Repair"}
+                    </Link>
                   </div>
                 </div>
               )}
+
             </div>
           );
         })()}
