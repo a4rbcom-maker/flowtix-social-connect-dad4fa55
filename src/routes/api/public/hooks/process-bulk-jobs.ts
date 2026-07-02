@@ -183,17 +183,33 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
             .limit(batchSize);
 
           if (!pending || pending.length === 0) {
-            await supabaseAdmin
-              .from("bulk_jobs")
-              .update({
-                status: "completed",
-                completed_at: new Date().toISOString(),
-                next_send_at: null,
-              })
-              .eq("id", job.id);
-            summary.completed++;
+            // Do not mark completed while some recipients are still "processing"
+            // (bridge accepted but not confirmed). The stale-sweep will resolve them.
+            const { count: stillProcessing } = await supabaseAdmin
+              .from("bulk_job_recipients")
+              .select("id", { head: true, count: "exact" })
+              .eq("job_id", job.id)
+              .eq("status", "processing");
+            if ((stillProcessing ?? 0) === 0) {
+              await supabaseAdmin
+                .from("bulk_jobs")
+                .update({
+                  status: "completed",
+                  completed_at: new Date().toISOString(),
+                  next_send_at: null,
+                })
+                .eq("id", job.id);
+              summary.completed++;
+            } else {
+              // Re-check soon so the stale-sweep runs
+              await supabaseAdmin
+                .from("bulk_jobs")
+                .update({ next_send_at: new Date(Date.now() + 60_000).toISOString() })
+                .eq("id", job.id);
+            }
             continue;
           }
+
 
           let sent = 0;
           let failed = 0;
