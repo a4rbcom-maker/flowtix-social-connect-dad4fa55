@@ -2680,6 +2680,8 @@ function mergeConversationAliases(items: ConversationRow[]): ConversationRow {
     last_direction: newest.last_direction,
     unread_count: items.reduce((sum, c) => sum + (c.unread_count || 0), 0),
     ai_enabled: items.some((c) => c.ai_enabled),
+    _sort_at: (newest as RankedConversationRow)._sort_at ?? newest.last_message_at,
+    _has_stored_message: (newest as RankedConversationRow)._has_stored_message ?? hasConversationPreview(newest),
   };
 }
 
