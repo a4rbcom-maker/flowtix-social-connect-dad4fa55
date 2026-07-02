@@ -304,8 +304,11 @@ jobs:
           PORT="${SSH_PORT:-22}"
           REMOTE_STAGING_ROOT=".flowtixtools-web-staging"
           REMOTE_STAGING="${REMOTE_STAGING_ROOT}/${GITHUB_RUN_ID}"
+          # Aggressive pre-deploy sweep: nuke ALL sibling staging dirs (they are
+          # abandoned bundles from prior runs — only the current run's dir is
+          # needed). Prevents accumulation even when many deploys happen in one day.
           ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
-            "${USER}@${HOST}" "mkdir -p '${REMOTE_STAGING_ROOT}' && find '${REMOTE_STAGING_ROOT}' -mindepth 1 -maxdepth 1 -type d -mtime +1 -exec rm -rf {} + 2>/dev/null || true; rm -rf '${REMOTE_STAGING}' && mkdir -p '${REMOTE_STAGING}'"
+            "${USER}@${HOST}" "mkdir -p '${REMOTE_STAGING_ROOT}' && find '${REMOTE_STAGING_ROOT}' -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true; mkdir -p '${REMOTE_STAGING}'"
           rsync -az --delete \
             --exclude='.env' --exclude='.user.ini' --exclude='.htaccess' \
             --exclude='.well-known/' --exclude='var/' --exclude='*.log' \
