@@ -49,6 +49,73 @@ async function nativeHealthResponse(request: Request) {
   });
 }
 
+function methodNotAllowedResponse(allowed: string[]) {
+  return Response.json(
+    { ok: false, error: "method_not_allowed", allowed },
+    {
+      status: 405,
+      headers: {
+        allow: allowed.join(", "),
+        "cache-control": "no-store, max-age=0",
+      },
+    },
+  );
+}
+
+function apiRouteMethodFallback(request: Request): Response | null {
+  const { pathname } = new URL(request.url);
+  const method = request.method.toUpperCase();
+
+  const routeMethods: Record<string, string[]> = {
+    "/api/public/health": ["GET", "HEAD"],
+    "/api/public/wa-webhook": ["GET", "POST", "OPTIONS"],
+    "/api/public/wa-client": ["POST", "OPTIONS"],
+    "/api/public/wa-bridge-health": ["GET", "OPTIONS"],
+    "/api/public/wa-bridge-sessions": ["GET"],
+    "/api/public/wa-bridge-session-status": ["GET"],
+    "/api/public/fb-people-ingest": ["POST"],
+    "/api/public/webhooks/facebook": ["GET", "POST"],
+    "/api/public/hooks/process-bulk-jobs": ["POST"],
+    "/api/public/hooks/cleanup-old-media": ["POST"],
+    "/api/public/bot/next-job": ["POST"],
+    "/api/public/bot/job-update": ["POST"],
+  };
+
+  const allowed = routeMethods[pathname];
+  if (!allowed) return null;
+
+  // TanStack Start does not always synthesize HEAD from GET for server route
+  // handlers. If a crawler / proxy / browser preflight sends HEAD to a route
+  // that only defines GET, the framework may surface:
+  // "forgot to return a response from your server route handler".
+  // Answer it here so every matched API request always receives a Response.
+  if (method === "HEAD" && allowed.includes("GET")) {
+    return new Response(null, {
+      status: 200,
+      headers: {
+        allow: Array.from(new Set([...allowed, "HEAD"])).join(", "),
+        "cache-control": "no-store, max-age=0",
+      },
+    });
+  }
+
+  if (allowed.includes(method)) return null;
+  if (method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        allow: allowed.join(", "),
+        "access-control-allow-origin": "*",
+        "access-control-allow-methods": allowed.join(", "),
+        "access-control-allow-headers": "Content-Type, Authorization",
+        "access-control-max-age": "86400",
+      },
+    });
+  }
+
+  return methodNotAllowedResponse(allowed);
+}
+
 async function getServerEntry(): Promise<ServerEntry> {
   if (!serverEntryPromise) {
     serverEntryPromise = import("@tanstack/react-start/server-entry").then(
@@ -92,6 +159,8 @@ export default {
   async fetch(request: Request, env: unknown, context: unknown) {
     try {
       const url = new URL(request.url);
+      const apiFallback = apiRouteMethodFallback(request);
+      if (apiFallback) return apiFallback;
       if (request.method === "GET" || request.method === "HEAD") {
         if (url.pathname === "/api/public/health") return nativeHealthResponse(request);
         if (url.pathname === "/deploy-version.json") {
