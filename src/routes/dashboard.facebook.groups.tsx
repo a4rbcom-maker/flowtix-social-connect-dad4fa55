@@ -360,43 +360,8 @@ function FacebookGroupsPage() {
             <h2 className="text-2xl font-bold text-foreground">{t.title}</h2>
             <p className="mt-1 text-sm text-muted-foreground">{t.subtitle}</p>
           </div>
-          {step !== "browse" && (
-            <button
-              onClick={() => setStep(step === "preview" ? "compose" : "browse")}
-              className="inline-flex items-center gap-2 self-start rounded-xl border border-border px-4 py-2 text-sm font-medium hover:bg-accent"
-            >
-              <ArrowLeft className={`h-4 w-4 ${dir === "rtl" ? "rotate-180" : ""}`} />
-              {t.back}
-            </button>
-          )}
         </div>
 
-        {/* Stepper */}
-        <div className="flex items-center gap-2 text-xs font-medium">
-          {(["browse", "compose", "preview"] as const).map((s, i) => {
-            const active = step === s;
-            const done = (["browse", "compose", "preview"] as const).indexOf(step) > i;
-            return (
-              <div key={s} className="flex flex-1 items-center gap-2">
-                <div
-                  className={`flex h-7 w-7 items-center justify-center rounded-full border text-xs ${
-                    active
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : done
-                        ? "border-primary/40 bg-primary/10 text-primary"
-                        : "border-border bg-card text-muted-foreground"
-                  }`}
-                >
-                  {done ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
-                </div>
-                <span className={active ? "text-foreground" : "text-muted-foreground"}>
-                  {s === "browse" ? t.title : s === "compose" ? t.composeTitle : t.previewTitle}
-                </span>
-                {i < 2 && <div className="mx-2 h-px flex-1 bg-border" />}
-              </div>
-            );
-          })}
-        </div>
 
         {/* Not connected via Graph API AND no bot-imported groups yet */}
         {connected === false && groups.length === 0 && (
