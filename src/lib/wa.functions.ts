@@ -331,6 +331,24 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
     };
 
     const before = await countStored();
+
+    // Persist the sync job so progress survives across browser reloads / device sleep.
+    const deadlineMs = Date.now() + 90_000;
+    await supabase
+      .from("wa_history_sync_jobs")
+      .upsert({
+        user_id: userId,
+        session_id: row.session_id,
+        status: "running",
+        baseline_msg: before.messages,
+        baseline_conv: before.conversations,
+        imported_msg: 0,
+        imported_conv: 0,
+        message: null,
+        started_at: new Date().toISOString(),
+        deadline_at: new Date(deadlineMs).toISOString(),
+        finished_at: null,
+      }, { onConflict: "user_id" });
     const chatCatalogue = await waBridge.fetchChats(row.session_id).catch((err) => ({
       ok: false,
       attempts: [
