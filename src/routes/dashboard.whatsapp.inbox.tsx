@@ -267,9 +267,6 @@ function InboxPage() {
         savedStats: (chats: number, messages: number) => `${chats} محادثات ظاهرة · ${messages} رسالة محفوظة`,
         connected: "متصل",
         disconnected: "غير متصل",
-        fetchAllNow: "إحضار كل المحادثات الآن",
-        fetchingAll: "جارٍ إحضار كل المحادثات…",
-        fetchAllHint: "يعيد جلب كل محادثاتك الحالية من واتساب بنفس منطق الجلسة الجديدة، دون الحاجة لمسح QR مرة أخرى.",
         repairForHistory: "أعد الاقتران لاستيراد كل المحادثات",
         repairHint: "واتساب يرسل الأرشيف مرة واحدة فقط بعد أول مسح QR. لجلب كل السجل، افصل الجلسة وامسح QR جديد.",
       }
