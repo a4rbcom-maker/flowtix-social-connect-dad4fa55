@@ -534,7 +534,7 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       after = await countStored();
     }
 
-    const actuallyImported = after.messages > before.messages || after.conversations > before.conversations;
+    const actuallyImported = directImports.messages > 0 || directImports.chats > 0 || after.conversations > before.conversations;
     const requestAccepted = result.ok || fetchedKnownChats > 0;
     const pending = requestAccepted && !actuallyImported;
     await logWaSessionEvent(supabase, {
