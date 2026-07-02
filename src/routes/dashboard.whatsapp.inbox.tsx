@@ -2685,6 +2685,10 @@ function phoneFromRaw(raw: unknown): string | null {
   return digits(pickString(obj, "normalizedContactPhone", "senderPn", "participantPn", "phoneNumber", "phone"));
 }
 
+function phoneFromMessageRow(jid: string, fromPhone: string | null | undefined, toPhone: string | null | undefined): string | null {
+  return cleanAliasPhone(fromPhone, jid) ?? cleanAliasPhone(toPhone, jid);
+}
+
 function contactNameFromRaw(raw: unknown): string | null {
   const obj = asRecord(raw);
   return pickString(obj, "contactName", "pushName", "senderName", "notifyName", "name", "verifiedName", "subject");
@@ -2806,6 +2810,18 @@ function previewTextFromRaw(raw: unknown, currentText: string | null | undefined
   if (msgType === "document") return "[file]";
   if (msgType === "sticker") return "[sticker]";
   return currentText?.trim() || null;
+}
+
+function previewTextFromStoredFields(currentText: string | null | undefined, fallbackType?: string | null, mediaUrl?: string | null): string | null {
+  const text = currentText?.trim();
+  if (text && !looksLikeInternalMediaPath(text)) return text;
+  const msgType = normalizeWaMessageType(fallbackType || (mediaUrl ? "media" : "text"));
+  if (msgType === "image") return "[image]";
+  if (msgType === "video") return "[video]";
+  if (msgType === "audio") return "[audio]";
+  if (msgType === "document") return "[file]";
+  if (msgType === "sticker") return "[sticker]";
+  return null;
 }
 
 function initials(s: string): string {
