@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { methodNotAllowedHandler } from "@/lib/http-method-not-allowed";
 
 export const Route = createFileRoute("/api/public/wa-bridge-session-status")({
   server: {
@@ -29,6 +30,11 @@ export const Route = createFileRoute("/api/public/wa-bridge-session-status")({
         }
         return json({ ok: true, id, out }, 200);
       },
+      HEAD: methodNotAllowedHandler(["GET"]),
+      POST: methodNotAllowedHandler(["GET"]),
+      PUT: methodNotAllowedHandler(["GET"]),
+      DELETE: methodNotAllowedHandler(["GET"]),
+      PATCH: methodNotAllowedHandler(["GET"]),
     },
   },
 });

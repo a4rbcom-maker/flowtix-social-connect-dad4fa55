@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { methodNotAllowedHandler } from "@/lib/http-method-not-allowed";
 
 // Diagnostic: returns bridge sessions + configured webhook URLs. Read-only.
 // Public — only exposes non-secret operational metadata (session id prefix,
@@ -33,6 +34,11 @@ export const Route = createFileRoute("/api/public/wa-bridge-sessions")({
           return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
         }
       },
+      HEAD: methodNotAllowedHandler(["GET"]),
+      POST: methodNotAllowedHandler(["GET"]),
+      PUT: methodNotAllowedHandler(["GET"]),
+      DELETE: methodNotAllowedHandler(["GET"]),
+      PATCH: methodNotAllowedHandler(["GET"]),
     },
   },
 });

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { methodNotAllowedHandler } from "@/lib/http-method-not-allowed";
 
 const RETENTION_DAYS = 15;
 
@@ -50,6 +51,11 @@ export const Route = createFileRoute("/api/public/hooks/cleanup-old-media")({
           });
         }
       },
+      GET: methodNotAllowedHandler(["POST"]),
+      HEAD: methodNotAllowedHandler(["POST"]),
+      PUT: methodNotAllowedHandler(["POST"]),
+      DELETE: methodNotAllowedHandler(["POST"]),
+      PATCH: methodNotAllowedHandler(["POST"]),
     },
   },
 });
