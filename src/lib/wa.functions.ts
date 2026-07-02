@@ -617,14 +617,13 @@ export const getWaHistorySyncJob = createServerFn({ method: "GET" })
     let message = data.message;
     let finishedAt = data.finished_at;
 
-    // Recompute live counts while the job is active so progress advances
-    // even if the client that started it is offline.
+    // Recompute only conversation count while active. Avoid count exact on
+    // wa_messages because it was a major Disk IO consumer during sync polling.
     if (status === "running" || status === "pending") {
-      const [{ count: liveConv }, { count: liveMsg }] = await Promise.all([
-        supabase.from("wa_conversations").select("id", { count: "exact", head: true }).eq("user_id", userId),
-        supabase.from("wa_messages").select("id", { count: "exact", head: true }).eq("user_id", userId),
-      ]);
-      importedMsg = Math.max(0, (liveMsg ?? 0) - data.baseline_msg);
+      const { count: liveConv } = await supabase
+        .from("wa_conversations")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId);
       importedConv = Math.max(0, (liveConv ?? 0) - data.baseline_conv);
 
       const deadlinePassed = data.deadline_at ? Date.now() >= new Date(data.deadline_at).getTime() : false;
