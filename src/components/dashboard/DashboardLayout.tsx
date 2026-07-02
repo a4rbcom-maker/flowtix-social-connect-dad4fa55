@@ -49,6 +49,7 @@ import { AnnouncementModal } from "@/components/dashboard/AnnouncementModal";
 import { ChannelStatusDot } from "@/components/dashboard/ChannelStatusDot";
 import { ChannelQuickActions } from "@/components/dashboard/ChannelQuickActions";
 import { WaDisconnectBanner } from "@/components/dashboard/WaDisconnectBanner";
+import { WaStatusPill } from "@/components/dashboard/WaStatusPill";
 import { useChannelStatus } from "@/hooks/useChannelStatus";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 const flowtixLogo = "/flowtix-logo.webp";
