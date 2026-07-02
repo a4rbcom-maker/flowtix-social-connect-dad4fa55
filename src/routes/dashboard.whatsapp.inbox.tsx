@@ -2697,13 +2697,14 @@ function hasConversationPreview(conv: ConversationRow): boolean {
 
 function conversationSortMs(conv: ConversationRow): number {
   const ranked = conv as RankedConversationRow;
-  if (ranked._sort_at === null) return 0;
+  // أولوية 1: أحدث رسالة فعلية محفوظة (من wa_messages)
   if (ranked._sort_at) return safeTimeMs(ranked._sort_at);
-  // محادثات كتالوج واتساب التي لم يصل لها أي رسالة بعد لا يجب أن تصعد للأعلى
-  // لمجرد أنها أُنشئت وقت إعادة الاقتران.
-  if (ranked._has_stored_message === false) return 0;
-  if (!hasConversationPreview(conv) && (conv.unread_count || 0) === 0) return 0;
-  return safeTimeMs(conv.last_message_at);
+  // أولوية 2: محادثة لها نشاط حقيقي (معاينة نصية أو رسائل غير مقروءة)
+  // حتى لو لم تُجلب رسائلها ضمن نافذة الـ 5000. نعتمد على last_message_at من DB.
+  const hasRealActivity = hasConversationPreview(conv) || (conv.unread_count || 0) > 0;
+  if (hasRealActivity) return safeTimeMs(conv.last_message_at);
+  // أولوية 3 (الأدنى): كتالوج فارغ من إعادة الاقتران — يُدفع للأسفل.
+  return 0;
 }
 
 function compareConversationsByLastRealActivity(a: ConversationRow, b: ConversationRow): number {
