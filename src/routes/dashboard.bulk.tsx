@@ -308,32 +308,94 @@ function BulkSendPage() {
     else { toast.success(isAr ? "تم الإلغاء" : "Cancelled"); loadAll(); }
   };
 
+  const resumeJobCore = async (id: string) => {
+    const { error: rErr } = await supabase
+      .from("bulk_job_recipients")
+      .update({ status: "pending", error_message: null, sent_at: null })
+      .eq("job_id", id)
+      .eq("status", "failed");
+    if (rErr) throw new Error(rErr.message);
+    const { error: jErr } = await supabase
+      .from("bulk_jobs")
+      .update({ status: "scheduled", scheduled_at: new Date().toISOString() })
+      .eq("id", id);
+    if (jErr) throw new Error(jErr.message);
+  };
+
   const resumeJob = async (id: string) => {
     if (!confirm(isAr ? "استئناف الحملة الآن؟ سيتم إعادة إرسال الأرقام التي فشلت." : "Resume campaign now? Failed recipients will be retried.")) return;
     if (!(await ensureWaConnected())) return;
     try {
-
-      // Reset failed recipients back to pending so the worker retries them
-      const { error: rErr } = await supabase
-        .from("bulk_job_recipients")
-        .update({ status: "pending", error_message: null, sent_at: null })
-        .eq("job_id", id)
-        .eq("status", "failed");
-      if (rErr) throw new Error(rErr.message);
-
-      // Re-schedule the job for immediate pickup by the background worker
-      const { error: jErr } = await supabase
-        .from("bulk_jobs")
-        .update({ status: "scheduled", scheduled_at: new Date().toISOString() })
-        .eq("id", id);
-      if (jErr) throw new Error(jErr.message);
-
+      await resumeJobCore(id);
       toast.success(isAr ? "تم استئناف الحملة — سيتم البدء خلال دقيقة" : "Campaign resumed — will start within a minute");
       loadAll();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed");
     }
   };
+
+  const pendingJobIds = useMemo(
+    () => jobs.filter((j) => j.status === "paused" || j.status === "cancelled" || j.status === "failed").map((j) => j.id),
+    [jobs],
+  );
+
+  const resumeAllPending = async (opts?: { silent?: boolean; skipConnectionCheck?: boolean }) => {
+    const ids = pendingJobIds;
+    if (ids.length === 0) {
+      if (!opts?.silent) toast.info(isAr ? "لا توجد حملات معلقة" : "No pending campaigns");
+      return 0;
+    }
+    if (!opts?.skipConnectionCheck && !(await ensureWaConnected())) return 0;
+    let ok = 0;
+    let fail = 0;
+    for (const id of ids) {
+      try { await resumeJobCore(id); ok += 1; } catch { fail += 1; }
+    }
+    if (ok > 0) {
+      toast.success(isAr ? `تم استئناف ${ok} حملة${fail ? ` (فشل ${fail})` : ""}` : `Resumed ${ok} campaign(s)${fail ? ` (${fail} failed)` : ""}`);
+    } else if (fail > 0) {
+      toast.error(isAr ? `فشل استئناف ${fail} حملة` : `Failed to resume ${fail} campaign(s)`);
+    }
+    loadAll();
+    return ok;
+  };
+
+  // Auto-resume: watch wa_sessions; when status flips to "connected", resume pending campaigns.
+  const lastWaStatusRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const check = async () => {
+      const { data } = await supabase
+        .from("wa_sessions")
+        .select("status,updated_at")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      const status = data?.status ?? null;
+      const prev = lastWaStatusRef.current;
+      lastWaStatusRef.current = status;
+      if (prev && prev !== "connected" && status === "connected") {
+        const pending = jobs.filter((j) => j.status === "paused" || j.status === "cancelled" || j.status === "failed");
+        if (pending.length > 0) {
+          toast.success(isAr ? `تم استعادة الاتصال — جارٍ استئناف ${pending.length} حملة تلقائياً` : `Connection restored — auto-resuming ${pending.length} campaign(s)`);
+          await resumeAllPending({ silent: true, skipConnectionCheck: true });
+        }
+      }
+    };
+    check();
+    const ch = supabase
+      .channel(`wa-sessions-watch:${user.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "wa_sessions", filter: `user_id=eq.${user.id}` }, () => { check(); })
+      .subscribe();
+    const iv = setInterval(check, 20_000);
+    return () => { cancelled = true; supabase.removeChannel(ch); clearInterval(iv); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, jobs]);
+
+
 
   if (authLoading || !user) return null;
 
