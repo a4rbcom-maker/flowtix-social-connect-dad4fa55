@@ -1075,19 +1075,19 @@ function InboxPage() {
           const meta =
             syncState.status === "running"
               ? {
-                  label: isAr ? "جاري المزامنة…" : "Syncing…",
+                  label: isAr ? "جاري جلب كل المحادثات…" : "Fetching all chats…",
                   ...toneFor("running"),
                   hint: isAr
-                    ? "الجسر يستقبل الرسائل الآن. لا حاجة لأي إجراء — اترك الصفحة مفتوحة حتى تكتمل."
-                    : "The bridge is fetching messages. No action needed — keep this page open until it finishes.",
+                    ? "واتساب يرسل الآن كل محادثاتك بعد مسح رمز QR. اترك الصفحة مفتوحة — قد يستغرق حتى دقيقة حسب حجم أرشيفك."
+                    : "WhatsApp is streaming all your chats after the QR scan. Keep this page open — may take up to a minute depending on your archive size.",
                 }
               : syncState.status === "pending"
                 ? {
-                    label: isAr ? "قيد الانتظار" : "Pending",
+                    label: isAr ? "بانتظار بدء المزامنة" : "Waiting to start",
                     ...toneFor("pending"),
                     hint: isAr
-                      ? "بانتظار بدء الجسر بمعالجة الدفعة. سيبدأ تلقائياً خلال ثوانٍ — لا يلزم أي تدخل."
-                      : "Waiting for the bridge to start the batch. It will begin automatically in a few seconds.",
+                      ? "الجسر جاهز وسيبدأ إرسال الدفعات خلال ثوانٍ."
+                      : "The bridge is ready and will start sending batches in a few seconds.",
                   }
                 : syncState.status === "done"
                   ? {
