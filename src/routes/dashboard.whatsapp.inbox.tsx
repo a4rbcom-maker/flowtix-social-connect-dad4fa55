@@ -2429,11 +2429,13 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
     });
   }
 
-  // Fallback: أي محادثة ليست ضمن آخر 5000 رسالة، اجلب لها آخر رسالة حقيقية
-  // بشكل مستقل حتى لا يعتمد الترتيب على وقت إنشاء صف wa_conversations.
-  const missingJids = rows
-    .map((r) => r.remote_jid)
-    .filter((jid) => jid && !latestMessageByJid.has(jid));
+  // Fallback: أي محادثة ليست ضمن آخر 5000 رسالة، أو محادثة بها رسائل غير مقروءة
+  // (يجب أن يكون ترتيبها دقيقًا دائمًا)، اجلب لها آخر رسالة حقيقية بشكل مستقل
+  // حتى لا يعتمد الترتيب على وقت إنشاء صف wa_conversations.
+  const jidsNeedingLatest = rows
+    .filter((r) => r.remote_jid && (!latestMessageByJid.has(r.remote_jid) || (r.unread_count || 0) > 0))
+    .map((r) => r.remote_jid);
+  const missingJids = Array.from(new Set(jidsNeedingLatest));
   if (missingJids.length > 0) {
     const CHUNK = 12;
     for (let i = 0; i < missingJids.length; i += CHUNK) {
