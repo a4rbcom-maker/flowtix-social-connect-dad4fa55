@@ -434,10 +434,55 @@ async function updateMessageStatuses(userId: string, sessionId: string, payload:
       .eq("user_id", userId)
       .eq("session_id", sessionId)
       .eq("provider_message_id", providerMessageId)
-      .select("id");
+      .select("id, raw");
     if (error) console.error("[wa-webhook] status update failed:", error.message);
     else if (matchedRows?.length) {
       updated += matchedRows.length;
+      const successStatus = ["sent", "delivered", "read"].includes(status);
+      const failureStatus = status === "failed";
+      for (const row of matchedRows) {
+        const raw = asObj(row.raw);
+        const bulkRecipientId = pickStr(raw, "bulkRecipientId", "bulk_recipient_id");
+        const bulkJobId = pickStr(raw, "bulkJobId", "bulk_job_id");
+        if ((!successStatus && !failureStatus) || !bulkRecipientId) continue;
+        await supabaseAdmin
+          .from("bulk_job_recipients")
+          .update({
+            status: successStatus ? "success" : "failed",
+            error_message: successStatus ? null : "فشل تأكيد الإرسال من واتساب",
+            sent_at: new Date().toISOString(),
+          })
+          .eq("id", bulkRecipientId);
+        if (bulkJobId) {
+          const { data: rows } = await supabaseAdmin
+            .from("bulk_job_recipients")
+            .select("status")
+            .eq("job_id", bulkJobId);
+          const sentCount = (rows ?? []).filter((r) => r.status === "success").length;
+          const failedCount = (rows ?? []).filter((r) => r.status === "failed").length;
+          await supabaseAdmin
+            .from("bulk_jobs")
+            .update({ sent_count: sentCount, failed_count: failedCount, updated_at: new Date().toISOString() })
+            .eq("id", bulkJobId);
+          await supabaseAdmin
+            .from("send_log")
+            .update({
+              status: successStatus ? "success" : "failed",
+              error_message: successStatus ? null : "فشل تأكيد الإرسال من واتساب",
+              metadata: {
+                ...raw,
+                job_id: bulkJobId,
+                bulk_recipient_id: bulkRecipientId,
+                provider_message_id: providerMessageId,
+                whatsapp_ack_status: status,
+                awaiting_whatsapp_ack: false,
+              } as never,
+            })
+            .eq("channel", "bulk")
+            .eq("action", "bulk_send")
+            .eq("metadata->>bulk_recipient_id", bulkRecipientId);
+        }
+      }
       continue;
     }
 
@@ -447,7 +492,7 @@ async function updateMessageStatuses(userId: string, sessionId: string, payload:
     // message. Match it to the newest pending outbound row for this session. This
     // is the missing link that makes queued AI sends become confirmed deliveries
     // instead of timing out as "accepted by bridge but not sent".
-    if (!["sent", "delivered", "read"].includes(status)) continue;
+    if (!["sent", "delivered", "read", "failed"].includes(status)) continue;
     const { data: pendingAi, error: pendingErr } = await supabaseAdmin
       .from("wa_messages")
       .select("id, raw, remote_jid, text_body, to_phone, created_at")
@@ -466,7 +511,7 @@ async function updateMessageStatuses(userId: string, sessionId: string, payload:
     if (!pendingAi?.id) continue;
 
     const raw = asObj(pendingAi.raw);
-    const nextStatus = status === "read" ? "read" : status === "delivered" ? "delivered" : "sent";
+    const nextStatus = status === "read" ? "read" : status === "delivered" ? "delivered" : status === "failed" ? "failed" : "sent";
     const { error: updErr } = await supabaseAdmin
       .from("wa_messages")
       .update({
@@ -487,6 +532,47 @@ async function updateMessageStatuses(userId: string, sessionId: string, payload:
       continue;
     }
     updated++;
+    const bulkRecipientId = pickStr(raw, "bulkRecipientId", "bulk_recipient_id");
+    const bulkJobId = pickStr(raw, "bulkJobId", "bulk_job_id");
+    if (bulkRecipientId) {
+      await supabaseAdmin
+        .from("bulk_job_recipients")
+        .update({
+          status: nextStatus === "failed" ? "failed" : "success",
+          error_message: nextStatus === "failed" ? "فشل تأكيد الإرسال من واتساب" : null,
+          sent_at: new Date().toISOString(),
+        })
+        .eq("id", bulkRecipientId);
+      if (bulkJobId) {
+        const { data: rows } = await supabaseAdmin
+          .from("bulk_job_recipients")
+          .select("status")
+          .eq("job_id", bulkJobId);
+        const sentCount = (rows ?? []).filter((r) => r.status === "success").length;
+        const failedCount = (rows ?? []).filter((r) => r.status === "failed").length;
+        await supabaseAdmin
+          .from("bulk_jobs")
+          .update({ sent_count: sentCount, failed_count: failedCount, updated_at: new Date().toISOString() })
+          .eq("id", bulkJobId);
+        await supabaseAdmin
+          .from("send_log")
+          .update({
+            status: nextStatus === "failed" ? "failed" : "success",
+            error_message: nextStatus === "failed" ? "فشل تأكيد الإرسال من واتساب" : null,
+            metadata: {
+              ...raw,
+              job_id: bulkJobId,
+              bulk_recipient_id: bulkRecipientId,
+              provider_message_id: providerMessageId,
+              whatsapp_ack_status: nextStatus,
+              awaiting_whatsapp_ack: false,
+            } as never,
+          })
+          .eq("channel", "bulk")
+          .eq("action", "bulk_send")
+          .eq("metadata->>bulk_recipient_id", bulkRecipientId);
+      }
+    }
     await upsertConversationFromMessage({
       userId,
       sessionId,
@@ -821,12 +907,55 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     if (m.providerMessageId) {
       const { data: existing } = await supabaseAdmin
         .from("wa_messages")
-        .select("id")
+        .select("id, raw")
         .eq("user_id", userId)
         .eq("provider_message_id", m.providerMessageId)
         .maybeSingle();
       if (existing?.id) {
-        await supabaseAdmin.from("wa_messages").update({ status: m.status }).eq("id", existing.id);
+        const raw = asObj(existing.raw);
+        const bulkRecipientId = pickStr(raw, "bulkRecipientId", "bulk_recipient_id");
+        const bulkJobId = pickStr(raw, "bulkJobId", "bulk_job_id");
+        const nextStatus = m.status === "received" && m.fromMe ? "sent" : m.status;
+        await supabaseAdmin.from("wa_messages").update({ status: nextStatus }).eq("id", existing.id);
+        if (m.fromMe && ["sent", "delivered", "read", "received", "failed"].includes(m.status) && bulkRecipientId) {
+          await supabaseAdmin
+            .from("bulk_job_recipients")
+            .update({
+              status: nextStatus === "failed" ? "failed" : "success",
+              error_message: nextStatus === "failed" ? "فشل تأكيد الإرسال من واتساب" : null,
+              sent_at: new Date().toISOString(),
+            })
+            .eq("id", bulkRecipientId);
+          if (bulkJobId) {
+            const { data: rows } = await supabaseAdmin
+              .from("bulk_job_recipients")
+              .select("status")
+              .eq("job_id", bulkJobId);
+            const sentCount = (rows ?? []).filter((r) => r.status === "success").length;
+            const failedCount = (rows ?? []).filter((r) => r.status === "failed").length;
+            await supabaseAdmin
+              .from("bulk_jobs")
+              .update({ sent_count: sentCount, failed_count: failedCount, updated_at: new Date().toISOString() })
+              .eq("id", bulkJobId);
+            await supabaseAdmin
+              .from("send_log")
+              .update({
+                status: nextStatus === "failed" ? "failed" : "success",
+                error_message: nextStatus === "failed" ? "فشل تأكيد الإرسال من واتساب" : null,
+                metadata: {
+                  ...raw,
+                  job_id: bulkJobId,
+                  bulk_recipient_id: bulkRecipientId,
+                  provider_message_id: m.providerMessageId,
+                  whatsapp_ack_status: nextStatus,
+                  awaiting_whatsapp_ack: false,
+                } as never,
+              })
+              .eq("channel", "bulk")
+              .eq("action", "bulk_send")
+              .eq("metadata->>bulk_recipient_id", bulkRecipientId);
+          }
+        }
         continue;
       }
     }
@@ -849,21 +978,25 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         .maybeSingle();
 
       if (pendingAi?.id) {
+        const raw = asObj(pendingAi.raw);
+        const bulkRecipientId = pickStr(raw, "bulkRecipientId", "bulk_recipient_id");
+        const bulkJobId = pickStr(raw, "bulkJobId", "bulk_job_id");
+        const nextStatus = m.status === "received" ? "sent" : m.status;
         await supabaseAdmin
           .from("wa_messages")
           .update({
-            status: m.status === "received" ? "sent" : m.status,
+            status: nextStatus,
             provider_message_id: m.providerMessageId,
             wa_timestamp: waTimestamp,
             raw: {
-              ...(asObj(pendingAi.raw) as Record<string, unknown>),
+              ...(raw as Record<string, unknown>),
               ...entry,
-              ai: asObj(pendingAi.raw).ai === true,
+              ai: raw.ai === true,
               providerMessageId: m.providerMessageId,
               bridgeAckRemoteJid: m.remoteJid,
               normalizedRemoteJid: m.remoteJid,
               normalizedContactPhone: m.fromPhone,
-              normalizedStatus: m.status,
+              normalizedStatus: nextStatus,
               normalizedWaTimestamp: waTimestamp,
               delivery: "whatsapp_acknowledged",
               ...(isHistorical ? { is_historical: true } : {}),
@@ -872,6 +1005,42 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
           })
           .eq("id", pendingAi.id);
         saved++;
+
+        if (bulkRecipientId) {
+          await supabaseAdmin
+            .from("bulk_job_recipients")
+            .update({ status: "success", error_message: null, sent_at: new Date().toISOString() })
+            .eq("id", bulkRecipientId);
+          if (bulkJobId) {
+            const { data: rows } = await supabaseAdmin
+              .from("bulk_job_recipients")
+              .select("status")
+              .eq("job_id", bulkJobId);
+            const sentCount = (rows ?? []).filter((r) => r.status === "success").length;
+            const failedCount = (rows ?? []).filter((r) => r.status === "failed").length;
+            await supabaseAdmin
+              .from("bulk_jobs")
+              .update({ sent_count: sentCount, failed_count: failedCount, updated_at: new Date().toISOString() })
+              .eq("id", bulkJobId);
+            await supabaseAdmin
+              .from("send_log")
+              .update({
+                status: "success",
+                error_message: null,
+                metadata: {
+                  ...raw,
+                  job_id: bulkJobId,
+                  bulk_recipient_id: bulkRecipientId,
+                  provider_message_id: m.providerMessageId,
+                  whatsapp_ack_status: nextStatus,
+                  awaiting_whatsapp_ack: false,
+                } as never,
+              })
+              .eq("channel", "bulk")
+              .eq("action", "bulk_send")
+              .eq("metadata->>bulk_recipient_id", bulkRecipientId);
+          }
+        }
 
         await upsertConversationFromMessage({
           userId,

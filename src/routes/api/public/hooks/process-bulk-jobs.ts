@@ -415,9 +415,23 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
                   sent_at: new Date().toISOString(),
                 })
                 .eq("id", r.id);
-            } else if (queuedOnly) {
-              // Bridge accepted but did not return a real message id yet.
-              // Mark as processing and let the stale-sweep decide later.
+            } else {
+              // The bridge only means "request accepted" here. A recipient is
+              // not successful until WhatsApp sends us a real outbound ACK via
+              // webhook. This prevents the UI from showing fake success when
+              // Bot-Xtra returns q_* / queued tokens that never leave the queue.
+              const pendingRaw = {
+                bulk: true,
+                bulkJobId: job.id,
+                bulkRecipientId: r.id,
+                targetPhone: phone,
+                targetJid: `${phone}@s.whatsapp.net`,
+                bridgeAcceptedAt: new Date().toISOString(),
+                delivery: queuedOnly ? "bridge_queued_waiting_for_whatsapp_ack" : "waiting_for_whatsapp_ack",
+                queuedId: queuedOnly ? providerId : null,
+                bridgeMessageId: queuedOnly ? null : providerId,
+              } as never;
+
               await supabaseAdmin
                 .from("bulk_job_recipients")
                 .update({
@@ -426,17 +440,9 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
                   error_message: null,
                 })
                 .eq("id", r.id);
-            } else {
-              sent++;
-              await supabaseAdmin
-                .from("bulk_job_recipients")
-                .update({
-                  status: "success",
-                  sent_at: new Date().toISOString(),
-                })
-                .eq("id", r.id);
 
-              // Mirror to wa_messages so it appears in inbox history
+              // Mirror as pending so a later webhook ACK can promote both the
+              // inbox message and this bulk recipient to success atomically.
               await supabaseAdmin.from("wa_messages").insert({
                 user_id: job.user_id,
                 session_id: sess.session_id,
@@ -446,8 +452,9 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
                 msg_type: job.image_url ? "image" : "text",
                 text_body: rendered,
                 media_url: job.image_url ?? null,
-                status: "sent",
-                provider_message_id: providerId,
+                status: "pending",
+                provider_message_id: queuedOnly ? null : providerId,
+                raw: pendingRaw,
               });
             }
 
@@ -455,12 +462,19 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
               user_id: job.user_id,
               channel: "bulk",
               action: "bulk_send",
-              status: errorMessage ? "failed" : queuedOnly ? "pending" : "success",
+              status: errorMessage ? "failed" : "pending",
               title: job.title,
-              description: (queuedOnly ? "قيد التأكيد من الجسر — " : "") + rendered.slice(0, 140),
+              description: (errorMessage ? "" : "قيد التأكيد من واتساب — ") + rendered.slice(0, 140),
               recipient: `${r.name} (${phone})`,
               error_message: errorMessage,
-              metadata: { job_id: job.id, provider_message_id: providerId, queued_only: queuedOnly },
+              metadata: {
+                job_id: job.id,
+                bulk_recipient_id: r.id,
+                provider_message_id: queuedOnly ? null : providerId,
+                queued_id: queuedOnly ? providerId : null,
+                queued_only: queuedOnly,
+                awaiting_whatsapp_ack: !errorMessage,
+              },
             });
           }
 
