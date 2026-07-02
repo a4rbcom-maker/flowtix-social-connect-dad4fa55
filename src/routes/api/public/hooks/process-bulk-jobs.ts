@@ -245,7 +245,9 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
             .eq("user_id", userId)
             .maybeSingle();
           const merged = { ...DEFAULT_USER_SETTINGS, ...(data ?? {}) };
-          merged.max_concurrent_campaigns = Math.max(1, Math.min(10, merged.max_concurrent_campaigns ?? 1));
+          // Hard cap: strictly 1 running campaign per user (anti-ban safety).
+          merged.max_concurrent_campaigns = 1;
+
           userSettingsCache.set(userId, merged);
           return merged;
         }
