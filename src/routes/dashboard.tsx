@@ -332,10 +332,10 @@ function DashboardOverview() {
               icon={Send}
               title={t.bulkSend}
               desc={t.bulkSendDesc}
-              to="/dashboard"
+              to="/dashboard/bulk"
               gradient="from-orange-500 to-amber-500"
-              badge={t.bulkSendSoon}
             />
+
           </div>
         </div>
 
