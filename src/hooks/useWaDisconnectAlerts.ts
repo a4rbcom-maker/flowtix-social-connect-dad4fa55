@@ -48,7 +48,7 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
       const uid = sess.session?.user?.id;
       if (!uid) return;
 
-      const [{ data: sessionRows }, { data: settings }] = await Promise.all([
+      const [{ data: sessionRows }, { data: settings }, { data: lastMessages }, { data: latestDisconnectEvents }] = await Promise.all([
         supabase.from("wa_sessions").select("id, status, last_seen_at, updated_at")
           .eq("user_id", uid)
           .order("updated_at", { ascending: false })
@@ -56,6 +56,15 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
         supabase.from("whatsapp_settings").select("is_connected, last_connected_at")
           .eq("user_id", uid)
           .maybeSingle(),
+        supabase.from("wa_messages").select("created_at")
+          .eq("user_id", uid)
+          .order("created_at", { ascending: false })
+          .limit(1),
+        supabase.from("wa_session_events").select("id, reason, created_at, to_status")
+          .eq("user_id", uid)
+          .eq("to_status", "disconnected")
+          .order("created_at", { ascending: false })
+          .limit(1),
       ]);
       if (!mounted.current) return;
 
@@ -64,7 +73,11 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
       const cCount = rows.filter((row) => row.status === "connected").length;
       const gCount = rows.filter((row) => ["connecting", "qr", "pairing"].includes(String(row.status))).length;
       const settingsConnected = settings?.is_connected === true;
-      const effectiveConnectedCount = cCount > 0 || (settingsConnected && gCount === 0) ? Math.max(1, cCount) : 0;
+      const latestDisconnect = latestDisconnectEvents?.[0];
+      const lastActivityAt = lastMessages?.[0]?.created_at ? Date.parse(lastMessages[0].created_at) : 0;
+      const disconnectAt = latestDisconnect?.created_at ? Date.parse(latestDisconnect.created_at) : 0;
+      const activityAfterDisconnect = lastActivityAt > 0 && (!disconnectAt || lastActivityAt >= disconnectAt);
+      const effectiveConnectedCount = cCount > 0 || (settingsConnected && gCount === 0) || activityAfterDisconnect ? Math.max(1, cCount) : 0;
       const effectiveDisconnectedCount = effectiveConnectedCount > 0 ? 0 : rawDisconnectedCount;
 
       setDisconnectedCount(effectiveDisconnectedCount);
@@ -106,16 +119,7 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
         firstRunRef.current = false;
         return;
       }
-      const { data: events } = await supabase
-        .from("wa_session_events")
-        .select("id, reason, created_at, to_status")
-        .eq("user_id", uid)
-        .eq("to_status", "disconnected")
-        .order("created_at", { ascending: false })
-        .limit(1);
-      if (!mounted.current) return;
-
-      const latest = events?.[0];
+      const latest = latestDisconnect;
       if (latest) {
         setLastReason(latest.reason ?? null);
         setLastAt(latest.created_at ?? null);
