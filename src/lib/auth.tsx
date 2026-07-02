@@ -41,6 +41,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const expiredHandledRef = useRef(false);
 
   useEffect(() => {
+    let cancelled = false;
+    const finishSessionRestore = (nextSession: Session | null) => {
+      if (cancelled) return;
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+      if (nextSession) hadSessionRef.current = true;
+      setLoading(false);
+    };
+
+    // Supabase can occasionally hang while restoring a stale/corrupt session
+    // from storage. Never leave protected pages on an endless blank spinner.
+    const restoreTimeout = window.setTimeout(() => {
+      console.warn("[auth] session restore timed out; continuing as signed out");
+      finishSessionRestore(null);
+    }, 8_000);
+
     const handleExpiredSession = () => {
       if (typeof window === "undefined") return;
       if (expiredHandledRef.current) return;
@@ -59,12 +75,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Subscribe FIRST so we don't miss the initial SIGNED_IN event.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
-      setSession(nextSession);
-      setUser(nextSession?.user ?? null);
-      setLoading(false);
+      window.clearTimeout(restoreTimeout);
+      finishSessionRestore(nextSession);
 
       if (nextSession) {
-        hadSessionRef.current = true;
         expiredHandledRef.current = false;
       }
 
@@ -79,26 +93,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Then restore any persisted session.
     supabase.auth.getSession().then(({ data: { session: restored }, error }) => {
+      window.clearTimeout(restoreTimeout);
       if (error) {
         console.error("[auth] failed to restore session", error);
         void supabase.auth.signOut({ scope: "local" });
-        setSession(null);
-        setUser(null);
+        finishSessionRestore(null);
       } else {
-        setSession(restored);
-        setUser(restored?.user ?? null);
-        if (restored) hadSessionRef.current = true;
+        finishSessionRestore(restored);
       }
-      setLoading(false);
     }).catch((err) => {
+      window.clearTimeout(restoreTimeout);
       console.error("[auth] session restore crashed", err);
       void supabase.auth.signOut({ scope: "local" });
-      setSession(null);
-      setUser(null);
-      setLoading(false);
+      finishSessionRestore(null);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(restoreTimeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {
