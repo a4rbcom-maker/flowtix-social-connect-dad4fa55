@@ -14,7 +14,10 @@ import {
   Clock,
   Zap,
   Brain,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
+
 import { toast } from "sonner";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { useI18n } from "@/lib/i18n";
@@ -58,6 +61,9 @@ function BotPage() {
 
   const [form, setForm] = useState<WaAiSettings | null>(null);
   const [newPhone, setNewPhone] = useState("");
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [logsVisible, setLogsVisible] = useState(10);
+
 
   useEffect(() => {
     if (settingsQ.data && !form) setForm(settingsQ.data);
@@ -109,6 +115,11 @@ function BotPage() {
         logsEmpty: "ما فيش ردود بعد. شغّل الـ AI واستنى أول رسالة.",
         rate: "تقييم الرد",
         ms: "م.ث",
+        showLogs: "عرض السجل",
+        hideLogs: "إخفاء السجل",
+        loadMore: "عرض 10 إضافية",
+        shown: "معروض",
+
       }
     : {
         title: "WhatsApp AI Agent",
@@ -141,6 +152,11 @@ function BotPage() {
         logsEmpty: "No replies yet. Enable AI and wait for the first message.",
         rate: "Rate reply",
         ms: "ms",
+        showLogs: "Show log",
+        hideLogs: "Hide log",
+        loadMore: "Load 10 more",
+        shown: "shown",
+
       };
 
   if (!form) {
@@ -384,16 +400,34 @@ function BotPage() {
 
         {/* Logs */}
         <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
-          <SectionTitle icon={Sparkles} label={t.logs} />
-          {logsQ.isLoading ? (
+          <button
+            type="button"
+            onClick={() => setLogsOpen((v) => !v)}
+            className="flex w-full items-center justify-between gap-3 text-start"
+          >
+            <SectionTitle icon={Sparkles} label={t.logs} />
+            <span className="flex items-center gap-2 text-xs text-muted-foreground">
+              {logsQ.data && logsQ.data.length > 0 && (
+                <span className="rounded-full bg-muted px-2 py-0.5">{logsQ.data.length}</span>
+              )}
+              {logsOpen ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </span>
+          </button>
+          {logsOpen && (logsQ.isLoading ? (
             <div className="flex justify-center py-6">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
           ) : !logsQ.data || logsQ.data.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">{t.logsEmpty}</p>
           ) : (
+            <>
             <ul className="mt-3 divide-y divide-border/40">
-              {logsQ.data.map((log) => (
+              {logsQ.data.slice(0, logsVisible).map((log) => (
+
                 <li key={log.id} className="py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
@@ -448,8 +482,25 @@ function BotPage() {
                 </li>
               ))}
             </ul>
-          )}
+            {logsVisible < logsQ.data.length && (
+              <div className="mt-4 flex items-center justify-center gap-3">
+                <span className="text-xs text-muted-foreground">
+                  {logsVisible} / {logsQ.data.length} {t.shown}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setLogsVisible((v) => v + 10)}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-4 text-xs font-semibold hover:bg-muted"
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                  {t.loadMore}
+                </button>
+              </div>
+            )}
+            </>
+          ))}
         </div>
+
       </div>
     </DashboardLayout>
   );
