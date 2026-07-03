@@ -37,6 +37,7 @@ function isPublicPath(pathname: string): boolean {
 type RedirectReason = "expired" | "signed_out" | "auth_required";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,6 +46,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hadSessionRef = useRef(false);
   // Prevent stacking multiple redirects/toasts when several serverFn calls fail at once.
   const expiredHandledRef = useRef(false);
+
+  // Kill all in-flight React Query fetches and drop cached data so any
+  // late server-fn responses (401s from an expired token, or admin-only
+  // data mid-context-switch) never reach a component and never surface
+  // as blank screens / error toasts. Callers should invoke this right
+  // before a hard navigation to /login or /admin/users.
+  const killAllQueries = () => {
+    try {
+      void queryClient.cancelQueries();
+      queryClient.clear();
+    } catch {
+      /* ignore — best effort */
+    }
+  };
+
 
 
   useEffect(() => {
