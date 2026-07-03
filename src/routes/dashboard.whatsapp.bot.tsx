@@ -115,6 +115,11 @@ function BotPage() {
         logsEmpty: "ما فيش ردود بعد. شغّل الـ AI واستنى أول رسالة.",
         rate: "تقييم الرد",
         ms: "م.ث",
+        showLogs: "عرض السجل",
+        hideLogs: "إخفاء السجل",
+        loadMore: "عرض 10 إضافية",
+        shown: "معروض",
+
       }
     : {
         title: "WhatsApp AI Agent",
