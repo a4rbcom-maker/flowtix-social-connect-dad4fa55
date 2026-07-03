@@ -45,9 +45,20 @@ export const reauthOnExpiredSession = createMiddleware({ type: "function" }).cli
 
     const redirectToLogin = async (cause: unknown): Promise<never> => {
       await supabase.auth.signOut({ scope: "local" }).catch(() => {});
-      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+      const alreadyOnLogin =
+        typeof window !== "undefined" && window.location.pathname.startsWith("/login");
+
+      if (!alreadyOnLogin && typeof window !== "undefined") {
         const current = window.location.pathname + window.location.search;
         window.location.replace(`/login?reason=expired&redirect=${encodeURIComponent(current)}`);
+      }
+
+      // If we're already at /login (or in a non-browser context), don't throw a
+      // scary "SESSION_EXPIRED" runtime error that blanks the screen — the user
+      // is on the login page anyway. Return a never-resolving promise so the
+      // pending server-fn call is silently abandoned.
+      if (alreadyOnLogin) {
+        return new Promise<never>(() => {});
       }
 
       // Normalize raw Response objects into a real Error so React/TanStack
