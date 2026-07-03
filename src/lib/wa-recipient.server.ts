@@ -17,6 +17,11 @@ function toJid(value: string | null, kind: "phone" | "lid" | "unknown" = "unknow
   return `${d}@s.whatsapp.net`;
 }
 
+function looksLikeLidAlias(value: string | null | undefined): boolean {
+  const local = String(value ?? "").split("@")[0] ?? "";
+  return /^\d{14,}$/.test(local.replace(/[^0-9]/g, ""));
+}
+
 function pickNestedJid(raw: Record<string, unknown>, phoneDigits: string | null): string | null {
   const key = asRecord(raw.key);
   const sender = asRecord(raw.sender);
@@ -41,6 +46,7 @@ function pickNestedJid(raw: Record<string, unknown>, phoneDigits: string | null)
   const rawFrom = pickString(raw, "from");
   const fromDigits = digits(rawFrom);
   if (fromDigits && phoneDigits && fromDigits !== phoneDigits) return `${fromDigits}@lid`;
+  if (fromDigits && looksLikeLidAlias(fromDigits)) return `${fromDigits}@lid`;
 
   for (const candidate of directCandidates) {
     const jid = toJid(candidate);
@@ -86,10 +92,16 @@ export async function resolveOutgoingWhatsappTarget(params: {
     bestPhone = bestPhone || normalizeWhatsappPhone(row.from_phone) || normalizeWhatsappPhone(pickString(raw, "senderPn", "participantPn", "phoneNumber", "phone"));
     const rowJid = toJid(row.remote_jid);
     if (rowJid?.endsWith("@lid")) return { jid: rowJid, phoneDigits: bestPhone, usedLid: true };
+    if (rowJid?.endsWith("@s.whatsapp.net") && looksLikeLidAlias(rowJid) && (!bestPhone || bestPhone === rowJid.split("@")[0])) {
+      return { jid: `${rowJid.split("@")[0]}@lid`, phoneDigits: bestPhone, usedLid: true };
+    }
     const jid = pickNestedJid(raw, bestPhone);
     if (jid?.endsWith("@lid")) return { jid, phoneDigits: bestPhone, usedLid: true };
   }
 
   const fallbackJid = toJid(params.fallbackPhoneOrJid) || toJid(params.remoteJid) || params.remoteJid;
+  if (fallbackJid.endsWith("@s.whatsapp.net") && looksLikeLidAlias(fallbackJid) && (!bestPhone || bestPhone === fallbackJid.split("@")[0])) {
+    return { jid: `${fallbackJid.split("@")[0]}@lid`, phoneDigits: bestPhone, usedLid: true };
+  }
   return { jid: fallbackJid, phoneDigits: bestPhone, usedLid: fallbackJid.endsWith("@lid") };
 }

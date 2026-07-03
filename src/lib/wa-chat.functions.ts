@@ -236,13 +236,12 @@ export const sendChatMessage = createServerFn({ method: "POST" })
           });
       const queuedId = bridgeSendQueuedMessage(res);
       let providerMessageId: string | null = null;
-      let status = "sent";
-      let delivery = "whatsapp_acknowledged";
+      let status = "pending";
+      let delivery = "whatsapp_sent_waiting_for_delivery_ack";
       try {
         providerMessageId = assertBridgeSendQueued(res);
       } catch (err) {
         if (!queuedId) throw err;
-        status = "pending";
         delivery = "bridge_queued_waiting_for_whatsapp_ack";
       }
       await supabase.from("wa_messages").insert({
@@ -345,13 +344,12 @@ export const sendTestMessage = createServerFn({ method: "POST" })
       });
       const queuedId = bridgeSendQueuedMessage(res);
       let providerMessageId: string | null = null;
-      let status = "sent";
-      let delivery = "whatsapp_acknowledged";
+      let status = "pending";
+      let delivery = "whatsapp_sent_waiting_for_delivery_ack";
       try {
         providerMessageId = assertBridgeSendQueued(res);
       } catch (err) {
         if (!queuedId) throw err;
-        status = "pending";
         delivery = "bridge_queued_waiting_for_whatsapp_ack";
       }
       const { data: inserted, error: insErr } = await supabase

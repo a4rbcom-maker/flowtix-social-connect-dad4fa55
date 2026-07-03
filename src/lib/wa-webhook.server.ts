@@ -436,7 +436,7 @@ async function updateMessageStatuses(userId: string, sessionId: string, payload:
     const providerMessageId = messageIdFrom(entry);
     const rawStatus = pickStr(entry, "status", "ack", "messageStatus", "deliveryStatus");
     if (!providerMessageId || !rawStatus) continue;
-    const status = normalizeMessageStatus(rawStatus, true);
+    const status = persistedOutboundStatus(normalizeMessageStatus(rawStatus, true), true);
     const { data: matchedRows, error } = await supabaseAdmin
       .from("wa_messages")
       .update({ status })
@@ -536,7 +536,7 @@ async function updateMessageStatuses(userId: string, sessionId: string, payload:
     if (!pendingAi?.id) continue;
 
     const raw = asObj(pendingAi.raw);
-    const nextStatus = status === "read" ? "read" : status === "delivered" ? "delivered" : status === "failed" ? "failed" : "sent";
+    const nextStatus = status === "read" ? "read" : status === "delivered" ? "delivered" : status === "failed" ? "failed" : "pending";
     const { error: updErr } = await supabaseAdmin
       .from("wa_messages")
       .update({
@@ -640,6 +640,15 @@ function isMessageStatusOnlyEvent(event: string, payload: Record<string, unknown
   // not a WhatsApp session status. Never let "delivered" turn the session into
   // "unknown" again.
   return !SESSION_STATUS_MAP[String(rawStatus).toLowerCase()];
+}
+
+function persistedOutboundStatus(status: string, fromMe: boolean): string {
+  if (!fromMe) return status;
+  // A WhatsApp "sent" ACK only means the bridge/linked device accepted the
+  // message. Keep it pending until WhatsApp confirms delivered/read so the UI
+  // never shows bot replies as successfully delivered too early.
+  if (status === "sent" || status === "queued") return "pending";
+  return status;
 }
 
 async function importHistoryMessages(params: {
@@ -1031,7 +1040,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         const raw = asObj(existing.raw);
         const bulkRecipientId = pickStr(raw, "bulkRecipientId", "bulk_recipient_id");
         const bulkJobId = pickStr(raw, "bulkJobId", "bulk_job_id");
-        const nextStatus = m.status === "received" && m.fromMe ? "sent" : m.status;
+        const nextStatus = m.status === "received" && m.fromMe ? "pending" : persistedOutboundStatus(m.status, m.fromMe);
         await supabaseAdmin.from("wa_messages").update({ status: nextStatus }).eq("id", existing.id);
         if (m.fromMe && (isBulkDeliverySuccess(nextStatus) || nextStatus === "failed") && bulkRecipientId) {
           await supabaseAdmin
@@ -1097,7 +1106,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         const raw = asObj(pendingAi.raw);
         const bulkRecipientId = pickStr(raw, "bulkRecipientId", "bulk_recipient_id");
         const bulkJobId = pickStr(raw, "bulkJobId", "bulk_job_id");
-        const nextStatus = m.status === "received" ? "sent" : m.status;
+        const nextStatus = m.status === "received" ? "pending" : persistedOutboundStatus(m.status, true);
         await supabaseAdmin
           .from("wa_messages")
           .update({
