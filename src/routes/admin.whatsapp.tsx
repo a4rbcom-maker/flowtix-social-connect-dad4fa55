@@ -533,28 +533,38 @@ function SessionsList({
             ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
             : "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30";
         return (
-          <div key={r.session_id} className="flex items-center justify-between gap-3 border border-border rounded-lg p-3 bg-card">
-            <div className="min-w-0 flex-1">
-              <div className="font-mono text-xs truncate">{r.session_id}</div>
-              <div className="flex items-center gap-2 mt-1">
-                <span className={`text-[10px] px-2 py-0.5 rounded-full border ${badgeTone}`}>
-                  {r.status ?? "unknown"}
-                </span>
-                {r.phone && <span className="text-xs text-muted-foreground">{r.phone}</span>}
-                <span className="text-[10px] text-muted-foreground">
-                  {r.inDb ? "DB✓" : "DB✗"} · {r.inBridge ? "Bridge✓" : "Bridge✗"}
-                </span>
+          <div key={r.session_id} className="border border-border rounded-lg bg-card overflow-hidden">
+            <div className="flex items-center justify-between gap-3 p-3">
+              <div className="min-w-0 flex-1">
+                <div className="font-mono text-xs truncate">{r.session_id}</div>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full border ${badgeTone}`}>
+                    {r.status ?? "unknown"}
+                  </span>
+                  {r.phone && <span className="text-xs text-muted-foreground">{r.phone}</span>}
+                  <span className="text-[10px] text-muted-foreground">
+                    {r.inDb ? "DB✓" : "DB✗"} · {r.inBridge ? "Bridge✓" : "Bridge✗"}
+                  </span>
+                  {r.updated_at && (
+                    <span className="text-[10px] text-muted-foreground">
+                      {t("آخر تحديث:", "updated:")} {formatWhen(r.updated_at)}
+                    </span>
+                  )}
+                </div>
               </div>
+              <button
+                onClick={() => onDelete(r.session_id)}
+                disabled={isDeleting || r.connected}
+                title={r.connected ? t("لا يمكن حذف جلسة متصلة", "Cannot delete a connected session") : ""}
+                className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                {t("حذف", "Delete")}
+              </button>
             </div>
-            <button
-              onClick={() => onDelete(r.session_id)}
-              disabled={isDeleting || r.connected}
-              title={r.connected ? t("لا يمكن حذف جلسة متصلة", "Cannot delete a connected session") : ""}
-              className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-              {t("حذف", "Delete")}
-            </button>
+            {r.inDb && (
+              <SessionEventsHistory t={t} userId={userId} sessionId={r.session_id} />
+            )}
           </div>
         );
       })}
