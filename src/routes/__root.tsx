@@ -8,6 +8,7 @@ import { AuthProvider } from "@/lib/auth";
 import { NotificationsProvider } from "@/hooks/useSendNotifications";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { GlobalAnnouncements } from "@/components/dashboard/GlobalAnnouncements";
+import { ImpersonationBanner } from "@/components/admin/ImpersonationBanner";
 import { UserPreferencesSync } from "@/components/shared/UserPreferencesSync";
 import { installStaleChunkReload, staleChunkReloadInlineScript } from "@/lib/stale-chunk-reload";
 import { useTrackVisit } from "@/hooks/useTrackVisit";
