@@ -1759,3 +1759,89 @@ export const adminSendWaTestMessage = createServerFn({ method: "POST" })
     if (bridgeError) throw new Error(bridgeError);
     return { ok: true, sessionId, to: phone, providerMessageId };
   });
+
+// ---------- Admin: search users for WhatsApp cleanup ----------
+// Same result shape as adminListUsersWithBadWaSessions so the UI can reuse
+// the same list renderer. Matches by full_name (ILIKE), user_id (uuid), or
+// phone digits (wa_sessions.phone_number). Includes users even if all
+// their sessions are healthy — so an admin can still open their card and
+// send a test message.
+export const adminSearchUsersForWaCleanup = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { query: string }) =>
+    z.object({ query: z.string().trim().min(1).max(200) }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const db = admin();
+    const q = data.query.trim();
+    const digits = q.replace(/[^0-9]/g, "");
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q);
+    const isPhone = digits.length >= 4 && digits.length === q.replace(/[^0-9+\s-]/g, "").length;
+
+    const userIds = new Set<string>();
+
+    if (isUuid) {
+      userIds.add(q.toLowerCase());
+    } else {
+      // Name match against profiles.
+      const { data: profs } = await db
+        .from("profiles")
+        .select("id")
+        .ilike("full_name", `%${q}%`)
+        .limit(30);
+      (profs ?? []).forEach((p) => userIds.add(p.id));
+
+      // Phone match against wa_sessions.phone_number.
+      if (isPhone) {
+        const { data: rows } = await db
+          .from("wa_sessions")
+          .select("user_id")
+          .ilike("phone_number", `%${digits}%`)
+          .limit(30);
+        (rows ?? []).forEach((r) => userIds.add(r.user_id));
+      }
+    }
+
+    const ids = Array.from(userIds).slice(0, 30);
+    if (ids.length === 0) return { users: [] };
+
+    // Fetch sessions for these users to compute counts + oldest problem age.
+    const { data: sessions } = await db
+      .from("wa_sessions")
+      .select("user_id, status, updated_at")
+      .in("user_id", ids);
+
+    const byUser = new Map<
+      string,
+      { userId: string; sessions: number; disconnected: number; qr: number; oldest: string | null }
+    >();
+    for (const id of ids) {
+      byUser.set(id, { userId: id, sessions: 0, disconnected: 0, qr: 0, oldest: null });
+    }
+    for (const r of sessions ?? []) {
+      const cur = byUser.get(r.user_id)!;
+      cur.sessions += 1;
+      if (r.status === "disconnected") cur.disconnected += 1;
+      if (r.status === "qr" || r.status === "pairing") cur.qr += 1;
+      const isProblem = r.status === "disconnected" || r.status === "qr" || r.status === "pairing";
+      if (isProblem && (!cur.oldest || (r.updated_at && r.updated_at < cur.oldest))) {
+        cur.oldest = r.updated_at;
+      }
+    }
+
+    const { data: profiles } = await db
+      .from("profiles")
+      .select("id, full_name, avatar_url")
+      .in("id", ids);
+    const profMap = new Map((profiles ?? []).map((p) => [p.id, p]));
+
+    const users = Array.from(byUser.values())
+      .map((u) => ({
+        ...u,
+        full_name: profMap.get(u.userId)?.full_name ?? null,
+        avatar_url: profMap.get(u.userId)?.avatar_url ?? null,
+      }))
+      .sort((a, b) => (b.disconnected + b.qr) - (a.disconnected + a.qr));
+
+    return { users };
+  });
