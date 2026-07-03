@@ -4,22 +4,12 @@ import {
   Settings as SettingsIcon,
   Copy,
   CheckCircle2,
-  Webhook,
   Bell,
   BellOff,
-  Link2,
   ShieldCheck,
-  Clock,
-  AlertCircle,
-  PlayCircle,
-  Loader2,
-  XCircle,
 } from "lucide-react";
-import { toast } from "sonner";
-import { useServerFn } from "@tanstack/react-start";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { useI18n } from "@/lib/i18n";
-import { pingWaBridgeUser, testWaWebhook, type WaWebhookTestResult } from "@/lib/wa.functions";
 
 
 export const Route = createFileRoute("/dashboard/whatsapp/settings")({
@@ -37,40 +27,12 @@ function WaSettingsPage() {
   const [notify, setNotify] = useState(true);
   const [sound, setSound] = useState(true);
   const [permission, setPermission] = useState<NotificationPermission>("default");
-  const [bridgeOk, setBridgeOk] = useState<boolean | null>(null);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<WaWebhookTestResult | null>(null);
-  const ping = useServerFn(pingWaBridgeUser);
-  const runTest = useServerFn(testWaWebhook);
-
-  const onRunTest = async () => {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const r = await runTest({ data: {} as any });
-      setTestResult(r);
-      if (r.ok) toast.success(lang === "ar" ? "تم استلام الرسالة بنجاح" : "Webhook delivery succeeded");
-      else toast.error(lang === "ar" ? "فشل اختبار الـ webhook" : "Webhook test failed");
-    } catch (e) {
-      setTestResult({
-        ok: false, httpStatus: 0, responseBody: "", saved: 0,
-        sessionId: null, messageStored: false, aiLogStatus: null, aiError: null, aiResponseStored: false,
-        error: e instanceof Error ? e.message : String(e),
-      });
-      toast.error(lang === "ar" ? "خطأ في تشغيل الاختبار" : "Test failed to run");
-    } finally {
-      setTesting(false);
-    }
-  };
 
   useEffect(() => {
     setOrigin(typeof window !== "undefined" ? window.location.origin : "");
     setNotify(localStorage.getItem(NOTIF_KEY) !== "0");
     setSound(localStorage.getItem(SOUND_KEY) !== "0");
     if (typeof Notification !== "undefined") setPermission(Notification.permission);
-    ping({ data: {} as any })
-      .then((r: any) => setBridgeOk(Boolean(r?.ok)))
-      .catch(() => setBridgeOk(false));
   }, []);
 
 
