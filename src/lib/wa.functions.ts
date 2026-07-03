@@ -321,7 +321,7 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
     const before = { conversations: 0, messages: 0 };
 
     // Persist the sync job so progress survives across browser reloads / device sleep.
-    const deadlineMs = Date.now() + 90_000;
+    const deadlineMs = Date.now() + 5 * 60_000;
     await supabase
       .from("wa_history_sync_jobs")
       .upsert({
@@ -395,19 +395,20 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
         .select("remote_jid, contact_phone")
         .eq("user_id", userId)
         .order("updated_at", { ascending: false })
-        .limit(80),
-      supabase.from("contacts").select("phone").eq("user_id", userId).limit(80),
-      supabase.from("customer_database").select("phone, phone_norm").eq("user_id", userId).limit(80),
-      supabase.from("bulk_job_recipients").select("phone").eq("user_id", userId).limit(80),
-      supabase.from("send_log").select("recipient").eq("user_id", userId).eq("channel", "whatsapp").limit(80),
+        .limit(500),
+      supabase.from("contacts").select("phone").eq("user_id", userId).limit(300),
+      supabase.from("customer_database").select("phone, phone_norm").eq("user_id", userId).limit(300),
+      supabase.from("bulk_job_recipients").select("phone").eq("user_id", userId).limit(300),
+      supabase.from("send_log").select("recipient").eq("user_id", userId).eq("channel", "whatsapp").limit(300),
       supabase
         .from("wa_messages")
         .select("remote_jid, provider_message_id, wa_timestamp")
         .eq("user_id", userId)
         .not("provider_message_id", "is", null)
         .order("wa_timestamp", { ascending: true })
-        .limit(2000),
+        .limit(5000),
     ]);
+
 
     // Track oldest message per JID (both id + timestamp) so we can paginate
     // backwards page-by-page as recommended by Bot-Xtra: each /fetch-messages
@@ -466,19 +467,22 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       }
     };
 
-    const MAX_PAGES_PER_JID = 1; // خفيف: 10 رسائل أقدم لكل محادثة في كل ضغطة
+    // جلب أعمق: حتى 6 صفحات × 50 رسالة = ~300 رسالة قديمة لكل محادثة، وحتى 500 محادثة.
+    const MAX_PAGES_PER_JID = 6;
+    const PAGE_SIZE = 50;
     let fetchedKnownChats = 0;
-    for (const jid of Array.from(knownJids).slice(0, 120)) {
+    for (const jid of Array.from(knownJids).slice(0, 500)) {
       if (!jid || jid === "@s.whatsapp.net" || jid.endsWith("@broadcast")) continue;
       let jidTouched = false;
       for (let page = 0; page < MAX_PAGES_PER_JID; page++) {
         try {
           const anchorId = anchorByJid.get(jid) ?? null;
           const anchorTs = anchorTsByJid.get(jid) ?? null;
-          const fetchBody = await waBridge.fetchMessages(row.session_id, jid, 10, {
+          const fetchBody = await waBridge.fetchMessages(row.session_id, jid, PAGE_SIZE, {
             anchorMessageId: anchorId,
             anchorTimestamp: anchorTs,
           });
+
           const imported = await replayBridgeHistoryPayload(row.session_id, fetchBody).catch((err) => ({
             messages: 0,
             chats: 0,
