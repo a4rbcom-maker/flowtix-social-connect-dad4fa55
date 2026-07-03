@@ -82,6 +82,7 @@ function apiRouteMethodFallback(request: Request): Response | null {
     "/api/public/hooks/cleanup-old-media": ["POST"],
     "/api/public/bot/next-job": ["POST"],
     "/api/public/bot/job-update": ["POST"],
+    "/api/public/track-visit": ["POST", "OPTIONS"],
   };
 
   const allowed = routeMethods[pathname];
