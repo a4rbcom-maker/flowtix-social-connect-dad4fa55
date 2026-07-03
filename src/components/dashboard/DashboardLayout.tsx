@@ -1,6 +1,23 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { UserCheck } from "lucide-react";
+import {
+  clearImpersonationBackup,
+  readImpersonationBackup,
+  type ImpersonationBackup,
+} from "@/lib/impersonation";
+
+import {
   LayoutDashboard,
   Facebook,
   MessageCircle,
