@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { UserCheck, LogOut, Loader2 } from "lucide-react";
+import { UserCheck, LogOut, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
 const STORAGE_KEY = "flowtix_admin_impersonation_backup";
@@ -50,6 +50,15 @@ export function ImpersonationBanner() {
 
   if (!backup) return null;
 
+  const clearBackup = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    setBackup(null);
+  };
+
   const handleRestore = async () => {
     setRestoring(true);
     try {
@@ -58,13 +67,25 @@ export function ImpersonationBanner() {
         access_token: backup.access_token,
         refresh_token: backup.refresh_token,
       });
-      if (error) throw new Error(error.message);
-      localStorage.removeItem(STORAGE_KEY);
+      // Always clear the stored backup — even on failure the tokens are
+      // consumed/expired, so retrying keeps failing and the banner would
+      // stay stuck. Better to force a clean sign-in.
+      clearBackup();
+      if (error) {
+        toast.error(
+          isArabic
+            ? "انتهت جلسة الأدمن الأصلية، يرجى تسجيل الدخول مجدداً"
+            : "Original admin session expired, please sign in again",
+        );
+        window.location.href = "/login";
+        return;
+      }
       toast.success(isArabic ? "تم الرجوع لحسابك" : "Restored to your account");
       window.location.href = "/admin/users";
     } catch (e) {
+      clearBackup();
       toast.error((e as Error).message);
-      setRestoring(false);
+      window.location.href = "/login";
     }
   };
 
@@ -83,14 +104,24 @@ export function ImpersonationBanner() {
               : `Impersonating ${backup.target_email} — original admin: ${backup.admin_email}`}
           </span>
         </div>
-        <button
-          onClick={handleRestore}
-          disabled={restoring}
-          className="inline-flex items-center gap-1.5 rounded-md bg-amber-950 text-amber-50 px-3 py-1.5 text-xs font-semibold hover:bg-amber-900 disabled:opacity-50 shrink-0"
-        >
-          {restoring ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
-          {isArabic ? "رجوع للأدمن" : "Return to admin"}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={handleRestore}
+            disabled={restoring}
+            className="inline-flex items-center gap-1.5 rounded-md bg-amber-950 text-amber-50 px-3 py-1.5 text-xs font-semibold hover:bg-amber-900 disabled:opacity-50"
+          >
+            {restoring ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
+            {isArabic ? "رجوع للأدمن" : "Return to admin"}
+          </button>
+          <button
+            onClick={clearBackup}
+            aria-label={isArabic ? "إخفاء" : "Dismiss"}
+            title={isArabic ? "إخفاء الشريط" : "Dismiss banner"}
+            className="inline-flex items-center justify-center rounded-md bg-amber-950/10 text-amber-950 hover:bg-amber-950/20 h-7 w-7"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </div>
   );
