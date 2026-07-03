@@ -1378,6 +1378,10 @@ function flowtixPrefix(userId: string) {
   return `flowtix-${compact}-`;
 }
 
+function sleepMs(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export const adminListUserWaSessions = createServerFn({ method: "POST" })
   .middleware([requireAdmin])
   .inputValidator((d: { userId: string }) =>
@@ -1518,100 +1522,141 @@ export const adminBulkCleanupFlowtixDisconnected = createServerFn({ method: "POS
     const cutoffMs = Date.now() - data.minAgeDays * 86_400_000;
     const cutoffIso = new Date(cutoffMs).toISOString();
 
-    // 1) Candidate rows from our DB
-    const { data: dbRows, error: dbErr } = await db
-      .from("wa_sessions")
-      .select("id, user_id, session_id, status, updated_at")
-      .eq("status", "disconnected")
-      .lt("updated_at", cutoffIso);
-    if (dbErr) throw new Error(dbErr.message);
-    const dbCandidates = (dbRows ?? []).filter((r) => r.session_id?.startsWith("flowtix-"));
-
-    // 2) Bridge orphans (flowtix-prefixed, not connected, not in DB candidates)
-    let bridgeCandidates: string[] = [];
-    let bridgeError: string | null = null;
-    try {
-      const resp = await waBridge.listSessions();
-      const all = resp.sessions ?? [];
-      const dbIds = new Set(dbCandidates.map((r) => r.session_id));
-      // Also collect ALL our flowtix session ids from DB (any status) so we don't
-      // classify an existing connected/qr session as orphan.
-      const { data: allOurRows } = await db
+    const collectCandidates = async () => {
+      const { data: dbRows, error: dbErr } = await db
         .from("wa_sessions")
-        .select("session_id");
-      const allOurIds = new Set((allOurRows ?? []).map((r) => r.session_id));
-      bridgeCandidates = all
-        .filter((s) => {
-          const id = s.id ?? "";
-          if (!id.startsWith("flowtix-")) return false;
-          if (s.connected) return false;
-          // Include if: already a DB candidate, OR truly orphan (not in our DB at all)
-          return dbIds.has(id) || !allOurIds.has(id);
-        })
-        .map((s) => s.id!) as string[];
-    } catch (e) {
-      bridgeError = e instanceof Error ? e.message : "bridge_unreachable";
-    }
+        .select("id, user_id, session_id, status, updated_at")
+        .eq("status", "disconnected")
+        .lt("updated_at", cutoffIso);
+      if (dbErr) throw new Error(dbErr.message);
+      const dbCandidates = (dbRows ?? []).filter((r) => r.session_id?.startsWith("flowtix-"));
 
-    const dbSessionIds = dbCandidates.map((r) => r.session_id);
-    const uniqueBridgeIds = Array.from(new Set([...dbSessionIds, ...bridgeCandidates]));
+      let bridgeCandidates: string[] = [];
+      let bridgeError: string | null = null;
+      try {
+        const resp = await waBridge.listSessions();
+        const all = resp.sessions ?? [];
+        const dbIds = new Set(dbCandidates.map((r) => r.session_id).filter(Boolean));
+        const { data: allOurRows } = await db.from("wa_sessions").select("session_id");
+        const allOurIds = new Set((allOurRows ?? []).map((r) => r.session_id).filter(Boolean));
+        bridgeCandidates = all
+          .filter((s) => {
+            const id = s.id ?? "";
+            if (!id.startsWith("flowtix-")) return false;
+            if (s.connected) return false;
+            return dbIds.has(id) || !allOurIds.has(id);
+          })
+          .map((s) => s.id!) as string[];
+      } catch (e) {
+        bridgeError = e instanceof Error ? e.message : "bridge_unreachable";
+      }
+
+      const dbSessionIds = dbCandidates.map((r) => r.session_id).filter(Boolean) as string[];
+      const uniqueBridgeIds = Array.from(new Set([...dbSessionIds, ...bridgeCandidates]));
+      return { dbCandidates, uniqueBridgeIds, bridgeError };
+    };
+
+    const initial = await collectCandidates();
 
     if (data.dryRun) {
       return {
         dryRun: true,
-        dbCandidateCount: dbCandidates.length,
-        bridgeCandidateCount: uniqueBridgeIds.length,
-        bridgeError,
-        preview: uniqueBridgeIds.slice(0, 20),
+        dbCandidateCount: initial.dbCandidates.length,
+        bridgeCandidateCount: initial.uniqueBridgeIds.length,
+        uniqueCandidateCount: initial.uniqueBridgeIds.length,
+        bridgeError: initial.bridgeError,
+        preview: initial.uniqueBridgeIds.slice(0, 20),
       };
     }
 
-    // 3) Delete from bridge (best-effort per id)
+    // 3) Delete from bridge + DB in repeated scan/delete passes. The bridge can
+    // expose stale/orphan sessions in batches, so a single pass may show 9 → 6 →
+    // 4 on later manual scans. Keep rescanning until it is clean or only hard
+    // failures remain.
     let bridgeDeleted = 0;
     let bridgeFailed = 0;
     const failedIds: Array<{ id: string; error: string }> = [];
-    for (const id of uniqueBridgeIds) {
-      try {
-        await waBridge.deleteSession(id);
-        bridgeDeleted += 1;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        if (/404|not.?found/i.test(msg)) {
-          bridgeDeleted += 1; // already gone
-        } else {
-          bridgeFailed += 1;
-          failedIds.push({ id, error: msg });
+    let dbDeleted = 0;
+    let bridgeError = initial.bridgeError;
+    const failureCounts = new Map<string, number>();
+    const passes: Array<{ pass: number; dbCandidates: number; bridgeCandidates: number; bridgeDeleted: number; dbDeleted: number }> = [];
+
+    for (let pass = 1; pass <= 5; pass += 1) {
+      const current = pass === 1 ? initial : await collectCandidates();
+      bridgeError = bridgeError ?? current.bridgeError;
+      const idsToDelete = current.uniqueBridgeIds.filter((id) => (failureCounts.get(id) ?? 0) < 2);
+      if (current.dbCandidates.length === 0 && idsToDelete.length === 0) break;
+
+      let passBridgeDeleted = 0;
+      for (const id of idsToDelete) {
+        try {
+          await waBridge.deleteSession(id);
+          bridgeDeleted += 1;
+          passBridgeDeleted += 1;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (/404|not.?found/i.test(msg)) {
+            bridgeDeleted += 1;
+            passBridgeDeleted += 1;
+          } else {
+            failureCounts.set(id, (failureCounts.get(id) ?? 0) + 1);
+            bridgeFailed += 1;
+            failedIds.push({ id, error: msg });
+          }
         }
       }
+
+      let passDbDeleted = 0;
+      if (current.dbCandidates.length > 0) {
+        const ids = current.dbCandidates.map((r) => r.id);
+        const { error: delErr, count } = await db
+          .from("wa_sessions")
+          .delete({ count: "exact" })
+          .in("id", ids);
+        if (delErr) throw new Error(delErr.message);
+        passDbDeleted = count ?? ids.length;
+        dbDeleted += passDbDeleted;
+      }
+
+      passes.push({
+        pass,
+        dbCandidates: current.dbCandidates.length,
+        bridgeCandidates: current.uniqueBridgeIds.length,
+        bridgeDeleted: passBridgeDeleted,
+        dbDeleted: passDbDeleted,
+      });
+
+      if (pass < 5) await sleepMs(800);
     }
 
-    // 4) Delete from DB — only the candidate rows we already validated
-    let dbDeleted = 0;
-    if (dbCandidates.length > 0) {
-      const ids = dbCandidates.map((r) => r.id);
-      const { error: delErr, count } = await db
-        .from("wa_sessions")
-        .delete({ count: "exact" })
-        .in("id", ids);
-      if (delErr) throw new Error(delErr.message);
-      dbDeleted = count ?? ids.length;
-    }
+    const remaining = await collectCandidates();
+    bridgeError = bridgeError ?? remaining.bridgeError;
 
     await logAction(context.adminUserId, "wa_bulk_cleanup_flowtix", null, {
       min_age_days: data.minAgeDays,
+      initial_candidates: initial.uniqueBridgeIds.length,
       db_deleted: dbDeleted,
       bridge_deleted: bridgeDeleted,
       bridge_failed: bridgeFailed,
       bridge_error: bridgeError,
+      remaining_db_candidates: remaining.dbCandidates.length,
+      remaining_bridge_candidates: remaining.uniqueBridgeIds.length,
+      passes,
     });
 
     return {
       dryRun: false,
+      initialCandidateCount: initial.uniqueBridgeIds.length,
       dbDeleted,
       bridgeDeleted,
       bridgeFailed,
       failedIds: failedIds.slice(0, 20),
       bridgeError,
+      remainingDbCandidateCount: remaining.dbCandidates.length,
+      remainingBridgeCandidateCount: remaining.uniqueBridgeIds.length,
+      remainingTotal: remaining.uniqueBridgeIds.length,
+      remainingPreview: remaining.uniqueBridgeIds.slice(0, 20),
+      passes,
     };
   });
 
