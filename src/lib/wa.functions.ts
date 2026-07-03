@@ -467,19 +467,22 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       }
     };
 
-    const MAX_PAGES_PER_JID = 1; // خفيف: 10 رسائل أقدم لكل محادثة في كل ضغطة
+    // جلب أعمق: حتى 6 صفحات × 50 رسالة = ~300 رسالة قديمة لكل محادثة، وحتى 500 محادثة.
+    const MAX_PAGES_PER_JID = 6;
+    const PAGE_SIZE = 50;
     let fetchedKnownChats = 0;
-    for (const jid of Array.from(knownJids).slice(0, 120)) {
+    for (const jid of Array.from(knownJids).slice(0, 500)) {
       if (!jid || jid === "@s.whatsapp.net" || jid.endsWith("@broadcast")) continue;
       let jidTouched = false;
       for (let page = 0; page < MAX_PAGES_PER_JID; page++) {
         try {
           const anchorId = anchorByJid.get(jid) ?? null;
           const anchorTs = anchorTsByJid.get(jid) ?? null;
-          const fetchBody = await waBridge.fetchMessages(row.session_id, jid, 10, {
+          const fetchBody = await waBridge.fetchMessages(row.session_id, jid, PAGE_SIZE, {
             anchorMessageId: anchorId,
             anchorTimestamp: anchorTs,
           });
+
           const imported = await replayBridgeHistoryPayload(row.session_id, fetchBody).catch((err) => ({
             messages: 0,
             chats: 0,
