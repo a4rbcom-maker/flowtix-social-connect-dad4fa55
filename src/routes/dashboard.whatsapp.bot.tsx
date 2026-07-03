@@ -61,6 +61,9 @@ function BotPage() {
 
   const [form, setForm] = useState<WaAiSettings | null>(null);
   const [newPhone, setNewPhone] = useState("");
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [logsVisible, setLogsVisible] = useState(10);
+
 
   useEffect(() => {
     if (settingsQ.data && !form) setForm(settingsQ.data);
