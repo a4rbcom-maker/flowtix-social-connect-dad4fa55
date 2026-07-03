@@ -288,6 +288,42 @@ async function deliverAiTextWithRetry(opts: {
         }
         providerMessageId = confirmed.providerMessageId;
       }
+      if (messageRowId && providerMessageId) {
+        await supabaseAdmin
+          .from("wa_messages")
+          .update({
+            status: "pending",
+            provider_message_id: providerMessageId,
+            raw: {
+              ai: true,
+              kind,
+              tier,
+              model,
+              providerMessageId,
+              targetJid: phone,
+              contactPhone,
+              usedLid: phone.endsWith("@lid"),
+              queuedId,
+              delivery: "whatsapp_sent_waiting_for_delivery_ack",
+              attempts,
+              bridgeResponses: responses,
+            } as never,
+          })
+          .eq("id", messageRowId);
+      }
+      const delivered = await waitForConfirmedOutbound({
+        userId,
+        sessionId,
+        remoteJid,
+        text,
+        sinceIso: sentAt,
+        excludeMessageId: messageRowId,
+      });
+      if (!delivered) {
+        lastError = queuedId ? `bridge_queued_pending_delivery_ack:${queuedId}` : "whatsapp_sent_waiting_for_delivery_ack";
+        return { providerMessageId, status: "pending", attempts, lastError, responses };
+      }
+      providerMessageId = delivered.providerMessageId;
       const raw = {
         ai: true,
         kind,
@@ -297,14 +333,14 @@ async function deliverAiTextWithRetry(opts: {
         targetJid: phone,
         contactPhone,
         usedLid: phone.endsWith("@lid"),
-        delivery: "whatsapp_acknowledged",
+        delivery: "whatsapp_delivery_acknowledged",
         attempts,
         bridgeResponses: responses,
       } as never;
       if (messageRowId) {
         await supabaseAdmin
           .from("wa_messages")
-          .update({ status: "sent", provider_message_id: providerMessageId, raw })
+          .update({ status: delivered.status, provider_message_id: providerMessageId, raw })
           .eq("id", messageRowId);
       }
       return { providerMessageId, status: "sent", attempts, lastError: null, responses };
