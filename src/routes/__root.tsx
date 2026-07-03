@@ -167,6 +167,7 @@ function RootComponent() {
             <NotificationsProvider>
               <TooltipProvider delayDuration={200}>
                 <UserPreferencesSync />
+                <ImpersonationBanner />
                 <Outlet />
                 <GlobalAnnouncements />
                 <Toaster
