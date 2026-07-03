@@ -152,6 +152,11 @@ function BotPage() {
         logsEmpty: "No replies yet. Enable AI and wait for the first message.",
         rate: "Rate reply",
         ms: "ms",
+        showLogs: "Show log",
+        hideLogs: "Hide log",
+        loadMore: "Load 10 more",
+        shown: "shown",
+
       };
 
   if (!form) {
