@@ -204,6 +204,14 @@ export function extractTextFromMessage(m: Record<string, unknown>): { text: stri
   const direct = pickStr(m, "text", "body", "message", "caption", "content") || contentText;
   if (direct) return { text: direct, type: "text", mediaUrl: null };
 
+  // Bot-Xtra sometimes wraps text inside an object (e.g. body: { text: "..." }
+  // for quoted replies, or message: { text: "..." } for plain chats).
+  for (const field of ["body", "text", "message", "content", "caption"] as const) {
+    const nested = asObj((m as Record<string, unknown>)[field]);
+    const nestedText = pickStr(nested, "text", "body", "content", "caption", "conversation");
+    if (nestedText) return { text: nestedText, type: "text", mediaUrl: null };
+  }
+
   // Baileys-style nested `message`
   const msg = asObj(m.message);
   const conv = pickStr(msg, "conversation");
