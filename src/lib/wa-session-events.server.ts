@@ -187,7 +187,9 @@ function isTransientQrAfterConnected(input: {
   bridgeEvent?: string | null;
 }): boolean {
   if (input.previousStatus !== "connected" || input.nextStatus !== "qr") return false;
-  if (input.source !== "webhook_status" && input.source !== "webhook_qr" && input.source !== "poll") return false;
+  // Poll/status reads are authoritative. Only raw webhook QR events can be
+  // transient during WhatsApp reconnect; if /status itself says QR, surface QR.
+  if (input.source !== "webhook_status" && input.source !== "webhook_qr") return false;
   return !isTrustedUserDisconnect(input);
 }
 
