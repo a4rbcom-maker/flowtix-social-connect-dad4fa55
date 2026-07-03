@@ -167,7 +167,7 @@ function WaSettingsPage() {
               onChange={toggleNotify}
             />
             <ToggleRow
-              icon={Clock}
+              icon={Volume2}
               title={t.soundEnable}
               desc={t.soundEnableDesc}
               value={sound}
