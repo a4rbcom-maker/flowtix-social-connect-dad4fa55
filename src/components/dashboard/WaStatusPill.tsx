@@ -23,6 +23,17 @@ export function WaStatusPill({ lang }: Props) {
           label: isAr ? "واتساب متصل" : "WhatsApp connected",
           pulse: false,
         };
+      case "needs_qr":
+        return {
+          dot: "bg-destructive",
+          ring: "bg-destructive/60",
+          text: "text-destructive",
+          border: "border-destructive/40 bg-destructive/10 hover:bg-destructive/15",
+          label: isAr
+            ? disconnectedCount > 1 ? `${disconnectedCount} جلسات — امسح QR` : "امسح QR — واتساب مقطوع"
+            : disconnectedCount > 1 ? `${disconnectedCount} sessions — scan QR` : "Scan QR — WhatsApp offline",
+          pulse: true,
+        };
       case "connecting":
         return {
           dot: "bg-amber-500",
@@ -43,6 +54,7 @@ export function WaStatusPill({ lang }: Props) {
             : disconnectedCount > 1 ? `${disconnectedCount} sessions offline` : "WhatsApp offline",
           pulse: true,
         };
+
       default:
         return {
           dot: "bg-muted-foreground/60",
