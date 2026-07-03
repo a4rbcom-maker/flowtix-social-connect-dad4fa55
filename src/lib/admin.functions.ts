@@ -1494,3 +1494,123 @@ export const adminCleanupUserWaSession = createServerFn({ method: "POST" })
 
     return { ok: true, bridgeDeleted, dbDeleted, bridgeError };
   });
+
+// ---------- Bulk cleanup of Flowtix-only disconnected sessions ----------
+// Scans BOTH sources and deletes only what safely belongs to Flowtix:
+//  1) wa_sessions rows with status = 'disconnected' AND updated_at older than N days
+//  2) bridge sessions whose id starts with "flowtix-" AND are not connected
+//     AND either exist as disconnected in our DB or are orphaned (not in DB).
+// Never touches sessions without the "flowtix-" prefix (Bot-Xtra / Xtra tenants).
+export const adminBulkCleanupFlowtixDisconnected = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { minAgeDays?: number; dryRun?: boolean }) =>
+    z
+      .object({
+        minAgeDays: z.number().int().min(0).max(90).optional().default(3),
+        dryRun: z.boolean().optional().default(false),
+      })
+      .parse(d ?? {}),
+  )
+  .handler(async ({ data, context }) => {
+    const db = admin();
+    const { waBridge } = await import("./wa-bridge.server");
+
+    const cutoffMs = Date.now() - data.minAgeDays * 86_400_000;
+    const cutoffIso = new Date(cutoffMs).toISOString();
+
+    // 1) Candidate rows from our DB
+    const { data: dbRows, error: dbErr } = await db
+      .from("wa_sessions")
+      .select("id, user_id, session_id, status, updated_at")
+      .eq("status", "disconnected")
+      .lt("updated_at", cutoffIso);
+    if (dbErr) throw new Error(dbErr.message);
+    const dbCandidates = (dbRows ?? []).filter((r) => r.session_id?.startsWith("flowtix-"));
+
+    // 2) Bridge orphans (flowtix-prefixed, not connected, not in DB candidates)
+    let bridgeCandidates: string[] = [];
+    let bridgeError: string | null = null;
+    try {
+      const resp = await waBridge.listSessions();
+      const all = resp.sessions ?? [];
+      const dbIds = new Set(dbCandidates.map((r) => r.session_id));
+      // Also collect ALL our flowtix session ids from DB (any status) so we don't
+      // classify an existing connected/qr session as orphan.
+      const { data: allOurRows } = await db
+        .from("wa_sessions")
+        .select("session_id");
+      const allOurIds = new Set((allOurRows ?? []).map((r) => r.session_id));
+      bridgeCandidates = all
+        .filter((s) => {
+          const id = s.id ?? "";
+          if (!id.startsWith("flowtix-")) return false;
+          if (s.connected) return false;
+          // Include if: already a DB candidate, OR truly orphan (not in our DB at all)
+          return dbIds.has(id) || !allOurIds.has(id);
+        })
+        .map((s) => s.id!) as string[];
+    } catch (e) {
+      bridgeError = e instanceof Error ? e.message : "bridge_unreachable";
+    }
+
+    const dbSessionIds = dbCandidates.map((r) => r.session_id);
+    const uniqueBridgeIds = Array.from(new Set([...dbSessionIds, ...bridgeCandidates]));
+
+    if (data.dryRun) {
+      return {
+        dryRun: true,
+        dbCandidateCount: dbCandidates.length,
+        bridgeCandidateCount: uniqueBridgeIds.length,
+        bridgeError,
+        preview: uniqueBridgeIds.slice(0, 20),
+      };
+    }
+
+    // 3) Delete from bridge (best-effort per id)
+    let bridgeDeleted = 0;
+    let bridgeFailed = 0;
+    const failedIds: Array<{ id: string; error: string }> = [];
+    for (const id of uniqueBridgeIds) {
+      try {
+        await waBridge.deleteSession(id);
+        bridgeDeleted += 1;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/404|not.?found/i.test(msg)) {
+          bridgeDeleted += 1; // already gone
+        } else {
+          bridgeFailed += 1;
+          failedIds.push({ id, error: msg });
+        }
+      }
+    }
+
+    // 4) Delete from DB — only the candidate rows we already validated
+    let dbDeleted = 0;
+    if (dbCandidates.length > 0) {
+      const ids = dbCandidates.map((r) => r.id);
+      const { error: delErr, count } = await db
+        .from("wa_sessions")
+        .delete({ count: "exact" })
+        .in("id", ids);
+      if (delErr) throw new Error(delErr.message);
+      dbDeleted = count ?? ids.length;
+    }
+
+    await logAction(context.adminUserId, "wa_bulk_cleanup_flowtix", null, {
+      min_age_days: data.minAgeDays,
+      db_deleted: dbDeleted,
+      bridge_deleted: bridgeDeleted,
+      bridge_failed: bridgeFailed,
+      bridge_error: bridgeError,
+    });
+
+    return {
+      dryRun: false,
+      dbDeleted,
+      bridgeDeleted,
+      bridgeFailed,
+      failedIds: failedIds.slice(0, 20),
+      bridgeError,
+    };
+  });
