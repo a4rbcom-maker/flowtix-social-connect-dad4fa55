@@ -388,6 +388,29 @@ describe("Bot-Xtra v1.8.x: parseMessageEntry", () => {
     expect(m.providerMessageId).toBe("3EB0BX1.8.BARE002");
   });
 
+  it("keeps empty own text rows as chat activity instead of dropping the conversation", () => {
+    const m = parseMessageEntry({
+      tenantId: "4f4b101d-b785-4719-82a3-6f378584739e",
+      from: "182239858000081",
+      fromMe: true,
+      pushName: "cv-pro maker",
+      senderName: "cv-pro maker",
+      notifyName: "cv-pro maker",
+      body: "",
+      type: "text",
+      id: "A5EMPTYBODY001",
+      isGroup: false,
+      sender: "",
+      timestamp: 1_783_098_593,
+    })!;
+    expect(m).not.toBeNull();
+    expect(m.text).toBeNull();
+    expect(m.msgType).toBe("text");
+    expect(m.fromMe).toBe(true);
+    expect(m.remoteJid).toBe("182239858000081@s.whatsapp.net");
+    expect(m.providerMessageId).toBe("A5EMPTYBODY001");
+  });
+
   it("does not use the linked account pushName as the customer name for outbound messages", () => {
     const m = parseMessageEntry({
       id: "3EB0BX1.8.OUT001",
