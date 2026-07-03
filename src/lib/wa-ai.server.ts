@@ -90,6 +90,8 @@ async function sendAiTextOnce(
   return res;
 }
 
+const CONFIRMED_DELIVERY_STATUSES = new Set(["delivered", "read"]);
+
 async function findConfirmedOutbound(params: {
   userId: string;
   sessionId: string;
@@ -114,7 +116,7 @@ async function findConfirmedOutbound(params: {
   // The webhook confirmation intentionally updates the pre-created pending AI
   // row in-place. Do not exclude that row; it only appears here after it has a
   // real provider_message_id, so matching it is the exact delivery confirmation.
-  const row = (data ?? []).find((item) => item.provider_message_id);
+  const row = (data ?? []).find((item) => item.provider_message_id && CONFIRMED_DELIVERY_STATUSES.has(item.status ?? ""));
   if (!row?.provider_message_id) return null;
   return { id: row.id, providerMessageId: row.provider_message_id, status: row.status ?? "sent" };
 }
@@ -138,7 +140,7 @@ async function findConfirmedOutboundLoose(params: {
     .order("created_at", { ascending: false })
     .limit(5);
 
-  const row = (data ?? []).find((item) => item.provider_message_id);
+  const row = (data ?? []).find((item) => item.provider_message_id && CONFIRMED_DELIVERY_STATUSES.has(item.status ?? ""));
   if (!row?.provider_message_id) return null;
   return { id: row.id, providerMessageId: row.provider_message_id, status: row.status ?? "sent" };
 }
