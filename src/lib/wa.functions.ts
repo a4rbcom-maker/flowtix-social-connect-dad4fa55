@@ -180,6 +180,20 @@ function jidFromPhone(value: unknown): string | null {
   return phone ? `${phone}@s.whatsapp.net` : null;
 }
 
+function lidJidsFromEvents(events: Array<{ raw_status?: unknown; reason?: unknown; bridge_event?: unknown }>): string[] {
+  const out = new Set<string>();
+  for (const event of events) {
+    const haystack = [event.raw_status, event.reason, event.bridge_event]
+      .filter((value): value is string => typeof value === "string")
+      .join("\n");
+    for (const match of haystack.matchAll(/\b(\d{14,})@(lid|s\.whatsapp\.net)\b/g)) {
+      const local = match[1];
+      if (local) out.add(`${local}@lid`);
+    }
+  }
+  return Array.from(out);
+}
+
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -389,7 +403,7 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       if (jid) knownJids.add(jid);
     };
 
-    const [{ data: chats }, { data: contacts }, { data: customers }, { data: recipients }, { data: logs }, { data: oldMessages }] = await Promise.all([
+    const [{ data: chats }, { data: contacts }, { data: customers }, { data: recipients }, { data: logs }, { data: oldMessages }, { data: sessionEvents }] = await Promise.all([
       supabase
         .from("wa_conversations")
         .select("remote_jid, contact_phone")
@@ -407,6 +421,12 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
         .not("provider_message_id", "is", null)
         .order("wa_timestamp", { ascending: true })
         .limit(5000),
+      supabase
+        .from("wa_session_events")
+        .select("raw_status, reason, bridge_event")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(300),
     ]);
 
 
@@ -447,6 +467,8 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
     for (const customer of customers ?? []) addPhone(customer.phone_norm || customer.phone);
     for (const recipient of recipients ?? []) addPhone(recipient.phone);
     for (const log of logs ?? []) addPhone(log.recipient);
+    for (const jid of lidJidsFromEvents(sessionEvents ?? [])) addJid(jid);
+    if (livePhone) addPhone(livePhone);
 
     // Refresh oldest-anchor for a specific JID after each imported page, so
     // the next iteration walks further back in history.
