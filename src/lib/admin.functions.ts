@@ -1845,3 +1845,28 @@ export const adminSearchUsersForWaCleanup = createServerFn({ method: "POST" })
 
     return { users };
   });
+
+// ---------- Admin: session status event history ----------
+export const adminGetWaSessionEvents = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { userId: string; sessionId: string; limit?: number }) =>
+    z
+      .object({
+        userId: z.string().uuid(),
+        sessionId: z.string().min(3).max(200),
+        limit: z.number().int().min(1).max(200).optional().default(50),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const db = admin();
+    const { data: events, error } = await db
+      .from("wa_session_events")
+      .select("id, from_status, to_status, source, reason, bridge_event, created_at")
+      .eq("user_id", data.userId)
+      .eq("session_id", data.sessionId)
+      .order("created_at", { ascending: false })
+      .limit(data.limit);
+    if (error) throw new Error(error.message);
+    return { events: events ?? [] };
+  });
