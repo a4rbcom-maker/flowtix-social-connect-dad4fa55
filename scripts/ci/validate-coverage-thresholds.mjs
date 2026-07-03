@@ -29,10 +29,18 @@ for (const m of metrics) {
   }
 }
 
-// 2) No coverage.thresholds override elsewhere (scripts, workflows, other configs).
+// 2) No coverage threshold override elsewhere (other configs, scripts, workflows).
+// We look for `thresholds: {` blocks OR `coverage.thresholds.*` CLI flags
+// anywhere outside the canonical vitest.config.ts.
 try {
   const out = execSync(
-    "rg -n --no-heading --glob '!node_modules' --glob '!coverage' --glob '!scripts/ci/validate-coverage-thresholds.mjs' --glob '!vitest.config.ts' 'coverage\\.thresholds' .",
+    "rg -n --no-heading " +
+      "--glob '!node_modules' --glob '!coverage' --glob '!dist' " +
+      "--glob '!scripts/ci/validate-coverage-thresholds.mjs' " +
+      "--glob '!scripts/ci/validate-coverage-thresholds.test.*' " +
+      "--glob '!src/lib/validate-coverage-thresholds.test.*' " +
+      "--glob '!vitest.config.ts' " +
+      "-e 'thresholds\\s*:\\s*\\{' -e 'coverage\\.thresholds' .",
     { encoding: "utf8" },
   ).trim();
   if (out) {
