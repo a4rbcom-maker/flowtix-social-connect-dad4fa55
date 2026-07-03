@@ -27,10 +27,11 @@ import {
   adminListUsersWithBadWaSessions,
   adminSendWaTestMessage,
   adminSearchUsersForWaCleanup,
+  adminGetWaSessionEvents,
 } from "@/lib/admin.functions";
 
 import { toast } from "sonner";
-import { Send, X } from "lucide-react";
+import { Send, X, History, ChevronDown, ChevronUp } from "lucide-react";
 
 
 export const Route = createFileRoute("/admin/whatsapp")({
