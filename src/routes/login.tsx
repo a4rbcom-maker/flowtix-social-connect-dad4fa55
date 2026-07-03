@@ -223,7 +223,7 @@ function LoginPage() {
   };
 
   const inputClass =
-    "peer w-full rounded-xl border border-input bg-background/60 backdrop-blur ps-12 pe-4 py-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground/60";
+    "peer w-full rounded-xl border border-input bg-background/60 backdrop-blur pl-14 pr-4 py-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground/60";
 
   return (
     <div dir={dir} className="min-h-screen bg-background">
