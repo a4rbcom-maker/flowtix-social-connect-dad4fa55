@@ -6,6 +6,7 @@ import { I18nProvider } from "@/lib/i18n";
 import { ThemeProvider } from "@/lib/theme";
 import { AuthProvider } from "@/lib/auth";
 import { NotificationsProvider } from "@/hooks/useSendNotifications";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { GlobalAnnouncements } from "@/components/dashboard/GlobalAnnouncements";
 import { UserPreferencesSync } from "@/components/shared/UserPreferencesSync";
 import { installStaleChunkReload, staleChunkReloadInlineScript } from "@/lib/stale-chunk-reload";
@@ -163,38 +164,39 @@ function RootComponent() {
         <I18nProvider>
           <AuthProvider>
             <NotificationsProvider>
-              <UserPreferencesSync />
-              <Outlet />
-              <GlobalAnnouncements />
-              <Toaster
-                position={isMobile ? "top-center" : "top-center"}
-                richColors
-                closeButton
-                expand={!isMobile}
-                visibleToasts={isMobile ? 2 : 4}
-                gap={isMobile ? 6 : 10}
-                offset={isMobile ? 8 : 20}
-                mobileOffset={8}
-                duration={isMobile ? 3500 : 4500}
-                toastOptions={{
-                  className: "flowtix-toast",
-                  style: {
-                    fontFamily: "'Cairo', 'Inter', sans-serif",
-                    fontSize: "0.95rem",
-                    fontWeight: 500,
-                    letterSpacing: "0.01em",
-                  },
-                  classNames: {
-                    toast: "flowtix-toast-root",
-                    title: "flowtix-toast-title",
-                    description: "flowtix-toast-desc",
-                    actionButton: "flowtix-toast-action",
-                    cancelButton: "flowtix-toast-cancel",
-                    closeButton: "flowtix-toast-close",
-                  },
-                }}
-              />
-
+              <TooltipProvider delayDuration={200}>
+                <UserPreferencesSync />
+                <Outlet />
+                <GlobalAnnouncements />
+                <Toaster
+                  position={isMobile ? "top-center" : "top-center"}
+                  richColors
+                  closeButton
+                  expand={!isMobile}
+                  visibleToasts={isMobile ? 2 : 4}
+                  gap={isMobile ? 6 : 10}
+                  offset={isMobile ? 8 : 20}
+                  mobileOffset={8}
+                  duration={isMobile ? 3500 : 4500}
+                  toastOptions={{
+                    className: "flowtix-toast",
+                    style: {
+                      fontFamily: "'Cairo', 'Inter', sans-serif",
+                      fontSize: "0.95rem",
+                      fontWeight: 500,
+                      letterSpacing: "0.01em",
+                    },
+                    classNames: {
+                      toast: "flowtix-toast-root",
+                      title: "flowtix-toast-title",
+                      description: "flowtix-toast-desc",
+                      actionButton: "flowtix-toast-action",
+                      cancelButton: "flowtix-toast-cancel",
+                      closeButton: "flowtix-toast-close",
+                    },
+                  }}
+                />
+              </TooltipProvider>
             </NotificationsProvider>
           </AuthProvider>
         </I18nProvider>
