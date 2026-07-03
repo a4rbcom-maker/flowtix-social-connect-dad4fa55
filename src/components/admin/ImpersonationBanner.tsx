@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { UserCheck, LogOut, Loader2 } from "lucide-react";
+import { UserCheck, LogOut, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
 const STORAGE_KEY = "flowtix_admin_impersonation_backup";
