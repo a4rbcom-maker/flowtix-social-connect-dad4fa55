@@ -283,10 +283,11 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
     if (!row?.session_id) return { ok: false, sessionId: null, requested: false, attempts: [], error: "no_session" };
 
     let liveStatus = row.status as BridgeSessionStatus;
+    let livePhone: string | null = null;
     try {
       const live = await waBridge.getStatus(row.session_id);
       liveStatus = inferStatus(live);
-      const livePhone = typeof live.phoneNumber === "string" ? live.phoneNumber : typeof live.phone === "string" ? live.phone : null;
+      livePhone = typeof live.phoneNumber === "string" ? live.phoneNumber : typeof live.phone === "string" ? live.phone : null;
       if (liveStatus === "connected") {
         await updateWaSessionStatus(supabase, {
           userId,
