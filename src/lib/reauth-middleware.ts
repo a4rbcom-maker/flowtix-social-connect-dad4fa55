@@ -53,21 +53,17 @@ export const reauthOnExpiredSession = createMiddleware({ type: "function" }).cli
         window.location.replace(`/login?reason=expired&redirect=${encodeURIComponent(current)}`);
       }
 
-      // If we're already at /login (or in a non-browser context), don't throw a
-      // scary "SESSION_EXPIRED" runtime error that blanks the screen — the user
-      // is on the login page anyway. Return a never-resolving promise so the
-      // pending server-fn call is silently abandoned.
-      if (alreadyOnLogin) {
-        return new Promise<never>(() => {});
-      }
-
-      // Normalize raw Response objects into a real Error so React/TanStack
-      // boundaries never stringify them as "[object Response]".
-      const authError = new Error("SESSION_EXPIRED: انتهت الجلسة، جارٍ إعادة تسجيل الدخول…");
-      (authError as { status?: number }).status = getStatus(cause) ?? 401;
-      (authError as { cause?: unknown }).cause = cause;
-      throw authError;
+      // Whether we're already on /login or a hard navigation to /login is in
+      // flight, we've committed to leaving the current page. Any pending
+      // server-fn caller must NOT see a rejection — otherwise React Query /
+      // route errorComponent surfaces "SESSION_EXPIRED" as a blank screen or
+      // scary error toast right before the redirect paints. Silently abandon
+      // the call by returning a never-resolving promise; the imminent hard
+      // navigation tears down the whole JS context.
+      void cause;
+      return new Promise<never>(() => {});
     };
+
 
     let refreshAttempted = false;
     const baseFetch = fetch ?? globalThis.fetch.bind(globalThis);
