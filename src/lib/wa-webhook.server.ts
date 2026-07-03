@@ -54,6 +54,32 @@ function isBulkDeliverySuccess(status: string): boolean {
   return BULK_DELIVERY_SUCCESS_STATUSES.has(status);
 }
 
+async function bumpHistorySyncJob(userId: string, sessionId: string, delta: { messages?: number; conversations?: number }) {
+  const messages = Math.max(0, delta.messages ?? 0);
+  const conversations = Math.max(0, delta.conversations ?? 0);
+  if (messages === 0 && conversations === 0) return;
+  try {
+    const { data } = await supabaseAdmin
+      .from("wa_history_sync_jobs")
+      .select("imported_msg, imported_conv, status")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!data) return;
+    await supabaseAdmin
+      .from("wa_history_sync_jobs")
+      .update({
+        status: data.status === "error" ? "running" : data.status,
+        imported_msg: (data.imported_msg ?? 0) + messages,
+        imported_conv: (data.imported_conv ?? 0) + conversations,
+        message: null,
+      })
+      .eq("user_id", userId)
+      .eq("session_id", sessionId);
+  } catch (err) {
+    console.warn("[wa-webhook] history job bump failed:", err instanceof Error ? err.message : err);
+  }
+}
+
 function recordsFromUnknown(value: unknown): Record<string, unknown>[] {
   if (Array.isArray(value)) {
     return value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"));
@@ -1014,6 +1040,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   if (event === "history_chats") {
     const chats = pickContactArray(payload, data);
     const upserted = await importHistoryChats({ userId, sessionId, chats });
+    await bumpHistorySyncJob(userId, sessionId, { conversations: upserted });
     await markSessionAlive({ userId, sessionId, phoneNumber: sess.phone_number, source: "history_sync", reason: "history_chats_activity" });
     return new Response(JSON.stringify({ ok: true, historyChats: upserted }), {
       status: 200,
@@ -1024,6 +1051,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   // ── HISTORY SYNC: backfilled messages ──
   if (HISTORY_EVENTS.has(event)) {
     const history = await importHistoryMessages({ userId, sessionId, payload, data });
+    await bumpHistorySyncJob(userId, sessionId, { messages: history.saved });
     if (history.saved > 0 || history.total > 0) {
       await markSessionAlive({ userId, sessionId, phoneNumber: sess.phone_number, source: "history_sync", reason: "history_messages_activity" });
     }
