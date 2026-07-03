@@ -482,8 +482,25 @@ function BotPage() {
                 </li>
               ))}
             </ul>
-          )}
+            {logsVisible < logsQ.data.length && (
+              <div className="mt-4 flex items-center justify-center gap-3">
+                <span className="text-xs text-muted-foreground">
+                  {logsVisible} / {logsQ.data.length} {t.shown}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setLogsVisible((v) => v + 10)}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-4 text-xs font-semibold hover:bg-muted"
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                  {t.loadMore}
+                </button>
+              </div>
+            )}
+            </>
+          ))}
         </div>
+
       </div>
     </DashboardLayout>
   );
