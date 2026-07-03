@@ -86,6 +86,11 @@ export function normalizeRemoteJid(remoteJid: string | null, phone: string | nul
   return d ? `${d}@${isGroup ? "g.us" : "s.whatsapp.net"}` : "unknown";
 }
 
+function looksLikeLidAlias(value: string | null | undefined): boolean {
+  const local = String(value ?? "").split("@")[0] ?? "";
+  return /^\d{14,}$/.test(local.replace(/[^0-9]/g, ""));
+}
+
 export function isTruthy(v: unknown): boolean {
   return v === true || String(v ?? "").toLowerCase() === "true";
 }
@@ -275,7 +280,7 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
     !isGroup &&
     !fromMe &&
     rawFromDigits &&
-    ((explicitPhone && rawFromDigits !== explicitPhone) || jidType === "lid")
+    ((explicitPhone && rawFromDigits !== explicitPhone) || jidType === "lid" || looksLikeLidAlias(rawFromDigits))
       ? `${rawFromDigits}@lid`
       : null;
   const realPhone =

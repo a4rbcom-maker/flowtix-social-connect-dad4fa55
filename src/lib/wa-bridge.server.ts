@@ -529,7 +529,8 @@ export const waBridge = {
           // metadata. Supplying both is backward compatible and prevents sends
           // from staying forever in the bridge queue with only queuedId.
           ...(phone && !isLid ? { phone } : {}),
-          ...(isLid && publicJid ? { recipientPn: publicJid, participantPn: publicJid } : {}),
+          ...(isLid && explicitPhone ? { phone: explicitPhone } : {}),
+          ...(isLid && publicJid ? { recipientPn: publicJid, participantPn: publicJid, senderPn: publicJid } : {}),
           type: "text",
           text,
           message: text,
