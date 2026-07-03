@@ -573,7 +573,118 @@ function SessionsList({
   );
 }
 
+/* ---------------- Session events history (per session) ---------------- */
+
+function statusTone(s: string | null | undefined): string {
+  if (!s) return "bg-muted text-muted-foreground border-border";
+  if (s === "connected") return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30";
+  if (s === "qr" || s === "pairing") return "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30";
+  if (s === "disconnected" || s === "logged_out" || s === "error") return "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30";
+  return "bg-muted text-muted-foreground border-border";
+}
+
+function formatWhen(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const diffMs = Date.now() - d.getTime();
+    const mins = Math.round(diffMs / 60_000);
+    if (mins < 1) return "الآن";
+    if (mins < 60) return `${mins}د`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return `${hrs}س`;
+    const days = Math.round(hrs / 24);
+    if (days < 30) return `${days}ي`;
+    return d.toLocaleDateString();
+  } catch {
+    return iso;
+  }
+}
+
+function SessionEventsHistory({
+  t,
+  userId,
+  sessionId,
+}: {
+  t: (ar: string, en: string) => string;
+  userId: string;
+  sessionId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const eventsQ = useQuery({
+    queryKey: ["admin", "wa-cleanup", "events", userId, sessionId],
+    queryFn: () => adminGetWaSessionEvents({ data: { userId, sessionId, limit: 50 } }),
+    enabled: open,
+  });
+  const events = eventsQ.data?.events ?? [];
+
+  return (
+    <div className="border-t border-border bg-background/40">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+      >
+        <span className="flex items-center gap-1.5">
+          <History className="h-3.5 w-3.5" />
+          {t("سجل تغيّر الحالة", "Status change history")}
+          {events.length > 0 && <span className="opacity-60">({events.length})</span>}
+        </span>
+        {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+      </button>
+      {open && (
+        <div className="px-3 pb-3">
+          {eventsQ.isLoading ? (
+            <div className="flex justify-center py-3">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            </div>
+          ) : events.length === 0 ? (
+            <div className="text-xs text-muted-foreground py-2">
+              {t("لا توجد أحداث مسجّلة لهذه الجلسة.", "No recorded events for this session.")}
+            </div>
+          ) : (
+            <ol className="relative ps-4 space-y-2 max-h-64 overflow-y-auto pt-1">
+              {events.map((e, i) => (
+                <li key={e.id} className="relative">
+                  <span
+                    className={`absolute -start-4 top-1.5 h-2 w-2 rounded-full border ${statusTone(e.to_status).split(" ")[0]} border-current`}
+                    aria-hidden
+                  />
+                  {i < events.length - 1 && (
+                    <span className="absolute -start-[13px] top-3 bottom-[-8px] w-px bg-border" aria-hidden />
+                  )}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {e.from_status && (
+                      <>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${statusTone(e.from_status)}`}>
+                          {e.from_status}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">→</span>
+                      </>
+                    )}
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${statusTone(e.to_status)}`}>
+                      {e.to_status ?? "?"}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground ms-auto">
+                      {formatWhen(e.created_at)}
+                    </span>
+                  </div>
+                  {(e.source || e.reason || e.bridge_event) && (
+                    <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                      {[e.source, e.bridge_event, e.reason].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------------- Test send (per user) ---------------- */
+
+
 
 function TestSendCard({
   t,
