@@ -59,6 +59,7 @@ import { Zap } from "lucide-react";
 import {
   sendChatMessage,
   markConversationRead,
+  markConversationActive,
   summarizeConversation,
   type ConversationRow,
   type ChatMessageRow,
@@ -96,6 +97,7 @@ function InboxPage() {
   const isMobile = useIsMobile();
   const sendFn = useServerFn(sendChatMessage);
   const markReadFn = useServerFn(markConversationRead);
+  const markActiveFn = useServerFn(markConversationActive);
   const requestHistorySyncFn = useServerFn(requestWaHistorySync);
   const getHistorySyncJobFn = useServerFn(getWaHistorySyncJob);
   const dismissHistorySyncJobFn = useServerFn(dismissWaHistorySyncJob);
@@ -676,6 +678,33 @@ function InboxPage() {
       }).catch((err: unknown) => console.warn("[inbox] mark read failed", err));
     }
   }, [activeJid, conversations, markReadFn, qc, user?.id]);
+
+  // Presence heartbeat — pauses the AI auto-reply while the user is viewing or
+  // typing in this conversation. Rules:
+  //   • as long as this chat is open, ping every 20s (window is open → human is here)
+  //   • ping again immediately whenever the composer text changes (typing → human is here)
+  //   • window closes / user switches chat → no more pings → server TTL expires → bot resumes
+  const pingActive = useCallback((durationMs = 45_000) => {
+    if (!activeJid) return;
+    markActiveFn({ data: { remoteJid: activeJid, durationMs } }).catch(() => {
+      /* best-effort: presence is advisory */
+    });
+  }, [activeJid, markActiveFn]);
+
+  useEffect(() => {
+    if (!activeJid) return;
+    pingActive();
+    const t = setInterval(() => pingActive(), 20_000);
+    return () => clearInterval(t);
+  }, [activeJid, pingActive]);
+
+  // Typing-triggered ping (debounced).
+  useEffect(() => {
+    if (!activeJid || !draft) return;
+    const h = setTimeout(() => pingActive(60_000), 250);
+    return () => clearTimeout(h);
+  }, [draft, activeJid, pingActive]);
+
 
   // Textarea auto-grow
   useEffect(() => {

@@ -1530,6 +1530,7 @@ export type Database = {
       }
       wa_conversations: {
         Row: {
+          agent_active_until: string | null
           ai_enabled: boolean
           contact_name: string | null
           contact_phone: string | null
@@ -1547,6 +1548,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          agent_active_until?: string | null
           ai_enabled?: boolean
           contact_name?: string | null
           contact_phone?: string | null
@@ -1564,6 +1566,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          agent_active_until?: string | null
           ai_enabled?: boolean
           contact_name?: string | null
           contact_phone?: string | null

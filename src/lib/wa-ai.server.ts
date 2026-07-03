@@ -469,13 +469,16 @@ export async function handleAiAutoReply(opts: {
       return;
     }
 
-    // Per-conversation toggle
+    // Per-conversation toggle + live presence pause.
+    // If the user is currently viewing/typing in this conversation the inbox
+    // UI pushes an agent_active_until timestamp in the future — while that
+    // window is active the AI stays silent so it doesn't step on the human.
     if (conversationId) {
       const { data: conv } = await supabaseAdmin
         .from("wa_conversations")
-        .select("ai_enabled")
+        .select("ai_enabled, agent_active_until")
         .eq("id", conversationId)
-        .maybeSingle();
+        .maybeSingle<{ ai_enabled: boolean | null; agent_active_until: string | null }>();
       if (conv && conv.ai_enabled === false) {
         await logAiSkip({
           userId,
@@ -487,7 +490,20 @@ export async function handleAiAutoReply(opts: {
         });
         return;
       }
+      const activeUntil = conv?.agent_active_until ? Date.parse(conv.agent_active_until) : 0;
+      if (activeUntil && activeUntil > Date.now()) {
+        await logAiSkip({
+          userId,
+          conversationId,
+          remoteJid,
+          inboundText,
+          model: settings.ai_model,
+          reason: "user_viewing_conversation: المستخدم يفتح المحادثة أو يكتب حالياً، تم إيقاف الوكيل مؤقتاً.",
+        });
+        return;
+      }
     }
+
 
     // Human takeover: if the business owner (or a teammate) replied manually
     // to this conversation in the last 30 minutes, pause the AI so it does not
