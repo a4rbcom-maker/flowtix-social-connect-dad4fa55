@@ -26,10 +26,11 @@ import {
   adminBulkCleanupFlowtixDisconnected,
   adminListUsersWithBadWaSessions,
   adminSendWaTestMessage,
+  adminSearchUsersForWaCleanup,
 } from "@/lib/admin.functions";
 
 import { toast } from "sonner";
-import { Send } from "lucide-react";
+import { Send, X } from "lucide-react";
 
 
 export const Route = createFileRoute("/admin/whatsapp")({
@@ -244,12 +245,21 @@ function BulkCleanupCard({ t }: { t: (ar: string, en: string) => string }) {
 
 function SessionCleanupCard({ t }: { t: (ar: string, en: string) => string }) {
   const [selectedUser, setSelectedUser] = useState<{ id: string; full_name: string | null } | null>(null);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const qc = useQueryClient();
 
   const badUsersQ = useQuery({
     queryKey: ["admin", "wa-cleanup", "bad-users"],
     queryFn: () => adminListUsersWithBadWaSessions(),
     refetchInterval: 30_000,
+    enabled: searchTerm.length === 0,
+  });
+
+  const searchQ = useQuery({
+    queryKey: ["admin", "wa-cleanup", "search", searchTerm],
+    queryFn: () => adminSearchUsersForWaCleanup({ data: { query: searchTerm } }),
+    enabled: searchTerm.length > 0,
   });
 
   const sessionsQ = useQuery({
@@ -270,11 +280,20 @@ function SessionCleanupCard({ t }: { t: (ar: string, en: string) => string }) {
       );
       qc.invalidateQueries({ queryKey: ["admin", "wa-cleanup", "sessions", selectedUser?.id] });
       qc.invalidateQueries({ queryKey: ["admin", "wa-cleanup", "bad-users"] });
+      qc.invalidateQueries({ queryKey: ["admin", "wa-cleanup", "search"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const users = badUsersQ.data?.users ?? [];
+  const isSearching = searchTerm.length > 0;
+  const activeQ = isSearching ? searchQ : badUsersQ;
+  const users = activeQ.data?.users ?? [];
+
+  const submitSearch = () => setSearchTerm(searchInput.trim());
+  const clearSearch = () => {
+    setSearchInput("");
+    setSearchTerm("");
+  };
 
   return (
     <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
@@ -283,24 +302,67 @@ function SessionCleanupCard({ t }: { t: (ar: string, en: string) => string }) {
           <Trash2 className="h-5 w-5" />
         </div>
         <div className="flex-1">
-          <h3 className="font-semibold text-lg">{t("مستخدمون بجلسات مش شغالة", "Users with problematic sessions")}</h3>
+          <h3 className="font-semibold text-lg">
+            {isSearching
+              ? t("نتائج البحث", "Search results")
+              : t("مستخدمون بجلسات مش شغالة", "Users with problematic sessions")}
+          </h3>
           <p className="text-sm text-muted-foreground mt-0.5">
             {t(
-              "قائمة تلقائية بالمستخدمين اللي عندهم جلسات معلّقة (QR) أو مفصولة. مرتبة بالأقدم أولاً.",
-              "Auto-list of users with QR-stuck or disconnected sessions, oldest first.",
+              "ابحث بالاسم أو user_id أو رقم الهاتف — أو اترك الحقل فارغًا لعرض الجلسات المعلّقة تلقائيًا.",
+              "Search by name, user_id, or phone — or leave empty to auto-list problematic sessions.",
             )}
           </p>
         </div>
       </div>
 
-      {badUsersQ.isLoading ? (
+      {/* Search bar */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="h-4 w-4 absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitSearch();
+              if (e.key === "Escape") clearSearch();
+            }}
+            placeholder={t("اسم، user_id، أو رقم هاتف…", "Name, user_id, or phone…")}
+            className="w-full ps-9 pe-9 py-2 text-sm border border-border rounded-lg bg-background"
+          />
+          {searchInput && (
+            <button
+              onClick={clearSearch}
+              className="absolute end-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label={t("مسح", "Clear")}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        <button
+          onClick={submitSearch}
+          disabled={!searchInput.trim() || searchQ.isFetching}
+          className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {searchQ.isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+          {t("بحث", "Search")}
+        </button>
+      </div>
+
+      {activeQ.isLoading ? (
         <div className="flex justify-center py-8">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
       ) : users.length === 0 ? (
         <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-3">
           <CheckCircle2 className="h-4 w-4" />
-          <span>{t("كل المستخدمين جلساتهم شغالة ✨", "Everyone's sessions are healthy ✨")}</span>
+          <span>
+            {isSearching
+              ? t("مفيش نتائج مطابقة", "No matching users")
+              : t("كل المستخدمين جلساتهم شغالة ✨", "Everyone's sessions are healthy ✨")}
+          </span>
         </div>
       ) : (
         <div className="border border-border rounded-xl overflow-hidden max-h-80 overflow-y-auto">
