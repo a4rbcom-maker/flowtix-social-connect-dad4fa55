@@ -403,6 +403,18 @@ export const waBridge = {
           : {}),
       }),
     }),
+  /**
+   * Rebuild the in-memory bridge socket for the SAME session id, preserving the
+   * paired WhatsApp credentials on disk. This is not logout/delete and does not
+   * mint a new QR. Keep history flags off here: this is used to recover a live
+   * agent/send path, not to trigger a heavy archive replay.
+   */
+  reviveSession: (id: string, opts: { webhookUrl?: string; tenantId?: string } = {}) =>
+    waBridge.createSession(id, {
+      webhookUrl: opts.webhookUrl,
+      tenantId: opts.tenantId,
+      syncFullHistory: false,
+    }),
   requestHistorySync: async (id: string) => {
     const paths = [
       `/api/sessions/${encodeURIComponent(id)}/sync-history`,
@@ -702,6 +714,26 @@ export async function sendTextWithReconnect(
     return await waBridge.sendText(id, to, text, { phone: recover.recipientPhone });
   } catch (err) {
     if (!(err instanceof BridgeError)) throw err;
+
+    const maybeSleepingSocket =
+      err.status === 400 && /session.*not.*connected|not.*connected|restoring|connecting/i.test(err.message);
+    if (maybeSleepingSocket) {
+      console.warn(`[wa-bridge] session ${id} is registered but not connected; reviving same session id without QR`);
+      await waBridge.reviveSession(id, { webhookUrl: recover.webhookUrl, tenantId: recover.tenantId });
+      const deadline = Date.now() + 25_000;
+      while (Date.now() < deadline) {
+        await sleep(1_500);
+        try {
+          const status = inferStatus(await waBridge.getStatus(id));
+          if (status === "connected") {
+            return await waBridge.sendText(id, to, text, { phone: recover.recipientPhone });
+          }
+        } catch {
+          // keep polling until timeout
+        }
+      }
+      throw err;
+    }
 
     // Only consider hard "session-gone" signals. Do NOT delete/recreate the
     // same session id here: Bot-Xtra keeps deleted ids in a short release
