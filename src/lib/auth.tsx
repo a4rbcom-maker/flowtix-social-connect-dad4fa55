@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef, type ReactNode 
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 import { toast } from "sonner";
+import { clearImpersonationBackup } from "@/lib/impersonation";
 
 interface AuthContextType {
   user: User | null;
@@ -190,6 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Manual sign-out shouldn't trigger the "expired" toast.
     expiredHandledRef.current = true;
     hadSessionRef.current = false;
+    clearImpersonationBackup();
     await supabase.auth.signOut();
   };
 

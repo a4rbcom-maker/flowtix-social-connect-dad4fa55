@@ -2,60 +2,62 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { UserCheck, LogOut, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
+import {
+  IMPERSONATION_BACKUP_EVENT,
+  IMPERSONATION_BACKUP_KEY,
+  clearImpersonationBackup,
+  readImpersonationBackup,
+  saveImpersonationBackup,
+  type ImpersonationBackup,
+} from "@/lib/impersonation";
 
-const STORAGE_KEY = "flowtix_admin_impersonation_backup";
-
-type Backup = {
-  access_token: string;
-  refresh_token: string;
-  admin_email: string;
-  target_email: string;
-  saved_at: number;
-};
-
-export function saveAdminBackup(backup: Omit<Backup, "saved_at">) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...backup, saved_at: Date.now() }));
-  } catch {
-    // ignore
-  }
-}
+export const saveAdminBackup = saveImpersonationBackup;
 
 export function ImpersonationBanner() {
-  const [backup, setBackup] = useState<Backup | null>(null);
+  const [backup, setBackup] = useState<ImpersonationBackup | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [isArabic, setIsArabic] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     setIsArabic(document.documentElement.dir === "rtl");
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setBackup(JSON.parse(raw));
-    } catch {
-      // ignore
-    }
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) {
-        try {
-          setBackup(e.newValue ? JSON.parse(e.newValue) : null);
-        } catch {
-          setBackup(null);
-        }
+
+    const syncBackup = async () => {
+      const nextBackup = readImpersonationBackup();
+      if (!nextBackup) {
+        setBackup(null);
+        return;
       }
+
+      const { data } = await supabase.auth.getSession();
+      const currentEmail = data.session?.user?.email?.toLowerCase();
+      const targetEmail = nextBackup.target_email.toLowerCase();
+      if (!currentEmail || currentEmail !== targetEmail) {
+        clearImpersonationBackup();
+        setBackup(null);
+        return;
+      }
+
+      setBackup(nextBackup);
     };
+
+    void syncBackup();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === IMPERSONATION_BACKUP_KEY) void syncBackup();
+    };
+    const onLocalBackupChange = () => void syncBackup();
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    window.addEventListener(IMPERSONATION_BACKUP_EVENT, onLocalBackupChange);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(IMPERSONATION_BACKUP_EVENT, onLocalBackupChange);
+    };
   }, []);
 
   if (!backup) return null;
 
   const clearBackup = () => {
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      /* ignore */
-    }
+    clearImpersonationBackup();
     setBackup(null);
   };
 

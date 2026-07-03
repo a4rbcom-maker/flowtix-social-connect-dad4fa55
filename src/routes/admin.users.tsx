@@ -368,8 +368,8 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
       const currentSession = sessionData.session;
       const res = await impersonateUser({ data: { userId } });
       if (currentSession?.access_token && currentSession?.refresh_token) {
-        const { saveAdminBackup } = await import("@/components/admin/ImpersonationBanner");
-        saveAdminBackup({
+        const { saveImpersonationBackup } = await import("@/lib/impersonation");
+        saveImpersonationBackup({
           access_token: currentSession.access_token,
           refresh_token: currentSession.refresh_token,
           admin_email: currentSession.user?.email ?? "admin",
