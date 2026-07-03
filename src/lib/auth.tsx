@@ -213,6 +213,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Manual sign-out shouldn't trigger the "expired" toast.
     expiredHandledRef.current = true;
     hadSessionRef.current = false;
+    // Cancel every in-flight query and drop cached data BEFORE we tear
+    // down the session. Otherwise queries fired against the current user
+    // resolve mid-signout, either as 401s or as data belonging to the
+    // wrong context (e.g. an admin's dashboard flashing during return
+    // from impersonation).
+    killAllQueries();
+
+
 
     // If an admin is currently impersonating another user, "logout" should
     // restore the admin's original session and return them to /admin/users,
