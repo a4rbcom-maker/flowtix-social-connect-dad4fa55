@@ -824,7 +824,25 @@ async function isDuplicateWebhookDelivery(params: {
     .insert({ event_key: eventKey, session_id: sessionId, event });
   if (!error) return false;
   const code = (error as { code?: string }).code;
-  if (code === "23505") return true; // primary-key conflict → duplicate
+  if (code === "23505") {
+    // If an older deployment recorded the webhook key but failed to persist the
+    // message (e.g. empty text body rows), do not let idempotency blackhole a
+    // later replay from /fetch-messages. Treat it as retryable until the message
+    // row actually exists.
+    if (providerId && (event === "message" || HISTORY_EVENTS.has(event))) {
+      const { data: existing } = await supabaseAdmin
+        .from("wa_messages")
+        .select("id")
+        .eq("provider_message_id", providerId)
+        .limit(1)
+        .maybeSingle();
+      if (!existing?.id) {
+        console.warn("[wa-webhook] Reprocessing previously deduped message with no saved row", { sessionId, event, providerId });
+        return false;
+      }
+    }
+    return true; // primary-key conflict → duplicate
+  }
   // Best-effort table: if insert fails for another reason, do not block delivery.
   console.warn("[wa-webhook] dedup insert failed, proceeding:", error.message);
   return false;
