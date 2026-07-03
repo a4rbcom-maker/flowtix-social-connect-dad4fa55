@@ -90,6 +90,19 @@ export function isTrustedUserDisconnect(input: {
   return hasLogoutWords || hasWebhookLogoutCode;
 }
 
+function isTransientQrAfterConnected(input: {
+  previousStatus?: string | null;
+  nextStatus: string;
+  source?: WaSessionEventSource | string | null;
+  reason?: string | null;
+  rawStatus?: string | null;
+  bridgeEvent?: string | null;
+}): boolean {
+  if (input.previousStatus !== "connected" || input.nextStatus !== "qr") return false;
+  if (input.source !== "webhook_status" && input.source !== "webhook_qr" && input.source !== "poll") return false;
+  return !isTrustedUserDisconnect(input);
+}
+
 export async function logWaSessionEvent(
   db: DbClient,
   event: {
@@ -187,6 +200,14 @@ export async function updateWaSessionStatus(
   }
 
   const trustedDisconnect = input.nextStatus === "disconnected" && isTrustedUserDisconnect(input);
+  const transientQrAfterConnected = isTransientQrAfterConnected({
+    previousStatus,
+    nextStatus: input.nextStatus,
+    source: input.source,
+    reason: input.reason,
+    rawStatus: input.rawStatus,
+    bridgeEvent: input.bridgeEvent,
+  });
 
   // Debounce during bulk campaigns: transient disconnect events that arrive
   // while a bulk campaign is running/scheduled for the same user are almost
@@ -198,7 +219,7 @@ export async function updateWaSessionStatus(
       : false;
 
   const shouldPreserveConnectedSession =
-    input.nextStatus === "disconnected" && (!trustedDisconnect || isLateEvent);
+    (input.nextStatus === "disconnected" && (!trustedDisconnect || isLateEvent)) || transientQrAfterConnected;
   const nextStatus = shouldPreserveConnectedSession ? (previousStatus ?? "unknown") : input.nextStatus;
 
   const update: Record<string, unknown> = {
@@ -206,7 +227,7 @@ export async function updateWaSessionStatus(
     last_seen_at: new Date().toISOString(),
   };
   if (input.phoneNumber) update.phone_number = input.phoneNumber;
-  if (input.qrDataUrl !== undefined) update.qr_data_url = input.qrDataUrl;
+  if (input.qrDataUrl !== undefined && !transientQrAfterConnected) update.qr_data_url = input.qrDataUrl;
 
   await db
     .from("wa_sessions")
@@ -233,13 +254,16 @@ export async function updateWaSessionStatus(
   const shouldLog =
     input.logEvenIfUnchanged ||
     previousStatus !== nextStatus ||
-    trustedDisconnect;
+    trustedDisconnect ||
+    transientQrAfterConnected;
 
   if (shouldLog) {
     const suppressedTag = isLateEvent
       ? "late_event"
       : bulkActive
         ? "bulk_active_debounce"
+        : transientQrAfterConnected
+          ? "transient_qr_after_connected"
         : "untrusted_disconnect";
     await logWaSessionEvent(db, {
       userId: input.userId,
@@ -248,7 +272,7 @@ export async function updateWaSessionStatus(
       toStatus: nextStatus,
       source: input.source,
       reason: shouldPreserveConnectedSession
-        ? `ignored_transient_disconnect(${suppressedTag}): ${input.reason ?? input.rawStatus ?? input.bridgeEvent ?? ""}`
+        ? `ignored_transient_${input.nextStatus === "qr" ? "qr" : "disconnect"}(${suppressedTag}): ${input.reason ?? input.rawStatus ?? input.bridgeEvent ?? ""}`
         : input.reason,
       rawStatus: input.rawStatus,
       bridgeEvent: input.bridgeEvent,
