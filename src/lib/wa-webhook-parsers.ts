@@ -124,6 +124,23 @@ export function findSessionId(payload: Record<string, unknown>, headers: Headers
   );
 }
 
+export function tenantIdFromWebhookPayload(payload: Record<string, unknown>): string | null {
+  const data = asObj(payload.data);
+  return (
+    pickStr(payload, "tenantId", "tenant_id", "userId", "user_id") ||
+    pickStr(data, "tenantId", "tenant_id", "userId", "user_id") ||
+    pickStr(asObj(payload.session), "tenantId", "tenant_id", "userId", "user_id") ||
+    pickStr(asObj(payload.instance), "tenantId", "tenant_id", "userId", "user_id") ||
+    null
+  );
+}
+
+export function sessionIdLooksOwnedByTenant(sessionId: string, tenantId: string): boolean {
+  const compactTenant = tenantId.replace(/-/g, "");
+  if (compactTenant.length < 16) return false;
+  return sessionId.startsWith(`flowtix-${compactTenant.slice(0, 16)}-`);
+}
+
 export function parseWaTimestamp(entry: Record<string, unknown>): string | null {
   const timestampNumber = (raw: unknown): number | null => {
     if (typeof raw === "number") return raw;

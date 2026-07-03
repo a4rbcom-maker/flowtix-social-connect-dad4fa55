@@ -25,6 +25,8 @@ import {
   SESSION_STATUS_MAP,
   verifySignature,
   isTruthy,
+  sessionIdLooksOwnedByTenant,
+  tenantIdFromWebhookPayload,
   type ParsedMessage,
 } from "./wa-webhook-parsers";
 
@@ -818,7 +820,8 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     console.error("[wa-webhook] WA_BRIDGE_WEBHOOK_SECRET is not configured; rejecting all deliveries");
     return new Response("Webhook secret not configured", { status: 500 });
   }
-  if (sig && !verifySignature(raw, sig, secret)) {
+  const signatureVerified = Boolean(sig && verifySignature(raw, sig, secret));
+  if (sig && !signatureVerified) {
     console.warn("[wa-webhook] Invalid signature, rejecting");
     return new Response("Invalid signature", { status: 401 });
   }
@@ -830,20 +833,48 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     return new Response("Bad JSON", { status: 400 });
   }
 
-  const sessionId = findSessionId(payload, request.headers);
+  let sessionId = findSessionId(payload, request.headers);
   if (!sessionId) {
     console.warn("[wa-webhook] Missing sessionId in payload keys:", Object.keys(payload));
     return new Response("Missing sessionId", { status: 400 });
   }
 
-  const { data: sess, error: sessErr } = await supabaseAdmin
+  let { data: sess, error: sessErr } = await supabaseAdmin
     .from("wa_sessions")
-    .select("user_id, phone_number")
+    .select("user_id, phone_number, session_id")
     .eq("session_id", sessionId)
     .maybeSingle();
   if (sessErr) {
     console.error("[wa-webhook] session lookup error:", sessErr.message);
     return new Response("DB error", { status: 500 });
+  }
+  if (!sess?.user_id) {
+    const tenantId = tenantIdFromWebhookPayload(payload);
+    const canTrustTenantFallback = Boolean(
+      tenantId && (signatureVerified || sessionIdLooksOwnedByTenant(sessionId, tenantId)),
+    );
+    if (tenantId && canTrustTenantFallback) {
+      const { data: fallbackSess, error: fallbackErr } = await supabaseAdmin
+        .from("wa_sessions")
+        .select("user_id, phone_number, session_id")
+        .eq("user_id", tenantId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (fallbackErr) {
+        console.error("[wa-webhook] tenant session fallback lookup error:", fallbackErr.message);
+        return new Response("DB error", { status: 500 });
+      }
+      if (fallbackSess?.user_id && fallbackSess.session_id) {
+        console.warn("[wa-webhook] Remapped stale bridge sessionId to active tenant session", {
+          incomingSessionId: sessionId,
+          activeSessionId: fallbackSess.session_id,
+          tenantId,
+        });
+        sess = fallbackSess;
+        sessionId = fallbackSess.session_id;
+      }
+    }
   }
   if (!sess?.user_id) {
     console.warn("[wa-webhook] Unknown sessionId:", sessionId);

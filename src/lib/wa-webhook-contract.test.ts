@@ -14,6 +14,8 @@ import {
   normalizeRemoteJid,
   parseMessageEntry,
   SESSION_STATUS_MAP,
+  sessionIdLooksOwnedByTenant,
+  tenantIdFromWebhookPayload,
   verifySignature,
 } from "./wa-webhook-parsers";
 
@@ -206,6 +208,27 @@ describe("Bot-Xtra v1.8.x: sessionId discovery", () => {
 
   it("returns null when nothing is present", () => {
     expect(findSessionId({}, new Headers())).toBeNull();
+  });
+
+  it("reads tenantId from flat Bot-Xtra data payloads for stale-session recovery", () => {
+    expect(tenantIdFromWebhookPayload(BOTXTRA_V18_FLAT_DATA_MESSAGE)).toBe(
+      "4f4b101d-b785-4719-82a3-6f378584739e",
+    );
+  });
+
+  it("recognizes Flowtix session ids generated from the same tenant", () => {
+    expect(
+      sessionIdLooksOwnedByTenant(
+        "flowtix-4f4b101db7854719-mr4ygopx",
+        "4f4b101d-b785-4719-82a3-6f378584739e",
+      ),
+    ).toBe(true);
+    expect(
+      sessionIdLooksOwnedByTenant(
+        "flowtix-deadbeefdeadbeef-mr4ygopx",
+        "4f4b101d-b785-4719-82a3-6f378584739e",
+      ),
+    ).toBe(false);
   });
 });
 
