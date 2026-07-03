@@ -536,7 +536,7 @@ async function updateMessageStatuses(userId: string, sessionId: string, payload:
     if (!pendingAi?.id) continue;
 
     const raw = asObj(pendingAi.raw);
-    const nextStatus = status === "read" ? "read" : status === "delivered" ? "delivered" : status === "failed" ? "failed" : "sent";
+    const nextStatus = status === "read" ? "read" : status === "delivered" ? "delivered" : status === "failed" ? "failed" : "pending";
     const { error: updErr } = await supabaseAdmin
       .from("wa_messages")
       .update({
