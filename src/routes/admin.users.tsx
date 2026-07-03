@@ -355,6 +355,32 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const navigate = useNavigate();
+  const capQ = useQuery({
+    queryKey: ["admin", "can-impersonate"],
+    queryFn: () => canImpersonate({}),
+    staleTime: 5 * 60_000,
+  });
+  const impersonateMut = useMutation({
+    mutationFn: async () => {
+      const res = await impersonateUser({ data: { userId } });
+      // Sign the admin out first so the new session cleanly replaces it.
+      await supabase.auth.signOut();
+      const { error } = await supabase.auth.verifyOtp({
+        token_hash: res.tokenHash,
+        type: "magiclink",
+      });
+      if (error) throw new Error(error.message);
+      return res;
+    },
+    onSuccess: () => {
+      toast.success(t("تم الدخول كهذا المستخدم", "Signed in as this user"));
+      // Hard reload to reset all cached admin state and route into the app.
+      window.location.href = "/dashboard";
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const d = detailQ.data;
   const isAdmin = d?.roles.includes("admin");
 
