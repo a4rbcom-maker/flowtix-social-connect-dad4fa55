@@ -103,25 +103,42 @@ function BulkCleanupCard({ t }: { t: (ar: string, en: string) => string }) {
     mutationFn: () =>
       adminBulkCleanupFlowtixDisconnected({ data: { minAgeDays, dryRun: false } }),
     onSuccess: (res) => {
-      toast.success(
-        t(
-          `تم — حُذف ${res.bridgeDeleted} من البريدج و ${res.dbDeleted} من قاعدة البيانات`,
-          `Done — deleted ${res.bridgeDeleted} on bridge and ${res.dbDeleted} in DB`,
-        ),
-      );
+      const remaining = res.remainingTotal ?? 0;
+      if (remaining > 0) {
+        toast.warning(
+          t(
+            `تم حذف ${res.bridgeDeleted} جلسة، وما زال ${remaining} ظاهرين بعد إعادة الفحص`,
+            `Deleted ${res.bridgeDeleted} sessions; ${remaining} still remain after re-check`,
+          ),
+        );
+        setPreview({
+          dryRun: true,
+          dbCandidateCount: res.remainingDbCandidateCount ?? 0,
+          bridgeCandidateCount: res.remainingBridgeCandidateCount ?? 0,
+          uniqueCandidateCount: remaining,
+          bridgeError: res.bridgeError,
+          preview: res.remainingPreview ?? [],
+        });
+      } else {
+        toast.success(
+          t(
+            `تم التنظيف بالكامل — حُذف ${res.bridgeDeleted} من البريدج و ${res.dbDeleted} من قاعدة البيانات`,
+            `Cleanup complete — deleted ${res.bridgeDeleted} on bridge and ${res.dbDeleted} in DB`,
+          ),
+        );
+        setPreview(null);
+      }
       if (res.bridgeFailed && res.bridgeFailed > 0) {
         toast.warning(
           t(`فشل حذف ${res.bridgeFailed} جلسة`, `${res.bridgeFailed} sessions failed to delete`),
         );
       }
-      setPreview(null);
       setConfirmText("");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const totalCount =
-    (preview?.dbCandidateCount ?? 0) + (preview?.bridgeCandidateCount ?? 0);
+  const totalCount = preview?.uniqueCandidateCount ?? preview?.bridgeCandidateCount ?? 0;
 
   const CONFIRM_WORD = "FLOWTIX";
 
