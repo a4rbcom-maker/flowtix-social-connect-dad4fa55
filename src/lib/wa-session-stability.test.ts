@@ -10,7 +10,7 @@
 //      real "removed device" event) is allowed to flip to disconnected.
 //   4. Sends and receives (updating last_seen_at) never mark a session
 //      as disconnected on their own.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   extractSessionReason,
   isHardSessionGoneError,
