@@ -320,14 +320,14 @@ async function deliverAiTextWithRetry(opts: {
         targetJid: phone,
         contactPhone,
         usedLid: phone.endsWith("@lid"),
-        delivery: "whatsapp_delivery_acknowledged",
+        delivery: "whatsapp_sent",
         attempts,
         bridgeResponses: responses,
       } as never;
       if (messageRowId) {
         await supabaseAdmin
           .from("wa_messages")
-          .update({ status: delivered.status, provider_message_id: providerMessageId, raw })
+          .update({ status: "sent", provider_message_id: providerMessageId, raw })
           .eq("id", messageRowId);
       }
       return { providerMessageId, status: "sent", attempts, lastError: null, responses };
