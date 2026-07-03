@@ -1258,6 +1258,23 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       event,
       skipped,
       entryKeys: entries.map((entry) => Object.keys(entry).slice(0, 12)),
+      diagnostics: entries.slice(0, 3).map((entry) => {
+        const rec = entry as Record<string, unknown>;
+        const bodyRaw = rec.body ?? rec.text ?? rec.caption ?? rec.content ?? null;
+        const bodyStr = typeof bodyRaw === "string" ? bodyRaw : bodyRaw == null ? null : JSON.stringify(bodyRaw).slice(0, 80);
+        return {
+          type: typeof rec.type === "string" ? rec.type : null,
+          hasBody: Boolean(bodyStr && bodyStr.length > 0),
+          bodyPreview: bodyStr ? bodyStr.slice(0, 60) : null,
+          hasFrom: Boolean(rec.from),
+          hasSender: Boolean(rec.sender),
+          hasKey: Boolean(rec.key),
+          hasMessage: Boolean(rec.message),
+          isGroup: Boolean(rec.isGroup),
+          fromMe: Boolean(rec.fromMe),
+          id: typeof rec.id === "string" ? rec.id.slice(0, 24) : null,
+        };
+      }),
     });
   }
 
