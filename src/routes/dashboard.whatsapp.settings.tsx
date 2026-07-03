@@ -4,22 +4,14 @@ import {
   Settings as SettingsIcon,
   Copy,
   CheckCircle2,
-  Webhook,
   Bell,
   BellOff,
-  Link2,
   ShieldCheck,
-  Clock,
-  AlertCircle,
-  PlayCircle,
-  Loader2,
-  XCircle,
+  Volume2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useServerFn } from "@tanstack/react-start";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { useI18n } from "@/lib/i18n";
-import { pingWaBridgeUser, testWaWebhook, type WaWebhookTestResult } from "@/lib/wa.functions";
 
 
 export const Route = createFileRoute("/dashboard/whatsapp/settings")({
@@ -37,40 +29,12 @@ function WaSettingsPage() {
   const [notify, setNotify] = useState(true);
   const [sound, setSound] = useState(true);
   const [permission, setPermission] = useState<NotificationPermission>("default");
-  const [bridgeOk, setBridgeOk] = useState<boolean | null>(null);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<WaWebhookTestResult | null>(null);
-  const ping = useServerFn(pingWaBridgeUser);
-  const runTest = useServerFn(testWaWebhook);
-
-  const onRunTest = async () => {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const r = await runTest({ data: {} as any });
-      setTestResult(r);
-      if (r.ok) toast.success(lang === "ar" ? "تم استلام الرسالة بنجاح" : "Webhook delivery succeeded");
-      else toast.error(lang === "ar" ? "فشل اختبار الـ webhook" : "Webhook test failed");
-    } catch (e) {
-      setTestResult({
-        ok: false, httpStatus: 0, responseBody: "", saved: 0,
-        sessionId: null, messageStored: false, aiLogStatus: null, aiError: null, aiResponseStored: false,
-        error: e instanceof Error ? e.message : String(e),
-      });
-      toast.error(lang === "ar" ? "خطأ في تشغيل الاختبار" : "Test failed to run");
-    } finally {
-      setTesting(false);
-    }
-  };
 
   useEffect(() => {
     setOrigin(typeof window !== "undefined" ? window.location.origin : "");
     setNotify(localStorage.getItem(NOTIF_KEY) !== "0");
     setSound(localStorage.getItem(SOUND_KEY) !== "0");
     if (typeof Notification !== "undefined") setPermission(Notification.permission);
-    ping({ data: {} as any })
-      .then((r: any) => setBridgeOk(Boolean(r?.ok)))
-      .catch(() => setBridgeOk(false));
   }, []);
 
 
@@ -178,125 +142,8 @@ function WaSettingsPage() {
           </div>
         </div>
 
-        {/* Bridge status */}
-        {(() => {
-          const isOk = bridgeOk === true;
-          const isDown = bridgeOk === false;
-          const tone = isOk
-            ? { iconBg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", chip: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", Icon: CheckCircle2 }
-            : isDown
-              ? { iconBg: "bg-rose-500/10 text-rose-600 dark:text-rose-400", chip: "bg-rose-500/15 text-rose-700 dark:text-rose-300", Icon: AlertCircle }
-              : { iconBg: "bg-amber-500/10 text-amber-600 dark:text-amber-400", chip: "bg-amber-500/15 text-amber-700 dark:text-amber-300", Icon: Clock };
-          const desc = isOk ? t.bridgeDescOk : isDown ? t.bridgeDescDown : t.bridgeDescChecking;
-          const status = isOk ? t.bridgeStatusOk : isDown ? t.bridgeStatusDown : t.bridgeStatusChecking;
-          return (
-            <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${tone.iconBg}`}>
-                    <Link2 className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-bold text-foreground">{t.bridgeTitle}</h2>
-                    <p className="mt-0.5 text-sm text-muted-foreground">{desc}</p>
-                  </div>
-                </div>
-                <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${tone.chip}`}>
-                  <tone.Icon className="h-3.5 w-3.5" />
-                  {status}
-                </span>
-              </div>
-            </div>
-          );
-        })()}
+        {/* Bridge status & Webhook test are admin-only diagnostics — hidden from client settings */}
 
-
-        {/* Webhook test mode */}
-        <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Webhook className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-foreground">
-                  {lang === "ar" ? "اختبار الـ Webhook" : "Webhook Test Mode"}
-                </h2>
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  {lang === "ar"
-                    ? "ابعت رسالة تجريبية موقّعة للـ webhook واتأكد إنها اتخزنت وشغّلت وكيل AI أو اعرف سبب الفشل."
-                    : "Send a signed synthetic message to the webhook and verify storage plus AI execution or the failure reason."}
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onRunTest}
-              disabled={testing}
-              className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90 disabled:opacity-60"
-            >
-              {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
-              {lang === "ar" ? "تشغيل الاختبار" : "Run test"}
-            </button>
-          </div>
-
-          {testResult && (
-            <div className={`mt-4 rounded-xl border p-4 text-sm ${
-              testResult.ok
-                ? "border-emerald-500/30 bg-emerald-500/5"
-                : "border-rose-500/30 bg-rose-500/5"
-            }`}>
-              <div className="flex items-center gap-2 font-semibold">
-                {testResult.ok ? (
-                  <><CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
-                    <span className="text-emerald-700 dark:text-emerald-300">
-                      {lang === "ar" ? "تم الاستلام بنجاح" : "Delivery succeeded"}
-                    </span></>
-                ) : (
-                  <><XCircle className="h-4 w-4 text-rose-600 dark:text-rose-300" />
-                    <span className="text-rose-700 dark:text-rose-300">
-                      {lang === "ar" ? "فشل الاستلام" : "Delivery failed"}
-                    </span></>
-                )}
-              </div>
-              <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                <dt>HTTP</dt><dd className="font-mono text-foreground">{testResult.httpStatus || "—"}</dd>
-                <dt>{lang === "ar" ? "تم التخزين" : "Stored"}</dt>
-                <dd className="font-mono text-foreground">{testResult.messageStored ? "✓" : "✗"}</dd>
-                <dt>{lang === "ar" ? "عدد المحفوظ" : "Saved count"}</dt>
-                <dd className="font-mono text-foreground">{testResult.saved}</dd>
-                <dt>Session</dt>
-                <dd className="truncate font-mono text-foreground">{testResult.sessionId ?? "—"}</dd>
-                <dt>{lang === "ar" ? "تشغيل AI" : "AI run"}</dt>
-                <dd className="font-mono text-foreground">{testResult.aiLogStatus ?? "—"}</dd>
-                <dt>{lang === "ar" ? "رد AI محفوظ" : "AI response stored"}</dt>
-                <dd className="font-mono text-foreground">{testResult.aiResponseStored ? "✓" : "✗"}</dd>
-              </dl>
-              {testResult.aiError && (
-                <div className="mt-3 rounded-lg bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
-                  <div className="font-semibold mb-1">{lang === "ar" ? "سبب فشل AI" : "AI failure reason"}</div>
-                  <div className="font-mono break-all whitespace-pre-wrap">{testResult.aiError}</div>
-                </div>
-              )}
-              {testResult.error && (
-                <div className="mt-3 rounded-lg bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-300">
-                  <div className="font-semibold mb-1">{lang === "ar" ? "سبب الفشل" : "Failure reason"}</div>
-                  <div className="font-mono break-all whitespace-pre-wrap">{testResult.error}</div>
-                </div>
-              )}
-              {testResult.responseBody && (
-                <details className="mt-3">
-                  <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">
-                    {lang === "ar" ? "رد الخادم" : "Server response"}
-                  </summary>
-                  <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-muted p-3 text-[11px] text-foreground">{testResult.responseBody}</pre>
-                </details>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Webhook URL section is admin-only; hidden from client settings */}
 
 
         {/* Notifications */}
@@ -320,7 +167,7 @@ function WaSettingsPage() {
               onChange={toggleNotify}
             />
             <ToggleRow
-              icon={Clock}
+              icon={Volume2}
               title={t.soundEnable}
               desc={t.soundEnableDesc}
               value={sound}
