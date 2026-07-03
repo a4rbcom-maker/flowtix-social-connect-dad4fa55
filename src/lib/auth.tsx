@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef, type ReactNode 
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 import { toast } from "sonner";
-import { clearImpersonationBackup } from "@/lib/impersonation";
+import { clearImpersonationBackup, readImpersonationBackup } from "@/lib/impersonation";
 
 interface AuthContextType {
   user: User | null;
