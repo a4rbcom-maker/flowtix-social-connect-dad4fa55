@@ -10,7 +10,7 @@
 //      real "removed device" event) is allowed to flip to disconnected.
 //   4. Sends and receives (updating last_seen_at) never mark a session
 //      as disconnected on their own.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   extractSessionReason,
   isHardSessionGoneError,
@@ -415,6 +415,109 @@ describe("extractSessionReason — full branch coverage of helpers (lines 22-68)
     expect(isHardSessionGoneError(undefined)).toBe(false);
     expect(isHardSessionGoneError("string error" as any)).toBe(false);
     expect(isHardSessionGoneError({ status: 404, message: "x" } as any)).toBe(false);
+  });
+});
+
+describe("updateWaSessionStatus — DB failure paths (lines 121 & 135)", () => {
+  const userId = "u1";
+  const sessionId = "s1";
+
+  it("logWaSessionEvent swallows insert failures and warns (line 121)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // DB where wa_session_events.insert throws, everything else is a noop.
+    const db: any = {
+      from: (table: string) => {
+        if (table === "wa_session_events") {
+          return {
+            insert: async () => {
+              throw new Error("audit table unavailable");
+            },
+          };
+        }
+        if (table === "wa_sessions") {
+          const api: any = {
+            select: () => api,
+            eq: () => api,
+            update: () => api,
+            maybeSingle: async () => ({ data: { status: "connected", last_seen_at: null } }),
+          };
+          return api;
+        }
+        if (table === "whatsapp_settings") {
+          return { update: () => ({ eq: async () => ({ data: null, error: null }) }) };
+        }
+        throw new Error(`unmocked: ${table}`);
+      },
+    };
+
+    // A real status transition forces a log write → hits the catch on line 121.
+    await expect(
+      updateWaSessionStatus(db, {
+        userId,
+        sessionId,
+        nextStatus: "disconnected",
+        source: "disconnect",
+        reason: "user_logout",
+      }),
+    ).resolves.not.toThrow();
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("[wa-session-events] insert failed:"),
+      expect.anything(),
+    );
+    warn.mockRestore();
+  });
+
+  it("hasActiveBulkCampaign returns false when the DB query throws (line 135)", async () => {
+    // bulk_jobs query throws → catch returns false → untrusted disconnect
+    // still gets debounced by the preserve-connected rule, session stays.
+    const db: any = {
+      from: (table: string) => {
+        if (table === "bulk_jobs") {
+          const api: any = {
+            select: () => api,
+            eq: () => api,
+            in: () => ({
+              limit: async () => {
+                throw new Error("bulk_jobs unavailable");
+              },
+            }),
+          };
+          return api;
+        }
+        if (table === "wa_sessions") {
+          const state = { status: "connected", last_seen_at: new Date().toISOString() };
+          const api: any = {
+            select: () => api,
+            eq: () => api,
+            update: (payload: any) => {
+              Object.assign(state, payload);
+              return api;
+            },
+            maybeSingle: async () => ({ data: { ...state } }),
+          };
+          return api;
+        }
+        if (table === "wa_session_events") {
+          return { insert: async () => ({ data: null, error: null }) };
+        }
+        if (table === "whatsapp_settings") {
+          return { update: () => ({ eq: async () => ({ data: null, error: null }) }) };
+        }
+        throw new Error(`unmocked: ${table}`);
+      },
+    };
+
+    const prev = await updateWaSessionStatus(db, {
+      userId,
+      sessionId,
+      nextStatus: "disconnected",
+      source: "webhook_status",
+      reason: "socket closed", // untrusted → triggers hasActiveBulkCampaign
+    });
+
+    // Function returned normally and reports the previous status it read.
+    expect(prev).toBe("connected");
   });
 });
 
