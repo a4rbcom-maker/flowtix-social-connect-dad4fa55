@@ -1,7 +1,8 @@
 // Keyword auto-reply matcher. Runs before AI handler in the webhook so a
 // matched keyword short-circuits the AI flow entirely.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { waBridge } from "./wa-bridge.server";
+import { sendTextWithReconnect } from "./wa-bridge.server";
+import { deriveWebhookUrl } from "./wa-helpers.server";
 
 interface KeywordRuleRow {
   id: string;
@@ -71,7 +72,12 @@ export async function tryKeywordAutoReply(opts: {
         : `${phone}@s.whatsapp.net`;
 
     try {
-      await waBridge.sendText(sessionId, to, matched.reply_text);
+      const webhookUrl = await deriveWebhookUrl();
+      await sendTextWithReconnect(sessionId, to, matched.reply_text, {
+        webhookUrl: webhookUrl ?? undefined,
+        tenantId: userId,
+        recipientPhone: phone,
+      });
     } catch (err) {
       console.error("[wa-keyword] bridge send failed:", err);
       return false;
