@@ -67,7 +67,9 @@ function AdminWhatsappPage() {
             <KpiCard icon={Sparkles} label={t("توكِنز الذكاء (7أ)", "AI tokens (7d)")} value={totals?.ai_tokens_7d ?? 0} tone="amber" />
           </div>
 
+          <BulkCleanupCard t={t} />
           <SessionCleanupCard t={t} />
+
         </div>
       )}
     </AdminLayout>
