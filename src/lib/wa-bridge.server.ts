@@ -515,6 +515,7 @@ export const waBridge = {
     const phone = explicitPhone || normalizeWhatsappPhone(to) || "";
     const jid = to.includes("@") ? to : `${phone}@s.whatsapp.net`;
     const isLid = jid.endsWith("@lid");
+    const lidDigits = isLid ? jid.split("@")[0] : "";
     const publicJid = explicitPhone ? `${explicitPhone}@s.whatsapp.net` : null;
     return bridgeFetch<BridgeSendResponse>(
       `/api/sessions/${encodeURIComponent(id)}/send`,
@@ -524,12 +525,11 @@ export const waBridge = {
           to: jid,
           jid,
           chatId: jid,
-          // For modern WhatsApp contacts Bot-Xtra/Baileys may require the LID
-          // chat id for routing, while still needing the public phone as PN
-          // metadata. Supplying both is backward compatible and prevents sends
-          // from staying forever in the bridge queue with only queuedId.
           ...(phone && !isLid ? { phone } : {}),
-          ...(isLid && explicitPhone ? { phone: explicitPhone } : {}),
+          // LID conversations: even when we don't yet know the customer's real
+          // public phone, still route via the LID address (digits + explicit
+          // LID hints) so the bridge does not silently drop the send.
+          ...(isLid ? { phone: explicitPhone || lidDigits, lid: jid, useLid: true, addressingMode: "lid" } : {}),
           ...(isLid && publicJid ? { recipientPn: publicJid, participantPn: publicJid, senderPn: publicJid } : {}),
           type: "text",
           text,
