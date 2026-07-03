@@ -363,7 +363,19 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
   });
   const impersonateMut = useMutation({
     mutationFn: async () => {
+      // Save the admin's current session so we can restore it after impersonation.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const currentSession = sessionData.session;
       const res = await impersonateUser({ data: { userId } });
+      if (currentSession?.access_token && currentSession?.refresh_token) {
+        const { saveAdminBackup } = await import("@/components/admin/ImpersonationBanner");
+        saveAdminBackup({
+          access_token: currentSession.access_token,
+          refresh_token: currentSession.refresh_token,
+          admin_email: currentSession.user?.email ?? "admin",
+          target_email: res.email,
+        });
+      }
       // Sign the admin out first so the new session cleanly replaces it.
       await supabase.auth.signOut();
       const { error } = await supabase.auth.verifyOtp({
@@ -380,6 +392,7 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
 
   const d = detailQ.data;
   const isAdmin = d?.roles.includes("admin");
