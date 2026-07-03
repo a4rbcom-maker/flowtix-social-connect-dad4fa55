@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef, type ReactNode 
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 import { toast } from "sonner";
-import { clearImpersonationBackup } from "@/lib/impersonation";
+import { clearImpersonationBackup, readImpersonationBackup } from "@/lib/impersonation";
 
 interface AuthContextType {
   user: User | null;
@@ -191,7 +191,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Manual sign-out shouldn't trigger the "expired" toast.
     expiredHandledRef.current = true;
     hadSessionRef.current = false;
-    clearImpersonationBackup();
+
+    // If an admin is currently impersonating another user, "logout" should
+    // restore the admin's original session and return them to /admin/users,
+    // NOT sign everyone out and dump them on /login?reason=expired.
+    const backup = readImpersonationBackup();
+    if (backup) {
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+        const { error } = await supabase.auth.setSession({
+          access_token: backup.access_token,
+          refresh_token: backup.refresh_token,
+        });
+        clearImpersonationBackup();
+        if (!error) {
+          toast.success("تم الرجوع لحساب الأدمن");
+          window.location.href = "/admin/users";
+          return;
+        }
+        // Backup tokens are expired/invalid — fall through to a normal signout.
+        toast.error("انتهت جلسة الأدمن الأصلية، يرجى تسجيل الدخول مجدداً");
+      } catch {
+        clearImpersonationBackup();
+      }
+    } else {
+      clearImpersonationBackup();
+    }
+
     await supabase.auth.signOut();
   };
 
