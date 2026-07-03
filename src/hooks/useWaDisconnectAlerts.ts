@@ -74,23 +74,27 @@ export function useWaDisconnectAlerts(lang: "ar" | "en"): WaDisconnectAlertsStat
       const rows = sessionRows ?? [];
       const rawDisconnectedCount = rows.filter((row) => row.status === "disconnected").length;
       const cCount = rows.filter((row) => row.status === "connected").length;
-      const gCount = rows.filter((row) => ["connecting", "qr", "pairing"].includes(String(row.status))).length;
+      const qrCount = rows.filter((row) => ["qr", "pairing"].includes(String(row.status))).length;
+      const connectingCount = rows.filter((row) => row.status === "connecting").length;
       const settingsConnected = settings?.is_connected === true;
       const latestDisconnect = latestDisconnectEvents?.[0];
       const lastActivityAt = latestConversation?.[0]?.last_message_at ? Date.parse(latestConversation[0].last_message_at) : 0;
       const disconnectAt = latestDisconnect?.created_at ? Date.parse(latestDisconnect.created_at) : 0;
       const activityAfterDisconnect = lastActivityAt > 0 && (!disconnectAt || lastActivityAt >= disconnectAt);
-      const effectiveConnectedCount = cCount > 0 || (settingsConnected && gCount === 0) || activityAfterDisconnect ? Math.max(1, cCount) : 0;
-      const effectiveDisconnectedCount = effectiveConnectedCount > 0 ? 0 : rawDisconnectedCount;
+      const effectiveConnectedCount = cCount > 0 || (settingsConnected && qrCount === 0 && connectingCount === 0) || activityAfterDisconnect ? Math.max(1, cCount) : 0;
+      // Count QR-stuck sessions as "disconnected" for the header count — they need user action.
+      const effectiveDisconnectedCount = effectiveConnectedCount > 0 ? 0 : rawDisconnectedCount + qrCount;
 
       setDisconnectedCount(effectiveDisconnectedCount);
       setConnectedCount(effectiveConnectedCount);
       setStatus(
         effectiveConnectedCount > 0 ? "connected"
-        : gCount > 0 ? "connecting"
+        : qrCount > 0 ? "needs_qr"
+        : connectingCount > 0 ? "connecting"
         : rawDisconnectedCount > 0 ? "disconnected"
         : "unknown",
       );
+
       if (effectiveConnectedCount > 0) {
         setLastReason(null);
         setLastAt(null);
