@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useI18n } from "@/lib/i18n";
-import { getAdminWhatsappOverview, listAdminUsers } from "@/lib/admin.functions";
+import { getAdminWhatsappOverview } from "@/lib/admin.functions";
 import {
   adminListUserWaSessions,
   adminCleanupUserWaSession,
