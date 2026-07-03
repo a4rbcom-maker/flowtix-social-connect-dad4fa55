@@ -1233,9 +1233,14 @@ function InboxPage() {
                   </p>
                   {(() => {
                     const jid = activeConv?.remote_jid ?? activeJid ?? "";
-                    const isLid = jid.endsWith("@lid");
+                    const isLidJid = jid.endsWith("@lid");
                     const isGroup = jid.endsWith("@g.us");
                     if (isGroup) return null;
+                    const knownPhone = digits(activeConv?.contact_phone ?? "");
+                    // If we already know the customer's real phone number,
+                    // treat the chat as fully identified even when routing
+                    // still happens via the WhatsApp Linked ID address.
+                    const isLid = isLidJid && !knownPhone;
                     return (
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -1258,8 +1263,8 @@ function InboxPage() {
                               ? "هذه محادثة بمعرف واتساب مرتبط (@lid) يُخفي الرقم الحقيقي لحماية خصوصية المرسل. سيتم ربط الرقم الفعلي تلقائياً عند وصول أول رسالة يظهر فيها الرقم، أو يمكنك الضغط على «مطابقة الأرقام»."
                               : "This chat uses WhatsApp's Linked ID (@lid) which hides the real phone number for privacy. The real number will link automatically once a message reveals it, or you can run \"Match numbers\" manually."
                             : isAr
-                              ? "هذه محادثة برقم هاتف فعلي مكشوف من واتساب."
-                              : "This chat exposes the contact's real phone number."}
+                              ? "تم التعرّف على رقم العميل الفعلي، والمحادثة تعمل بشكل طبيعي."
+                              : "The contact's real phone number is identified and the chat works normally."}
                         </TooltipContent>
                       </Tooltip>
                     );
