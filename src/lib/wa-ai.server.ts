@@ -292,7 +292,7 @@ async function deliverAiTextWithRetry(opts: {
         await supabaseAdmin
           .from("wa_messages")
           .update({
-            status: "pending",
+            status: "sent",
             provider_message_id: providerMessageId,
             raw: {
               ai: true,
@@ -304,26 +304,13 @@ async function deliverAiTextWithRetry(opts: {
               contactPhone,
               usedLid: phone.endsWith("@lid"),
               queuedId,
-              delivery: "whatsapp_sent_waiting_for_delivery_ack",
+              delivery: "whatsapp_sent",
               attempts,
               bridgeResponses: responses,
             } as never,
           })
           .eq("id", messageRowId);
       }
-      const delivered = await waitForConfirmedOutbound({
-        userId,
-        sessionId,
-        remoteJid,
-        text,
-        sinceIso: sentAt,
-        excludeMessageId: messageRowId,
-      });
-      if (!delivered) {
-        lastError = queuedId ? `bridge_queued_pending_delivery_ack:${queuedId}` : "whatsapp_sent_waiting_for_delivery_ack";
-        return { providerMessageId, status: "pending", attempts, lastError, responses };
-      }
-      providerMessageId = delivered.providerMessageId;
       const raw = {
         ai: true,
         kind,

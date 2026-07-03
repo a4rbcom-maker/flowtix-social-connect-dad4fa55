@@ -236,8 +236,8 @@ export const sendChatMessage = createServerFn({ method: "POST" })
           });
       const queuedId = bridgeSendQueuedMessage(res);
       let providerMessageId: string | null = null;
-      let status = "pending";
-      let delivery = "whatsapp_sent_waiting_for_delivery_ack";
+      let status = "sent";
+      let delivery = "whatsapp_sent";
       try {
         providerMessageId = assertBridgeSendQueued(res);
       } catch (err) {
@@ -344,8 +344,8 @@ export const sendTestMessage = createServerFn({ method: "POST" })
       });
       const queuedId = bridgeSendQueuedMessage(res);
       let providerMessageId: string | null = null;
-      let status = "pending";
-      let delivery = "whatsapp_sent_waiting_for_delivery_ack";
+      let status = "sent";
+      let delivery = "whatsapp_sent";
       try {
         providerMessageId = assertBridgeSendQueued(res);
       } catch (err) {
