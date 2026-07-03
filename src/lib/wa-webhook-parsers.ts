@@ -243,6 +243,14 @@ export function extractTextFromMessage(m: Record<string, unknown>): { text: stri
   const extText = pickStr(ext, "text");
   if (extText) return { text: extText, type: "text", mediaUrl: null };
 
+  // Bot-Xtra sometimes emits own/history message rows with type="text" and a
+  // provider id/timestamp, but with an empty body. Those rows still prove the
+  // chat exists; keep them as empty text messages instead of dropping the whole
+  // conversation from the inbox.
+  if (flatType === "text" || flatType === "conversation") {
+    return { text: null, type: "text", mediaUrl: null };
+  }
+
   const img = asObj(msg.imageMessage);
   if (Object.keys(img).length) {
     return { text: pickStr(img, "caption"), type: "image", mediaUrl: pickStr(img, "url", "directPath") };
