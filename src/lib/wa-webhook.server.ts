@@ -436,7 +436,7 @@ async function updateMessageStatuses(userId: string, sessionId: string, payload:
     const providerMessageId = messageIdFrom(entry);
     const rawStatus = pickStr(entry, "status", "ack", "messageStatus", "deliveryStatus");
     if (!providerMessageId || !rawStatus) continue;
-    const status = normalizeMessageStatus(rawStatus, true);
+    const status = persistedOutboundStatus(normalizeMessageStatus(rawStatus, true), true);
     const { data: matchedRows, error } = await supabaseAdmin
       .from("wa_messages")
       .update({ status })
