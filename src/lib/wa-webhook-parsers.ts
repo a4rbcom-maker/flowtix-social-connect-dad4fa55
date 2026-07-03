@@ -296,7 +296,10 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
   const rawFromLooksLikeLid = Boolean(
     !isGroup &&
       rawFromDigits &&
-      ((explicitPhone && rawFromDigits !== explicitPhone) || jidType === "lid" || looksLikeLidAlias(rawFromDigits)),
+      (
+        (!fromMe && ((explicitPhone && rawFromDigits !== explicitPhone) || jidType === "lid" || looksLikeLidAlias(rawFromDigits))) ||
+        (fromMe && jidType === "lid" && explicitPhone && rawFromDigits !== explicitPhone)
+      ),
   );
   const rawFromLidJid = rawFromLooksLikeLid && rawFromDigits ? `${rawFromDigits}@lid` : null;
   const realPhone =
