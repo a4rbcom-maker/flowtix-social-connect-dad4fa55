@@ -268,4 +268,95 @@ describe("updateWaSessionStatus — stability guarantees", () => {
     // last_seen_at must advance to (roughly) the reconnect moment.
     expect(Date.parse(state.session.last_seen_at)).toBeGreaterThanOrEqual(now);
   });
+
+  it("network drop already flipped session to disconnected: reconnect heartbeat brings it back to connected + clears whatsapp_settings", async () => {
+    const { db, state } = makeDb({
+      session: { status: "disconnected", last_seen_at: new Date(now - 30_000).toISOString() },
+    });
+
+    await updateWaSessionStatus(db, {
+      userId,
+      sessionId,
+      nextStatus: "connected",
+      source: "webhook_status",
+    });
+
+    expect(state.session.status).toBe("connected");
+    expect(Date.parse(state.session.last_seen_at)).toBeGreaterThanOrEqual(now);
+    expect(state.settingsUpdates.at(-1)?.is_connected).toBe(true);
+  });
+
+  it("rapid flap: disconnect → connect → disconnect(transient) → connect stays connected end-to-end", async () => {
+    const { db, state } = makeDb({
+      session: { status: "connected", last_seen_at: new Date(now).toISOString() },
+    });
+
+    await updateWaSessionStatus(db, {
+      userId, sessionId, nextStatus: "disconnected",
+      source: "webhook_status", reason: "socket closed",
+    });
+    await updateWaSessionStatus(db, {
+      userId, sessionId, nextStatus: "connected", source: "webhook_status",
+    });
+    await updateWaSessionStatus(db, {
+      userId, sessionId, nextStatus: "disconnected",
+      source: "webhook_status", reason: "connection reset",
+    });
+    await updateWaSessionStatus(db, {
+      userId, sessionId, nextStatus: "connected", source: "webhook_status",
+    });
+
+    expect(state.session.status).toBe("connected");
+    expect(state.settingsUpdates.some((u) => u.is_connected === false)).toBe(false);
+  });
+
+  it("poll-driven reconnect: a poll reporting connected restores a previously-disconnected session", async () => {
+    const { db, state } = makeDb({
+      session: { status: "disconnected", last_seen_at: new Date(now - 120_000).toISOString() },
+    });
+
+    await updateWaSessionStatus(db, {
+      userId, sessionId, nextStatus: "connected", source: "poll",
+    });
+
+    expect(state.session.status).toBe("connected");
+    expect(state.events.at(-1)?.to_status).toBe("connected");
+  });
+});
+
+describe("extractSessionReason", () => {
+  it("prefers explicit reason fields", () => {
+    expect(extractSessionReason({}, { reason: "user_logout" })).toBe("user_logout");
+    expect(extractSessionReason({ disconnectReason: "device_removed" })).toBe("device_removed");
+  });
+  it("falls back to lastDisconnect.error.message", () => {
+    expect(
+      extractSessionReason({}, {
+        lastDisconnect: { error: { message: "socket closed by remote" } },
+      }),
+    ).toBe("socket closed by remote");
+  });
+  it("returns null when nothing meaningful is present", () => {
+    expect(extractSessionReason({}, {})).toBeNull();
+    expect(extractSessionReason({ reason: "   " }, {})).toBeNull();
+  });
+  it("serializes objects as fallback", () => {
+    const out = extractSessionReason({}, { error: { code: 401, kind: "unauthorized" } });
+    expect(out).toContain("401");
+  });
+});
+
+describe("isHardSessionGoneError", () => {
+  it("treats 404 BridgeError as session gone", () => {
+    expect(isHardSessionGoneError(new BridgeError("session missing", 404))).toBe(true);
+  });
+  it("treats logged_out/closed messages as session gone", () => {
+    expect(isHardSessionGoneError(new BridgeError("session logged out", 500))).toBe(true);
+    expect(isHardSessionGoneError(new BridgeError("socket closed", 500))).toBe(true);
+  });
+  it("does not treat generic errors or non-BridgeError as session gone", () => {
+    expect(isHardSessionGoneError(new BridgeError("temporary glitch", 500))).toBe(false);
+    expect(isHardSessionGoneError(new Error("boom"))).toBe(false);
+    expect(isHardSessionGoneError(null)).toBe(false);
+  });
 });
