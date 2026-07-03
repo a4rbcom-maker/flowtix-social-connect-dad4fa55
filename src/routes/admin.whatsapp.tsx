@@ -627,12 +627,15 @@ function SessionEventsHistory({
   sessionId: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [limit, setLimit] = useState(50);
   const eventsQ = useQuery({
-    queryKey: ["admin", "wa-cleanup", "events", userId, sessionId],
-    queryFn: () => adminGetWaSessionEvents({ data: { userId, sessionId, limit: 50 } }),
+    queryKey: ["admin", "wa-cleanup", "events", userId, sessionId, limit],
+    queryFn: () => adminGetWaSessionEvents({ data: { userId, sessionId, limit } }),
     enabled: open,
   });
   const events = eventsQ.data?.events ?? [];
+  const canLoadMore = events.length >= limit && limit < 200;
+
 
   return (
     <div className="border-t border-border bg-background/40">
