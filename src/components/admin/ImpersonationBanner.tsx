@@ -50,6 +50,15 @@ export function ImpersonationBanner() {
 
   if (!backup) return null;
 
+  const clearBackup = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    setBackup(null);
+  };
+
   const handleRestore = async () => {
     setRestoring(true);
     try {
@@ -58,13 +67,25 @@ export function ImpersonationBanner() {
         access_token: backup.access_token,
         refresh_token: backup.refresh_token,
       });
-      if (error) throw new Error(error.message);
-      localStorage.removeItem(STORAGE_KEY);
+      // Always clear the stored backup — even on failure the tokens are
+      // consumed/expired, so retrying keeps failing and the banner would
+      // stay stuck. Better to force a clean sign-in.
+      clearBackup();
+      if (error) {
+        toast.error(
+          isArabic
+            ? "انتهت جلسة الأدمن الأصلية، يرجى تسجيل الدخول مجدداً"
+            : "Original admin session expired, please sign in again",
+        );
+        window.location.href = "/login";
+        return;
+      }
       toast.success(isArabic ? "تم الرجوع لحسابك" : "Restored to your account");
       window.location.href = "/admin/users";
     } catch (e) {
+      clearBackup();
       toast.error((e as Error).message);
-      setRestoring(false);
+      window.location.href = "/login";
     }
   };
 
