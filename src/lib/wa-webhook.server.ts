@@ -1040,7 +1040,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         const raw = asObj(existing.raw);
         const bulkRecipientId = pickStr(raw, "bulkRecipientId", "bulk_recipient_id");
         const bulkJobId = pickStr(raw, "bulkJobId", "bulk_job_id");
-        const nextStatus = m.status === "received" && m.fromMe ? "sent" : m.status;
+        const nextStatus = m.status === "received" && m.fromMe ? "pending" : persistedOutboundStatus(m.status, m.fromMe);
         await supabaseAdmin.from("wa_messages").update({ status: nextStatus }).eq("id", existing.id);
         if (m.fromMe && (isBulkDeliverySuccess(nextStatus) || nextStatus === "failed") && bulkRecipientId) {
           await supabaseAdmin
@@ -1106,7 +1106,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         const raw = asObj(pendingAi.raw);
         const bulkRecipientId = pickStr(raw, "bulkRecipientId", "bulk_recipient_id");
         const bulkJobId = pickStr(raw, "bulkJobId", "bulk_job_id");
-        const nextStatus = m.status === "received" ? "sent" : m.status;
+        const nextStatus = m.status === "received" ? "pending" : persistedOutboundStatus(m.status, true);
         await supabaseAdmin
           .from("wa_messages")
           .update({
