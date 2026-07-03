@@ -1614,3 +1614,54 @@ export const adminBulkCleanupFlowtixDisconnected = createServerFn({ method: "POS
       bridgeError,
     };
   });
+
+// ---------- Users with problematic WA sessions (auto-list for admin) ----------
+export const adminListUsersWithBadWaSessions = createServerFn({ method: "GET" })
+  .middleware([requireAdmin])
+  .handler(async () => {
+    const db = admin();
+    const { data: rows, error } = await db
+      .from("wa_sessions")
+      .select("user_id, session_id, status, updated_at, phone_number")
+      .in("status", ["disconnected", "qr", "pairing"])
+      .order("updated_at", { ascending: true });
+    if (error) throw new Error(error.message);
+
+    const byUser = new Map<
+      string,
+      { userId: string; sessions: number; disconnected: number; qr: number; oldest: string | null }
+    >();
+    for (const r of rows ?? []) {
+      const cur = byUser.get(r.user_id) ?? {
+        userId: r.user_id,
+        sessions: 0,
+        disconnected: 0,
+        qr: 0,
+        oldest: null,
+      };
+      cur.sessions += 1;
+      if (r.status === "disconnected") cur.disconnected += 1;
+      if (r.status === "qr" || r.status === "pairing") cur.qr += 1;
+      if (!cur.oldest || (r.updated_at && r.updated_at < cur.oldest)) cur.oldest = r.updated_at;
+      byUser.set(r.user_id, cur);
+    }
+
+    const userIds = Array.from(byUser.keys());
+    if (userIds.length === 0) return { users: [] };
+
+    const { data: profiles } = await db
+      .from("profiles")
+      .select("id, full_name, avatar_url")
+      .in("id", userIds);
+    const profMap = new Map((profiles ?? []).map((p) => [p.id, p]));
+
+    const users = Array.from(byUser.values())
+      .map((u) => ({
+        ...u,
+        full_name: profMap.get(u.userId)?.full_name ?? null,
+        avatar_url: profMap.get(u.userId)?.avatar_url ?? null,
+      }))
+      .sort((a, b) => (a.oldest ?? "").localeCompare(b.oldest ?? ""));
+
+    return { users };
+  });

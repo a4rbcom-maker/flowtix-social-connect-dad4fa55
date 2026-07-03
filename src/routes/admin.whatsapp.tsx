@@ -19,12 +19,14 @@ import {
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useI18n } from "@/lib/i18n";
-import { getAdminWhatsappOverview, listAdminUsers } from "@/lib/admin.functions";
+import { getAdminWhatsappOverview } from "@/lib/admin.functions";
 import {
   adminListUserWaSessions,
   adminCleanupUserWaSession,
   adminBulkCleanupFlowtixDisconnected,
+  adminListUsersWithBadWaSessions,
 } from "@/lib/admin.functions";
+
 import { toast } from "sonner";
 
 
@@ -239,14 +241,13 @@ function BulkCleanupCard({ t }: { t: (ar: string, en: string) => string }) {
 
 
 function SessionCleanupCard({ t }: { t: (ar: string, en: string) => string }) {
-  const [search, setSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState<{ id: string; full_name: string | null } | null>(null);
   const qc = useQueryClient();
 
-  const usersQ = useQuery({
-    queryKey: ["admin", "wa-cleanup", "users", search],
-    queryFn: () => listAdminUsers({ data: { search, limit: 20 } }),
-    enabled: search.trim().length >= 2,
+  const badUsersQ = useQuery({
+    queryKey: ["admin", "wa-cleanup", "bad-users"],
+    queryFn: () => adminListUsersWithBadWaSessions(),
+    refetchInterval: 30_000,
   });
 
   const sessionsQ = useQuery({
@@ -261,14 +262,17 @@ function SessionCleanupCard({ t }: { t: (ar: string, en: string) => string }) {
     onSuccess: (res) => {
       toast.success(
         t(
-          `تم الحذف — البريدج: ${res.bridgeDeleted ? "✓" : "✗"} / قاعدة البيانات: ${res.dbDeleted ? "✓" : "—"}`,
-          `Deleted — bridge: ${res.bridgeDeleted ? "✓" : "✗"} / db: ${res.dbDeleted ? "✓" : "—"}`,
+          `تم — البريدج: ${res.bridgeDeleted ? "✓" : "✗"} / DB: ${res.dbDeleted ? "✓" : "—"}`,
+          `Done — bridge: ${res.bridgeDeleted ? "✓" : "✗"} / db: ${res.dbDeleted ? "✓" : "—"}`,
         ),
       );
       qc.invalidateQueries({ queryKey: ["admin", "wa-cleanup", "sessions", selectedUser?.id] });
+      qc.invalidateQueries({ queryKey: ["admin", "wa-cleanup", "bad-users"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const users = badUsersQ.data?.users ?? [];
 
   return (
     <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
@@ -277,63 +281,78 @@ function SessionCleanupCard({ t }: { t: (ar: string, en: string) => string }) {
           <Trash2 className="h-5 w-5" />
         </div>
         <div className="flex-1">
-          <h3 className="font-semibold text-lg">{t("تنظيف جلسات مستخدم", "Cleanup user WA sessions")}</h3>
+          <h3 className="font-semibold text-lg">{t("مستخدمون بجلسات مش شغالة", "Users with problematic sessions")}</h3>
           <p className="text-sm text-muted-foreground mt-0.5">
             {t(
-              "احذف جلسات واتساب معلّقة أو مفصولة لمستخدم معيّن. آمن — لا يمس جلسات Bot-Xtra أو Xtra.",
-              "Delete stuck/disconnected WA sessions for a specific user. Safe — never touches Bot-Xtra or Xtra tenants.",
+              "قائمة تلقائية بالمستخدمين اللي عندهم جلسات معلّقة (QR) أو مفصولة. مرتبة بالأقدم أولاً.",
+              "Auto-list of users with QR-stuck or disconnected sessions, oldest first.",
             )}
           </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 border border-border rounded-xl px-3 py-2 bg-background">
-        <Search className="h-4 w-4 text-muted-foreground" />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={t("ابحث باسم المستخدم…", "Search by full name…")}
-          className="flex-1 bg-transparent outline-none text-sm"
-        />
-      </div>
-
-      {search.trim().length >= 2 && usersQ.data && (
-        <div className="border border-border rounded-xl overflow-hidden">
-          {usersQ.data.rows.length === 0 ? (
-            <div className="p-3 text-sm text-muted-foreground">{t("لا نتائج", "No results")}</div>
-          ) : (
-            <ul className="divide-y divide-border">
-              {usersQ.data.rows.map((u) => (
-                <li key={u.id}>
+      {badUsersQ.isLoading ? (
+        <div className="flex justify-center py-8">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+        </div>
+      ) : users.length === 0 ? (
+        <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-3">
+          <CheckCircle2 className="h-4 w-4" />
+          <span>{t("كل المستخدمين جلساتهم شغالة ✨", "Everyone's sessions are healthy ✨")}</span>
+        </div>
+      ) : (
+        <div className="border border-border rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+          <ul className="divide-y divide-border">
+            {users.map((u) => {
+              const isSelected = selectedUser?.id === u.userId;
+              const ageDays = u.oldest
+                ? Math.floor((Date.now() - Date.parse(u.oldest)) / 86_400_000)
+                : 0;
+              return (
+                <li key={u.userId}>
                   <button
-                    onClick={() => setSelectedUser({ id: u.id, full_name: u.full_name })}
-                    className={`w-full text-start px-3 py-2 text-sm hover:bg-muted flex items-center justify-between ${
-                      selectedUser?.id === u.id ? "bg-primary/10" : ""
+                    onClick={() => setSelectedUser({ id: u.userId, full_name: u.full_name })}
+                    className={`w-full text-start px-3 py-2.5 text-sm hover:bg-muted flex items-center justify-between gap-2 ${
+                      isSelected ? "bg-primary/10" : ""
                     }`}
                   >
-                    <span className="font-medium">{u.full_name || u.id.slice(0, 8)}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {u.wa.connected}/{u.wa.count} {t("متصلة", "connected")}
-                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate">{u.full_name || u.userId.slice(0, 8)}</div>
+                      <div className="text-[10px] text-muted-foreground font-mono truncate">{u.userId}</div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {u.qr > 0 && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                          {u.qr} QR
+                        </span>
+                      )}
+                      {u.disconnected > 0 && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30">
+                          {u.disconnected} {t("مفصولة", "offline")}
+                        </span>
+                      )}
+                      <span className="text-[10px] text-muted-foreground">
+                        {ageDays > 0 ? `${ageDays}${t("ي", "d")}` : t("جديد", "new")}
+                      </span>
+                    </div>
                   </button>
                 </li>
-              ))}
-            </ul>
-          )}
+              );
+            })}
+          </ul>
         </div>
       )}
 
       {selectedUser && (
         <div className="border border-border rounded-xl p-4 space-y-3 bg-background/50">
           <div className="flex items-center justify-between">
-            <div>
-              <div className="font-semibold">{selectedUser.full_name || selectedUser.id}</div>
-              <div className="text-xs text-muted-foreground font-mono mt-0.5">{selectedUser.id}</div>
+            <div className="min-w-0">
+              <div className="font-semibold truncate">{selectedUser.full_name || selectedUser.id}</div>
+              <div className="text-xs text-muted-foreground font-mono mt-0.5 truncate">{selectedUser.id}</div>
             </div>
             <button
               onClick={() => setSelectedUser(null)}
-              className="text-xs text-muted-foreground hover:text-foreground"
+              className="text-xs text-muted-foreground hover:text-foreground shrink-0"
             >
               {t("إغلاق", "Close")}
             </button>
@@ -360,6 +379,8 @@ function SessionCleanupCard({ t }: { t: (ar: string, en: string) => string }) {
     </div>
   );
 }
+
+
 
 function SessionsList({
   t,
