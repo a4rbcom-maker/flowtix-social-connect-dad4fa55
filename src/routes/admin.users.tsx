@@ -24,6 +24,7 @@ import {
   ArrowRight,
   ArrowLeft,
   Sparkles,
+  UserCheck,
 } from "lucide-react";
 import {
   AlertDialog,
