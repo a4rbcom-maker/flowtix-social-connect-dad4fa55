@@ -1364,3 +1364,133 @@ export const impersonateUser = createServerFn({ method: "POST" })
       email: targetEmail,
     };
   });
+
+// ---------- WA Session cleanup (admin, per-user, safe) ----------
+// Safety model:
+// - Only sessions whose IDs belong to Flowtix are touched: we require both
+//   (a) the session exists in wa_sessions for the given user, OR
+//   (b) the bridge session id starts with `flowtix-{first16OfUserIdNoHyphens}-`.
+// - Sessions belonging to other tenants on the shared bridge (Bot-Xtra, Xtra)
+//   are never returned or deletable via these endpoints.
+
+function flowtixPrefix(userId: string) {
+  const compact = userId.replace(/-/g, "").slice(0, 16);
+  return `flowtix-${compact}-`;
+}
+
+export const adminListUserWaSessions = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { userId: string }) =>
+    z.object({ userId: z.string().uuid() }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const db = admin();
+    const { waBridge } = await import("./wa-bridge.server");
+
+    const { data: rows, error } = await db
+      .from("wa_sessions")
+      .select("id, session_id, phone_number, status, updated_at, created_at")
+      .eq("user_id", data.userId)
+      .order("updated_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    const dbRows = rows ?? [];
+
+    const prefix = flowtixPrefix(data.userId);
+    let bridgeSessions: Array<{
+      id: string;
+      connected: boolean;
+      phone: string | null;
+      inDb: boolean;
+    }> = [];
+    let bridgeError: string | null = null;
+    try {
+      const resp = await waBridge.listSessions();
+      const all = resp.sessions ?? [];
+      const dbIds = new Set(dbRows.map((r) => r.session_id).filter(Boolean));
+      bridgeSessions = all
+        .filter((s) => {
+          const id = s.id ?? "";
+          return id.startsWith(prefix) || dbIds.has(id);
+        })
+        .map((s) => ({
+          id: s.id ?? "",
+          connected: !!s.connected,
+          phone: s.phone ?? s.phoneNumber ?? null,
+          inDb: dbIds.has(s.id ?? ""),
+        }));
+    } catch (e) {
+      bridgeError = e instanceof Error ? e.message : "bridge_unreachable";
+    }
+
+    return { dbSessions: dbRows, bridgeSessions, bridgeError };
+  });
+
+export const adminCleanupUserWaSession = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { userId: string; sessionId: string }) =>
+    z
+      .object({
+        userId: z.string().uuid(),
+        sessionId: z.string().min(3).max(200),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const db = admin();
+    const { waBridge } = await import("./wa-bridge.server");
+
+    // Safety check: session must either belong to this user in our DB, OR
+    // its id must match the Flowtix prefix for this user.
+    const prefix = flowtixPrefix(data.userId);
+    const { data: owned } = await db
+      .from("wa_sessions")
+      .select("id, user_id, session_id")
+      .eq("session_id", data.sessionId)
+      .maybeSingle();
+
+    const belongsToUser = owned?.user_id === data.userId;
+    const matchesPrefix = data.sessionId.startsWith(prefix);
+    if (!belongsToUser && !matchesPrefix) {
+      throw new Error(
+        "refused: session does not belong to this Flowtix user (protects Bot-Xtra/Xtra tenants).",
+      );
+    }
+    if (owned && owned.user_id !== data.userId) {
+      throw new Error("refused: session belongs to another Flowtix user.");
+    }
+
+    // 1) Bridge delete (best-effort — treat 404 as already gone).
+    let bridgeDeleted = false;
+    let bridgeError: string | null = null;
+    try {
+      await waBridge.deleteSession(data.sessionId);
+      bridgeDeleted = true;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/404|not.?found/i.test(msg)) {
+        bridgeDeleted = true;
+      } else {
+        bridgeError = msg;
+      }
+    }
+
+    // 2) DB delete (only if row exists for this user).
+    let dbDeleted = false;
+    if (owned && owned.user_id === data.userId) {
+      const { error: delErr } = await db
+        .from("wa_sessions")
+        .delete()
+        .eq("id", owned.id);
+      if (delErr) throw new Error(delErr.message);
+      dbDeleted = true;
+    }
+
+    await logAction(context.adminUserId, "wa_session_cleanup", data.userId, {
+      session_id: data.sessionId,
+      bridge_deleted: bridgeDeleted,
+      db_deleted: dbDeleted,
+      bridge_error: bridgeError,
+    });
+
+    return { ok: true, bridgeDeleted, dbDeleted, bridgeError };
+  });
