@@ -95,6 +95,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const path = window.location.pathname;
       if (isPublicPath(path)) return;
       expiredHandledRef.current = true;
+      // Abort every in-flight query and drop the cache BEFORE we navigate,
+      // so pending server-fn responses never render into the current page.
+      killAllQueries();
+
 
       // Dedupe across redirects/reloads: only show one toast per reason
       // within a short window so the user never sees the same notice twice.
