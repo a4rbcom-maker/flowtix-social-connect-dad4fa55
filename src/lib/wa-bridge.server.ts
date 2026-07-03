@@ -411,6 +411,7 @@ export const waBridge = {
       `/api/sessions/${encodeURIComponent(id)}/resync`,
     ];
     const attempts: Array<{ path: string; ok: boolean; status?: number; error?: string; importedMessages?: number; importedChats?: number }> = [];
+    let endpointUnavailableOnly = true;
     for (const path of paths) {
       try {
         const body = await bridgeFetch<unknown>(path, {
@@ -428,7 +429,39 @@ export const waBridge = {
         const status = err instanceof BridgeError ? err.status : undefined;
         const error = err instanceof Error ? err.message : String(err);
         attempts.push({ path, ok: false, status, error });
-        if (status && ![404, 405, 501].includes(status)) break;
+        if (status && ![404, 405, 501].includes(status)) {
+          endpointUnavailableOnly = false;
+          break;
+        }
+      }
+    }
+
+    // Bot-Xtra bridge v1.8.4 has no global history-sync endpoint, but it does
+    // have a soft-reset endpoint that rebuilds the in-memory Baileys socket
+    // while preserving the paired credentials. This is NOT a logout/delete and
+    // does not require scanning a new QR. On compatible bridge builds it causes
+    // Baileys init/history events to be emitted again for the current session.
+    if (endpointUnavailableOnly) {
+      const path = `/api/sessions/${encodeURIComponent(id)}/soft-reset`;
+      try {
+        const body = await bridgeFetch<unknown>(path, {
+          method: "POST",
+          body: JSON.stringify({
+            reason: "history_sync_soft_reset_preserve_pairing",
+            syncFullHistory: true,
+            syncHistory: true,
+            historySync: true,
+            fullHistory: true,
+            fireInitQueries: true,
+            emitHistory: true,
+          }),
+        });
+        attempts.push({ path, ok: true });
+        return { ok: true, attempts, body };
+      } catch (err) {
+        const status = err instanceof BridgeError ? err.status : undefined;
+        const error = err instanceof Error ? err.message : String(err);
+        attempts.push({ path, ok: false, status, error });
       }
     }
     return { ok: false, attempts, body: null as unknown };
