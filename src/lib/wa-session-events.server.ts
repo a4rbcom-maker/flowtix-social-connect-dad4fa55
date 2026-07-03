@@ -2,6 +2,7 @@
 // This does not call or modify Bot-Xtra; it only records what our app receives
 // from the bridge/webhook so disconnect causes are visible later.
 
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { BridgeError } from "./wa-bridge.server";
 
 export type WaSessionEventSource =
@@ -20,6 +21,93 @@ type DbClient = {
 
 function asObj(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+}
+
+function digits(v: unknown): string | null {
+  if (typeof v !== "string" && typeof v !== "number" && typeof v !== "bigint") return null;
+  const d = String(v).replace(/[^0-9]/g, "");
+  return d.length >= 8 ? d : null;
+}
+
+function verifiedPhoneFromPayload(payload: unknown): string | null {
+  const root = asObj(payload);
+  const data = asObj(root.data);
+  const session = asObj(root.session);
+  const instance = asObj(root.instance);
+  return (
+    digits(data.phoneNumber) ||
+    digits(data.phone) ||
+    digits(root.phoneNumber) ||
+    digits(root.phone) ||
+    digits(session.phoneNumber) ||
+    digits(session.phone) ||
+    digits(instance.phoneNumber) ||
+    digits(instance.phone)
+  );
+}
+
+async function adoptArchiveForVerifiedPhone(input: {
+  userId: string;
+  sessionId: string;
+  phoneNumber: string;
+}): Promise<{ conversations: number; messages: number; sourceSessions: number }> {
+  const phone = digits(input.phoneNumber);
+  if (!phone) return { conversations: 0, messages: 0, sourceSessions: 0 };
+
+  const candidates = new Map<string, { userId: string; sessionId: string }>();
+
+  const { data: sessionRows } = await supabaseAdmin
+    .from("wa_sessions")
+    .select("user_id, session_id, phone_number")
+    .not("phone_number", "is", null)
+    .limit(200);
+
+  for (const row of sessionRows ?? []) {
+    if (digits(row.phone_number) !== phone) continue;
+    if (row.user_id === input.userId && row.session_id === input.sessionId) continue;
+    candidates.set(`${row.user_id}:${row.session_id}`, { userId: row.user_id, sessionId: row.session_id });
+  }
+
+  // Reset/re-pair flows replace wa_sessions.session_id and may clear phone_number,
+  // while old messages remain under the previous session ID. The verified
+  // connected webhook keeps the WhatsApp phone, so use it to safely recover
+  // orphaned local history for the SAME WhatsApp number only.
+  const { data: eventRows } = await supabaseAdmin
+    .from("wa_session_events")
+    .select("user_id, session_id, raw_status, bridge_payload")
+    .eq("raw_status", "connected")
+    .order("created_at", { ascending: false })
+    .limit(2000);
+
+  for (const row of eventRows ?? []) {
+    if (verifiedPhoneFromPayload(row.bridge_payload) !== phone) continue;
+    if (row.user_id === input.userId && row.session_id === input.sessionId) continue;
+    candidates.set(`${row.user_id}:${row.session_id}`, { userId: row.user_id, sessionId: row.session_id });
+  }
+
+  let conversations = 0;
+  let messages = 0;
+  for (const candidate of candidates.values()) {
+    const { count: msgCount, error: msgErr } = await supabaseAdmin
+      .from("wa_messages")
+      .update({ user_id: input.userId, session_id: input.sessionId }, { count: "exact" })
+      .eq("user_id", candidate.userId)
+      .eq("session_id", candidate.sessionId)
+      .neq("session_id", input.sessionId);
+    if (msgErr) console.warn("[wa-session-events] archive message adoption failed:", msgErr.message);
+    else messages += msgCount ?? 0;
+
+    const { count: convCount, error: convErr } = await supabaseAdmin
+      .from("wa_conversations")
+      .update({ user_id: input.userId, session_id: input.sessionId }, { count: "exact" })
+      .eq("user_id", candidate.userId)
+      .eq("session_id", candidate.sessionId)
+      .neq("session_id", input.sessionId);
+    if (convErr) console.warn("[wa-session-events] archive conversation adoption failed:", convErr.message);
+    else conversations += convCount ?? 0;
+  }
+
+  return { conversations, messages, sourceSessions: candidates.size };
 }
 
 function valueToReason(v: unknown): string | null {
@@ -235,6 +323,23 @@ export async function updateWaSessionStatus(
     .eq("user_id", input.userId)
     .eq("session_id", input.sessionId);
 
+  let adoptedArchive: { conversations: number; messages: number; sourceSessions: number } | null = null;
+  const phoneIsVerifiedByBridge =
+    input.source === "webhook_status" ||
+    input.source === "history_sync" ||
+    (input.source === "poll" && input.rawStatus === "connected" && input.reason !== "outgoing_message_accepted");
+  if (nextStatus === "connected" && input.phoneNumber && phoneIsVerifiedByBridge) {
+    try {
+      adoptedArchive = await adoptArchiveForVerifiedPhone({
+        userId: input.userId,
+        sessionId: input.sessionId,
+        phoneNumber: input.phoneNumber,
+      });
+    } catch (err) {
+      console.warn("[wa-session-events] archive adoption crashed:", err instanceof Error ? err.message : err);
+    }
+  }
+
   try {
     if (nextStatus === "connected") {
       await db
@@ -277,6 +382,20 @@ export async function updateWaSessionStatus(
       rawStatus: input.rawStatus,
       bridgeEvent: input.bridgeEvent,
       payload: input.payload,
+    });
+  }
+
+  if (adoptedArchive && (adoptedArchive.conversations > 0 || adoptedArchive.messages > 0)) {
+    await logWaSessionEvent(db, {
+      userId: input.userId,
+      sessionId: input.sessionId,
+      fromStatus: nextStatus,
+      toStatus: nextStatus,
+      source: "history_sync",
+      reason: `adopted_verified_phone_archive:${adoptedArchive.conversations}_conversations:${adoptedArchive.messages}_messages:${adoptedArchive.sourceSessions}_sessions`,
+      rawStatus: "connected",
+      bridgeEvent: input.bridgeEvent,
+      payload: null,
     });
   }
 

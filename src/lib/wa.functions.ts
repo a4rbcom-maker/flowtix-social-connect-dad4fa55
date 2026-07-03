@@ -494,6 +494,7 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
     const MAX_PAGES_PER_JID = 6;
     const PAGE_SIZE = 50;
     let fetchedKnownChats = 0;
+    let requestedKnownChats = 0;
     for (const jid of Array.from(knownJids).slice(0, 500)) {
       if (!jid || jid === "@s.whatsapp.net" || jid.endsWith("@broadcast")) continue;
       let jidTouched = false;
@@ -501,10 +502,24 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
         try {
           const anchorId = anchorByJid.get(jid) ?? null;
           const anchorTs = anchorTsByJid.get(jid) ?? null;
-          const fetchBody = await waBridge.fetchMessages(row.session_id, jid, PAGE_SIZE, {
-            anchorMessageId: anchorId,
-            anchorTimestamp: anchorTs,
-          });
+          let fetchBody: unknown;
+          try {
+            fetchBody = await waBridge.fetchMessages(row.session_id, jid, PAGE_SIZE, {
+              anchorMessageId: anchorId,
+              anchorTimestamp: anchorTs,
+            });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            // Some Bot-Xtra builds reject anchored fetches even while the session
+            // status endpoint reports connected. A plain jid+limit request still
+            // queues the WhatsApp history batches, so retry without the anchor.
+            if (page === 0 && anchorId && /session not connected|anchor|bad request|400/i.test(message)) {
+              fetchBody = await waBridge.fetchMessages(row.session_id, jid, PAGE_SIZE);
+            } else {
+              throw err;
+            }
+          }
+          requestedKnownChats++;
 
           const imported = await replayBridgeHistoryPayload(row.session_id, fetchBody).catch((err) => ({
             messages: 0,
@@ -542,13 +557,13 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
     }
 
     if (!result.ok) {
-      result.ok = fetchedKnownChats > 0;
+      result.ok = fetchedKnownChats > 0 || requestedKnownChats > 0;
     }
 
     const after = { conversations: directImports.chats, messages: directImports.messages };
 
     const actuallyImported = directImports.messages > 0 || directImports.chats > 0 || after.conversations > before.conversations;
-    const requestAccepted = result.ok || fetchedKnownChats > 0;
+    const requestAccepted = result.ok || fetchedKnownChats > 0 || requestedKnownChats > 0;
     const pending = requestAccepted && !actuallyImported;
     await logWaSessionEvent(supabase, {
       userId,
@@ -752,7 +767,6 @@ export const sendWaMessage = createServerFn({ method: "POST" })
       source: "poll",
       reason: "outgoing_message_accepted",
       rawStatus: "connected",
-      phoneNumber: targetPhone,
     });
 
     await supabase.from("wa_messages").insert({
