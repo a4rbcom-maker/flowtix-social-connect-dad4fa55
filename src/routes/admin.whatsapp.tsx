@@ -76,7 +76,167 @@ function AdminWhatsappPage() {
   );
 }
 
-/* ---------------- Session cleanup ---------------- */
+/* ---------------- Bulk cleanup (Flowtix-only) ---------------- */
+
+function BulkCleanupCard({ t }: { t: (ar: string, en: string) => string }) {
+  const [minAgeDays, setMinAgeDays] = useState(3);
+  const [preview, setPreview] = useState<Awaited<ReturnType<typeof adminBulkCleanupFlowtixDisconnected>> | null>(null);
+  const [confirmText, setConfirmText] = useState("");
+
+  const dryRun = useMutation({
+    mutationFn: () =>
+      adminBulkCleanupFlowtixDisconnected({ data: { minAgeDays, dryRun: true } }),
+    onSuccess: (res) => {
+      setPreview(res);
+      setConfirmText("");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const execute = useMutation({
+    mutationFn: () =>
+      adminBulkCleanupFlowtixDisconnected({ data: { minAgeDays, dryRun: false } }),
+    onSuccess: (res) => {
+      toast.success(
+        t(
+          `تم — حُذف ${res.bridgeDeleted} من البريدج و ${res.dbDeleted} من قاعدة البيانات`,
+          `Done — deleted ${res.bridgeDeleted} on bridge and ${res.dbDeleted} in DB`,
+        ),
+      );
+      if (res.bridgeFailed && res.bridgeFailed > 0) {
+        toast.warning(
+          t(`فشل حذف ${res.bridgeFailed} جلسة`, `${res.bridgeFailed} sessions failed to delete`),
+        );
+      }
+      setPreview(null);
+      setConfirmText("");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const totalCount =
+    (preview?.dbCandidateCount ?? 0) + (preview?.bridgeCandidateCount ?? 0);
+
+  const CONFIRM_WORD = "FLOWTIX";
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
+      <div className="flex items-start gap-3">
+        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-amber-500/15 to-amber-500/5 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+          <ShieldAlert className="h-5 w-5" />
+        </div>
+        <div className="flex-1">
+          <h3 className="font-semibold text-lg">
+            {t("تنظيف جماعي للجلسات المفصولة", "Bulk cleanup of disconnected sessions")}
+          </h3>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {t(
+              "يحذف فقط الجلسات بادئة \"flowtix-\" المفصولة منذ فترة. لا يمس Bot-Xtra أو Xtra.",
+              'Deletes only "flowtix-" prefixed sessions disconnected for a while. Never touches Bot-Xtra or Xtra.',
+            )}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <label className="text-sm">
+          {t("الأقدم من (أيام):", "Older than (days):")}
+        </label>
+        <input
+          type="number"
+          min={0}
+          max={90}
+          value={minAgeDays}
+          onChange={(e) => {
+            setMinAgeDays(Math.max(0, Math.min(90, Number(e.target.value) || 0)));
+            setPreview(null);
+          }}
+          className="w-20 border border-border rounded-lg px-2 py-1 text-sm bg-background"
+        />
+        <button
+          onClick={() => dryRun.mutate()}
+          disabled={dryRun.isPending}
+          className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-border hover:bg-muted transition-colors"
+        >
+          {dryRun.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+          {t("معاينة (بدون حذف)", "Preview (no delete)")}
+        </button>
+      </div>
+
+      {preview && (
+        <div className="border border-border rounded-xl p-4 bg-background/50 space-y-3">
+          {preview.bridgeError && (
+            <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+              <ShieldAlert className="h-3.5 w-3.5" />
+              <span>{t("البريدج غير متاح:", "Bridge unavailable:")} {preview.bridgeError}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-lg border border-border p-3">
+              <div className="text-xs text-muted-foreground">{t("جلسات في قاعدة البيانات", "DB rows")}</div>
+              <div className="text-2xl font-bold">{preview.dbCandidateCount ?? 0}</div>
+            </div>
+            <div className="rounded-lg border border-border p-3">
+              <div className="text-xs text-muted-foreground">{t("جلسات على البريدج", "Bridge sessions")}</div>
+              <div className="text-2xl font-bold">{preview.bridgeCandidateCount ?? 0}</div>
+            </div>
+          </div>
+
+          {preview.preview && preview.preview.length > 0 && (
+            <details className="text-xs">
+              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                {t("عرض أول 20 معرّف", "Show first 20 IDs")}
+              </summary>
+              <ul className="mt-2 space-y-0.5 font-mono text-[10px] max-h-40 overflow-y-auto">
+                {preview.preview.map((id) => (
+                  <li key={id} className="truncate">{id}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+
+          {totalCount > 0 ? (
+            <div className="space-y-2 pt-2 border-t border-border">
+              <label className="text-sm font-medium block">
+                {t(
+                  `للتأكيد اكتب "${CONFIRM_WORD}" ثم اضغط حذف`,
+                  `Type "${CONFIRM_WORD}" to confirm, then click delete`,
+                )}
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={confirmText}
+                  onChange={(e) => setConfirmText(e.target.value)}
+                  placeholder={CONFIRM_WORD}
+                  className="flex-1 border border-border rounded-lg px-3 py-2 text-sm bg-background font-mono"
+                />
+                <button
+                  onClick={() => execute.mutate()}
+                  disabled={confirmText !== CONFIRM_WORD || execute.isPending}
+                  className="inline-flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {execute.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  {t(`احذف ${totalCount} جلسة`, `Delete ${totalCount} sessions`)}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>{t("لا شيء للحذف — الكل نظيف ✨", "Nothing to delete — all clean ✨")}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Session cleanup (per user) ---------------- */
+
+
 
 function SessionCleanupCard({ t }: { t: (ar: string, en: string) => string }) {
   const [search, setSearch] = useState("");
