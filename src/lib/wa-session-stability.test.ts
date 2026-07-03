@@ -212,6 +212,53 @@ describe("updateWaSessionStatus — stability guarantees", () => {
     expect(Date.parse(state.session.last_seen_at)).toBeGreaterThanOrEqual(now - 5_000);
   });
 
+  it("transient QR webhook after connected is logged but does not flip connected → qr", async () => {
+    const { db, state } = makeDb({
+      session: { status: "connected", last_seen_at: new Date(now).toISOString(), qr_data_url: "old-qr" },
+    });
+
+    await updateWaSessionStatus(db, {
+      userId,
+      sessionId,
+      nextStatus: "qr",
+      source: "webhook_status",
+      rawStatus: "qr",
+      bridgeEvent: "qr",
+      qrDataUrl: "new-qr",
+    });
+
+    expect(state.session.status).toBe("connected");
+    expect(state.session.qr_data_url).toBe("old-qr");
+    expect(state.settingsUpdates.some((u) => u.is_connected === false)).toBe(false);
+    expect(state.events.at(-1)?.reason).toMatch(/ignored_transient_qr\(transient_qr_after_connected\)/);
+  });
+
+  it("connected → qr → connected bridge flap stays connected end-to-end", async () => {
+    const { db, state } = makeDb({
+      session: { status: "connected", last_seen_at: new Date(now).toISOString() },
+    });
+
+    await updateWaSessionStatus(db, {
+      userId,
+      sessionId,
+      nextStatus: "qr",
+      source: "webhook_status",
+      rawStatus: "qr",
+      bridgeEvent: "qr",
+    });
+    await updateWaSessionStatus(db, {
+      userId,
+      sessionId,
+      nextStatus: "connected",
+      source: "webhook_status",
+      rawStatus: "connected",
+      bridgeEvent: "connected",
+    });
+
+    expect(state.session.status).toBe("connected");
+    expect(state.settingsUpdates.some((u) => u.is_connected === false)).toBe(false);
+  });
+
   it("untrusted transient disconnect without bulk still preserves connected session", async () => {
     const { db, state } = makeDb({
       session: { status: "connected", last_seen_at: new Date(now).toISOString() },
