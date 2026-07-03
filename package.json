@@ -16,6 +16,7 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:wa-session": "vitest run src/lib/wa-session-stability.test.ts",
+    "lint:coverage-thresholds": "node scripts/ci/validate-coverage-thresholds.mjs",
     "audit:contrast": "node scripts/contrast-audit.mjs",
     "audit:contrast:toasts": "node scripts/contrast-toasts.mjs"
   },
