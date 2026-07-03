@@ -497,6 +497,107 @@ function SessionsList({
   );
 }
 
+/* ---------------- Test send (per user) ---------------- */
+
+function TestSendCard({
+  t,
+  userId,
+  sessionsData,
+}: {
+  t: (ar: string, en: string) => string;
+  userId: string;
+  sessionsData: Awaited<ReturnType<typeof adminListUserWaSessions>>;
+}) {
+  const connected = sessionsData.bridgeSessions.find((b) => b.connected);
+  const connectedId = connected?.id ?? null;
+
+  const [to, setTo] = useState("");
+  const [text, setText] = useState("");
+
+  const send = useMutation({
+    mutationFn: () =>
+      adminSendWaTestMessage({
+        data: {
+          userId,
+          to: to.trim(),
+          text: text.trim() || undefined,
+          sessionId: connectedId ?? undefined,
+        },
+      }),
+    onSuccess: (res) => {
+      toast.success(
+        t(
+          `تم الإرسال إلى ${res.to} — ${res.providerMessageId ? "ID: " + res.providerMessageId : "بدون معرّف مزوّد"}`,
+          `Sent to ${res.to} — ${res.providerMessageId ? "ID: " + res.providerMessageId : "no provider id"}`,
+        ),
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const disabled = !connectedId || send.isPending || to.trim().length < 6;
+
+  return (
+    <div className="border border-border rounded-xl p-3 bg-background/60 space-y-2">
+      <div className="flex items-center gap-2">
+        <Send className="h-4 w-4 text-primary" />
+        <span className="text-sm font-semibold">
+          {t("رسالة اختبار فورية", "Instant test message")}
+        </span>
+      </div>
+      {!connectedId ? (
+        <div className="text-xs text-amber-600 dark:text-amber-400">
+          {t(
+            "لا توجد جلسة متصلة لهذا المستخدم — اطلب منه مسح QR أولاً.",
+            "No connected session — ask the user to scan a QR first.",
+          )}
+        </div>
+      ) : (
+        <div className="text-[11px] text-muted-foreground font-mono truncate">
+          {t("من الجلسة:", "from session:")} {connectedId}
+        </div>
+      )}
+      <div className="flex flex-col sm:flex-row gap-2">
+        <input
+          type="tel"
+          inputMode="numeric"
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          placeholder={t("رقم المستلم بالكود الدولي (2010...)", "Recipient phone with country code")}
+          className="flex-1 border border-border rounded-lg px-3 py-2 text-sm bg-background"
+        />
+        <input
+          type="text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={t("نص اختياري — يوجد افتراضي", "Optional text — default provided")}
+          className="flex-[2] border border-border rounded-lg px-3 py-2 text-sm bg-background"
+        />
+        <button
+          onClick={() => {
+            if (!/^\+?[0-9]{6,}$/.test(to.trim())) {
+              toast.error(t("رقم غير صالح", "Invalid phone"));
+              return;
+            }
+            send.mutate();
+          }}
+          disabled={disabled}
+          className="inline-flex items-center justify-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {send.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          {t("إرسال", "Send")}
+        </button>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        {t(
+          "الردود القادمة من المستلم تُسجَّل في محادثات الوكيل تلقائيًا عبر الويبهوك.",
+          "Replies from the recipient are automatically linked to the agent via the webhook.",
+        )}
+      </p>
+    </div>
+  );
+}
+
 /* ---------------- helpers ---------------- */
 
 function formatNum(n: number) {
