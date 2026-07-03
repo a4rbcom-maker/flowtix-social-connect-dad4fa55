@@ -644,10 +644,10 @@ function isMessageStatusOnlyEvent(event: string, payload: Record<string, unknown
 
 function persistedOutboundStatus(status: string, fromMe: boolean): string {
   if (!fromMe) return status;
-  // A WhatsApp "sent" ACK only means the bridge/linked device accepted the
-  // message. Keep it pending until WhatsApp confirms delivered/read so the UI
-  // never shows bot replies as successfully delivered too early.
-  if (status === "sent" || status === "queued") return "pending";
+  // Once the bridge/WhatsApp accepts the message we surface it as "sent" so
+  // the UI reflects the send instantly. Delivered/read upgrades still flow
+  // through when the provider reports them.
+  if (status === "queued") return "sent";
   return status;
 }
 
