@@ -506,10 +506,49 @@ export const waBridge = {
       { method: "POST", body: JSON.stringify({ phoneNumber }) },
     ),
 
-  deleteSession: (id: string) =>
-    bridgeFetch<{ ok?: boolean }>(`/api/sessions/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    }),
+  // Robust delete: some Bot-Xtra builds keep the session record after a plain
+  // DELETE (socket is closed but the entry is still listed as "disconnected").
+  // We try in order: logout → DELETE → DELETE?purge=true, then verify by
+  // re-listing. Throws only if the session is still present after all attempts.
+  deleteSession: async (id: string): Promise<{ ok: true }> => {
+    const encoded = encodeURIComponent(id);
+    const attempts: Array<() => Promise<unknown>> = [
+      // Best-effort logout first (ignored if the endpoint doesn't exist).
+      () => bridgeFetch(`/api/sessions/${encoded}/logout`, { method: "POST" }).catch(() => null),
+      () => bridgeFetch(`/api/sessions/${encoded}`, { method: "DELETE" }),
+      // Retry with purge flag — some builds require it to remove the record.
+      () => bridgeFetch(`/api/sessions/${encoded}?purge=true&force=true`, { method: "DELETE" }).catch(() => null),
+    ];
+    let lastErr: unknown = null;
+    for (const step of attempts) {
+      try {
+        await step();
+      } catch (e) {
+        lastErr = e;
+        const msg = e instanceof Error ? e.message : String(e);
+        // 404 = already gone, stop early
+        if (/404|not.?found/i.test(msg)) return { ok: true };
+      }
+    }
+    // Verify: re-list and confirm the session id is gone.
+    try {
+      const list = await bridgeFetch<{ sessions?: Array<{ id?: string }> }>("/api/sessions");
+      const stillThere = (list.sessions || []).some((s) => s.id === id);
+      if (stillThere) {
+        throw new BridgeError(
+          `Bridge still lists session "${id}" after delete attempts` +
+            (lastErr ? ` (last error: ${lastErr instanceof Error ? lastErr.message : String(lastErr)})` : ""),
+          502,
+          null,
+        );
+      }
+    } catch (e) {
+      if (e instanceof BridgeError) throw e;
+      // If listing failed, surface the last delete error (if any).
+      if (lastErr instanceof Error) throw lastErr;
+    }
+    return { ok: true };
+  },
   sendText: (id: string, to: string, text: string, opts: { phone?: string | null } = {}) => {
     const explicitPhone = normalizeWhatsappPhone(opts.phone) || "";
     const phone = explicitPhone || normalizeWhatsappPhone(to) || "";
