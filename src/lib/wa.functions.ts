@@ -321,7 +321,7 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
     const before = { conversations: 0, messages: 0 };
 
     // Persist the sync job so progress survives across browser reloads / device sleep.
-    const deadlineMs = Date.now() + 90_000;
+    const deadlineMs = Date.now() + 5 * 60_000;
     await supabase
       .from("wa_history_sync_jobs")
       .upsert({
