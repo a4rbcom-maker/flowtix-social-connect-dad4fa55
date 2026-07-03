@@ -7,6 +7,7 @@ import { requireAdmin } from "./admin-middleware";
 import {
   assertBridgeSendQueued,
   bridgeSendQueuedMessage,
+  sendTextWithReconnect,
   waBridge,
   inferStatus,
   BridgeError,
@@ -746,7 +747,12 @@ export const sendWaMessage = createServerFn({ method: "POST" })
     let delivery = "whatsapp_acknowledged";
     let status = "sent";
     try {
-      const res = await waBridge.sendText(row.session_id, targetJid, data.text, { phone: targetPhone });
+      const webhookUrl = await deriveWebhookUrl();
+      const res = await sendTextWithReconnect(row.session_id, targetJid, data.text, {
+        webhookUrl: webhookUrl ?? undefined,
+        tenantId: userId,
+        recipientPhone: targetPhone,
+      });
       queuedId = bridgeSendQueuedMessage(res);
       try {
         providerMessageId = assertBridgeSendQueued(res);
