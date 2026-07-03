@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const SCRIPT = path.resolve(__dirname, "validate-coverage-thresholds.mjs");
+const SCRIPT = path.resolve(process.cwd(), "scripts/ci/validate-coverage-thresholds.mjs");
 
 const VALID_CONFIG = `import { defineConfig } from "vitest/config";
 export default defineConfig({
