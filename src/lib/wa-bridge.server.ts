@@ -436,34 +436,12 @@ export const waBridge = {
       }
     }
 
-    // Bot-Xtra bridge v1.8.4 has no global history-sync endpoint, but it does
-    // have a soft-reset endpoint that rebuilds the in-memory Baileys socket
-    // while preserving the paired credentials. This is NOT a logout/delete and
-    // does not require scanning a new QR. On compatible bridge builds it causes
-    // Baileys init/history events to be emitted again for the current session.
-    if (endpointUnavailableOnly) {
-      const path = `/api/sessions/${encodeURIComponent(id)}/soft-reset`;
-      try {
-        const body = await bridgeFetch<unknown>(path, {
-          method: "POST",
-          body: JSON.stringify({
-            reason: "history_sync_soft_reset_preserve_pairing",
-            syncFullHistory: true,
-            syncHistory: true,
-            historySync: true,
-            fullHistory: true,
-            fireInitQueries: true,
-            emitHistory: true,
-          }),
-        });
-        attempts.push({ path, ok: true });
-        return { ok: true, attempts, body };
-      } catch (err) {
-        const status = err instanceof BridgeError ? err.status : undefined;
-        const error = err instanceof Error ? err.message : String(err);
-        attempts.push({ path, ok: false, status, error });
-      }
-    }
+    // Never auto-call /soft-reset from the app. On the current Bot-Xtra bridge,
+    // soft-reset can rebuild a paired session into QR state if the bridge has
+    // stale/partial credentials, which makes the agent stop even though the UI
+    // still preserves the last "connected" status. History sync must be a safe
+    // read/fetch operation only; explicit bridge maintenance can still use
+    // soft-reset outside the customer-facing app when needed.
     return { ok: false, attempts, body: null as unknown };
   },
   fetchChats: async (id: string) => {
