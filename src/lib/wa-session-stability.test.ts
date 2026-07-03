@@ -348,14 +348,14 @@ describe("extractSessionReason", () => {
 
 describe("isHardSessionGoneError", () => {
   it("treats 404 BridgeError as session gone", () => {
-    expect(isHardSessionGoneError(new BridgeError("session missing", 404))).toBe(true);
+    expect(isHardSessionGoneError(new BridgeError("session missing", 404, null))).toBe(true);
   });
   it("treats logged_out/closed messages as session gone", () => {
-    expect(isHardSessionGoneError(new BridgeError("session logged out", 500))).toBe(true);
-    expect(isHardSessionGoneError(new BridgeError("socket closed", 500))).toBe(true);
+    expect(isHardSessionGoneError(new BridgeError("session logged out", 500, null))).toBe(true);
+    expect(isHardSessionGoneError(new BridgeError("socket closed", 500, null))).toBe(true);
   });
   it("does not treat generic errors or non-BridgeError as session gone", () => {
-    expect(isHardSessionGoneError(new BridgeError("temporary glitch", 500))).toBe(false);
+    expect(isHardSessionGoneError(new BridgeError("temporary glitch", 500, null))).toBe(false);
     expect(isHardSessionGoneError(new Error("boom"))).toBe(false);
     expect(isHardSessionGoneError(null)).toBe(false);
   });
