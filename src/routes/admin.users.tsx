@@ -580,6 +580,39 @@ function UserDetailDrawer({ userId, onClose, onChanged }: { userId: string; onCl
               </div>
             </div>
 
+            {/* Impersonation (super-admin only) */}
+            {capQ.data?.allowed && (
+              <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4 space-y-3">
+                <h4 className="text-sm font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                  <UserCheck className="h-4 w-4" />
+                  {t("انتحال الشخصية (خاص بالمالك)", "Impersonate (Owner only)")}
+                </h4>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  {t(
+                    "سيتم تسجيل خروجك وتسجيل الدخول بحساب هذا المستخدم كما لو كنت هو تماماً، لاختبار المشكلة من زاويته. يتم تسجيل العملية في سجل التدقيق.",
+                    "You'll be signed out and signed in as this exact user to reproduce their issue. The action is written to the audit log."
+                  )}
+                </p>
+                <button
+                  onClick={() => {
+                    if (confirm(t(
+                      "متأكد من الدخول بحساب هذا المستخدم؟ سيتم إنهاء جلستك الحالية.",
+                      "Sign in as this user? Your current session will end."
+                    ))) {
+                      impersonateMut.mutate();
+                    }
+                  }}
+                  disabled={impersonateMut.isPending}
+                  className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold bg-amber-600 text-white hover:bg-amber-600/90 disabled:opacity-50"
+                >
+                  {impersonateMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCheck className="h-3.5 w-3.5" />}
+                  {t("الدخول كهذا المستخدم", "Sign in as this user")}
+                </button>
+              </div>
+            )}
+
+
+
             {/* FB + WA */}
             {d.facebook && (
               <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
