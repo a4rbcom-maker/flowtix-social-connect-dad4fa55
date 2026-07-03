@@ -311,10 +311,40 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     : `${userPlan.charAt(0).toUpperCase() + userPlan.slice(1)} plan`;
   const upgradeLabel = lang === "ar" ? "ترقية" : "Upgrade";
 
+  // Impersonation-aware logout: if an admin is acting as this user (there's
+  // an impersonation backup in localStorage), don't quietly restore the admin
+  // session or silently sign out. Prompt them so they can pick between:
+  //   1) Returning to the admin account (signOut() auto-restores backup)
+  //   2) Fully signing out (drop the backup, then a normal signOut)
+  const [impersonationPrompt, setImpersonationPrompt] =
+    useState<ImpersonationBackup | null>(null);
+  const [logoutBusy, setLogoutBusy] = useState<"restore" | "signout" | null>(null);
+
   const handleLogout = async () => {
+    const backup = readImpersonationBackup();
+    if (backup) {
+      setImpersonationPrompt(backup);
+      return;
+    }
     await signOut();
     navigate({ to: "/login" });
   };
+
+  const restoreAdmin = async () => {
+    setLogoutBusy("restore");
+    // signOut() detects the backup and restores admin → /admin/users.
+    await signOut();
+  };
+
+  const fullSignOut = async () => {
+    setLogoutBusy("signout");
+    // Drop the backup FIRST so signOut() falls through to a plain user signout
+    // instead of restoring the admin session.
+    clearImpersonationBackup();
+    await signOut();
+    navigate({ to: "/login" });
+  };
+
 
   return (
     <div dir={dir} data-dashboard-section={location.pathname.split("/")[2] ?? ""} className="flex min-h-screen bg-background">
