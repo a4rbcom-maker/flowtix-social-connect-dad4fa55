@@ -627,12 +627,15 @@ function SessionEventsHistory({
   sessionId: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [limit, setLimit] = useState(50);
   const eventsQ = useQuery({
-    queryKey: ["admin", "wa-cleanup", "events", userId, sessionId],
-    queryFn: () => adminGetWaSessionEvents({ data: { userId, sessionId, limit: 50 } }),
+    queryKey: ["admin", "wa-cleanup", "events", userId, sessionId, limit],
+    queryFn: () => adminGetWaSessionEvents({ data: { userId, sessionId, limit } }),
     enabled: open,
   });
   const events = eventsQ.data?.events ?? [];
+  const canLoadMore = events.length >= limit && limit < 200;
+
 
   return (
     <div className="border-t border-border bg-background/40">
@@ -692,6 +695,18 @@ function SessionEventsHistory({
                 </li>
               ))}
             </ol>
+          )}
+          {canLoadMore && !eventsQ.isLoading && (
+            <div className="pt-2 flex justify-center">
+              <button
+                onClick={() => setLimit((n) => Math.min(n + 50, 200))}
+                disabled={eventsQ.isFetching}
+                className="text-[11px] px-3 py-1 rounded-md border border-border bg-background hover:bg-muted transition-colors disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                {eventsQ.isFetching && <Loader2 className="h-3 w-3 animate-spin" />}
+                {t("تحميل المزيد", "Load more")}
+              </button>
+            </div>
           )}
         </div>
       )}
