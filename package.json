@@ -15,6 +15,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
+    "test:wa-session": "vitest run src/lib/wa-session-stability.test.ts",
     "audit:contrast": "node scripts/contrast-audit.mjs",
     "audit:contrast:toasts": "node scripts/contrast-toasts.mjs"
   },
