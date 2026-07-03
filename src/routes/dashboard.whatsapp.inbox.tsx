@@ -429,11 +429,12 @@ function InboxPage() {
   const hasMoreOlder = messages.length > visibleMessages.length;
 
   // Track connection so we can show the right empty-state CTA.
+  // Poll faster while not connected so we catch a fresh QR scan quickly.
   const connQuery = useQuery<{ status: string } | null>({
     queryKey: ["wa-connection-state", user?.id],
     queryFn: () => safeCall(() => fetchInboxConnectionState(user!.id), null),
     enabled: !!user?.id,
-    refetchInterval: 30000,
+    refetchInterval: (query) => (query.state.data?.status === "connected" ? 30000 : 5000),
   });
 
   const quickRepliesQuery = useQuery<QuickReply[]>({
@@ -442,6 +443,26 @@ function InboxPage() {
     enabled: !!user?.id,
   });
 
+  // Detect the edge transition (any → connected). A fresh QR scan is what
+  // brings the archive stream in from WhatsApp, so on every new connect we:
+  //  1) invalidate conversations / threads / messages caches so old chats appear,
+  //  2) reset the sync guard so history sync can (re)run even if some chats exist.
+  const prevConnStatusRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!user?.id) return;
+    const status = connQuery.data?.status ?? null;
+    const prev = prevConnStatusRef.current;
+    if (status === "connected" && prev !== "connected") {
+      // New connection edge — refresh every list tied to this account.
+      qc.invalidateQueries({ queryKey: ["wa-conversations", user.id] });
+      qc.invalidateQueries({ queryKey: ["wa-messages"] });
+      qc.invalidateQueries({ queryKey: ["wa-quick-replies", user.id] });
+      // Allow the history-sync auto-trigger below to re-arm for this new session.
+      historySyncRequestedRef.current = null;
+    }
+    prevConnStatusRef.current = status;
+  }, [connQuery.data?.status, user?.id, qc]);
+
   // Auto-trigger a full history sync the moment the session becomes "connected".
   // Goes through historySyncMut (not the bare fn) so the progress bar / % /
   // imported counts appear right after QR scan — no user action required.
@@ -449,22 +470,20 @@ function InboxPage() {
     if (!user?.id) return;
     if (connQuery.data?.status !== "connected") return;
     if (convQuery.isFetching) return;
-    // لا نشغل مزامنة تاريخ ثقيلة إذا كان لدى المستخدم محادثات بالفعل.
-    // الترتيب الآن يتحدث من قاعدة البيانات عند كل رسالة، والمزامنة هنا للحساب الفارغ فقط.
-    if (conversations.length > 0) return;
-    const key = `${user.id}:connected`;
+    const key = `${user.id}:connected:${connQuery.dataUpdatedAt ?? 0}`;
+    // The prev-status edge effect above resets historySyncRequestedRef on each
+    // fresh connect, so a new QR scan re-arms this even if some chats exist.
     if (historySyncRequestedRef.current === key) return;
     historySyncRequestedRef.current = key;
     // Fire-and-track: the mutation's onMutate sets syncState → progress UI shows.
     historySyncMut.mutate();
-    // On disconnect, allow re-trigger on the next connect.
     return () => {
       if (connQuery.data?.status !== "connected") {
         historySyncRequestedRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connQuery.data?.status, convQuery.isFetching, user?.id, conversations.length]);
+  }, [connQuery.data?.status, convQuery.isFetching, user?.id]);
 
   // Auto-match @lid conversations to real phone numbers once per session.
   // Silently backfills contact_phone using stored senderPn data so old chats
