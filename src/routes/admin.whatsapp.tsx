@@ -430,6 +430,7 @@ function SessionCleanupCard({ t }: { t: (ar: string, en: string) => string }) {
             <>
               <SessionsList
                 t={t}
+                userId={selectedUser.id}
                 data={sessionsQ.data}
                 onDelete={(id) => {
                   if (confirm(t(`تأكيد حذف الجلسة ${id}?`, `Confirm delete session ${id}?`))) {
