@@ -47,6 +47,37 @@ export function clearImpersonationBackup() {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(IMPERSONATION_BACKUP_KEY);
+
+    // Sweep any legacy / related impersonation entries from local + session storage
+    const sweep = (storage: Storage) => {
+      const toRemove: string[] = [];
+      for (let i = 0; i < storage.length; i++) {
+        const key = storage.key(i);
+        if (!key) continue;
+        if (
+          key === IMPERSONATION_BACKUP_KEY ||
+          key.toLowerCase().includes("impersonat") ||
+          key.startsWith("flowtix_admin_")
+        ) {
+          toRemove.push(key);
+        }
+      }
+      for (const key of toRemove) storage.removeItem(key);
+    };
+    sweep(window.localStorage);
+    sweep(window.sessionStorage);
+
+    // Best-effort cookie sweep for anything impersonation-related
+    const cookies = document.cookie ? document.cookie.split(";") : [];
+    for (const raw of cookies) {
+      const name = raw.split("=")[0]?.trim();
+      if (!name) continue;
+      if (name.toLowerCase().includes("impersonat") || name.startsWith("flowtix_admin_")) {
+        const expire = "expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        document.cookie = `${name}=; ${expire}; path=/`;
+        document.cookie = `${name}=; ${expire}; path=/; domain=${window.location.hostname}`;
+      }
+    }
   } catch {
     // ignore
   }
