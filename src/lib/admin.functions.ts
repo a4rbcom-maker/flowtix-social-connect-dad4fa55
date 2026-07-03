@@ -1735,12 +1735,14 @@ export const adminSendWaTestMessage = createServerFn({ method: "POST" })
     try {
       const res = await waBridge.sendText(sessionId, jid, text, { phone });
       const anyRes = res as Record<string, unknown>;
+      const keyObj =
+        anyRes.key && typeof anyRes.key === "object"
+          ? (anyRes.key as Record<string, unknown>)
+          : null;
       providerMessageId =
         (anyRes.messageId as string | undefined) ??
         (anyRes.id as string | undefined) ??
-        (anyRes.key && typeof anyRes.key === "object"
-          ? ((anyRes.key as Record<string, unknown>).id as string | undefined) ?? null
-          : null) ??
+        (keyObj?.id as string | undefined) ??
         null;
     } catch (e) {
       bridgeError = e instanceof Error ? e.message : String(e);
