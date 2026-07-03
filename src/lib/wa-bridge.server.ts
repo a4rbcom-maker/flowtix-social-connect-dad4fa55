@@ -403,6 +403,18 @@ export const waBridge = {
           : {}),
       }),
     }),
+  /**
+   * Rebuild the in-memory bridge socket for the SAME session id, preserving the
+   * paired WhatsApp credentials on disk. This is not logout/delete and does not
+   * mint a new QR. Keep history flags off here: this is used to recover a live
+   * agent/send path, not to trigger a heavy archive replay.
+   */
+  reviveSession: (id: string, opts: { webhookUrl?: string; tenantId?: string } = {}) =>
+    waBridge.createSession(id, {
+      webhookUrl: opts.webhookUrl,
+      tenantId: opts.tenantId,
+      syncFullHistory: false,
+    }),
   requestHistorySync: async (id: string) => {
     const paths = [
       `/api/sessions/${encodeURIComponent(id)}/sync-history`,
@@ -436,34 +448,12 @@ export const waBridge = {
       }
     }
 
-    // Bot-Xtra bridge v1.8.4 has no global history-sync endpoint, but it does
-    // have a soft-reset endpoint that rebuilds the in-memory Baileys socket
-    // while preserving the paired credentials. This is NOT a logout/delete and
-    // does not require scanning a new QR. On compatible bridge builds it causes
-    // Baileys init/history events to be emitted again for the current session.
-    if (endpointUnavailableOnly) {
-      const path = `/api/sessions/${encodeURIComponent(id)}/soft-reset`;
-      try {
-        const body = await bridgeFetch<unknown>(path, {
-          method: "POST",
-          body: JSON.stringify({
-            reason: "history_sync_soft_reset_preserve_pairing",
-            syncFullHistory: true,
-            syncHistory: true,
-            historySync: true,
-            fullHistory: true,
-            fireInitQueries: true,
-            emitHistory: true,
-          }),
-        });
-        attempts.push({ path, ok: true });
-        return { ok: true, attempts, body };
-      } catch (err) {
-        const status = err instanceof BridgeError ? err.status : undefined;
-        const error = err instanceof Error ? err.message : String(err);
-        attempts.push({ path, ok: false, status, error });
-      }
-    }
+    // Never auto-call /soft-reset from the app. On the current Bot-Xtra bridge,
+    // soft-reset can rebuild a paired session into QR state if the bridge has
+    // stale/partial credentials, which makes the agent stop even though the UI
+    // still preserves the last "connected" status. History sync must be a safe
+    // read/fetch operation only; explicit bridge maintenance can still use
+    // soft-reset outside the customer-facing app when needed.
     return { ok: false, attempts, body: null as unknown };
   },
   fetchChats: async (id: string) => {
@@ -724,6 +714,26 @@ export async function sendTextWithReconnect(
     return await waBridge.sendText(id, to, text, { phone: recover.recipientPhone });
   } catch (err) {
     if (!(err instanceof BridgeError)) throw err;
+
+    const maybeSleepingSocket =
+      err.status === 400 && /session.*not.*connected|not.*connected|restoring|connecting/i.test(err.message);
+    if (maybeSleepingSocket) {
+      console.warn(`[wa-bridge] session ${id} is registered but not connected; reviving same session id without QR`);
+      await waBridge.reviveSession(id, { webhookUrl: recover.webhookUrl, tenantId: recover.tenantId });
+      const deadline = Date.now() + 25_000;
+      while (Date.now() < deadline) {
+        await sleep(1_500);
+        try {
+          const status = inferStatus(await waBridge.getStatus(id));
+          if (status === "connected") {
+            return await waBridge.sendText(id, to, text, { phone: recover.recipientPhone });
+          }
+        } catch {
+          // keep polling until timeout
+        }
+      }
+      throw err;
+    }
 
     // Only consider hard "session-gone" signals. Do NOT delete/recreate the
     // same session id here: Bot-Xtra keeps deleted ids in a short release

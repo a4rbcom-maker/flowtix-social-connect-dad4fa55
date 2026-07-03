@@ -897,7 +897,15 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     const canTrustTenantFallback = Boolean(
       tenantId && (signatureVerified || sessionIdLooksOwnedByTenant(sessionId, tenantId)),
     );
-    if (tenantId && canTrustTenantFallback) {
+    const incomingEvent = String(payload.event || payload.type || "").toLowerCase();
+    const canRemapStaleSessionEvent =
+      HISTORY_EVENTS.has(incomingEvent) ||
+      CONTACT_EVENTS.has(incomingEvent) ||
+      incomingEvent === "history_chats" ||
+      incomingEvent === "message" ||
+      incomingEvent === "messages.upsert" ||
+      incomingEvent === "message.upsert";
+    if (tenantId && canTrustTenantFallback && canRemapStaleSessionEvent) {
       const { data: fallbackSess, error: fallbackErr } = await supabaseAdmin
         .from("wa_sessions")
         .select("user_id, phone_number, session_id")
@@ -918,6 +926,12 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         sess = fallbackSess;
         sessionId = fallbackSess.session_id;
       }
+    } else if (tenantId && canTrustTenantFallback) {
+      console.info("[wa-webhook] Ignored stale tenant session event without remap", {
+        incomingSessionId: sessionId,
+        tenantId,
+        event: incomingEvent,
+      });
     }
   }
   if (!sess?.user_id) {

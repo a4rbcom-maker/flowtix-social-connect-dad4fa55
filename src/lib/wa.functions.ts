@@ -7,6 +7,7 @@ import { requireAdmin } from "./admin-middleware";
 import {
   assertBridgeSendQueued,
   bridgeSendQueuedMessage,
+  sendTextWithReconnect,
   waBridge,
   inferStatus,
   BridgeError,
@@ -298,22 +299,27 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
           rawStatus: String(live.status ?? live.state ?? "connected"),
           phoneNumber: livePhone,
         });
-      } else if ((live.exists === false || liveStatus === "disconnected") && row.status !== "connected") {
+      } else if (live.exists === false || liveStatus === "disconnected" || liveStatus === "qr" || liveStatus === "connecting") {
+        const reason = live.exists === false
+          ? "bridge_session_missing"
+          : liveStatus === "disconnected"
+            ? "bridge_session_not_connected"
+            : `bridge_session_${liveStatus}`;
         await updateWaSessionStatus(supabase, {
           userId,
           sessionId: row.session_id,
-          nextStatus: "disconnected",
+          nextStatus: liveStatus,
           source: "history_sync",
-          reason: live.exists === false ? "bridge_session_missing" : "bridge_session_not_connected",
-          rawStatus: String(live.status ?? live.state ?? "disconnected"),
+          reason,
+          rawStatus: String(live.status ?? live.state ?? liveStatus),
           phoneNumber: livePhone,
         });
         return {
           ok: false,
           sessionId: row.session_id,
           requested: false,
-          attempts: [{ path: `/api/sessions/${row.session_id}/status`, ok: false, status: live.exists === false ? 404 : undefined, error: live.exists === false ? "bridge_session_missing" : "session_not_connected" }],
-          error: live.exists === false ? "bridge_session_missing" : "session_not_connected",
+          attempts: [{ path: `/api/sessions/${row.session_id}/status`, ok: false, status: live.exists === false ? 404 : undefined, error: reason }],
+          error: "session_not_connected",
         };
       }
     } catch (err) {
@@ -746,7 +752,12 @@ export const sendWaMessage = createServerFn({ method: "POST" })
     let delivery = "whatsapp_acknowledged";
     let status = "sent";
     try {
-      const res = await waBridge.sendText(row.session_id, targetJid, data.text, { phone: targetPhone });
+      const webhookUrl = await deriveWebhookUrl();
+      const res = await sendTextWithReconnect(row.session_id, targetJid, data.text, {
+        webhookUrl: webhookUrl ?? undefined,
+        tenantId: userId,
+        recipientPhone: targetPhone,
+      });
       queuedId = bridgeSendQueuedMessage(res);
       try {
         providerMessageId = assertBridgeSendQueued(res);
