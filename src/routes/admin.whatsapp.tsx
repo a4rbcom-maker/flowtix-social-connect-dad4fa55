@@ -696,6 +696,18 @@ function SessionEventsHistory({
               ))}
             </ol>
           )}
+          {canLoadMore && !eventsQ.isLoading && (
+            <div className="pt-2 flex justify-center">
+              <button
+                onClick={() => setLimit((n) => Math.min(n + 50, 200))}
+                disabled={eventsQ.isFetching}
+                className="text-[11px] px-3 py-1 rounded-md border border-border bg-background hover:bg-muted transition-colors disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                {eventsQ.isFetching && <Loader2 className="h-3 w-3 animate-spin" />}
+                {t("تحميل المزيد", "Load more")}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
