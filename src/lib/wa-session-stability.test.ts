@@ -346,6 +346,78 @@ describe("extractSessionReason", () => {
   });
 });
 
+describe("extractSessionReason — full branch coverage of helpers (lines 22-68)", () => {
+  it("valueToReason: numbers and booleans stringify", () => {
+    // number candidate via lastDisconnect.statusCode
+    expect(
+      extractSessionReason({}, { lastDisconnect: { statusCode: 401 } }),
+    ).toBe("401");
+    // boolean candidate via payload.reason
+    expect(extractSessionReason({ reason: false as any }, {})).toBe("false");
+  });
+
+  it("valueToReason: Error instance uses message, then name", () => {
+    const err = new Error("boom");
+    expect(extractSessionReason({}, { error: err })).toBe("boom");
+
+    const named = new Error("");
+    named.name = "LoggedOutError";
+    expect(extractSessionReason({}, { error: named })).toBe("LoggedOutError");
+  });
+
+  it("valueToReason: circular object falls through to null (JSON.stringify throws)", () => {
+    const circular: any = {};
+    circular.self = circular;
+    // only candidate present is unserializable -> should skip and return null
+    expect(extractSessionReason({}, { reason: circular })).toBeNull();
+  });
+
+  it("valueToReason: empty-object candidate is skipped, next candidate wins", () => {
+    // data.error = {} → JSON.stringify -> "{}" -> null, then payload.error picked
+    expect(
+      extractSessionReason({ error: "fallback_reason" }, { error: {} }),
+    ).toBe("fallback_reason");
+  });
+
+  it("extractSessionReason: reads payload-side lastDisconnect when data has none", () => {
+    expect(
+      extractSessionReason(
+        { lastDisconnect: { error: { message: "conn closed" } } },
+        {},
+      ),
+    ).toBe("conn closed");
+  });
+
+  it("extractSessionReason: asObj coerces non-object lastDisconnect/error safely", () => {
+    // lastDisconnect is a string (invalid) → asObj returns {}; nothing else matches
+    expect(
+      extractSessionReason({}, { lastDisconnect: "nope" as any }),
+    ).toBeNull();
+    // data.error is a number → picked directly via candidates before asObj lookup
+    expect(extractSessionReason({}, { error: 500 as any })).toBe("500");
+  });
+
+  it("extractSessionReason: called with default args returns null", () => {
+    expect(extractSessionReason()).toBeNull();
+  });
+
+  it("isHardSessionGoneError: BridgeError with non-404 status and unrelated message is not hard", () => {
+    expect(isHardSessionGoneError(new BridgeError("bad gateway", 502, null))).toBe(false);
+  });
+
+  it("isHardSessionGoneError: matches 'session not found' phrasing", () => {
+    expect(
+      isHardSessionGoneError(new BridgeError("session not found for user", 500, null)),
+    ).toBe(true);
+  });
+
+  it("isHardSessionGoneError: handles undefined input", () => {
+    expect(isHardSessionGoneError(undefined)).toBe(false);
+    expect(isHardSessionGoneError("string error" as any)).toBe(false);
+    expect(isHardSessionGoneError({ status: 404, message: "x" } as any)).toBe(false);
+  });
+});
+
 describe("isHardSessionGoneError", () => {
   it("treats 404 BridgeError as session gone", () => {
     expect(isHardSessionGoneError(new BridgeError("session missing", 404, null))).toBe(true);
