@@ -1,6 +1,23 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { UserCheck } from "lucide-react";
+import {
+  clearImpersonationBackup,
+  readImpersonationBackup,
+  type ImpersonationBackup,
+} from "@/lib/impersonation";
+
+import {
   LayoutDashboard,
   Facebook,
   MessageCircle,
@@ -294,10 +311,40 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
     : `${userPlan.charAt(0).toUpperCase() + userPlan.slice(1)} plan`;
   const upgradeLabel = lang === "ar" ? "ترقية" : "Upgrade";
 
+  // Impersonation-aware logout: if an admin is acting as this user (there's
+  // an impersonation backup in localStorage), don't quietly restore the admin
+  // session or silently sign out. Prompt them so they can pick between:
+  //   1) Returning to the admin account (signOut() auto-restores backup)
+  //   2) Fully signing out (drop the backup, then a normal signOut)
+  const [impersonationPrompt, setImpersonationPrompt] =
+    useState<ImpersonationBackup | null>(null);
+  const [logoutBusy, setLogoutBusy] = useState<"restore" | "signout" | null>(null);
+
   const handleLogout = async () => {
+    const backup = readImpersonationBackup();
+    if (backup) {
+      setImpersonationPrompt(backup);
+      return;
+    }
     await signOut();
     navigate({ to: "/login" });
   };
+
+  const restoreAdmin = async () => {
+    setLogoutBusy("restore");
+    // signOut() detects the backup and restores admin → /admin/users.
+    await signOut();
+  };
+
+  const fullSignOut = async () => {
+    setLogoutBusy("signout");
+    // Drop the backup FIRST so signOut() falls through to a plain user signout
+    // instead of restoring the admin session.
+    clearImpersonationBackup();
+    await signOut();
+    navigate({ to: "/login" });
+  };
+
 
   return (
     <div dir={dir} data-dashboard-section={location.pathname.split("/")[2] ?? ""} className="flex min-h-screen bg-background">
@@ -714,7 +761,74 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
         </button>
       )}
 
+      <AlertDialog
+        open={impersonationPrompt !== null}
+        onOpenChange={(open) => {
+          if (!open && !logoutBusy) setImpersonationPrompt(null);
+        }}
+      >
+        <AlertDialogContent dir={dir}>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                <UserCheck className="h-4 w-4" />
+              </span>
+              {lang === "ar" ? "أنت في وضع انتحال" : "You are in impersonation mode"}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2 text-start">
+              <span className="block">
+                {lang === "ar"
+                  ? "أنت حالياً تتصفّح حساب عميل من لوحة الأدمن. اختر ماذا تريد أن يحدث عند تسجيل الخروج:"
+                  : "You're currently browsing a client account from the admin panel. Choose what should happen when you sign out:"}
+              </span>
+              {impersonationPrompt && (
+                <span className="block rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    {lang === "ar" ? "العميل: " : "Client: "}
+                  </span>
+                  {impersonationPrompt.target_email}
+                  <br />
+                  <span className="font-medium text-foreground">
+                    {lang === "ar" ? "الأدمن الأصلي: " : "Original admin: "}
+                  </span>
+                  {impersonationPrompt.admin_email}
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-2">
+            <AlertDialogCancel disabled={logoutBusy !== null}>
+              {lang === "ar" ? "إلغاء" : "Cancel"}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void fullSignOut();
+              }}
+              disabled={logoutBusy !== null}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {logoutBusy === "signout"
+                ? lang === "ar" ? "جارٍ الخروج…" : "Signing out…"
+                : lang === "ar" ? "تسجيل خروج نهائي" : "Sign out completely"}
+            </AlertDialogAction>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void restoreAdmin();
+              }}
+              disabled={logoutBusy !== null}
+            >
+              {logoutBusy === "restore"
+                ? lang === "ar" ? "جارٍ الرجوع…" : "Restoring…"
+                : lang === "ar" ? "الرجوع لحساب الأدمن" : "Return to admin"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }
+
 
