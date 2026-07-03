@@ -761,7 +761,74 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
         </button>
       )}
 
+      <AlertDialog
+        open={impersonationPrompt !== null}
+        onOpenChange={(open) => {
+          if (!open && !logoutBusy) setImpersonationPrompt(null);
+        }}
+      >
+        <AlertDialogContent dir={dir}>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                <UserCheck className="h-4 w-4" />
+              </span>
+              {lang === "ar" ? "أنت في وضع انتحال" : "You are in impersonation mode"}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2 text-start">
+              <span className="block">
+                {lang === "ar"
+                  ? "أنت حالياً تتصفّح حساب عميل من لوحة الأدمن. اختر ماذا تريد أن يحدث عند تسجيل الخروج:"
+                  : "You're currently browsing a client account from the admin panel. Choose what should happen when you sign out:"}
+              </span>
+              {impersonationPrompt && (
+                <span className="block rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    {lang === "ar" ? "العميل: " : "Client: "}
+                  </span>
+                  {impersonationPrompt.target_email}
+                  <br />
+                  <span className="font-medium text-foreground">
+                    {lang === "ar" ? "الأدمن الأصلي: " : "Original admin: "}
+                  </span>
+                  {impersonationPrompt.admin_email}
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-2">
+            <AlertDialogCancel disabled={logoutBusy !== null}>
+              {lang === "ar" ? "إلغاء" : "Cancel"}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void fullSignOut();
+              }}
+              disabled={logoutBusy !== null}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {logoutBusy === "signout"
+                ? lang === "ar" ? "جارٍ الخروج…" : "Signing out…"
+                : lang === "ar" ? "تسجيل خروج نهائي" : "Sign out completely"}
+            </AlertDialogAction>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void restoreAdmin();
+              }}
+              disabled={logoutBusy !== null}
+            >
+              {logoutBusy === "restore"
+                ? lang === "ar" ? "جارٍ الرجوع…" : "Restoring…"
+                : lang === "ar" ? "الرجوع لحساب الأدمن" : "Return to admin"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }
+
 
