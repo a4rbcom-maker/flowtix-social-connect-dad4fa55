@@ -1316,3 +1316,51 @@ export const getAdminSecurityOverview = createServerFn({ method: "GET" })
       },
     };
   });
+
+// ---------- Impersonation (super-admin only) ----------
+// Restricted exclusively to this email — even other admins can NOT use it.
+const SUPER_IMPERSONATOR_EMAIL = "khaled.tawfiq2111@gmail.com";
+
+export const canImpersonate = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const db = admin();
+    const { data: userRes } = await db.auth.admin.getUserById(context.userId);
+    const email = userRes?.user?.email?.toLowerCase() ?? "";
+    return { allowed: email === SUPER_IMPERSONATOR_EMAIL };
+  });
+
+export const impersonateUser = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { userId: string }) => z.object({ userId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const db = admin();
+    // Verify caller email is the whitelisted super-impersonator.
+    const { data: callerRes, error: callerErr } = await db.auth.admin.getUserById(context.adminUserId);
+    if (callerErr || !callerRes?.user) throw new Error("Caller not found");
+    const callerEmail = callerRes.user.email?.toLowerCase() ?? "";
+    if (callerEmail !== SUPER_IMPERSONATOR_EMAIL) {
+      throw new Error("forbidden: impersonation is restricted");
+    }
+    // Load target user email.
+    const { data: targetRes, error: targetErr } = await db.auth.admin.getUserById(data.userId);
+    if (targetErr || !targetRes?.user?.email) throw new Error("Target user not found");
+    const targetEmail = targetRes.user.email;
+    // Generate a magiclink hashed token for the target — the client verifies it
+    // and receives a real signed-in session as that user.
+    const { data: linkRes, error: linkErr } = await db.auth.admin.generateLink({
+      type: "magiclink",
+      email: targetEmail,
+    });
+    if (linkErr || !linkRes?.properties?.hashed_token) {
+      throw new Error(linkErr?.message || "Failed to create impersonation link");
+    }
+    await logAction(context.adminUserId, "impersonate_user", data.userId, {
+      caller_email: callerEmail,
+      target_email: targetEmail,
+    });
+    return {
+      tokenHash: linkRes.properties.hashed_token,
+      email: targetEmail,
+    };
+  });
