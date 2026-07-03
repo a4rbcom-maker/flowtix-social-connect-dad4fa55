@@ -557,6 +557,7 @@ export const waBridge = {
     const phone = explicitPhone || normalizeWhatsappPhone(to) || "";
     const jid = to.includes("@") ? to : `${phone}@s.whatsapp.net`;
     const isLid = jid.endsWith("@lid");
+    const lidDigits = isLid ? jid.split("@")[0] : "";
     const publicJid = explicitPhone ? `${explicitPhone}@s.whatsapp.net` : null;
     const mediaType = opts.mediaType ?? "image";
     const caption = opts.caption ?? "";
@@ -589,7 +590,7 @@ export const waBridge = {
           jid,
           chatId: jid,
           ...(phone && !isLid ? { phone } : {}),
-          ...(isLid && explicitPhone ? { phone: explicitPhone } : {}),
+          ...(isLid ? { phone: explicitPhone || lidDigits, lid: jid, useLid: true, addressingMode: "lid" } : {}),
           ...(isLid && publicJid ? { recipientPn: publicJid, participantPn: publicJid, senderPn: publicJid } : {}),
           type: mediaType,
           mediaType,
