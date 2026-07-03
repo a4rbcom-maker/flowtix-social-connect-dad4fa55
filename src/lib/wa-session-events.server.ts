@@ -254,7 +254,8 @@ export async function updateWaSessionStatus(
   const shouldLog =
     input.logEvenIfUnchanged ||
     previousStatus !== nextStatus ||
-    trustedDisconnect;
+    trustedDisconnect ||
+    transientQrAfterConnected;
 
   if (shouldLog) {
     const suppressedTag = isLateEvent
