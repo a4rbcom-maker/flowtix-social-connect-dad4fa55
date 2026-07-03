@@ -147,6 +147,7 @@ function InboxPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const historySyncRequestedRef = useRef<string | null>(null);
+  const chatHistoryRequestedRef = useRef<Set<string>>(new Set());
   const PAGE_SIZE = 40;
   const [visibleCount, setVisibleCount] = useState<number>(PAGE_SIZE);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
@@ -628,6 +629,31 @@ function InboxPage() {
       window.clearInterval(heartbeat);
     };
   }, [qc, user?.id, activeJid, requestHistorySyncFn, conversations.length]);
+
+  // If a known chat opens with only the first/newest message, ask the bridge for
+  // that chat's backlog immediately. Bot-Xtra exposes per-chat history requests
+  // even when a global chat catalogue endpoint is unavailable.
+  useEffect(() => {
+    if (!user?.id || !activeJid) return;
+    if (connQuery.data?.status !== "connected") return;
+    if (msgsQuery.isFetching) return;
+    if (messages.length > 3) return;
+    const key = `${user.id}:${activeJid}`;
+    if (chatHistoryRequestedRef.current.has(key)) return;
+    chatHistoryRequestedRef.current.add(key);
+    requestHistorySyncFn()
+      .then(() => {
+        window.setTimeout(() => {
+          qc.invalidateQueries({ queryKey: ["wa-conversations", user.id] });
+          qc.invalidateQueries({ queryKey: ["wa-messages", user.id, activeJid] });
+          qc.invalidateQueries({ queryKey: ["wa", "history-sync-job", user.id] });
+        }, 5000);
+      })
+      .catch((err: unknown) => {
+        chatHistoryRequestedRef.current.delete(key);
+        console.warn("[inbox] focused chat history sync failed", err);
+      });
+  }, [user?.id, activeJid, connQuery.data?.status, msgsQuery.isFetching, messages.length, requestHistorySyncFn, qc]);
 
   // Reset progressive pagination when conversation changes
   useEffect(() => {

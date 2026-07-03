@@ -767,7 +767,6 @@ export const sendWaMessage = createServerFn({ method: "POST" })
       source: "poll",
       reason: "outgoing_message_accepted",
       rawStatus: "connected",
-      phoneNumber: targetPhone,
     });
 
     await supabase.from("wa_messages").insert({

@@ -324,7 +324,11 @@ export async function updateWaSessionStatus(
     .eq("session_id", input.sessionId);
 
   let adoptedArchive: { conversations: number; messages: number; sourceSessions: number } | null = null;
-  if (nextStatus === "connected" && input.phoneNumber) {
+  const phoneIsVerifiedByBridge =
+    input.source === "webhook_status" ||
+    input.source === "history_sync" ||
+    (input.source === "poll" && input.rawStatus === "connected" && input.reason !== "outgoing_message_accepted");
+  if (nextStatus === "connected" && input.phoneNumber && phoneIsVerifiedByBridge) {
     try {
       adoptedArchive = await adoptArchiveForVerifiedPhone({
         userId: input.userId,
