@@ -452,11 +452,13 @@ function SessionCleanupCard({ t }: { t: (ar: string, en: string) => string }) {
 
 function SessionsList({
   t,
+  userId,
   data,
   onDelete,
   deleting,
 }: {
   t: (ar: string, en: string) => string;
+  userId: string;
   data: Awaited<ReturnType<typeof adminListUserWaSessions>>;
   onDelete: (id: string) => void;
   deleting: string | null | undefined;
