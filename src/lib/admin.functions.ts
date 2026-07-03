@@ -1665,3 +1665,97 @@ export const adminListUsersWithBadWaSessions = createServerFn({ method: "GET" })
 
     return { users };
   });
+
+// ---------- Admin: send a WhatsApp test message from a specific user's session ----------
+// Used from the admin cleanup panel to verify (after reconnect) that:
+//   1) the session actually sends,
+//   2) the message reaches the target device,
+//   3) replies come back to the agent through the normal webhook path.
+// Safety: only Flowtix-prefixed sessions belonging to this user are eligible.
+export const adminSendWaTestMessage = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { userId: string; to: string; text?: string; sessionId?: string }) =>
+    z
+      .object({
+        userId: z.string().uuid(),
+        to: z
+          .string()
+          .trim()
+          .min(6)
+          .max(32)
+          .regex(/^\+?[0-9]+$/u, "invalid phone"),
+        text: z.string().trim().min(1).max(1000).optional(),
+        sessionId: z.string().min(3).max(200).optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const db = admin();
+    const { waBridge } = await import("./wa-bridge.server");
+
+    // Resolve the session: prefer explicit sessionId, else first connected row.
+    let sessionId = data.sessionId ?? null;
+    if (sessionId) {
+      const { data: owned } = await db
+        .from("wa_sessions")
+        .select("user_id, status")
+        .eq("session_id", sessionId)
+        .maybeSingle();
+      const prefix = flowtixPrefix(data.userId);
+      const belongs = owned?.user_id === data.userId;
+      const matchesPrefix = sessionId.startsWith(prefix);
+      if (!belongs && !matchesPrefix) {
+        throw new Error("refused: session does not belong to this Flowtix user.");
+      }
+    } else {
+      const { data: row } = await db
+        .from("wa_sessions")
+        .select("session_id, status")
+        .eq("user_id", data.userId)
+        .eq("status", "connected")
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!row?.session_id) {
+        throw new Error("no connected session for this user — ask them to scan QR first.");
+      }
+      sessionId = row.session_id;
+    }
+
+    // Normalise phone to digits only.
+    const phone = data.to.replace(/[^0-9]/g, "");
+    if (phone.length < 6) throw new Error("invalid phone number");
+    const jid = `${phone}@s.whatsapp.net`;
+    const text =
+      data.text?.trim() ||
+      "✅ اختبار من Flowtix Tools — لو وصلتك الرسالة دي، الجلسة شغالة وردودك هترجع للوكيل تلقائيًا.";
+
+    let providerMessageId: string | null = null;
+    let bridgeError: string | null = null;
+    try {
+      const res = await waBridge.sendText(sessionId, jid, text, { phone });
+      const anyRes = res as Record<string, unknown>;
+      const keyObj =
+        anyRes.key && typeof anyRes.key === "object"
+          ? (anyRes.key as Record<string, unknown>)
+          : null;
+      providerMessageId =
+        (anyRes.messageId as string | undefined) ??
+        (anyRes.id as string | undefined) ??
+        (keyObj?.id as string | undefined) ??
+        null;
+    } catch (e) {
+      bridgeError = e instanceof Error ? e.message : String(e);
+    }
+
+    await logAction(context.adminUserId, "wa_admin_test_send", data.userId, {
+      session_id: sessionId,
+      to: phone,
+      provider_message_id: providerMessageId,
+      ok: !bridgeError,
+      error: bridgeError,
+    });
+
+    if (bridgeError) throw new Error(bridgeError);
+    return { ok: true, sessionId, to: phone, providerMessageId };
+  });
