@@ -17,7 +17,9 @@ export type WaAggregateStatus =
   | "unknown"
   | "connected"
   | "disconnected"
+  | "needs_qr"
   | "connecting";
+
 
 export interface WaDisconnectAlertsState {
   disconnectedCount: number;
