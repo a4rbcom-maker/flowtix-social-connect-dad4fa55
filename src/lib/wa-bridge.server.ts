@@ -715,23 +715,15 @@ export async function sendTextWithReconnect(
   } catch (err) {
     if (!(err instanceof BridgeError)) throw err;
 
+    // Do NOT call reviveSession/createSession here on transient "not connected"
+    // errors: the Bot-Xtra bridge (v1.8.4) has no revive endpoint, and calling
+    // createSession on a paired-but-sleeping id can rebuild it into QR state,
+    // which silently disconnects the customer. If the send fails now, surface
+    // the error and let the bridge's own watchdog reconnect the socket.
     const maybeSleepingSocket =
       err.status === 400 && /session.*not.*connected|not.*connected|restoring|connecting/i.test(err.message);
     if (maybeSleepingSocket) {
-      console.warn(`[wa-bridge] session ${id} is registered but not connected; reviving same session id without QR`);
-      await waBridge.reviveSession(id, { webhookUrl: recover.webhookUrl, tenantId: recover.tenantId });
-      const deadline = Date.now() + 25_000;
-      while (Date.now() < deadline) {
-        await sleep(1_500);
-        try {
-          const status = inferStatus(await waBridge.getStatus(id));
-          if (status === "connected") {
-            return await waBridge.sendText(id, to, text, { phone: recover.recipientPhone });
-          }
-        } catch {
-          // keep polling until timeout
-        }
-      }
+      console.warn(`[wa-bridge] session ${id} not connected; deferring to bridge watchdog (no revive)`);
       throw err;
     }
 
