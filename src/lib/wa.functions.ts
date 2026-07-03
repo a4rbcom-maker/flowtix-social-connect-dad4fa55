@@ -395,19 +395,20 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
         .select("remote_jid, contact_phone")
         .eq("user_id", userId)
         .order("updated_at", { ascending: false })
-        .limit(80),
-      supabase.from("contacts").select("phone").eq("user_id", userId).limit(80),
-      supabase.from("customer_database").select("phone, phone_norm").eq("user_id", userId).limit(80),
-      supabase.from("bulk_job_recipients").select("phone").eq("user_id", userId).limit(80),
-      supabase.from("send_log").select("recipient").eq("user_id", userId).eq("channel", "whatsapp").limit(80),
+        .limit(500),
+      supabase.from("contacts").select("phone").eq("user_id", userId).limit(300),
+      supabase.from("customer_database").select("phone, phone_norm").eq("user_id", userId).limit(300),
+      supabase.from("bulk_job_recipients").select("phone").eq("user_id", userId).limit(300),
+      supabase.from("send_log").select("recipient").eq("user_id", userId).eq("channel", "whatsapp").limit(300),
       supabase
         .from("wa_messages")
         .select("remote_jid, provider_message_id, wa_timestamp")
         .eq("user_id", userId)
         .not("provider_message_id", "is", null)
         .order("wa_timestamp", { ascending: true })
-        .limit(2000),
+        .limit(5000),
     ]);
+
 
     // Track oldest message per JID (both id + timestamp) so we can paginate
     // backwards page-by-page as recommended by Bot-Xtra: each /fetch-messages
