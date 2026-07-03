@@ -104,14 +104,24 @@ export function ImpersonationBanner() {
               : `Impersonating ${backup.target_email} — original admin: ${backup.admin_email}`}
           </span>
         </div>
-        <button
-          onClick={handleRestore}
-          disabled={restoring}
-          className="inline-flex items-center gap-1.5 rounded-md bg-amber-950 text-amber-50 px-3 py-1.5 text-xs font-semibold hover:bg-amber-900 disabled:opacity-50 shrink-0"
-        >
-          {restoring ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
-          {isArabic ? "رجوع للأدمن" : "Return to admin"}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={handleRestore}
+            disabled={restoring}
+            className="inline-flex items-center gap-1.5 rounded-md bg-amber-950 text-amber-50 px-3 py-1.5 text-xs font-semibold hover:bg-amber-900 disabled:opacity-50"
+          >
+            {restoring ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
+            {isArabic ? "رجوع للأدمن" : "Return to admin"}
+          </button>
+          <button
+            onClick={clearBackup}
+            aria-label={isArabic ? "إخفاء" : "Dismiss"}
+            title={isArabic ? "إخفاء الشريط" : "Dismiss banner"}
+            className="inline-flex items-center justify-center rounded-md bg-amber-950/10 text-amber-950 hover:bg-amber-950/20 h-7 w-7"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </div>
   );
