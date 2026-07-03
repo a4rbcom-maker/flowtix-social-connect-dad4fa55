@@ -223,7 +223,7 @@ function LoginPage() {
   };
 
   const inputClass =
-    "peer w-full rounded-xl border border-input bg-background/60 backdrop-blur ps-12 pe-4 py-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground/60";
+    "peer w-full rounded-xl border border-input bg-background/60 backdrop-blur pl-14 pr-4 py-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground/60";
 
   return (
     <div dir={dir} className="min-h-screen bg-background">
@@ -332,13 +332,13 @@ function LoginPage() {
                   minLength={6}
                   placeholder={labels.passwordPh}
                   dir="ltr"
-                  className={`${inputClass} pe-12`}
+                  className={`${inputClass} pr-12`}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
                   aria-label={showPassword ? (lang === "ar" ? "إخفاء كلمة المرور" : "Hide password") : (lang === "ar" ? "إظهار كلمة المرور" : "Show password")}
-                  className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors p-1 rounded-md"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors p-1 rounded-md"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -438,7 +438,7 @@ function Field({
     <div>
       <label className="mb-1.5 block text-xs font-medium text-foreground/80">{label}</label>
       <div className="group relative">
-        <div className="pointer-events-none absolute start-2 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20 transition-all duration-300 group-focus-within:bg-primary/15 group-focus-within:ring-primary/30 group-focus-within:scale-105">
+        <div className="pointer-events-none absolute left-2 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20 transition-all duration-300 group-focus-within:bg-primary/15 group-focus-within:ring-primary/30 group-focus-within:scale-105">
           <Icon className="relative h-[18px] w-[18px] text-primary transition-transform duration-300 group-focus-within:scale-110" strokeWidth={2.25} />
         </div>
         {children}
