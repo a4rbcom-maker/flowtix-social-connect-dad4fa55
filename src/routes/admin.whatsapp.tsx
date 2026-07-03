@@ -365,16 +365,19 @@ function SessionCleanupCard({ t }: { t: (ar: string, en: string) => string }) {
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
           ) : sessionsQ.data ? (
-            <SessionsList
-              t={t}
-              data={sessionsQ.data}
-              onDelete={(id) => {
-                if (confirm(t(`تأكيد حذف الجلسة ${id}?`, `Confirm delete session ${id}?`))) {
-                  cleanup.mutate(id);
-                }
-              }}
-              deleting={cleanup.isPending ? cleanup.variables : null}
-            />
+            <>
+              <SessionsList
+                t={t}
+                data={sessionsQ.data}
+                onDelete={(id) => {
+                  if (confirm(t(`تأكيد حذف الجلسة ${id}?`, `Confirm delete session ${id}?`))) {
+                    cleanup.mutate(id);
+                  }
+                }}
+                deleting={cleanup.isPending ? cleanup.variables : null}
+              />
+              <TestSendCard t={t} userId={selectedUser.id} sessionsData={sessionsQ.data} />
+            </>
           ) : null}
         </div>
       )}
