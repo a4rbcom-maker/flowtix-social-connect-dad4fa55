@@ -293,13 +293,15 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
     digits(pickContactRef(senderObj)) ||
     digits(pickContactRef(participantObj)) ||
     digits(pickContactRef(fromObj));
-  const rawFromLidJid =
+  const rawFromLooksLikeLid = Boolean(
     !isGroup &&
-    !fromMe &&
-    rawFromDigits &&
-    ((explicitPhone && rawFromDigits !== explicitPhone) || jidType === "lid" || looksLikeLidAlias(rawFromDigits))
-      ? `${rawFromDigits}@lid`
-      : null;
+      rawFromDigits &&
+      (
+        (!fromMe && ((explicitPhone && rawFromDigits !== explicitPhone) || jidType === "lid" || looksLikeLidAlias(rawFromDigits))) ||
+        (fromMe && jidType === "lid" && explicitPhone && rawFromDigits !== explicitPhone)
+      ),
+  );
+  const rawFromLidJid = rawFromLooksLikeLid && rawFromDigits ? `${rawFromDigits}@lid` : null;
   const realPhone =
     explicitPhone || (!rawFromLidJid && jidType !== "lid" ? rawFromDigits : null);
   const keyRemote = pickStr(key, "remoteJid");
@@ -321,7 +323,7 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
   const remoteJid = isGroup
     ? groupJid
     : fromMe
-      ? (recipientJid || directChatJid || keyRemote)
+      ? (recipientJid || inboundLidJid || directChatJid || keyRemote || rawFromLidJid)
       : (inboundLidJid || directChatJid || keyRemote || senderJid || realPhone);
 
   const digitsUnlessLid = (value: string | null | undefined): string | null => {
