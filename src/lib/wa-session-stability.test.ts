@@ -322,6 +322,92 @@ describe("updateWaSessionStatus — stability guarantees", () => {
     expect(state.session.status).toBe("connected");
     expect(state.events.at(-1)?.to_status).toBe("connected");
   });
+
+  it("401 unauthorized + closed disconnects, then reconnect heartbeat restores connected and clears whatsapp_settings", async () => {
+    const { db, state } = makeDb({
+      session: { status: "connected", last_seen_at: new Date(now).toISOString() },
+    });
+
+    // 1) Trusted logout signal (401 + closed) → session flips to disconnected.
+    await updateWaSessionStatus(db, {
+      userId,
+      sessionId,
+      nextStatus: "disconnected",
+      source: "webhook_status",
+      reason: "401 unauthorized, socket closed",
+    });
+    expect(state.session.status).toBe("disconnected");
+    expect(state.settingsUpdates.at(-1)?.is_connected).toBe(false);
+    expect(state.events.at(-1)?.to_status).toBe("disconnected");
+
+    // 2) User re-scans QR → bridge sends "connected".
+    await updateWaSessionStatus(db, {
+      userId,
+      sessionId,
+      nextStatus: "connected",
+      source: "webhook_status",
+    });
+
+    expect(state.session.status).toBe("connected");
+    expect(state.settingsUpdates.at(-1)?.is_connected).toBe(true);
+    expect(state.settingsUpdates.at(-1)?.last_connected_at).toBeTruthy();
+    expect(state.events.at(-1)?.to_status).toBe("connected");
+  });
+
+  it("device_removed webhook disconnects, then reconnect via poll restores connected", async () => {
+    const { db, state } = makeDb({
+      session: { status: "connected", last_seen_at: new Date(now).toISOString() },
+    });
+
+    // 1) User unlinked the device from their phone.
+    await updateWaSessionStatus(db, {
+      userId,
+      sessionId,
+      nextStatus: "disconnected",
+      source: "webhook_status",
+      rawStatus: "device_removed",
+      reason: "removed device",
+    });
+    expect(state.session.status).toBe("disconnected");
+    expect(state.settingsUpdates.at(-1)?.is_connected).toBe(false);
+
+    // 2) After re-pairing, next poll reports connected.
+    const prev = await updateWaSessionStatus(db, {
+      userId,
+      sessionId,
+      nextStatus: "connected",
+      source: "poll",
+    });
+
+    expect(prev).toBe("disconnected");
+    expect(state.session.status).toBe("connected");
+    expect(state.settingsUpdates.at(-1)?.is_connected).toBe(true);
+    // A real transition disconnected → connected must be logged.
+    const lastEvent = state.events.at(-1);
+    expect(lastEvent?.from_status).toBe("disconnected");
+    expect(lastEvent?.to_status).toBe("connected");
+    expect(lastEvent?.source).toBe("poll");
+  });
+
+  it("device_removed followed by phone_number update on reconnect stores the new number", async () => {
+    const { db, state } = makeDb({
+      session: { status: "connected", last_seen_at: new Date(now).toISOString(), phone_number: "+100" },
+    });
+
+    await updateWaSessionStatus(db, {
+      userId, sessionId, nextStatus: "disconnected",
+      source: "webhook_status", reason: "unlinked",
+    });
+    expect(state.session.status).toBe("disconnected");
+
+    await updateWaSessionStatus(db, {
+      userId, sessionId, nextStatus: "connected",
+      source: "webhook_status", phoneNumber: "+201234567890",
+    });
+
+    expect(state.session.status).toBe("connected");
+    expect(state.session.phone_number).toBe("+201234567890");
+  });
 });
 
 describe("extractSessionReason", () => {
