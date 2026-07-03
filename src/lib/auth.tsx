@@ -1,8 +1,10 @@
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 import { toast } from "sonner";
 import { clearImpersonationBackup, readImpersonationBackup } from "@/lib/impersonation";
+
 
 interface AuthContextType {
   user: User | null;
@@ -35,6 +37,7 @@ function isPublicPath(pathname: string): boolean {
 type RedirectReason = "expired" | "signed_out" | "auth_required";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,6 +46,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hadSessionRef = useRef(false);
   // Prevent stacking multiple redirects/toasts when several serverFn calls fail at once.
   const expiredHandledRef = useRef(false);
+
+  // Kill all in-flight React Query fetches and drop cached data so any
+  // late server-fn responses (401s from an expired token, or admin-only
+  // data mid-context-switch) never reach a component and never surface
+  // as blank screens / error toasts. Callers should invoke this right
+  // before a hard navigation to /login or /admin/users.
+  const killAllQueries = () => {
+    try {
+      void queryClient.cancelQueries();
+      queryClient.clear();
+    } catch {
+      /* ignore — best effort */
+    }
+  };
+
 
 
   useEffect(() => {
@@ -77,6 +95,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const path = window.location.pathname;
       if (isPublicPath(path)) return;
       expiredHandledRef.current = true;
+      // Abort every in-flight query and drop the cache BEFORE we navigate,
+      // so pending server-fn responses never render into the current page.
+      killAllQueries();
+
 
       // Dedupe across redirects/reloads: only show one toast per reason
       // within a short window so the user never sees the same notice twice.
@@ -191,6 +213,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Manual sign-out shouldn't trigger the "expired" toast.
     expiredHandledRef.current = true;
     hadSessionRef.current = false;
+    // Cancel every in-flight query and drop cached data BEFORE we tear
+    // down the session. Otherwise queries fired against the current user
+    // resolve mid-signout, either as 401s or as data belonging to the
+    // wrong context (e.g. an admin's dashboard flashing during return
+    // from impersonation).
+    killAllQueries();
+
+
 
     // If an admin is currently impersonating another user, "logout" should
     // restore the admin's original session and return them to /admin/users,
