@@ -148,6 +148,32 @@ export const markConversationRead = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// Presence heartbeat: the inbox UI calls this while the user is viewing or
+// typing in a conversation. It sets agent_active_until a bit in the future so
+// the AI auto-reply skips this chat during that window (the human is on it).
+export const markConversationActive = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        remoteJid: z.string().min(3),
+        durationMs: z.number().int().min(1000).max(5 * 60_000).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const ttl = data.durationMs ?? 45_000;
+    const until = new Date(Date.now() + ttl).toISOString();
+    const { error } = await supabase
+      .from("wa_conversations")
+      .update({ agent_active_until: until })
+      .eq("user_id", userId)
+      .eq("remote_jid", data.remoteJid);
+    if (error) throw new Error(error.message);
+    return { ok: true, until };
+  });
+
 export const toggleConversationAi = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
