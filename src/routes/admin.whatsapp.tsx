@@ -23,8 +23,10 @@ import { getAdminWhatsappOverview, listAdminUsers } from "@/lib/admin.functions"
 import {
   adminListUserWaSessions,
   adminCleanupUserWaSession,
+  adminBulkCleanupFlowtixDisconnected,
 } from "@/lib/admin.functions";
 import { toast } from "sonner";
+
 
 export const Route = createFileRoute("/admin/whatsapp")({
   ssr: false,
