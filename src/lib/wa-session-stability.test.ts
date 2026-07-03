@@ -225,4 +225,44 @@ describe("updateWaSessionStatus — stability guarantees", () => {
     expect(state.session.status).toBe("connected");
     expect(state.settingsUpdates.some((u) => u.is_connected === false)).toBe(false);
   });
+
+  it("network drop then reconnect: transient disconnect is debounced, then reconnect heartbeat restores connected without any disconnected flap", async () => {
+    const { db, state } = makeDb({
+      session: { status: "connected", last_seen_at: new Date(now).toISOString() },
+    });
+
+    // 1) Network drops — bridge emits a generic transient disconnect.
+    await updateWaSessionStatus(db, {
+      userId,
+      sessionId,
+      nextStatus: "disconnected",
+      source: "webhook_status",
+      reason: "connection lost",
+    });
+    expect(state.session.status).toBe("connected");
+    expect(state.settingsUpdates.some((u) => u.is_connected === false)).toBe(false);
+
+    // 2) Follow-up transient reason while still offline — still no flap.
+    await updateWaSessionStatus(db, {
+      userId,
+      sessionId,
+      nextStatus: "disconnected",
+      source: "webhook_status",
+      reason: "reconnecting",
+    });
+    expect(state.session.status).toBe("connected");
+
+    // 3) Network comes back — bridge sends a "connected" heartbeat.
+    await updateWaSessionStatus(db, {
+      userId,
+      sessionId,
+      nextStatus: "connected",
+      source: "webhook_status",
+    });
+
+    expect(state.session.status).toBe("connected");
+    expect(state.settingsUpdates.some((u) => u.is_connected === false)).toBe(false);
+    // last_seen_at must advance to (roughly) the reconnect moment.
+    expect(Date.parse(state.session.last_seen_at)).toBeGreaterThanOrEqual(now);
+  });
 });
