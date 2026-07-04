@@ -351,7 +351,22 @@ function attachBackgroundTask(request: Request, task: Promise<unknown>, label: s
 }
 
 function mediaDataFromEntry(entry: Record<string, unknown>): Record<string, unknown> {
-  return asObj(entry.mediaData);
+  const nestedMessage = asObj(entry.message);
+  const typedMessage = Object.keys(nestedMessage)
+    .map((key) => asObj(nestedMessage[key]))
+    .find((value) => Object.keys(value).length > 0);
+  return [
+    asObj(entry.mediaData),
+    asObj(entry.media),
+    asObj(entry.attachment),
+    asObj(entry.image),
+    asObj(entry.video),
+    asObj(entry.audio),
+    asObj(entry.document),
+    asObj(entry.sticker),
+    typedMessage ?? {},
+    entry,
+  ].find((value) => Object.keys(value).some((key) => ["dataUrl", "base64", "fileData", "data", "url", "fileUrl", "downloadUrl", "mediaUrl", "directPath"].includes(key))) ?? {};
 }
 
 function fallbackMimeType(msgType: string): string {
@@ -450,6 +465,11 @@ async function persistWaMedia(params: {
     return params.mediaUrl || null;
   }
   return `wa-media:${path}`;
+}
+
+function rawMediaUrlFromEntry(entry: Record<string, unknown>, parsedMediaUrl: string | null): string | null {
+  const media = mediaDataFromEntry(entry);
+  return parsedMediaUrl || pickStr(media, "dataUrl", "url", "fileUrl", "downloadUrl", "mediaUrl", "directPath") || pickStr(entry, "mediaUrl", "fileUrl", "downloadUrl", "url", "directPath");
 }
 
 // Re-export type for downstream files that imported it from here historically.
@@ -703,6 +723,13 @@ async function importHistoryMessages(params: {
     if (!remoteJid) continue;
     const fromMe = parsed?.fromMe ?? isTruthy(h.fromMe);
     const msgType = mediaTypeFromRaw(h, (parsed?.msgType || pickStr(h, "type", "msgType", "messageType") || "text").toLowerCase());
+    const mediaUrl = await persistWaMedia({
+      userId: params.userId,
+      sessionId: params.sessionId,
+      entry: h,
+      msgType,
+      mediaUrl: rawMediaUrlFromEntry(h, parsed?.mediaUrl ?? null),
+    });
     const text = cleanMessageText(
       parsed?.text || pickStr(h, "body", "text", "message", "content", "caption") || pickStr(asObj(h.message), "conversation"),
       h,
@@ -726,11 +753,28 @@ async function importHistoryMessages(params: {
     if (providerMessageId) {
       const { data: existing } = await supabaseAdmin
         .from("wa_messages")
-        .select("id")
+        .select("id, media_url, text_body, raw")
         .eq("user_id", params.userId)
         .eq("provider_message_id", providerMessageId)
         .maybeSingle();
       if (existing?.id) {
+        if (mediaUrl && !existing.media_url) {
+          await supabaseAdmin
+            .from("wa_messages")
+            .update({
+              media_url: mediaUrl,
+              text_body: existing.text_body || text,
+              raw: {
+                ...asObj(existing.raw),
+                ...h,
+                is_historical: true,
+                normalizedRemoteJid: remoteJid,
+                normalizedWaTimestamp: waTimestamp,
+                storedMediaUrl: mediaUrl.startsWith("wa-media:") ? mediaUrl : null,
+              } as never,
+            })
+            .eq("id", existing.id);
+        }
         dup++;
         continue;
       }
@@ -747,7 +791,7 @@ async function importHistoryMessages(params: {
         to_phone: fromMe ? (phone || null) : null,
         msg_type: msgType,
         text_body: text,
-        media_url: null,
+        media_url: mediaUrl,
         status: fromMe ? "sent" : "received",
         provider_message_id: providerMessageId,
         wa_timestamp: waTimestamp,
@@ -1119,7 +1163,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       continue;
     }
     const msgType = mediaTypeFromRaw(entry, m.msgType);
-    const rawMediaUrl = m.mediaUrl ?? mediaUrlFromRaw(entry, msgType);
+    const rawMediaUrl = rawMediaUrlFromEntry(entry, m.mediaUrl ?? mediaUrlFromRaw(entry, msgType));
     const mediaUrl = await persistWaMedia({ userId, sessionId, entry, msgType, mediaUrl: rawMediaUrl });
     const text = cleanMessageText(m.text, entry, msgType);
 

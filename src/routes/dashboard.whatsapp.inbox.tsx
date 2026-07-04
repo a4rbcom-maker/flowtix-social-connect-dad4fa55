@@ -2515,9 +2515,9 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
   const messageAliases = inboxJidAliases(remoteJid, convAliases?.contact_phone ?? null);
   const { data, error } = await supabase
     .from("wa_messages")
-    // لا نسحب raw هنا لأنه قد يحتوي Base64/JSON كبير جدًا للميديا ويستهلك Disk IO.
-    // واجهة الشات تعتمد على الأعمدة الخفيفة المخزنة: text_body / msg_type / media_url / status.
-    .select("id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at")
+    // نحتاج raw كمسار احتياطي لأن بعض دفعات الأرشيف القديمة حملت رابط/بيانات الوسيط داخل JSON
+    // قبل حفظه في media_url. الاستعلام محدود بآخر 200 رسالة للمحادثة المفتوحة فقط.
+    .select("id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw")
     .eq("user_id", userId)
     .in("remote_jid", messageAliases)
     .order("wa_timestamp", { ascending: false, nullsFirst: false })
@@ -2535,7 +2535,7 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     })
     .reverse();
   return Promise.all(rows.map(async (row) => {
-    const raw = {} as Record<string, unknown>;
+    const raw = asRecord(row.raw);
     const msgType = mediaTypeFromRaw(raw, row.msg_type);
     const storedMediaUrl = typeof row.media_url === "string" && row.media_url.trim() ? row.media_url.trim() : null;
     const rawMediaUrl = mediaUrlFromRaw(raw, msgType);
@@ -2790,7 +2790,23 @@ const MEDIA_TYPE_ALIASES: Record<string, string> = {
 };
 
 function mediaDataFromRaw(raw: unknown): Record<string, unknown> {
-  return asRecord(asRecord(raw).mediaData);
+  const obj = asRecord(raw);
+  const nested = asRecord(obj.message);
+  const typedMessage = Object.keys(nested)
+    .map((key) => asRecord(nested[key]))
+    .find((value) => Object.keys(value).length > 0);
+  return [
+    asRecord(obj.mediaData),
+    asRecord(obj.media),
+    asRecord(obj.attachment),
+    asRecord(obj.image),
+    asRecord(obj.video),
+    asRecord(obj.audio),
+    asRecord(obj.document),
+    asRecord(obj.sticker),
+    typedMessage ?? {},
+    obj,
+  ].find((value) => Object.keys(value).some((key) => ["dataUrl", "base64", "fileData", "data", "url", "fileUrl", "downloadUrl", "mediaUrl", "directPath"].includes(key))) ?? {};
 }
 
 function normalizeWaMessageType(value: string | null | undefined): string {
@@ -2819,8 +2835,8 @@ function mediaUrlFromRaw(raw: unknown, fallbackType?: string | null): string | n
   const obj = asRecord(raw);
   const media = mediaDataFromRaw(raw);
   const directUrl =
-    pickString(media, "dataUrl", "url", "fileUrl", "downloadUrl", "mediaUrl") ??
-    pickString(obj, "mediaUrl", "fileUrl", "url");
+    pickString(media, "dataUrl", "url", "fileUrl", "downloadUrl", "mediaUrl", "directPath") ??
+    pickString(obj, "mediaUrl", "fileUrl", "downloadUrl", "url", "directPath");
   if (directUrl?.startsWith("data:")) return directUrl;
   if (directUrl && /^(https?:)?\/\//i.test(directUrl)) return directUrl;
 
@@ -2913,13 +2929,13 @@ function detectMedia(
   labels: { photo: string; voice: string; doc: string; video: string },
 ): { icon: React.ReactElement; label: string } | null {
   if (!msg) return null;
-  if (/\[image:/i.test(msg) || /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(msg))
+  if (/\[image(?::|\])/i.test(msg) || /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(msg))
     return { icon: <Camera className="h-3 w-3" />, label: labels.photo };
-  if (/\[audio:/i.test(msg) || /\.(mp3|wav|ogg|m4a)(\?|$)/i.test(msg))
+  if (/\[audio(?::|\])/i.test(msg) || /\.(mp3|wav|ogg|m4a)(\?|$)/i.test(msg))
     return { icon: <Mic className="h-3 w-3" />, label: labels.voice };
-  if (/\[video:/i.test(msg) || /\.(mp4|webm|mov)(\?|$)/i.test(msg))
+  if (/\[video(?::|\])/i.test(msg) || /\.(mp4|webm|mov)(\?|$)/i.test(msg))
     return { icon: <VideoIcon className="h-3 w-3" />, label: labels.video };
-  if (/\[file:/i.test(msg) || /\.(pdf|docx?|xlsx?|pptx?|zip)(\?|$)/i.test(msg))
+  if (/\[(file|document)(?::|\])/i.test(msg) || /\.(pdf|docx?|xlsx?|pptx?|zip)(\?|$)/i.test(msg))
     return { icon: <FileText className="h-3 w-3" />, label: labels.doc };
   return null;
 }
@@ -3004,6 +3020,15 @@ function renderMessagesWithDays(
   return out;
 }
 
+function missingMediaLabel(msgType: string, isAr: boolean): string {
+  if (msgType === "image") return isAr ? "صورة — لم يصل ملفها من خادم الاتصال" : "Image — file not received from connection server";
+  if (msgType === "video") return isAr ? "فيديو — لم يصل ملفه من خادم الاتصال" : "Video — file not received from connection server";
+  if (msgType === "audio") return isAr ? "مقطع صوتي — لم يصل ملفه من خادم الاتصال" : "Audio — file not received from connection server";
+  if (msgType === "document") return isAr ? "مستند — لم يصل ملفه من خادم الاتصال" : "Document — file not received from connection server";
+  if (msgType === "sticker") return isAr ? "ملصق — لم يصل ملفه من خادم الاتصال" : "Sticker — file not received from connection server";
+  return isAr ? "وسائط — لم يصل ملفها من خادم الاتصال" : "Media — file not received from connection server";
+}
+
 function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; isGroup: boolean }) {
   const isOut = m.direction === "out";
   const showSender = isGroup && !isOut && (m.sender_name || m.sender_phone);
@@ -3084,7 +3109,14 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
         {m.text_body ? (
           <p className="max-w-full whitespace-pre-wrap break-words text-start leading-relaxed [overflow-wrap:anywhere]">{m.text_body}</p>
         ) : !m.media_url && m.msg_type !== "text" ? (
-          <p className="italic opacity-75">[{m.msg_type}]</p>
+          <div className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${isOut ? "bg-white/15 text-primary-foreground/90" : "bg-muted text-muted-foreground"}`}>
+            {m.msg_type === "image" ? <ImageIcon className="h-4 w-4 shrink-0" /> : null}
+            {m.msg_type === "video" ? <VideoIcon className="h-4 w-4 shrink-0" /> : null}
+            {m.msg_type === "audio" ? <Mic className="h-4 w-4 shrink-0" /> : null}
+            {m.msg_type === "document" ? <FileText className="h-4 w-4 shrink-0" /> : null}
+            {!['image', 'video', 'audio', 'document'].includes(m.msg_type) ? <Paperclip className="h-4 w-4 shrink-0" /> : null}
+            <span className="text-start">{missingMediaLabel(m.msg_type, isAr)}</span>
+          </div>
         ) : null}
         {(isPending || isFailed) && (
           <p className={`mt-1 text-[10px] font-semibold ${isFailed ? "text-destructive" : "text-muted-foreground"}`}>
