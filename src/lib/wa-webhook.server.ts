@@ -389,6 +389,15 @@ function extensionFromMime(mimeType: string, msgType: string): string {
   if (clean === "audio/mp4") return "m4a";
   if (clean === "audio/ogg" || clean === "audio/opus") return "ogg";
   if (clean === "application/pdf") return "pdf";
+  if (clean === "application/msword") return "doc";
+  if (clean === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return "docx";
+  if (clean === "application/vnd.ms-excel") return "xls";
+  if (clean === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") return "xlsx";
+  if (clean === "application/vnd.ms-powerpoint") return "ppt";
+  if (clean === "application/vnd.openxmlformats-officedocument.presentationml.presentation") return "pptx";
+  if (clean === "application/zip") return "zip";
+  if (clean === "text/plain") return "txt";
+  if (clean === "text/csv") return "csv";
   if (msgType === "image") return "jpg";
   if (msgType === "video") return "mp4";
   if (msgType === "audio") return "ogg";
@@ -411,7 +420,20 @@ function sanitizeStoredContentType(rawMime: string, msgType: string): string {
   if (base === "audio/mpeg" || base === "audio/mp3") return "audio/mpeg";
   if (base === "audio/webm") return "audio/webm";
   if (base === "audio/wav" || base === "audio/x-wav") return "audio/wav";
-  if (base.startsWith("image/") || base.startsWith("video/") || base.startsWith("audio/") || base === "application/pdf") {
+  if (
+    base.startsWith("image/") ||
+    base.startsWith("video/") ||
+    base.startsWith("audio/") ||
+    base.startsWith("text/") ||
+    base === "application/pdf" ||
+    base === "application/msword" ||
+    base === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    base === "application/vnd.ms-excel" ||
+    base === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    base === "application/vnd.ms-powerpoint" ||
+    base === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+    base === "application/zip"
+  ) {
     return base;
   }
   return fallbackMimeType(msgType);
@@ -1170,7 +1192,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     if (m.providerMessageId) {
       const { data: existing } = await supabaseAdmin
         .from("wa_messages")
-        .select("id, raw")
+        .select("id, raw, media_url, text_body")
         .eq("user_id", userId)
         .eq("provider_message_id", m.providerMessageId)
         .maybeSingle();
@@ -1179,7 +1201,20 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         const bulkRecipientId = pickStr(raw, "bulkRecipientId", "bulk_recipient_id");
         const bulkJobId = pickStr(raw, "bulkJobId", "bulk_job_id");
         const nextStatus = m.status === "received" && m.fromMe ? "pending" : persistedOutboundStatus(m.status, m.fromMe);
-        await supabaseAdmin.from("wa_messages").update({ status: nextStatus }).eq("id", existing.id);
+        await supabaseAdmin.from("wa_messages").update({
+          status: nextStatus,
+          ...(mediaUrl && !existing.media_url ? { media_url: mediaUrl } : {}),
+          ...(text && !existing.text_body ? { text_body: text } : {}),
+          raw: {
+            ...raw,
+            ...entry,
+            normalizedRemoteJid: m.remoteJid,
+            normalizedContactPhone: m.fromPhone,
+            normalizedStatus: nextStatus,
+            normalizedWaTimestamp: m.waTimestamp ?? raw.normalizedWaTimestamp,
+            ...(mediaUrl?.startsWith("wa-media:") ? { storedMediaUrl: mediaUrl } : {}),
+          } as never,
+        }).eq("id", existing.id);
         if (m.fromMe && (isBulkDeliverySuccess(nextStatus) || nextStatus === "failed") && bulkRecipientId) {
           await supabaseAdmin
             .from("bulk_job_recipients")
