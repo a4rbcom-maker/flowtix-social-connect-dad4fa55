@@ -99,6 +99,7 @@ import {
   jidLocal as jidLocalExt,
 } from "@/lib/wa-inbox-query";
 import { nowMs, recordInboxQueryStat, useInboxQueryPerf } from "@/lib/wa-inbox-perf";
+import { createDebouncedInvalidator } from "@/lib/wa-inbox-invalidation";
 
 
 export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
