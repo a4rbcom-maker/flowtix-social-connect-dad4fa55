@@ -1745,6 +1745,15 @@ function InboxPage() {
           </div>
 
 
+          {/* Query performance indicator — تتبع زمن استعلام wa_messages وحالته */}
+          <InboxQueryPerfBadge
+            isAr={isAr}
+            isFetching={msgsQuery.isFetching}
+            isLoading={msgsQuery.isLoading}
+            isError={msgsQuery.isError}
+            activeJid={activeJid}
+          />
+
           {/* Messages */}
           <div
             ref={scrollRef}
