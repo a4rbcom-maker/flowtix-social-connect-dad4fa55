@@ -260,6 +260,61 @@ async function deliverAiTextWithRetry(opts: {
           excludeMessageId: messageRowId,
         });
         if (!confirmed) {
+          const phoneDigits = String(contactPhone ?? "").replace(/[^0-9]/g, "");
+          const phoneJid = phoneDigits ? `${phoneDigits}@s.whatsapp.net` : null;
+          if (phone.endsWith("@lid") && phoneJid && phoneJid !== phone) {
+            const fallbackRes = await sendAiTextOnce(sessionId, userId, phoneJid, text, phoneDigits);
+            responses.push({ fallbackToPhoneJid: true, response: fallbackRes });
+            const fallbackQueuedId = bridgeSendQueuedMessage(fallbackRes);
+            try {
+              providerMessageId = assertBridgeSendQueued(fallbackRes);
+              if (messageRowId) {
+                await supabaseAdmin
+                  .from("wa_messages")
+                  .update({
+                    status: "sent",
+                    provider_message_id: providerMessageId,
+                    raw: {
+                      ai: true,
+                      kind,
+                      tier,
+                      model,
+                      targetJid: phoneJid,
+                      contactPhone: phoneDigits,
+                      usedLid: false,
+                      delivery: "whatsapp_sent_phone_fallback",
+                      attempts,
+                      bridgeResponses: responses,
+                    } as never,
+                  })
+                  .eq("id", messageRowId);
+              }
+              return { providerMessageId, status: "sent", attempts, lastError: null, responses };
+            } catch (fallbackErr) {
+              if (fallbackQueuedId) {
+                const fallbackConfirmed = await waitForConfirmedOutbound({
+                  userId,
+                  sessionId,
+                  remoteJid,
+                  text,
+                  sinceIso: sentAt,
+                  excludeMessageId: messageRowId,
+                });
+                if (fallbackConfirmed) {
+                  providerMessageId = fallbackConfirmed.providerMessageId;
+                  if (messageRowId) {
+                    await supabaseAdmin
+                      .from("wa_messages")
+                      .update({ status: "sent", provider_message_id: providerMessageId })
+                      .eq("id", messageRowId);
+                  }
+                  return { providerMessageId, status: "sent", attempts, lastError: null, responses };
+                }
+              } else {
+                throw fallbackErr;
+              }
+            }
+          }
           lastError = `bridge_queued_pending_whatsapp_ack:${queuedId}`;
           responses.push({ queuedId, status: "queued_pending_whatsapp_ack", attempt });
           if (messageRowId) {

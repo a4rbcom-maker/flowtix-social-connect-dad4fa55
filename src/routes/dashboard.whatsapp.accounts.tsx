@@ -111,7 +111,7 @@ function WhatsAppPage() {
         sessionLabel: "معرّف الجلسة",
         lastSeenLabel: "آخر نشاط",
         diagnosticsTitle: "سبب فصل الجلسات",
-        diagnosticsDesc: "آخر تغييرات حالة واتساب المسجلة من Bot‑Xtra أو فحص الحالة. الأخطاء المؤقتة مثل Timeout/502 لا تُفصل الجلسة الآن إلا لو Bot‑Xtra أكد أن الجلسة انتهت.",
+        diagnosticsDesc: "آخر تغييرات حالة واتساب المسجلة من خادم الربط أو فحص الحالة. الأخطاء المؤقتة مثل Timeout/502 لا تُفصل الجلسة الآن إلا بعد تأكيد انتهاء الجلسة.",
         noDiagnostics: "لا يوجد سبب فصل مسجل حتى الآن.",
         reasonLabel: "السبب",
         sourceLabel: "المصدر",
@@ -160,7 +160,7 @@ function WhatsAppPage() {
         sessionLabel: "Session ID",
         lastSeenLabel: "Last seen",
         diagnosticsTitle: "Session disconnect reason",
-        diagnosticsDesc: "Latest WhatsApp status changes recorded from Bot‑Xtra or status checks. Transient Timeout/502 errors no longer disconnect the session unless Bot‑Xtra explicitly confirms it is gone.",
+        diagnosticsDesc: "Latest WhatsApp status changes recorded from the connection server or status checks. Transient Timeout/502 errors no longer disconnect the session unless the session is explicitly confirmed gone.",
         noDiagnostics: "No disconnect reason has been recorded yet.",
         reasonLabel: "Reason",
         sourceLabel: "Source",
@@ -826,8 +826,8 @@ function SessionDiagnostics({
   const sourceLabel = (source: string) => {
     const map: Record<string, string> = ar
       ? {
-          webhook_status: "Webhook من Bot‑Xtra",
-          webhook_qr: "QR من Bot‑Xtra",
+          webhook_status: "تحديث من خادم الربط",
+          webhook_qr: "QR من خادم الربط",
           bridge_status: "فحص حالة الجسر",
           poll: "فحص الحالة",
           poll_error: "خطأ مؤقت أثناء فحص الحالة",
@@ -837,8 +837,8 @@ function SessionDiagnostics({
           reset: "إعادة ربط",
         }
       : {
-          webhook_status: "Bot‑Xtra webhook",
-          webhook_qr: "Bot‑Xtra QR",
+          webhook_status: "Connection server update",
+          webhook_qr: "Connection server QR",
           bridge_status: "Bridge status check",
           poll: "Status check",
           poll_error: "Temporary status-check error",

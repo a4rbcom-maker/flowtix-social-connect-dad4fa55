@@ -170,6 +170,16 @@ export interface WaHistorySyncResult {
   fetchedKnownChats?: number;
 }
 
+export interface WaChatSyncResult {
+  ok: boolean;
+  sessionId: string | null;
+  remoteJid: string;
+  importedMessages: number;
+  importedChats: number;
+  attempts: Array<{ jid: string; ok: boolean; status?: number; error?: string }>;
+  error: string | null;
+}
+
 function onlyDigits(value: unknown): string | null {
   if (typeof value !== "string" && typeof value !== "number" && typeof value !== "bigint") return null;
   const d = String(value).replace(/[^0-9]/g, "");
@@ -652,6 +662,70 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       before,
       after,
       fetchedKnownChats,
+    };
+  });
+
+export const requestWaChatSync = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ remoteJid: z.string().min(3).max(200) }).parse(input))
+  .handler(async ({ context, data }): Promise<WaChatSyncResult> => {
+    const { supabase, userId } = context;
+    const { data: row, error } = await supabase
+      .from("wa_sessions")
+      .select("session_id, status")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!row?.session_id) {
+      return { ok: false, sessionId: null, remoteJid: data.remoteJid, importedMessages: 0, importedChats: 0, attempts: [], error: "no_session" };
+    }
+
+    const { data: conv } = await supabase
+      .from("wa_conversations")
+      .select("contact_phone")
+      .eq("user_id", userId)
+      .eq("remote_jid", data.remoteJid)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const aliases = new Set<string>([data.remoteJid]);
+    const local = data.remoteJid.split("@")[0] ?? "";
+    if (/^\d{8,}$/.test(local)) {
+      if (data.remoteJid.endsWith("@lid")) aliases.add(`${local}@s.whatsapp.net`);
+      if (data.remoteJid.endsWith("@s.whatsapp.net")) aliases.add(`${local}@lid`);
+    }
+    const phone = normalizeWhatsappPhone(conv?.contact_phone || data.remoteJid);
+    if (phone) aliases.add(`${phone}@s.whatsapp.net`);
+
+    let importedMessages = 0;
+    let importedChats = 0;
+    let lastError: string | null = null;
+    const attempts: WaChatSyncResult["attempts"] = [];
+    for (const jid of Array.from(aliases).slice(0, 4)) {
+      try {
+        const body = await waBridge.fetchMessages(row.session_id, jid, 80);
+        const imported = await replayBridgeHistoryPayload(row.session_id, body);
+        importedMessages += imported.messages;
+        importedChats += imported.chats;
+        lastError = lastError ?? imported.error;
+        attempts.push({ jid, ok: true });
+      } catch (err) {
+        const status = err instanceof BridgeError ? err.status : undefined;
+        const message = err instanceof Error ? err.message : String(err);
+        lastError = message;
+        attempts.push({ jid, ok: false, status, error: message });
+      }
+    }
+
+    return {
+      ok: attempts.some((a) => a.ok),
+      sessionId: row.session_id,
+      remoteJid: data.remoteJid,
+      importedMessages,
+      importedChats,
+      attempts,
+      error: attempts.some((a) => a.ok) ? null : lastError,
     };
   });
 
