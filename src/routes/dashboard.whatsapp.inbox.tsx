@@ -2070,9 +2070,13 @@ function InboxPage() {
                       value={
                         msgsQuery.isLoading || (msgsQuery.isFetching && messages.length === 0)
                           ? (isAr ? "جاري الحساب…" : "Counting…")
-                          : groupMemberCount > 0
-                            ? String(groupMemberCount)
-                            : (isAr ? "غير متاح" : "Unavailable")
+                          : msgsQuery.isError && messages.length === 0
+                            ? (isAr ? "فشل التحميل" : "Load failed")
+                            : groupMemberCount > 0
+                              ? String(groupMemberCount)
+                              : messages.length === 0
+                                ? (isAr ? "لا توجد رسائل بعد" : "No messages yet")
+                                : (isAr ? "غير متاح" : "Unavailable")
                       }
                     />
                     <InfoRow
