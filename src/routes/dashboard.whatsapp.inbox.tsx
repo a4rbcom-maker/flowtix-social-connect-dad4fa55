@@ -764,8 +764,10 @@ function InboxPage() {
   // Auto-dismiss the inline alert when user switches chat or starts typing again.
   useEffect(() => { setSendError(null); }, [activeJid]);
 
-  const sendMut = useMutation({
-    mutationFn: async ({ text, file }: { text: string; file: File | null }) => {
+  type SendVars = { text: string; file: File | null; previewUrl?: string | null };
+  type SendContext = { optimisticId: string; draftBeforeSend: string };
+  const sendMut = useMutation<unknown, Error, SendVars, SendContext>({
+    mutationFn: async ({ text, file }: SendVars) => {
       let mediaUrl: string | undefined;
       let mediaType: "image" | "video" | "document" | "audio" | undefined;
       let mimeType: string | undefined;
@@ -805,12 +807,55 @@ function InboxPage() {
         },
       });
     },
-    onSuccess: (_res, vars) => {
+    onMutate: async (vars) => {
+      const optimisticId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      if (user?.id && activeJid) {
+        await qc.cancelQueries({ queryKey: ["wa-messages", user.id, activeJid] });
+        const now = new Date().toISOString();
+        const msgType = vars.file
+          ? vars.file.type.startsWith("video/")
+            ? "video"
+            : vars.file.type.startsWith("audio/")
+              ? "audio"
+              : vars.file.type.startsWith("image/")
+                ? "image"
+                : "document"
+          : "text";
+        setOptimisticMessages((current) => [
+          ...current,
+          {
+            id: optimisticId,
+            remote_jid: activeJid,
+            direction: "out",
+            status: "pending",
+            text_body: vars.text || vars.file?.name || null,
+            msg_type: msgType,
+            media_url: vars.previewUrl ?? null,
+            created_at: now,
+            is_ai: false,
+            sender_name: null,
+            sender_phone: null,
+            delivery_state: "client_pending",
+            queued_id: null,
+            delivery_error: null,
+            is_stale_pending: false,
+          },
+        ]);
+        setDraft("");
+        setSendError(null);
+        window.setTimeout(() => textareaRef.current?.focus(), 0);
+      }
+      return { optimisticId, draftBeforeSend: draft };
+    },
+    onSuccess: (_res, vars, context) => {
       const hadFile = !!vars.file;
-      setDraft("");
       setSendError(null);
-      if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
       setAttachment(null);
+      if (context?.optimisticId) {
+        window.setTimeout(() => {
+          setOptimisticMessages((current) => current.filter((m) => m.id !== context.optimisticId));
+        }, 1200);
+      }
       qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
       qc.invalidateQueries({ queryKey: ["wa-conversations"] });
       toast.success(
@@ -821,7 +866,24 @@ function InboxPage() {
     },
     // Show a rich, dismissible inline alert instead of a noisy toast so the
     // user sees the reason + retry steps without spam on repeated attempts.
-    onError: (err: Error) => setSendError(classifySendError(err)),
+    onError: (err: Error, _vars, context) => {
+      setSendError(classifySendError(err));
+      if (context?.optimisticId) {
+        setOptimisticMessages((current) =>
+          current.map((m) =>
+            m.id === context.optimisticId
+              ? { ...m, status: "failed", delivery_error: err.message, is_stale_pending: false }
+              : m,
+          ),
+        );
+      }
+      if (context?.draftBeforeSend) setDraft(context.draftBeforeSend);
+      window.setTimeout(() => textareaRef.current?.focus(), 0);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
+      qc.invalidateQueries({ queryKey: ["wa-conversations"] });
+    },
   });
 
 
