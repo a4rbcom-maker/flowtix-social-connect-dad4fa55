@@ -2515,9 +2515,9 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
   const messageAliases = inboxJidAliases(remoteJid, convAliases?.contact_phone ?? null);
   const { data, error } = await supabase
     .from("wa_messages")
-    // لا نسحب raw هنا لأنه قد يحتوي Base64/JSON كبير جدًا للميديا ويستهلك Disk IO.
-    // واجهة الشات تعتمد على الأعمدة الخفيفة المخزنة: text_body / msg_type / media_url / status.
-    .select("id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at")
+    // نحتاج raw كمسار احتياطي لأن بعض دفعات الأرشيف القديمة حملت رابط/بيانات الوسيط داخل JSON
+    // قبل حفظه في media_url. الاستعلام محدود بآخر 200 رسالة للمحادثة المفتوحة فقط.
+    .select("id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw")
     .eq("user_id", userId)
     .in("remote_jid", messageAliases)
     .order("wa_timestamp", { ascending: false, nullsFirst: false })
@@ -2535,7 +2535,7 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     })
     .reverse();
   return Promise.all(rows.map(async (row) => {
-    const raw = {} as Record<string, unknown>;
+    const raw = asRecord(row.raw);
     const msgType = mediaTypeFromRaw(raw, row.msg_type);
     const storedMediaUrl = typeof row.media_url === "string" && row.media_url.trim() ? row.media_url.trim() : null;
     const rawMediaUrl = mediaUrlFromRaw(raw, msgType);
