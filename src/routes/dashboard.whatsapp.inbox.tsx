@@ -2259,7 +2259,7 @@ function ContactInfoPanel({
       {/* Contact header */}
       <div className="flex flex-col items-center gap-3 border-b border-border/60 p-5 text-center">
         <div className="relative">
-          <ContactAvatar name={name} src={conv.profile_pic_url ?? null} size="lg" />
+          <ContactAvatar name={name} src={conv.profile_pic_url ?? null} size="lg" isGroup={conv.remote_jid.endsWith("@g.us")} />
           <span className="absolute bottom-1 end-1 h-4 w-4 rounded-full border-2 border-card bg-emerald-500" />
         </div>
         <div className="min-w-0 max-w-full overflow-hidden">
