@@ -161,13 +161,14 @@ export const markConversationActive = createServerFn({ method: "POST" })
     z
       .object({
         remoteJid: z.string().min(3),
-        durationMs: z.number().int().min(1000).max(5 * 60_000).optional(),
+        durationMs: z.number().int().min(1000).max(30 * 60_000).optional(),
       })
       .parse(input),
   )
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    const ttl = data.durationMs ?? 30_000;
+    // Default: 10 minutes of AI silence per opened chat.
+    const ttl = data.durationMs ?? 10 * 60_000;
     const until = new Date(Date.now() + ttl).toISOString();
     const { error } = await supabase
       .from("wa_conversations")
@@ -178,9 +179,7 @@ export const markConversationActive = createServerFn({ method: "POST" })
     return { ok: true, until };
   });
 
-// Explicit "human left the chat" signal — clears agent_active_until immediately
-// so the AI resumes replying on the very next incoming message instead of
-// waiting for the presence TTL to expire.
+// Kept as a manual "resume AI now" escape hatch (not called on chat leave).
 export const clearConversationActive = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
@@ -196,6 +195,7 @@ export const clearConversationActive = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
 
 
 export const toggleConversationAi = createServerFn({ method: "POST" })
