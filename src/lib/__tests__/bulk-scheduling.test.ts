@@ -220,6 +220,6 @@ describe("bulk scheduler — background continuation", () => {
       nowMs += TICK_MS;
     }
     expect(job.status).toBe("sent");
-    expect(bridge.send).toHaveBeenCalledTimes(12);
+    expect(bridge.send).toHaveBeenCalledTimes(40);
   });
 });
