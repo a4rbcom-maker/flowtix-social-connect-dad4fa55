@@ -1273,7 +1273,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         .eq("user_id", userId)
         .eq("session_id", sessionId)
         .eq("direction", "out")
-        .eq("status", "pending")
+        .in("status", ["pending", "sent"])
         .eq("text_body", text)
         .is("provider_message_id", null)
         .order("created_at", { ascending: false })
