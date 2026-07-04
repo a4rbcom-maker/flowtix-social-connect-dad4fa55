@@ -437,10 +437,14 @@ function InboxPage() {
     [convQuery.data],
   );
 
-  const messages = useMemo<ChatMessageRow[]>(
-    () => (Array.isArray(msgsQuery.data) ? msgsQuery.data : []),
-    [msgsQuery.data],
-  );
+  const messages = useMemo<ChatMessageRow[]>(() => {
+    const raw = Array.isArray(msgsQuery.data) ? msgsQuery.data : [];
+    // Hard-filter placeholder/stale rows from the previously-open conversation
+    // (react-query's placeholderData keeps prev results during a JID switch).
+    // Same rule as buildInboxMessageQueryPlan — pinned by
+    // src/lib/__tests__/wa-inbox-query.test.ts.
+    return raw.filter((m) => isMessageForActiveConversation(m.remote_jid, activeJid));
+  }, [msgsQuery.data, activeJid]);
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessageRow[]>([]);
   const visibleMessageIds = useMemo(() => new Set(messages.map((m) => m.id)), [messages]);
   // Match optimistic → real outgoing rows by content, so the bubble stays
