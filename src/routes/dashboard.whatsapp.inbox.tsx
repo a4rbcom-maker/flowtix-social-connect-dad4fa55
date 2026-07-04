@@ -1126,7 +1126,7 @@ function InboxPage() {
       return { ok: true };
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wa-conversations"] }),
-    onError: (err: Error) => toast.error(err.message),
+    onError: showMutationError,
   });
 
   const filtered = useMemo(() => {
