@@ -1529,16 +1529,22 @@ function InboxPage() {
                   const isGroup = jid.endsWith("@g.us");
                   if (isGroup) {
                     return (
-                      <p className="truncate text-xs text-muted-foreground flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setGroupInfoOpen(true)}
+                        className="flex items-center gap-1.5 truncate text-xs text-muted-foreground hover:text-foreground hover:underline underline-offset-2 transition-colors"
+                        title={isAr ? "عرض تفاصيل الجروب" : "View group details"}
+                      >
                         <Users className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
-                        <span>
+                        <span className="truncate">
                           {groupMemberCount > 0
                             ? (isAr
                                 ? `${groupMemberCount} عضو نشط في المحادثة`
                                 : `${groupMemberCount} active member${groupMemberCount === 1 ? "" : "s"} in chat`)
                             : (isAr ? "محادثة جماعية" : "Group conversation")}
                         </span>
-                      </p>
+                        <Info className="h-3 w-3 opacity-60" />
+                      </button>
                     );
                   }
                   return (
