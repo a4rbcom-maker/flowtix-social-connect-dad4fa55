@@ -514,10 +514,29 @@ function InboxPage() {
   // Logic lives in wa-group-members.ts so it can be unit-tested — see
   // src/lib/__tests__/wa-group-members.test.ts.
   const [groupInfoOpen, setGroupInfoOpen] = useState(false);
-  const groupMemberCount = useMemo(
-    () => computeGroupMemberCount(mergedMessages, activeJid),
-    [mergedMessages, activeJid],
-  );
+  // Per-JID accumulator so unique senders are remembered across page loads,
+  // pagination, and realtime replays — reloading the same conversation never
+  // double-counts a member. We keep the state in a ref (persists across
+  // renders) and bump a version counter to trigger memo recomputation.
+  const groupMemberStateRef = useRef<Map<string, GroupMemberState>>(new Map());
+  const [groupMemberVersion, setGroupMemberVersion] = useState(0);
+  useEffect(() => {
+    if (!activeJid || !activeJid.endsWith("@g.us")) return;
+    const map = groupMemberStateRef.current;
+    const prev = map.get(activeJid) ?? createGroupMemberState();
+    const next = accumulateGroupMembers(prev, mergedMessages, activeJid);
+    if (next !== prev) {
+      map.set(activeJid, next);
+      setGroupMemberVersion((v) => v + 1);
+    }
+  }, [mergedMessages, activeJid]);
+  const groupMemberCount = useMemo(() => {
+    if (!activeJid || !activeJid.endsWith("@g.us")) return 0;
+    const state = groupMemberStateRef.current.get(activeJid);
+    return state ? countAccumulated(state) : 0;
+    // groupMemberVersion is the trigger — state lives in a ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeJid, groupMemberVersion]);
 
 
   // Track connection so we can show the right empty-state CTA.
