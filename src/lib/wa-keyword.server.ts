@@ -53,6 +53,17 @@ export async function tryKeywordAutoReply(opts: {
   if (!text) return false;
 
   try {
+    // Respect the "reply in groups" master switch — when off, don't send
+    // keyword auto-replies into groups either.
+    if (remoteJid.endsWith("@g.us")) {
+      const { data: settings } = await supabaseAdmin
+        .from("whatsapp_settings")
+        .select("ai_reply_to_groups")
+        .eq("user_id", userId)
+        .maybeSingle<{ ai_reply_to_groups: boolean | null }>();
+      if (settings?.ai_reply_to_groups !== true) return false;
+    }
+
     const { data: rules } = await supabaseAdmin
       .from("wa_keyword_rules")
       .select("id, label, keywords, match_mode, reply_text, enabled, priority")
@@ -63,6 +74,7 @@ export async function tryKeywordAutoReply(opts: {
 
     const matched = (rules ?? []).find((r) => ruleMatches(r, text));
     if (!matched) return false;
+
 
     const phone = fromPhone || remoteJid.replace(/[^0-9]/g, "");
     const to = remoteJid.endsWith("@g.us")
