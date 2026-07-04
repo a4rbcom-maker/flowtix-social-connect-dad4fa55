@@ -1228,6 +1228,7 @@ function InboxPage() {
         <div className="flex flex-wrap items-center gap-1.5">
           {([
             { k: "all" as FilterKey, label: t.all },
+            { k: "unread" as FilterKey, label: t.filterUnread },
             { k: "ai" as FilterKey, label: t.filterAi },
           ]).map((f) => {
             const active = filter === f.k;
