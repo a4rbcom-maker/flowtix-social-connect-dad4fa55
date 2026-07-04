@@ -293,12 +293,17 @@ export const sendChatMessage = createServerFn({ method: "POST" })
             delivery = "whatsapp_sent_phone_fallback";
           } catch (fallbackErr) {
             if (!finalQueuedId) throw fallbackErr;
-            status = "pending";
-            delivery = "whatsapp_queue_waiting_for_delivery";
+            // Bridge accepted the send into its own queue. In practice the
+            // hand-off to WhatsApp happens within a second; treat as sent so
+            // the UI doesn't sit on "confirming delivery" for minutes waiting
+            // for the delivery ACK webhook. The webhook will still upgrade
+            // to delivered/read when it arrives.
+            status = "sent";
+            delivery = "whatsapp_queue_accepted_awaiting_ack";
           }
         } else {
-          status = "pending";
-          delivery = "whatsapp_queue_waiting_for_delivery";
+          status = "sent";
+          delivery = "whatsapp_queue_accepted_awaiting_ack";
         }
       }
       await supabase.from("wa_messages").insert({
