@@ -37,6 +37,7 @@ import {
   AlertTriangle,
   Download,
   ExternalLink,
+  Users,
 } from "lucide-react";
 import { classifySendError, type SendErrorInfo } from "@/lib/wa-send-error";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
@@ -1453,6 +1454,7 @@ function InboxPage() {
                 name={activeConv ? displayConversationTitle(activeConv, isAr) : activeJid}
                 src={activeConv?.profile_pic_url ?? null}
                 size="md"
+                isGroup={(activeConv?.remote_jid ?? activeJid ?? "").endsWith("@g.us")}
               />
               <div className="min-w-0 flex-1 overflow-hidden">
                 <div className="flex items-center gap-1.5">
@@ -2257,7 +2259,7 @@ function ContactInfoPanel({
       {/* Contact header */}
       <div className="flex flex-col items-center gap-3 border-b border-border/60 p-5 text-center">
         <div className="relative">
-          <ContactAvatar name={name} src={conv.profile_pic_url ?? null} size="lg" />
+          <ContactAvatar name={name} src={conv.profile_pic_url ?? null} size="lg" isGroup={conv.remote_jid.endsWith("@g.us")} />
           <span className="absolute bottom-1 end-1 h-4 w-4 rounded-full border-2 border-card bg-emerald-500" />
         </div>
         <div className="min-w-0 max-w-full overflow-hidden">
@@ -2461,10 +2463,12 @@ function ContactAvatar({
   name,
   src,
   size,
+  isGroup = false,
 }: {
   name: string;
   src: string | null;
   size: "sm" | "md" | "lg";
+  isGroup?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
   const sizeClass =
@@ -2473,6 +2477,21 @@ function ContactAvatar({
       : size === "md"
         ? "h-11 w-11 text-sm shadow-md shadow-primary/20"
         : "h-11 w-11 text-sm shadow-sm shadow-primary/20";
+
+  // Groups: always render a distinctive group icon so they can't be mistaken
+  // for a member's personal photo (WhatsApp group profile pics are often
+  // stale, generic, or actually one member's avatar).
+  if (isGroup) {
+    const iconSize = size === "lg" ? "h-9 w-9" : "h-5 w-5";
+    return (
+      <div
+        title={name}
+        className={`${sizeClass} flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-emerald-700 text-white ring-1 ring-emerald-600/40`}
+      >
+        <Users className={iconSize} strokeWidth={2.25} />
+      </div>
+    );
+  }
 
   if (src && !failed) {
     return (
@@ -2536,7 +2555,7 @@ function ConversationRow({
           <span className="absolute top-3 bottom-3 w-[3px] rounded-full bg-gradient-to-b from-primary to-[oklch(0.52_0.28_290)] ltr:left-0 rtl:right-0" />
         )}
         <div className="relative shrink-0">
-          <ContactAvatar name={title} src={conv.profile_pic_url ?? null} size="sm" />
+          <ContactAvatar name={title} src={conv.profile_pic_url ?? null} size="sm" isGroup={conv.remote_jid.endsWith("@g.us")} />
           {hasUnread && (
             <span className="absolute -top-0.5 -end-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />
           )}
@@ -3243,7 +3262,16 @@ function prettyFileName(raw?: string | null, url?: string | null): string {
 
 function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; isGroup: boolean }) {
   const isOut = m.direction === "out";
-  const showSender = isGroup && !isOut && (m.sender_name || m.sender_phone);
+  const senderLabel = m.sender_name || (m.sender_phone ? `+${m.sender_phone}` : (isAr ? "عضو غير معروف" : "Unknown member"));
+  const showSender = isGroup && !isOut;
+  const senderHue = ((): number => {
+    const key = m.sender_name || m.sender_phone || "?";
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % 360;
+    return h;
+  })();
+  const senderColor = `hsl(${senderHue} 70% 38%)`;
+  const senderInitial = (m.sender_name || m.sender_phone || "?").trim().charAt(0).toUpperCase();
   const isPending = isOut && m.status === "pending";
   const isFailed = isOut && m.status === "failed";
   const isStalePending = isPending && m.is_stale_pending;
@@ -3261,7 +3289,16 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
   const hasCaption = Boolean(m.text_body && effectiveType !== "document");
 
   return (
-    <div dir="ltr" className={`flex ${isOut ? "justify-end" : "justify-start"} px-1`}>
+    <div dir="ltr" className={`flex items-end gap-1.5 px-1 ${isOut ? "justify-end" : "justify-start"}`}>
+      {showSender && (
+        <div
+          className="mb-0.5 hidden h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white ring-1 ring-black/5 sm:flex"
+          style={{ backgroundColor: senderColor }}
+          title={senderLabel}
+        >
+          {senderInitial}
+        </div>
+      )}
       <div
         dir={isAr ? "rtl" : "ltr"}
         className={`group min-w-0 max-w-[86%] overflow-hidden rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-[0_1px_2px_rgba(0,0,0,0.06),0_1px_1px_rgba(0,0,0,0.04)] ring-1 sm:max-w-[70%] ${
@@ -3276,8 +3313,11 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
       >
 
         {showSender && (
-          <p className="mb-1 text-[11px] font-semibold text-primary">
-            {m.sender_name || (m.sender_phone ? `+${m.sender_phone}` : "")}
+          <p
+            className="mb-1 text-[12px] font-bold"
+            style={{ color: senderColor }}
+          >
+            {senderLabel}
           </p>
         )}
         {m.media_url && effectiveType === "image" && (
