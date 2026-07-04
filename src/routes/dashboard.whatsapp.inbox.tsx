@@ -3105,7 +3105,7 @@ async function fetchInboxMessages(
       .limit(limit);
     if (beforeTs) {
       // Cursor على wa_timestamp — نجلب فقط الأقدم من آخر صف موجود في الـcache.
-      gq = gq.lt("wa_timestamp", beforeTs);
+      gq = gq.lt("created_at", beforeTs);
     }
     const { data: groupRows, error: groupError } = await gq;
     const durationMs = nowMs() - startedAt;
@@ -3160,7 +3160,7 @@ async function fetchInboxMessages(
     .limit(limit);
   if (beforeTs) {
     // نفس فلتر الاستبعاد (@g.us) محفوظ — الـcursor لا يغير ذلك.
-    pq = pq.lt("wa_timestamp", beforeTs);
+    pq = pq.lt("created_at", beforeTs);
   }
   const { data: rows, error } = await pq;
   const durationMs = nowMs() - startedAt;
