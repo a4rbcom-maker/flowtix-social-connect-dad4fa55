@@ -197,12 +197,12 @@ describe("bulk scheduler — background continuation", () => {
   it("الاستئناف بعد إعادة تشغيل السيرفر (محاكاة إعادة الحياة) يكمل من حيث توقف", () => {
     const settings: UserBulkSettings = {
       ...DEFAULT_USER_SETTINGS,
-      messages_per_batch: 10,
-      batch_rest_seconds: 30,
+      messages_per_batch: 5,
+      batch_rest_seconds: 600,
       jitter_min_seconds: 1,
       jitter_max_seconds: 2,
     };
-    const job = buildJob(12);
+    const job = buildJob(40);
     const bridge = { send: vi.fn() };
     let nowMs = 0;
     // شغّل 3 ticks فقط ثم "أطفئ" العميل بالكامل
