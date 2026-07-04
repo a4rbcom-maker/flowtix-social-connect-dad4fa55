@@ -16,6 +16,7 @@ import {
   asObj,
   collectMessageEntries,
   digits,
+  normalizePhoneDigits,
   findSessionId,
   messageIdFrom,
   normalizeMessageStatus,
@@ -207,7 +208,7 @@ async function importHistoryChats(params: {
   let upserted = 0;
   for (const c of params.chats) {
     const rawJid = pickStr(c, "rawJid", "jid", "id", "remoteJid", "remote_jid", "chatId");
-    const phone = digits(pickStr(c, "phoneNumber", "phone", "number", "user", "pn") ?? rawJid);
+    const phone = normalizePhoneDigits(pickStr(c, "phoneNumber", "phone", "number", "user", "pn") ?? rawJid);
     const remoteJid =
       rawJid && (rawJid.includes("@") ? rawJid : `${rawJid}@s.whatsapp.net`) ||
       (phone ? `${phone}@s.whatsapp.net` : null);
@@ -241,10 +242,10 @@ async function updateConversationContacts(params: {
   contacts: Record<string, unknown>[];
 }): Promise<number> {
   let updated = 0;
-  const businessPhone = params.businessPhone?.replace(/[^0-9]/g, "") || null;
+  const businessPhone = normalizePhoneDigits(params.businessPhone) || null;
   for (const c of params.contacts.slice(0, 1000)) {
     const rawJid = pickStr(c, "jid", "id", "rawJid", "remoteJid", "chatId");
-    const phone = digits(pickStr(c, "phoneNumber", "phone", "number", "user", "pn") || rawJid);
+    const phone = normalizePhoneDigits(pickStr(c, "phoneNumber", "phone", "number", "user", "pn") || rawJid);
     if (!rawJid && !phone) continue;
     if (phone && businessPhone && phone === businessPhone) continue;
     const remoteJid = rawJid?.includes("@") ? rawJid : phone ? `${phone}@s.whatsapp.net` : null;
@@ -307,7 +308,7 @@ function isLidLocal(local: string | null | undefined): boolean {
 }
 
 function phoneDigitsUnlessLidAlias(value: unknown, remoteJid: string | null | undefined, jidType: unknown): string | null {
-  const d = digits(value);
+  const d = normalizePhoneDigits(value);
   if (!d) return null;
   const local = jidLocal(remoteJid);
   const looksLid = String(remoteJid ?? "").endsWith("@lid") || String(jidType ?? "").toLowerCase() === "lid";
@@ -770,7 +771,7 @@ async function importHistoryMessages(params: {
     const contactName = fromMe
       ? parsed?.contactName || null
       : parsed?.contactName || pickStr(h, "pushName", "senderName", "notifyName", "contactName", "name") || null;
-    const senderPhone = parsed?.fromPhone || digits(pickStr(h, "sender", "participant")) || phone;
+    const senderPhone = parsed?.fromPhone || normalizePhoneDigits(pickStr(h, "sender", "participant")) || phone;
 
     if (providerMessageId) {
       const { data: existing } = await supabaseAdmin
@@ -1033,7 +1034,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     const updated = await updateConversationContacts({
       userId,
       sessionId,
-      businessPhone: digits(sess.phone_number),
+      businessPhone: normalizePhoneDigits(sess.phone_number),
       contacts,
     });
     // Some bridge builds deliver the full-history batch as chats.set with
@@ -1057,7 +1058,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
 
   const eventStatus = SESSION_STATUS_MAP[event];
   if (eventStatus) {
-    const phoneNumber = digits(data.phoneNumber ?? data.phone ?? payload.phoneNumber ?? payload.phone);
+    const phoneNumber = normalizePhoneDigits(data.phoneNumber ?? data.phone ?? payload.phoneNumber ?? payload.phone);
     await updateWaSessionStatus(supabaseAdmin, {
       userId,
       sessionId,
@@ -1097,7 +1098,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     const next = SESSION_STATUS_MAP[rawStatus] ?? "unknown";
     const reason = extractSessionReason(payload, data);
 
-    const phoneNumber = digits(data.phoneNumber ?? data.phone ?? payload.phoneNumber);
+    const phoneNumber = normalizePhoneDigits(data.phoneNumber ?? data.phone ?? payload.phoneNumber);
     await updateWaSessionStatus(supabaseAdmin, {
       userId,
       sessionId,
