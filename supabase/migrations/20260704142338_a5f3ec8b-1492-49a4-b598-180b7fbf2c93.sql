@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_settings ADD COLUMN IF NOT EXISTS ai_reply_to_groups boolean NOT NULL DEFAULT false;
