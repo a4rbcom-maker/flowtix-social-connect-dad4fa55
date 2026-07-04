@@ -3262,7 +3262,16 @@ function prettyFileName(raw?: string | null, url?: string | null): string {
 
 function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; isGroup: boolean }) {
   const isOut = m.direction === "out";
-  const showSender = isGroup && !isOut && (m.sender_name || m.sender_phone);
+  const senderLabel = m.sender_name || (m.sender_phone ? `+${m.sender_phone}` : (isAr ? "عضو غير معروف" : "Unknown member"));
+  const showSender = isGroup && !isOut;
+  const senderHue = ((): number => {
+    const key = m.sender_name || m.sender_phone || "?";
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % 360;
+    return h;
+  })();
+  const senderColor = `hsl(${senderHue} 70% 38%)`;
+  const senderInitial = (m.sender_name || m.sender_phone || "?").trim().charAt(0).toUpperCase();
   const isPending = isOut && m.status === "pending";
   const isFailed = isOut && m.status === "failed";
   const isStalePending = isPending && m.is_stale_pending;
@@ -3280,7 +3289,16 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
   const hasCaption = Boolean(m.text_body && effectiveType !== "document");
 
   return (
-    <div dir="ltr" className={`flex ${isOut ? "justify-end" : "justify-start"} px-1`}>
+    <div dir="ltr" className={`flex items-end gap-1.5 px-1 ${isOut ? "justify-end" : "justify-start"}`}>
+      {showSender && (
+        <div
+          className="mb-0.5 hidden h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white ring-1 ring-black/5 sm:flex"
+          style={{ backgroundColor: senderColor }}
+          title={senderLabel}
+        >
+          {senderInitial}
+        </div>
+      )}
       <div
         dir={isAr ? "rtl" : "ltr"}
         className={`group min-w-0 max-w-[86%] overflow-hidden rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-[0_1px_2px_rgba(0,0,0,0.06),0_1px_1px_rgba(0,0,0,0.04)] ring-1 sm:max-w-[70%] ${
@@ -3295,8 +3313,11 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
       >
 
         {showSender && (
-          <p className="mb-1 text-[11px] font-semibold text-primary">
-            {m.sender_name || (m.sender_phone ? `+${m.sender_phone}` : "")}
+          <p
+            className="mb-1 text-[12px] font-bold"
+            style={{ color: senderColor }}
+          >
+            {senderLabel}
           </p>
         )}
         {m.media_url && effectiveType === "image" && (
