@@ -910,10 +910,11 @@ function InboxPage() {
     }
     if (!hasMoreOlderServer) return;
     const cache = qc.getQueryData<ChatMessageRow[]>(["wa-messages", user.id, activeJid]) ?? [];
-    // Oldest server row = smallest wa_timestamp (fallback created_at).
+    // Oldest server row = smallest created_at (server also sorts on it as the
+    // secondary key, so the cursor is monotonic with the returned page).
     let cursor: string | null = null;
     for (const r of cache) {
-      const ts = r.wa_timestamp ?? r.created_at ?? null;
+      const ts = r.created_at ?? null;
       if (!ts) continue;
       if (!cursor || ts < cursor) cursor = ts;
     }
