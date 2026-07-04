@@ -167,7 +167,7 @@ export const markConversationActive = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    const ttl = data.durationMs ?? 45_000;
+    const ttl = data.durationMs ?? 30_000;
     const until = new Date(Date.now() + ttl).toISOString();
     const { error } = await supabase
       .from("wa_conversations")
@@ -177,6 +177,26 @@ export const markConversationActive = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true, until };
   });
+
+// Explicit "human left the chat" signal — clears agent_active_until immediately
+// so the AI resumes replying on the very next incoming message instead of
+// waiting for the presence TTL to expire.
+export const clearConversationActive = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ remoteJid: z.string().min(3) }).parse(input),
+  )
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase
+      .from("wa_conversations")
+      .update({ agent_active_until: null })
+      .eq("user_id", userId)
+      .eq("remote_jid", data.remoteJid);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 
 export const toggleConversationAi = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
