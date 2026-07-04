@@ -69,7 +69,7 @@ export async function resolveOutgoingWhatsappTarget(params: {
   const loadRows = async (mode: "remote_jid" | "from_phone", value: string) => {
     let query = supabaseAdmin
       .from("wa_messages")
-      .select("raw, from_phone, remote_jid")
+      .select("raw, from_phone, remote_jid, created_at, wa_timestamp")
       .eq("user_id", params.userId)
       .eq(mode, value)
       .eq("direction", "in")
@@ -84,6 +84,10 @@ export async function resolveOutgoingWhatsappTarget(params: {
   const data = [...rows, ...phoneMatchedRows].filter((row, index, all) => {
     const key = `${row.remote_jid}|${row.from_phone}|${JSON.stringify(row.raw).slice(0, 160)}`;
     return all.findIndex((candidate) => `${candidate.remote_jid}|${candidate.from_phone}|${JSON.stringify(candidate.raw).slice(0, 160)}` === key) === index;
+  }).sort((a, b) => {
+    const at = new Date((a.wa_timestamp || a.created_at || 0) as string | number).getTime() || 0;
+    const bt = new Date((b.wa_timestamp || b.created_at || 0) as string | number).getTime() || 0;
+    return bt - at;
   });
 
   let bestPhone = fallbackPhoneDigits;
@@ -91,6 +95,9 @@ export async function resolveOutgoingWhatsappTarget(params: {
     const raw = asRecord(row.raw);
     bestPhone = bestPhone || normalizeWhatsappPhone(row.from_phone) || normalizeWhatsappPhone(pickString(raw, "senderPn", "participantPn", "phoneNumber", "phone"));
     const rowJid = toJid(row.remote_jid);
+    if (rowJid?.endsWith("@s.whatsapp.net") && bestPhone && rowJid.split("@")[0] === bestPhone) {
+      return { jid: rowJid, phoneDigits: bestPhone, usedLid: false };
+    }
     if (rowJid?.endsWith("@lid")) return { jid: rowJid, phoneDigits: bestPhone, usedLid: true };
     if (rowJid?.endsWith("@s.whatsapp.net") && looksLikeLidAlias(rowJid) && (!bestPhone || bestPhone === rowJid.split("@")[0])) {
       return { jid: `${rowJid.split("@")[0]}@lid`, phoneDigits: bestPhone, usedLid: true };
