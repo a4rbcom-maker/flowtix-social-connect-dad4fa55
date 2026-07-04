@@ -680,14 +680,14 @@ function InboxPage() {
     }
     const prev = prevMsgLenRef.current;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
-    if (messages.length !== prev) {
+    if (mergedMessages.length !== prev) {
       // New message(s) appended or conversation switched — scroll to bottom if user is near it.
       if (nearBottom || prev === 0) {
         el.scrollTop = el.scrollHeight;
       }
-      prevMsgLenRef.current = messages.length;
+      prevMsgLenRef.current = mergedMessages.length;
     }
-  }, [visibleMessages, messages.length, activeJid]);
+  }, [visibleMessages, mergedMessages.length, activeJid]);
 
   // Scroll to bottom for typing indicator only when already near bottom
   useEffect(() => {
@@ -703,9 +703,9 @@ function InboxPage() {
     if (el.scrollTop <= 60 && hasMoreOlder && !isLoadingOlder) {
       setIsLoadingOlder(true);
       preserveScrollRef.current = el.scrollHeight;
-      setVisibleCount((c) => Math.min(c + PAGE_SIZE, messages.length));
+      setVisibleCount((c) => Math.min(c + PAGE_SIZE, mergedMessages.length));
     }
-  }, [hasMoreOlder, isLoadingOlder, messages.length]);
+  }, [hasMoreOlder, isLoadingOlder, mergedMessages.length]);
 
 
   // Reset typing indicator when switching conversations
