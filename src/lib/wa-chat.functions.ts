@@ -245,7 +245,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       fallbackPhoneOrJid: rawPhone || conv?.contact_phone || data.remoteJid,
     });
     const phoneDigits = target.phoneDigits || normalizeWhatsappPhone(data.remoteJid) || data.remoteJid.replace(/[^0-9]/g, "");
-    const to = target.jid;
+    let to = target.jid;
     const sentAt = new Date().toISOString();
     const hasMedia = !!data.mediaUrl;
     const mediaType = data.mediaType ?? "image";
@@ -268,12 +268,38 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       let providerMessageId: string | null = null;
       let status = "sent";
       let delivery = "whatsapp_sent";
+      let finalQueuedId = queuedId;
+      let finalResponse = res;
       try {
         providerMessageId = assertBridgeSendQueued(res);
       } catch (err) {
         if (!queuedId) throw err;
-        status = "pending";
-        delivery = "bridge_queued_waiting_for_whatsapp_ack";
+
+        // Some modern WhatsApp chats have both a hidden @lid address and a
+        // public phone JID. If the hidden address only enters the queue, retry
+        // the confirmed phone JID immediately before surfacing a pending state.
+        const phoneJid = phoneDigits ? `${phoneDigits}@s.whatsapp.net` : null;
+        if (target.usedLid && phoneJid && phoneJid !== to && !hasMedia) {
+          const fallbackRes = await sendTextWithReconnect(sess.session_id, phoneJid, data.text, {
+            webhookUrl: webhookUrl ?? undefined,
+            tenantId: userId,
+            recipientPhone: phoneDigits,
+          });
+          finalResponse = fallbackRes;
+          finalQueuedId = bridgeSendQueuedMessage(fallbackRes);
+          try {
+            providerMessageId = assertBridgeSendQueued(fallbackRes);
+            to = phoneJid;
+            delivery = "whatsapp_sent_phone_fallback";
+          } catch (fallbackErr) {
+            if (!finalQueuedId) throw fallbackErr;
+            status = "pending";
+            delivery = "whatsapp_queue_waiting_for_delivery";
+          }
+        } else {
+          status = "pending";
+          delivery = "whatsapp_queue_waiting_for_delivery";
+        }
       }
       await supabase.from("wa_messages").insert({
         user_id: userId,
@@ -289,14 +315,14 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         wa_timestamp: sentAt,
         raw: {
           bridgeMessageId: providerMessageId,
-          queuedId,
+          queuedId: finalQueuedId,
           delivery,
           targetJid: to,
           usedLid: target.usedLid,
           ...(hasMedia
             ? { mediaData: { url: data.mediaUrl, mimeType: data.mimeType, fileName: data.fileName, caption: data.text } }
             : {}),
-          bridgeResponse: res,
+          bridgeResponse: finalResponse,
         } as never,
       });
     } catch (err) {
