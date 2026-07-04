@@ -436,6 +436,10 @@ export const waBridge = {
             syncHistory: true,
             historySync: true,
             fullHistory: true,
+            downloadMedia: true,
+            includeMedia: true,
+            includeMediaData: true,
+            emitMediaData: true,
           }),
         });
         attempts.push({ path, ok: true });
@@ -515,6 +519,10 @@ export const waBridge = {
           historySync: true,
           fullHistory: true,
           historySyncMode: "full",
+          downloadMedia: true,
+          includeMedia: true,
+          includeMediaData: true,
+          emitMediaData: true,
           ...(opts.anchorMessageId ? { anchorMessageId: opts.anchorMessageId } : {}),
           ...(anchorTimestampMs ? { anchorTimestamp: anchorTimestampMs } : {}),
           ...(opts.fromMe != null ? { fromMe: opts.fromMe } : {}),
