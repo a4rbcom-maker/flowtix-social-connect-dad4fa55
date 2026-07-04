@@ -2934,6 +2934,7 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
 
 async function fetchInboxMessages(userId: string, remoteJid: string): Promise<ChatMessageRow[]> {
   const baseSelect = "id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw";
+  const startedAt = nowMs();
 
   // === مسار الجروبات ===
   // نتعامل مع الجروب كوحدة مغلقة: JID = @g.us فقط، ممنوع أي fallback بالهاتف
@@ -2947,9 +2948,20 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
       .order("wa_timestamp", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
       .limit(200);
-    if (groupError) throw new Error(groupError.message);
+    const durationMs = nowMs() - startedAt;
+    if (groupError) {
+      recordInboxQueryStat({
+        jid: remoteJid, mode: "group", durationMs, rowCount: 0,
+        ok: false, errorMessage: groupError.message, at: Date.now(),
+      });
+      throw new Error(groupError.message);
+    }
+    const count = groupRows?.length ?? 0;
+    recordInboxQueryStat({
+      jid: remoteJid, mode: "group", durationMs, rowCount: count, ok: true, at: Date.now(),
+    });
     // eslint-disable-next-line no-console
-    console.debug("[wa-inbox] fetchInboxMessages(group)", { remoteJid, count: groupRows?.length ?? 0 });
+    console.debug("[wa-inbox] fetchInboxMessages(group)", { remoteJid, count, durationMs: Math.round(durationMs) });
     return await materializeInboxRows(groupRows ?? []);
   }
 
@@ -2957,6 +2969,7 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
   // الاستعلام محكوم بواسطة buildInboxMessageQueryPlan من wa-inbox-query — أي
   // تعديل مستقبلي يجب أن يحافظ على شرط استبعاد @g.us. الاختبارات في
   // src/lib/__tests__/wa-inbox-query.test.ts تحرس هذا الفصل.
+  const aliasStart = nowMs();
   const { data: convAliases } = await supabase
     .from("wa_conversations")
     .select("contact_phone")
@@ -2965,9 +2978,14 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  const aliasLookupMs = nowMs() - aliasStart;
 
   const plan = buildInboxMessageQueryPlan(remoteJid, convAliases?.contact_phone ?? null);
   if (plan.orClauses.length === 0) {
+    recordInboxQueryStat({
+      jid: remoteJid, mode: "private", durationMs: nowMs() - startedAt,
+      rowCount: 0, ok: true, at: Date.now(), aliasLookupMs,
+    });
     return await materializeInboxRows([]);
   }
 
@@ -2980,18 +2998,33 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     .order("wa_timestamp", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(200);
-  if (error) throw new Error(error.message);
+  const durationMs = nowMs() - startedAt;
+  if (error) {
+    recordInboxQueryStat({
+      jid: remoteJid, mode: "private", durationMs, rowCount: 0,
+      ok: false, errorMessage: error.message, at: Date.now(), aliasLookupMs,
+    });
+    throw new Error(error.message);
+  }
 
+  const count = rows?.length ?? 0;
+  recordInboxQueryStat({
+    jid: remoteJid, mode: "private", durationMs, rowCount: count,
+    ok: true, at: Date.now(), aliasLookupMs,
+  });
   // eslint-disable-next-line no-console
   console.debug("[wa-inbox] fetchInboxMessages(private)", {
     remoteJid,
     aliases: plan.jids,
     phone: plan.phone,
-    count: rows?.length ?? 0,
+    count,
+    durationMs: Math.round(durationMs),
+    aliasLookupMs: Math.round(aliasLookupMs),
   });
 
   return await materializeInboxRows(rows ?? []);
 }
+
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function materializeInboxRows(dedupedRows: any[]): Promise<ChatMessageRow[]> {
