@@ -369,7 +369,7 @@ function InboxPage() {
     t.conv = setTimeout(() => {
       t.conv = undefined;
       qc.invalidateQueries({ queryKey: ["wa-conversations"], refetchType: "active" });
-    }, 1500);
+    }, 400);
   }, [qc]);
   const scheduleInvalidateMessages = useCallback((uid: string, jid: string) => {
     const t = invalidateTimersRef.current;
