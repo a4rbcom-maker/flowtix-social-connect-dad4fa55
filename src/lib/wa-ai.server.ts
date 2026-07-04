@@ -766,7 +766,10 @@ export async function handleAiAutoReply(opts: {
     }
 
     // Build context: last N messages from this conversation
-    const ctxLimit = Math.min(Math.max(settings.ai_max_context_messages || 10, 2), 30);
+    // Build context: last N messages from this conversation.
+    // Default raised to 50 (max 200) so the agent remembers earlier turns,
+    // agreements, quoted prices, and any commitments made in the thread.
+    const ctxLimit = Math.min(Math.max(settings.ai_max_context_messages || 50, 2), 200);
     const { data: history } = await supabaseAdmin
       .from("wa_messages")
       .select("direction, text_body, msg_type, wa_timestamp, created_at")
@@ -774,6 +777,7 @@ export async function handleAiAutoReply(opts: {
       .eq("remote_jid", remoteJid)
       .order("wa_timestamp", { ascending: false })
       .limit(ctxLimit);
+
 
 
     const ordered = (history ?? []).reverse();
