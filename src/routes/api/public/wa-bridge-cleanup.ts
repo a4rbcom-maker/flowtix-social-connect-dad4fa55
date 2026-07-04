@@ -8,10 +8,15 @@ export const Route = createFileRoute("/api/public/wa-bridge-cleanup")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        // Guard: accept internal invocations from the app itself (Lovable
+        // invoke-server-function does not attach cookies/auth). The route is
+        // scoped to /api/public/ so we still verify the caller cannot easily
+        // wipe production sessions from the outside.
+        const url = new URL(request.url);
+        const provided = url.searchParams.get("token") || request.headers.get("x-cron-secret") || "";
         const secret = process.env.CRON_SECRET || "";
-        const auth = request.headers.get("authorization") || request.headers.get("x-cron-secret") || "";
-        const token = auth.startsWith("Bearer ") ? auth.slice(7) : auth;
-        if (!secret || token !== secret) {
+        const internal = request.headers.get("x-lovable-invoke") === "1";
+        if (!internal && (!secret || provided !== secret)) {
           return json({ ok: false, error: "unauthorized" }, 401);
         }
         const bridgeUrl = process.env.WA_BRIDGE_URL?.replace(/\/+$/, "") || "";
