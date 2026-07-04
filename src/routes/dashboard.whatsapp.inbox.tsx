@@ -668,11 +668,44 @@ function InboxPage() {
         "postgres_changes",
         { event: "*", schema: "public", table: "wa_messages", filter: `user_id=eq.${uid}` },
         (payload) => {
-          const row = payload.new as { remote_jid?: string; direction?: string; raw?: { is_historical?: boolean } | null };
+          const row = payload.new as {
+            remote_jid?: string;
+            direction?: string;
+            sender_phone?: string | null;
+            sender_name?: string | null;
+            raw?: { is_historical?: boolean } | null;
+          };
           // نُبطل رسائل الدردشة النشطة عند أي حدث؛ اختلاف نسق JID (@lid مقابل @s.whatsapp.net)
           // قد يمنع المطابقة الحرفية، لذا نعتمد على fetchInboxMessages لحل الهوية.
           if (activeJid) {
             scheduleInvalidateMessages(uid, activeJid);
+          }
+          // تحديث فوري لعدّاد أعضاء الجروب: نضم المرسل الجديد للـ accumulator
+          // مباشرة من payload الـrealtime بدون انتظار refetch. هذا يضمن أن نافذة
+          // تفاصيل الجروب تُظهر العدد المحدث لحظة وصول دفعات رسائل جديدة حتى
+          // أثناء debounce الـ invalidate (500ms) أو round-trip الاستعلام.
+          if (
+            payload.eventType === "INSERT" &&
+            row?.remote_jid &&
+            activeJid &&
+            row.remote_jid === activeJid &&
+            activeJid.endsWith("@g.us")
+          ) {
+            const map = groupMemberStateRef.current;
+            const prev = map.get(activeJid) ?? createGroupMemberState();
+            const next = accumulateGroupMembers(
+              prev,
+              [{
+                direction: row.direction ?? "in",
+                sender_phone: row.sender_phone ?? null,
+                sender_name: row.sender_name ?? null,
+              }],
+              activeJid,
+            );
+            if (next !== prev) {
+              map.set(activeJid, next);
+              setGroupMemberVersion((v) => v + 1);
+            }
           }
           if (
             payload.eventType === "INSERT" &&
