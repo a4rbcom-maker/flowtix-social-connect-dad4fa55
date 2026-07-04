@@ -785,54 +785,35 @@ function InboxPage() {
   }, [messages, activeJid, user?.id, dispatchFn, qc]);
 
 
-  // Presence heartbeat — pauses the AI auto-reply while the user is actually
-  // viewing this conversation. Rules:
-  //   • ping every 15s with a 30s TTL while the chat is open AND the tab is visible
-  //   • immediately clear agent_active_until when the user leaves the chat,
-  //     switches to another chat, hides the tab, or closes the window
-  //     → the bot resumes on the very next incoming message (no waiting on TTL)
-  const pingActive = useCallback((durationMs = 30_000) => {
+  // Presence rule (per user request):
+  //   • Opening a chat locks the AI silent on THAT chat for 10 minutes.
+  //   • Ping is refreshed every 60s while the chat stays open, so the 10-min
+  //     window slides forward as long as you're viewing it.
+  //   • Leaving the chat does NOT clear the lock — the remaining time still
+  //     counts down, then the AI resumes automatically.
+  //   • Typing extends the window to a fresh 10 minutes.
+  const TEN_MIN_MS = 10 * 60_000;
+  const pingActive = useCallback((durationMs = TEN_MIN_MS) => {
     if (!activeJid) return;
-    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
     markActiveFn({ data: { remoteJid: activeJid, durationMs } }).catch(() => {
       /* best-effort: presence is advisory */
     });
-  }, [activeJid, markActiveFn]);
-
-  const clearActive = useCallback((jid: string) => {
-    clearActiveFn({ data: { remoteJid: jid } }).catch(() => {
-      /* best-effort */
-    });
-  }, [clearActiveFn]);
+  }, [activeJid, markActiveFn, TEN_MIN_MS]);
 
   useEffect(() => {
     if (!activeJid) return;
     pingActive();
-    const t = setInterval(() => pingActive(), 15_000);
-    const onVis = () => {
-      if (document.visibilityState === "visible") pingActive();
-      else clearActive(activeJid);
-    };
-    const onLeave = () => clearActive(activeJid);
-    document.addEventListener("visibilitychange", onVis);
-    window.addEventListener("pagehide", onLeave);
-    window.addEventListener("beforeunload", onLeave);
-    return () => {
-      clearInterval(t);
-      document.removeEventListener("visibilitychange", onVis);
-      window.removeEventListener("pagehide", onLeave);
-      window.removeEventListener("beforeunload", onLeave);
-      // Chat unmount / switch → immediately release the mute so the AI can reply.
-      clearActive(activeJid);
-    };
-  }, [activeJid, pingActive, clearActive]);
+    const t = setInterval(() => pingActive(), 60_000);
+    return () => clearInterval(t);
+  }, [activeJid, pingActive]);
 
-  // Typing-triggered ping (debounced).
+  // Typing → refresh the 10-min silence window.
   useEffect(() => {
     if (!activeJid || !draft) return;
-    const h = setTimeout(() => pingActive(45_000), 250);
+    const h = setTimeout(() => pingActive(TEN_MIN_MS), 250);
     return () => clearTimeout(h);
-  }, [draft, activeJid, pingActive]);
+  }, [draft, activeJid, pingActive, TEN_MIN_MS]);
+
 
 
 
