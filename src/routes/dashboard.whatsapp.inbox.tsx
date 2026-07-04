@@ -2914,12 +2914,6 @@ async function materializeInboxRows(dedupedRows: any[]): Promise<ChatMessageRow[
       const hasMedia = Boolean(row.media_url?.trim()) || normalizeWaMessageType(row.msg_type) !== "text";
       return hasText || hasMedia;
     })
-  const rows = dedupedRows
-    .filter((row) => {
-      const hasText = Boolean(row.text_body?.trim());
-      const hasMedia = Boolean(row.media_url?.trim()) || normalizeWaMessageType(row.msg_type) !== "text";
-      return hasText || hasMedia;
-    })
     .reverse();
   return Promise.all(rows.map(async (row) => {
     const raw = asRecord(row.raw);
