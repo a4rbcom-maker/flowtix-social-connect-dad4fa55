@@ -641,16 +641,25 @@ export async function handleAiAutoReply(opts: {
     // If the user is currently viewing/typing in this conversation the inbox
     // UI pushes an agent_active_until timestamp in the future — while that
     // window is active the AI stays silent so it doesn't step on the human.
-    if (conversationId) {
-      const { data: conv } = await supabaseAdmin
+    {
+      const convBase = supabaseAdmin
         .from("wa_conversations")
-        .select("ai_enabled, agent_active_until")
-        .eq("id", conversationId)
-        .maybeSingle<{ ai_enabled: boolean | null; agent_active_until: string | null }>();
+        .select("id, ai_enabled, agent_active_until")
+        .eq("user_id", userId);
+      const { data: conv } = conversationId
+        ? await convBase
+            .eq("id", conversationId)
+            .maybeSingle<{ id: string; ai_enabled: boolean | null; agent_active_until: string | null }>()
+        : await convBase
+            .eq("remote_jid", remoteJid)
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle<{ id: string; ai_enabled: boolean | null; agent_active_until: string | null }>();
+      const effectiveConversationId = conversationId ?? conv?.id ?? null;
       if (conv && conv.ai_enabled === false) {
         await logAiSkip({
           userId,
-          conversationId,
+          conversationId: effectiveConversationId,
           remoteJid,
           inboundText,
           model: settings.ai_model,
@@ -662,7 +671,7 @@ export async function handleAiAutoReply(opts: {
       if (activeUntil && activeUntil > Date.now()) {
         await logAiSkip({
           userId,
-          conversationId,
+          conversationId: effectiveConversationId,
           remoteJid,
           inboundText,
           model: settings.ai_model,
@@ -685,7 +694,6 @@ export async function handleAiAutoReply(opts: {
         .from("wa_messages")
         .select("id, created_at, raw")
         .eq("user_id", userId)
-        .eq("session_id", sessionId)
         .eq("remote_jid", remoteJid)
         .eq("direction", "out")
         .gte("created_at", since)
@@ -752,7 +760,6 @@ export async function handleAiAutoReply(opts: {
       .from("wa_messages")
       .select("direction, text_body, msg_type, wa_timestamp, created_at")
       .eq("user_id", userId)
-      .eq("session_id", sessionId)
       .eq("remote_jid", remoteJid)
       .order("wa_timestamp", { ascending: false })
       .limit(ctxLimit);
@@ -781,7 +788,8 @@ export async function handleAiAutoReply(opts: {
       .from("wa_sessions")
       .select("phone_number")
       .eq("user_id", userId)
-      .eq("session_id", sessionId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
     const businessPhone = (sessionRow?.phone_number || "").toString().replace(/[^0-9+]/g, "");
 
