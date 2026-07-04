@@ -3181,6 +3181,19 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
   const isPending = isOut && m.status === "pending";
   const isFailed = isOut && m.status === "failed";
   const isStalePending = isPending && m.is_stale_pending;
+
+  // Promote msg_type from URL/filename extension when the raw msg_type is
+  // wrong or generic (e.g. .mp4 saved as "document").
+  const rawFileName = m.msg_type === "document" ? (m.text_body || null) : null;
+  const ext = extFromUrlOrName(m.media_url, rawFileName);
+  const extKind = kindFromExt(ext);
+  const effectiveType: string = m.media_url
+    ? (m.msg_type === "document" && extKind && extKind !== "document" ? extKind : m.msg_type)
+    : m.msg_type;
+  const displayName = prettyFileName(rawFileName, m.media_url);
+  const extBadge = ext ? ext.toUpperCase() : (isAr ? "ملف" : "FILE");
+  const hasCaption = Boolean(m.text_body && effectiveType !== "document");
+
   return (
     <div dir="ltr" className={`flex ${isOut ? "justify-end" : "justify-start"} px-1`}>
       <div
@@ -3201,7 +3214,7 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
             {m.sender_name || (m.sender_phone ? `+${m.sender_phone}` : "")}
           </p>
         )}
-        {m.media_url && m.msg_type === "image" && (
+        {m.media_url && effectiveType === "image" && (
           <button
             type="button"
             onClick={() => openMedia({ url: m.media_url!, type: "image" })}
@@ -3210,16 +3223,17 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
             <img src={m.media_url} alt="" className="max-h-72 w-full object-cover" loading="lazy" />
           </button>
         )}
-        {m.media_url && m.msg_type === "video" && (
-          <button
-            type="button"
-            onClick={() => openMedia({ url: m.media_url!, type: "video" })}
-            className="mb-1.5 block w-full overflow-hidden rounded-lg"
-          >
-            <video src={m.media_url} className="pointer-events-none max-h-72 w-full rounded-lg" />
-          </button>
+        {m.media_url && effectiveType === "video" && (
+          <div className="mb-1.5 w-full min-w-[240px]">
+            <video
+              src={m.media_url}
+              controls
+              preload="metadata"
+              className="max-h-72 w-full rounded-lg bg-black"
+            />
+          </div>
         )}
-        {m.media_url && m.msg_type === "audio" && (
+        {m.media_url && effectiveType === "audio" && (
           <div dir="ltr" className="mb-1.5 flex flex-col gap-1">
             <SmartAudio src={m.media_url} className="w-full min-w-[240px]" />
             <a
@@ -3229,21 +3243,48 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
               download
               className={`text-[10px] underline ${isOut ? "text-white/80" : "text-muted-foreground"}`}
             >
-              تنزيل المقطع الصوتي
+              {isAr ? "تنزيل المقطع الصوتي" : "Download audio"}
             </a>
           </div>
         )}
-        {m.media_url && m.msg_type === "document" && (
-          <button
-            type="button"
-            onClick={() => openMedia({ url: m.media_url!, type: "document", name: m.text_body || undefined })}
-            className={`mb-1.5 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs ${isOut ? "bg-white/15 hover:bg-white/25" : "bg-muted hover:bg-muted/70"}`}
+        {m.media_url && effectiveType === "document" && (
+          <div
+            className={`mb-1.5 flex w-full min-w-[240px] items-center gap-3 rounded-xl px-3 py-2.5 ${isOut ? "bg-white/15" : "bg-muted"}`}
           >
-            <FileText className="h-4 w-4 shrink-0" />
-            <span className="truncate text-start">{m.text_body || "Document"}</span>
-          </button>
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${isOut ? "bg-white/25 text-white" : "bg-primary/15 text-primary"}`}>
+              <FileText className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1 text-start">
+              <p className={`truncate text-[13px] font-medium leading-tight ${isOut ? "text-white" : "text-foreground"}`}>
+                {displayName}
+              </p>
+              <p className={`mt-0.5 text-[10px] font-semibold uppercase tracking-wide ${isOut ? "text-white/70" : "text-muted-foreground"}`}>
+                {extBadge}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                aria-label={isAr ? "فتح" : "Open"}
+                onClick={() => openMedia({ url: m.media_url!, type: "document", name: displayName })}
+                className={`flex h-8 w-8 items-center justify-center rounded-full transition ${isOut ? "bg-white/20 text-white hover:bg-white/30" : "bg-background text-foreground hover:bg-background/70"}`}
+              >
+                <ExternalLink className="h-4 w-4" />
+              </button>
+              <a
+                href={m.media_url}
+                target="_blank"
+                rel="noreferrer"
+                download={displayName}
+                aria-label={isAr ? "تنزيل" : "Download"}
+                className={`flex h-8 w-8 items-center justify-center rounded-full transition ${isOut ? "bg-white/20 text-white hover:bg-white/30" : "bg-background text-foreground hover:bg-background/70"}`}
+              >
+                <Download className="h-4 w-4" />
+              </a>
+            </div>
+          </div>
         )}
-        {m.media_url && m.msg_type === "sticker" && (
+        {m.media_url && effectiveType === "sticker" && (
           <button
             type="button"
             onClick={() => openMedia({ url: m.media_url!, type: "sticker" })}
@@ -3252,7 +3293,7 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
             <img src={m.media_url} alt="sticker" className="max-h-32" />
           </button>
         )}
-        {m.text_body && !(m.media_url && m.msg_type === "document") ? (
+        {hasCaption ? (
           <p className="max-w-full whitespace-pre-wrap break-words text-start leading-relaxed [overflow-wrap:anywhere]">{m.text_body}</p>
         ) : !m.media_url && m.msg_type !== "text" ? (
           <div className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${isOut ? "bg-white/15 text-primary-foreground/90" : "bg-muted text-muted-foreground"}`}>
@@ -3264,6 +3305,7 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
             <span className="text-start">{missingMediaLabel(m.msg_type, isAr)}</span>
           </div>
         ) : null}
+
         {(isPending || isFailed) && (
           <p className={`mt-1 text-[10px] font-semibold ${isFailed ? "text-destructive" : "text-muted-foreground"}`}>
             {isFailed
