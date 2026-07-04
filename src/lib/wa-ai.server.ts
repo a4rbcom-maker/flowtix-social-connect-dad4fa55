@@ -618,10 +618,10 @@ export async function handleAiAutoReply(opts: {
     const { data: settings } = await supabaseAdmin
       .from("whatsapp_settings")
       .select(
-        "ai_enabled, ai_model, ai_provider, ai_tier_simple, ai_tier_smart, ai_tier_negotiation, ai_default_tier, ai_system_prompt, ai_welcome_message, ai_business_hours_only, ai_working_hours_start, ai_working_hours_end, ai_blacklist, ai_knowledge_base, ai_max_context_messages",
+        "ai_enabled, ai_model, ai_provider, ai_tier_simple, ai_tier_smart, ai_tier_negotiation, ai_default_tier, ai_system_prompt, ai_welcome_message, ai_business_hours_only, ai_working_hours_start, ai_working_hours_end, ai_blacklist, ai_knowledge_base, ai_max_context_messages, ai_reply_to_groups",
       )
       .eq("user_id", userId)
-      .maybeSingle<AiSettings>();
+      .maybeSingle<AiSettings & { ai_reply_to_groups?: boolean | null }>();
 
     if (!settings?.ai_enabled) {
       await logAiSkip({
@@ -633,6 +633,19 @@ export async function handleAiAutoReply(opts: {
         reason: settings
           ? "ai_disabled: وكيل AI غير مفعّل في إعدادات هذا الحساب. فعّله من صفحة وكيل AI ثم احفظ."
           : "missing_settings: لا توجد إعدادات وكيل AI لهذا الحساب.",
+      });
+      return;
+    }
+
+    // Skip group chats when the operator disabled group replies.
+    if (remoteJid.endsWith("@g.us") && settings.ai_reply_to_groups !== true) {
+      await logAiSkip({
+        userId,
+        conversationId,
+        remoteJid,
+        inboundText,
+        model: settings.ai_model,
+        reason: "groups_disabled: الرد على الجروبات موقوف من إعدادات الوكيل.",
       });
       return;
     }
