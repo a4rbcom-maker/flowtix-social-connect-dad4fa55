@@ -100,6 +100,13 @@ import {
 } from "@/lib/wa-inbox-query";
 import { nowMs, recordInboxQueryStat, useInboxQueryPerf } from "@/lib/wa-inbox-perf";
 import { createDebouncedInvalidator } from "@/lib/wa-inbox-invalidation";
+import {
+  coalescingRate,
+  recordQueryInvalidated,
+  recordQueryScheduled,
+  resetInboxQueryStats,
+  useInboxQueryStats,
+} from "@/lib/wa-inbox-query-stats";
 
 
 export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
@@ -424,31 +431,42 @@ function InboxPage() {
   // أي دفعة بأي حجم = استدعاء invalidate واحد لكل مفتاح خلال نافذة الـdebounce.
   const convInvalidatorRef = useRef(
     createDebouncedInvalidator(
-      () => qc.invalidateQueries({ queryKey: ["wa-conversations"], refetchType: "active" }),
+      () => {
+        recordQueryInvalidated("wa-conversations", 400);
+        qc.invalidateQueries({ queryKey: ["wa-conversations"], refetchType: "active" });
+      },
       400,
     ),
   );
   const msgsInvalidatorRef = useRef<{
     key: string;
+    statKey: string;
     inv: ReturnType<typeof createDebouncedInvalidator>;
   } | null>(null);
   const scheduleInvalidateConversations = useCallback(() => {
+    recordQueryScheduled("wa-conversations", 400);
     convInvalidatorRef.current.schedule();
   }, []);
   const scheduleInvalidateMessages = useCallback(
     (uid: string, jid: string) => {
       const key = `${uid}::${jid}`;
+      const statKey = `wa-messages:${jid}`;
       const cur = msgsInvalidatorRef.current;
       if (!cur || cur.key !== key) {
         cur?.inv.cancel();
         msgsInvalidatorRef.current = {
           key,
+          statKey,
           inv: createDebouncedInvalidator(
-            () => qc.invalidateQueries({ queryKey: ["wa-messages", uid, jid], refetchType: "active" }),
+            () => {
+              recordQueryInvalidated(statKey, 500);
+              qc.invalidateQueries({ queryKey: ["wa-messages", uid, jid], refetchType: "active" });
+            },
             500,
           ),
         };
       }
+      recordQueryScheduled(statKey, 500);
       msgsInvalidatorRef.current!.inv.schedule();
     },
     [qc],
@@ -1911,6 +1929,9 @@ function InboxPage() {
             isError={msgsQuery.isError}
             activeJid={activeJid}
           />
+          {/* Realtime → invalidation counter (كل مفتاح: scheduled/invalidated) */}
+          <InboxQueryStatsPanel isAr={isAr} />
+
 
           {/* Messages */}
           <div
@@ -3826,6 +3847,123 @@ function InboxQueryPerfBadge({
     </div>
   );
 }
+
+// لوحة مراقبة عدد الاستعلامات لكل مفتاح — تُثبت أن دفعات realtime الكبيرة
+// لا ترفع عدد استدعاءات invalidateQueries. النسبة "coalesced%" =
+// 1 - invalidated/scheduled؛ كلما ارتفعت أكثر كان الطي أفضل.
+function InboxQueryStatsPanel({ isAr }: { isAr: boolean }) {
+  const stats = useInboxQueryStats();
+  const [open, setOpen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!open) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [open]);
+
+  const totals = stats.reduce(
+    (acc, s) => ({ scheduled: acc.scheduled + s.scheduled, invalidated: acc.invalidated + s.invalidated }),
+    { scheduled: 0, invalidated: 0 },
+  );
+  const overall = totals.scheduled === 0 ? 0 : Math.round((1 - totals.invalidated / totals.scheduled) * 100);
+  const fmtAgo = (ts: number | null): string => {
+    if (!ts) return "—";
+    const s = Math.max(0, Math.round((now - ts) / 1000));
+    if (s < 60) return `${s}s`;
+    const m = Math.round(s / 60);
+    return `${m}m`;
+  };
+
+  return (
+    <div
+      className="border-b border-border/40 bg-muted/20 px-3 py-1.5 text-[10px] sm:px-6"
+      dir={isAr ? "rtl" : "ltr"}
+      aria-label={isAr ? "لوحة مراقبة الاستعلامات" : "Query monitor"}
+    >
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="inline-flex items-center gap-1 rounded-md border border-border/50 bg-background/60 px-1.5 py-0.5 font-semibold hover:bg-background"
+          aria-expanded={open}
+        >
+          {isAr ? "مراقبة الاستعلامات" : "Query monitor"} {open ? "▾" : "▸"}
+        </button>
+        <span className="inline-flex items-center gap-1 rounded-md border border-border/50 bg-background/60 px-1.5 py-0.5 text-muted-foreground">
+          {isAr ? "أحداث" : "events"}: <span className="font-semibold text-foreground">{totals.scheduled}</span>
+        </span>
+        <span className="inline-flex items-center gap-1 rounded-md border border-border/50 bg-background/60 px-1.5 py-0.5 text-muted-foreground">
+          {isAr ? "استعلامات" : "queries"}: <span className="font-semibold text-foreground">{totals.invalidated}</span>
+        </span>
+        <span
+          className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-semibold ${
+            overall >= 50
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+              : totals.scheduled > 0
+                ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                : "border-border/50 bg-background/60 text-muted-foreground"
+          }`}
+          title={isAr ? "نسبة الأحداث التي تم طيّها في نافذة الـdebounce" : "Share of events collapsed by debounce window"}
+        >
+          {isAr ? "مطوي" : "coalesced"}: {overall}%
+        </span>
+        <button
+          type="button"
+          onClick={() => resetInboxQueryStats()}
+          className="ml-auto inline-flex items-center rounded-md border border-border/50 bg-background/60 px-1.5 py-0.5 text-muted-foreground hover:bg-background"
+        >
+          {isAr ? "تصفير" : "Reset"}
+        </button>
+      </div>
+      {open && (
+        <div className="mt-1.5 overflow-x-auto">
+          <table className="w-full min-w-[520px] border-collapse text-[10px]">
+            <thead className="text-muted-foreground">
+              <tr>
+                <th className="px-1.5 py-1 text-start font-medium">{isAr ? "المفتاح" : "Key"}</th>
+                <th className="px-1.5 py-1 text-end font-medium">{isAr ? "أحداث" : "events"}</th>
+                <th className="px-1.5 py-1 text-end font-medium">{isAr ? "استعلامات" : "queries"}</th>
+                <th className="px-1.5 py-1 text-end font-medium">{isAr ? "طي" : "coalesced"}</th>
+                <th className="px-1.5 py-1 text-end font-medium">{isAr ? "نافذة" : "window"}</th>
+                <th className="px-1.5 py-1 text-end font-medium">{isAr ? "آخر تحديث" : "last invalidate"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stats.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-1.5 py-2 text-center text-muted-foreground">
+                    {isAr ? "لا توجد أحداث بعد" : "No events yet"}
+                  </td>
+                </tr>
+              )}
+              {stats.map((s) => {
+                const rate = Math.round(coalescingRate(s) * 100);
+                return (
+                  <tr key={s.key} className="border-t border-border/30">
+                    <td className="px-1.5 py-1 font-mono text-foreground" title={s.key}>{s.key}</td>
+                    <td className="px-1.5 py-1 text-end">{s.scheduled}</td>
+                    <td className="px-1.5 py-1 text-end font-semibold">{s.invalidated}</td>
+                    <td
+                      className={`px-1.5 py-1 text-end font-semibold ${
+                        rate >= 50 ? "text-emerald-700 dark:text-emerald-300" : s.scheduled > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
+                      }`}
+                    >
+                      {s.scheduled > 0 ? `${rate}%` : "—"}
+                    </td>
+                    <td className="px-1.5 py-1 text-end text-muted-foreground">{s.windowMs}ms</td>
+                    <td className="px-1.5 py-1 text-end text-muted-foreground">{fmtAgo(s.lastInvalidatedAt)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 
 function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; isGroup: boolean }) {
   const isOut = m.direction === "out";
