@@ -3050,22 +3050,8 @@ function displayConversationSubtitle(conv: ConversationRow, isAr: boolean): stri
   return conv.remote_jid;
 }
 
-function inboxJidAliases(remoteJid: string, contactPhone?: string | null): string[] {
-  const local = jidLocal(remoteJid);
-  const aliases = new Set([remoteJid]);
-  if (remoteJid.endsWith("@lid")) aliases.add(`${local}@s.whatsapp.net`);
-  else if (remoteJid.endsWith("@s.whatsapp.net") && isLidLocal(local)) aliases.add(`${local}@lid`);
-  const phone = cleanAliasPhone(contactPhone, remoteJid);
-  if (phone) aliases.add(`${phone}@s.whatsapp.net`);
-  return Array.from(aliases);
-}
-
-function cleanAliasPhone(phone: string | null | undefined, canonicalJid: string): string | null {
-  const local = jidLocal(canonicalJid);
-  const normalized = digits(phone ?? null);
-  if (!normalized) return null;
-  return isLidLocal(local) && normalized === local ? null : normalized;
-}
+const inboxJidAliases = inboxJidAliasesExt;
+const cleanAliasPhone = cleanAliasPhoneExt;
 
 function conversationIdentities(conv: ConversationRow, lidLocals: Set<string>): string[] {
   const local = jidLocal(conv.remote_jid);
