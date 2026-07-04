@@ -489,6 +489,13 @@ async function logAiSkip(opts: {
  * log to wa_ai_logs and persist as outbound wa_messages.
  * Best-effort — never throws.
  */
+export interface InboundMediaInfo {
+  msgType: string;              // image | audio | video | document | sticker | text
+  mediaUrl: string | null;      // wa-media:<path> or https://...
+  mimeType?: string | null;     // e.g. image/jpeg, audio/ogg
+  fileName?: string | null;
+}
+
 export async function handleAiAutoReply(opts: {
   userId: string;
   sessionId: string;
@@ -496,10 +503,12 @@ export async function handleAiAutoReply(opts: {
   remoteJid: string;
   fromPhone: string | null;
   inboundText: string;
+  inboundMedia?: InboundMediaInfo | null;
 }): Promise<void> {
-  const { userId, sessionId, conversationId, remoteJid, fromPhone, inboundText } = opts;
+  const { userId, sessionId, conversationId, remoteJid, fromPhone, inboundText, inboundMedia } = opts;
 
-  if (!inboundText?.trim()) return;
+  const hasMedia = Boolean(inboundMedia?.mediaUrl);
+  if (!inboundText?.trim() && !hasMedia) return;
 
   try {
     // Load global settings
