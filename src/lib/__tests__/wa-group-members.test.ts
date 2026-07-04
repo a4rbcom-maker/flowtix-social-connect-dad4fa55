@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { computeGroupMemberCount, type GroupMemberMessage } from "@/lib/wa-group-members";
+import {
+  accumulateGroupMembers,
+  computeGroupMemberCount,
+  countAccumulated,
+  createGroupMemberState,
+  type GroupMemberMessage,
+} from "@/lib/wa-group-members";
 
 const GROUP = "120363000000000001@g.us";
 const DM = "201001234567@s.whatsapp.net";
