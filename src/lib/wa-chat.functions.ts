@@ -666,7 +666,7 @@ export const getAiSettings = createServerFn({ method: "POST" })
     const { data } = await supabase
       .from("whatsapp_settings")
       .select(
-        "ai_enabled, ai_model, ai_tier_simple, ai_tier_smart, ai_tier_negotiation, ai_system_prompt, ai_welcome_message, ai_business_hours_only, ai_working_hours_start, ai_working_hours_end, ai_blacklist, ai_knowledge_base, ai_max_context_messages, ai_reply_delay_seconds",
+        "ai_enabled, ai_model, ai_tier_simple, ai_tier_smart, ai_tier_negotiation, ai_system_prompt, ai_welcome_message, ai_business_hours_only, ai_working_hours_start, ai_working_hours_end, ai_blacklist, ai_knowledge_base, ai_max_context_messages, ai_reply_delay_seconds, ai_reply_to_groups",
       )
       .eq("user_id", userId)
       .maybeSingle();
@@ -686,6 +686,7 @@ export const getAiSettings = createServerFn({ method: "POST" })
       ai_knowledge_base: data.ai_knowledge_base ?? "",
       ai_max_context_messages: data.ai_max_context_messages ?? 10,
       ai_reply_delay_seconds: data.ai_reply_delay_seconds ?? 2,
+      ai_reply_to_groups: (data as { ai_reply_to_groups?: boolean | null }).ai_reply_to_groups ?? false,
     };
   });
 
@@ -704,6 +705,7 @@ const aiSettingsSchema = z.object({
   ai_knowledge_base: z.string().max(20000),
   ai_max_context_messages: z.number().int().min(2).max(30),
   ai_reply_delay_seconds: z.number().int().min(0).max(60),
+  ai_reply_to_groups: z.boolean(),
 });
 
 export const saveAiSettings = createServerFn({ method: "POST" })
