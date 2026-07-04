@@ -64,7 +64,7 @@ import {
   type ConversationRow,
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
-import { requestWaHistorySync, getWaHistorySyncJob, dismissWaHistorySyncJob, matchLidPhoneNumbers } from "@/lib/wa.functions";
+import { requestWaHistorySync, requestWaChatSync, getWaHistorySyncJob, dismissWaHistorySyncJob, matchLidPhoneNumbers } from "@/lib/wa.functions";
 import {
   createQuickReply,
   updateQuickReply,
@@ -99,6 +99,7 @@ function InboxPage() {
   const markReadFn = useServerFn(markConversationRead);
   const markActiveFn = useServerFn(markConversationActive);
   const requestHistorySyncFn = useServerFn(requestWaHistorySync);
+  const requestChatSyncFn = useServerFn(requestWaChatSync);
   const getHistorySyncJobFn = useServerFn(getWaHistorySyncJob);
   const dismissHistorySyncJobFn = useServerFn(dismissWaHistorySyncJob);
   const matchLidPhonesFn = useServerFn(matchLidPhoneNumbers);
@@ -587,6 +588,12 @@ function InboxPage() {
       qc.invalidateQueries({ queryKey: ["wa-connection-state", user.id] });
       if (activeJid) {
         qc.invalidateQueries({ queryKey: ["wa-messages", user.id, activeJid] });
+        requestChatSyncFn({ data: { remoteJid: activeJid } })
+          .then(() => {
+            qc.invalidateQueries({ queryKey: ["wa-conversations", user.id] });
+            qc.invalidateQueries({ queryKey: ["wa-messages", user.id, activeJid] });
+          })
+          .catch((err: unknown) => console.warn("[inbox] active chat sync failed", err));
       }
 
       // لا نشغل history sync ثقيل عند كل رجوع للتاب. فقط للحساب الفارغ جدًا،
@@ -628,7 +635,7 @@ function InboxPage() {
       document.removeEventListener("visibilitychange", onVisibility);
       window.clearInterval(heartbeat);
     };
-  }, [qc, user?.id, activeJid, requestHistorySyncFn, conversations.length]);
+  }, [qc, user?.id, activeJid, requestHistorySyncFn, requestChatSyncFn, conversations.length]);
 
   // If a known chat opens with only the first/newest message, ask the bridge for
   // that chat's backlog immediately. Bot-Xtra exposes per-chat history requests
@@ -641,7 +648,7 @@ function InboxPage() {
     const key = `${user.id}:${activeJid}`;
     if (chatHistoryRequestedRef.current.has(key)) return;
     chatHistoryRequestedRef.current.add(key);
-    requestHistorySyncFn()
+    requestChatSyncFn({ data: { remoteJid: activeJid } })
       .then(() => {
         window.setTimeout(() => {
           qc.invalidateQueries({ queryKey: ["wa-conversations", user.id] });
@@ -653,7 +660,7 @@ function InboxPage() {
         chatHistoryRequestedRef.current.delete(key);
         console.warn("[inbox] focused chat history sync failed", err);
       });
-  }, [user?.id, activeJid, connQuery.data?.status, msgsQuery.isFetching, messages.length, requestHistorySyncFn, qc]);
+  }, [user?.id, activeJid, connQuery.data?.status, msgsQuery.isFetching, messages.length, requestChatSyncFn, qc]);
 
   // Reset progressive pagination when conversation changes
   useEffect(() => {
@@ -1100,7 +1107,15 @@ function InboxPage() {
                   qc.invalidateQueries({ queryKey: ["wa-messages"] }),
                   qc.invalidateQueries({ queryKey: ["wa-connection"] }),
                 ]);
-                historySyncMut.mutate();
+                if (activeJid) {
+                  await requestChatSyncFn({ data: { remoteJid: activeJid } }).catch(() => null);
+                  await Promise.all([
+                    qc.invalidateQueries({ queryKey: ["wa-conversations", user?.id] }),
+                    qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] }),
+                  ]);
+                } else {
+                  historySyncMut.mutate();
+                }
               }}
               className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 px-2.5 text-[11px] font-semibold text-primary transition hover:bg-primary/20 disabled:opacity-60 sm:text-xs"
               aria-label={t.resync}
@@ -3096,8 +3111,8 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
                 : "Delivery failed after retries"
               : isStalePending
                 ? isAr
-                  ? `معلّقة داخل طابور Bot‑Xtra ولم تغادر للواتساب${m.queued_id ? ` — ${m.queued_id}` : ""}`
-                  : `Stuck in Bot‑Xtra queue, not delivered to WhatsApp${m.queued_id ? ` — ${m.queued_id}` : ""}`
+                  ? `معلّقة في طابور الإرسال ولم يتم تأكيد وصولها للواتساب${m.queued_id ? ` — ${m.queued_id}` : ""}`
+                  : `Stuck in the sending queue, not confirmed by WhatsApp${m.queued_id ? ` — ${m.queued_id}` : ""}`
               : isAr
                 ? "جارٍ تأكيد التسليم…"
                 : "Confirming delivery…"}
