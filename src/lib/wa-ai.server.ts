@@ -874,8 +874,7 @@ export async function upsertConversationFromMessage(opts: {
     const bTime = new Date(b.last_message_at ?? 0).getTime() || 0;
     return bTime - aTime;
   });
-  const currentSessionRows = (existingRows ?? []).filter((row) => row.session_id === sessionId);
-  const candidateRows = currentSessionRows.length ? currentSessionRows : (existingRows ?? []);
+  const candidateRows = existingRows ?? [];
   const existing =
     candidateRows.find((row) => String(row.remote_jid ?? "").endsWith("@lid")) ??
     candidateRows.find((row) => row.remote_jid === remoteJid) ??
