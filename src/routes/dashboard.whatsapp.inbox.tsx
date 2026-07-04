@@ -3126,6 +3126,55 @@ function missingMediaLabel(msgType: string, isAr: boolean): string {
   return isAr ? "وسائط — لم يصل ملفها من خادم الاتصال" : "Media — file not received from connection server";
 }
 
+const IMAGE_EXTS = new Set(["jpg","jpeg","png","gif","webp","bmp","heic","heif","svg"]);
+const VIDEO_EXTS = new Set(["mp4","mov","m4v","webm","mkv","avi","3gp"]);
+const AUDIO_EXTS = new Set(["mp3","ogg","opus","wav","m4a","aac","flac","oga"]);
+
+function extFromUrlOrName(url?: string | null, name?: string | null): string {
+  const source = (name || "").trim() || (() => {
+    try {
+      const u = new URL(url || "", "http://x/");
+      return decodeURIComponent(u.pathname.split("/").pop() || "");
+    } catch { return url || ""; }
+  })();
+  const clean = source.split("?")[0].split("#")[0];
+  const dot = clean.lastIndexOf(".");
+  if (dot < 0 || dot === clean.length - 1) return "";
+  return clean.slice(dot + 1).toLowerCase();
+}
+
+function kindFromExt(ext: string): "image" | "video" | "audio" | "document" | null {
+  if (!ext) return null;
+  if (IMAGE_EXTS.has(ext)) return "image";
+  if (VIDEO_EXTS.has(ext)) return "video";
+  if (AUDIO_EXTS.has(ext)) return "audio";
+  return "document";
+}
+
+function prettyFileName(raw?: string | null, url?: string | null): string {
+  let name = (raw || "").trim();
+  if (!name && url) {
+    try {
+      const u = new URL(url, "http://x/");
+      name = decodeURIComponent(u.pathname.split("/").pop() || "");
+    } catch { name = url; }
+  }
+  if (!name) return "ملف";
+  name = name.split("?")[0].split("#")[0];
+  // Strip long hash/uuid prefixes like "7826ad3f881fc98cbafdba1d18f38349_1783108880_"
+  // or "3D9424AF-FF95-4970-9689-B46CB1060187"
+  const dot = name.lastIndexOf(".");
+  const base = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : "";
+  const looksHash = /^[a-f0-9_\-]{16,}$/i.test(base);
+  if (looksHash) return `ملف${ext}`;
+  // Trim overly long basenames
+  if (base.length > 32) return `${base.slice(0, 24)}…${ext}`;
+  return `${base}${ext}`;
+}
+
+
+
 function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; isGroup: boolean }) {
   const isOut = m.direction === "out";
   const showSender = isGroup && !isOut && (m.sender_name || m.sender_phone);
