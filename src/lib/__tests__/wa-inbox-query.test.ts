@@ -5,6 +5,7 @@ import {
   inboxJidAliases,
   isLidJid,
   isLidLocal,
+  isMessageForActiveConversation,
 } from "@/lib/wa-inbox-query";
 
 const GROUP = "120363000000000001@g.us";
