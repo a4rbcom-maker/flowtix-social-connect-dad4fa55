@@ -27,7 +27,10 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
         }
 
         if (new Date().getUTCMinutes() % 5 === 0) {
-          fetch(new URL("/api/public/hooks/cleanup-wa-sessions", request.url), { method: "POST" }).catch((err) => {
+          fetch(new URL("/api/public/hooks/cleanup-wa-sessions", request.url), {
+            method: "POST",
+            headers: { Authorization: `Bearer ${secret}` },
+          }).catch((err) => {
             console.warn("[process-bulk-jobs] WhatsApp session cleanup skipped:", err instanceof Error ? err.message : String(err));
           });
         }

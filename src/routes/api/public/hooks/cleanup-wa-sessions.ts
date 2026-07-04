@@ -9,9 +9,18 @@ const DISCONNECTED_TO_LOGGED_OUT_DAYS = 7; // disconnected sessions untouched th
 export const Route = createFileRoute("/api/public/hooks/cleanup-wa-sessions")({
   server: {
     handlers: {
-      POST: async () => {
+      POST: async ({ request }) => {
         const started = Date.now();
         try {
+          const secret = process.env.CRON_SECRET || process.env.BOT_WORKER_SECRET;
+          if (!secret) {
+            return new Response("Worker secret not configured", { status: 500 });
+          }
+          const auth = request.headers.get("authorization");
+          if (!auth || auth !== `Bearer ${secret}`) {
+            return new Response("Unauthorized", { status: 401 });
+          }
+
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
           const qrCutoff = new Date(Date.now() - QR_ABANDON_MINUTES * 60 * 1000).toISOString();
