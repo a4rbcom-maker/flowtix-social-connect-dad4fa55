@@ -465,6 +465,7 @@ function InboxPage() {
 
   // Count unique group members seen across the loaded messages (best-effort
   // participant count based on what we've received from the group so far).
+  const [groupInfoOpen, setGroupInfoOpen] = useState(false);
   const groupMemberCount = useMemo(() => {
     const jid = activeJid ?? "";
     if (!jid.endsWith("@g.us")) return 0;
@@ -1529,16 +1530,22 @@ function InboxPage() {
                   const isGroup = jid.endsWith("@g.us");
                   if (isGroup) {
                     return (
-                      <p className="truncate text-xs text-muted-foreground flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setGroupInfoOpen(true)}
+                        className="flex items-center gap-1.5 truncate text-xs text-muted-foreground hover:text-foreground hover:underline underline-offset-2 transition-colors"
+                        title={isAr ? "عرض تفاصيل الجروب" : "View group details"}
+                      >
                         <Users className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
-                        <span>
+                        <span className="truncate">
                           {groupMemberCount > 0
                             ? (isAr
                                 ? `${groupMemberCount} عضو نشط في المحادثة`
                                 : `${groupMemberCount} active member${groupMemberCount === 1 ? "" : "s"} in chat`)
                             : (isAr ? "محادثة جماعية" : "Group conversation")}
                         </span>
-                      </p>
+                        <Info className="h-3 w-3 opacity-60" />
+                      </button>
                     );
                   }
                   return (
@@ -1949,6 +1956,54 @@ function InboxPage() {
           </ResizablePanelGroup>
         )}
         <MediaLightbox />
+        <Dialog open={groupInfoOpen} onOpenChange={setGroupInfoOpen}>
+          <DialogContent dir={isAr ? "rtl" : "ltr"} className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                {isAr ? "تفاصيل الجروب" : "Group details"}
+              </DialogTitle>
+            </DialogHeader>
+            {(() => {
+              const jid = activeConv?.remote_jid ?? activeJid ?? "";
+              const name = activeConv ? displayConversationTitle(activeConv, isAr) : jid.replace(/@.*/, "");
+              const lastAt = activeConv?.last_message_at
+                ? new Date(activeConv.last_message_at).toLocaleString(isAr ? "ar-EG" : "en-US")
+                : (isAr ? "لا توجد رسائل بعد" : "No messages yet");
+              const lastText = activeConv?.last_message_text?.trim() || (isAr ? "—" : "—");
+              return (
+                <div className="flex flex-col gap-3 py-2">
+                  <div className="flex items-center gap-3">
+                    <ContactAvatar name={name} src={activeConv?.profile_pic_url ?? null} size="md" isGroup />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-base font-bold">{name}</p>
+                      <p className="truncate text-xs text-muted-foreground" dir="ltr">{jid}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
+                    <InfoRow
+                      label={isAr ? "عدد الأعضاء النشطين" : "Active members"}
+                      value={groupMemberCount > 0 ? String(groupMemberCount) : (isAr ? "غير معروف" : "Unknown")}
+                    />
+                    <InfoRow
+                      label={isAr ? "آخر رسالة" : "Last message"}
+                      value={lastAt}
+                    />
+                    <InfoRow
+                      label={isAr ? "نص آخر رسالة" : "Last message text"}
+                      value={lastText.length > 120 ? lastText.slice(0, 120) + "…" : lastText}
+                    />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    {isAr
+                      ? "ملاحظة: عدد الأعضاء محسوب بناءً على المرسلين الذين ظهروا في الرسائل المحمّلة، وقد لا يعكس العدد الفعلي في الجروب."
+                      : "Note: member count is derived from senders seen in the loaded messages and may not reflect the full group size."}
+                  </p>
+                </div>
+              );
+            })()}
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );
