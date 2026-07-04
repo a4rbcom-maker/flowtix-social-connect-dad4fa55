@@ -296,23 +296,6 @@ function BotPage() {
 
         {/* Behavior */}
         <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
-          {/* Group replies toggle */}
-          <div className="mb-5 flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-background/40 p-4">
-            <div className="min-w-0">
-              <div className="text-sm font-semibold">{t.groups}</div>
-              <p className="mt-1 text-xs text-muted-foreground">{t.groupsDesc}</p>
-            </div>
-            <label className="relative inline-flex shrink-0 cursor-pointer items-center">
-              <input
-                type="checkbox"
-                checked={form.ai_reply_to_groups}
-                onChange={(e) => update({ ai_reply_to_groups: e.target.checked })}
-                className="peer sr-only"
-              />
-              <div className="h-6 w-11 rounded-full bg-muted transition peer-checked:bg-primary" />
-              <div className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ltr:left-0.5 rtl:right-0.5 peer-checked:ltr:translate-x-5 peer-checked:rtl:-translate-x-5" />
-            </label>
-          </div>
 
           <SectionTitle icon={Clock} label={t.workHours} desc={t.workHoursDesc} />
           <label className="mt-3 inline-flex cursor-pointer items-center gap-2">
