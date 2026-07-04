@@ -62,7 +62,7 @@ describe("inbox — message list rendering", () => {
   it("يبني استعلام الرسائل عبر buildInboxMessageQueryPlan فقط (لا استعلام مباشر)", () => {
     expect(code.includes("buildInboxMessageQueryPlan(")).toBe(true);
     // نتأكد ألا يوجد استعلام مباشر على wa_messages بدون المرور بالخطة.
-    const directQuery = /\.from\(["']wa_messages["']\)\s*\.select/;
+    const directQuery = /\.from\(["']wa_messages["']\)\s*\.select/g;
     // مسموح استعلام واحد فقط داخل fetchInboxMessages المبني على plan.
     const matches = [...code.matchAll(directQuery)];
     expect(matches.length, "يجب أن يمر كل استعلام wa_messages عبر buildInboxMessageQueryPlan").toBeLessThanOrEqual(1);
