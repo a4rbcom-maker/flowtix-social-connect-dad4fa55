@@ -823,6 +823,35 @@ async function catchUpRecentMessagesFromBridge(params: {
 }): Promise<void> {
   if (await recentlyRanRealtimeCatchup(params.userId, params.sessionId)) return;
 
+  let requested = 0;
+  let replayed = 0;
+  let saved = 0;
+  let discoveredChats = 0;
+  let lastError: string | null = null;
+  const fallbackSince = Date.now() - REALTIME_CATCHUP_LOOKBACK_MS;
+
+  try {
+    const chatCatalogue = await waBridge.fetchChats(params.sessionId);
+    if (chatCatalogue.body) {
+      const payload = { event: "chats", sessionId: params.sessionId, data: chatCatalogue.body } as Record<string, unknown>;
+      const data = asObj(chatCatalogue.body);
+      const contacts = pickContactArray(payload, data);
+      discoveredChats += await importHistoryChats({ userId: params.userId, sessionId: params.sessionId, chats: contacts });
+      await updateConversationContacts({
+        userId: params.userId,
+        sessionId: params.sessionId,
+        businessPhone: normalizePhoneDigits(params.phoneNumber),
+        contacts,
+      });
+      const imported = await importHistoryMessages({ userId: params.userId, sessionId: params.sessionId, payload, data });
+      saved += imported.saved;
+      replayed += imported.total;
+    }
+  } catch (err) {
+    lastError = err instanceof Error ? err.message : String(err);
+    console.warn("[wa-webhook] recent catch-up chat catalogue failed:", lastError);
+  }
+
   const { data: conversations, error } = await supabaseAdmin
     .from("wa_conversations")
     .select("remote_jid,last_message_at,updated_at")
@@ -834,12 +863,6 @@ async function catchUpRecentMessagesFromBridge(params: {
     console.warn("[wa-webhook] recent catch-up conversation lookup failed:", error.message);
     return;
   }
-
-  let requested = 0;
-  let replayed = 0;
-  let saved = 0;
-  let lastError: string | null = null;
-  const fallbackSince = Date.now() - REALTIME_CATCHUP_LOOKBACK_MS;
 
   for (const conversation of conversations ?? []) {
     const jid = String(conversation.remote_jid ?? "").trim();
@@ -880,7 +903,7 @@ async function catchUpRecentMessagesFromBridge(params: {
     fromStatus: "connected",
     toStatus: "connected",
     source: "history_sync",
-    reason: `recent_message_catchup_done:${saved}_saved:${replayed}_seen:${requested}_chats${lastError ? `:${lastError.slice(0, 80)}` : ""}`,
+    reason: `recent_message_catchup_done:${saved}_saved:${replayed}_seen:${requested}_chats:${discoveredChats}_discovered${lastError ? `:${lastError.slice(0, 80)}` : ""}`,
     rawStatus: "connected",
   });
 }
