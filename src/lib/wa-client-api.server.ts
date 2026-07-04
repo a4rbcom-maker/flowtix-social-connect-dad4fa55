@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { waBridge, inferStatus, BridgeError, type BridgeSessionStatus } from "./wa-bridge.server";
 import { deriveWebhookUrl, describeBridgeError, doPing } from "./wa-helpers.server";
-import { isHardSessionGoneError } from "./wa-session-events.server";
+import { isHardSessionGoneError, isTrustedUserDisconnect, updateWaSessionStatus } from "./wa-session-events.server";
 
 const corsHeaders = {
   "Content-Type": "application/json",
@@ -160,10 +160,11 @@ async function readState(supabase: ReturnType<typeof getSupabaseForToken>, userI
 
   const { data: previous } = await supabase
     .from("wa_sessions")
-    .select("status")
+    .select("status,phone_number")
     .eq("user_id", userId)
     .eq("session_id", sessionId)
     .maybeSingle();
+  const previousStatus = previous?.status as BridgeSessionStatus | undefined;
 
   try {
     const s = await waBridge.getStatus(sessionId);
@@ -207,20 +208,28 @@ async function readState(supabase: ReturnType<typeof getSupabaseForToken>, userI
       });
     }
   }
-  const effectiveStatus = status === "disconnected" ? ((previous?.status as BridgeSessionStatus | undefined) ?? "unknown") : status;
-  const update: Database["public"]["Tables"]["wa_sessions"]["Update"] = {
-    status: effectiveStatus,
-    qr_data_url: null,
-    last_seen_at: now,
-  };
-  if (phoneNumber) update.phone_number = phoneNumber;
-  await supabase.from("wa_sessions").update(update).eq("user_id", userId).eq("session_id", sessionId);
-  if (effectiveStatus === "connected") {
-    await supabase
-      .from("whatsapp_settings")
-      .update({ is_connected: true, last_connected_at: now })
-      .eq("user_id", userId);
-  }
+  const trustedDisconnect =
+    status === "disconnected" &&
+    isTrustedUserDisconnect({ source: error ? "poll_error" : "poll", reason: error, rawStatus: status });
+  const qrAfterConnected = (status === "qr" || status === "connecting") && previousStatus === "connected";
+  const effectiveStatus =
+    status === "disconnected" && !trustedDisconnect
+      ? previousStatus ?? "unknown"
+      : qrAfterConnected
+        ? "connected"
+        : status;
+
+  await updateWaSessionStatus(supabase, {
+    userId,
+    sessionId,
+    nextStatus: effectiveStatus,
+    source: error ? "poll_error" : "poll",
+    reason: qrAfterConnected ? `ignored_poll_${status}_while_connected` : error,
+    rawStatus: status,
+    phoneNumber,
+    qrDataUrl: null,
+    logEvenIfUnchanged: Boolean(error || qrAfterConnected),
+  });
 
   let surfacedPhone = phoneNumber;
   if (!surfacedPhone) {
@@ -230,7 +239,7 @@ async function readState(supabase: ReturnType<typeof getSupabaseForToken>, userI
       .eq("user_id", userId)
       .eq("session_id", sessionId)
       .maybeSingle();
-    surfacedPhone = data?.phone_number ?? null;
+    surfacedPhone = data?.phone_number ?? previous?.phone_number ?? null;
   }
 
   return stateDto(effectiveStatus, sessionId, null, effectiveStatus === "qr" ? qrRaw : null, surfacedPhone, now, error);
