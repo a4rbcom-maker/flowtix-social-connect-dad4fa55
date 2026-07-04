@@ -2040,7 +2040,13 @@ function InboxPage() {
                   <div className="grid grid-cols-1 gap-2 rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
                     <InfoRow
                       label={isAr ? "عدد الأعضاء النشطين" : "Active members"}
-                      value={groupMemberCount > 0 ? String(groupMemberCount) : (isAr ? "غير معروف" : "Unknown")}
+                      value={
+                        msgsQuery.isLoading || (msgsQuery.isFetching && messages.length === 0)
+                          ? (isAr ? "جاري الحساب…" : "Counting…")
+                          : groupMemberCount > 0
+                            ? String(groupMemberCount)
+                            : (isAr ? "غير متاح" : "Unavailable")
+                      }
                     />
                     <InfoRow
                       label={isAr ? "آخر رسالة" : "Last message"}
