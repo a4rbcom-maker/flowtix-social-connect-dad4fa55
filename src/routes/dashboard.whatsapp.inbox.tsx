@@ -466,7 +466,7 @@ function InboxPage() {
   // Count unique group members seen across the loaded messages (best-effort
   // participant count based on what we've received from the group so far).
   const groupMemberCount = useMemo(() => {
-    const jid = activeConv?.remote_jid ?? activeJid ?? "";
+    const jid = activeJid ?? "";
     if (!jid.endsWith("@g.us")) return 0;
     const set = new Set<string>();
     for (const m of mergedMessages) {
@@ -477,7 +477,7 @@ function InboxPage() {
       if (key) set.add(key);
     }
     return set.size;
-  }, [mergedMessages, activeConv?.remote_jid, activeJid]);
+  }, [mergedMessages, activeJid]);
 
   // Track connection so we can show the right empty-state CTA.
   // Poll faster while not connected so we catch a fresh QR scan quickly.
