@@ -105,7 +105,7 @@ describe("private path correctness after reducing to a single OR-combined query"
     { id: "canon-to", remote_jid: DM, to_phone: "201001234567" },
     { id: "lid", remote_jid: LID },
     { id: "twin", remote_jid: LID_TWIN },
-    { id: "phone-only-from", remote_jid: "201001234567@s.whatsapp.net", from_phone: "201001234567" },
+    { id: "phone-only-from", remote_jid: "888@s.whatsapp.net", from_phone: "201001234567" },
     { id: "phone-only-to", remote_jid: "999@s.whatsapp.net", to_phone: "201001234567" },
     { id: "unrelated", remote_jid: OTHER_DM, from_phone: "201009999999" },
     { id: "group-noise", remote_jid: GROUP_A, from_phone: "201001234567" },
