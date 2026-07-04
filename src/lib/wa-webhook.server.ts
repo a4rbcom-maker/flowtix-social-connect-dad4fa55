@@ -753,11 +753,28 @@ async function importHistoryMessages(params: {
     if (providerMessageId) {
       const { data: existing } = await supabaseAdmin
         .from("wa_messages")
-        .select("id")
+        .select("id, media_url, text_body, raw")
         .eq("user_id", params.userId)
         .eq("provider_message_id", providerMessageId)
         .maybeSingle();
       if (existing?.id) {
+        if (mediaUrl && !existing.media_url) {
+          await supabaseAdmin
+            .from("wa_messages")
+            .update({
+              media_url: mediaUrl,
+              text_body: existing.text_body || text,
+              raw: {
+                ...asObj(existing.raw),
+                ...h,
+                is_historical: true,
+                normalizedRemoteJid: remoteJid,
+                normalizedWaTimestamp: waTimestamp,
+                storedMediaUrl: mediaUrl.startsWith("wa-media:") ? mediaUrl : null,
+              } as never,
+            })
+            .eq("id", existing.id);
+        }
         dup++;
         continue;
       }
