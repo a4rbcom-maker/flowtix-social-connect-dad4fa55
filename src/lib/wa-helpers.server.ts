@@ -8,6 +8,10 @@ export const PROJECT_ID = "60cc135f-fba6-4c85-a3db-3604a51301ae";
 export const STABLE_PROD_WEBHOOK_URL = `https://project--${PROJECT_ID}.lovable.app/api/public/wa-webhook`;
 export const STABLE_PREVIEW_WEBHOOK_URL = `https://project--${PROJECT_ID}-dev.lovable.app/api/public/wa-webhook`;
 
+export function stableWaSessionId(userId: string): string {
+  return `flowtix-${userId.replace(/-/g, "").slice(0, 16)}`;
+}
+
 export interface WaBridgeHealth {
   ok: boolean;
   status: string | null;
@@ -49,38 +53,22 @@ async function isValidWebhookUrl(url: string): Promise<boolean> {
   }
 }
 
-export async function deriveWebhookUrl(): Promise<string | null> {
+export async function deriveWebhookUrl(): Promise<string> {
   const override = process.env.WA_PUBLIC_WEBHOOK_URL?.replace(/\/+$/, "");
+  if (override) return override;
 
   try {
     const req = getRequest();
     const u = new URL(req.url);
     const host = req.headers.get("x-forwarded-host") || u.host;
     const proto = req.headers.get("x-forwarded-proto") || u.protocol.replace(":", "");
-    const currentHostCandidate = host && /\.lovable\.app$/i.test(host)
-      ? `${proto}://${host}/api/public/wa-webhook`
-      : null;
-
-    const preferredStable = isPreviewHost(host) ? STABLE_PREVIEW_WEBHOOK_URL : STABLE_PROD_WEBHOOK_URL;
-    const fallbackStable = isPreviewHost(host) ? STABLE_PROD_WEBHOOK_URL : STABLE_PREVIEW_WEBHOOK_URL;
-
-    for (const candidate of uniqueUrls([override, currentHostCandidate, preferredStable, fallbackStable])) {
-      if (await isValidWebhookUrl(candidate)) {
-        return candidate;
-      }
-      console.warn("[wa] webhook candidate rejected:", candidate);
-    }
+    if (host && /\.lovable\.app$/i.test(host)) return `${proto}://${host}/api/public/wa-webhook`;
+    return isPreviewHost(host) ? STABLE_PREVIEW_WEBHOOK_URL : STABLE_PROD_WEBHOOK_URL;
   } catch {
     // fall through to stable defaults below
   }
 
-  for (const fallback of uniqueUrls([override, STABLE_PREVIEW_WEBHOOK_URL, STABLE_PROD_WEBHOOK_URL])) {
-    if (await isValidWebhookUrl(fallback)) {
-      return fallback;
-    }
-  }
-
-  return null;
+  return STABLE_PROD_WEBHOOK_URL;
 }
 
 export function describeBridgeError(err: unknown): string {

@@ -17,6 +17,7 @@ import {
   deriveWebhookUrl,
   describeBridgeError,
   doPing,
+  stableWaSessionId,
   type WaBridgeHealth,
 } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
@@ -76,7 +77,7 @@ export const connectWaSession = createServerFn({ method: "POST" })
 
     let sessionId = existing?.session_id;
     if (!sessionId) {
-      sessionId = `flowtix-${userId.replace(/-/g, "").slice(0, 16)}-${Date.now().toString(36)}`;
+      sessionId = stableWaSessionId(userId);
       const { error: insErr } = await supabase
         .from("wa_sessions")
         .insert({ user_id: userId, session_id: sessionId, status: "connecting" });
@@ -975,7 +976,7 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
 
     const { data: existing } = await supabase
       .from("wa_sessions")
-      .select("session_id, status")
+      .select("session_id, status, phone_number, qr_data_url")
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -988,22 +989,10 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
       }
     }
 
-    // 2) Mint a new session id and recreate with tenantId + webhookUrl
-    const newSessionId = `flowtix-${userId.replace(/-/g, "").slice(0, 16)}-${Date.now().toString(36)}`;
-    const webhookUrl = await deriveWebhookUrl();
-    try {
-      await waBridge.createSession(newSessionId, {
-        webhookUrl: webhookUrl ?? undefined,
-        tenantId: userId,
-        syncFullHistory: true,
-      });
-    } catch (err) {
-      const msg = describeBridgeError(err);
-      console.error("[wa] resetWaReceiver: createSession failed:", msg);
-      throw new Error(msg);
-    }
-
-    // 3) Persist new session id and reset row to QR state
+    // 2) Mint a new session id and persist it before bridge creation. Bot-Xtra
+    // can emit QR/status webhooks immediately; if the DB still points at the old
+    // id those events are dropped as unknown and the UI remains stuck.
+    const newSessionId = stableWaSessionId(userId);
     const now = new Date().toISOString();
     if (existing) {
       await logWaSessionEvent(supabase, {
@@ -1018,7 +1007,7 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
         .from("wa_sessions")
         .update({
           session_id: newSessionId,
-          status: "qr",
+          status: "connecting",
           qr_data_url: null,
           phone_number: null,
           last_seen_at: now,
@@ -1027,8 +1016,46 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
     } else {
       await supabase
         .from("wa_sessions")
-        .insert({ user_id: userId, session_id: newSessionId, status: "qr" });
+        .insert({ user_id: userId, session_id: newSessionId, status: "connecting", last_seen_at: now });
     }
+
+    const webhookUrl = await deriveWebhookUrl();
+    try {
+      await waBridge.createSession(newSessionId, {
+        webhookUrl: webhookUrl ?? undefined,
+        tenantId: userId,
+        syncFullHistory: true,
+      });
+    } catch (err) {
+      if (err instanceof BridgeError && (err.status === 409 || err.status === 400)) {
+        // Stable session already exists on the bridge — continue and surface its QR/status.
+      } else {
+      const msg = describeBridgeError(err);
+      console.error("[wa] resetWaReceiver: createSession failed:", msg);
+      if (existing?.session_id) {
+        await supabase
+          .from("wa_sessions")
+          .update({
+            session_id: existing.session_id,
+            status: existing.status ?? "unknown",
+            phone_number: existing.phone_number ?? null,
+            qr_data_url: existing.qr_data_url ?? null,
+            last_seen_at: now,
+          })
+          .eq("user_id", userId);
+      } else {
+        await supabase.from("wa_sessions").delete().eq("user_id", userId).eq("session_id", newSessionId);
+      }
+      throw new Error(msg);
+      }
+    }
+
+    // 3) Mark the freshly-created receiver as QR-ready.
+    await supabase
+      .from("wa_sessions")
+      .update({ status: "qr", qr_data_url: null, phone_number: null, last_seen_at: now })
+      .eq("user_id", userId)
+      .eq("session_id", newSessionId);
 
     await logWaSessionEvent(supabase, {
       userId,
@@ -1365,17 +1392,22 @@ async function readState(
   // Preserve last-known phone_number when bridge transiently reports null
   // (e.g. session re-paired). Only overwrite when we actually got a number.
   const trustedDisconnect = status === "disconnected" && isTrustedUserDisconnect({ source: error ? "poll_error" : "poll", reason: error, rawStatus: status });
-  const effectiveStatus = status === "disconnected" && !trustedDisconnect ? (previousStatus || "unknown") : status;
+  const qrAfterConnected = (status === "qr" || status === "connecting") && previousStatus === "connected";
+  const effectiveStatus = status === "disconnected" && !trustedDisconnect
+    ? (previousStatus || "unknown")
+    : qrAfterConnected
+      ? "connected"
+      : status;
   await updateWaSessionStatus(supabase, {
     userId,
     sessionId,
     nextStatus: effectiveStatus,
     source: error ? "poll_error" : "poll",
-    reason: error,
+    reason: qrAfterConnected ? `ignored_poll_${status}_while_connected` : error,
     rawStatus: status,
     phoneNumber,
     qrDataUrl: null,
-    logEvenIfUnchanged: Boolean(error),
+    logEvenIfUnchanged: Boolean(error || qrAfterConnected),
   });
 
 

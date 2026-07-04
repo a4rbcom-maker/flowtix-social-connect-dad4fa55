@@ -275,17 +275,15 @@ function WhatsAppPage() {
     }
   }, [qrValue]);
 
-  // Countdown ticker + auto-refresh expired QR silently (only when QR panel is open)
+  // Countdown ticker only. Never auto-reset/recreate the WhatsApp session when
+  // the QR expires: doing so can delete a just-scanned session before the bridge
+  // reports it as connected, leaving the user stuck in QR forever.
   useEffect(() => {
     if (!qrIssuedAt || status === "connected" || !showQr) return;
     const timer = setInterval(() => {
       const elapsed = Math.floor((Date.now() - qrIssuedAt) / 1000);
       const left = Math.max(0, 60 - elapsed);
       setQrSecondsLeft(left);
-      if (left === 0 && !autoRefreshingRef.current && (status === "qr" || status === "connecting" || status === "disconnected")) {
-        autoRefreshingRef.current = true;
-        resetMut.mutate();
-      }
     }, 1000);
     return () => clearInterval(timer);
   }, [qrIssuedAt, status, showQr]);

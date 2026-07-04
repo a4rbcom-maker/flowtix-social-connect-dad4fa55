@@ -985,6 +985,11 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       HISTORY_EVENTS.has(incomingEvent) ||
       CONTACT_EVENTS.has(incomingEvent) ||
       incomingEvent === "history_chats" ||
+      incomingEvent === "qr" ||
+      incomingEvent === "qr.update" ||
+      incomingEvent === "status" ||
+      incomingEvent === "connection.update" ||
+      incomingEvent === "session.status" ||
       incomingEvent === "message" ||
       incomingEvent === "messages.upsert" ||
       incomingEvent === "message.upsert";
@@ -1008,6 +1013,21 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         });
         sess = fallbackSess;
         sessionId = fallbackSess.session_id;
+      } else if (!fallbackSess?.session_id && sessionIdLooksOwnedByTenant(sessionId, tenantId)) {
+        // Race-proof first QR/connect events: the bridge can emit a webhook
+        // immediately after session creation, before the client/reset endpoint
+        // has finished writing wa_sessions. Create the row instead of dropping
+        // the event as "Unknown sessionId"; the normal status handler below will
+        // update it to QR/connected and keep subsequent messages flowing.
+        const initialStatus = incomingEvent === "qr" || incomingEvent === "qr.update" ? "qr" : "connecting";
+        const { error: createErr } = await supabaseAdmin
+          .from("wa_sessions")
+          .insert({ user_id: tenantId, session_id: sessionId, status: initialStatus });
+        if (createErr && (createErr as { code?: string }).code !== "23505") {
+          console.error("[wa-webhook] tenant session race-create failed:", createErr.message);
+          return new Response("DB error", { status: 500 });
+        }
+        sess = { user_id: tenantId, phone_number: null, session_id: sessionId };
       } else if (!fallbackSess?.session_id || fallbackSess.session_id !== sessionId) {
         // Stale QR/status-only bridge sessions keep emitting events every few
         // seconds. They are not useful to the app (no DB row points to them) and
