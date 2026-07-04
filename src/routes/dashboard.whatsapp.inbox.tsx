@@ -3105,7 +3105,7 @@ async function fetchInboxMessages(
       .order("created_at", { ascending: false })
       .limit(limit);
     if (beforeTs) {
-      // Cursor على wa_timestamp — نجلب فقط الأقدم من آخر صف موجود في الـcache.
+      // Cursor على created_at — نجلب فقط الأقدم من آخر صف موجود في الـcache.
       gq = gq.lt("created_at", beforeTs);
     }
     const { data: groupRows, error: groupError } = await gq;
