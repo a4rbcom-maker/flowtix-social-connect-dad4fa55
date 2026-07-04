@@ -59,13 +59,14 @@ describe("inbox — message list rendering", () => {
     expect(code.includes("isMessageForActiveConversation(m.remote_jid, activeJid)")).toBe(true);
   });
 
-  it("يبني استعلام الرسائل عبر buildInboxMessageQueryPlan فقط (لا استعلام مباشر)", () => {
+  it("استعلامات wa_messages محصورة في مسارَي جروب/خاص فقط ومحميّة بشرط الاستبعاد", () => {
     expect(code.includes("buildInboxMessageQueryPlan(")).toBe(true);
-    // نتأكد ألا يوجد استعلام مباشر على wa_messages بدون المرور بالخطة.
     const directQuery = /\.from\(["']wa_messages["']\)\s*\.select/g;
-    // مسموح استعلام واحد فقط داخل fetchInboxMessages المبني على plan.
     const matches = [...code.matchAll(directQuery)];
-    expect(matches.length, "يجب أن يمر كل استعلام wa_messages عبر buildInboxMessageQueryPlan").toBeLessThanOrEqual(1);
+    // مسار واحد لجروبات (@g.us) ومسار واحد للخاص المحكوم بـ plan — لا ثالث.
+    expect(matches.length).toBe(2);
+    // مسار الخاص لازم يحوي شيلد استبعاد @g.us لمنع تسرّب رسائل الجروب.
+    expect(code.includes('.not("remote_jid", "like", "%@g.us")')).toBe(true);
   });
 
   it("مفتاح ChatBubble هو m.id (فريد) وليس index", () => {
