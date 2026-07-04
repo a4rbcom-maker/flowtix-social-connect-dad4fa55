@@ -14,8 +14,9 @@ function freshSessionId(userId: string): string {
 }
 
 async function syncSettingsConnected(userId: string, connected: boolean) {
-  const patch: Record<string, unknown> = { is_connected: connected };
-  if (!connected) patch.last_connected_at = null;
+  const patch = connected
+    ? { is_connected: true }
+    : { is_connected: false, last_connected_at: null };
   await supabaseAdmin
     .from("whatsapp_settings")
     .update(patch)
