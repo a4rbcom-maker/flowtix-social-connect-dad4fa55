@@ -69,7 +69,23 @@ const MEDIA_TYPE_ALIASES: Record<string, string> = {
 };
 
 function mediaDataFromRaw(raw: unknown): Record<string, unknown> {
-  return asRecord(asRecord(raw).mediaData);
+  const obj = asRecord(raw);
+  const nestedMessage = asRecord(obj.message);
+  const typedMessage = Object.keys(nestedMessage)
+    .map((key) => asRecord(nestedMessage[key]))
+    .find((value) => Object.keys(value).length > 0);
+  return [
+    asRecord(obj.mediaData),
+    asRecord(obj.media),
+    asRecord(obj.attachment),
+    asRecord(obj.image),
+    asRecord(obj.video),
+    asRecord(obj.audio),
+    asRecord(obj.document),
+    asRecord(obj.sticker),
+    typedMessage ?? {},
+    obj,
+  ].find((value) => Object.keys(value).some((key) => ["dataUrl", "base64", "fileData", "data", "url", "fileUrl", "downloadUrl", "mediaUrl", "directPath"].includes(key))) ?? {};
 }
 
 function looksLikeInternalMediaPath(value: string | null | undefined): boolean {
@@ -112,8 +128,8 @@ export function mediaUrlFromRaw(raw: unknown, fallbackType?: string | null): str
   const obj = asRecord(raw);
   const media = mediaDataFromRaw(raw);
   const directUrl =
-    pickString(media, "dataUrl", "url", "fileUrl", "downloadUrl", "mediaUrl") ??
-    pickString(obj, "mediaUrl", "fileUrl", "url");
+    pickString(media, "dataUrl", "url", "fileUrl", "downloadUrl", "mediaUrl", "directPath") ??
+    pickString(obj, "mediaUrl", "fileUrl", "downloadUrl", "url", "directPath");
 
   if (directUrl?.startsWith("data:")) return directUrl;
   if (directUrl && /^(https?:)?\/\//i.test(directUrl)) return directUrl;
