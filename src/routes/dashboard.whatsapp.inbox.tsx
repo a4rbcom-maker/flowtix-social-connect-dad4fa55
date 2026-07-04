@@ -58,6 +58,7 @@ import { SmartAudio } from "@/components/wa/SmartAudio";
 import { Zap } from "lucide-react";
 import {
   sendChatMessage,
+  dispatchQueuedMessage,
   markConversationRead,
   markConversationActive,
   summarizeConversation,
@@ -96,6 +97,7 @@ function InboxPage() {
   const qc = useQueryClient();
   const isMobile = useIsMobile();
   const sendFn = useServerFn(sendChatMessage);
+  const dispatchFn = useServerFn(dispatchQueuedMessage);
   const markReadFn = useServerFn(markConversationRead);
   const markActiveFn = useServerFn(markConversationActive);
   const requestHistorySyncFn = useServerFn(requestWaHistorySync);
@@ -799,13 +801,21 @@ function InboxPage() {
           setUploadingAttachment(false);
         }
       }
-      return sendFn({
+      const persistRes = (await sendFn({
         data: {
           remoteJid: activeJid!,
           text,
           ...(mediaUrl ? { mediaUrl, mediaType, mimeType, fileName } : {}),
         },
+      })) as { ok: boolean; messageId: string };
+      // Fire-and-forget: bridge send can take 15–45s under retries. The
+      // pending row + optimistic UI is already in place; delivery ACKs
+      // arrive via the webhook (or an inline error via realtime status).
+      void dispatchFn({ data: { messageId: persistRes.messageId } }).catch((err: Error) => {
+        setSendError(classifySendError(err));
+        qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
       });
+      return persistRes;
     },
     onMutate: async (vars) => {
       const optimisticId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

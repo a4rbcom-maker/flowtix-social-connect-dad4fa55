@@ -194,6 +194,11 @@ export const toggleConversationAi = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// Phase 1 of send: persist the outgoing message as `pending` and upsert the
+// conversation, then return immediately. This unblocks the UI so the composer
+// spinner ends within a few hundred ms instead of waiting on the bridge
+// round-trip (which can take 15–45s under retries). Phase 2 (bridge dispatch)
+// runs via `dispatchQueuedMessage`, invoked fire-and-forget by the client.
 export const sendChatMessage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
@@ -229,23 +234,9 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    const { data: recentRaw } = await supabase
-      .from("wa_messages")
-      .select("raw")
-      .eq("user_id", userId)
-      .eq("remote_jid", data.remoteJid)
-      .not("raw", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(20);
-    const rawPhone = (recentRaw ?? []).map((msg) => phoneFromRaw(msg.raw)).find(Boolean) ?? null;
-    const target = await resolveOutgoingWhatsappTarget({
-      userId,
-      sessionId: sess.session_id,
-      remoteJid: data.remoteJid,
-      fallbackPhoneOrJid: rawPhone || conv?.contact_phone || data.remoteJid,
-    });
-    const phoneDigits = target.phoneDigits || normalizeWhatsappPhone(data.remoteJid) || data.remoteJid.replace(/[^0-9]/g, "");
-    let to = target.jid;
+    const phoneDigits =
+      normalizeWhatsappPhone(conv?.contact_phone || data.remoteJid) ||
+      data.remoteJid.replace(/[^0-9]/g, "");
     const sentAt = new Date().toISOString();
     const hasMedia = !!data.mediaUrl;
     const mediaType = data.mediaType ?? "image";
@@ -256,7 +247,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         session_id: sess.session_id,
         direction: "out",
         remote_jid: data.remoteJid,
-        to_phone: phoneDigits || to,
+        to_phone: phoneDigits || data.remoteJid,
         msg_type: hasMedia ? mediaType : "text",
         text_body: data.text || null,
         media_url: hasMedia ? data.mediaUrl : null,
@@ -265,8 +256,6 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         wa_timestamp: sentAt,
         raw: {
           delivery: "client_persisted_before_bridge_send",
-          targetJid: to,
-          usedLid: target.usedLid,
           ...(hasMedia
             ? { mediaData: { url: data.mediaUrl, mimeType: data.mimeType, fileName: data.fileName, caption: data.text } }
             : {}),
@@ -288,17 +277,77 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       direction: "out",
       messageAt: sentAt,
     });
+
+    return { ok: true, messageId: pendingMessage.id };
+  });
+
+// Phase 2 of send: pick up the pending row and actually send it via the bridge.
+// Invoked fire-and-forget from the client immediately after sendChatMessage,
+// so its latency (bridge retries, @lid fallback) never blocks the composer.
+export const dispatchQueuedMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ messageId: z.string().uuid() }).parse(input),
+  )
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const { data: row, error: rowErr } = await supabase
+      .from("wa_messages")
+      .select("id, session_id, remote_jid, text_body, msg_type, media_url, raw, status")
+      .eq("id", data.messageId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (rowErr || !row) throw new Error(rowErr?.message || "Message not found");
+    if (row.status !== "pending") return { ok: true, alreadyDispatched: true };
+
+    const remoteJid = row.remote_jid;
+    const rawRec = asRecord(row.raw) ?? {};
+    const mediaData = asRecord((rawRec as Record<string, unknown>).mediaData) ?? null;
+    const hasMedia = !!row.media_url;
+    const mediaType = (row.msg_type as "image" | "video" | "document" | "audio") ?? "image";
+    const mediaUrl = row.media_url ?? undefined;
+    const mimeType = mediaData ? pickString(mediaData, "mimeType") ?? undefined : undefined;
+    const fileName = mediaData ? pickString(mediaData, "fileName") ?? undefined : undefined;
+    const text = row.text_body ?? "";
+
+    const { data: recentRaw } = await supabase
+      .from("wa_messages")
+      .select("raw")
+      .eq("user_id", userId)
+      .eq("remote_jid", remoteJid)
+      .not("raw", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    const rawPhone = (recentRaw ?? []).map((msg) => phoneFromRaw(msg.raw)).find(Boolean) ?? null;
+    const { data: conv } = await supabase
+      .from("wa_conversations")
+      .select("contact_phone")
+      .eq("user_id", userId)
+      .eq("remote_jid", remoteJid)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const target = await resolveOutgoingWhatsappTarget({
+      userId,
+      sessionId: row.session_id,
+      remoteJid,
+      fallbackPhoneOrJid: rawPhone || conv?.contact_phone || remoteJid,
+    });
+    const phoneDigits =
+      target.phoneDigits || normalizeWhatsappPhone(remoteJid) || remoteJid.replace(/[^0-9]/g, "");
+    let to = target.jid;
+
     try {
       const webhookUrl = await deriveWebhookUrl().catch(() => null);
       const res = hasMedia
-        ? await sendMediaWithReconnect(sess.session_id, to, data.mediaUrl!, {
-            caption: data.text,
+        ? await sendMediaWithReconnect(row.session_id, to, mediaUrl!, {
+            caption: text,
             mediaType,
-            mimeType: data.mimeType,
-            fileName: data.fileName,
+            mimeType,
+            fileName,
             recipientPhone: phoneDigits,
           })
-        : await sendTextWithReconnect(sess.session_id, to, data.text, {
+        : await sendTextWithReconnect(row.session_id, to, text, {
             webhookUrl: webhookUrl ?? undefined,
             tenantId: userId,
             recipientPhone: phoneDigits,
@@ -313,13 +362,9 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         providerMessageId = assertBridgeSendQueued(res);
       } catch (err) {
         if (!queuedId) throw err;
-
-        // Some modern WhatsApp chats have both a hidden @lid address and a
-        // public phone JID. If the hidden address only enters the queue, retry
-        // the confirmed phone JID immediately before surfacing a pending state.
         const phoneJid = phoneDigits ? `${phoneDigits}@s.whatsapp.net` : null;
         if (target.usedLid && phoneJid && phoneJid !== to && !hasMedia) {
-          const fallbackRes = await sendTextWithReconnect(sess.session_id, phoneJid, data.text, {
+          const fallbackRes = await sendTextWithReconnect(row.session_id, phoneJid, text, {
             webhookUrl: webhookUrl ?? undefined,
             tenantId: userId,
             recipientPhone: phoneDigits,
@@ -332,11 +377,6 @@ export const sendChatMessage = createServerFn({ method: "POST" })
             delivery = "whatsapp_sent_phone_fallback";
           } catch (fallbackErr) {
             if (!finalQueuedId) throw fallbackErr;
-            // Bridge accepted the send into its own queue. In practice the
-            // hand-off to WhatsApp happens within a second; treat as sent so
-            // the UI doesn't sit on "confirming delivery" for minutes waiting
-            // for the delivery ACK webhook. The webhook will still upgrade
-            // to delivered/read when it arrives.
             status = "sent";
             delivery = "whatsapp_queue_accepted_awaiting_ack";
           }
@@ -357,19 +397,20 @@ export const sendChatMessage = createServerFn({ method: "POST" })
             targetJid: to,
             usedLid: target.usedLid,
             ...(hasMedia
-              ? { mediaData: { url: data.mediaUrl, mimeType: data.mimeType, fileName: data.fileName, caption: data.text } }
+              ? { mediaData: { url: mediaUrl, mimeType, fileName, caption: text } }
               : {}),
             bridgeResponse: finalResponse,
           } as never,
         })
-        .eq("id", pendingMessage.id)
+        .eq("id", row.id)
         .eq("user_id", userId);
       if (updateError) throw new Error(updateError.message);
+      return { ok: true, messageId: row.id, status };
     } catch (err) {
       if (isBridgeSessionMissingError(err)) {
         await resetWaSessionAfterBridgeLoss({
           userId,
-          oldSessionId: sess.session_id,
+          oldSessionId: row.session_id,
           reason: "manual chat send failed",
         });
       }
@@ -384,18 +425,15 @@ export const sendChatMessage = createServerFn({ method: "POST" })
             usedLid: target.usedLid,
             error: msg,
             ...(hasMedia
-              ? { mediaData: { url: data.mediaUrl, mimeType: data.mimeType, fileName: data.fileName, caption: data.text } }
+              ? { mediaData: { url: mediaUrl, mimeType, fileName, caption: text } }
               : {}),
           } as never,
         })
-        .eq("id", pendingMessage.id)
+        .eq("id", row.id)
         .eq("user_id", userId);
-      console.error("[wa-chat] sendText failed:", msg, "to=", to);
+      console.error("[wa-chat] dispatch failed:", msg, "to=", to);
       throw new Error(msg);
     }
-
-
-    return { ok: true, messageId: pendingMessage.id };
   });
 
 
