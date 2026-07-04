@@ -1572,6 +1572,8 @@ function InboxPage() {
                   const jid = activeConv?.remote_jid ?? activeJid ?? "";
                   const isGroup = jid.endsWith("@g.us");
                   if (isGroup) {
+                    const isLoadingMembers = msgsQuery.isLoading || (msgsQuery.isFetching && messages.length === 0);
+                    const hasData = messages.length > 0;
                     return (
                       <button
                         type="button"
@@ -1580,12 +1582,24 @@ function InboxPage() {
                         title={isAr ? "عرض تفاصيل الجروب" : "View group details"}
                       >
                         <Users className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
-                        <span className="truncate">
-                          {groupMemberCount > 0
-                            ? (isAr
-                                ? `${groupMemberCount} عضو نشط في المحادثة`
-                                : `${groupMemberCount} active member${groupMemberCount === 1 ? "" : "s"} in chat`)
-                            : (isAr ? "محادثة جماعية" : "Group conversation")}
+                        <span className="truncate flex items-center gap-1">
+                          {isLoadingMembers ? (
+                            <>
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              {isAr ? "جاري حساب الأعضاء…" : "Counting members…"}
+                            </>
+                          ) : groupMemberCount > 0 ? (
+                            isAr
+                              ? `${groupMemberCount} عضو نشط في المحادثة`
+                              : `${groupMemberCount} active member${groupMemberCount === 1 ? "" : "s"} in chat`
+                          ) : hasData ? (
+                            <>
+                              <AlertTriangle className="h-3 w-3 text-amber-500" />
+                              {isAr ? "تعذّر تحديد عدد الأعضاء" : "Member count unavailable"}
+                            </>
+                          ) : (
+                            isAr ? "محادثة جماعية" : "Group conversation"
+                          )}
                         </span>
                         <Info className="h-3 w-3 opacity-60" />
                       </button>
