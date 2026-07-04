@@ -1454,6 +1454,7 @@ function InboxPage() {
                 name={activeConv ? displayConversationTitle(activeConv, isAr) : activeJid}
                 src={activeConv?.profile_pic_url ?? null}
                 size="md"
+                isGroup={(activeConv?.remote_jid ?? activeJid ?? "").endsWith("@g.us")}
               />
               <div className="min-w-0 flex-1 overflow-hidden">
                 <div className="flex items-center gap-1.5">
