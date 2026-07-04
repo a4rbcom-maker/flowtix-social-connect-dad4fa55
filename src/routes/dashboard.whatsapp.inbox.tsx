@@ -3264,11 +3264,17 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
   const isOut = m.direction === "out";
   const senderLabel = m.sender_name || (m.sender_phone ? `+${m.sender_phone}` : (isAr ? "عضو غير معروف" : "Unknown member"));
   const showSender = isGroup && !isOut;
+  // Stable per-sender hue: prefer phone (persists across sessions/reloads),
+  // fall back to name only when phone is unknown.
   const senderHue = ((): number => {
-    const key = m.sender_name || m.sender_phone || "?";
-    let h = 0;
-    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % 360;
-    return h;
+    const key = (m.sender_phone && m.sender_phone.trim()) || (m.sender_name && m.sender_name.trim()) || "?";
+    // FNV-1a 32-bit hash for stable, well-distributed hues
+    let h = 0x811c9dc5;
+    for (let i = 0; i < key.length; i++) {
+      h ^= key.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 0) % 360;
   })();
   const senderColor = `hsl(${senderHue} 70% 38%)`;
   const senderInitial = (m.sender_name || m.sender_phone || "?").trim().charAt(0).toUpperCase();
