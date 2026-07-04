@@ -469,14 +469,15 @@ function InboxPage() {
     const jid = activeJid ?? "";
     if (!jid.endsWith("@g.us")) return 0;
     const set = new Set<string>();
+    let sawSelf = false;
     for (const m of mergedMessages) {
-      if (m.direction !== "in") continue;
+      if (m.direction === "out") { sawSelf = true; continue; }
       const key =
         (m.sender_phone && m.sender_phone.trim()) ||
         (m.sender_name && m.sender_name.trim());
       if (key) set.add(key);
     }
-    return set.size;
+    return set.size + (sawSelf ? 1 : 0);
   }, [mergedMessages, activeJid]);
 
   // Track connection so we can show the right empty-state CTA.
