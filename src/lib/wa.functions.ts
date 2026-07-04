@@ -1111,42 +1111,20 @@ export const deepResetWaSession = createServerFn({ method: "POST" })
       console.warn("[wa] safeMaintenance: status check failed:", err instanceof Error ? err.message : err);
     }
 
-    try {
-      await waBridge.reviveSession(existing.session_id);
-      await new Promise((r) => setTimeout(r, 1500));
-      const statusPayload = await waBridge.getStatus(existing.session_id);
-      const status = inferStatus(statusPayload);
-      report.status = status;
-      await logWaSessionEvent(supabase, {
-        userId,
-        sessionId: existing.session_id,
-        fromStatus: existing.status ?? null,
-        toStatus: existing.status ?? status,
-        source: "reset",
-        reason: `safe_maintenance_revive_result:${status}`,
-        rawStatus: String(statusPayload.status ?? statusPayload.state ?? status),
-      });
-      if (status === "connected") {
-        await updateWaSessionStatus(supabase, {
-          userId,
-          sessionId: existing.session_id,
-          nextStatus: "connected",
-          source: "reset",
-          reason: "safe_maintenance_revived_connected",
-          rawStatus: String(statusPayload.status ?? statusPayload.state ?? "connected"),
-          phoneNumber: typeof statusPayload.phoneNumber === "string" ? statusPayload.phoneNumber : typeof statusPayload.phone === "string" ? statusPayload.phone : null,
-          logEvenIfUnchanged: true,
-        });
-      }
-      report.createdSessionId = existing.session_id;
-      report.ok = status === "connected" || status === "connecting";
-      if (!report.ok) report.error = `session_not_connected:${status}`;
-      return report;
-    } catch (err) {
-      const msg = describeBridgeError(err);
-      report.error = `safe maintenance failed: ${msg}`;
-      return report;
-    }
+    await logWaSessionEvent(supabase, {
+      userId,
+      sessionId: existing.session_id,
+      fromStatus: existing.status ?? null,
+      toStatus: existing.status ?? "unknown",
+      source: "reset",
+      reason: "safe_maintenance_skipped_bridge_rebuild",
+      rawStatus: report.status ?? existing.status ?? "unknown",
+    });
+    report.createdSessionId = existing.session_id;
+    report.ok = report.status === "connected" || report.status === "connecting";
+    report.preserved = true;
+    if (!report.ok) report.error = `session_not_connected:${report.status ?? "unknown"}`;
+    return report;
   });
 
 
