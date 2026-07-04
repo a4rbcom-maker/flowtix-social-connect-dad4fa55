@@ -67,6 +67,109 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : "Bridge send failed";
 }
 
+const WA_MEDIA_BUCKET = "wa-media";
+
+function stripWaMediaPrefix(url: string): string | null {
+  if (url.startsWith("wa-media:")) return url.slice("wa-media:".length).replace(/^\/+/, "");
+  if (url.startsWith("storage://wa-media/")) return url.slice("storage://wa-media/".length).replace(/^\/+/, "");
+  return null;
+}
+
+async function resolveMediaToUrl(mediaUrl: string): Promise<string | null> {
+  if (/^https?:\/\//i.test(mediaUrl)) return mediaUrl;
+  if (mediaUrl.startsWith("data:")) return mediaUrl;
+  const path = stripWaMediaPrefix(mediaUrl);
+  if (!path) return null;
+  const { data, error } = await supabaseAdmin.storage
+    .from(WA_MEDIA_BUCKET)
+    .createSignedUrl(path, 60 * 60);
+  if (error || !data?.signedUrl) {
+    console.warn("[wa-ai] signed url failed:", error?.message);
+    return null;
+  }
+  return data.signedUrl;
+}
+
+async function fetchAsBase64(url: string): Promise<{ base64: string; mimeType: string } | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const mimeType = res.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream";
+    const buf = Buffer.from(await res.arrayBuffer());
+    return { base64: buf.toString("base64"), mimeType };
+  } catch (err) {
+    console.warn("[wa-ai] fetch media failed:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+function audioFormatFromMime(mime: string): string | null {
+  const base = mime.toLowerCase().split(";")[0].trim();
+  if (base.includes("wav")) return "wav";
+  if (base.includes("mp3") || base === "audio/mpeg") return "mp3";
+  if (base.includes("ogg") || base.includes("opus")) return "ogg";
+  if (base.includes("webm")) return "webm";
+  if (base.includes("mp4") || base.includes("m4a") || base.includes("aac")) return "m4a";
+  if (base.includes("flac")) return "flac";
+  return null;
+}
+
+async function buildMultimodalParts(
+  media: InboundMediaInfo,
+  caption: string,
+): Promise<ChatContentPart[]> {
+  const parts: ChatContentPart[] = [];
+  const promptText = caption?.trim()
+    ? caption
+    : `العميل أرسل ${media.msgType === "image" ? "صورة" : media.msgType === "audio" ? "مقطع صوتي" : media.msgType === "video" ? "فيديو" : "مستنداً"}. حلّل المحتوى وردّ بشكل مناسب باختصار وبنفس لغة العميل.`;
+  parts.push({ type: "text", text: promptText });
+
+  if (!media.mediaUrl) return parts;
+  const signedUrl = await resolveMediaToUrl(media.mediaUrl);
+  if (!signedUrl) return parts;
+
+  const mime = (media.mimeType || "").toLowerCase();
+
+  // Images — pass by URL (Gemini/GPT vision via kie.ai OpenAI-compatible API)
+  if (media.msgType === "image" || media.msgType === "sticker" || mime.startsWith("image/")) {
+    parts.push({ type: "image_url", image_url: { url: signedUrl } });
+    return parts;
+  }
+
+  // Video — Gemini supports video by URL in the same image_url block on kie.ai
+  if (media.msgType === "video" || mime.startsWith("video/")) {
+    parts.push({ type: "image_url", image_url: { url: signedUrl } });
+    return parts;
+  }
+
+  // Audio — needs base64 with input_audio format
+  if (media.msgType === "audio" || mime.startsWith("audio/")) {
+    const fetched = await fetchAsBase64(signedUrl);
+    if (fetched) {
+      const fmt = audioFormatFromMime(fetched.mimeType || mime) || "ogg";
+      parts.push({ type: "input_audio", input_audio: { data: fetched.base64, format: fmt } });
+    }
+    return parts;
+  }
+
+  // Documents (pdf, docx, etc.) — send as file part (Gemini supports PDFs)
+  if (media.msgType === "document" || mime.startsWith("application/")) {
+    const fetched = await fetchAsBase64(signedUrl);
+    if (fetched) {
+      parts.push({
+        type: "file",
+        file: {
+          filename: media.fileName || "document",
+          file_data: `data:${fetched.mimeType || mime || "application/octet-stream"};base64,${fetched.base64}`,
+        },
+      });
+    }
+    return parts;
+  }
+
+  return parts;
+}
+
 function shouldRetryAiSend(err: unknown): boolean {
   if (!(err instanceof BridgeError)) return true;
   if (err.status === 401 || err.status === 403 || err.status === 404) return false;
