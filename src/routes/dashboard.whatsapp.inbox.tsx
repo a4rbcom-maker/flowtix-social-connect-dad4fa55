@@ -463,6 +463,49 @@ function InboxPage() {
   );
   const hasMoreOlder = mergedMessages.length > visibleMessages.length;
 
+  // Contamination guard: detect if messages from a different conversation type
+  // (group vs private) leaked into the currently open chat. Warns once per JID.
+  const contaminationWarnedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeJid || messages.length === 0) return;
+    const isGroupChat = activeJid.endsWith("@g.us");
+    const offenders = messages.filter((m) => {
+      const rj = m.remote_jid ?? "";
+      const rowIsGroup = rj.endsWith("@g.us");
+      // Private chat should never contain @g.us rows; group chat should only
+      // contain its own @g.us rows.
+      if (isGroupChat) return rj !== activeJid;
+      return rowIsGroup;
+    });
+    if (offenders.length === 0) {
+      contaminationWarnedRef.current = null;
+      return;
+    }
+    if (contaminationWarnedRef.current === activeJid) return;
+    contaminationWarnedRef.current = activeJid;
+    const sample = offenders.slice(0, 5).map((m) => ({
+      id: m.id,
+      remote_jid: m.remote_jid,
+      direction: m.direction,
+      preview: (m.text_body ?? "").slice(0, 60),
+    }));
+    console.warn("[wa-inbox] message contamination detected", {
+      activeJid,
+      isGroupChat,
+      offendersCount: offenders.length,
+      totalLoaded: messages.length,
+      sample,
+    });
+    toast.warning(
+      isAr
+        ? `تنبيه: تم رصد ${offenders.length} رسالة من محادثة أخرى مختلطة في هذه المحادثة. راجع الكونسول للتفاصيل.`
+        : `Warning: ${offenders.length} message(s) from another conversation leaked into this chat. Check console for details.`,
+      { duration: 6000 },
+    );
+  }, [activeJid, messages, isAr]);
+
+
+
   // Count unique group members seen across the loaded messages (best-effort
   // participant count based on what we've received from the group so far).
   const [groupInfoOpen, setGroupInfoOpen] = useState(false);
