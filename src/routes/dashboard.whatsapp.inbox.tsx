@@ -100,6 +100,13 @@ import {
 } from "@/lib/wa-inbox-query";
 import { nowMs, recordInboxQueryStat, useInboxQueryPerf } from "@/lib/wa-inbox-perf";
 import { createDebouncedInvalidator } from "@/lib/wa-inbox-invalidation";
+import {
+  coalescingRate,
+  recordQueryInvalidated,
+  recordQueryScheduled,
+  resetInboxQueryStats,
+  useInboxQueryStats,
+} from "@/lib/wa-inbox-query-stats";
 
 
 export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
@@ -424,31 +431,42 @@ function InboxPage() {
   // أي دفعة بأي حجم = استدعاء invalidate واحد لكل مفتاح خلال نافذة الـdebounce.
   const convInvalidatorRef = useRef(
     createDebouncedInvalidator(
-      () => qc.invalidateQueries({ queryKey: ["wa-conversations"], refetchType: "active" }),
+      () => {
+        recordQueryInvalidated("wa-conversations", 400);
+        qc.invalidateQueries({ queryKey: ["wa-conversations"], refetchType: "active" });
+      },
       400,
     ),
   );
   const msgsInvalidatorRef = useRef<{
     key: string;
+    statKey: string;
     inv: ReturnType<typeof createDebouncedInvalidator>;
   } | null>(null);
   const scheduleInvalidateConversations = useCallback(() => {
+    recordQueryScheduled("wa-conversations", 400);
     convInvalidatorRef.current.schedule();
   }, []);
   const scheduleInvalidateMessages = useCallback(
     (uid: string, jid: string) => {
       const key = `${uid}::${jid}`;
+      const statKey = `wa-messages:${jid}`;
       const cur = msgsInvalidatorRef.current;
       if (!cur || cur.key !== key) {
         cur?.inv.cancel();
         msgsInvalidatorRef.current = {
           key,
+          statKey,
           inv: createDebouncedInvalidator(
-            () => qc.invalidateQueries({ queryKey: ["wa-messages", uid, jid], refetchType: "active" }),
+            () => {
+              recordQueryInvalidated(statKey, 500);
+              qc.invalidateQueries({ queryKey: ["wa-messages", uid, jid], refetchType: "active" });
+            },
             500,
           ),
         };
       }
+      recordQueryScheduled(statKey, 500);
       msgsInvalidatorRef.current!.inv.schedule();
     },
     [qc],
