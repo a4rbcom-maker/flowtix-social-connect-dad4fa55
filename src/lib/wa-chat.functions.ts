@@ -412,8 +412,11 @@ export const sendTestMessage = createServerFn({ method: "POST" })
         providerMessageId = assertBridgeSendQueued(res);
       } catch (err) {
         if (!queuedId) throw err;
-        status = "pending";
-        delivery = "bridge_queued_waiting_for_whatsapp_ack";
+        // Bridge accepted for its own outbound queue but didn't return the
+        // WhatsApp id yet — treat as sent (single tick). The webhook ACK
+        // will upgrade to delivered/read later.
+        status = "sent";
+        delivery = "bridge_queue_accepted_awaiting_ack";
       }
       const { data: inserted, error: insErr } = await supabase
         .from("wa_messages")
