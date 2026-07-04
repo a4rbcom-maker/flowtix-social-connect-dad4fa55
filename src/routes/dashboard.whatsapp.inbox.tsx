@@ -522,7 +522,9 @@ function InboxPage() {
     () => (mergedMessages.length > visibleCount ? mergedMessages.slice(mergedMessages.length - visibleCount) : mergedMessages),
     [mergedMessages, visibleCount],
   );
-  const hasMoreOlder = mergedMessages.length > visibleMessages.length;
+  const hasMoreOlderClient = mergedMessages.length > visibleMessages.length;
+  const hasMoreOlderServer = !!activeJid && !msgsExhausted.has(activeJid);
+  const hasMoreOlder = hasMoreOlderClient || hasMoreOlderServer;
 
   // Contamination guard: detect if messages from a different conversation type
   // (group vs private) leaked into the currently open chat. Warns once per JID.
