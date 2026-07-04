@@ -21,7 +21,7 @@ import {
 } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
 import { isHardSessionGoneError, isTrustedUserDisconnect, logWaSessionEvent, updateWaSessionStatus } from "./wa-session-events.server";
-import { normalizeWhatsappPhone } from "./wa-chat-helpers.server";
+import { normalizeWhatsappPhone, phoneFromRaw } from "./wa-chat-helpers.server";
 import { resolveOutgoingWhatsappTarget } from "./wa-recipient.server";
 
 export type { WaBridgeHealth };
@@ -179,6 +179,44 @@ function onlyDigits(value: unknown): string | null {
 function jidFromPhone(value: unknown): string | null {
   const phone = onlyDigits(value);
   return phone ? `${phone}@s.whatsapp.net` : null;
+}
+
+function looksLikeLidLocal(value: unknown): boolean {
+  return /^\d{14,}$/.test(String(value ?? "").split("@")[0]?.replace(/[^0-9]/g, "") ?? "");
+}
+
+function realPhoneDigits(value: unknown): string | null {
+  const phone = normalizeWhatsappPhone(typeof value === "string" ? value : value == null ? null : String(value));
+  if (!phone || phone.length < 10 || phone.length > 13) return null;
+  return phone;
+}
+
+function phoneFromContactRecord(row: Record<string, unknown>): string | null {
+  return realPhoneDigits(
+    row.senderPn ??
+      row.participantPn ??
+      row.recipientPn ??
+      row.remoteJidAlt ??
+      row.jid ??
+      row.id ??
+      row.remoteJid ??
+      row.phoneNumber ??
+      row.phone ??
+      row.number ??
+      row.user ??
+      row.pn,
+  );
+}
+
+function jidFromContactRecord(row: Record<string, unknown>): string | null {
+  const raw = row.rawJid ?? row.jid ?? row.id ?? row.remoteJid ?? row.remote_jid ?? row.chatId;
+  if (typeof raw !== "string" && typeof raw !== "number" && typeof raw !== "bigint") return null;
+  const text = String(raw).trim();
+  if (!text || text === "status@broadcast" || text.endsWith("@broadcast")) return null;
+  if (text.includes("@")) return text;
+  const d = onlyDigits(text);
+  if (!d) return null;
+  return looksLikeLidLocal(d) ? `${d}@lid` : `${d}@s.whatsapp.net`;
 }
 
 function lidJidsFromEvents(events: Array<{ raw_status?: unknown; reason?: unknown; bridge_event?: unknown }>): string[] {
@@ -1333,7 +1371,7 @@ export const matchLidPhoneNumbers = createServerFn({ method: "POST" })
     // Candidates: LID convs missing a real phone.
     const { data: convs, error: convsErr } = await supabase
       .from("wa_conversations")
-      .select("id, remote_jid, contact_phone, contact_name")
+      .select("id, session_id, remote_jid, contact_phone, contact_name")
       .eq("user_id", userId)
       .like("remote_jid", "%@lid")
       .is("contact_phone", null)
@@ -1347,20 +1385,35 @@ export const matchLidPhoneNumbers = createServerFn({ method: "POST" })
     const { data: phoneRows } = jids.length
       ? await supabase
           .from("wa_messages")
-          .select("remote_jid, from_phone")
+          .select("remote_jid, from_phone, to_phone, raw")
           .eq("user_id", userId)
           .in("remote_jid", jids)
-          .not("from_phone", "is", null)
           .order("created_at", { ascending: false })
           .limit(5000)
-      : { data: [] as Array<{ remote_jid: string; from_phone: string | null }> };
+      : { data: [] as Array<{ remote_jid: string; from_phone: string | null; to_phone: string | null; raw: unknown }> };
 
     const phoneByJid = new Map<string, string>();
     for (const row of phoneRows ?? []) {
       if (phoneByJid.has(row.remote_jid)) continue;
       const lidLocal = String(row.remote_jid ?? "").split("@")[0] ?? "";
-      const phone = (row.from_phone ?? "").replace(/[^0-9]/g, "");
-      if (phone && phone.length >= 6 && phone !== lidLocal) phoneByJid.set(row.remote_jid, phone);
+      const phone = realPhoneDigits(row.from_phone) || realPhoneDigits(row.to_phone) || phoneFromRaw(row.raw);
+      if (phone && phone !== lidLocal) phoneByJid.set(row.remote_jid, phone);
+    }
+
+    // Ask the bridge for its current chat/contact catalogue as another safe
+    // source. This only accepts explicit PN/phone fields; it never guesses a
+    // public number from a 14+ digit LID alias.
+    const sessionIds = Array.from(new Set((convs ?? []).map((c) => c.session_id).filter(Boolean)));
+    for (const sessionId of sessionIds) {
+      const catalogue = await waBridge.fetchChats(String(sessionId)).catch(() => null);
+      const rows = pickArray(catalogue?.body, ["contacts", "chats", "items", "data"]);
+      for (const row of rows) {
+        const jid = jidFromContactRecord(row);
+        if (!jid || !jids.includes(jid) || phoneByJid.has(jid)) continue;
+        const phone = phoneFromContactRecord(row);
+        const lidLocal = String(jid).split("@")[0] ?? "";
+        if (phone && phone !== lidLocal) phoneByJid.set(jid, phone);
+      }
     }
 
     const phones = Array.from(new Set(phoneByJid.values()));
