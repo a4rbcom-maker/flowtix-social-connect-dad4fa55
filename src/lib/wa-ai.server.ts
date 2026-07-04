@@ -716,7 +716,43 @@ export async function handleAiAutoReply(opts: {
       }
     }
 
+    // AI cooldown / de-duplication: if the AI already sent a reply to this jid
+    // in the last AI_REPLY_COOLDOWN_MS window, skip. This prevents duplicate
+    // introductions when a customer sends several messages/attachments in a
+    // burst (e.g. a PDF followed a second later by a video), each of which
+    // fires its own webhook and would otherwise generate a separate "Hello,
+    // I'm Ahmed from ..." reply.
+    const AI_REPLY_COOLDOWN_MS = 20_000;
+    {
+      const since = new Date(Date.now() - AI_REPLY_COOLDOWN_MS).toISOString();
+      const { data: recentAiOut } = await supabaseAdmin
+        .from("wa_messages")
+        .select("id, created_at, raw, status")
+        .eq("user_id", userId)
+        .eq("remote_jid", remoteJid)
+        .eq("direction", "out")
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(5);
+      const recentAi = (recentAiOut ?? []).find((m) => {
+        const raw = (m as { raw?: { ai?: unknown } }).raw;
+        return raw && raw.ai === true;
+      });
+      if (recentAi) {
+        await logAiSkip({
+          userId,
+          conversationId,
+          remoteJid,
+          inboundText,
+          model: settings.ai_model,
+          reason: `ai_cooldown: تم تجاهل هذا الحدث لأن الوكيل أرسل رداً في آخر ${Math.round(AI_REPLY_COOLDOWN_MS / 1000)} ثانية لنفس المحادثة (منع الردود المكررة على رسائل متتالية).`,
+        });
+        return;
+      }
+    }
+
     // Blacklist
+
     // Critical delivery fix: modern WhatsApp/Baileys often identifies the real
     // chat by @lid while senderPn only contains the public phone number. Sending
     // to senderPn can make Bot-Xtra return queuedId without actual delivery.
