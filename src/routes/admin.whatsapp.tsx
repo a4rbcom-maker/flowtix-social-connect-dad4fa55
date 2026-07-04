@@ -154,8 +154,8 @@ function BulkCleanupCard({ t }: { t: (ar: string, en: string) => string }) {
           </h3>
           <p className="text-sm text-muted-foreground mt-0.5">
             {t(
-              "يحذف فقط الجلسات بادئة \"flowtix-\" المفصولة منذ فترة. لا يمس Bot-Xtra أو Xtra.",
-              'Deletes only "flowtix-" prefixed sessions disconnected for a while. Never touches Bot-Xtra or Xtra.',
+              "يحذف فقط جلسات Flowtix المفصولة منذ فترة ولا يمس أي جلسات خارج نطاق المنصة.",
+              'Deletes only Flowtix sessions disconnected for a while and never touches sessions outside the platform scope.',
             )}
           </p>
         </div>
