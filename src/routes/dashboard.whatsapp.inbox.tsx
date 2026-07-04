@@ -2828,6 +2828,28 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
 }
 
 async function fetchInboxMessages(userId: string, remoteJid: string): Promise<ChatMessageRow[]> {
+  const isGroupChat = remoteJid.endsWith("@g.us");
+  const baseSelect = "id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw";
+
+  // === مسار الجروبات ===
+  // نتعامل مع الجروب كوحدة مغلقة: JID = @g.us فقط، ممنوع أي fallback بالهاتف
+  // لأن نفس رقم العضو يظهر داخل رسائل الجروب وفي محادثاته الخاصة.
+  if (isGroupChat) {
+    const { data: groupRows, error: groupError } = await supabase
+      .from("wa_messages")
+      .select(baseSelect)
+      .eq("user_id", userId)
+      .eq("remote_jid", remoteJid)
+      .order("wa_timestamp", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (groupError) throw new Error(groupError.message);
+    // eslint-disable-next-line no-console
+    console.debug("[wa-inbox] fetchInboxMessages(group)", { remoteJid, count: groupRows?.length ?? 0 });
+    return await materializeInboxRows(groupRows ?? []);
+  }
+
+  // === مسار المحادثات الخاصة (@s.whatsapp.net / @lid) ===
   const { data: convAliases } = await supabase
     .from("wa_conversations")
     .select("contact_phone")
@@ -2837,41 +2859,61 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     .limit(1)
     .maybeSingle();
 
-  const messageAliases = inboxJidAliases(remoteJid, convAliases?.contact_phone ?? null);
-  const baseSelect = "id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw";
+  const messageAliases = inboxJidAliases(remoteJid, convAliases?.contact_phone ?? null)
+    // ضمان إضافي: لا نسمح بأي JID جروب داخل قائمة الـaliases الخاصة.
+    .filter((jid) => !jid.endsWith("@g.us"));
+
   const { data: jidRows, error } = await supabase
     .from("wa_messages")
-    // نحتاج raw كمسار احتياطي لأن بعض دفعات الأرشيف القديمة حملت رابط/بيانات الوسيط داخل JSON
-    // قبل حفظه في media_url. الاستعلام محدود بآخر 200 رسالة للمحادثة المفتوحة فقط.
     .select(baseSelect)
     .eq("user_id", userId)
     .in("remote_jid", messageAliases)
     .order("wa_timestamp", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(200);
-
   if (error) throw new Error(error.message);
+
   const phone = cleanAliasPhone(convAliases?.contact_phone, remoteJid);
+  // fallback بالهاتف مقصور صراحةً على JIDs غير جروبية (@s.whatsapp.net أو @lid)
+  // — بنستخدم فلتر إيجابي بدل السلبي عشان يبقى صريح ومقاوم للتسرّب.
   const { data: phoneRows, error: phoneError } = phone
     ? await supabase
         .from("wa_messages")
         .select(baseSelect)
         .eq("user_id", userId)
         .or(`from_phone.eq.${phone},to_phone.eq.${phone}`)
-        // استبعد رسائل الجروبات: العضو ممكن يكون مشترك في جروب بنفس الرقم،
-        // ومن غير الفلتر ده رسائله في الجروب هتتسرّب داخل محادثته الخاصة.
-        .not("remote_jid", "like", "%@g.us")
+        .or("remote_jid.like.%@s.whatsapp.net,remote_jid.like.%@lid")
         .order("wa_timestamp", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
         .limit(200)
     : { data: [], error: null };
-
   if (phoneError) throw new Error(phoneError.message);
-
 
   const dedupedRows = Array.from(
     new Map([...(jidRows ?? []), ...(phoneRows ?? [])].map((row) => [row.id, row])).values(),
-  );
+  ).filter((row) => !row.remote_jid.endsWith("@g.us")); // درع نهائي ضد أي تسرّب من الجروبات
+
+  // eslint-disable-next-line no-console
+  console.debug("[wa-inbox] fetchInboxMessages(private)", {
+    remoteJid,
+    aliases: messageAliases,
+    phone,
+    jidCount: jidRows?.length ?? 0,
+    phoneCount: phoneRows?.length ?? 0,
+    finalCount: dedupedRows.length,
+  });
+
+  return await materializeInboxRows(dedupedRows);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function materializeInboxRows(dedupedRows: any[]): Promise<ChatMessageRow[]> {
+  const rows = dedupedRows
+    .filter((row) => {
+      const hasText = Boolean(row.text_body?.trim());
+      const hasMedia = Boolean(row.media_url?.trim()) || normalizeWaMessageType(row.msg_type) !== "text";
+      return hasText || hasMedia;
+    })
   const rows = dedupedRows
     .filter((row) => {
       const hasText = Boolean(row.text_body?.trim());
