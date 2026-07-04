@@ -58,6 +58,7 @@ import { SmartAudio } from "@/components/wa/SmartAudio";
 import { Zap } from "lucide-react";
 import {
   sendChatMessage,
+  dispatchQueuedMessage,
   markConversationRead,
   markConversationActive,
   summarizeConversation,
