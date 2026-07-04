@@ -10,6 +10,7 @@ import { randomUUID } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { handleAiAutoReply, upsertConversationFromMessage } from "./wa-ai.server";
 import { cleanMessageText, mediaTypeFromRaw, mediaUrlFromRaw } from "./wa-chat-helpers.server";
+import { waBridge } from "./wa-bridge.server";
 import { tryKeywordAutoReply } from "./wa-keyword.server";
 import { extractSessionReason, updateWaSessionStatus } from "./wa-session-events.server";
 import {
@@ -699,6 +700,19 @@ async function markSessionAlive(params: {
   });
 }
 
+async function purgeStaleBridgeSession(sessionId: string, reason: string) {
+  try {
+    await waBridge.deleteSession(sessionId);
+    console.warn("[wa-webhook] Purged stale bridge session", { sessionId, reason });
+  } catch (err) {
+    console.warn("[wa-webhook] Stale bridge session purge failed", {
+      sessionId,
+      reason,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 function isMessageStatusOnlyEvent(event: string, payload: Record<string, unknown>, data: Record<string, unknown>): boolean {
   if (event !== "status" && event !== "message.status" && event !== "messages.update") return false;
   const providerMessageId = messageIdFrom(data) || messageIdFrom(payload);
@@ -974,7 +988,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       incomingEvent === "message" ||
       incomingEvent === "messages.upsert" ||
       incomingEvent === "message.upsert";
-    if (tenantId && canTrustTenantFallback && canRemapStaleSessionEvent) {
+    if (tenantId && canTrustTenantFallback) {
       const { data: fallbackSess, error: fallbackErr } = await supabaseAdmin
         .from("wa_sessions")
         .select("user_id, phone_number, session_id")
@@ -986,7 +1000,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         console.error("[wa-webhook] tenant session fallback lookup error:", fallbackErr.message);
         return new Response("DB error", { status: 500 });
       }
-      if (fallbackSess?.user_id && fallbackSess.session_id) {
+      if (fallbackSess?.user_id && fallbackSess.session_id && canRemapStaleSessionEvent) {
         console.warn("[wa-webhook] Remapped stale bridge sessionId to active tenant session", {
           incomingSessionId: sessionId,
           activeSessionId: fallbackSess.session_id,
@@ -994,6 +1008,12 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         });
         sess = fallbackSess;
         sessionId = fallbackSess.session_id;
+      } else if (!fallbackSess?.session_id || fallbackSess.session_id !== sessionId) {
+        // Stale QR/status-only bridge sessions keep emitting events every few
+        // seconds. They are not useful to the app (no DB row points to them) and
+        // can starve real message delivery on the bridge, so purge them as soon
+        // as a trusted tenant-owned orphan event arrives.
+        await purgeStaleBridgeSession(sessionId, `orphan_${incomingEvent || "event"}`);
       }
     } else if (tenantId && canTrustTenantFallback) {
       console.info("[wa-webhook] Ignored stale tenant session event without remap", {
