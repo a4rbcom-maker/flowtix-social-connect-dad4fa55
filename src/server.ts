@@ -79,6 +79,7 @@ function apiRouteMethodFallback(request: Request): Response | null {
     "/api/public/fb-people-ingest": ["POST"],
     "/api/public/webhooks/facebook": ["GET", "POST"],
     "/api/public/hooks/process-bulk-jobs": ["POST"],
+    "/api/public/hooks/cleanup-wa-sessions": ["POST"],
     "/api/public/hooks/cleanup-old-media": ["POST"],
     "/api/public/bot/next-job": ["POST"],
     "/api/public/bot/job-update": ["POST"],

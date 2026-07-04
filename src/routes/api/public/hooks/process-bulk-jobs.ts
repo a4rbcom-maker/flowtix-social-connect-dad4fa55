@@ -26,6 +26,15 @@ export const Route = createFileRoute("/api/public/hooks/process-bulk-jobs")({
           return new Response("Unauthorized", { status: 401 });
         }
 
+        if (new Date().getUTCMinutes() % 5 === 0) {
+          fetch(new URL("/api/public/hooks/cleanup-wa-sessions", request.url), {
+            method: "POST",
+            headers: { Authorization: `Bearer ${secret}` },
+          }).catch((err) => {
+            console.warn("[process-bulk-jobs] WhatsApp session cleanup skipped:", err instanceof Error ? err.message : String(err));
+          });
+        }
+
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { waBridge, assertBridgeSendQueued, bridgeSendQueuedMessage, bridgeSendFailureMessage, BridgeError, inferStatus } = await import(
           "@/lib/wa-bridge.server"

@@ -1,7 +1,7 @@
 {
-  "name": "wa-bridge-botxtra",
+  "name": "wa-bridge-flowtix",
   "version": "1.8.5-flowtix-history",
-  "description": "WhatsApp Bridge Server for BotXtra Platform",
+  "description": "WhatsApp Bridge Server for Flowtix Platform",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

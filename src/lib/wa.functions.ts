@@ -875,8 +875,8 @@ export const sendWaMessage = createServerFn({ method: "POST" })
         providerMessageId = assertBridgeSendQueued(res);
       } catch (err) {
         if (!queuedId) throw err;
-        status = "pending";
-        delivery = "bridge_queued_waiting_for_whatsapp_ack";
+        status = "sent";
+        delivery = "bridge_queue_accepted_awaiting_ack";
       }
     } catch (err) {
       const msg = describeBridgeError(err);
@@ -915,7 +915,7 @@ export const sendWaMessage = createServerFn({ method: "POST" })
       direction: "out",
     });
 
-    return { ok: true, pending: status === "pending" };
+    return { ok: true, pending: false };
   });
 
 export const disconnectWaSession = createServerFn({ method: "POST" })

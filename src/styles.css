@@ -49,7 +49,7 @@
 
 :root {
   --radius: 0.75rem;
-  /* Botxtra exact palette (sampled from botxtra.com) */
+  /* Flowtix brand palette */
   /* bg #f6f6f9 */
   --background: oklch(0.97 0.005 290);
   --foreground: oklch(0.20 0.025 290);

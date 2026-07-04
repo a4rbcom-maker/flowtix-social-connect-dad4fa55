@@ -9,9 +9,18 @@ const DISCONNECTED_TO_LOGGED_OUT_DAYS = 7; // disconnected sessions untouched th
 export const Route = createFileRoute("/api/public/hooks/cleanup-wa-sessions")({
   server: {
     handlers: {
-      POST: async () => {
+      POST: async ({ request }) => {
         const started = Date.now();
         try {
+          const secret = process.env.CRON_SECRET || process.env.BOT_WORKER_SECRET;
+          if (!secret) {
+            return new Response("Worker secret not configured", { status: 500 });
+          }
+          const auth = request.headers.get("authorization");
+          if (!auth || auth !== `Bearer ${secret}`) {
+            return new Response("Unauthorized", { status: 401 });
+          }
+
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
           const qrCutoff = new Date(Date.now() - QR_ABANDON_MINUTES * 60 * 1000).toISOString();
@@ -102,8 +111,8 @@ export const Route = createFileRoute("/api/public/hooks/cleanup-wa-sessions")({
               const { data: allRows } = await supabaseAdmin
                 .from("wa_sessions")
                 .select("session_id");
-              const known = new Set((allRows ?? []).map((r) => String(r.session_id)));
-              if (known.size > 0) {
+              const known = new Set((allRows ?? []).map((r) => String(r.session_id)).filter(Boolean));
+              for (let round = 0; round < 5; round++) {
                 const listRes = await fetch(`${bridgeUrl}/api/sessions`, {
                   headers: { "x-api-key": apiKey, Accept: "application/json" },
                 });
@@ -114,20 +123,44 @@ export const Route = createFileRoute("/api/public/hooks/cleanup-wa-sessions")({
                   : Array.isArray((listBody as { sessions?: unknown })?.sessions)
                     ? ((listBody as { sessions: Array<Record<string, unknown>> }).sessions)
                     : [];
+                const deleteBridgeSession = async (id: string) => {
+                  const encoded = encodeURIComponent(id);
+                  const attempts = [
+                    { method: "POST", path: `/api/sessions/${encoded}/logout` },
+                    { method: "DELETE", path: `/api/sessions/${encoded}` },
+                    { method: "DELETE", path: `/api/sessions/${encoded}?purge=true&force=true` },
+                  ];
+                  let ok = false;
+                  for (const attempt of attempts) {
+                    try {
+                      const dr = await fetch(`${bridgeUrl}${attempt.path}`, {
+                        method: attempt.method,
+                        headers: { "x-api-key": apiKey, Accept: "application/json" },
+                      });
+                      if (dr.ok || dr.status === 404) ok = true;
+                    } catch {
+                      // try next deletion shape
+                    }
+                  }
+                  return ok;
+                };
+
+                let deletedThisRound = 0;
                 for (const s of list) {
                   const id = String(s.id ?? s.sessionId ?? "");
                   if (!id || known.has(id)) continue;
                   try {
-                    const dr = await fetch(`${bridgeUrl}/api/sessions/${encodeURIComponent(id)}`, {
-                      method: "DELETE",
-                      headers: { "x-api-key": apiKey, Accept: "application/json" },
-                    });
-                    if (dr.ok) bridgeOrphansDeleted += 1;
+                    const deleted = await deleteBridgeSession(id);
+                    if (deleted) {
+                      bridgeOrphansDeleted += 1;
+                      deletedThisRound += 1;
+                    }
                     else bridgeOrphansFailed += 1;
                   } catch {
                     bridgeOrphansFailed += 1;
                   }
                 }
+                if (deletedThisRound === 0) break;
               }
             }
           } catch (e) {
