@@ -418,11 +418,20 @@ function InboxPage() {
     () => (Array.isArray(msgsQuery.data) ? msgsQuery.data : []),
     [msgsQuery.data],
   );
-  const visibleMessages = useMemo<ChatMessageRow[]>(
-    () => (messages.length > visibleCount ? messages.slice(messages.length - visibleCount) : messages),
-    [messages, visibleCount],
+  const [optimisticMessages, setOptimisticMessages] = useState<ChatMessageRow[]>([]);
+  const visibleMessageIds = useMemo(() => new Set(messages.map((m) => m.id)), [messages]);
+  const mergedMessages = useMemo<ChatMessageRow[]>(
+    () => [
+      ...messages,
+      ...optimisticMessages.filter((m) => m.remote_jid === activeJid && !visibleMessageIds.has(m.id)),
+    ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+    [activeJid, messages, optimisticMessages, visibleMessageIds],
   );
-  const hasMoreOlder = messages.length > visibleMessages.length;
+  const visibleMessages = useMemo<ChatMessageRow[]>(
+    () => (mergedMessages.length > visibleCount ? mergedMessages.slice(mergedMessages.length - visibleCount) : mergedMessages),
+    [mergedMessages, visibleCount],
+  );
+  const hasMoreOlder = mergedMessages.length > visibleMessages.length;
 
   // Track connection so we can show the right empty-state CTA.
   // Poll faster while not connected so we catch a fresh QR scan quickly.
@@ -630,7 +639,7 @@ function InboxPage() {
     if (!user?.id || !activeJid) return;
     if (connQuery.data?.status !== "connected") return;
     if (msgsQuery.isFetching) return;
-    if (messages.length > 3) return;
+    if (mergedMessages.length > 3) return;
     const key = `${user.id}:${activeJid}`;
     if (chatHistoryRequestedRef.current.has(key)) return;
     chatHistoryRequestedRef.current.add(key);
@@ -646,7 +655,7 @@ function InboxPage() {
         chatHistoryRequestedRef.current.delete(key);
         console.warn("[inbox] focused chat history sync failed", err);
       });
-  }, [user?.id, activeJid, connQuery.data?.status, msgsQuery.isFetching, messages.length, requestChatSyncFn, qc]);
+  }, [user?.id, activeJid, connQuery.data?.status, msgsQuery.isFetching, mergedMessages.length, requestChatSyncFn, qc]);
 
   // Reset progressive pagination when conversation changes
   useEffect(() => {
@@ -666,19 +675,19 @@ function InboxPage() {
       el.scrollTop = el.scrollTop + delta;
       preserveScrollRef.current = null;
       setIsLoadingOlder(false);
-      prevMsgLenRef.current = messages.length;
+      prevMsgLenRef.current = mergedMessages.length;
       return;
     }
     const prev = prevMsgLenRef.current;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
-    if (messages.length !== prev) {
+    if (mergedMessages.length !== prev) {
       // New message(s) appended or conversation switched — scroll to bottom if user is near it.
       if (nearBottom || prev === 0) {
         el.scrollTop = el.scrollHeight;
       }
-      prevMsgLenRef.current = messages.length;
+      prevMsgLenRef.current = mergedMessages.length;
     }
-  }, [visibleMessages, messages.length, activeJid]);
+  }, [visibleMessages, mergedMessages.length, activeJid]);
 
   // Scroll to bottom for typing indicator only when already near bottom
   useEffect(() => {
@@ -694,9 +703,9 @@ function InboxPage() {
     if (el.scrollTop <= 60 && hasMoreOlder && !isLoadingOlder) {
       setIsLoadingOlder(true);
       preserveScrollRef.current = el.scrollHeight;
-      setVisibleCount((c) => Math.min(c + PAGE_SIZE, messages.length));
+      setVisibleCount((c) => Math.min(c + PAGE_SIZE, mergedMessages.length));
     }
-  }, [hasMoreOlder, isLoadingOlder, messages.length]);
+  }, [hasMoreOlder, isLoadingOlder, mergedMessages.length]);
 
 
   // Reset typing indicator when switching conversations
@@ -755,8 +764,10 @@ function InboxPage() {
   // Auto-dismiss the inline alert when user switches chat or starts typing again.
   useEffect(() => { setSendError(null); }, [activeJid]);
 
-  const sendMut = useMutation({
-    mutationFn: async ({ text, file }: { text: string; file: File | null }) => {
+  type SendVars = { text: string; file: File | null; previewUrl?: string | null };
+  type SendContext = { optimisticId: string; draftBeforeSend: string };
+  const sendMut = useMutation<unknown, Error, SendVars, SendContext>({
+    mutationFn: async ({ text, file }: SendVars) => {
       let mediaUrl: string | undefined;
       let mediaType: "image" | "video" | "document" | "audio" | undefined;
       let mimeType: string | undefined;
@@ -796,12 +807,55 @@ function InboxPage() {
         },
       });
     },
-    onSuccess: (_res, vars) => {
+    onMutate: async (vars) => {
+      const optimisticId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      if (user?.id && activeJid) {
+        await qc.cancelQueries({ queryKey: ["wa-messages", user.id, activeJid] });
+        const now = new Date().toISOString();
+        const msgType = vars.file
+          ? vars.file.type.startsWith("video/")
+            ? "video"
+            : vars.file.type.startsWith("audio/")
+              ? "audio"
+              : vars.file.type.startsWith("image/")
+                ? "image"
+                : "document"
+          : "text";
+        setOptimisticMessages((current) => [
+          ...current,
+          {
+            id: optimisticId,
+            remote_jid: activeJid,
+            direction: "out",
+            status: "pending",
+            text_body: vars.text || vars.file?.name || null,
+            msg_type: msgType,
+            media_url: vars.previewUrl ?? null,
+            created_at: now,
+            is_ai: false,
+            sender_name: null,
+            sender_phone: null,
+            delivery_state: "client_pending",
+            queued_id: null,
+            delivery_error: null,
+            is_stale_pending: false,
+          },
+        ]);
+        setDraft("");
+        setSendError(null);
+        window.setTimeout(() => textareaRef.current?.focus(), 0);
+      }
+      return { optimisticId, draftBeforeSend: draft };
+    },
+    onSuccess: (_res, vars, context) => {
       const hadFile = !!vars.file;
-      setDraft("");
       setSendError(null);
-      if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
       setAttachment(null);
+      if (context?.optimisticId) {
+        window.setTimeout(() => {
+          setOptimisticMessages((current) => current.filter((m) => m.id !== context.optimisticId));
+        }, 1200);
+      }
       qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
       qc.invalidateQueries({ queryKey: ["wa-conversations"] });
       toast.success(
@@ -812,7 +866,24 @@ function InboxPage() {
     },
     // Show a rich, dismissible inline alert instead of a noisy toast so the
     // user sees the reason + retry steps without spam on repeated attempts.
-    onError: (err: Error) => setSendError(classifySendError(err)),
+    onError: (err: Error, _vars, context) => {
+      setSendError(classifySendError(err));
+      if (context?.optimisticId) {
+        setOptimisticMessages((current) =>
+          current.map((m) =>
+            m.id === context.optimisticId
+              ? { ...m, status: "failed", delivery_error: err.message, is_stale_pending: false }
+              : m,
+          ),
+        );
+      }
+      if (context?.draftBeforeSend) setDraft(context.draftBeforeSend);
+      window.setTimeout(() => textareaRef.current?.focus(), 0);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
+      qc.invalidateQueries({ queryKey: ["wa-conversations"] });
+    },
   });
 
 
@@ -1417,7 +1488,7 @@ function InboxPage() {
                   </div>
                 ))}
               </div>
-            ) : messages.length === 0 ? (
+            ) : mergedMessages.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
                   <MessageCircle className="h-7 w-7 text-muted-foreground" />
@@ -1440,7 +1511,7 @@ function InboxPage() {
                         if (!el || isLoadingOlder) return;
                         setIsLoadingOlder(true);
                         preserveScrollRef.current = el.scrollHeight;
-                        setVisibleCount((c) => Math.min(c + PAGE_SIZE, messages.length));
+                        setVisibleCount((c) => Math.min(c + PAGE_SIZE, mergedMessages.length));
                       }}
                       className="rounded-full bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm ring-1 ring-border/60 transition hover:text-foreground disabled:opacity-60"
                       disabled={isLoadingOlder}
@@ -1451,7 +1522,7 @@ function InboxPage() {
                     </button>
                   </div>
                 )}
-                {!hasMoreOlder && messages.length > PAGE_SIZE && (
+                {!hasMoreOlder && mergedMessages.length > PAGE_SIZE && (
                   <div className="flex justify-center py-2">
                     <span className="rounded-full bg-muted/60 px-3 py-1 text-[10px] text-muted-foreground">
                       {isAr ? "بداية المحادثة" : "Start of conversation"}
