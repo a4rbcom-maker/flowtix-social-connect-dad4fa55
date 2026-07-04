@@ -2547,20 +2547,12 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     const hasConfirmedDelivery = Boolean(
       row.provider_message_id || pickString(raw, "providerMessageId", "bridgeMessageId", "messageId", "id"),
     );
-    const missingConfirmedDelivery =
-      row.direction === "out" &&
-      row.status === "sent" &&
-      !hasConfirmedDelivery;
-    const visibleStatus = missingConfirmedDelivery
-      ? rawDelivery.includes("queued") || rawDelivery.includes("pending") || rawDelivery.includes("retrying")
-        ? "pending"
-        : (row.status ?? "sent")
-      : (row.status ?? (row.direction === "out" ? "sent" : "received"));
+    const visibleStatus = row.status ?? (row.direction === "out" ? "sent" : "received");
     const messageTime = new Date(row.wa_timestamp ?? row.created_at).getTime();
     const isStalePending = Boolean(
       row.direction === "out" &&
       visibleStatus === "pending" &&
-      (row.status === "sent" || !hasConfirmedDelivery) &&
+      !hasConfirmedDelivery &&
       Number.isFinite(messageTime) &&
       Date.now() - messageTime > 120_000,
     );
