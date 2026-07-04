@@ -576,7 +576,7 @@ async function updateMessageStatuses(userId: string, sessionId: string, payload:
       .eq("user_id", userId)
       .eq("session_id", sessionId)
       .eq("direction", "out")
-      .eq("status", "pending")
+      .in("status", ["pending", "sent"])
       .is("provider_message_id", null)
       .or(`raw->>queuedId.eq.${providerMessageId},raw->>queued_id.eq.${providerMessageId},raw->>queueId.eq.${providerMessageId}`)
       .order("created_at", { ascending: false })

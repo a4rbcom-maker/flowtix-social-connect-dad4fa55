@@ -249,6 +249,45 @@ export const sendChatMessage = createServerFn({ method: "POST" })
     const sentAt = new Date().toISOString();
     const hasMedia = !!data.mediaUrl;
     const mediaType = data.mediaType ?? "image";
+    const { data: pendingMessage, error: pendingInsertError } = await supabase
+      .from("wa_messages")
+      .insert({
+        user_id: userId,
+        session_id: sess.session_id,
+        direction: "out",
+        remote_jid: data.remoteJid,
+        to_phone: phoneDigits || to,
+        msg_type: hasMedia ? mediaType : "text",
+        text_body: data.text || null,
+        media_url: hasMedia ? data.mediaUrl : null,
+        status: "pending",
+        provider_message_id: null,
+        wa_timestamp: sentAt,
+        raw: {
+          delivery: "client_persisted_before_bridge_send",
+          targetJid: to,
+          usedLid: target.usedLid,
+          ...(hasMedia
+            ? { mediaData: { url: data.mediaUrl, mimeType: data.mimeType, fileName: data.fileName, caption: data.text } }
+            : {}),
+        } as never,
+      })
+      .select("id")
+      .single();
+    if (pendingInsertError || !pendingMessage?.id) {
+      throw new Error(pendingInsertError?.message || "Failed to save outgoing message before sending");
+    }
+
+    await upsertConversationFromMessage({
+      userId,
+      sessionId: sess.session_id,
+      remoteJid: data.remoteJid,
+      contactName: null,
+      contactPhone: phoneDigits || null,
+      text: data.text || (hasMedia ? `[${mediaType}]` : ""),
+      direction: "out",
+      messageAt: sentAt,
+    });
     try {
       const webhookUrl = await deriveWebhookUrl().catch(() => null);
       const res = hasMedia
@@ -306,30 +345,26 @@ export const sendChatMessage = createServerFn({ method: "POST" })
           delivery = "whatsapp_queue_accepted_awaiting_ack";
         }
       }
-      await supabase.from("wa_messages").insert({
-        user_id: userId,
-        session_id: sess.session_id,
-        direction: "out",
-        remote_jid: data.remoteJid,
-        to_phone: phoneDigits || to,
-        msg_type: hasMedia ? mediaType : "text",
-        text_body: data.text || null,
-        media_url: hasMedia ? data.mediaUrl : null,
-        status,
-        provider_message_id: providerMessageId,
-        wa_timestamp: sentAt,
-        raw: {
-          bridgeMessageId: providerMessageId,
-          queuedId: finalQueuedId,
-          delivery,
-          targetJid: to,
-          usedLid: target.usedLid,
-          ...(hasMedia
-            ? { mediaData: { url: data.mediaUrl, mimeType: data.mimeType, fileName: data.fileName, caption: data.text } }
-            : {}),
-          bridgeResponse: finalResponse,
-        } as never,
-      });
+      const { error: updateError } = await supabase
+        .from("wa_messages")
+        .update({
+          status,
+          provider_message_id: providerMessageId,
+          raw: {
+            bridgeMessageId: providerMessageId,
+            queuedId: finalQueuedId,
+            delivery,
+            targetJid: to,
+            usedLid: target.usedLid,
+            ...(hasMedia
+              ? { mediaData: { url: data.mediaUrl, mimeType: data.mimeType, fileName: data.fileName, caption: data.text } }
+              : {}),
+            bridgeResponse: finalResponse,
+          } as never,
+        })
+        .eq("id", pendingMessage.id)
+        .eq("user_id", userId);
+      if (updateError) throw new Error(updateError.message);
     } catch (err) {
       if (isBridgeSessionMissingError(err)) {
         await resetWaSessionAfterBridgeLoss({
@@ -339,23 +374,28 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         });
       }
       const msg = describeBridgeError(err);
+      await supabase
+        .from("wa_messages")
+        .update({
+          status: "failed",
+          raw: {
+            delivery: "bridge_send_failed_after_client_persist",
+            targetJid: to,
+            usedLid: target.usedLid,
+            error: msg,
+            ...(hasMedia
+              ? { mediaData: { url: data.mediaUrl, mimeType: data.mimeType, fileName: data.fileName, caption: data.text } }
+              : {}),
+          } as never,
+        })
+        .eq("id", pendingMessage.id)
+        .eq("user_id", userId);
       console.error("[wa-chat] sendText failed:", msg, "to=", to);
       throw new Error(msg);
     }
 
-    await upsertConversationFromMessage({
-      userId,
-      sessionId: sess.session_id,
-      remoteJid: data.remoteJid,
-      contactName: null,
-      contactPhone: phoneDigits || null,
-      text: data.text || (hasMedia ? `[${mediaType}]` : ""),
-      direction: "out",
-      messageAt: sentAt,
-    });
 
-
-    return { ok: true };
+    return { ok: true, messageId: pendingMessage.id };
   });
 
 
