@@ -472,7 +472,15 @@ function InboxPage() {
         if (outgoingSignatures.has(sig)) return false;
         return true;
       }),
-    ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+    ].sort((a, b) => {
+      const ta = new Date(a.created_at).getTime();
+      const tb = new Date(b.created_at).getTime();
+      if (ta !== tb) return ta - tb;
+      // Stable tiebreaker on id so React keys keep a deterministic order
+      // when two rows share the same timestamp (rare but possible on bulk
+      // history syncs). Without it the list can jitter across renders.
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    }),
     [activeJid, messages, optimisticMessages, visibleMessageIds, outgoingSignatures],
   );
 
