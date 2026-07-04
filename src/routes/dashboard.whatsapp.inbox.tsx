@@ -896,15 +896,105 @@ function InboxPage() {
     if (nearBottom) el.scrollTop = el.scrollHeight;
   }, [isTyping]);
 
+  // Load older messages — prefers the client-side buffer, then falls back
+  // to a cursor-paginated server request (same @g.us exclusion filters as
+  // the initial query — buildInboxMessageQueryPlan governs the OR clause).
+  const loadOlderMessages = useCallback(async () => {
+    if (!activeJid || !user?.id || isLoadingOlder) return;
+    const el = scrollRef.current;
+    if (hasMoreOlderClient) {
+      if (el) preserveScrollRef.current = el.scrollHeight;
+      setIsLoadingOlder(true);
+      setVisibleCount((c) => Math.min(c + PAGE_SIZE, mergedMessages.length));
+      return;
+    }
+    if (!hasMoreOlderServer) return;
+    const cache = qc.getQueryData<ChatMessageRow[]>(["wa-messages", user.id, activeJid]) ?? [];
+    // Oldest server row = smallest wa_timestamp (fallback created_at).
+    let cursor: string | null = null;
+    for (const r of cache) {
+      const ts = r.wa_timestamp ?? r.created_at ?? null;
+      if (!ts) continue;
+      if (!cursor || ts < cursor) cursor = ts;
+    }
+    if (!cursor) return;
+    if (el) preserveScrollRef.current = el.scrollHeight;
+    setIsLoadingOlder(true);
+    try {
+      const older = await fetchInboxMessages(user.id, activeJid, {
+        beforeTs: cursor,
+        limit: MSG_PAGE_SIZE,
+      });
+      if (older.length < MSG_PAGE_SIZE) markMsgsExhausted(activeJid, true);
+      if (older.length > 0) {
+        qc.setQueryData<ChatMessageRow[]>(
+          ["wa-messages", user.id, activeJid],
+          (prev) => {
+            const cur = prev ?? [];
+            const seen = new Set(cur.map((r) => r.id));
+            // Dedupe by id — realtime could have raced an INSERT.
+            return [...cur, ...older.filter((r) => !seen.has(r.id))];
+          },
+        );
+        setVisibleCount((c) => c + older.length);
+      } else {
+        setIsLoadingOlder(false);
+      }
+    } catch (err) {
+      console.warn("[inbox] loadOlderMessages failed", err);
+      setIsLoadingOlder(false);
+    }
+  }, [activeJid, user?.id, isLoadingOlder, hasMoreOlderClient, hasMoreOlderServer, mergedMessages.length, qc, markMsgsExhausted]);
+
   const handleMessagesScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
     if (el.scrollTop <= 60 && hasMoreOlder && !isLoadingOlder) {
-      setIsLoadingOlder(true);
-      preserveScrollRef.current = el.scrollHeight;
-      setVisibleCount((c) => Math.min(c + PAGE_SIZE, mergedMessages.length));
+      void loadOlderMessages();
     }
-  }, [hasMoreOlder, isLoadingOlder, mergedMessages.length]);
+  }, [hasMoreOlder, isLoadingOlder, loadOlderMessages]);
+
+  // Load more conversations from the server (cursor on last_message_at) —
+  // preserves the same user_id + is_archived=false filters as the initial page.
+  const loadMoreConversations = useCallback(async () => {
+    if (!user?.id || isLoadingMoreConv || convServerExhaustedRef.current) return;
+    const cache = qc.getQueryData<ConversationRow[]>(["wa-conversations", user.id]) ?? [];
+    let cursor: string | null = null;
+    for (const c of cache) {
+      const ts = c.last_message_at ?? null;
+      if (!ts) continue;
+      if (!cursor || ts < cursor) cursor = ts;
+    }
+    if (!cursor) return;
+    setIsLoadingMoreConv(true);
+    try {
+      const older = await fetchInboxConversations(user.id, {
+        beforeTs: cursor,
+        limit: CONV_PAGE_SIZE,
+      });
+      if (older.length < CONV_PAGE_SIZE) convServerExhaustedRef.current = true;
+      if (older.length > 0) {
+        qc.setQueryData<ConversationRow[]>(
+          ["wa-conversations", user.id],
+          (prev) => {
+            const cur = prev ?? [];
+            const seen = new Set(cur.map((r) => r.id));
+            return [...cur, ...older.filter((r) => !seen.has(r.id))];
+          },
+        );
+      }
+    } catch (err) {
+      console.warn("[inbox] loadMoreConversations failed", err);
+    } finally {
+      setIsLoadingMoreConv(false);
+    }
+  }, [user?.id, isLoadingMoreConv, qc]);
+
+  // Reset conv exhaustion whenever the whole list refetches (new user/session).
+  useEffect(() => {
+    convServerExhaustedRef.current = false;
+  }, [user?.id]);
+
 
 
   // Reset typing indicator when switching conversations
