@@ -125,3 +125,27 @@ export function buildInboxMessageQueryPlan(
     excludeGroups: true,
   };
 }
+
+/**
+ * Decide whether a loaded message belongs to the currently-open conversation.
+ * Used as a hard filter on the client to prevent placeholder/stale query data
+ * from a previously-open chat rendering under the new header while a fresh
+ * fetch is in flight — a common bug when switching between a group and a
+ * private chat back-to-back.
+ *
+ * Rules mirror `buildInboxMessageQueryPlan`:
+ * - Group active (`@g.us`): only messages with the exact same JID belong.
+ * - Private active: any message whose `remote_jid` ends with `@g.us` is
+ *   rejected; the rest are accepted (server-side query already narrowed by
+ *   JID aliases + phone).
+ */
+export function isMessageForActiveConversation(
+  messageRemoteJid: string | null | undefined,
+  activeJid: string | null | undefined,
+): boolean {
+  if (!activeJid) return false;
+  const rj = messageRemoteJid ?? "";
+  if (activeJid.endsWith("@g.us")) return rj === activeJid;
+  return !rj.endsWith("@g.us");
+}
+

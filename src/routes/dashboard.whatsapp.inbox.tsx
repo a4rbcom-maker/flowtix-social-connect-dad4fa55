@@ -95,6 +95,7 @@ import {
   inboxJidAliases as inboxJidAliasesExt,
   isLidJid as isLidJidExt,
   isLidLocal as isLidLocalExt,
+  isMessageForActiveConversation,
   jidLocal as jidLocalExt,
 } from "@/lib/wa-inbox-query";
 
@@ -436,10 +437,14 @@ function InboxPage() {
     [convQuery.data],
   );
 
-  const messages = useMemo<ChatMessageRow[]>(
-    () => (Array.isArray(msgsQuery.data) ? msgsQuery.data : []),
-    [msgsQuery.data],
-  );
+  const messages = useMemo<ChatMessageRow[]>(() => {
+    const raw = Array.isArray(msgsQuery.data) ? msgsQuery.data : [];
+    // Hard-filter placeholder/stale rows from the previously-open conversation
+    // (react-query's placeholderData keeps prev results during a JID switch).
+    // Same rule as buildInboxMessageQueryPlan — pinned by
+    // src/lib/__tests__/wa-inbox-query.test.ts.
+    return raw.filter((m) => isMessageForActiveConversation(m.remote_jid, activeJid));
+  }, [msgsQuery.data, activeJid]);
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessageRow[]>([]);
   const visibleMessageIds = useMemo(() => new Set(messages.map((m) => m.id)), [messages]);
   // Match optimistic → real outgoing rows by content, so the bubble stays
@@ -467,7 +472,15 @@ function InboxPage() {
         if (outgoingSignatures.has(sig)) return false;
         return true;
       }),
-    ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+    ].sort((a, b) => {
+      const ta = new Date(a.created_at).getTime();
+      const tb = new Date(b.created_at).getTime();
+      if (ta !== tb) return ta - tb;
+      // Stable tiebreaker on id so React keys keep a deterministic order
+      // when two rows share the same timestamp (rare but possible on bulk
+      // history syncs). Without it the list can jitter across renders.
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    }),
     [activeJid, messages, optimisticMessages, visibleMessageIds, outgoingSignatures],
   );
 
