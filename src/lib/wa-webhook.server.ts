@@ -708,6 +708,9 @@ async function importHistoryMessages(params: {
       h,
       msgType,
     );
+    if (msgType === "text" && !text) {
+      continue;
+    }
     const tsRaw = h.timestamp;
     const waTimestamp =
       parsed?.waTimestamp ?? (typeof tsRaw === "number"
@@ -1174,6 +1177,11 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         }
         continue;
       }
+    }
+
+    if (msgType === "text" && !text) {
+      skipped++;
+      continue;
     }
 
     const waTimestamp = m.waTimestamp ?? new Date().toISOString();

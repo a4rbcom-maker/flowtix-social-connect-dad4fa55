@@ -2529,7 +2529,13 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
   if (error) throw new Error(error.message);
 
 
-  const rows = [...(data ?? [])].reverse();
+  const rows = [...(data ?? [])]
+    .filter((row) => {
+      const hasText = Boolean(row.text_body?.trim());
+      const hasMedia = Boolean(row.media_url?.trim()) || normalizeWaMessageType(row.msg_type) !== "text";
+      return hasText || hasMedia;
+    })
+    .reverse();
   return Promise.all(rows.map(async (row) => {
     const raw = {} as Record<string, unknown>;
     const msgType = mediaTypeFromRaw(raw, row.msg_type);
@@ -3079,7 +3085,7 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
         )}
         {m.text_body ? (
           <p className="max-w-full whitespace-pre-wrap break-words text-start leading-relaxed [overflow-wrap:anywhere]">{m.text_body}</p>
-        ) : !m.media_url ? (
+        ) : !m.media_url && m.msg_type !== "text" ? (
           <p className="italic opacity-75">[{m.msg_type}]</p>
         ) : null}
         {(isPending || isFailed) && (

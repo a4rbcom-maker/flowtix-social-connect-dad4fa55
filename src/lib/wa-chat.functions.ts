@@ -101,7 +101,11 @@ export const getConversationMessages = createServerFn({ method: "POST" })
       .order("wa_timestamp", { ascending: true })
       .limit(1000);
     if (error) throw new Error(error.message);
-    return (rows ?? []).map((r) => {
+    return (rows ?? []).filter((r) => {
+      const hasText = Boolean(r.text_body?.trim());
+      const type = mediaTypeFromRaw(asRecord(r.raw), r.msg_type);
+      return hasText || type !== "text" || Boolean(r.media_url?.trim());
+    }).map((r) => {
       const raw = asRecord(r.raw);
       const msgType = mediaTypeFromRaw(raw, r.msg_type);
       const storedMediaUrl = typeof r.media_url === "string" && r.media_url.trim() ? r.media_url.trim() : null;
