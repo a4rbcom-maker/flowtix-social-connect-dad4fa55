@@ -28,7 +28,7 @@ const { execSync } = require('child_process');
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 
-const SERVER_VERSION = '1.8.5-flowtix-history';
+const SERVER_VERSION = '1.8.6-flowtix-safe-revive';
 // ─── OTP Delivery Guarantee (v1.8.0 — conservative) ───
 // Tracks every OTP we send. If WA doesn't ack delivery within OTP_DELIVERY_DEADLINE_MS,
 // we resend (attempt 1: no flush, just bypass device cache; attempt 2: deep Signal flush + resend).
@@ -1827,6 +1827,48 @@ app.post('/api/sessions/:id/soft-reset', async (req, res) => {
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Soft revive: rebuild the in-memory socket for the SAME session id while
+// preserving the paired credentials on disk. This is safe for automatic
+// recovery paths because it never logs out and never deletes the session folder.
+app.post('/api/sessions/:id/revive', async (req, res) => {
+  const sid = req.params.id;
+  try {
+    const existing = sessions.get(sid);
+    if (existing?.connected) {
+      return res.json({ ok: true, sessionId: sid, status: 'already_connected', connected: true });
+    }
+
+    const meta = loadSessionMeta(sid);
+    const sessionDir = getSessionDir(sid);
+    if (!existing && !fs.existsSync(sessionDir)) {
+      return res.status(404).json({ ok: false, error: 'Session credentials not found' });
+    }
+
+    if (existing) {
+      existing.disableReconnect = true;
+      try { if (existing.reconnectTimer) clearTimeout(existing.reconnectTimer); } catch {}
+      try { if (existing._hollowWatchTimer) clearTimeout(existing._hollowWatchTimer); } catch {}
+      try { existing.socket?.end?.(); } catch {}
+      sessions.delete(sid);
+    }
+
+    const result = await createSession(
+      sid,
+      existing?.tenantId || meta.tenantId || null,
+      existing?.webhookUrl || meta.webhookUrl || WEBHOOK_URL,
+      {
+        markOnline: existing?.markOnline !== undefined ? existing.markOnline : (meta.markOnline !== undefined ? !!meta.markOnline : true),
+        force: true,
+        syncFullHistory: false,
+      },
+    );
+
+    return res.json({ ok: true, revived: true, ...result });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
   }
 });
 

@@ -353,14 +353,19 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
           : liveStatus === "disconnected"
             ? "bridge_session_not_connected"
             : `bridge_session_${liveStatus}`;
-        await updateWaSessionStatus(supabase, {
+        // History sync is a read-only maintenance action. It must never turn a
+        // previously connected WhatsApp session into QR/connecting just because
+        // the bridge is doing a transient socket rebuild. Log the observation
+        // and stop the sync safely; real logout/QR state is handled only by
+        // signed bridge webhooks or explicit user reset/disconnect actions.
+        await logWaSessionEvent(supabase, {
           userId,
           sessionId: row.session_id,
-          nextStatus: liveStatus,
+          fromStatus: row.status ?? null,
+          toStatus: row.status ?? liveStatus,
           source: "history_sync",
-          reason,
+          reason: `history_sync_skipped_non_connected_status:${reason}`,
           rawStatus: String(live.status ?? live.state ?? liveStatus),
-          phoneNumber: livePhone,
         });
         return {
           ok: false,
@@ -371,18 +376,16 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
         };
       }
     } catch (err) {
-      if (row.status !== "connected") {
-        return {
-          ok: false,
-          sessionId: row.session_id,
-          requested: false,
-          attempts: [{ path: `/api/sessions/${row.session_id}/status`, ok: false, status: err instanceof BridgeError ? err.status : undefined, error: err instanceof Error ? err.message : String(err) }],
-          error: "session_not_connected",
-        };
-      }
+      return {
+        ok: false,
+        sessionId: row.session_id,
+        requested: false,
+        attempts: [{ path: `/api/sessions/${row.session_id}/status`, ok: false, status: err instanceof BridgeError ? err.status : undefined, error: err instanceof Error ? err.message : String(err) }],
+        error: "session_status_unavailable",
+      };
     }
 
-    if (liveStatus !== "connected" && row.status !== "connected") {
+    if (liveStatus !== "connected") {
       return { ok: false, sessionId: row.session_id, requested: false, attempts: [], error: "session_not_connected" };
     }
 
@@ -1047,13 +1050,14 @@ export interface WaDeepResetReport {
   createdSessionId: string | null;
   webhookUrl: string | null;
   error: string | null;
+  preserved?: boolean;
+  status?: string | null;
 }
 
 /**
- * Nuclear option: enumerate ALL bridge sessions, force-delete every session
- * matching this user's tenantId (fixes "silent socket death" where an old
- * Baileys socket is still connected on the bridge but not delivering events),
- * then create a fresh session with a brand-new id, webhookUrl, and tenantId.
+ * Safe maintenance action: verify/revive the same bridge session without
+ * deleting credentials or creating a fresh QR. The old implementation was a
+ * nuclear delete+new-QR path and could break a paired customer number.
  */
 export const deepResetWaSession = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -1066,6 +1070,8 @@ export const deepResetWaSession = createServerFn({ method: "POST" })
       createdSessionId: null,
       webhookUrl: null,
       error: null,
+      preserved: true,
+      status: null,
     };
 
     const { data: existing } = await supabase
@@ -1074,86 +1080,73 @@ export const deepResetWaSession = createServerFn({ method: "POST" })
       .eq("user_id", userId)
       .maybeSingle();
 
-    const userIdPrefix = `flowtix-${userId.replace(/-/g, "").slice(0, 16)}`;
-    const toDelete = new Set<string>();
-    if (existing?.session_id) toDelete.add(existing.session_id);
-    try {
-      const list = await waBridge.listSessions();
-      for (const s of list.sessions ?? []) {
-        const id = s.id ?? "";
-        if (!id) continue;
-        if (s.tenantId === userId || id.startsWith(userIdPrefix)) {
-          toDelete.add(id);
-        }
-      }
-    } catch (err) {
-      console.warn("[wa] deepReset: listSessions failed:", err instanceof Error ? err.message : err);
-    }
-
-    for (const id of toDelete) {
-      try {
-        await waBridge.deleteSession(id);
-        report.removedBridgeSessions.push(id);
-      } catch (err) {
-        report.deleteErrors.push({ id, error: err instanceof Error ? err.message : String(err) });
-      }
-    }
-
-    await new Promise((r) => setTimeout(r, 1500));
-
-    const newSessionId = `flowtix-${userId.replace(/-/g, "").slice(0, 16)}-${Date.now().toString(36)}`;
-    const webhookUrl = await deriveWebhookUrl();
-    report.webhookUrl = webhookUrl;
-    try {
-      await waBridge.createSession(newSessionId, {
-        webhookUrl: webhookUrl ?? undefined,
-        tenantId: userId,
-        syncFullHistory: true,
-      });
-      report.createdSessionId = newSessionId;
-    } catch (err) {
-      const msg = describeBridgeError(err);
-      report.error = `createSession failed: ${msg}`;
+    if (!existing?.session_id) {
+      report.error = "no_session";
       return report;
     }
 
-    const now = new Date().toISOString();
-    if (existing) {
+    const webhookUrl = await deriveWebhookUrl();
+    report.webhookUrl = webhookUrl;
+
+    try {
+      const statusPayload = await waBridge.getStatus(existing.session_id);
+      const status = inferStatus(statusPayload);
+      report.status = status;
+      if (status === "connected") {
+        await updateWaSessionStatus(supabase, {
+          userId,
+          sessionId: existing.session_id,
+          nextStatus: "connected",
+          source: "reset",
+          reason: "safe_maintenance_confirmed_connected",
+          rawStatus: String(statusPayload.status ?? statusPayload.state ?? "connected"),
+          phoneNumber: typeof statusPayload.phoneNumber === "string" ? statusPayload.phoneNumber : typeof statusPayload.phone === "string" ? statusPayload.phone : null,
+          logEvenIfUnchanged: true,
+        });
+        report.ok = true;
+        report.createdSessionId = existing.session_id;
+        return report;
+      }
+    } catch (err) {
+      console.warn("[wa] safeMaintenance: status check failed:", err instanceof Error ? err.message : err);
+    }
+
+    try {
+      await waBridge.reviveSession(existing.session_id);
+      await new Promise((r) => setTimeout(r, 1500));
+      const statusPayload = await waBridge.getStatus(existing.session_id);
+      const status = inferStatus(statusPayload);
+      report.status = status;
       await logWaSessionEvent(supabase, {
         userId,
         sessionId: existing.session_id,
         fromStatus: existing.status ?? null,
-        toStatus: "disconnected",
+        toStatus: existing.status ?? status,
         source: "reset",
-        reason: "deep_reset_recreate_bridge_session_keep_history",
+        reason: `safe_maintenance_revive_result:${status}`,
+        rawStatus: String(statusPayload.status ?? statusPayload.state ?? status),
       });
-      await supabase
-        .from("wa_sessions")
-        .update({
-          session_id: newSessionId,
-          status: "qr",
-          qr_data_url: null,
-          phone_number: null,
-          last_seen_at: now,
-        })
-        .eq("user_id", userId);
-    } else {
-      await supabase
-        .from("wa_sessions")
-        .insert({ user_id: userId, session_id: newSessionId, status: "qr" });
+      if (status === "connected") {
+        await updateWaSessionStatus(supabase, {
+          userId,
+          sessionId: existing.session_id,
+          nextStatus: "connected",
+          source: "reset",
+          reason: "safe_maintenance_revived_connected",
+          rawStatus: String(statusPayload.status ?? statusPayload.state ?? "connected"),
+          phoneNumber: typeof statusPayload.phoneNumber === "string" ? statusPayload.phoneNumber : typeof statusPayload.phone === "string" ? statusPayload.phone : null,
+          logEvenIfUnchanged: true,
+        });
+      }
+      report.createdSessionId = existing.session_id;
+      report.ok = status === "connected" || status === "connecting";
+      if (!report.ok) report.error = `session_not_connected:${status}`;
+      return report;
+    } catch (err) {
+      const msg = describeBridgeError(err);
+      report.error = `safe maintenance failed: ${msg}`;
+      return report;
     }
-
-    await logWaSessionEvent(supabase, {
-      userId,
-      sessionId: newSessionId,
-      fromStatus: null,
-      toStatus: "qr",
-      source: "reset",
-      reason: `deep_reset_new_session_created (removed ${report.removedBridgeSessions.length} old bridge sessions, kept inbox history)`,
-    });
-
-    report.ok = true;
-    return report;
   });
 
 
