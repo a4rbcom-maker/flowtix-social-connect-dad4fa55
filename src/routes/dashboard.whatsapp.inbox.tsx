@@ -900,6 +900,16 @@ function InboxPage() {
           setOptimisticMessages((current) => current.filter((m) => m.id !== idToClear));
         }, 60000);
       }
+      qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
+      qc.invalidateQueries({ queryKey: ["wa-conversations"] });
+      toast.success(
+        hadFile
+          ? isAr ? "تم إرسال المرفق بنجاح" : "Attachment sent successfully"
+          : isAr ? "تم إرسال الرسالة بنجاح" : "Message sent successfully",
+      );
+    },
+
+
 
     // Show a rich, dismissible inline alert instead of a noisy toast so the
     // user sees the reason + retry steps without spam on repeated attempts.
