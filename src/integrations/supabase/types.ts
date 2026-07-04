@@ -2068,6 +2068,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      wa_normalize_phone: {
+        Args: { _default_country?: string; _value: string }
+        Returns: string
+      }
       wa_reconcile_conversation_order: {
         Args: { _user_id?: string }
         Returns: number
