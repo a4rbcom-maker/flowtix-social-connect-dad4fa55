@@ -321,6 +321,24 @@ describe("Bot-Xtra v1.8.x: parseMessageEntry", () => {
     expect(m.providerMessageId).toBe("3EB0BX1.8.LID001");
   });
 
+  it("uses remoteJidAlt as the public phone while preserving the LID chat address", () => {
+    const m = parseMessageEntry({
+      id: "3EB0BX1.8.LIDALT001",
+      from: "182239858000081",
+      to: "182239858000081",
+      rawJid: "182239858000081@lid",
+      jidType: "lid",
+      remoteJidAlt: "201273747262@s.whatsapp.net",
+      fromMe: false,
+      body: "مرحبا",
+      type: "text",
+      timestamp: 1_730_000_045,
+    })!;
+    expect(m).not.toBeNull();
+    expect(m.remoteJid).toBe("182239858000081@lid");
+    expect(m.fromPhone).toBe("201273747262");
+  });
+
   it("uses rawJid/jidType from history sync so LID chats are not converted to phone JIDs", () => {
     const m = parseMessageEntry({
       id: "3EB0BX1.8.HISTLID001",

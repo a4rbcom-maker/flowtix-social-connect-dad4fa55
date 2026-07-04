@@ -505,7 +505,7 @@ function InboxPage() {
 
   useEffect(() => {
     if (!user?.id) return;
-    const key = `wa-lid-match:${user.id}`;
+    const key = `wa-lid-match-v2:${user.id}`;
     if (typeof window === "undefined") return;
     if (window.sessionStorage.getItem(key)) return;
     window.sessionStorage.setItem(key, "1");
