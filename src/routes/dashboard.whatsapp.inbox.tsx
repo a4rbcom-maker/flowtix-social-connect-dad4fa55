@@ -638,7 +638,7 @@ function InboxPage() {
   }, [qc, user?.id, activeJid, requestHistorySyncFn, requestChatSyncFn, conversations.length]);
 
   // If a known chat opens with only the first/newest message, ask the bridge for
-  // that chat's backlog immediately. Bot-Xtra exposes per-chat history requests
+  // that chat's backlog immediately. The WhatsApp connector exposes per-chat history requests
   // even when a global chat catalogue endpoint is unavailable.
   useEffect(() => {
     if (!user?.id || !activeJid) return;
@@ -2003,7 +2003,7 @@ function QuickRepliesMenu({
   );
 }
 
-// Contact info side panel (Bot-Xtra style)
+// Contact info side panel
 function ContactInfoPanel({
   conv,
   jid,
