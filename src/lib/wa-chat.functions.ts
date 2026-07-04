@@ -240,6 +240,34 @@ export const sendChatMessage = createServerFn({ method: "POST" })
     const sentAt = new Date().toISOString();
     const hasMedia = !!data.mediaUrl;
     const mediaType = data.mediaType ?? "image";
+    const msgType = hasMedia ? mediaType : "text";
+    const textBody = data.text || null;
+    const mediaUrlVal = hasMedia ? data.mediaUrl : null;
+
+    // Signature-based dedup: if the same outgoing message (same jid + text + media + type)
+    // was sent in the last 60s, reuse it instead of creating a duplicate row. This prevents
+    // accidental double-sends from client retries, double-clicks, or auto-dispatch loops.
+    const dedupSince = new Date(Date.now() - 60_000).toISOString();
+    const dedupQuery = supabase
+      .from("wa_messages")
+      .select("id, status")
+      .eq("user_id", userId)
+      .eq("session_id", sess.session_id)
+      .eq("remote_jid", data.remoteJid)
+      .eq("direction", "out")
+      .eq("msg_type", msgType)
+      .gte("created_at", dedupSince)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (textBody === null) dedupQuery.is("text_body", null);
+    else dedupQuery.eq("text_body", textBody);
+    if (mediaUrlVal === null) dedupQuery.is("media_url", null);
+    else dedupQuery.eq("media_url", mediaUrlVal as string);
+    const { data: existingDup } = await dedupQuery.maybeSingle();
+    if (existingDup?.id) {
+      return { ok: true, messageId: existingDup.id, deduped: true };
+    }
+
     const { data: pendingMessage, error: pendingInsertError } = await supabase
       .from("wa_messages")
       .insert({
@@ -248,9 +276,9 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         direction: "out",
         remote_jid: data.remoteJid,
         to_phone: phoneDigits || data.remoteJid,
-        msg_type: hasMedia ? mediaType : "text",
-        text_body: data.text || null,
-        media_url: hasMedia ? data.mediaUrl : null,
+        msg_type: msgType,
+        text_body: textBody,
+        media_url: mediaUrlVal,
         status: "pending",
         provider_message_id: null,
         wa_timestamp: sentAt,
@@ -266,6 +294,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
     if (pendingInsertError || !pendingMessage?.id) {
       throw new Error(pendingInsertError?.message || "Failed to save outgoing message before sending");
     }
+
 
     await upsertConversationFromMessage({
       userId,
