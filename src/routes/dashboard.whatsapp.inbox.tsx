@@ -100,6 +100,7 @@ import {
 } from "@/lib/wa-inbox-query";
 import { nowMs, recordInboxQueryStat, useInboxQueryPerf } from "@/lib/wa-inbox-perf";
 import { createDebouncedInvalidator } from "@/lib/wa-inbox-invalidation";
+import { dedupeAndSortMessages } from "@/lib/wa-inbox-dedupe";
 import {
   coalescingRate,
   recordQueryInvalidated,
@@ -529,26 +530,24 @@ function InboxPage() {
     return set;
   }, [messages]);
   const mergedMessages = useMemo<ChatMessageRow[]>(
-    () => [
-      ...messages,
-      ...optimisticMessages.filter((m) => {
+    () => {
+      // Strong id-keyed dedupe + optimistic↔real pairing + late-arrival ordering.
+      // العقد ومغطّى بـ src/lib/__tests__/wa-inbox-dedupe.test.ts — أي مسار
+      // (realtime، pagination، optimistic) قد يضيف نفس id لكنه لن يُنتج فقاعة
+      // مكرّرة، والرسائل المتأخرة تدخل في مكانها الزمني الصحيح لا في الآخر.
+      const optimisticForActive = optimisticMessages.filter((m) => {
         if (m.remote_jid !== activeJid) return false;
         if (visibleMessageIds.has(m.id)) return false;
         const sig = `${(m.text_body ?? "").trim()}|${m.media_url ?? ""}|${m.msg_type ?? ""}`;
-        // If a real outgoing row with same content is already loaded, drop
-        // the optimistic clone to avoid duplicate bubbles.
+        // Legacy content-signature guard — real row may lack queued_id (older
+        // history sync), so this catches the "same content" case dedupe-by-id
+        // can't see. queued_id-based pairing inside dedupeAndSortMessages
+        // handles the modern path.
         if (outgoingSignatures.has(sig)) return false;
         return true;
-      }),
-    ].sort((a, b) => {
-      const ta = new Date(a.created_at).getTime();
-      const tb = new Date(b.created_at).getTime();
-      if (ta !== tb) return ta - tb;
-      // Stable tiebreaker on id so React keys keep a deterministic order
-      // when two rows share the same timestamp (rare but possible on bulk
-      // history syncs). Without it the list can jitter across renders.
-      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-    }),
+      });
+      return dedupeAndSortMessages([...messages, ...optimisticForActive]);
+    },
     [activeJid, messages, optimisticMessages, visibleMessageIds, outgoingSignatures],
   );
 
