@@ -29,6 +29,27 @@ export function digits(s: unknown): string | null {
   return d || null;
 }
 
+export function normalizePhoneDigits(value: unknown, defaultCountryCode = "20"): string | null {
+  if (typeof value !== "string" && typeof value !== "number" && typeof value !== "bigint") return null;
+  let cleaned = String(value).trim().replace(/[^0-9+]/g, "");
+  if (!cleaned) return null;
+  if (cleaned.startsWith("+")) cleaned = cleaned.slice(1);
+  cleaned = cleaned.replace(/[^0-9]/g, "");
+  if (cleaned.startsWith("00")) cleaned = cleaned.slice(2);
+  if (!cleaned) return null;
+
+  if (defaultCountryCode === "20" && /^01[0125][0-9]{8}$/.test(cleaned)) {
+    return `20${cleaned.slice(1)}`;
+  }
+  if (defaultCountryCode === "20" && /^1[0125][0-9]{8}$/.test(cleaned)) {
+    return `20${cleaned}`;
+  }
+  if (cleaned.startsWith("0") && cleaned.length >= 8) {
+    return `${defaultCountryCode}${cleaned.replace(/^0+/, "")}`;
+  }
+  return cleaned;
+}
+
 export function pickStr(obj: unknown, ...keys: string[]): string | null {
   if (!obj || typeof obj !== "object") return null;
   const rec = obj as Record<string, unknown>;
@@ -82,7 +103,7 @@ function pickContactRef(value: unknown): string | null {
 export function normalizeRemoteJid(remoteJid: string | null, phone: string | null, isGroup = false): string {
   const jid = remoteJid || "";
   if (jid.includes("@")) return jid;
-  const d = digits(jid) || phone;
+  const d = normalizePhoneDigits(jid) || phone;
   return d ? `${d}@${isGroup ? "g.us" : "s.whatsapp.net"}` : "unknown";
 }
 
@@ -105,7 +126,7 @@ export function normalizeMessageStatus(value: unknown, fromMe: boolean): string 
 }
 
 function isRealPhoneDigits(value: string | null | undefined): boolean {
-  const d = digits(value);
+  const d = normalizePhoneDigits(value);
   if (!d) return false;
   // WhatsApp public phone numbers are normally 10-13 digits. Modern LID aliases
   // are 14+ digits and must never be displayed as the customer's real number.
@@ -113,11 +134,11 @@ function isRealPhoneDigits(value: string | null | undefined): boolean {
 }
 
 function pickPhoneFromValue(value: unknown): string | null {
-  const direct = digits(value);
+  const direct = normalizePhoneDigits(value);
   if (isRealPhoneDigits(direct)) return direct;
 
   const obj = asObj(value);
-  const phone = digits(pickStr(obj, "phoneNumber", "phone", "number", "user", "pn", "senderPn", "participantPn"));
+  const phone = normalizePhoneDigits(pickStr(obj, "phoneNumber", "phone", "number", "user", "pn", "senderPn", "participantPn"));
   return isRealPhoneDigits(phone) ? phone : null;
 }
 
@@ -339,7 +360,7 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
   );
   const rawFromLidJid = rawFromLooksLikeLid && rawFromDigits ? `${rawFromDigits}@lid` : null;
   const realPhone =
-    explicitPhone || (!rawFromLidJid && jidType !== "lid" ? rawFromDigits : null);
+    explicitPhone || (!rawFromLidJid && jidType !== "lid" ? normalizePhoneDigits(rawFromDigits) : null);
   const keyRemote = pickStr(key, "remoteJid");
   const groupJid = pickStr(entry, "groupJid", "groupId") || (keyRemote?.endsWith("@g.us") ? keyRemote : null);
   const directChatJid = pickStr(entry, "rawJid", "remoteJid", "remote_jid", "jid", "chatId");
@@ -367,7 +388,7 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
     if (!d) return null;
     if (value?.endsWith("@lid")) return null;
     if (jidType === "lid" && rawFromDigits && d === rawFromDigits) return null;
-    return d;
+    return normalizePhoneDigits(value);
   };
 
   const fromPhone = isGroup
