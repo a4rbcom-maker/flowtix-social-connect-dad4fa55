@@ -825,6 +825,8 @@ export async function upsertConversationFromMessage(opts: {
 }): Promise<string | null> {
   const { userId, sessionId, remoteJid, contactName, contactPhone, text, direction, historical, profilePicUrl } = opts;
   const messageAt = opts.messageAt ?? new Date().toISOString();
+  const readableText = text?.trim() || null;
+  const hasReadableActivity = Boolean(readableText);
   const safeContactName = direction === "in" || remoteJid.endsWith("@g.us") ? contactName : null;
   const localPart = remoteJid.split("@")[0] ?? "";
   const looksLikeLidAlias = /^\d{14,}$/.test(localPart);
@@ -854,20 +856,20 @@ export async function upsertConversationFromMessage(opts: {
   if (existing) {
     const existingAt = existing.last_message_at ? new Date(existing.last_message_at).getTime() : 0;
     const incomingAt = new Date(messageAt).getTime();
-    const isNewer = incomingAt >= existingAt;
+    const isNewer = hasReadableActivity && incomingAt >= existingAt;
     await supabaseAdmin
       .from("wa_conversations")
       .update({
         session_id: sessionId,
         ...(isNewer
           ? {
-              last_message_text: text ?? null,
+              last_message_text: readableText,
               last_message_at: messageAt,
               last_direction: direction,
             }
           : {}),
         unread_count:
-          !historical && direction === "in"
+          hasReadableActivity && !historical && direction === "in"
             ? (existing.unread_count || 0) + 1
             : existing.unread_count,
         contact_name: existing.contact_name || safeContactName,
@@ -878,6 +880,8 @@ export async function upsertConversationFromMessage(opts: {
     return existing.id;
   }
 
+  if (!hasReadableActivity) return null;
+
   const { data: inserted } = await supabaseAdmin
     .from("wa_conversations")
     .insert({
@@ -887,7 +891,7 @@ export async function upsertConversationFromMessage(opts: {
       contact_name: safeContactName,
       contact_phone: safeContactPhone,
       profile_pic_url: profilePicUrl ?? null,
-      last_message_text: text ?? null,
+      last_message_text: readableText,
       last_message_at: messageAt,
       last_direction: direction,
       unread_count: !historical && direction === "in" ? 1 : 0,
