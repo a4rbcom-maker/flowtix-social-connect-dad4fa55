@@ -83,7 +83,7 @@ describe("inbox — message list rendering", () => {
 describe("inbox — no runtime hazards", () => {
   it("لا يوجد supabase.channel خارج useEffect (يمنع leaks عبر re-renders)", () => {
     // كل channel(...) يجب أن يسبقه useEffect قريب.
-    const channels = [...code.matchAll(/supabase\.channel\s*\(/g)];
+    const channels = [...code.matchAll(/supabase\s*\.\s*channel\s*\(/g)];
     for (const m of channels) {
       const idx = m.index ?? 0;
       const before = code.slice(Math.max(0, idx - 400), idx);
