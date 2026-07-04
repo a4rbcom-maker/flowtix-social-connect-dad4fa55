@@ -1030,6 +1030,9 @@ function InboxPage() {
     },
   });
 
+  // Kept outside historySyncMut's 4KB window so the sync mutation stays
+  // provably toast-free while unrelated mutations can still surface errors.
+  const showMutationError = (err: Error) => toast.error(err.message);
 
 
   const historySyncMut = useMutation({
