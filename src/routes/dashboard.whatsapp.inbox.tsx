@@ -2879,13 +2879,12 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
 }
 
 async function fetchInboxMessages(userId: string, remoteJid: string): Promise<ChatMessageRow[]> {
-  const isGroupChat = remoteJid.endsWith("@g.us");
   const baseSelect = "id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw";
 
   // === مسار الجروبات ===
   // نتعامل مع الجروب كوحدة مغلقة: JID = @g.us فقط، ممنوع أي fallback بالهاتف
   // لأن نفس رقم العضو يظهر داخل رسائل الجروب وفي محادثاته الخاصة.
-  if (isGroupChat) {
+  if (remoteJid.endsWith("@g.us")) {
     const { data: groupRows, error: groupError } = await supabase
       .from("wa_messages")
       .select(baseSelect)
@@ -2901,9 +2900,9 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
   }
 
   // === مسار المحادثات الخاصة (@s.whatsapp.net / @lid) ===
-  // نجلب alias الهاتف مرة واحدة، ثم استعلام واحد يجمع JIDs والهاتف عبر .or()
-  // بدلاً من استعلامين منفصلين ثم dedup محلي. شرط استبعاد @g.us محفوظ عبر
-  // .not("remote_jid","like","%@g.us") كدرع نهائي في نفس الاستعلام.
+  // الاستعلام محكوم بواسطة buildInboxMessageQueryPlan من wa-inbox-query — أي
+  // تعديل مستقبلي يجب أن يحافظ على شرط استبعاد @g.us. الاختبارات في
+  // src/lib/__tests__/wa-inbox-query.test.ts تحرس هذا الفصل.
   const { data: convAliases } = await supabase
     .from("wa_conversations")
     .select("contact_phone")
@@ -2913,22 +2912,8 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     .limit(1)
     .maybeSingle();
 
-  const messageAliases = inboxJidAliases(remoteJid, convAliases?.contact_phone ?? null)
-    .filter((jid) => !jid.endsWith("@g.us"));
-  const phone = cleanAliasPhone(convAliases?.contact_phone, remoteJid);
-
-  const orClauses: string[] = [];
-  if (messageAliases.length > 0) {
-    // PostgREST .or() لا يقبل فاصلة داخل قيم in()، نستخدم شكل in.("a","b")
-    const quoted = messageAliases.map((jid) => `"${jid.replace(/"/g, '\\"')}"`).join(",");
-    orClauses.push(`remote_jid.in.(${quoted})`);
-  }
-  if (phone) {
-    orClauses.push(`from_phone.eq.${phone}`);
-    orClauses.push(`to_phone.eq.${phone}`);
-  }
-
-  if (orClauses.length === 0) {
+  const plan = buildInboxMessageQueryPlan(remoteJid, convAliases?.contact_phone ?? null);
+  if (plan.orClauses.length === 0) {
     return await materializeInboxRows([]);
   }
 
@@ -2936,7 +2921,7 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     .from("wa_messages")
     .select(baseSelect)
     .eq("user_id", userId)
-    .or(orClauses.join(","))
+    .or(plan.orClauses.join(","))
     .not("remote_jid", "like", "%@g.us")
     .order("wa_timestamp", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
@@ -2946,8 +2931,8 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
   // eslint-disable-next-line no-console
   console.debug("[wa-inbox] fetchInboxMessages(private)", {
     remoteJid,
-    aliases: messageAliases,
-    phone,
+    aliases: plan.jids,
+    phone: plan.phone,
     count: rows?.length ?? 0,
   });
 
