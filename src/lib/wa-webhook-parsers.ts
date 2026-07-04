@@ -104,6 +104,31 @@ export function normalizeMessageStatus(value: unknown, fromMe: boolean): string 
   return fromMe ? "sent" : "received";
 }
 
+function isRealPhoneDigits(value: string | null | undefined): boolean {
+  const d = digits(value);
+  if (!d) return false;
+  // WhatsApp public phone numbers are normally 10-13 digits. Modern LID aliases
+  // are 14+ digits and must never be displayed as the customer's real number.
+  return d.length >= 10 && d.length <= 13;
+}
+
+function pickPhoneFromValue(value: unknown): string | null {
+  const direct = digits(value);
+  if (isRealPhoneDigits(direct)) return direct;
+
+  const obj = asObj(value);
+  const phone = digits(pickStr(obj, "phoneNumber", "phone", "number", "user", "pn", "senderPn", "participantPn"));
+  return isRealPhoneDigits(phone) ? phone : null;
+}
+
+function pickExplicitPhone(...values: unknown[]): string | null {
+  for (const value of values) {
+    const phone = pickPhoneFromValue(value);
+    if (phone) return phone;
+  }
+  return null;
+}
+
 export function messageIdFrom(entry: Record<string, unknown>): string | null {
   return (
     pickStr(entry, "messageId", "message_id", "msgId", "msg_id", "id", "wamid") ||
@@ -296,11 +321,14 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
   const rawFromRef = pickContactRef(entry.from);
   const rawFromDigits = digits(rawFromRef);
   const jidType = String(entry.jidType ?? entry.jid_type ?? "").toLowerCase();
-  const explicitPhone =
-    digits(pickStr(entry, "senderPn", "participantPn", "phoneNumber", "phone")) ||
-    digits(pickContactRef(senderObj)) ||
-    digits(pickContactRef(participantObj)) ||
-    digits(pickContactRef(fromObj));
+  const explicitPhone = pickExplicitPhone(
+    pickStr(entry, "senderPn", "participantPn", "recipientPn", "remoteJidAlt", "phoneNumber", "phone", "number", "user", "pn"),
+    senderObj,
+    participantObj,
+    fromObj,
+    recipientObj,
+    toObj,
+  );
   const rawFromLooksLikeLid = Boolean(
     !isGroup &&
       rawFromDigits &&
