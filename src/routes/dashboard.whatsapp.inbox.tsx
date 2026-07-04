@@ -172,6 +172,11 @@ function InboxPage() {
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const preserveScrollRef = useRef<number | null>(null);
   const prevMsgLenRef = useRef<number>(0);
+  // Server-side pagination state — تتبّع أي JID/محادثات استُنفدت من السيرفر
+  // كي لا نضرب استعلامات فارغة عند التمرير للأعلى.
+  const msgsServerExhaustedRef = useRef<Map<string, boolean>>(new Map());
+  const convServerExhaustedRef = useRef<boolean>(false);
+  const [isLoadingMoreConv, setIsLoadingMoreConv] = useState(false);
 
   type SyncStatus = "idle" | "running" | "pending" | "done" | "error";
   const [syncState, setSyncState] = useState<{
@@ -377,12 +382,33 @@ function InboxPage() {
     refetchOnWindowFocus: false,  // Realtime يغطي التحديث؛ لا تجلب عند العودة للتبويب
     refetchOnReconnect: "always", // بعد فقدان الشبكة نُزامن مرة
   });
+  // Track which JIDs have no more history on the server (last fetch was
+  // shorter than MSG_PAGE_SIZE). Drives the "load older" affordances so we
+  // don't send empty requests.
+  const [msgsExhausted, setMsgsExhausted] = useState<Set<string>>(() => new Set());
+  const markMsgsExhausted = useCallback((jid: string, exhausted: boolean) => {
+    setMsgsExhausted((prev) => {
+      const has = prev.has(jid);
+      if (has === exhausted) return prev;
+      const next = new Set(prev);
+      if (exhausted) next.add(jid);
+      else next.delete(jid);
+      return next;
+    });
+  }, []);
   const msgsQuery = useQuery<ChatMessageRow[]>({
     queryKey: ["wa-messages", user?.id, activeJid],
-    queryFn: () =>
-      activeJid
-        ? safeCall<ChatMessageRow[]>(() => fetchInboxMessages(user!.id, activeJid), [])
-        : Promise.resolve([]),
+    queryFn: async () => {
+      if (!activeJid || !user?.id) return [];
+      const rows = await safeCall<ChatMessageRow[]>(
+        () => fetchInboxMessages(user!.id, activeJid, { limit: MSG_PAGE_SIZE }),
+        [],
+      );
+      // Initial (cursorless) fetch — إذا رجعت أقل من صفحة كاملة فلا يوجد
+      // تاريخ أقدم في السيرفر ونعلّم المحادثة كمُستنفدة.
+      markMsgsExhausted(activeJid, rows.length < MSG_PAGE_SIZE);
+      return rows;
+    },
     enabled: !!activeJid && !!user?.id,
     placeholderData: (prev) => prev,
     staleTime: 5 * 60_000,        // 5 دقائق — Realtime + scheduleInvalidateMessages يغطي الجديد
@@ -496,7 +522,9 @@ function InboxPage() {
     () => (mergedMessages.length > visibleCount ? mergedMessages.slice(mergedMessages.length - visibleCount) : mergedMessages),
     [mergedMessages, visibleCount],
   );
-  const hasMoreOlder = mergedMessages.length > visibleMessages.length;
+  const hasMoreOlderClient = mergedMessages.length > visibleMessages.length;
+  const hasMoreOlderServer = !!activeJid && !msgsExhausted.has(activeJid);
+  const hasMoreOlder = hasMoreOlderClient || hasMoreOlderServer;
 
   // Contamination guard: detect if messages from a different conversation type
   // (group vs private) leaked into the currently open chat. Warns once per JID.
@@ -868,15 +896,106 @@ function InboxPage() {
     if (nearBottom) el.scrollTop = el.scrollHeight;
   }, [isTyping]);
 
+  // Load older messages — prefers the client-side buffer, then falls back
+  // to a cursor-paginated server request (same @g.us exclusion filters as
+  // the initial query — buildInboxMessageQueryPlan governs the OR clause).
+  const loadOlderMessages = useCallback(async () => {
+    if (!activeJid || !user?.id || isLoadingOlder) return;
+    const el = scrollRef.current;
+    if (hasMoreOlderClient) {
+      if (el) preserveScrollRef.current = el.scrollHeight;
+      setIsLoadingOlder(true);
+      setVisibleCount((c) => Math.min(c + PAGE_SIZE, mergedMessages.length));
+      return;
+    }
+    if (!hasMoreOlderServer) return;
+    const cache = qc.getQueryData<ChatMessageRow[]>(["wa-messages", user.id, activeJid]) ?? [];
+    // Oldest server row = smallest created_at (server also sorts on it as the
+    // secondary key, so the cursor is monotonic with the returned page).
+    let cursor: string | null = null;
+    for (const r of cache) {
+      const ts = r.created_at ?? null;
+      if (!ts) continue;
+      if (!cursor || ts < cursor) cursor = ts;
+    }
+    if (!cursor) return;
+    if (el) preserveScrollRef.current = el.scrollHeight;
+    setIsLoadingOlder(true);
+    try {
+      const older = await fetchInboxMessages(user.id, activeJid, {
+        beforeTs: cursor,
+        limit: MSG_PAGE_SIZE,
+      });
+      if (older.length < MSG_PAGE_SIZE) markMsgsExhausted(activeJid, true);
+      if (older.length > 0) {
+        qc.setQueryData<ChatMessageRow[]>(
+          ["wa-messages", user.id, activeJid],
+          (prev) => {
+            const cur = prev ?? [];
+            const seen = new Set(cur.map((r) => r.id));
+            // Dedupe by id — realtime could have raced an INSERT.
+            return [...cur, ...older.filter((r) => !seen.has(r.id))];
+          },
+        );
+        setVisibleCount((c) => c + older.length);
+      } else {
+        setIsLoadingOlder(false);
+      }
+    } catch (err) {
+      console.warn("[inbox] loadOlderMessages failed", err);
+      setIsLoadingOlder(false);
+    }
+  }, [activeJid, user?.id, isLoadingOlder, hasMoreOlderClient, hasMoreOlderServer, mergedMessages.length, qc, markMsgsExhausted]);
+
   const handleMessagesScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
     if (el.scrollTop <= 60 && hasMoreOlder && !isLoadingOlder) {
-      setIsLoadingOlder(true);
-      preserveScrollRef.current = el.scrollHeight;
-      setVisibleCount((c) => Math.min(c + PAGE_SIZE, mergedMessages.length));
+      void loadOlderMessages();
     }
-  }, [hasMoreOlder, isLoadingOlder, mergedMessages.length]);
+  }, [hasMoreOlder, isLoadingOlder, loadOlderMessages]);
+
+  // Load more conversations from the server (cursor on last_message_at) —
+  // preserves the same user_id + is_archived=false filters as the initial page.
+  const loadMoreConversations = useCallback(async () => {
+    if (!user?.id || isLoadingMoreConv || convServerExhaustedRef.current) return;
+    const cache = qc.getQueryData<ConversationRow[]>(["wa-conversations", user.id]) ?? [];
+    let cursor: string | null = null;
+    for (const c of cache) {
+      const ts = c.last_message_at ?? null;
+      if (!ts) continue;
+      if (!cursor || ts < cursor) cursor = ts;
+    }
+    if (!cursor) return;
+    setIsLoadingMoreConv(true);
+    try {
+      const older = await fetchInboxConversations(user.id, {
+        beforeTs: cursor,
+        limit: CONV_PAGE_SIZE,
+      });
+      if (older.length < CONV_PAGE_SIZE) convServerExhaustedRef.current = true;
+      if (older.length > 0) {
+        qc.setQueryData<ConversationRow[]>(
+          ["wa-conversations", user.id],
+          (prev) => {
+            const cur = prev ?? [];
+            const seen = new Set(cur.map((r) => r.id));
+            return [...cur, ...older.filter((r) => !seen.has(r.id))];
+          },
+        );
+      }
+    } catch (err) {
+      console.warn("[inbox] loadMoreConversations failed", err);
+    } finally {
+      setIsLoadingMoreConv(false);
+    }
+  }, [user?.id, isLoadingMoreConv, qc]);
+
+  // Reset conv exhaustion whenever the whole list refetches (new user/session).
+  useEffect(() => {
+    convServerExhaustedRef.current = false;
+  }, [user?.id]);
+
 
 
   // Reset typing indicator when switching conversations
@@ -1561,6 +1680,22 @@ function InboxPage() {
                 onClick={() => setActiveJid(c.remote_jid)}
               />
             ))}
+            {/* Server-side pagination trigger — نفس مرشحات is_archived=false */}
+            {!convServerExhaustedRef.current && filtered.length >= CONV_PAGE_SIZE && (
+              <li className="flex justify-center border-t border-border/40 bg-muted/30 py-2">
+                <button
+                  type="button"
+                  onClick={() => void loadMoreConversations()}
+                  disabled={isLoadingMoreConv}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm ring-1 ring-border/60 transition hover:text-foreground disabled:opacity-60"
+                >
+                  {isLoadingMoreConv && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {isLoadingMoreConv
+                    ? (isAr ? "جارٍ التحميل…" : "Loading…")
+                    : (isAr ? "تحميل محادثات أقدم" : "Load older chats")}
+                </button>
+              </li>
+            )}
           </ul>
         )}
       </div>
@@ -1797,19 +1932,16 @@ function InboxPage() {
                   <div className="flex justify-center py-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        const el = scrollRef.current;
-                        if (!el || isLoadingOlder) return;
-                        setIsLoadingOlder(true);
-                        preserveScrollRef.current = el.scrollHeight;
-                        setVisibleCount((c) => Math.min(c + PAGE_SIZE, mergedMessages.length));
-                      }}
-                      className="rounded-full bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm ring-1 ring-border/60 transition hover:text-foreground disabled:opacity-60"
+                      onClick={() => void loadOlderMessages()}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm ring-1 ring-border/60 transition hover:text-foreground disabled:opacity-60"
                       disabled={isLoadingOlder}
                     >
+                      {isLoadingOlder && <Loader2 className="h-3 w-3 animate-spin" />}
                       {isLoadingOlder
                         ? (isAr ? "جارٍ التحميل…" : "Loading…")
-                        : (isAr ? "تحميل رسائل أقدم" : "Load older messages")}
+                        : hasMoreOlderServer && !hasMoreOlderClient
+                          ? (isAr ? "جلب رسائل أقدم من السيرفر" : "Fetch older from server")
+                          : (isAr ? "تحميل رسائل أقدم" : "Load older messages")}
                     </button>
                   </div>
                 )}
@@ -2921,16 +3053,29 @@ function EmptyChat({
 // Helpers
 // ──────────────────────────────────────────────────────────────────────────
 
-async function fetchInboxConversations(userId: string): Promise<ConversationRow[]> {
+const CONV_PAGE_SIZE = 200;   // كان 2000 — قللنا التحميل الأولي 10×
+const MSG_PAGE_SIZE = 60;     // كان 200 — يفتح الشات أسرع، والباقي يُحمَّل عند التمرير للأعلى
+
+async function fetchInboxConversations(
+  userId: string,
+  opts?: { beforeTs?: string | null; limit?: number },
+): Promise<ConversationRow[]> {
   // الترتيب أصبح مضمونًا من قاعدة البيانات عبر trigger عند كل رسالة،
   // لذلك لا نقرأ آلاف الرسائل عند فتح الوارد حتى لا نضغط Disk IO.
-  const { data, error } = await supabase
+  const limit = Math.max(1, opts?.limit ?? CONV_PAGE_SIZE);
+  let q = supabase
     .from("wa_conversations")
     .select("id, session_id, remote_jid, contact_name, contact_phone, profile_pic_url, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
     .eq("user_id", userId)
     .eq("is_archived", false)
     .order("last_message_at", { ascending: false })
-    .limit(2000);
+    .limit(limit);
+  if (opts?.beforeTs) {
+    // Cursor pagination — نجلب فقط الأقدم من آخر صف في الـcache الحالي،
+    // فلا تكرار مع الصفحات السابقة، ومرشحات user_id/is_archived ثابتة.
+    q = q.lt("last_message_at", opts.beforeTs);
+  }
+  const { data, error } = await q;
 
   if (error) throw new Error(error.message);
   const visibleRows: RankedConversationRow[] = ((data ?? []) as ConversationRow[]).map((row): RankedConversationRow => {
@@ -2946,25 +3091,37 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
 
   return visibleRows
     .sort(compareConversationsByLastRealActivity)
-    .slice(0, 2000);
+    .slice(0, limit);
 }
 
-async function fetchInboxMessages(userId: string, remoteJid: string): Promise<ChatMessageRow[]> {
+async function fetchInboxMessages(
+  userId: string,
+  remoteJid: string,
+  opts?: { beforeTs?: string | null; limit?: number },
+): Promise<ChatMessageRow[]> {
   const baseSelect = "id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw";
   const startedAt = nowMs();
+  const limit = Math.max(1, opts?.limit ?? MSG_PAGE_SIZE);
+  const beforeTs = opts?.beforeTs ?? null;
+
 
   // === مسار الجروبات ===
   // نتعامل مع الجروب كوحدة مغلقة: JID = @g.us فقط، ممنوع أي fallback بالهاتف
   // لأن نفس رقم العضو يظهر داخل رسائل الجروب وفي محادثاته الخاصة.
   if (remoteJid.endsWith("@g.us")) {
-    const { data: groupRows, error: groupError } = await supabase
+    let gq = supabase
       .from("wa_messages")
       .select(baseSelect)
       .eq("user_id", userId)
       .eq("remote_jid", remoteJid)
       .order("wa_timestamp", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
-      .limit(200);
+      .limit(limit);
+    if (beforeTs) {
+      // Cursor على created_at — نجلب فقط الأقدم من آخر صف موجود في الـcache.
+      gq = gq.lt("created_at", beforeTs);
+    }
+    const { data: groupRows, error: groupError } = await gq;
     const durationMs = nowMs() - startedAt;
     if (groupError) {
       recordInboxQueryStat({
@@ -2978,7 +3135,7 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
       jid: remoteJid, mode: "group", durationMs, rowCount: count, ok: true, at: Date.now(),
     });
     // eslint-disable-next-line no-console
-    console.debug("[wa-inbox] fetchInboxMessages(group)", { remoteJid, count, durationMs: Math.round(durationMs) });
+    console.debug("[wa-inbox] fetchInboxMessages(group)", { remoteJid, count, durationMs: Math.round(durationMs), beforeTs });
     return await materializeInboxRows(groupRows ?? []);
   }
 
@@ -3006,7 +3163,7 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     return await materializeInboxRows([]);
   }
 
-  const { data: rows, error } = await supabase
+  let pq = supabase
     .from("wa_messages")
     .select(baseSelect)
     .eq("user_id", userId)
@@ -3014,7 +3171,12 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     .not("remote_jid", "like", "%@g.us")
     .order("wa_timestamp", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
-    .limit(200);
+    .limit(limit);
+  if (beforeTs) {
+    // نفس فلتر الاستبعاد (@g.us) محفوظ — الـcursor لا يغير ذلك.
+    pq = pq.lt("created_at", beforeTs);
+  }
+  const { data: rows, error } = await pq;
   const durationMs = nowMs() - startedAt;
   if (error) {
     recordInboxQueryStat({
@@ -3037,10 +3199,12 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     count,
     durationMs: Math.round(durationMs),
     aliasLookupMs: Math.round(aliasLookupMs),
+    beforeTs,
   });
 
   return await materializeInboxRows(rows ?? []);
 }
+
 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
