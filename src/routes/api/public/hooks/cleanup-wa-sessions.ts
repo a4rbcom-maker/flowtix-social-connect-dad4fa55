@@ -90,8 +90,52 @@ export const Route = createFileRoute("/api/public/hooks/cleanup-wa-sessions")({
             markedLoggedOut = ids.length;
           }
 
+          // 4) Purge orphan sessions on the connection server that no longer
+          // exist in wa_sessions. These "ghost" sessions keep emitting QR
+          // events every few seconds and starve real message deliveries.
+          let bridgeOrphansDeleted = 0;
+          let bridgeOrphansFailed = 0;
+          try {
+            const bridgeUrl = process.env.WA_BRIDGE_URL?.replace(/\/+$/, "") || "";
+            const apiKey = process.env.WA_BRIDGE_API_KEY || "";
+            if (bridgeUrl && apiKey) {
+              const { data: allRows } = await supabaseAdmin
+                .from("wa_sessions")
+                .select("session_id");
+              const known = new Set((allRows ?? []).map((r) => String(r.session_id)));
+              if (known.size > 0) {
+                const listRes = await fetch(`${bridgeUrl}/api/sessions`, {
+                  headers: { "x-api-key": apiKey, Accept: "application/json" },
+                });
+                const listText = await listRes.text();
+                let listBody: unknown; try { listBody = JSON.parse(listText); } catch { listBody = listText; }
+                const list: Array<Record<string, unknown>> = Array.isArray(listBody)
+                  ? (listBody as Array<Record<string, unknown>>)
+                  : Array.isArray((listBody as { sessions?: unknown })?.sessions)
+                    ? ((listBody as { sessions: Array<Record<string, unknown>> }).sessions)
+                    : [];
+                for (const s of list) {
+                  const id = String(s.id ?? s.sessionId ?? "");
+                  if (!id || known.has(id)) continue;
+                  try {
+                    const dr = await fetch(`${bridgeUrl}/api/sessions/${encodeURIComponent(id)}`, {
+                      method: "DELETE",
+                      headers: { "x-api-key": apiKey, Accept: "application/json" },
+                    });
+                    if (dr.ok) bridgeOrphansDeleted += 1;
+                    else bridgeOrphansFailed += 1;
+                  } catch {
+                    bridgeOrphansFailed += 1;
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("[cleanup-wa-sessions] bridge orphan purge failed:", e instanceof Error ? e.message : String(e));
+          }
+
           const durationMs = Date.now() - started;
-          console.log("[cleanup-wa-sessions]", { qrDeleted, staleDemoted, markedLoggedOut, durationMs });
+          console.log("[cleanup-wa-sessions]", { qrDeleted, staleDemoted, markedLoggedOut, bridgeOrphansDeleted, bridgeOrphansFailed, durationMs });
 
           return new Response(
             JSON.stringify({
@@ -99,6 +143,8 @@ export const Route = createFileRoute("/api/public/hooks/cleanup-wa-sessions")({
               qr_deleted: qrDeleted,
               stale_demoted: staleDemoted,
               marked_logged_out: markedLoggedOut,
+              bridge_orphans_deleted: bridgeOrphansDeleted,
+              bridge_orphans_failed: bridgeOrphansFailed,
               duration_ms: durationMs,
             }),
             { headers: { "Content-Type": "application/json" } },
