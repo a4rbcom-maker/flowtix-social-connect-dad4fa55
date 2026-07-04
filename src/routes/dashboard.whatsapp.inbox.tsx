@@ -2973,22 +2973,23 @@ async function fetchInboxMessages(
   const beforeTs = opts?.beforeTs ?? null;
 
 
-async function fetchInboxMessages(userId: string, remoteJid: string): Promise<ChatMessageRow[]> {
-  const baseSelect = "id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw";
-  const startedAt = nowMs();
-
   // === مسار الجروبات ===
   // نتعامل مع الجروب كوحدة مغلقة: JID = @g.us فقط، ممنوع أي fallback بالهاتف
   // لأن نفس رقم العضو يظهر داخل رسائل الجروب وفي محادثاته الخاصة.
   if (remoteJid.endsWith("@g.us")) {
-    const { data: groupRows, error: groupError } = await supabase
+    let gq = supabase
       .from("wa_messages")
       .select(baseSelect)
       .eq("user_id", userId)
       .eq("remote_jid", remoteJid)
       .order("wa_timestamp", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
-      .limit(200);
+      .limit(limit);
+    if (beforeTs) {
+      // Cursor على wa_timestamp — نجلب فقط الأقدم من آخر صف موجود في الـcache.
+      gq = gq.lt("wa_timestamp", beforeTs);
+    }
+    const { data: groupRows, error: groupError } = await gq;
     const durationMs = nowMs() - startedAt;
     if (groupError) {
       recordInboxQueryStat({
@@ -3002,7 +3003,7 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
       jid: remoteJid, mode: "group", durationMs, rowCount: count, ok: true, at: Date.now(),
     });
     // eslint-disable-next-line no-console
-    console.debug("[wa-inbox] fetchInboxMessages(group)", { remoteJid, count, durationMs: Math.round(durationMs) });
+    console.debug("[wa-inbox] fetchInboxMessages(group)", { remoteJid, count, durationMs: Math.round(durationMs), beforeTs });
     return await materializeInboxRows(groupRows ?? []);
   }
 
@@ -3030,7 +3031,7 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     return await materializeInboxRows([]);
   }
 
-  const { data: rows, error } = await supabase
+  let pq = supabase
     .from("wa_messages")
     .select(baseSelect)
     .eq("user_id", userId)
@@ -3038,7 +3039,12 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     .not("remote_jid", "like", "%@g.us")
     .order("wa_timestamp", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
-    .limit(200);
+    .limit(limit);
+  if (beforeTs) {
+    // نفس فلتر الاستبعاد (@g.us) محفوظ — الـcursor لا يغير ذلك.
+    pq = pq.lt("wa_timestamp", beforeTs);
+  }
+  const { data: rows, error } = await pq;
   const durationMs = nowMs() - startedAt;
   if (error) {
     recordInboxQueryStat({
@@ -3061,10 +3067,12 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     count,
     durationMs: Math.round(durationMs),
     aliasLookupMs: Math.round(aliasLookupMs),
+    beforeTs,
   });
 
   return await materializeInboxRows(rows ?? []);
 }
+
 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
