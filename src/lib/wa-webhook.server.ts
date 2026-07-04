@@ -1411,27 +1411,39 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
 
 
 
-    if (text && !m.fromMe && !isHistorical) {
-      // Try keyword auto-reply FIRST. If it matches, skip AI entirely.
-      const matched = await tryKeywordAutoReply({
-        userId,
-        sessionId,
-        remoteJid: m.remoteJid,
-        fromPhone: m.fromPhone,
-        inboundText: text,
-      }).catch((err: unknown) => {
-        console.error("[wa-webhook] keyword handler error:", err);
-        return false;
-      });
+    const hasMedia = Boolean(mediaUrl) && msgType !== "text";
+    if ((text || hasMedia) && !m.fromMe && !isHistorical) {
+      // Try keyword auto-reply FIRST (text only). If it matches, skip AI entirely.
+      const matched = text
+        ? await tryKeywordAutoReply({
+            userId,
+            sessionId,
+            remoteJid: m.remoteJid,
+            fromPhone: m.fromPhone,
+            inboundText: text,
+          }).catch((err: unknown) => {
+            console.error("[wa-webhook] keyword handler error:", err);
+            return false;
+          })
+        : false;
 
       if (!matched) {
+        const mediaObj = mediaDataFromEntry(entry);
+        const mimeType =
+          pickStr(mediaObj, "mimeType", "mimetype", "fileMimeType", "contentType") ||
+          pickStr(entry, "mimeType", "mimetype", "contentType") ||
+          fallbackMimeType(msgType);
+        const fileName = pickStr(mediaObj, "fileName", "filename", "name") || null;
         const aiTask = handleAiAutoReply({
           userId,
           sessionId,
           conversationId,
           remoteJid: m.remoteJid,
           fromPhone: m.fromPhone,
-          inboundText: text,
+          inboundText: text ?? "",
+          inboundMedia: hasMedia
+            ? { msgType, mediaUrl, mimeType, fileName }
+            : null,
         }).catch((err) => console.error("[wa-webhook] AI handler error:", err));
         if (!attachBackgroundTask(request, aiTask, "AI handler")) {
           await aiTask;
