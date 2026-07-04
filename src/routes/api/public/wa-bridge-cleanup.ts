@@ -21,7 +21,8 @@ export const Route = createFileRoute("/api/public/wa-bridge-cleanup")({
           .from("wa_sessions")
           .select("session_id");
         if (error) return json({ ok: false, error: error.message }, 500);
-        const known = new Set((rows ?? []).map((r) => String(r.session_id)));
+        if (!rows || rows.length === 0) return json({ ok: false, error: "no_known_sessions_refuse_to_delete" }, 500);
+        const known = new Set(rows.map((r) => String(r.session_id)));
 
         const listRes = await fetch(`${bridgeUrl}/api/sessions`, {
           headers: { "x-api-key": apiKey, Accept: "application/json" },
