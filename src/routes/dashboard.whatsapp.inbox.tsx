@@ -1680,6 +1680,22 @@ function InboxPage() {
                 onClick={() => setActiveJid(c.remote_jid)}
               />
             ))}
+            {/* Server-side pagination trigger — نفس مرشحات is_archived=false */}
+            {!convServerExhaustedRef.current && filtered.length >= CONV_PAGE_SIZE && (
+              <li className="flex justify-center border-t border-border/40 bg-muted/30 py-2">
+                <button
+                  type="button"
+                  onClick={() => void loadMoreConversations()}
+                  disabled={isLoadingMoreConv}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm ring-1 ring-border/60 transition hover:text-foreground disabled:opacity-60"
+                >
+                  {isLoadingMoreConv && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {isLoadingMoreConv
+                    ? (isAr ? "جارٍ التحميل…" : "Loading…")
+                    : (isAr ? "تحميل محادثات أقدم" : "Load older chats")}
+                </button>
+              </li>
+            )}
           </ul>
         )}
       </div>
