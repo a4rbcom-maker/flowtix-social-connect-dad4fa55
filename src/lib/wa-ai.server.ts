@@ -885,26 +885,37 @@ export async function upsertConversationFromMessage(opts: {
     const existingAt = existing.last_message_at ? new Date(existing.last_message_at).getTime() : 0;
     const incomingAt = new Date(messageAt).getTime();
     const isNewer = hasReadableActivity && incomingAt >= existingAt;
-    await supabaseAdmin
+    const preferIncomingLid = remoteJid.endsWith("@lid") && !String(existing.remote_jid ?? "").endsWith("@lid");
+    const patch = {
+      ...(preferIncomingLid ? { remote_jid: remoteJid } : {}),
+      session_id: sessionId,
+      ...(isNewer
+        ? {
+            last_message_text: readableText,
+            last_message_at: messageAt,
+            last_direction: direction,
+          }
+        : {}),
+      unread_count:
+        hasReadableActivity && !historical && direction === "in"
+          ? (existing.unread_count || 0) + 1
+          : existing.unread_count,
+      contact_name: existing.contact_name || safeContactName,
+      contact_phone: safeContactPhone || existing.contact_phone,
+      profile_pic_url: profilePicUrl || (existing as { profile_pic_url?: string | null }).profile_pic_url || null,
+    };
+    const { error } = await supabaseAdmin
       .from("wa_conversations")
-      .update({
-        session_id: sessionId,
-        ...(isNewer
-          ? {
-              last_message_text: readableText,
-              last_message_at: messageAt,
-              last_direction: direction,
-            }
-          : {}),
-        unread_count:
-          hasReadableActivity && !historical && direction === "in"
-            ? (existing.unread_count || 0) + 1
-            : existing.unread_count,
-        contact_name: existing.contact_name || safeContactName,
-        contact_phone: safeContactPhone || existing.contact_phone,
-        profile_pic_url: profilePicUrl || (existing as { profile_pic_url?: string | null }).profile_pic_url || null,
-      })
+      .update(patch)
       .eq("id", existing.id);
+    if (error && preferIncomingLid && (error as { code?: string }).code === "23505") {
+      await supabaseAdmin
+        .from("wa_conversations")
+        .update({ ...patch, remote_jid: existing.remote_jid })
+        .eq("id", existing.id);
+    } else if (error) {
+      console.error("[wa-ai] conversation alias update failed:", error.message);
+    }
     return existing.id;
   }
 
