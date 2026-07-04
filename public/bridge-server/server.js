@@ -28,7 +28,7 @@ const { execSync } = require('child_process');
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 
-const SERVER_VERSION = '1.8.6-flowtix-safe-revive';
+const SERVER_VERSION = '1.8.7-flowtix-history-media';
 // ─── OTP Delivery Guarantee (v1.8.0 — conservative) ───
 // Tracks every OTP we send. If WA doesn't ack delivery within OTP_DELIVERY_DEADLINE_MS,
 // we resend (attempt 1: no flush, just bypass device cache; attempt 2: deep Signal flush + resend).
@@ -718,7 +718,7 @@ async function createSession(sessionId, tenantId, webhookUrl, options = {}) {
   // Helper: download media from WhatsApp and return base64 data for webhook
   async function downloadMediaAsBase64(msg, msgType) {
     try {
-      const m = msg.message || {};
+      const m = unwrapMessageNode(msg.message || {});
       // Handle documentWithCaptionMessage wrapper (Baileys wraps captioned docs)
       const unwrappedDoc = m.documentWithCaptionMessage?.message?.documentMessage;
       const mediaMessage = m.imageMessage || m.videoMessage || m.audioMessage || m.pttMessage || m.documentMessage || unwrappedDoc || m.stickerMessage;
@@ -756,7 +756,9 @@ async function createSession(sessionId, tenantId, webhookUrl, options = {}) {
       };
       const fallbackExtMap = { audio: 'ogg', image: 'jpg', video: 'mp4', document: 'bin', sticker: 'webp' };
       const ext = (actualMime && mimeToExt[actualMime]) ? mimeToExt[actualMime] : (fallbackExtMap[msgType] || 'bin');
-      const fileName = `bridge/${tenantId}/${Date.now()}_${msg.key?.id || 'msg'}.${ext}`;
+      const rawFileName = mediaMessage.fileName;
+      const originalFileName = typeof rawFileName === 'string' ? rawFileName : rawFileName ? String(rawFileName) : '';
+      const fileName = originalFileName || `bridge/${tenantId}/${Date.now()}_${msg.key?.id || 'msg'}.${ext}`;
       
       const fallbackMimeMap = { audio: 'audio/ogg', image: 'image/jpeg', video: 'video/mp4', document: 'application/octet-stream', sticker: 'image/webp' };
       const mimeType = actualMime || fallbackMimeMap[msgType] || 'application/octet-stream';
@@ -1171,13 +1173,21 @@ async function createSession(sessionId, tenantId, webhookUrl, options = {}) {
     }
 
     // Send messages in batches
-    const processedMessages = (historyMessages || []).map(m => {
+    const processedMessages = (await Promise.all((historyMessages || []).map(async m => {
       const msg = m;
       const remoteJid = msg.key?.remoteJid || '';
       const { id: from, isGroup, skip } = parseJid(remoteJid);
       if (skip || !from) return null;
 
       const { content, msgType } = extractMessageContent(msg);
+      let mediaData = null;
+      if (['audio', 'image', 'video', 'document', 'sticker'].includes(msgType)) {
+        try {
+          mediaData = await downloadMediaAsBase64(msg, msgType);
+        } catch (mediaErr) {
+          console.error(`[${sessionId}] History media processing failed for ${msgType}, sending metadata only:`, mediaErr.message);
+        }
+      }
       // For group messages: extract participant (actual sender) with multiple fallbacks
       const participantRaw = isGroup ? (msg.key?.participant || msg.participant || '') : '';
       const sender = participantRaw ? cleanPhone(participantRaw) : '';
@@ -1201,6 +1211,7 @@ async function createSession(sessionId, tenantId, webhookUrl, options = {}) {
         body: content,
         type: msgType,
         id: msg.key?.id || '',
+        mediaData,
         isGroup,
         sender,
         groupSubject: groupSubject || undefined,
@@ -1210,7 +1221,7 @@ async function createSession(sessionId, tenantId, webhookUrl, options = {}) {
         senderPn: msg.key?.senderPn || '',
         remoteJidAlt: msg.key?.remoteJidAlt || '',
       };
-    }).filter(Boolean);
+    }))).filter(Boolean);
 
     if (processedMessages.length > 0) {
       for (let i = 0; i < processedMessages.length; i += 50) {
@@ -2104,7 +2115,7 @@ async function handleSessionSend(req, res) {
           break;
         }
         case 'document': {
-          retryMessagePayload = { document: { url: mediaUrl }, fileName: content || 'document' };
+          retryMessagePayload = { document: { url: mediaUrl }, fileName: req.body.fileName || req.body.filename || content || 'document', mimetype: req.body.mimetype || req.body.mimeType };
           result = await session.socket.sendMessage(jid, retryMessagePayload, sendOpts);
           break;
         }

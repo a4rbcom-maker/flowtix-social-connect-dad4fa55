@@ -1,6 +1,6 @@
 {
   "name": "wa-bridge-flowtix",
-  "version": "1.8.6-flowtix-safe-revive",
+  "version": "1.8.7-flowtix-history-media",
   "description": "WhatsApp Bridge Server for Flowtix Platform",
   "main": "server.js",
   "scripts": {
