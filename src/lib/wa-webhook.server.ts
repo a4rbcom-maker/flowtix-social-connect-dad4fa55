@@ -12,7 +12,7 @@ import { handleAiAutoReply, upsertConversationFromMessage } from "./wa-ai.server
 import { cleanMessageText, mediaTypeFromRaw, mediaUrlFromRaw } from "./wa-chat-helpers.server";
 import { waBridge } from "./wa-bridge.server";
 import { tryKeywordAutoReply } from "./wa-keyword.server";
-import { extractSessionReason, updateWaSessionStatus } from "./wa-session-events.server";
+import { extractSessionReason, logWaSessionEvent, updateWaSessionStatus } from "./wa-session-events.server";
 import {
   asObj,
   collectMessageEntries,
