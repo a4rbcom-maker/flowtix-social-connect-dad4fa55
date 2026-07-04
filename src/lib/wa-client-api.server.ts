@@ -150,6 +150,9 @@ async function reset(supabase: ReturnType<typeof getSupabaseForToken>, userId: s
       syncFullHistory: true,
     });
   } catch (err) {
+    if (err instanceof BridgeError && (err.status === 409 || err.status === 400)) {
+      // Stable session already exists on the bridge; keep going and read its state.
+    } else {
     if (existing?.session_id) {
       await supabase
         .from("wa_sessions")
@@ -165,6 +168,7 @@ async function reset(supabase: ReturnType<typeof getSupabaseForToken>, userId: s
       await supabase.from("wa_sessions").delete().eq("user_id", userId).eq("session_id", sessionId);
     }
     throw err;
+    }
   }
 
   await supabase

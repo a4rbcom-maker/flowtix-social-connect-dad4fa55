@@ -1027,6 +1027,9 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
         syncFullHistory: true,
       });
     } catch (err) {
+      if (err instanceof BridgeError && (err.status === 409 || err.status === 400)) {
+        // Stable session already exists on the bridge — continue and surface its QR/status.
+      } else {
       const msg = describeBridgeError(err);
       console.error("[wa] resetWaReceiver: createSession failed:", msg);
       if (existing?.session_id) {
@@ -1044,6 +1047,7 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
         await supabase.from("wa_sessions").delete().eq("user_id", userId).eq("session_id", newSessionId);
       }
       throw new Error(msg);
+      }
     }
 
     // 3) Mark the freshly-created receiver as QR-ready.
