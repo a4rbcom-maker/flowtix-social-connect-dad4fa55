@@ -28,7 +28,7 @@ const { execSync } = require('child_process');
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 
-const SERVER_VERSION = '1.8.6-flowtix-safe-revive';
+const SERVER_VERSION = '1.8.7-flowtix-history-media';
 // ─── OTP Delivery Guarantee (v1.8.0 — conservative) ───
 // Tracks every OTP we send. If WA doesn't ack delivery within OTP_DELIVERY_DEADLINE_MS,
 // we resend (attempt 1: no flush, just bypass device cache; attempt 2: deep Signal flush + resend).
