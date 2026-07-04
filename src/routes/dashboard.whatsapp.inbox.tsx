@@ -65,7 +65,7 @@ import {
   type ConversationRow,
   type ChatMessageRow,
 } from "@/lib/wa-chat.functions";
-import { requestWaHistorySync, requestWaChatSync, getWaHistorySyncJob, dismissWaHistorySyncJob, matchLidPhoneNumbers } from "@/lib/wa.functions";
+import { requestWaHistorySync, requestWaChatSync, getWaHistorySyncJob, dismissWaHistorySyncJob, matchLidPhoneNumbers, getWaConnectionState } from "@/lib/wa.functions";
 import {
   createQuickReply,
   updateQuickReply,
@@ -105,6 +105,7 @@ function InboxPage() {
   const getHistorySyncJobFn = useServerFn(getWaHistorySyncJob);
   const dismissHistorySyncJobFn = useServerFn(dismissWaHistorySyncJob);
   const matchLidPhonesFn = useServerFn(matchLidPhoneNumbers);
+  const getConnectionStateFn = useServerFn(getWaConnectionState);
 
 
 
@@ -439,7 +440,10 @@ function InboxPage() {
   // Poll faster while not connected so we catch a fresh QR scan quickly.
   const connQuery = useQuery<{ status: string } | null>({
     queryKey: ["wa-connection-state", user?.id],
-    queryFn: () => safeCall(() => fetchInboxConnectionState(user!.id), null),
+    queryFn: () => safeCall(async () => {
+      const state = await getConnectionStateFn();
+      return state?.status ? { status: state.status } : null;
+    }, null),
     enabled: !!user?.id,
     refetchInterval: (query) => (query.state.data?.status === "connected" ? 30000 : 5000),
   });
@@ -2685,16 +2689,6 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
   }));
 }
 
-
-async function fetchInboxConnectionState(userId: string): Promise<{ status: string } | null> {
-  const { data, error } = await supabase
-    .from("wa_sessions")
-    .select("status")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data?.status ? { status: data.status } : null;
-}
 
 async function fetchInboxQuickReplies(userId: string): Promise<QuickReply[]> {
   const { data, error } = await supabase

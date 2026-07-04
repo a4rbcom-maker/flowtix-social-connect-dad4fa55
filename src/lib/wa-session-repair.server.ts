@@ -18,18 +18,16 @@ async function syncSettingsConnected(userId: string, connected: boolean) {
 }
 
 /**
- * Attempt a SOFT recovery of a bridge session only. This helper is called from
- * automatic send/AI paths, so it must never delete credentials or create a new
- * QR. Most "session lost" errors are transient socket drops on a still-paired
- * session, not a real logout.
+ * Attempt a SAFE recovery check of a bridge session only. This helper is called
+ * from automatic send/AI paths, so it must never delete credentials, create a
+ * new QR, or call bridge endpoints that rebuild the socket into QR state.
  *
  * Behavior:
- *   1. Try POST /api/sessions/:id/revive on the SAME session id.
- *   2. Poll getStatus briefly; if it comes back connected/connecting/qr with
- *      the same credentials, we're done — no DB mutation, no new QR.
- *   3. If revive is unavailable or status is still not connected, return a
- *      safe error and let the bridge watchdog / explicit user actions handle it.
- *   4. Sync whatsapp_settings.is_connected with the actual bridge status so
+ *   1. Poll getStatus briefly; if it comes back connected/connecting, we're
+ *      done — no DB mutation, no new QR.
+ *   2. If status is QR/disconnected/missing, return a safe error and let the
+ *      explicit user reconnect flow handle it.
+ *   3. Sync whatsapp_settings.is_connected with the actual bridge status so
  *      the UI + AI queue stop pretending the session is alive.
  */
 export async function resetWaSessionAfterBridgeLoss(params: {
@@ -39,42 +37,22 @@ export async function resetWaSessionAfterBridgeLoss(params: {
 }): Promise<{ sessionId: string; error: string | null; revived?: boolean }> {
   const { userId, oldSessionId, reason } = params;
 
-  // ---- 1) Soft revive on the same session id --------------------------------
   try {
-    await waBridge.reviveSession(oldSessionId);
-    // Give the socket ~1.2s to actually come up before probing status.
-    await new Promise((r) => setTimeout(r, 1200));
-    try {
-      const status = inferStatus(await waBridge.getStatus(oldSessionId));
-      if (status === "connected" || status === "connecting" || status === "qr") {
-        // Session is alive (or coming up) on the SAME id. Do not touch DB,
-        // do not force a new QR. Sync is_connected only when confirmed.
-        if (status === "connected") await syncSettingsConnected(userId, true);
-        console.warn("[wa-session-repair] soft revive succeeded", {
-          sessionId: oldSessionId,
-          status,
-          reason,
-        });
-        return { sessionId: oldSessionId, error: null, revived: true };
-      }
-      await syncSettingsConnected(userId, false);
-      return { sessionId: oldSessionId, error: `session_not_connected:${status}`, revived: false };
-    } catch (statusErr) {
-      if (statusErr instanceof BridgeError && statusErr.status && ![404, 500, 502, 503, 504].includes(statusErr.status)) {
-        console.warn("[wa-session-repair] status probe failed after revive; skipping destructive reset", {
-          sessionId: oldSessionId,
-          error: statusErr.message,
-        });
-        await syncSettingsConnected(userId, false);
-        return { sessionId: oldSessionId, error: statusErr.message, revived: false };
-      }
-      const message = statusErr instanceof Error ? statusErr.message : String(statusErr);
-      await syncSettingsConnected(userId, false);
-      return { sessionId: oldSessionId, error: message, revived: false };
+    const status = inferStatus(await waBridge.getStatus(oldSessionId));
+    if (status === "connected" || status === "connecting") {
+      if (status === "connected") await syncSettingsConnected(userId, true);
+      console.warn("[wa-session-repair] session still alive; no bridge rebuild attempted", {
+        sessionId: oldSessionId,
+        status,
+        reason,
+      });
+      return { sessionId: oldSessionId, error: null, revived: false };
     }
+    await syncSettingsConnected(userId, false);
+    return { sessionId: oldSessionId, error: `session_not_connected:${status}`, revived: false };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err ?? "Bridge session reset failed");
-    console.warn("[wa-session-repair] soft revive failed; preserving session and skipping QR reset", {
+    const message = err instanceof Error ? err.message : String(err ?? "Bridge session status failed");
+    console.warn("[wa-session-repair] status probe failed; preserving session and skipping bridge rebuild", {
       sessionId: oldSessionId,
       reason,
       error: message,
