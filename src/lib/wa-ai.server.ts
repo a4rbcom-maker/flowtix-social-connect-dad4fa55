@@ -12,6 +12,7 @@ import { deriveWebhookUrl } from "./wa-helpers.server";
 import { callKieChat, type ChatMessage } from "./ai-pool.server";
 import { isBridgeSessionMissingError, resetWaSessionAfterBridgeLoss } from "./wa-session-repair.server";
 import { resolveOutgoingWhatsappTarget } from "./wa-recipient.server";
+import { normalizeWhatsappPhone } from "./wa-chat-helpers.server";
 
 interface AiSettings {
   ai_enabled: boolean;
@@ -830,7 +831,8 @@ export async function upsertConversationFromMessage(opts: {
   const safeContactName = direction === "in" || remoteJid.endsWith("@g.us") ? contactName : null;
   const localPart = remoteJid.split("@")[0] ?? "";
   const looksLikeLidAlias = /^\d{14,}$/.test(localPart);
-  const safeContactPhone = looksLikeLidAlias && contactPhone?.replace(/[^0-9]/g, "") === localPart ? null : contactPhone;
+  const normalizedContactPhone = normalizeWhatsappPhone(contactPhone);
+  const safeContactPhone = looksLikeLidAlias && normalizedContactPhone === localPart ? null : normalizedContactPhone;
   const aliasJids = Array.from(
     new Set([
       remoteJid,
@@ -840,12 +842,38 @@ export async function upsertConversationFromMessage(opts: {
     ]),
   );
 
-  const { data: existingRows } = await supabaseAdmin
+  const { data: jidRows } = await supabaseAdmin
     .from("wa_conversations")
     .select("id, session_id, unread_count, contact_name, contact_phone, profile_pic_url, last_message_at, remote_jid")
     .eq("user_id", userId)
     .in("remote_jid", aliasJids)
     .limit(aliasJids.length * 3);
+  const { data: phoneRows } = safeContactPhone
+    ? await supabaseAdmin
+        .from("wa_conversations")
+        .select("id, session_id, unread_count, contact_name, contact_phone, profile_pic_url, last_message_at, remote_jid")
+        .eq("user_id", userId)
+        .eq("contact_phone", safeContactPhone)
+        .limit(10)
+    : { data: [] };
+  const byId = new Map<string, NonNullable<typeof jidRows>[number]>();
+  for (const row of [...(jidRows ?? []), ...(phoneRows ?? [])]) {
+    const rowRemotePhone = row.remote_jid.endsWith("@s.whatsapp.net") ? normalizeWhatsappPhone(row.remote_jid.split("@")[0]) : null;
+    const rowContactPhone = normalizeWhatsappPhone(row.contact_phone);
+    const isDirectJidMatch = aliasJids.includes(row.remote_jid);
+    const conflictsWithPhone = Boolean(
+      safeContactPhone &&
+        !isDirectJidMatch &&
+        ((rowRemotePhone && rowRemotePhone !== safeContactPhone) ||
+          (rowContactPhone && rowContactPhone !== safeContactPhone)),
+    );
+    if (!conflictsWithPhone) byId.set(row.id, row);
+  }
+  const existingRows = Array.from(byId.values()).sort((a, b) => {
+    const aTime = new Date(a.last_message_at ?? 0).getTime() || 0;
+    const bTime = new Date(b.last_message_at ?? 0).getTime() || 0;
+    return bTime - aTime;
+  });
   const currentSessionRows = (existingRows ?? []).filter((row) => row.session_id === sessionId);
   const candidateRows = currentSessionRows.length ? currentSessionRows : (existingRows ?? []);
   const existing =
