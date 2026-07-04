@@ -508,21 +508,14 @@ function InboxPage() {
 
   // Count unique group members seen across the loaded messages (best-effort
   // participant count based on what we've received from the group so far).
+  // Logic lives in wa-group-members.ts so it can be unit-tested — see
+  // src/lib/__tests__/wa-group-members.test.ts.
   const [groupInfoOpen, setGroupInfoOpen] = useState(false);
-  const groupMemberCount = useMemo(() => {
-    const jid = activeJid ?? "";
-    if (!jid.endsWith("@g.us")) return 0;
-    const set = new Set<string>();
-    let sawSelf = false;
-    for (const m of mergedMessages) {
-      if (m.direction === "out") { sawSelf = true; continue; }
-      const key =
-        (m.sender_phone && m.sender_phone.trim()) ||
-        (m.sender_name && m.sender_name.trim());
-      if (key) set.add(key);
-    }
-    return set.size + (sawSelf ? 1 : 0);
-  }, [mergedMessages, activeJid]);
+  const groupMemberCount = useMemo(
+    () => computeGroupMemberCount(mergedMessages, activeJid),
+    [mergedMessages, activeJid],
+  );
+
 
   // Track connection so we can show the right empty-state CTA.
   // Poll faster while not connected so we catch a fresh QR scan quickly.
