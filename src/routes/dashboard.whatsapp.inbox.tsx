@@ -2929,13 +2929,13 @@ function detectMedia(
   labels: { photo: string; voice: string; doc: string; video: string },
 ): { icon: React.ReactElement; label: string } | null {
   if (!msg) return null;
-  if (/\[image:/i.test(msg) || /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(msg))
+  if (/\[image(?::|\])/i.test(msg) || /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(msg))
     return { icon: <Camera className="h-3 w-3" />, label: labels.photo };
-  if (/\[audio:/i.test(msg) || /\.(mp3|wav|ogg|m4a)(\?|$)/i.test(msg))
+  if (/\[audio(?::|\])/i.test(msg) || /\.(mp3|wav|ogg|m4a)(\?|$)/i.test(msg))
     return { icon: <Mic className="h-3 w-3" />, label: labels.voice };
-  if (/\[video:/i.test(msg) || /\.(mp4|webm|mov)(\?|$)/i.test(msg))
+  if (/\[video(?::|\])/i.test(msg) || /\.(mp4|webm|mov)(\?|$)/i.test(msg))
     return { icon: <VideoIcon className="h-3 w-3" />, label: labels.video };
-  if (/\[file:/i.test(msg) || /\.(pdf|docx?|xlsx?|pptx?|zip)(\?|$)/i.test(msg))
+  if (/\[(file|document)(?::|\])/i.test(msg) || /\.(pdf|docx?|xlsx?|pptx?|zip)(\?|$)/i.test(msg))
     return { icon: <FileText className="h-3 w-3" />, label: labels.doc };
   return null;
 }
