@@ -2874,15 +2874,15 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
   if (error) throw new Error(error.message);
 
   const phone = cleanAliasPhone(convAliases?.contact_phone, remoteJid);
-  // fallback بالهاتف مقصور صراحةً على JIDs غير جروبية (@s.whatsapp.net أو @lid)
-  // — بنستخدم فلتر إيجابي بدل السلبي عشان يبقى صريح ومقاوم للتسرّب.
+  // fallback بالهاتف: نستبعد الجروبات فقط (@g.us) عشان مانضيّعش أي JID تاني
+  // زي @c.us أو @broadcast. الدرع النهائي تحت بيمنع تسرّب الجروبات كمان.
   const { data: phoneRows, error: phoneError } = phone
     ? await supabase
         .from("wa_messages")
         .select(baseSelect)
         .eq("user_id", userId)
         .or(`from_phone.eq.${phone},to_phone.eq.${phone}`)
-        .or("remote_jid.like.%@s.whatsapp.net,remote_jid.like.%@lid")
+        .not("remote_jid", "like", "%@g.us")
         .order("wa_timestamp", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
         .limit(200)
