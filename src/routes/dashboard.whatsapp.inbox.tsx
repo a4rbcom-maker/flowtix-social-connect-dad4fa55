@@ -362,15 +362,20 @@ function InboxPage() {
       return fallback;
     }
   };
+  // Realtime هو مصدر الحقيقة (INSERT/UPDATE handlers + debounced invalidate)،
+  // لذا نبقي البيانات "fresh" لفترة طويلة ونحتفظ بها في الـcache حتى بعد
+  // إغلاق النافذة/تبديل المحادثات كي لا نعيد الجلب عند الرجوع للشاشة.
   const convQuery = useQuery<ConversationRow[]>({
     queryKey: ["wa-conversations", user?.id],
     queryFn: () => safeCall<ConversationRow[]>(() => fetchInboxConversations(user!.id), []),
     enabled: !!user?.id,
     placeholderData: (prev) => prev,
-    staleTime: 30_000,
-    refetchInterval: 300_000, // safety net فقط؛ Realtime هو المصدر الأساسي
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: "always",
+    staleTime: 2 * 60_000,        // 2 دقيقة — الترتيب يتحدث فورياً عبر Realtime
+    gcTime: 30 * 60_000,          // احتفظ بالقائمة نصف ساعة بعد إخفاء الشاشة
+    refetchInterval: 300_000,     // safety net فقط
+    refetchOnMount: false,        // اعتمد على staleTime بدل الجلب عند كل mount
+    refetchOnWindowFocus: false,  // Realtime يغطي التحديث؛ لا تجلب عند العودة للتبويب
+    refetchOnReconnect: "always", // بعد فقدان الشبكة نُزامن مرة
   });
   const msgsQuery = useQuery<ChatMessageRow[]>({
     queryKey: ["wa-messages", user?.id, activeJid],
@@ -380,8 +385,10 @@ function InboxPage() {
         : Promise.resolve([]),
     enabled: !!activeJid && !!user?.id,
     placeholderData: (prev) => prev,
-    staleTime: 30_000,
-    refetchInterval: 300_000, // safety net فقط؛ Realtime هو المصدر الأساسي
+    staleTime: 5 * 60_000,        // 5 دقائق — Realtime + scheduleInvalidateMessages يغطي الجديد
+    gcTime: 30 * 60_000,          // احفظ رسائل المحادثة نصف ساعة → الرجوع للمحادثة فوري بدون جلب
+    refetchInterval: 300_000,     // safety net
+    refetchOnMount: false,        // لا تعيد الجلب عند إعادة فتح المحادثة إذا لسه fresh
     refetchOnWindowFocus: false,
     refetchOnReconnect: "always",
   });
