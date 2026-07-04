@@ -102,8 +102,8 @@ export const Route = createFileRoute("/api/public/hooks/cleanup-wa-sessions")({
               const { data: allRows } = await supabaseAdmin
                 .from("wa_sessions")
                 .select("session_id");
-              const known = new Set((allRows ?? []).map((r) => String(r.session_id)));
-              if (known.size > 0) {
+              const known = new Set((allRows ?? []).map((r) => String(r.session_id)).filter(Boolean));
+              for (let round = 0; round < 5; round++) {
                 const listRes = await fetch(`${bridgeUrl}/api/sessions`, {
                   headers: { "x-api-key": apiKey, Accept: "application/json" },
                 });
@@ -136,17 +136,22 @@ export const Route = createFileRoute("/api/public/hooks/cleanup-wa-sessions")({
                   return ok;
                 };
 
+                let deletedThisRound = 0;
                 for (const s of list) {
                   const id = String(s.id ?? s.sessionId ?? "");
                   if (!id || known.has(id)) continue;
                   try {
                     const deleted = await deleteBridgeSession(id);
-                    if (deleted) bridgeOrphansDeleted += 1;
+                    if (deleted) {
+                      bridgeOrphansDeleted += 1;
+                      deletedThisRound += 1;
+                    }
                     else bridgeOrphansFailed += 1;
                   } catch {
                     bridgeOrphansFailed += 1;
                   }
                 }
+                if (deletedThisRound === 0) break;
               }
             }
           } catch (e) {

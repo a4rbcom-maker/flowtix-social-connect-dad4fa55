@@ -1,5 +1,5 @@
 /**
- * WhatsApp Bridge Server - Bot Xtra Platform
+ * WhatsApp Bridge Server - Flowtix Platform
  * Compatible with bridge-proxy Edge Function
  * Version 1.8.4 - Persistent session resilience + watchdog recovery
  * 
@@ -513,7 +513,7 @@ async function createSession(sessionId, tenantId, webhookUrl, options = {}) {
     shouldSyncHistoryMessage: () => options.syncFullHistory === true,
     emitMyMessages: true,
     markOnlineOnConnect: markOnline,
-    browser: ['Bot Xtra', 'Desktop', '4.0.0'],
+    browser: ['Flowtix', 'Desktop', '4.0.0'],
     connectTimeoutMs: 120000,
     qrTimeout: 180000,
     keepAliveIntervalMs: 25000,
@@ -1426,7 +1426,7 @@ app.get('/', (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bot Xtra - WhatsApp Bridge</title>
+  <title>Flowtix - WhatsApp Bridge</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a0f;color:#e4e4e7;min-height:100vh}
@@ -1472,7 +1472,7 @@ app.get('/', (req, res) => {
     <div class="logo">
       <div class="logo-icon">📡</div>
       <div>
-        <h1>Bot Xtra Bridge</h1>
+        <h1>Flowtix Bridge</h1>
         <span>WhatsApp QR Server v${health.version}</span>
       </div>
     </div>
@@ -1546,7 +1546,7 @@ app.get('/', (req, res) => {
     <div class="refresh-note">Auto-refreshes every 30 seconds</div>
   </div>
 
-  <div class="footer">Bot Xtra Platform · WhatsApp Bridge Server v${health.version} · ${new Date().getFullYear()}</div>
+  <div class="footer">Flowtix Platform · WhatsApp Bridge Server v${health.version} · ${new Date().getFullYear()}</div>
 
   <script>setTimeout(() => location.reload(), 30000);</script>
 </body>
@@ -1659,7 +1659,7 @@ app.post('/api/restart', (req, res) => {
 // then exits. Docker `restart: unless-stopped` brings the container back up
 // with the new code. Sessions are preserved via the ./sessions volume mount,
 // so no QR rescan is required.
-const UPDATE_BASE_URL = process.env.UPDATE_BASE_URL || 'https://botxtra.com/bridge-server';
+const UPDATE_BASE_URL = process.env.UPDATE_BASE_URL || 'https://flowtix.tools/bridge-server';
 const UPDATE_FILES = ['server.js', 'package.json'];
 let updateInProgress = false;
 

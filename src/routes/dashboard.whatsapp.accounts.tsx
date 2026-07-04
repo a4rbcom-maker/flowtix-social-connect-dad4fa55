@@ -51,7 +51,7 @@ const WA_BRIDGE_MODE_STORAGE_KEY = "flowtix-wa-bridge-mode";
 type WaCloudAction = "state" | "connect" | "disconnect" | "ping" | "reset";
 
 function isBridgeConfigMissing(message?: string | null) {
-  return /WA_BRIDGE_API_KEY|BOTXTRA_API_KEY|WHATSAPP_BRIDGE_API_KEY|not configured/i.test(message ?? "");
+  return /WA_BRIDGE_API_KEY|WHATSAPP_BRIDGE_API_KEY|not configured/i.test(message ?? "");
 }
 
 async function callWaCloudApi<T>(action: WaCloudAction, token: string): Promise<T> {
