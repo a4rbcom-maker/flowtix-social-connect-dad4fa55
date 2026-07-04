@@ -262,7 +262,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
     if (textBody === null) dedupQuery.is("text_body", null);
     else dedupQuery.eq("text_body", textBody);
     if (mediaUrlVal === null) dedupQuery.is("media_url", null);
-    else dedupQuery.eq("media_url", mediaUrlVal);
+    else dedupQuery.eq("media_url", mediaUrlVal as string);
     const { data: existingDup } = await dedupQuery.maybeSingle();
     if (existingDup?.id) {
       return { ok: true, messageId: existingDup.id, deduped: true };
