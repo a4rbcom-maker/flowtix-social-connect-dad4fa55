@@ -121,10 +121,10 @@ function WhatsAppPage() {
         connect: "ربط رقم جديد",
         reconnect: "إعادة الربط (QR جديد)",
         disconnect: "قطع الاتصال نهائياً",
-        deepReset: "فصل عميق + مسح شامل",
-        deepResetHint: "لو الرقم متصل لكن مافيش رسائل بتوصل، جرّب ده — بيمسح كل الجلسات المعلقة على الخادم ويعمل جلسة نظيفة بـ QR جديد.",
-        deepResetConfirm: "سيتم مسح كل جلسات واتساب المرتبطة بحسابك على الخادم ثم إنشاء جلسة جديدة. متابعة؟",
-        deepResetDone: "تم الفصل العميق — امسح الـ QR الجديد",
+        deepReset: "إصلاح الجلسة",
+        deepResetHint: "يفحص الجلسة الحالية ويحاول إحياء الاتصال بدون حذف الربط أو طلب QR جديد.",
+        deepResetConfirm: "سيتم محاولة إصلاح جلسة واتساب الحالية بدون حذف الربط أو توليد QR جديد. متابعة؟",
+        deepResetDone: "تم فحص/إصلاح الجلسة بدون حذف الربط",
         showQr: "توليد كود QR جديد",
         hideQr: "إخفاء الكود",
 
@@ -170,10 +170,10 @@ function WhatsAppPage() {
         connect: "Link new number",
         reconnect: "Reconnect (new QR)",
         disconnect: "Disconnect permanently",
-        deepReset: "Deep reset (wipe bridge)",
-        deepResetHint: "If your number shows connected but no messages arrive, run this — it wipes every stale session tied to your account on the bridge and creates a fresh one with a new QR.",
-        deepResetConfirm: "This will wipe every WhatsApp session on the bridge tied to your account and start a fresh one. Continue?",
-        deepResetDone: "Deep reset done — scan the new QR",
+        deepReset: "Repair session",
+        deepResetHint: "Checks the current session and revives the socket without deleting the pairing or creating a new QR.",
+        deepResetConfirm: "This will try to repair the current WhatsApp session without deleting the pairing or creating a new QR. Continue?",
+        deepResetDone: "Session checked/repaired without deleting pairing",
         showQr: "Generate new QR",
         hideQr: "Hide QR",
 
@@ -342,17 +342,15 @@ function WhatsAppPage() {
         toast.error(t.errorTitle, { description: report.error ?? "Deep reset failed" });
         return;
       }
-      const wiped = report.removedBridgeSessions.length;
-      const failed = report.deleteErrors.length;
       toast.success(t.deepResetDone, {
         description: ar
-          ? `مسحنا ${wiped} جلسة قديمة${failed ? ` (${failed} فشلت)` : ""}. الجلسة الجديدة: ${report.createdSessionId?.slice(-8) ?? "?"}`
-          : `Wiped ${wiped} stale sessions${failed ? ` (${failed} failed)` : ""}. New session id: …${report.createdSessionId?.slice(-8) ?? "?"}`,
+          ? `الحالة: ${report.status ?? "غير معروفة"}. الجلسة: ${report.createdSessionId?.slice(-8) ?? "?"}`
+          : `Status: ${report.status ?? "unknown"}. Session: …${report.createdSessionId?.slice(-8) ?? "?"}`,
       });
       qc.invalidateQueries({ queryKey: ["wa-state"] });
       qc.invalidateQueries({ queryKey: ["wa-session-events"] });
       setPolling(true);
-      setShowQr(true);
+      setShowQr(false);
     },
     onError: (err: Error) => toast.error(t.errorTitle, { description: err.message }),
   });
