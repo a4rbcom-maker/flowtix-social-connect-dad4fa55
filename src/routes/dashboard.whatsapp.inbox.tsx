@@ -382,12 +382,33 @@ function InboxPage() {
     refetchOnWindowFocus: false,  // Realtime يغطي التحديث؛ لا تجلب عند العودة للتبويب
     refetchOnReconnect: "always", // بعد فقدان الشبكة نُزامن مرة
   });
+  // Track which JIDs have no more history on the server (last fetch was
+  // shorter than MSG_PAGE_SIZE). Drives the "load older" affordances so we
+  // don't send empty requests.
+  const [msgsExhausted, setMsgsExhausted] = useState<Set<string>>(() => new Set());
+  const markMsgsExhausted = useCallback((jid: string, exhausted: boolean) => {
+    setMsgsExhausted((prev) => {
+      const has = prev.has(jid);
+      if (has === exhausted) return prev;
+      const next = new Set(prev);
+      if (exhausted) next.add(jid);
+      else next.delete(jid);
+      return next;
+    });
+  }, []);
   const msgsQuery = useQuery<ChatMessageRow[]>({
     queryKey: ["wa-messages", user?.id, activeJid],
-    queryFn: () =>
-      activeJid
-        ? safeCall<ChatMessageRow[]>(() => fetchInboxMessages(user!.id, activeJid), [])
-        : Promise.resolve([]),
+    queryFn: async () => {
+      if (!activeJid || !user?.id) return [];
+      const rows = await safeCall<ChatMessageRow[]>(
+        () => fetchInboxMessages(user!.id, activeJid, { limit: MSG_PAGE_SIZE }),
+        [],
+      );
+      // Initial (cursorless) fetch — إذا رجعت أقل من صفحة كاملة فلا يوجد
+      // تاريخ أقدم في السيرفر ونعلّم المحادثة كمُستنفدة.
+      markMsgsExhausted(activeJid, rows.length < MSG_PAGE_SIZE);
+      return rows;
+    },
     enabled: !!activeJid && !!user?.id,
     placeholderData: (prev) => prev,
     staleTime: 5 * 60_000,        // 5 دقائق — Realtime + scheduleInvalidateMessages يغطي الجديد
