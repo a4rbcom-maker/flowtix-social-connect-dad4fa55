@@ -63,6 +63,7 @@ import {
   dispatchQueuedMessage,
   markConversationRead,
   markConversationActive,
+  clearConversationActive,
   summarizeConversation,
   type ConversationRow,
   type ChatMessageRow,
