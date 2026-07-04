@@ -89,6 +89,14 @@ import {
   createGroupMemberState,
   type GroupMemberState,
 } from "@/lib/wa-group-members";
+import {
+  buildInboxMessageQueryPlan,
+  cleanAliasPhone as cleanAliasPhoneExt,
+  inboxJidAliases as inboxJidAliasesExt,
+  isLidJid as isLidJidExt,
+  isLidLocal as isLidLocalExt,
+  jidLocal as jidLocalExt,
+} from "@/lib/wa-inbox-query";
 
 
 export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
