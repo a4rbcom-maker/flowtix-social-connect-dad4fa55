@@ -418,11 +418,20 @@ function InboxPage() {
     () => (Array.isArray(msgsQuery.data) ? msgsQuery.data : []),
     [msgsQuery.data],
   );
-  const visibleMessages = useMemo<ChatMessageRow[]>(
-    () => (messages.length > visibleCount ? messages.slice(messages.length - visibleCount) : messages),
-    [messages, visibleCount],
+  const [optimisticMessages, setOptimisticMessages] = useState<ChatMessageRow[]>([]);
+  const visibleMessageIds = useMemo(() => new Set(messages.map((m) => m.id)), [messages]);
+  const mergedMessages = useMemo<ChatMessageRow[]>(
+    () => [
+      ...messages,
+      ...optimisticMessages.filter((m) => m.remote_jid === activeJid && !visibleMessageIds.has(m.id)),
+    ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+    [activeJid, messages, optimisticMessages, visibleMessageIds],
   );
-  const hasMoreOlder = messages.length > visibleMessages.length;
+  const visibleMessages = useMemo<ChatMessageRow[]>(
+    () => (mergedMessages.length > visibleCount ? mergedMessages.slice(mergedMessages.length - visibleCount) : mergedMessages),
+    [mergedMessages, visibleCount],
+  );
+  const hasMoreOlder = mergedMessages.length > visibleMessages.length;
 
   // Track connection so we can show the right empty-state CTA.
   // Poll faster while not connected so we catch a fresh QR scan quickly.
