@@ -37,6 +37,7 @@ import {
   AlertTriangle,
   Download,
   ExternalLink,
+  Users,
 } from "lucide-react";
 import { classifySendError, type SendErrorInfo } from "@/lib/wa-send-error";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
