@@ -55,8 +55,18 @@ function BotPage() {
 
   const logsQ = useQuery({
     queryKey: ["wa-ai-logs"],
-    queryFn: () => logsFn(),
+    queryFn: async () => {
+      // Auth bearer may not be attached on the very first mount (session
+      // still hydrating from localStorage). Swallow the 401 Response so it
+      // doesn't bubble as "Error: [object Response]" — the poll will retry.
+      try {
+        return await logsFn();
+      } catch {
+        return [] as Awaited<ReturnType<typeof logsFn>>;
+      }
+    },
     refetchInterval: 30000,
+    retry: false,
   });
 
   const [form, setForm] = useState<WaAiSettings | null>(null);
