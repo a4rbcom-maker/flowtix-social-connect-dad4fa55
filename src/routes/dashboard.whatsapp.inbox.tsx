@@ -2555,7 +2555,7 @@ function ConversationRow({
           <span className="absolute top-3 bottom-3 w-[3px] rounded-full bg-gradient-to-b from-primary to-[oklch(0.52_0.28_290)] ltr:left-0 rtl:right-0" />
         )}
         <div className="relative shrink-0">
-          <ContactAvatar name={title} src={conv.profile_pic_url ?? null} size="sm" />
+          <ContactAvatar name={title} src={conv.profile_pic_url ?? null} size="sm" isGroup={conv.remote_jid.endsWith("@g.us")} />
           {hasUnread && (
             <span className="absolute -top-0.5 -end-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />
           )}
