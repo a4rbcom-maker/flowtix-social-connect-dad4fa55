@@ -890,18 +890,17 @@ function InboxPage() {
       setSendError(null);
       setAttachment(null);
       if (context?.optimisticId) {
+        // Do NOT remove on a fixed timer — that caused the bubble to vanish
+        // for a beat before the refetch delivered the persisted row.
+        // The optimistic entry is dropped automatically once a matching real
+        // outgoing message appears via `outgoingSignatures` in mergedMessages.
+        // Safety cleanup after 60s in case the row never arrives.
+        const idToClear = context.optimisticId;
         window.setTimeout(() => {
-          setOptimisticMessages((current) => current.filter((m) => m.id !== context.optimisticId));
-        }, 1200);
+          setOptimisticMessages((current) => current.filter((m) => m.id !== idToClear));
+        }, 60000);
       }
-      qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
-      qc.invalidateQueries({ queryKey: ["wa-conversations"] });
-      toast.success(
-        hadFile
-          ? isAr ? "تم إرسال المرفق بنجاح" : "Attachment sent successfully"
-          : isAr ? "تم إرسال الرسالة بنجاح" : "Message sent successfully",
-      );
-    },
+
     // Show a rich, dismissible inline alert instead of a noisy toast so the
     // user sees the reason + retry steps without spam on repeated attempts.
     onError: (err: Error, _vars, context) => {
