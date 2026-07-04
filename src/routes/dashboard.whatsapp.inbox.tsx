@@ -497,12 +497,9 @@ function InboxPage() {
       totalLoaded: messages.length,
       sample,
     });
-    toast.warning(
-      isAr
-        ? `تنبيه: تم رصد ${offenders.length} رسالة من محادثة أخرى مختلطة في هذه المحادثة. راجع الكونسول للتفاصيل.`
-        : `Warning: ${offenders.length} message(s) from another conversation leaked into this chat. Check console for details.`,
-      { duration: 6000 },
-    );
+    // Diagnostic only — logged to the console above. We intentionally do not
+    // surface this to end users because the message is meaningless to them
+    // and any leaked rows are already filtered out of the rendered view.
   }, [activeJid, messages, isAr]);
 
 
