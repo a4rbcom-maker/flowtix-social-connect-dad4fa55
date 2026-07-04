@@ -95,7 +95,6 @@ export const Route = createFileRoute("/api/public/hooks/cleanup-wa-sessions")({
           // events every few seconds and starve real message deliveries.
           let bridgeOrphansDeleted = 0;
           let bridgeOrphansFailed = 0;
-          let bridgeSessionsRevived = 0;
           try {
             const bridgeUrl = process.env.WA_BRIDGE_URL?.replace(/\/+$/, "") || "";
             const apiKey = process.env.WA_BRIDGE_API_KEY || "";
@@ -154,35 +153,13 @@ export const Route = createFileRoute("/api/public/hooks/cleanup-wa-sessions")({
                 }
                 if (deletedThisRound === 0) break;
               }
-
-              if (bridgeOrphansDeleted > 0) {
-                const { data: connectedRows } = await supabaseAdmin
-                  .from("wa_sessions")
-                  .select("session_id")
-                  .eq("status", "connected")
-                  .limit(50);
-                for (const row of connectedRows ?? []) {
-                  const id = String(row.session_id ?? "");
-                  if (!id) continue;
-                  try {
-                    const rr = await fetch(`${bridgeUrl}/api/sessions/${encodeURIComponent(id)}/revive`, {
-                      method: "POST",
-                      headers: { "x-api-key": apiKey, Accept: "application/json", "Content-Type": "application/json" },
-                      body: JSON.stringify({ reason: "orphan_cleanup_rebind" }),
-                    });
-                    if (rr.ok || rr.status === 404 || rr.status === 405) bridgeSessionsRevived += 1;
-                  } catch {
-                    // best-effort; session status polling will surface any persistent issue
-                  }
-                }
-              }
             }
           } catch (e) {
             console.warn("[cleanup-wa-sessions] bridge orphan purge failed:", e instanceof Error ? e.message : String(e));
           }
 
           const durationMs = Date.now() - started;
-          console.log("[cleanup-wa-sessions]", { qrDeleted, staleDemoted, markedLoggedOut, bridgeOrphansDeleted, bridgeOrphansFailed, bridgeSessionsRevived, durationMs });
+          console.log("[cleanup-wa-sessions]", { qrDeleted, staleDemoted, markedLoggedOut, bridgeOrphansDeleted, bridgeOrphansFailed, durationMs });
 
           return new Response(
             JSON.stringify({
@@ -192,7 +169,6 @@ export const Route = createFileRoute("/api/public/hooks/cleanup-wa-sessions")({
               marked_logged_out: markedLoggedOut,
               bridge_orphans_deleted: bridgeOrphansDeleted,
               bridge_orphans_failed: bridgeOrphansFailed,
-              bridge_sessions_revived: bridgeSessionsRevived,
               duration_ms: durationMs,
             }),
             { headers: { "Content-Type": "application/json" } },
