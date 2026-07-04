@@ -2235,6 +2235,8 @@ function ContactInfoPanel({
     }
   }
 
+  const [groupInfoOpen, setGroupInfoOpen] = useState(false);
+
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [saveEmail, setSaveEmail] = useState("");
