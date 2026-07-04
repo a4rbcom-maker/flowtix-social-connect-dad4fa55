@@ -98,6 +98,7 @@ import {
   isMessageForActiveConversation,
   jidLocal as jidLocalExt,
 } from "@/lib/wa-inbox-query";
+import { nowMs, recordInboxQueryStat, useInboxQueryPerf } from "@/lib/wa-inbox-perf";
 
 
 export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
