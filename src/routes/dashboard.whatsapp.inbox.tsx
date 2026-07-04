@@ -1929,6 +1929,9 @@ function InboxPage() {
             isError={msgsQuery.isError}
             activeJid={activeJid}
           />
+          {/* Realtime → invalidation counter (كل مفتاح: scheduled/invalidated) */}
+          <InboxQueryStatsPanel isAr={isAr} />
+
 
           {/* Messages */}
           <div
