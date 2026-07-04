@@ -124,7 +124,7 @@ async function disconnect(supabase: ReturnType<typeof getSupabaseForToken>, user
 async function reset(supabase: ReturnType<typeof getSupabaseForToken>, userId: string) {
   const { data: existing } = await supabase
     .from("wa_sessions")
-    .select("session_id")
+    .select("session_id, status, phone_number, qr_data_url")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -151,7 +151,18 @@ async function reset(supabase: ReturnType<typeof getSupabaseForToken>, userId: s
     });
   } catch (err) {
     if (existing?.session_id) {
-      await supabase.from("wa_sessions").update({ session_id: existing.session_id, last_seen_at: now }).eq("user_id", userId);
+      await supabase
+        .from("wa_sessions")
+        .update({
+          session_id: existing.session_id,
+          status: existing.status ?? "unknown",
+          phone_number: existing.phone_number ?? null,
+          qr_data_url: existing.qr_data_url ?? null,
+          last_seen_at: now,
+        })
+        .eq("user_id", userId);
+    } else {
+      await supabase.from("wa_sessions").delete().eq("user_id", userId).eq("session_id", sessionId);
     }
     throw err;
   }

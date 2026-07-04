@@ -975,7 +975,7 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
 
     const { data: existing } = await supabase
       .from("wa_sessions")
-      .select("session_id, status")
+      .select("session_id, status, phone_number, qr_data_url")
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -1031,8 +1031,16 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
       if (existing?.session_id) {
         await supabase
           .from("wa_sessions")
-          .update({ session_id: existing.session_id, status: existing.status ?? "unknown", last_seen_at: now })
+          .update({
+            session_id: existing.session_id,
+            status: existing.status ?? "unknown",
+            phone_number: existing.phone_number ?? null,
+            qr_data_url: existing.qr_data_url ?? null,
+            last_seen_at: now,
+          })
           .eq("user_id", userId);
+      } else {
+        await supabase.from("wa_sessions").delete().eq("user_id", userId).eq("session_id", newSessionId);
       }
       throw new Error(msg);
     }
