@@ -95,7 +95,7 @@ export const getConversationMessages = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data: rows, error } = await supabase
       .from("wa_messages")
-      .select("id, remote_jid, direction, status, text_body, msg_type, media_url, wa_timestamp, created_at, raw")
+      .select("id, remote_jid, direction, status, text_body, msg_type, media_url, wa_timestamp, created_at, from_phone, raw")
       .eq("user_id", userId)
       .eq("remote_jid", data.remoteJid)
       .order("wa_timestamp", { ascending: true })
@@ -121,7 +121,9 @@ export const getConversationMessages = createServerFn({ method: "POST" })
         created_at: r.wa_timestamp ?? r.created_at,
         is_ai: raw.ai === true,
         sender_name: pickString(raw, "pushName", "senderName", "notifyName", "contactName"),
-        sender_phone: digits(pickString(raw, "participantPn", "senderPn", "phoneNumber")),
+        sender_phone:
+          digits(pickString(raw, "participantPn", "senderPn", "phoneNumber")) ||
+          digits(typeof r.from_phone === "string" ? r.from_phone : null),
       };
     });
   });
