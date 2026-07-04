@@ -465,6 +465,7 @@ function InboxPage() {
 
   // Count unique group members seen across the loaded messages (best-effort
   // participant count based on what we've received from the group so far).
+  const [groupInfoOpen, setGroupInfoOpen] = useState(false);
   const groupMemberCount = useMemo(() => {
     const jid = activeJid ?? "";
     if (!jid.endsWith("@g.us")) return 0;
