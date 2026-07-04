@@ -6,7 +6,7 @@
 // is covered by wa-webhook-contract.test.ts to lock the Bot-Xtra v1.8.x
 // payload contract. Do NOT inline parsing here — extend the parsers module
 // (and its tests) instead.
-import { randomUUID } from "crypto";
+import { createHmac, randomUUID } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { handleAiAutoReply, upsertConversationFromMessage } from "./wa-ai.server";
 import { cleanMessageText, mediaTypeFromRaw, mediaUrlFromRaw } from "./wa-chat-helpers.server";
@@ -45,6 +45,11 @@ const CONTACT_EVENTS = new Set([
   "chats.upsert",
 ]);
 const HISTORICAL_MESSAGE_AGE_MS = 10 * 60 * 1000;
+const REALTIME_CATCHUP_THROTTLE_MS = 90 * 1000;
+const REALTIME_CATCHUP_LOOKBACK_MS = 2 * 60 * 60 * 1000;
+const REALTIME_CATCHUP_MAX_CHATS = 12;
+const REALTIME_CATCHUP_PAGE_SIZE = 35;
+const realtimeCatchupMemory = new Map<string, number>();
 // For bulk campaigns, a bridge/API "sent" ACK is not enough to tell the user
 // the campaign succeeded: it only means WhatsApp accepted the outbound message.
 // Count success only when WhatsApp confirms delivery/read. Otherwise the worker
@@ -318,6 +323,7 @@ function phoneDigitsUnlessLidAlias(value: unknown, remoteJid: string | null | un
 
 function isHistoricalMessage(event: string, payload: Record<string, unknown>, data: Record<string, unknown>, waTimestamp: string | null): boolean {
   if (HISTORY_EVENTS.has(event)) return true;
+  if (isTruthyFlag(payload.realtimeCatchup) || isTruthyFlag(data.realtimeCatchup)) return false;
   if (
     isTruthyFlag(payload.isHistorical) ||
     isTruthyFlag(payload.is_historical) ||
@@ -735,6 +741,158 @@ function persistedOutboundStatus(status: string, fromMe: boolean): string {
   return status;
 }
 
+async function recentlyRanRealtimeCatchup(userId: string, sessionId: string): Promise<boolean> {
+  const now = Date.now();
+  const lastInMemory = realtimeCatchupMemory.get(sessionId) ?? 0;
+  if (now - lastInMemory < REALTIME_CATCHUP_THROTTLE_MS) return true;
+
+  const since = new Date(now - REALTIME_CATCHUP_THROTTLE_MS).toISOString();
+  const { data } = await supabaseAdmin
+    .from("wa_session_events")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("session_id", sessionId)
+    .eq("source", "history_sync")
+    .eq("reason", "recent_message_catchup_started")
+    .gte("created_at", since)
+    .limit(1);
+  if (data?.length) return true;
+
+  realtimeCatchupMemory.set(sessionId, now);
+  await logWaSessionEvent(supabaseAdmin, {
+    userId,
+    sessionId,
+    fromStatus: "connected",
+    toStatus: "connected",
+    source: "history_sync",
+    reason: "recent_message_catchup_started",
+    rawStatus: "connected",
+  });
+  return false;
+}
+
+function sameConversationJid(a: string, b: string): boolean {
+  if (a === b) return true;
+  const [aLocal, aDomain] = a.split("@");
+  const [bLocal, bDomain] = b.split("@");
+  if (!aLocal || !bLocal || aLocal !== bLocal) return false;
+  return (aDomain === "lid" && bDomain === "s.whatsapp.net") || (aDomain === "s.whatsapp.net" && bDomain === "lid");
+}
+
+async function replayRealtimeCatchupMessages(params: {
+  sessionId: string;
+  messages: Record<string, unknown>[];
+}): Promise<{ saved: number; skipped: number; error: string | null }> {
+  const secret = process.env.WA_BRIDGE_WEBHOOK_SECRET;
+  if (!secret) return { saved: 0, skipped: params.messages.length, error: "missing_webhook_secret" };
+  if (params.messages.length === 0) return { saved: 0, skipped: 0, error: null };
+
+  const raw = JSON.stringify({
+    event: "message",
+    sessionId: params.sessionId,
+    realtimeCatchup: true,
+    data: { messages: params.messages, realtimeCatchup: true },
+  });
+  const sig = createHmac("sha256", secret).update(raw, "utf8").digest("hex");
+  const res = await handleWaWebhook(new Request("http://internal.local/api/public/wa-webhook", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-bridge-signature": `sha256=${sig}`,
+    },
+    body: raw,
+  }));
+  const text = await res.text();
+  if (!res.ok) return { saved: 0, skipped: params.messages.length, error: text || `http_${res.status}` };
+  try {
+    const body = text ? JSON.parse(text) as { saved?: unknown; skipped?: unknown } : {};
+    return {
+      saved: Number(body.saved ?? 0) || 0,
+      skipped: Number(body.skipped ?? 0) || 0,
+      error: null,
+    };
+  } catch {
+    return { saved: 0, skipped: 0, error: null };
+  }
+}
+
+async function catchUpRecentMessagesFromBridge(params: {
+  userId: string;
+  sessionId: string;
+  phoneNumber?: string | null;
+}): Promise<void> {
+  if (await recentlyRanRealtimeCatchup(params.userId, params.sessionId)) return;
+
+  const { data: conversations, error } = await supabaseAdmin
+    .from("wa_conversations")
+    .select("remote_jid,last_message_at,updated_at")
+    .eq("user_id", params.userId)
+    .not("remote_jid", "is", null)
+    .order("last_message_at", { ascending: false })
+    .limit(REALTIME_CATCHUP_MAX_CHATS);
+  if (error) {
+    console.warn("[wa-webhook] recent catch-up conversation lookup failed:", error.message);
+    return;
+  }
+
+  let requested = 0;
+  let replayed = 0;
+  let saved = 0;
+  let lastError: string | null = null;
+  const fallbackSince = Date.now() - REALTIME_CATCHUP_LOOKBACK_MS;
+
+  for (const conversation of conversations ?? []) {
+    const jid = String(conversation.remote_jid ?? "").trim();
+    if (!jid || jid === "status@broadcast" || jid.endsWith("@broadcast")) continue;
+    const lastMessageMs = conversation.last_message_at ? Date.parse(String(conversation.last_message_at)) : NaN;
+    const sinceMs = Math.max(
+      Number.isFinite(lastMessageMs) ? lastMessageMs - 5 * 60 * 1000 : fallbackSince,
+      fallbackSince,
+    );
+
+    try {
+      requested++;
+      const body = await waBridge.fetchMessages(params.sessionId, jid, REALTIME_CATCHUP_PAGE_SIZE);
+      const candidates: Record<string, unknown>[] = [];
+      for (const entry of pickHistoryMessages({ event: "message", data: body } as Record<string, unknown>, asObj(body))) {
+        const parsed = parseMessageEntry(entry);
+        if (!parsed) continue;
+        if (!sameConversationJid(parsed.remoteJid, jid)) continue;
+        if (!parsed.waTimestamp) continue;
+        const ts = Date.parse(parsed.waTimestamp);
+        if (!Number.isFinite(ts) || ts < sinceMs) continue;
+        candidates.push(entry);
+      }
+      if (!candidates.length) continue;
+      replayed += candidates.length;
+      const replay = await replayRealtimeCatchupMessages({ sessionId: params.sessionId, messages: candidates });
+      saved += replay.saved;
+      lastError = lastError ?? replay.error;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      console.warn("[wa-webhook] recent catch-up failed:", { jid, error: lastError });
+    }
+  }
+
+  await logWaSessionEvent(supabaseAdmin, {
+    userId: params.userId,
+    sessionId: params.sessionId,
+    fromStatus: "connected",
+    toStatus: "connected",
+    source: "history_sync",
+    reason: `recent_message_catchup_done:${saved}_saved:${replayed}_seen:${requested}_chats${lastError ? `:${lastError.slice(0, 80)}` : ""}`,
+    rawStatus: "connected",
+  });
+}
+
+function scheduleRecentMessageCatchup(request: Request, params: { userId: string; sessionId: string; phoneNumber?: string | null }) {
+  attachBackgroundTask(
+    request,
+    catchUpRecentMessagesFromBridge(params),
+    "recent message catch-up",
+  );
+}
+
 async function importHistoryMessages(params: {
   userId: string;
   sessionId: string;
@@ -1110,6 +1268,9 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       payload,
       eventAt,
     });
+    if (eventStatus === "connected") {
+      scheduleRecentMessageCatchup(request, { userId, sessionId, phoneNumber });
+    }
     return new Response("ok");
   }
 
@@ -1150,6 +1311,9 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       payload,
       eventAt,
     });
+    if (next === "connected") {
+      scheduleRecentMessageCatchup(request, { userId, sessionId, phoneNumber });
+    }
     return new Response("ok");
   }
 
