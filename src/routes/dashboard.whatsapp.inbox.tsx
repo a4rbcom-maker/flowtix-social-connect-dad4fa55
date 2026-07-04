@@ -95,6 +95,7 @@ import {
   inboxJidAliases as inboxJidAliasesExt,
   isLidJid as isLidJidExt,
   isLidLocal as isLidLocalExt,
+  isMessageForActiveConversation,
   jidLocal as jidLocalExt,
 } from "@/lib/wa-inbox-query";
 
