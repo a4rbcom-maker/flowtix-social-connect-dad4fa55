@@ -425,13 +425,35 @@ function InboxPage() {
   );
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessageRow[]>([]);
   const visibleMessageIds = useMemo(() => new Set(messages.map((m) => m.id)), [messages]);
+  // Match optimistic → real outgoing rows by content, so the bubble stays
+  // visible until the persisted DB row is actually returned by the query.
+  // Prevents the "delivering → disappears → reappears" flash between the
+  // 1.2s removal timer and the next refetch cycle.
+  const outgoingSignatures = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of messages) {
+      if (m.direction !== "out") continue;
+      const sig = `${(m.text_body ?? "").trim()}|${m.media_url ?? ""}|${m.msg_type ?? ""}`;
+      set.add(sig);
+    }
+    return set;
+  }, [messages]);
   const mergedMessages = useMemo<ChatMessageRow[]>(
     () => [
       ...messages,
-      ...optimisticMessages.filter((m) => m.remote_jid === activeJid && !visibleMessageIds.has(m.id)),
+      ...optimisticMessages.filter((m) => {
+        if (m.remote_jid !== activeJid) return false;
+        if (visibleMessageIds.has(m.id)) return false;
+        const sig = `${(m.text_body ?? "").trim()}|${m.media_url ?? ""}|${m.msg_type ?? ""}`;
+        // If a real outgoing row with same content is already loaded, drop
+        // the optimistic clone to avoid duplicate bubbles.
+        if (outgoingSignatures.has(sig)) return false;
+        return true;
+      }),
     ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
-    [activeJid, messages, optimisticMessages, visibleMessageIds],
+    [activeJid, messages, optimisticMessages, visibleMessageIds, outgoingSignatures],
   );
+
   const visibleMessages = useMemo<ChatMessageRow[]>(
     () => (mergedMessages.length > visibleCount ? mergedMessages.slice(mergedMessages.length - visibleCount) : mergedMessages),
     [mergedMessages, visibleCount],
@@ -868,9 +890,15 @@ function InboxPage() {
       setSendError(null);
       setAttachment(null);
       if (context?.optimisticId) {
+        // Do NOT remove on a fixed timer — that caused the bubble to vanish
+        // for a beat before the refetch delivered the persisted row.
+        // The optimistic entry is dropped automatically once a matching real
+        // outgoing message appears via `outgoingSignatures` in mergedMessages.
+        // Safety cleanup after 60s in case the row never arrives.
+        const idToClear = context.optimisticId;
         window.setTimeout(() => {
-          setOptimisticMessages((current) => current.filter((m) => m.id !== context.optimisticId));
-        }, 1200);
+          setOptimisticMessages((current) => current.filter((m) => m.id !== idToClear));
+        }, 60000);
       }
       qc.invalidateQueries({ queryKey: ["wa-messages", user?.id, activeJid] });
       qc.invalidateQueries({ queryKey: ["wa-conversations"] });
@@ -880,6 +908,9 @@ function InboxPage() {
           : isAr ? "تم إرسال الرسالة بنجاح" : "Message sent successfully",
       );
     },
+
+
+
     // Show a rich, dismissible inline alert instead of a noisy toast so the
     // user sees the reason + retry steps without spam on repeated attempts.
     onError: (err: Error, _vars, context) => {
