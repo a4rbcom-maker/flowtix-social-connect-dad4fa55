@@ -2594,11 +2594,12 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     .maybeSingle();
 
   const messageAliases = inboxJidAliases(remoteJid, convAliases?.contact_phone ?? null);
-  const { data, error } = await supabase
+  const baseSelect = "id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw";
+  const { data: jidRows, error } = await supabase
     .from("wa_messages")
     // نحتاج raw كمسار احتياطي لأن بعض دفعات الأرشيف القديمة حملت رابط/بيانات الوسيط داخل JSON
     // قبل حفظه في media_url. الاستعلام محدود بآخر 200 رسالة للمحادثة المفتوحة فقط.
-    .select("id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw")
+    .select(baseSelect)
     .eq("user_id", userId)
     .in("remote_jid", messageAliases)
     .order("wa_timestamp", { ascending: false, nullsFirst: false })
@@ -2606,9 +2607,25 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     .limit(200);
 
   if (error) throw new Error(error.message);
+  const phone = cleanAliasPhone(convAliases?.contact_phone, remoteJid);
+  const { data: phoneRows, error: phoneError } = phone
+    ? await supabase
+        .from("wa_messages")
+        .select(baseSelect)
+        .eq("user_id", userId)
+        .or(`from_phone.eq.${phone},to_phone.eq.${phone}`)
+        .order("wa_timestamp", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .limit(200)
+    : { data: [], error: null };
+
+  if (phoneError) throw new Error(phoneError.message);
 
 
-  const rows = [...(data ?? [])]
+  const dedupedRows = Array.from(
+    new Map([...(jidRows ?? []), ...(phoneRows ?? [])].map((row) => [row.id, row])).values(),
+  );
+  const rows = dedupedRows
     .filter((row) => {
       const hasText = Boolean(row.text_body?.trim());
       const hasMedia = Boolean(row.media_url?.trim()) || normalizeWaMessageType(row.msg_type) !== "text";
