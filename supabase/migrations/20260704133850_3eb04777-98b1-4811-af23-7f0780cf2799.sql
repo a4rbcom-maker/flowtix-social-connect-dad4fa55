@@ -1,0 +1,1 @@
+UPDATE public.wa_sessions SET status='qr', phone_number=NULL, updated_at=now() WHERE status='connected';
