@@ -3552,6 +3552,94 @@ function prettyFileName(raw?: string | null, url?: string | null): string {
 
 
 
+function InboxQueryPerfBadge({
+  isAr,
+  isFetching,
+  isLoading,
+  isError,
+  activeJid,
+}: {
+  isAr: boolean;
+  isFetching: boolean;
+  isLoading: boolean;
+  isError: boolean;
+  activeJid: string | null;
+}) {
+  const { latest, averageMs, sampleSize } = useInboxQueryPerf();
+  if (!activeJid) return null;
+  // Only show stats for the currently-open conversation to avoid confusing
+  // leftover numbers from the previously-open chat.
+  const stat = latest && latest.jid === activeJid ? latest : null;
+
+  const state: "loading" | "fetching" | "error" | "idle" =
+    isLoading ? "loading" : isError ? "error" : isFetching ? "fetching" : "idle";
+  const stateLabel =
+    state === "loading" ? (isAr ? "جاري التحميل…" : "Loading…")
+    : state === "fetching" ? (isAr ? "تحديث…" : "Refreshing…")
+    : state === "error" ? (isAr ? "خطأ" : "Error")
+    : (isAr ? "جاهز" : "Ready");
+  const stateClass =
+    state === "error"
+      ? "border-destructive/40 bg-destructive/10 text-destructive"
+      : state === "idle"
+        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+        : "border-primary/30 bg-primary/10 text-primary";
+
+  const dur = stat ? Math.round(stat.durationMs) : null;
+  const durClass =
+    dur == null
+      ? "text-muted-foreground"
+      : dur < 250
+        ? "text-emerald-700 dark:text-emerald-300"
+        : dur < 800
+          ? "text-amber-600 dark:text-amber-400"
+          : "text-destructive";
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-1.5 border-b border-border/40 bg-muted/30 px-3 py-1.5 text-[10px] font-medium sm:px-6"
+      dir={isAr ? "rtl" : "ltr"}
+      aria-label={isAr ? "مؤشرات أداء استعلام الرسائل" : "Message query performance"}
+    >
+      <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 ${stateClass}`}>
+        {(state === "loading" || state === "fetching") && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
+        {stateLabel}
+      </span>
+      {stat && (
+        <>
+          <span className="inline-flex items-center gap-1 rounded-md border border-border/50 bg-background/60 px-1.5 py-0.5 text-muted-foreground">
+            {isAr ? "المسار" : "Path"}:{" "}
+            <span className="font-semibold text-foreground">
+              {stat.mode === "group" ? (isAr ? "جروب" : "group") : (isAr ? "خاص" : "private")}
+            </span>
+          </span>
+          <span className={`inline-flex items-center gap-1 rounded-md border border-border/50 bg-background/60 px-1.5 py-0.5 font-semibold ${durClass}`}>
+            {dur} ms
+            {stat.aliasLookupMs != null && (
+              <span className="ml-1 font-normal text-muted-foreground">
+                ({isAr ? "بحث" : "lookup"} {Math.round(stat.aliasLookupMs)})
+              </span>
+            )}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-md border border-border/50 bg-background/60 px-1.5 py-0.5 text-muted-foreground">
+            {stat.rowCount} {isAr ? "صف" : "rows"}
+          </span>
+          {averageMs != null && sampleSize > 1 && (
+            <span className="inline-flex items-center gap-1 rounded-md border border-border/50 bg-background/60 px-1.5 py-0.5 text-muted-foreground">
+              {isAr ? "متوسط" : "avg"}: {Math.round(averageMs)} ms · {sampleSize}
+            </span>
+          )}
+          {!stat.ok && stat.errorMessage && (
+            <span className="truncate rounded-md border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive" title={stat.errorMessage}>
+              {stat.errorMessage}
+            </span>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; isGroup: boolean }) {
   const isOut = m.direction === "out";
   const senderLabel = m.sender_name || (m.sender_phone ? `+${m.sender_phone}` : (isAr ? "عضو غير معروف" : "Unknown member"));
