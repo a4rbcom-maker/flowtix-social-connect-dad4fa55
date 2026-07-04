@@ -133,21 +133,34 @@ async function reset(supabase: ReturnType<typeof getSupabaseForToken>, userId: s
   }
 
   const sessionId = `flowtix-${userId.replace(/-/g, "").slice(0, 16)}-${Date.now().toString(36)}`;
-  await waBridge.createSession(sessionId, {
-    webhookUrl: (await deriveWebhookUrl()) ?? undefined,
-    tenantId: userId,
-    syncFullHistory: true,
-  });
-
   const now = new Date().toISOString();
   if (existing) {
     await supabase
       .from("wa_sessions")
-      .update({ session_id: sessionId, status: "qr", qr_data_url: null, phone_number: null, last_seen_at: now })
+      .update({ session_id: sessionId, status: "connecting", qr_data_url: null, phone_number: null, last_seen_at: now })
       .eq("user_id", userId);
   } else {
-    await supabase.from("wa_sessions").insert({ user_id: userId, session_id: sessionId, status: "qr" });
+    await supabase.from("wa_sessions").insert({ user_id: userId, session_id: sessionId, status: "connecting", last_seen_at: now });
   }
+
+  try {
+    await waBridge.createSession(sessionId, {
+      webhookUrl: (await deriveWebhookUrl()) ?? undefined,
+      tenantId: userId,
+      syncFullHistory: true,
+    });
+  } catch (err) {
+    if (existing?.session_id) {
+      await supabase.from("wa_sessions").update({ session_id: existing.session_id, last_seen_at: now }).eq("user_id", userId);
+    }
+    throw err;
+  }
+
+  await supabase
+    .from("wa_sessions")
+    .update({ status: "qr", qr_data_url: null, phone_number: null, last_seen_at: now })
+    .eq("user_id", userId)
+    .eq("session_id", sessionId);
 
   return readState(supabase, userId, sessionId);
 }

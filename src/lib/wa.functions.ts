@@ -988,22 +988,10 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
       }
     }
 
-    // 2) Mint a new session id and recreate with tenantId + webhookUrl
+    // 2) Mint a new session id and persist it before bridge creation. Bot-Xtra
+    // can emit QR/status webhooks immediately; if the DB still points at the old
+    // id those events are dropped as unknown and the UI remains stuck.
     const newSessionId = `flowtix-${userId.replace(/-/g, "").slice(0, 16)}-${Date.now().toString(36)}`;
-    const webhookUrl = await deriveWebhookUrl();
-    try {
-      await waBridge.createSession(newSessionId, {
-        webhookUrl: webhookUrl ?? undefined,
-        tenantId: userId,
-        syncFullHistory: true,
-      });
-    } catch (err) {
-      const msg = describeBridgeError(err);
-      console.error("[wa] resetWaReceiver: createSession failed:", msg);
-      throw new Error(msg);
-    }
-
-    // 3) Persist new session id and reset row to QR state
     const now = new Date().toISOString();
     if (existing) {
       await logWaSessionEvent(supabase, {
@@ -1018,7 +1006,7 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
         .from("wa_sessions")
         .update({
           session_id: newSessionId,
-          status: "qr",
+          status: "connecting",
           qr_data_url: null,
           phone_number: null,
           last_seen_at: now,
@@ -1027,8 +1015,34 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
     } else {
       await supabase
         .from("wa_sessions")
-        .insert({ user_id: userId, session_id: newSessionId, status: "qr" });
+        .insert({ user_id: userId, session_id: newSessionId, status: "connecting", last_seen_at: now });
     }
+
+    const webhookUrl = await deriveWebhookUrl();
+    try {
+      await waBridge.createSession(newSessionId, {
+        webhookUrl: webhookUrl ?? undefined,
+        tenantId: userId,
+        syncFullHistory: true,
+      });
+    } catch (err) {
+      const msg = describeBridgeError(err);
+      console.error("[wa] resetWaReceiver: createSession failed:", msg);
+      if (existing?.session_id) {
+        await supabase
+          .from("wa_sessions")
+          .update({ session_id: existing.session_id, status: existing.status ?? "unknown", last_seen_at: now })
+          .eq("user_id", userId);
+      }
+      throw new Error(msg);
+    }
+
+    // 3) Mark the freshly-created receiver as QR-ready.
+    await supabase
+      .from("wa_sessions")
+      .update({ status: "qr", qr_data_url: null, phone_number: null, last_seen_at: now })
+      .eq("user_id", userId)
+      .eq("session_id", newSessionId);
 
     await logWaSessionEvent(supabase, {
       userId,
