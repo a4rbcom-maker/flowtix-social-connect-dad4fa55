@@ -3004,6 +3004,15 @@ function renderMessagesWithDays(
   return out;
 }
 
+function missingMediaLabel(msgType: string, isAr: boolean): string {
+  if (msgType === "image") return isAr ? "صورة — لم يصل ملفها من خادم الاتصال" : "Image — file not received from connection server";
+  if (msgType === "video") return isAr ? "فيديو — لم يصل ملفه من خادم الاتصال" : "Video — file not received from connection server";
+  if (msgType === "audio") return isAr ? "مقطع صوتي — لم يصل ملفه من خادم الاتصال" : "Audio — file not received from connection server";
+  if (msgType === "document") return isAr ? "مستند — لم يصل ملفه من خادم الاتصال" : "Document — file not received from connection server";
+  if (msgType === "sticker") return isAr ? "ملصق — لم يصل ملفه من خادم الاتصال" : "Sticker — file not received from connection server";
+  return isAr ? "وسائط — لم يصل ملفها من خادم الاتصال" : "Media — file not received from connection server";
+}
+
 function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; isGroup: boolean }) {
   const isOut = m.direction === "out";
   const showSender = isGroup && !isOut && (m.sender_name || m.sender_phone);
@@ -3084,7 +3093,14 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
         {m.text_body ? (
           <p className="max-w-full whitespace-pre-wrap break-words text-start leading-relaxed [overflow-wrap:anywhere]">{m.text_body}</p>
         ) : !m.media_url && m.msg_type !== "text" ? (
-          <p className="italic opacity-75">[{m.msg_type}]</p>
+          <div className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${isOut ? "bg-white/15 text-primary-foreground/90" : "bg-muted text-muted-foreground"}`}>
+            {m.msg_type === "image" ? <ImageIcon className="h-4 w-4 shrink-0" /> : null}
+            {m.msg_type === "video" ? <VideoIcon className="h-4 w-4 shrink-0" /> : null}
+            {m.msg_type === "audio" ? <Mic className="h-4 w-4 shrink-0" /> : null}
+            {m.msg_type === "document" ? <FileText className="h-4 w-4 shrink-0" /> : null}
+            {!['image', 'video', 'audio', 'document'].includes(m.msg_type) ? <Paperclip className="h-4 w-4 shrink-0" /> : null}
+            <span className="text-start">{missingMediaLabel(m.msg_type, isAr)}</span>
+          </div>
         ) : null}
         {(isPending || isFailed) && (
           <p className={`mt-1 text-[10px] font-semibold ${isFailed ? "text-destructive" : "text-muted-foreground"}`}>
