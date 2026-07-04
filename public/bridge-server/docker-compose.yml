@@ -1,0 +1,36 @@
+services:
+  bridge:
+    build: .
+    container_name: wa-bridge
+    restart: unless-stopped
+    stop_grace_period: 90s
+    ports:
+      - "3000:3000"
+    volumes:
+      - ${SESSIONS_PATH:-./sessions}:/app/sessions
+    environment:
+      NODE_ENV: "production"
+      PORT: "3000"
+      SESSIONS_DIR: "/app/sessions"
+      API_KEY: "${API_KEY:-CHANGE_ME}"
+      WEBHOOK_URL: "${WEBHOOK_URL:-}"
+      WEBHOOK_SECRET: "${WEBHOOK_SECRET:-}"
+      TZ: "Africa/Cairo"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    mem_limit: 4g
+    memswap_limit: 4g
+    cpus: "2.0"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
