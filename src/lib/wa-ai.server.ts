@@ -682,39 +682,14 @@ export async function handleAiAutoReply(opts: {
     }
 
 
-    // Human takeover: if the business owner (or a teammate) replied manually
-    // to this conversation in the last 30 minutes, pause the AI so it does not
-    // interrupt the human conversation. The AI resumes automatically after 30
-    // minutes of no human replies. AI-sent messages are marked with raw.ai=true
-    // and are ignored by this check.
-    const HUMAN_TAKEOVER_MINUTES = 30;
-    {
-      const since = new Date(Date.now() - HUMAN_TAKEOVER_MINUTES * 60_000).toISOString();
-      const { data: humanOut } = await supabaseAdmin
-        .from("wa_messages")
-        .select("id, created_at, raw")
-        .eq("user_id", userId)
-        .eq("remote_jid", remoteJid)
-        .eq("direction", "out")
-        .gte("created_at", since)
-        .order("created_at", { ascending: false })
-        .limit(10);
-      const lastHuman = (humanOut ?? []).find((m) => {
-        const raw = (m as { raw?: { ai?: unknown } }).raw;
-        return !(raw && raw.ai === true);
-      });
-      if (lastHuman) {
-        await logAiSkip({
-          userId,
-          conversationId,
-          remoteJid,
-          inboundText,
-          model: settings.ai_model,
-          reason: `human_takeover: تم إيقاف الوكيل مؤقتاً لأن رداً بشرياً أُرسل خلال آخر ${HUMAN_TAKEOVER_MINUTES} دقيقة. سيعود الوكيل تلقائياً بعد ${HUMAN_TAKEOVER_MINUTES} دقيقة من الصمت.`,
-        });
-        return;
-      }
-    }
+    // NOTE: We deliberately do NOT pause the AI based on past human replies
+    // outside the presence window. The single source of truth for "human is
+    // handling this chat" is `agent_active_until` (pushed by the inbox UI
+    // while the conversation is open, checked above). Once that window
+    // expires, the AI resumes replying regardless of any earlier manual
+    // messages the operator sent — this matches the requested behavior:
+    // "silent only while the inbox is open, otherwise always respond".
+
 
     // AI cooldown / de-duplication: if the AI already sent a reply to this jid
     // in the last AI_REPLY_COOLDOWN_MS window, skip. This prevents duplicate
