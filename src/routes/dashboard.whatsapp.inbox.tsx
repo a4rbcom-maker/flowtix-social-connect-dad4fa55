@@ -411,11 +411,11 @@ function InboxPage() {
     },
     enabled: !!activeJid && !!user?.id,
     placeholderData: (prev) => prev,
-    staleTime: 5 * 60_000,        // 5 دقائق — Realtime + scheduleInvalidateMessages يغطي الجديد
+    staleTime: 5_000,             // نبقيها fresh لخمس ثوانٍ فقط حتى لا تتأخر الرسائل الجديدة عن الظهور
     gcTime: 30 * 60_000,          // احفظ رسائل المحادثة نصف ساعة → الرجوع للمحادثة فوري بدون جلب
-    refetchInterval: 300_000,     // safety net
-    refetchOnMount: false,        // لا تعيد الجلب عند إعادة فتح المحادثة إذا لسه fresh
-    refetchOnWindowFocus: false,
+    refetchInterval: 3_000,       // safety net قصير — Realtime أساسي وهذا احتياط
+    refetchOnMount: "always",     // عند فتح المحادثة أعد الجلب لضمان أحدث الرسائل
+    refetchOnWindowFocus: true,   // عند العودة للتبويب زامن فوراً
     refetchOnReconnect: "always",
   });
   // Debounced invalidators so bursts of realtime events don't refetch repeatedly.
