@@ -3028,17 +3028,12 @@ function digits(value: string | null): string | null {
   return cleaned || null;
 }
 
-function jidLocal(jid: string): string {
-  return jid.split("@")[0] ?? "";
-}
-
-function isLidLocal(local: string): boolean {
-  return /^\d{14,}$/.test(local);
-}
-
-function isLidJid(jid: string): boolean {
-  return jid.endsWith("@lid") || (jid.endsWith("@s.whatsapp.net") && isLidLocal(jidLocal(jid)));
-}
+// JID/LID helpers live in @/lib/wa-inbox-query (single source of truth for
+// the query plan + tests). Aliased here so local call sites don't need to
+// change and so the helpers stay in sync with buildInboxMessageQueryPlan.
+const jidLocal = jidLocalExt;
+const isLidLocal = isLidLocalExt;
+const isLidJid = isLidJidExt;
 
 function displayConversationTitle(conv: ConversationRow, isAr: boolean): string {
   const name = usefulContactName(conv.contact_name, conv.contact_phone, conv.remote_jid);
