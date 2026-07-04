@@ -2901,6 +2901,9 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
   }
 
   // === مسار المحادثات الخاصة (@s.whatsapp.net / @lid) ===
+  // نجلب alias الهاتف مرة واحدة، ثم استعلام واحد يجمع JIDs والهاتف عبر .or()
+  // بدلاً من استعلامين منفصلين ثم dedup محلي. شرط استبعاد @g.us محفوظ عبر
+  // .not("remote_jid","like","%@g.us") كدرع نهائي في نفس الاستعلام.
   const { data: convAliases } = await supabase
     .from("wa_conversations")
     .select("contact_phone")
@@ -2911,50 +2914,44 @@ async function fetchInboxMessages(userId: string, remoteJid: string): Promise<Ch
     .maybeSingle();
 
   const messageAliases = inboxJidAliases(remoteJid, convAliases?.contact_phone ?? null)
-    // ضمان إضافي: لا نسمح بأي JID جروب داخل قائمة الـaliases الخاصة.
     .filter((jid) => !jid.endsWith("@g.us"));
+  const phone = cleanAliasPhone(convAliases?.contact_phone, remoteJid);
 
-  const { data: jidRows, error } = await supabase
+  const orClauses: string[] = [];
+  if (messageAliases.length > 0) {
+    // PostgREST .or() لا يقبل فاصلة داخل قيم in()، نستخدم شكل in.("a","b")
+    const quoted = messageAliases.map((jid) => `"${jid.replace(/"/g, '\\"')}"`).join(",");
+    orClauses.push(`remote_jid.in.(${quoted})`);
+  }
+  if (phone) {
+    orClauses.push(`from_phone.eq.${phone}`);
+    orClauses.push(`to_phone.eq.${phone}`);
+  }
+
+  if (orClauses.length === 0) {
+    return await materializeInboxRows([]);
+  }
+
+  const { data: rows, error } = await supabase
     .from("wa_messages")
     .select(baseSelect)
     .eq("user_id", userId)
-    .in("remote_jid", messageAliases)
+    .or(orClauses.join(","))
+    .not("remote_jid", "like", "%@g.us")
     .order("wa_timestamp", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(200);
   if (error) throw new Error(error.message);
-
-  const phone = cleanAliasPhone(convAliases?.contact_phone, remoteJid);
-  // fallback بالهاتف: نستبعد الجروبات فقط (@g.us) عشان مانضيّعش أي JID تاني
-  // زي @c.us أو @broadcast. الدرع النهائي تحت بيمنع تسرّب الجروبات كمان.
-  const { data: phoneRows, error: phoneError } = phone
-    ? await supabase
-        .from("wa_messages")
-        .select(baseSelect)
-        .eq("user_id", userId)
-        .or(`from_phone.eq.${phone},to_phone.eq.${phone}`)
-        .not("remote_jid", "like", "%@g.us")
-        .order("wa_timestamp", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false })
-        .limit(200)
-    : { data: [], error: null };
-  if (phoneError) throw new Error(phoneError.message);
-
-  const dedupedRows = Array.from(
-    new Map([...(jidRows ?? []), ...(phoneRows ?? [])].map((row) => [row.id, row])).values(),
-  ).filter((row) => !row.remote_jid.endsWith("@g.us")); // درع نهائي ضد أي تسرّب من الجروبات
 
   // eslint-disable-next-line no-console
   console.debug("[wa-inbox] fetchInboxMessages(private)", {
     remoteJid,
     aliases: messageAliases,
     phone,
-    jidCount: jidRows?.length ?? 0,
-    phoneCount: phoneRows?.length ?? 0,
-    finalCount: dedupedRows.length,
+    count: rows?.length ?? 0,
   });
 
-  return await materializeInboxRows(dedupedRows);
+  return await materializeInboxRows(rows ?? []);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
