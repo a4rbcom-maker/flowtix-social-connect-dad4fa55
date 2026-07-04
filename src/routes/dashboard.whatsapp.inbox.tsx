@@ -964,10 +964,9 @@ function InboxPage() {
         qc.setQueryData<ChatMessageRow[]>(
           ["wa-messages", user.id, activeJid],
           (prev) => {
-            const cur = prev ?? [];
-            const seen = new Set(cur.map((r) => r.id));
-            // Dedupe by id — realtime could have raced an INSERT.
-            return [...cur, ...older.filter((r) => !seen.has(r.id))];
+            // Route both slices through the shared dedupe so a late realtime
+            // INSERT + an overlapping older page can never double-render.
+            return dedupeAndSortMessages([...(prev ?? []), ...older]);
           },
         );
         setVisibleCount((c) => c + older.length);
