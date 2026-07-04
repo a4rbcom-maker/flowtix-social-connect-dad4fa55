@@ -15,7 +15,6 @@ import { extractSessionReason, updateWaSessionStatus } from "./wa-session-events
 import {
   asObj,
   collectMessageEntries,
-  digits,
   normalizePhoneDigits,
   findSessionId,
   messageIdFrom,
