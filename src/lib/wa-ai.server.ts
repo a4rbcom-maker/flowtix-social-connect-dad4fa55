@@ -718,15 +718,34 @@ export async function handleAiAutoReply(opts: {
       { role: "system", content: systemContent },
     ];
 
-
-
-    for (const m of ordered) {
+    // History (excluding the very last inbound if it's the media we're about to attach as multimodal).
+    const lastIdx = ordered.length - 1;
+    for (let i = 0; i < ordered.length; i++) {
+      const m = ordered[i];
+      const isLast = i === lastIdx;
+      // Skip last inbound if we'll re-add it as multimodal user turn below.
+      if (isLast && m.direction === "in" && hasMedia) continue;
       const txt = m.text_body || (m.msg_type !== "text" ? `[${m.msg_type}]` : "");
       if (!txt) continue;
       messages.push({
         role: m.direction === "in" ? "user" : "assistant",
         content: txt,
       });
+    }
+
+    // Multimodal turn for the current inbound (image / audio / video / document)
+    if (hasMedia && inboundMedia) {
+      const parts = await buildMultimodalParts(inboundMedia, inboundText);
+      if (parts.length > 0) {
+        messages.push({ role: "user", content: parts });
+      } else if (inboundText?.trim()) {
+        messages.push({ role: "user", content: inboundText });
+      } else {
+        messages.push({
+          role: "user",
+          content: `أرسل العميل ملف [${inboundMedia.msgType}] لم يمكن قراءته. اطلب توضيحاً باختصار.`,
+        });
+      }
     }
 
     // Pick model from tier configuration
