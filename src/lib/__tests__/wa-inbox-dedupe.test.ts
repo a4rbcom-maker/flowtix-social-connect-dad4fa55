@@ -47,13 +47,13 @@ describe("dedupeAndSortMessages — id-based dedup", () => {
 
   it("الصف الحقيقي يتفوّق على المتفائل لنفس الـid حتى لو أقدم", () => {
     const optimistic = base({
-      id: "optimistic-xyz",
+      id: "shared-id",
       status: "pending",
       queued_id: "q1",
       created_at: "2026-07-04T10:00:10.000Z",
     });
     const real = base({
-      id: "optimistic-xyz",
+      id: "shared-id",
       status: "sent",
       queued_id: "q1",
       created_at: "2026-07-04T10:00:00.000Z",
