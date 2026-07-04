@@ -172,6 +172,11 @@ function InboxPage() {
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const preserveScrollRef = useRef<number | null>(null);
   const prevMsgLenRef = useRef<number>(0);
+  // Server-side pagination state — تتبّع أي JID/محادثات استُنفدت من السيرفر
+  // كي لا نضرب استعلامات فارغة عند التمرير للأعلى.
+  const msgsServerExhaustedRef = useRef<Map<string, boolean>>(new Map());
+  const convServerExhaustedRef = useRef<boolean>(false);
+  const [isLoadingMoreConv, setIsLoadingMoreConv] = useState(false);
 
   type SyncStatus = "idle" | "running" | "pending" | "done" | "error";
   const [syncState, setSyncState] = useState<{
