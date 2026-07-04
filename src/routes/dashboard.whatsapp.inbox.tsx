@@ -755,6 +755,34 @@ function InboxPage() {
     }
   }, [activeJid, conversations, markReadFn, qc, user?.id]);
 
+  // Auto-retry stuck pending messages. A message is "stuck" when it was
+  // persisted (status='pending') but the bridge dispatch never completed —
+  // typically because the fire-and-forget client dispatch was interrupted
+  // (tab closed, network hiccup). We attempt each id at most twice per
+  // mount to avoid loops.
+  const autoDispatchAttemptsRef = useRef<Map<string, number>>(new Map());
+  useEffect(() => {
+    if (!user?.id || !activeJid) return;
+    const stuck = messages.filter(
+      (m) => m.direction === "out" && m.status === "pending" && m.is_stale_pending && !m.id.startsWith("optimistic-"),
+    );
+    if (stuck.length === 0) return;
+    for (const m of stuck) {
+      const attempts = autoDispatchAttemptsRef.current.get(m.id) ?? 0;
+      if (attempts >= 2) continue;
+      autoDispatchAttemptsRef.current.set(m.id, attempts + 1);
+      dispatchFn({ data: { messageId: m.id } })
+        .then(() => {
+          qc.invalidateQueries({ queryKey: ["wa-messages", user.id, activeJid] });
+          qc.invalidateQueries({ queryKey: ["wa-conversations"] });
+        })
+        .catch((err: unknown) => {
+          console.warn("[inbox] auto-dispatch failed for", m.id, err);
+        });
+    }
+  }, [messages, activeJid, user?.id, dispatchFn, qc]);
+
+
   // Presence heartbeat — pauses the AI auto-reply while the user is viewing or
   // typing in this conversation. Rules:
   //   • as long as this chat is open, ping every 20s (window is open → human is here)
