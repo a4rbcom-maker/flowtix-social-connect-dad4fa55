@@ -408,13 +408,16 @@ export const waBridge = {
    * paired WhatsApp credentials on disk. This is not logout/delete and does not
    * mint a new QR. Keep history flags off here: this is used to recover a live
    * agent/send path, not to trigger a heavy archive replay.
+   *
+   * Bot-Xtra v1.8.5+ exposes a real POST /api/sessions/:id/revive that performs
+   * a soft-reset (socket rebuild) without touching credentials — no QR issued.
+   * Older bridges (<1.8.5) return 404/405; caller decides fallback.
    */
-  reviveSession: (id: string, opts: { webhookUrl?: string; tenantId?: string } = {}) =>
-    waBridge.createSession(id, {
-      webhookUrl: opts.webhookUrl,
-      tenantId: opts.tenantId,
-      syncFullHistory: false,
-    }),
+  reviveSession: (id: string, _opts: { webhookUrl?: string; tenantId?: string } = {}) =>
+    bridgeFetch<{ ok?: boolean; status?: string; connected?: boolean }>(
+      `/api/sessions/${encodeURIComponent(id)}/revive`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
   requestHistorySync: async (id: string) => {
     const paths = [
       `/api/sessions/${encodeURIComponent(id)}/sync-history`,
