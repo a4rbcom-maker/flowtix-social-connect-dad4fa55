@@ -184,7 +184,8 @@ export function tenantIdFromWebhookPayload(payload: Record<string, unknown>): st
 export function sessionIdLooksOwnedByTenant(sessionId: string, tenantId: string): boolean {
   const compactTenant = tenantId.replace(/-/g, "");
   if (compactTenant.length < 16) return false;
-  return sessionId.startsWith(`flowtix-${compactTenant.slice(0, 16)}-`);
+  const base = `flowtix-${compactTenant.slice(0, 16)}`;
+  return sessionId === base || sessionId.startsWith(`${base}-`);
 }
 
 export function parseWaTimestamp(entry: Record<string, unknown>): string | null {
