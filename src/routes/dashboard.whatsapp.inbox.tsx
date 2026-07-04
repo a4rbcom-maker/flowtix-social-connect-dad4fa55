@@ -375,11 +375,11 @@ function InboxPage() {
     queryFn: () => safeCall<ConversationRow[]>(() => fetchInboxConversations(user!.id), []),
     enabled: !!user?.id,
     placeholderData: (prev) => prev,
-    staleTime: 2 * 60_000,        // 2 دقيقة — الترتيب يتحدث فورياً عبر Realtime
+    staleTime: 10_000,            // اعتبر القائمة "طازجة" لعشر ثوانٍ فقط لتجنب تأخر ظهور الرسائل الجديدة
     gcTime: 30 * 60_000,          // احتفظ بالقائمة نصف ساعة بعد إخفاء الشاشة
-    refetchInterval: 300_000,     // safety net فقط
-    refetchOnMount: false,        // اعتمد على staleTime بدل الجلب عند كل mount
-    refetchOnWindowFocus: false,  // Realtime يغطي التحديث؛ لا تجلب عند العودة للتبويب
+    refetchInterval: 5_000,       // safety net قصير — Realtime أساسي وهذا احتياط ضد سقوط الاشتراك
+    refetchOnMount: "always",     // أعد الجلب عند العودة لشاشة الوارد لضمان أحدث ترتيب
+    refetchOnWindowFocus: true,   // عند العودة للتبويب أعد المزامنة فوراً
     refetchOnReconnect: "always", // بعد فقدان الشبكة نُزامن مرة
   });
   // Track which JIDs have no more history on the server (last fetch was
