@@ -197,6 +197,9 @@ function phoneFromContactRecord(row: Record<string, unknown>): string | null {
       row.participantPn ??
       row.recipientPn ??
       row.remoteJidAlt ??
+      row.jid ??
+      row.id ??
+      row.remoteJid ??
       row.phoneNumber ??
       row.phone ??
       row.number ??
@@ -1368,7 +1371,7 @@ export const matchLidPhoneNumbers = createServerFn({ method: "POST" })
     // Candidates: LID convs missing a real phone.
     const { data: convs, error: convsErr } = await supabase
       .from("wa_conversations")
-      .select("id, remote_jid, contact_phone, contact_name")
+      .select("id, session_id, remote_jid, contact_phone, contact_name")
       .eq("user_id", userId)
       .like("remote_jid", "%@lid")
       .is("contact_phone", null)
@@ -1400,7 +1403,7 @@ export const matchLidPhoneNumbers = createServerFn({ method: "POST" })
     // Ask the bridge for its current chat/contact catalogue as another safe
     // source. This only accepts explicit PN/phone fields; it never guesses a
     // public number from a 14+ digit LID alias.
-    const sessionIds = Array.from(new Set((convs ?? []).map((c) => c.remote_jid && (c as { session_id?: string }).session_id).filter(Boolean)));
+    const sessionIds = Array.from(new Set((convs ?? []).map((c) => c.session_id).filter(Boolean)));
     for (const sessionId of sessionIds) {
       const catalogue = await waBridge.fetchChats(String(sessionId)).catch(() => null);
       const rows = pickArray(catalogue?.body, ["contacts", "chats", "items", "data"]);
