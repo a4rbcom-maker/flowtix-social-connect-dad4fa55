@@ -125,7 +125,7 @@ function InboxPage() {
     if (typeof window !== "undefined") localStorage.setItem("flowtix-inbox-timerange", timeRange);
   }, [timeRange]);
   const [draft, setDraft] = useState("");
-  // Real image attachment: hold the picked File + a local object URL preview.
+  // Real attachment: hold the picked File + a local object URL preview.
   // On submit we upload to `wa-media` and forward the signed URL to the bridge.
   const [attachment, setAttachment] = useState<{ file: File; previewUrl: string } | null>(null);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
@@ -804,7 +804,7 @@ function InboxPage() {
       qc.invalidateQueries({ queryKey: ["wa-conversations"] });
       toast.success(
         hadFile
-          ? isAr ? "تم إرسال الصورة بنجاح" : "Image sent successfully"
+          ? isAr ? "تم إرسال المرفق بنجاح" : "Attachment sent successfully"
           : isAr ? "تم إرسال الرسالة بنجاح" : "Message sent successfully",
       );
     },
@@ -1533,11 +1533,19 @@ function InboxPage() {
           >
             {attachment && (
               <div className="mb-2 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 p-2">
-                <img
-                  src={attachment.previewUrl}
-                  alt={attachment.file.name}
-                  className="h-14 w-14 rounded-lg object-cover ring-1 ring-border"
-                />
+                {attachment.file.type.startsWith("image/") ? (
+                  <img
+                    src={attachment.previewUrl}
+                    alt={attachment.file.name}
+                    className="h-14 w-14 rounded-lg object-cover ring-1 ring-border"
+                  />
+                ) : (
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-background ring-1 ring-border">
+                    {attachment.file.type.startsWith("video/") ? <VideoIcon className="h-6 w-6 text-primary" /> : null}
+                    {attachment.file.type.startsWith("audio/") ? <Mic className="h-6 w-6 text-primary" /> : null}
+                    {!attachment.file.type.startsWith("video/") && !attachment.file.type.startsWith("audio/") ? <FileText className="h-6 w-6 text-primary" /> : null}
+                  </div>
+                )}
                 <div className="min-w-0 flex-1 text-xs">
                   <div className="truncate font-medium">{attachment.file.name}</div>
                   <div className="text-muted-foreground">
@@ -1589,19 +1597,19 @@ function InboxPage() {
               </Popover>
               <label
                 className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
-                aria-label={isAr ? "إرفاق صورة" : "Attach image"}
-                title={isAr ? "إرفاق صورة" : "Attach image"}
+                aria-label={isAr ? "إرفاق ملف" : "Attach file"}
+                title={isAr ? "إرفاق ملف" : "Attach file"}
               >
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
                   className="hidden"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
                     if (!f) return;
                     e.target.value = "";
-                    if (f.size > 16 * 1024 * 1024) {
-                      toast.error(isAr ? "الحد الأقصى للصورة 16 ميجابايت" : "Image must be ≤ 16MB");
+                    if (f.size > 32 * 1024 * 1024) {
+                      toast.error(isAr ? "الحد الأقصى للملف 32 ميجابايت" : "File must be ≤ 32MB");
                       return;
                     }
                     if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
@@ -3098,7 +3106,7 @@ function ChatBubble({ m, isAr, isGroup }: { m: ChatMessageRow; isAr: boolean; is
             <img src={m.media_url} alt="sticker" className="max-h-32" />
           </button>
         )}
-        {m.text_body ? (
+        {m.text_body && !(m.media_url && m.msg_type === "document") ? (
           <p className="max-w-full whitespace-pre-wrap break-words text-start leading-relaxed [overflow-wrap:anywhere]">{m.text_body}</p>
         ) : !m.media_url && m.msg_type !== "text" ? (
           <div className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${isOut ? "bg-white/15 text-primary-foreground/90" : "bg-muted text-muted-foreground"}`}>
