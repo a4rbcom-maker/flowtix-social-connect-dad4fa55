@@ -2921,16 +2921,29 @@ function EmptyChat({
 // Helpers
 // ──────────────────────────────────────────────────────────────────────────
 
-async function fetchInboxConversations(userId: string): Promise<ConversationRow[]> {
+const CONV_PAGE_SIZE = 200;   // كان 2000 — قللنا التحميل الأولي 10×
+const MSG_PAGE_SIZE = 60;     // كان 200 — يفتح الشات أسرع، والباقي يُحمَّل عند التمرير للأعلى
+
+async function fetchInboxConversations(
+  userId: string,
+  opts?: { beforeTs?: string | null; limit?: number },
+): Promise<ConversationRow[]> {
   // الترتيب أصبح مضمونًا من قاعدة البيانات عبر trigger عند كل رسالة،
   // لذلك لا نقرأ آلاف الرسائل عند فتح الوارد حتى لا نضغط Disk IO.
-  const { data, error } = await supabase
+  const limit = Math.max(1, opts?.limit ?? CONV_PAGE_SIZE);
+  let q = supabase
     .from("wa_conversations")
     .select("id, session_id, remote_jid, contact_name, contact_phone, profile_pic_url, last_message_text, last_message_at, last_direction, unread_count, ai_enabled")
     .eq("user_id", userId)
     .eq("is_archived", false)
     .order("last_message_at", { ascending: false })
-    .limit(2000);
+    .limit(limit);
+  if (opts?.beforeTs) {
+    // Cursor pagination — نجلب فقط الأقدم من آخر صف في الـcache الحالي،
+    // فلا تكرار مع الصفحات السابقة، ومرشحات user_id/is_archived ثابتة.
+    q = q.lt("last_message_at", opts.beforeTs);
+  }
+  const { data, error } = await q;
 
   if (error) throw new Error(error.message);
   const visibleRows: RankedConversationRow[] = ((data ?? []) as ConversationRow[]).map((row): RankedConversationRow => {
@@ -2946,8 +2959,19 @@ async function fetchInboxConversations(userId: string): Promise<ConversationRow[
 
   return visibleRows
     .sort(compareConversationsByLastRealActivity)
-    .slice(0, 2000);
+    .slice(0, limit);
 }
+
+async function fetchInboxMessages(
+  userId: string,
+  remoteJid: string,
+  opts?: { beforeTs?: string | null; limit?: number },
+): Promise<ChatMessageRow[]> {
+  const baseSelect = "id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw";
+  const startedAt = nowMs();
+  const limit = Math.max(1, opts?.limit ?? MSG_PAGE_SIZE);
+  const beforeTs = opts?.beforeTs ?? null;
+
 
 async function fetchInboxMessages(userId: string, remoteJid: string): Promise<ChatMessageRow[]> {
   const baseSelect = "id, remote_jid, direction, status, text_body, msg_type, media_url, provider_message_id, wa_timestamp, created_at, raw";
