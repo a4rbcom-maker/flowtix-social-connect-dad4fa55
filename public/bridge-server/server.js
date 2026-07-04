@@ -756,7 +756,8 @@ async function createSession(sessionId, tenantId, webhookUrl, options = {}) {
       };
       const fallbackExtMap = { audio: 'ogg', image: 'jpg', video: 'mp4', document: 'bin', sticker: 'webp' };
       const ext = (actualMime && mimeToExt[actualMime]) ? mimeToExt[actualMime] : (fallbackExtMap[msgType] || 'bin');
-      const originalFileName = mediaMessage.fileName || mediaMessage.fileName?.toString?.() || '';
+      const rawFileName = mediaMessage.fileName;
+      const originalFileName = typeof rawFileName === 'string' ? rawFileName : rawFileName ? String(rawFileName) : '';
       const fileName = originalFileName || `bridge/${tenantId}/${Date.now()}_${msg.key?.id || 'msg'}.${ext}`;
       
       const fallbackMimeMap = { audio: 'audio/ogg', image: 'image/jpeg', video: 'video/mp4', document: 'application/octet-stream', sticker: 'image/webp' };
