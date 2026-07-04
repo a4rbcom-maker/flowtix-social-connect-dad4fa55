@@ -306,8 +306,8 @@ export const dispatchQueuedMessage = createServerFn({ method: "POST" })
     const hasMedia = !!row.media_url;
     const mediaType = (row.msg_type as "image" | "video" | "document" | "audio") ?? "image";
     const mediaUrl = row.media_url ?? undefined;
-    const mimeType = mediaData ? pickString(mediaData, ["mimeType"]) ?? undefined : undefined;
-    const fileName = mediaData ? pickString(mediaData, ["fileName"]) ?? undefined : undefined;
+    const mimeType = mediaData ? pickString(mediaData, "mimeType") ?? undefined : undefined;
+    const fileName = mediaData ? pickString(mediaData, "fileName") ?? undefined : undefined;
     const text = row.text_body ?? "";
 
     const { data: recentRaw } = await supabase
