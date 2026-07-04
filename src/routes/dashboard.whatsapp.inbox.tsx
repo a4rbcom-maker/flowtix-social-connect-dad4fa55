@@ -369,7 +369,7 @@ function InboxPage() {
     t.conv = setTimeout(() => {
       t.conv = undefined;
       qc.invalidateQueries({ queryKey: ["wa-conversations"], refetchType: "active" });
-    }, 1500);
+    }, 400);
   }, [qc]);
   const scheduleInvalidateMessages = useCallback((uid: string, jid: string) => {
     const t = invalidateTimersRef.current;
@@ -529,10 +529,10 @@ function InboxPage() {
         "postgres_changes",
         { event: "*", schema: "public", table: "wa_messages", filter: `user_id=eq.${uid}` },
         (payload) => {
-          // لا نعيد تحميل قائمة المحادثات من wa_messages؛ التريجر يحدث wa_conversations
-          // وستصلنا إشارة منفصلة من جدول المحادثات. هذا يمنع refetch مزدوج لكل رسالة.
           const row = payload.new as { remote_jid?: string; direction?: string; raw?: { is_historical?: boolean } | null };
-          if (activeJid && (payload.eventType === "DELETE" || row?.remote_jid === activeJid || payload.eventType === "UPDATE")) {
+          // نُبطل رسائل الدردشة النشطة عند أي حدث؛ اختلاف نسق JID (@lid مقابل @s.whatsapp.net)
+          // قد يمنع المطابقة الحرفية، لذا نعتمد على fetchInboxMessages لحل الهوية.
+          if (activeJid) {
             scheduleInvalidateMessages(uid, activeJid);
           }
           if (
@@ -541,6 +541,8 @@ function InboxPage() {
             !row?.raw?.is_historical
           ) {
             playBeep();
+            // ضمان تحديث فوري لقائمة المحادثات عند وصول رسالة جديدة
+            scheduleInvalidateConversations();
           }
         },
       )
