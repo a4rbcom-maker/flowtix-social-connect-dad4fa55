@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { waBridge, inferStatus, BridgeError, type BridgeSessionStatus } from "./wa-bridge.server";
-import { deriveWebhookUrl, describeBridgeError, doPing } from "./wa-helpers.server";
+import { deriveWebhookUrl, describeBridgeError, doPing, stableWaSessionId } from "./wa-helpers.server";
 import { isHardSessionGoneError, isTrustedUserDisconnect, updateWaSessionStatus } from "./wa-session-events.server";
 
 const corsHeaders = {
@@ -66,7 +66,7 @@ async function connect(supabase: ReturnType<typeof getSupabaseForToken>, userId:
 
   let sessionId = existing?.session_id;
   if (!sessionId) {
-    sessionId = `flowtix-${userId.replace(/-/g, "").slice(0, 16)}-${Date.now().toString(36)}`;
+    sessionId = stableWaSessionId(userId);
     const { error } = await supabase
       .from("wa_sessions")
       .insert({ user_id: userId, session_id: sessionId, status: "connecting" });
@@ -132,7 +132,7 @@ async function reset(supabase: ReturnType<typeof getSupabaseForToken>, userId: s
     try { await waBridge.deleteSession(existing.session_id); } catch { /* best effort */ }
   }
 
-  const sessionId = `flowtix-${userId.replace(/-/g, "").slice(0, 16)}-${Date.now().toString(36)}`;
+  const sessionId = stableWaSessionId(userId);
   const now = new Date().toISOString();
   if (existing) {
     await supabase

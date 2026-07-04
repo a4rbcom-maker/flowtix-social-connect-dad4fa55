@@ -17,6 +17,7 @@ import {
   deriveWebhookUrl,
   describeBridgeError,
   doPing,
+  stableWaSessionId,
   type WaBridgeHealth,
 } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
@@ -76,7 +77,7 @@ export const connectWaSession = createServerFn({ method: "POST" })
 
     let sessionId = existing?.session_id;
     if (!sessionId) {
-      sessionId = `flowtix-${userId.replace(/-/g, "").slice(0, 16)}-${Date.now().toString(36)}`;
+      sessionId = stableWaSessionId(userId);
       const { error: insErr } = await supabase
         .from("wa_sessions")
         .insert({ user_id: userId, session_id: sessionId, status: "connecting" });
@@ -991,7 +992,7 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
     // 2) Mint a new session id and persist it before bridge creation. Bot-Xtra
     // can emit QR/status webhooks immediately; if the DB still points at the old
     // id those events are dropped as unknown and the UI remains stuck.
-    const newSessionId = `flowtix-${userId.replace(/-/g, "").slice(0, 16)}-${Date.now().toString(36)}`;
+    const newSessionId = stableWaSessionId(userId);
     const now = new Date().toISOString();
     if (existing) {
       await logWaSessionEvent(supabase, {
