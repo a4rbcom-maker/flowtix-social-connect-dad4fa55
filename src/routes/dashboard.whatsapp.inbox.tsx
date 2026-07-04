@@ -639,7 +639,7 @@ function InboxPage() {
     if (!user?.id || !activeJid) return;
     if (connQuery.data?.status !== "connected") return;
     if (msgsQuery.isFetching) return;
-    if (messages.length > 3) return;
+    if (mergedMessages.length > 3) return;
     const key = `${user.id}:${activeJid}`;
     if (chatHistoryRequestedRef.current.has(key)) return;
     chatHistoryRequestedRef.current.add(key);
@@ -655,7 +655,7 @@ function InboxPage() {
         chatHistoryRequestedRef.current.delete(key);
         console.warn("[inbox] focused chat history sync failed", err);
       });
-  }, [user?.id, activeJid, connQuery.data?.status, msgsQuery.isFetching, messages.length, requestChatSyncFn, qc]);
+  }, [user?.id, activeJid, connQuery.data?.status, msgsQuery.isFetching, mergedMessages.length, requestChatSyncFn, qc]);
 
   // Reset progressive pagination when conversation changes
   useEffect(() => {
@@ -675,7 +675,7 @@ function InboxPage() {
       el.scrollTop = el.scrollTop + delta;
       preserveScrollRef.current = null;
       setIsLoadingOlder(false);
-      prevMsgLenRef.current = messages.length;
+      prevMsgLenRef.current = mergedMessages.length;
       return;
     }
     const prev = prevMsgLenRef.current;
@@ -1426,7 +1426,7 @@ function InboxPage() {
                   </div>
                 ))}
               </div>
-            ) : messages.length === 0 ? (
+            ) : mergedMessages.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
                   <MessageCircle className="h-7 w-7 text-muted-foreground" />
@@ -1449,7 +1449,7 @@ function InboxPage() {
                         if (!el || isLoadingOlder) return;
                         setIsLoadingOlder(true);
                         preserveScrollRef.current = el.scrollHeight;
-                        setVisibleCount((c) => Math.min(c + PAGE_SIZE, messages.length));
+                        setVisibleCount((c) => Math.min(c + PAGE_SIZE, mergedMessages.length));
                       }}
                       className="rounded-full bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm ring-1 ring-border/60 transition hover:text-foreground disabled:opacity-60"
                       disabled={isLoadingOlder}
@@ -1460,7 +1460,7 @@ function InboxPage() {
                     </button>
                   </div>
                 )}
-                {!hasMoreOlder && messages.length > PAGE_SIZE && (
+                {!hasMoreOlder && mergedMessages.length > PAGE_SIZE && (
                   <div className="flex justify-center py-2">
                     <span className="rounded-full bg-muted/60 px-3 py-1 text-[10px] text-muted-foreground">
                       {isAr ? "بداية المحادثة" : "Start of conversation"}
