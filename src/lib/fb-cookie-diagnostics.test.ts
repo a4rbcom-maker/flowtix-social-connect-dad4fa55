@@ -60,7 +60,10 @@ describe("Facebook cookie diagnostics", () => {
   });
 
 
-  it("accepts the real user-uploaded Cookie-Editor export", async () => {
+  it("accepts the real user-uploaded Cookie-Editor export (time-independent)", async () => {
+    // الفكستشر مأخوذ من تصدير حقيقي، فتواريخ الانتهاء ستفوت مع الزمن.
+    // نحدّث expiry فقط قبل التحقق حتى لا يفشل الاختبار في CI مع مرور الوقت،
+    // ونبقي هيكل التصدير كما هو (أسماء/قيم/دومين) لاختبار المُحلِّل بواقعية.
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
     const raw = await fs.readFile(
@@ -70,10 +73,28 @@ describe("Facebook cookie diagnostics", () => {
     const parsed = parseCookiesInputDetailed(raw);
     expect(parsed.ok).toBe(true);
     expect(parsed.cookies.length).toBeGreaterThanOrEqual(5);
-    const validation = validateFacebookCookies(parsed.cookies);
+
+    const refreshed = parsed.cookies.map((c) => ({ ...c, expirationDate: future }));
+    const validation = validateFacebookCookies(refreshed);
     expect(validation.missingCritical).toEqual([]);
     expect(validation.invalid).toEqual([]);
     expect(validation.detectedUserId).toBe("61590157555205");
     expect(validation.expired).toBe(false);
+  });
+
+  it("يعلّم الفكستشر الحقيقي كمنتهي عندما تكون تواريخ الـexpiry في الماضي", async () => {
+    // ضمان أن حالة انتهاء الصلاحية تُكتشف صحيحًا حتى بدون التلاعب بتاريخ الاختبار.
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const raw = await fs.readFile(
+      path.resolve(__dirname, "__fixtures__/fb-cookies-sample.json"),
+      "utf8",
+    );
+    const parsed = parseCookiesInputDetailed(raw);
+    expect(parsed.ok).toBe(true);
+    const expiredCookies = parsed.cookies.map((c) => ({ ...c, expirationDate: past }));
+    const validation = validateFacebookCookies(expiredCookies);
+    expect(validation.expired).toBe(true);
+    expect(cookieValidationMessage(validation)).toContain("انتهت صلاحية الجلسة");
   });
 });
