@@ -83,7 +83,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { computeGroupMemberCount } from "@/lib/wa-group-members";
+import {
+  accumulateGroupMembers,
+  countAccumulated,
+  createGroupMemberState,
+  type GroupMemberState,
+} from "@/lib/wa-group-members";
 
 
 export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
