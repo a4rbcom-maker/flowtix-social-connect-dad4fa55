@@ -1432,7 +1432,7 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
         const mimeType =
           pickStr(mediaObj, "mimeType", "mimetype", "fileMimeType", "contentType") ||
           pickStr(entry, "mimeType", "mimetype", "contentType") ||
-          defaultMimeType(msgType);
+          fallbackMimeType(msgType);
         const fileName = pickStr(mediaObj, "fileName", "filename", "name") || null;
         const aiTask = handleAiAutoReply({
           userId,
