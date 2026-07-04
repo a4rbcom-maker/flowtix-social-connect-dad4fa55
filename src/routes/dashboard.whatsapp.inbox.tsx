@@ -1591,6 +1591,7 @@ function InboxPage() {
                   const isGroup = jid.endsWith("@g.us");
                   if (isGroup) {
                     const isLoadingMembers = msgsQuery.isLoading || (msgsQuery.isFetching && messages.length === 0);
+                    const hasError = !!msgsQuery.isError && messages.length === 0;
                     const hasData = messages.length > 0;
                     return (
                       <button
@@ -1606,6 +1607,11 @@ function InboxPage() {
                               <Loader2 className="h-3 w-3 animate-spin" />
                               {isAr ? "جاري حساب الأعضاء…" : "Counting members…"}
                             </>
+                          ) : hasError ? (
+                            <>
+                              <AlertTriangle className="h-3 w-3 text-destructive" />
+                              {isAr ? "تعذّر تحميل الأعضاء — أعد المحاولة" : "Failed to load members — retry"}
+                            </>
                           ) : groupMemberCount > 0 ? (
                             isAr
                               ? `${groupMemberCount} عضو نشط في المحادثة`
@@ -1616,7 +1622,10 @@ function InboxPage() {
                               {isAr ? "تعذّر تحديد عدد الأعضاء" : "Member count unavailable"}
                             </>
                           ) : (
-                            isAr ? "محادثة جماعية" : "Group conversation"
+                            <>
+                              <Users className="h-3 w-3 opacity-60" />
+                              {isAr ? "لا توجد رسائل بعد" : "No messages yet"}
+                            </>
                           )}
                         </span>
                         <Info className="h-3 w-3 opacity-60" />
@@ -2061,9 +2070,13 @@ function InboxPage() {
                       value={
                         msgsQuery.isLoading || (msgsQuery.isFetching && messages.length === 0)
                           ? (isAr ? "جاري الحساب…" : "Counting…")
-                          : groupMemberCount > 0
-                            ? String(groupMemberCount)
-                            : (isAr ? "غير متاح" : "Unavailable")
+                          : msgsQuery.isError && messages.length === 0
+                            ? (isAr ? "فشل التحميل" : "Load failed")
+                            : groupMemberCount > 0
+                              ? String(groupMemberCount)
+                              : messages.length === 0
+                                ? (isAr ? "لا توجد رسائل بعد" : "No messages yet")
+                                : (isAr ? "غير متاح" : "Unavailable")
                       }
                     />
                     <InfoRow
