@@ -115,12 +115,6 @@ function InboxPage() {
     else setListVisible(true);
   }, [activeJid, isMobile]);
   const [isTyping, setIsTyping] = useState(false);
-  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const triggerTyping = useCallback((ms = 1400) => {
-    setIsTyping(true);
-    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-    typingTimerRef.current = setTimeout(() => setIsTyping(false), ms);
-  }, []);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [timeRange, setTimeRange] = useState<TimeRangeKey>(() => {
@@ -527,15 +521,8 @@ function InboxPage() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "wa_conversations", filter: `user_id=eq.${uid}` },
-        (payload) => {
+        () => {
           scheduleInvalidateConversations();
-          if (
-            payload.table === "wa_conversations" &&
-            (payload.new as { remote_jid?: string; last_direction?: string })?.remote_jid === activeJid &&
-            (payload.new as { last_direction?: string })?.last_direction === "in"
-          ) {
-            triggerTyping(1200);
-          }
         },
       )
       .on(
@@ -554,9 +541,6 @@ function InboxPage() {
             !row?.raw?.is_historical
           ) {
             playBeep();
-            if (activeJid && row.remote_jid === activeJid) {
-              triggerTyping(900);
-            }
           }
         },
       )
@@ -564,7 +548,7 @@ function InboxPage() {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [qc, activeJid, user, triggerTyping, scheduleInvalidateConversations, scheduleInvalidateMessages]);
+  }, [qc, activeJid, user, scheduleInvalidateConversations, scheduleInvalidateMessages]);
 
 
   // Catch-up on missed messages after tab was hidden / offline / long idle.
@@ -716,7 +700,6 @@ function InboxPage() {
   // Reset typing indicator when switching conversations
   useEffect(() => {
     setIsTyping(false);
-    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
   }, [activeJid]);
 
 
