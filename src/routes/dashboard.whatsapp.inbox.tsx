@@ -2462,10 +2462,12 @@ function ContactAvatar({
   name,
   src,
   size,
+  isGroup = false,
 }: {
   name: string;
   src: string | null;
   size: "sm" | "md" | "lg";
+  isGroup?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
   const sizeClass =
@@ -2474,6 +2476,21 @@ function ContactAvatar({
       : size === "md"
         ? "h-11 w-11 text-sm shadow-md shadow-primary/20"
         : "h-11 w-11 text-sm shadow-sm shadow-primary/20";
+
+  // Groups: always render a distinctive group icon so they can't be mistaken
+  // for a member's personal photo (WhatsApp group profile pics are often
+  // stale, generic, or actually one member's avatar).
+  if (isGroup) {
+    const iconSize = size === "lg" ? "h-9 w-9" : "h-5 w-5";
+    return (
+      <div
+        title={name}
+        className={`${sizeClass} flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-emerald-700 text-white ring-1 ring-emerald-600/40`}
+      >
+        <Users className={iconSize} strokeWidth={2.25} />
+      </div>
+    );
+  }
 
   if (src && !failed) {
     return (
