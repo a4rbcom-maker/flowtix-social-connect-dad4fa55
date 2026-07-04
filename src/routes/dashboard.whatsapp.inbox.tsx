@@ -1932,19 +1932,16 @@ function InboxPage() {
                   <div className="flex justify-center py-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        const el = scrollRef.current;
-                        if (!el || isLoadingOlder) return;
-                        setIsLoadingOlder(true);
-                        preserveScrollRef.current = el.scrollHeight;
-                        setVisibleCount((c) => Math.min(c + PAGE_SIZE, mergedMessages.length));
-                      }}
-                      className="rounded-full bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm ring-1 ring-border/60 transition hover:text-foreground disabled:opacity-60"
+                      onClick={() => void loadOlderMessages()}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm ring-1 ring-border/60 transition hover:text-foreground disabled:opacity-60"
                       disabled={isLoadingOlder}
                     >
+                      {isLoadingOlder && <Loader2 className="h-3 w-3 animate-spin" />}
                       {isLoadingOlder
                         ? (isAr ? "جارٍ التحميل…" : "Loading…")
-                        : (isAr ? "تحميل رسائل أقدم" : "Load older messages")}
+                        : hasMoreOlderServer && !hasMoreOlderClient
+                          ? (isAr ? "جلب رسائل أقدم من السيرفر" : "Fetch older from server")
+                          : (isAr ? "تحميل رسائل أقدم" : "Load older messages")}
                     </button>
                   </div>
                 )}
