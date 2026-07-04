@@ -103,6 +103,7 @@ function InboxPage() {
   const dispatchFn = useServerFn(dispatchQueuedMessage);
   const markReadFn = useServerFn(markConversationRead);
   const markActiveFn = useServerFn(markConversationActive);
+  const clearActiveFn = useServerFn(clearConversationActive);
   const requestHistorySyncFn = useServerFn(requestWaHistorySync);
   const requestChatSyncFn = useServerFn(requestWaChatSync);
   const getHistorySyncJobFn = useServerFn(getWaHistorySyncJob);
