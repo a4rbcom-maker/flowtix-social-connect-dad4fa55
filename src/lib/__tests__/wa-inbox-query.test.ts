@@ -108,3 +108,43 @@ describe("buildInboxMessageQueryPlan — group vs private separation", () => {
     expect(plan.orClauses.join(",")).toContain(GROUP);
   });
 });
+
+describe("isMessageForActiveConversation — cross-conversation switch guard", () => {
+  it("returns false when there is no active conversation", () => {
+    expect(isMessageForActiveConversation(DM, null)).toBe(false);
+    expect(isMessageForActiveConversation(DM, undefined)).toBe(false);
+    expect(isMessageForActiveConversation(DM, "")).toBe(false);
+  });
+
+  it("group active: accepts only exact-matching @g.us rows", () => {
+    expect(isMessageForActiveConversation(GROUP, GROUP)).toBe(true);
+    expect(isMessageForActiveConversation("120363000000000999@g.us", GROUP)).toBe(false);
+    // A DM row from a member must never render under the group header.
+    expect(isMessageForActiveConversation(DM, GROUP)).toBe(false);
+    expect(isMessageForActiveConversation(LID, GROUP)).toBe(false);
+  });
+
+  it("private active: rejects any @g.us row (stale placeholder from a previous group chat)", () => {
+    expect(isMessageForActiveConversation(GROUP, DM)).toBe(false);
+    expect(isMessageForActiveConversation(GROUP, LID)).toBe(false);
+  });
+
+  it("private active: accepts DM / LID rows", () => {
+    expect(isMessageForActiveConversation(DM, DM)).toBe(true);
+    expect(isMessageForActiveConversation(LID, LID)).toBe(true);
+    expect(isMessageForActiveConversation(LID_AS_SNET, LID)).toBe(true);
+  });
+
+  it("switch scenario: filtering a mixed batch keeps only rows for the active JID", () => {
+    const batch = [
+      { id: "a", remote_jid: GROUP },
+      { id: "b", remote_jid: DM },
+      { id: "c", remote_jid: LID },
+      { id: "d", remote_jid: "120363000000000999@g.us" },
+    ];
+    const forGroup = batch.filter((m) => isMessageForActiveConversation(m.remote_jid, GROUP));
+    expect(forGroup.map((m) => m.id)).toEqual(["a"]);
+    const forDm = batch.filter((m) => isMessageForActiveConversation(m.remote_jid, DM));
+    expect(forDm.map((m) => m.id)).toEqual(["b", "c"]);
+  });
+});
