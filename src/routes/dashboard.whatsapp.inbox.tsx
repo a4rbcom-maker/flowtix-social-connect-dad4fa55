@@ -1481,7 +1481,14 @@ function InboxPage() {
                     const jid = activeConv?.remote_jid ?? activeJid ?? "";
                     const isLidJid = jid.endsWith("@lid");
                     const isGroup = jid.endsWith("@g.us");
-                    if (isGroup) return null;
+                    if (isGroup) {
+                      return (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                          <Users className="h-3 w-3" />
+                          {isAr ? "جروب" : "Group"}
+                        </span>
+                      );
+                    }
                     const knownPhone = digits(activeConv?.contact_phone ?? "");
                     // If we already know the customer's real phone number,
                     // treat the chat as fully identified even when routing
@@ -1516,9 +1523,29 @@ function InboxPage() {
                     );
                   })()}
                 </div>
-                <p className="truncate text-xs text-muted-foreground" dir="ltr">
-                  {activeConv ? displayConversationSubtitle(activeConv, isAr) : activeJid.replace(/@.*/, "")}
-                </p>
+                {(() => {
+                  const jid = activeConv?.remote_jid ?? activeJid ?? "";
+                  const isGroup = jid.endsWith("@g.us");
+                  if (isGroup) {
+                    return (
+                      <p className="truncate text-xs text-muted-foreground flex items-center gap-1.5">
+                        <Users className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                        <span>
+                          {groupMemberCount > 0
+                            ? (isAr
+                                ? `${groupMemberCount} عضو نشط في المحادثة`
+                                : `${groupMemberCount} active member${groupMemberCount === 1 ? "" : "s"} in chat`)
+                            : (isAr ? "محادثة جماعية" : "Group conversation")}
+                        </span>
+                      </p>
+                    );
+                  }
+                  return (
+                    <p className="truncate text-xs text-muted-foreground" dir="ltr">
+                      {activeConv ? displayConversationSubtitle(activeConv, isAr) : activeJid.replace(/@.*/, "")}
+                    </p>
+                  );
+                })()}
               </div>
 
             </div>
