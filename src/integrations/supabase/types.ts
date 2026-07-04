@@ -1911,6 +1911,7 @@ export type Database = {
           ai_model: string | null
           ai_provider: string
           ai_reply_delay_seconds: number
+          ai_reply_to_groups: boolean
           ai_system_prompt: string | null
           ai_tier_negotiation: string | null
           ai_tier_simple: string | null
@@ -1949,6 +1950,7 @@ export type Database = {
           ai_model?: string | null
           ai_provider?: string
           ai_reply_delay_seconds?: number
+          ai_reply_to_groups?: boolean
           ai_system_prompt?: string | null
           ai_tier_negotiation?: string | null
           ai_tier_simple?: string | null
@@ -1987,6 +1989,7 @@ export type Database = {
           ai_model?: string | null
           ai_provider?: string
           ai_reply_delay_seconds?: number
+          ai_reply_to_groups?: boolean
           ai_system_prompt?: string | null
           ai_tier_negotiation?: string | null
           ai_tier_simple?: string | null

@@ -110,6 +110,8 @@ function BotPage() {
         maxContextDesc: "كم رسالة سابقة تُرسل للـ AI كسياق.",
         delay: "تأخير الرد (ثواني)",
         delayDesc: "تأخير اختياري قبل الرد لمحاكاة شخص حقيقي.",
+        groups: "الرد على الجروبات",
+        groupsDesc: "لما يبقى مقفول، الوكيل مش هيرد على أي رسايل جاية من جروبات واتساب — بس على المحادثات الفردية.",
         save: "حفظ الإعدادات",
         logs: "سجل ردود AI",
         logsEmpty: "ما فيش ردود بعد. شغّل الـ AI واستنى أول رسالة.",
@@ -147,6 +149,8 @@ function BotPage() {
         maxContextDesc: "How many previous messages to include as context.",
         delay: "Reply delay (seconds)",
         delayDesc: "Optional delay before replying, to feel more human.",
+        groups: "Reply in group chats",
+        groupsDesc: "When off, the agent won't reply to any WhatsApp group messages — only to 1-on-1 chats.",
         save: "Save Settings",
         logs: "AI Reply Log",
         logsEmpty: "No replies yet. Enable AI and wait for the first message.",
@@ -274,6 +278,24 @@ function BotPage() {
 
         {/* Behavior */}
         <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
+          {/* Group replies toggle */}
+          <div className="mb-5 flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-background/40 p-4">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold">{t.groups}</div>
+              <p className="mt-1 text-xs text-muted-foreground">{t.groupsDesc}</p>
+            </div>
+            <label className="relative inline-flex shrink-0 cursor-pointer items-center">
+              <input
+                type="checkbox"
+                checked={form.ai_reply_to_groups}
+                onChange={(e) => update({ ai_reply_to_groups: e.target.checked })}
+                className="peer sr-only"
+              />
+              <div className="h-6 w-11 rounded-full bg-muted transition peer-checked:bg-primary" />
+              <div className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ltr:left-0.5 rtl:right-0.5 peer-checked:ltr:translate-x-5 peer-checked:rtl:-translate-x-5" />
+            </label>
+          </div>
+
           <SectionTitle icon={Clock} label={t.workHours} desc={t.workHoursDesc} />
           <label className="mt-3 inline-flex cursor-pointer items-center gap-2">
             <input
