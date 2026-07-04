@@ -293,6 +293,44 @@ describe("Bot-Xtra v1.8.x: parseMessageEntry", () => {
     expect(m.text).toBe("ping");
   });
 
+  it("recovers group JID from rawJid when groupJid/key.remoteJid are absent (historical sync shape)", () => {
+    // Real payload shape observed from Baileys history sync — no groupJid,
+    // no key.remoteJid; only rawJid + bare id in from/to + isGroup:true.
+    const m = parseMessageEntry({
+      id: "2A68CD80D2975691877D",
+      to: "120363406605851744",
+      body: "تمام",
+      from: "120363406605851744",
+      type: "text",
+      fromMe: false,
+      rawJid: "120363406605851744@g.us",
+      sender: "212888660795495",
+      isGroup: true,
+      jidType: "g.us",
+      participant: "212888660795495",
+      is_historical: true,
+    })!;
+    expect(m).not.toBeNull();
+    expect(m.isGroup).toBe(true);
+    expect(m.remoteJid).toBe("120363406605851744@g.us");
+    expect(m.text).toBe("تمام");
+  });
+
+  it("falls back to `${from}@g.us` when only isGroup:true + bare group id are present", () => {
+    const m = parseMessageEntry({
+      id: "abc",
+      from: "120363000000000042",
+      body: "hi",
+      type: "text",
+      fromMe: false,
+      isGroup: true,
+      sender: "201001112222",
+    })!;
+    expect(m.isGroup).toBe(true);
+    expect(m.remoteJid).toBe("120363000000000042@g.us");
+  });
+
+
   it("rejects status@broadcast entries", () => {
     const [entry] = collectMessageEntries(BOTXTRA_STATUS_BROADCAST);
     expect(parseMessageEntry(entry)).toBeNull();

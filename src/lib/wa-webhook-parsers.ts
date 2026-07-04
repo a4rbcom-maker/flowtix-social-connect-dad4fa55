@@ -363,8 +363,19 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
   const realPhone =
     explicitPhone || (!rawFromLidJid && jidType !== "lid" ? normalizePhoneDigits(rawFromDigits) : null);
   const keyRemote = pickStr(key, "remoteJid");
-  const groupJid = pickStr(entry, "groupJid", "groupId") || (keyRemote?.endsWith("@g.us") ? keyRemote : null);
   const directChatJid = pickStr(entry, "rawJid", "remoteJid", "remote_jid", "jid", "chatId");
+  // For groups, fall back through every field that can carry the group JID.
+  // Baileys historical group messages often ship `rawJid: "…@g.us"` and a
+  // bare group id in `from` — without these fallbacks the parser used to
+  // drop the JID and every such message landed under remote_jid='unknown'.
+  const directGroupJid = directChatJid?.endsWith("@g.us") ? directChatJid : null;
+  const rawFromGroupJid =
+    isGroup && rawFromDigits && !rawFromLooksLikeLid ? `${rawFromDigits}@g.us` : null;
+  const groupJid =
+    pickStr(entry, "groupJid", "groupId") ||
+    directGroupJid ||
+    (keyRemote?.endsWith("@g.us") ? keyRemote : null) ||
+    rawFromGroupJid;
   const recipientJid =
     pickStr(entry, "recipientJid", "targetJid", "toJid") ||
     pickContactRef(entry.to) ||
@@ -383,6 +394,7 @@ export function parseMessageEntry(entry: Record<string, unknown>): ParsedMessage
     : fromMe
       ? (recipientJid || inboundLidJid || directChatJid || keyRemote || rawFromLidJid)
       : (inboundLidJid || directChatJid || keyRemote || senderJid || realPhone);
+
 
   const digitsUnlessLid = (value: string | null | undefined): string | null => {
     const d = digits(value);
