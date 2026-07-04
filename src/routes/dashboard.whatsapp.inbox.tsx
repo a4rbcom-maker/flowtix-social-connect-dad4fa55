@@ -97,6 +97,7 @@ function InboxPage() {
   const qc = useQueryClient();
   const isMobile = useIsMobile();
   const sendFn = useServerFn(sendChatMessage);
+  const dispatchFn = useServerFn(dispatchQueuedMessage);
   const markReadFn = useServerFn(markConversationRead);
   const markActiveFn = useServerFn(markConversationActive);
   const requestHistorySyncFn = useServerFn(requestWaHistorySync);
