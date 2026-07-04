@@ -28,7 +28,7 @@ const code = source
 
 describe("inbox — realtime subscription is safe", () => {
   it("يشترك على قناة supabase.channel مرة واحدة داخل useEffect", () => {
-    const channelCalls = [...code.matchAll(/supabase\.channel\s*\(/g)];
+    const channelCalls = [...code.matchAll(/supabase\s*\.\s*channel\s*\(/g)];
     expect(channelCalls.length, "توقع اشتراك واحد فقط على قناة realtime").toBe(1);
     // نتأكد أن الاشتراك موجود داخل useEffect: نبحث عن آخر useEffect قبل channel.
     const chIdx = channelCalls[0].index ?? -1;
