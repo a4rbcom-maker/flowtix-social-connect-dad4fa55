@@ -99,6 +99,7 @@ import {
   jidLocal as jidLocalExt,
 } from "@/lib/wa-inbox-query";
 import { nowMs, recordInboxQueryStat, useInboxQueryPerf } from "@/lib/wa-inbox-perf";
+import { createDebouncedInvalidator } from "@/lib/wa-inbox-invalidation";
 
 
 export const Route = createFileRoute("/dashboard/whatsapp/inbox")({
@@ -419,27 +420,42 @@ function InboxPage() {
     refetchOnReconnect: "always",
   });
   // Debounced invalidators so bursts of realtime events don't refetch repeatedly.
-  const invalidateTimersRef = useRef<{ conv?: ReturnType<typeof setTimeout>; msgs?: ReturnType<typeof setTimeout> }>({});
+  // العقد موثّق ومغطّى باختبارات في src/lib/__tests__/wa-inbox-invalidation.test.ts —
+  // أي دفعة بأي حجم = استدعاء invalidate واحد لكل مفتاح خلال نافذة الـdebounce.
+  const convInvalidatorRef = useRef(
+    createDebouncedInvalidator(
+      () => qc.invalidateQueries({ queryKey: ["wa-conversations"], refetchType: "active" }),
+      400,
+    ),
+  );
+  const msgsInvalidatorRef = useRef<{
+    key: string;
+    inv: ReturnType<typeof createDebouncedInvalidator>;
+  } | null>(null);
   const scheduleInvalidateConversations = useCallback(() => {
-    const t = invalidateTimersRef.current;
-    if (t.conv) return;
-    t.conv = setTimeout(() => {
-      t.conv = undefined;
-      qc.invalidateQueries({ queryKey: ["wa-conversations"], refetchType: "active" });
-    }, 400);
-  }, [qc]);
-  const scheduleInvalidateMessages = useCallback((uid: string, jid: string) => {
-    const t = invalidateTimersRef.current;
-    if (t.msgs) return;
-    t.msgs = setTimeout(() => {
-      t.msgs = undefined;
-      qc.invalidateQueries({ queryKey: ["wa-messages", uid, jid], refetchType: "active" });
-    }, 500);
-  }, [qc]);
+    convInvalidatorRef.current.schedule();
+  }, []);
+  const scheduleInvalidateMessages = useCallback(
+    (uid: string, jid: string) => {
+      const key = `${uid}::${jid}`;
+      const cur = msgsInvalidatorRef.current;
+      if (!cur || cur.key !== key) {
+        cur?.inv.cancel();
+        msgsInvalidatorRef.current = {
+          key,
+          inv: createDebouncedInvalidator(
+            () => qc.invalidateQueries({ queryKey: ["wa-messages", uid, jid], refetchType: "active" }),
+            500,
+          ),
+        };
+      }
+      msgsInvalidatorRef.current!.inv.schedule();
+    },
+    [qc],
+  );
   useEffect(() => () => {
-    const t = invalidateTimersRef.current;
-    if (t.conv) clearTimeout(t.conv);
-    if (t.msgs) clearTimeout(t.msgs);
+    convInvalidatorRef.current.cancel();
+    msgsInvalidatorRef.current?.inv.cancel();
   }, []);
   const conversations = useMemo<ConversationRow[]>(
     () => {
