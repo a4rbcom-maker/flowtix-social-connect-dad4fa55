@@ -9,7 +9,7 @@ import {
   type BridgeSendResponse,
 } from "./wa-bridge.server";
 import { deriveWebhookUrl } from "./wa-helpers.server";
-import { callKieChat, type ChatMessage } from "./ai-pool.server";
+import { callKieChat, type ChatMessage, type ChatContentPart } from "./ai-pool.server";
 import { isBridgeSessionMissingError, resetWaSessionAfterBridgeLoss } from "./wa-session-repair.server";
 import { resolveOutgoingWhatsappTarget } from "./wa-recipient.server";
 import { normalizeWhatsappPhone } from "./wa-chat-helpers.server";
