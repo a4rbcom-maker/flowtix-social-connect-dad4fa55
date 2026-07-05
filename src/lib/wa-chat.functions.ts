@@ -266,6 +266,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         throw new Error("WhatsApp is not connected");
       }
     } catch (err) {
+      if (err instanceof Error && err.message === "WhatsApp is not connected") throw err;
       const msg = describeBridgeError(err);
       if (isBridgeSessionMissingError(err)) {
         await resetWaSessionAfterBridgeLoss({

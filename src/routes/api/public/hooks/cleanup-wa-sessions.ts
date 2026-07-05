@@ -195,7 +195,7 @@ export const Route = createFileRoute("/api/public/hooks/cleanup-wa-sessions")({
           }
 
           const durationMs = Date.now() - started;
-          console.log("[cleanup-wa-sessions]", { qrDeleted, staleDemoted, markedLoggedOut, bridgeOrphansDeleted, bridgeOrphansFailed, durationMs });
+          console.log("[cleanup-wa-sessions]", { qrDeleted, staleDemoted, liveDisconnected, markedLoggedOut, bridgeOrphansDeleted, bridgeOrphansFailed, durationMs });
 
           return new Response(
             JSON.stringify({
