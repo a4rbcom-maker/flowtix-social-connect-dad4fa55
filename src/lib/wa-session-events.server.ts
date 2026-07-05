@@ -170,12 +170,15 @@ export function isTrustedUserDisconnect(input: {
     .toLowerCase();
 
   const hasLogoutWords = /logged[\s_-]*out|logout|log[\s_-]*out|removed.*device|device.*removed|unlinked|unlink|signed[\s_-]*out/.test(text);
+  const hasAuthoritativeMissingSession =
+    (input.source === "poll_error" || input.source === "connect_error" || input.source === "reset") &&
+    /bridge_session_missing|session[_\s-]*(not[_\s-]*found|missing|closed)|not[_\s-]*found|\b404\b/.test(text);
   const hasWebhookLogoutCode =
     (input.source === "webhook_status" || input.source === "history_sync") &&
     /\b401\b|unauthorized/.test(text) &&
     /disconnect|logged|logout|unlinked|closed/.test(text);
 
-  return hasLogoutWords || hasWebhookLogoutCode;
+  return hasLogoutWords || hasAuthoritativeMissingSession || hasWebhookLogoutCode;
 }
 
 function isTransientQrAfterConnected(input: {

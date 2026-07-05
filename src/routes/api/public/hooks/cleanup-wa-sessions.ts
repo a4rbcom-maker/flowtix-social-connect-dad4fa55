@@ -74,12 +74,67 @@ export const Route = createFileRoute("/api/public/hooks/cleanup-wa-sessions")({
           // 4) Purge orphan sessions on the connection server that no longer
           // exist in wa_sessions. These "ghost" sessions keep emitting QR
           // events every few seconds and starve real message deliveries.
+          let liveDisconnected = 0;
           let bridgeOrphansDeleted = 0;
           let bridgeOrphansFailed = 0;
           try {
             const bridgeUrl = process.env.WA_BRIDGE_URL?.replace(/\/+$/, "") || "";
             const apiKey = process.env.WA_BRIDGE_API_KEY || "";
             if (bridgeUrl && apiKey) {
+              const { data: connectedRows } = await supabaseAdmin
+                .from("wa_sessions")
+                .select("id, user_id, session_id, status")
+                .eq("status", "connected")
+                .limit(100);
+              for (const row of connectedRows ?? []) {
+                const sessionId = String(row.session_id ?? "");
+                if (!sessionId) continue;
+                let nextStatus: "connected" | "disconnected" | null = null;
+                let reason = "";
+                let rawStatus = "";
+                try {
+                  const statusRes = await fetch(`${bridgeUrl}/api/sessions/${encodeURIComponent(sessionId)}/status`, {
+                    headers: { "x-api-key": apiKey, Accept: "application/json" },
+                  });
+                  const statusText = await statusRes.text();
+                  let statusBody: unknown;
+                  try { statusBody = JSON.parse(statusText); } catch { statusBody = statusText; }
+                  const rec = statusBody && typeof statusBody === "object" ? statusBody as Record<string, unknown> : {};
+                  rawStatus = String(rec.status ?? rec.state ?? statusRes.status);
+                  const isConnected = rec.connected === true || /connected|open|ready|authenticated/i.test(rawStatus);
+                  const isMissing = statusRes.status === 404 || /not.?found|missing|unknown session/i.test(statusText);
+                  if (isConnected) nextStatus = "connected";
+                  else if (isMissing || /disconnected|closed|logged.?out|qr/i.test(rawStatus)) {
+                    nextStatus = "disconnected";
+                    reason = isMissing ? `bridge_session_missing:${statusRes.status}` : `bridge_session_not_live:${rawStatus}`;
+                  }
+                } catch (err) {
+                  // Network/timeout errors are not proof of logout; leave status unchanged.
+                  reason = `bridge_status_probe_failed:${err instanceof Error ? err.message : String(err)}`;
+                }
+                if (nextStatus === "disconnected") {
+                  await supabaseAdmin
+                    .from("wa_sessions")
+                    .update({ status: "disconnected", updated_at: new Date().toISOString() })
+                    .eq("id", row.id);
+                  await supabaseAdmin
+                    .from("whatsapp_settings")
+                    .update({ is_connected: false, last_connected_at: null })
+                    .eq("user_id", row.user_id);
+                  await supabaseAdmin.from("wa_session_events").insert({
+                    user_id: row.user_id,
+                    session_id: sessionId,
+                    from_status: row.status ?? "connected",
+                    to_status: "disconnected",
+                    source: "poll_error",
+                    reason,
+                    raw_status: rawStatus || "disconnected",
+                    bridge_event: "cleanup_live_status_probe",
+                  });
+                  liveDisconnected += 1;
+                }
+              }
+
               const { data: allRows } = await supabaseAdmin
                 .from("wa_sessions")
                 .select("session_id");
@@ -140,13 +195,14 @@ export const Route = createFileRoute("/api/public/hooks/cleanup-wa-sessions")({
           }
 
           const durationMs = Date.now() - started;
-          console.log("[cleanup-wa-sessions]", { qrDeleted, staleDemoted, markedLoggedOut, bridgeOrphansDeleted, bridgeOrphansFailed, durationMs });
+          console.log("[cleanup-wa-sessions]", { qrDeleted, staleDemoted, liveDisconnected, markedLoggedOut, bridgeOrphansDeleted, bridgeOrphansFailed, durationMs });
 
           return new Response(
             JSON.stringify({
               ok: true,
               qr_deleted: qrDeleted,
               stale_demoted: staleDemoted,
+              live_disconnected: liveDisconnected,
               marked_logged_out: markedLoggedOut,
               bridge_orphans_deleted: bridgeOrphansDeleted,
               bridge_orphans_failed: bridgeOrphansFailed,

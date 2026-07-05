@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { BridgeError, inferStatus, waBridge } from "./wa-bridge.server";
+import { updateWaSessionStatus } from "./wa-session-events.server";
 
 export function isBridgeSessionMissingError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err ?? "");
@@ -48,6 +49,15 @@ export async function resetWaSessionAfterBridgeLoss(params: {
       });
       return { sessionId: oldSessionId, error: null, revived: false };
     }
+    await updateWaSessionStatus(supabaseAdmin, {
+      userId,
+      sessionId: oldSessionId,
+      nextStatus: status === "qr" ? "qr" : "disconnected",
+      source: "poll_error",
+      reason: `bridge_session_not_live:${status}:${reason}`,
+      rawStatus: status,
+      logEvenIfUnchanged: true,
+    });
     await syncSettingsConnected(userId, false);
     return { sessionId: oldSessionId, error: `session_not_connected:${status}`, revived: false };
   } catch (err) {
@@ -57,6 +67,15 @@ export async function resetWaSessionAfterBridgeLoss(params: {
       reason,
       error: message,
       status: err instanceof BridgeError ? err.status : undefined,
+    });
+    await updateWaSessionStatus(supabaseAdmin, {
+      userId,
+      sessionId: oldSessionId,
+      nextStatus: "disconnected",
+      source: "poll_error",
+      reason: `bridge_session_missing:${message}`,
+      rawStatus: err instanceof BridgeError ? `http_${err.status}` : "status_probe_failed",
+      logEvenIfUnchanged: true,
     });
     await syncSettingsConnected(userId, false);
     return { sessionId: oldSessionId, error: message, revived: false };

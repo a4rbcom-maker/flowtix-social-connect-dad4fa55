@@ -127,6 +127,15 @@ describe("isTrustedUserDisconnect", () => {
       ).toBe(false);
     }
   });
+
+  it("trusts authoritative live-status probes when the bridge says the session is missing", () => {
+    expect(
+      isTrustedUserDisconnect({
+        source: "poll_error",
+        reason: "bridge_session_missing: session not found",
+      }),
+    ).toBe(true);
+  });
 });
 
 describe("updateWaSessionStatus — stability guarantees", () => {
@@ -368,6 +377,25 @@ describe("updateWaSessionStatus — stability guarantees", () => {
 
     expect(state.session.status).toBe("connected");
     expect(state.events.at(-1)?.to_status).toBe("connected");
+  });
+
+  it("authoritative poll_error session-missing demotes a stale connected row", async () => {
+    const { db, state } = makeDb({
+      session: { status: "connected", last_seen_at: new Date(now).toISOString() },
+    });
+
+    await updateWaSessionStatus(db, {
+      userId,
+      sessionId,
+      nextStatus: "disconnected",
+      source: "poll_error",
+      reason: "bridge_session_missing: session not found",
+      rawStatus: "http_404",
+    });
+
+    expect(state.session.status).toBe("disconnected");
+    expect(state.settingsUpdates.at(-1)?.is_connected).toBe(false);
+    expect(state.events.at(-1)?.to_status).toBe("disconnected");
   });
 
   it("401 unauthorized + closed disconnects, then reconnect heartbeat restores connected and clears whatsapp_settings", async () => {

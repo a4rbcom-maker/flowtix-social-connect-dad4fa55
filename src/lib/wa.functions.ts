@@ -99,7 +99,7 @@ export const connectWaSession = createServerFn({ method: "POST" })
         const now = new Date().toISOString();
         const errMsg = describeBridgeError(err);
         console.warn("[wa] createSession bridge error:", errMsg);
-        if (existing?.session_id && (existing.status === "connected" || !isHardSessionGoneError(err))) {
+        if (existing?.session_id && !isHardSessionGoneError(err)) {
           await updateWaSessionStatus(supabase, {
             userId,
             sessionId,
@@ -1340,7 +1340,8 @@ async function readState(
   } catch (err) {
     error = describeBridgeError(err);
     console.warn("[wa] readState bridge error:", error);
-    if (isHardSessionGoneError(err) && previousStatus !== "connected") {
+    if (isHardSessionGoneError(err)) {
+      error = `bridge_session_missing: ${error}`;
       status = "disconnected";
     } else {
       // A timeout/502/temporary bridge failure is not proof that the WhatsApp
@@ -1392,7 +1393,7 @@ async function readState(
   // Preserve last-known phone_number when bridge transiently reports null
   // (e.g. session re-paired). Only overwrite when we actually got a number.
   const trustedDisconnect = status === "disconnected" && isTrustedUserDisconnect({ source: error ? "poll_error" : "poll", reason: error, rawStatus: status });
-  const qrAfterConnected = (status === "qr" || status === "connecting") && previousStatus === "connected";
+  const qrAfterConnected = false;
   const effectiveStatus = status === "disconnected" && !trustedDisconnect
     ? (previousStatus || "unknown")
     : qrAfterConnected
