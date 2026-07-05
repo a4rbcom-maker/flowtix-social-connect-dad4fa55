@@ -2,11 +2,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { assertBridgeSendQueued, bridgeSendQueuedMessage, waBridge, sendTextWithReconnect, sendMediaWithReconnect } from "./wa-bridge.server";
+import { assertBridgeSendQueued, bridgeSendQueuedMessage, inferStatus, waBridge, sendTextWithReconnect, sendMediaWithReconnect } from "./wa-bridge.server";
 import { deriveWebhookUrl, describeBridgeError } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
 import { isBridgeSessionMissingError, resetWaSessionAfterBridgeLoss } from "./wa-session-repair.server";
 import { resolveOutgoingWhatsappTarget } from "./wa-recipient.server";
+import { updateWaSessionStatus } from "./wa-session-events.server";
 import {
   asRecord,
   cleanMessageText,
@@ -247,6 +248,35 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!sess?.session_id) throw new Error("WhatsApp is not connected");
     if (sess.status !== "connected") throw new Error("WhatsApp is not connected");
+
+    try {
+      const live = await waBridge.getStatus(sess.session_id);
+      const liveStatus = inferStatus(live);
+      if (liveStatus !== "connected") {
+        await updateWaSessionStatus(supabase, {
+          userId,
+          sessionId: sess.session_id,
+          nextStatus: liveStatus === "qr" ? "qr" : "disconnected",
+          source: "poll_error",
+          reason: `send_blocked_bridge_not_live:${liveStatus}`,
+          rawStatus: String(live.status ?? live.state ?? liveStatus),
+          phoneNumber: typeof live.phoneNumber === "string" ? live.phoneNumber : typeof live.phone === "string" ? live.phone : null,
+          logEvenIfUnchanged: true,
+        });
+        throw new Error("WhatsApp is not connected");
+      }
+    } catch (err) {
+      const msg = describeBridgeError(err);
+      if (isBridgeSessionMissingError(err)) {
+        await resetWaSessionAfterBridgeLoss({
+          userId,
+          oldSessionId: sess.session_id,
+          reason: "manual chat pre-send live check failed",
+        });
+        throw new Error("WhatsApp is not connected");
+      }
+      console.warn("[wa-chat] pre-send live status check failed; continuing to dispatch path:", msg);
+    }
 
     const { data: conv } = await supabase
       .from("wa_conversations")
