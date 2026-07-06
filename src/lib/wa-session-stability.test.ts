@@ -138,6 +138,16 @@ describe("isTrustedUserDisconnect", () => {
   });
 });
 
+describe("inferStatus — bridge truth", () => {
+  it("treats an existing bridge session with connected=false as disconnected, not connecting/connected", () => {
+    expect(inferStatus({ exists: true, connected: false })).toBe("disconnected");
+  });
+
+  it("treats connected=false + restoring=true as connecting while recovery is in progress", () => {
+    expect(inferStatus({ exists: true, connected: false, restoring: true })).toBe("connecting");
+  });
+});
+
 describe("updateWaSessionStatus — stability guarantees", () => {
   const userId = "u1";
   const sessionId = "s1";
