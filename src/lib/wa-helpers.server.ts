@@ -12,6 +12,13 @@ export function stableWaSessionId(userId: string): string {
   return `flowtix-${userId.replace(/-/g, "").slice(0, 16)}`;
 }
 
+export function freshWaSessionId(userId: string): string {
+  const base = stableWaSessionId(userId);
+  const stamp = Date.now().toString(36);
+  const random = Math.random().toString(36).slice(2, 8);
+  return `${base}-${stamp}${random}`.slice(0, 80);
+}
+
 export interface WaBridgeHealth {
   ok: boolean;
   status: string | null;

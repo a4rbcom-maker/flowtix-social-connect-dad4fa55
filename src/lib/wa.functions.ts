@@ -17,6 +17,7 @@ import {
   deriveWebhookUrl,
   describeBridgeError,
   doPing,
+  freshWaSessionId,
   stableWaSessionId,
   type WaBridgeHealth,
 } from "./wa-helpers.server";
@@ -77,7 +78,7 @@ export const connectWaSession = createServerFn({ method: "POST" })
 
     let sessionId = existing?.session_id;
     if (!sessionId) {
-      sessionId = stableWaSessionId(userId);
+      sessionId = freshWaSessionId(userId);
       const { error: insErr } = await supabase
         .from("wa_sessions")
         .insert({ user_id: userId, session_id: sessionId, status: "connecting" });
@@ -992,7 +993,7 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
     // 2) Mint a new session id and persist it before bridge creation. Bot-Xtra
     // can emit QR/status webhooks immediately; if the DB still points at the old
     // id those events are dropped as unknown and the UI remains stuck.
-    const newSessionId = stableWaSessionId(userId);
+    const newSessionId = freshWaSessionId(userId);
     const now = new Date().toISOString();
     if (existing) {
       await logWaSessionEvent(supabase, {
@@ -1146,6 +1147,50 @@ export const deepResetWaSession = createServerFn({ method: "POST" })
         logEvenIfUnchanged: true,
       });
       nonLiveStatusLogged = true;
+
+      try {
+        const revive = await waBridge.reviveSession(existing.session_id, { webhookUrl, tenantId: userId });
+        await logWaSessionEvent(supabase, {
+          userId,
+          sessionId: existing.session_id,
+          fromStatus: status,
+          toStatus: revive.connected ? "connected" : "connecting",
+          source: "reset",
+          reason: `bridge_revive_requested:${revive.status ?? "unknown"}`,
+          rawStatus: JSON.stringify(revive).slice(0, 240),
+        });
+        for (let i = 0; i < 12; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          const revivedStatusPayload = await waBridge.getStatus(existing.session_id);
+          const revivedStatus = inferStatus(revivedStatusPayload);
+          report.status = revivedStatus;
+          if (revivedStatus === "connected") {
+            await updateWaSessionStatus(supabase, {
+              userId,
+              sessionId: existing.session_id,
+              nextStatus: "connected",
+              source: "reset",
+              reason: "bridge_revive_confirmed_connected",
+              rawStatus: String(revivedStatusPayload.status ?? revivedStatusPayload.state ?? "connected"),
+              phoneNumber: typeof revivedStatusPayload.phoneNumber === "string" ? revivedStatusPayload.phoneNumber : typeof revivedStatusPayload.phone === "string" ? revivedStatusPayload.phone : null,
+              logEvenIfUnchanged: true,
+            });
+            report.ok = true;
+            report.createdSessionId = existing.session_id;
+            return report;
+          }
+        }
+      } catch (reviveErr) {
+        await logWaSessionEvent(supabase, {
+          userId,
+          sessionId: existing.session_id,
+          fromStatus: status,
+          toStatus: status === "qr" ? "qr" : status === "connecting" ? "connecting" : "disconnected",
+          source: "reset",
+          reason: `bridge_revive_failed:${describeBridgeError(reviveErr)}`,
+          rawStatus: reviveErr instanceof BridgeError ? `http_${reviveErr.status}` : null,
+        });
+      }
     } catch (err) {
       console.warn("[wa] safeMaintenance: status check failed:", err instanceof Error ? err.message : err);
     }

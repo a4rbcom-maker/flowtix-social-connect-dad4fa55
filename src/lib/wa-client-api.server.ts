@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { waBridge, inferStatus, BridgeError, type BridgeSessionStatus } from "./wa-bridge.server";
-import { deriveWebhookUrl, describeBridgeError, doPing, stableWaSessionId } from "./wa-helpers.server";
+import { deriveWebhookUrl, describeBridgeError, doPing, freshWaSessionId } from "./wa-helpers.server";
 import { isHardSessionGoneError, isTrustedUserDisconnect, updateWaSessionStatus } from "./wa-session-events.server";
 
 const corsHeaders = {
@@ -66,7 +66,7 @@ async function connect(supabase: ReturnType<typeof getSupabaseForToken>, userId:
 
   let sessionId = existing?.session_id;
   if (!sessionId) {
-    sessionId = stableWaSessionId(userId);
+    sessionId = freshWaSessionId(userId);
     const { error } = await supabase
       .from("wa_sessions")
       .insert({ user_id: userId, session_id: sessionId, status: "connecting" });
@@ -132,7 +132,7 @@ async function reset(supabase: ReturnType<typeof getSupabaseForToken>, userId: s
     try { await waBridge.deleteSession(existing.session_id); } catch { /* best effort */ }
   }
 
-  const sessionId = stableWaSessionId(userId);
+  const sessionId = freshWaSessionId(userId);
   const now = new Date().toISOString();
   if (existing) {
     await supabase
