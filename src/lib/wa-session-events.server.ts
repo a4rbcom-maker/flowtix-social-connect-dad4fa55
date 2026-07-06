@@ -410,9 +410,11 @@ export async function updateWaSessionStatus(
       fromStatus: previousStatus,
       toStatus: nextStatus,
       source: input.source,
-      reason: shouldPreserveConnectedSession
-        ? `ignored_transient_${input.nextStatus === "qr" ? "qr" : "disconnect"}(${suppressedTag}): ${input.reason ?? input.rawStatus ?? input.bridgeEvent ?? ""}`
-        : input.reason,
+      reason: qrBurstBroken
+        ? `qr_burst_break_after_connected: ${input.reason ?? input.rawStatus ?? input.bridgeEvent ?? ""}`
+        : shouldPreserveConnectedSession
+          ? `ignored_transient_${input.nextStatus === "qr" ? "qr" : "disconnect"}(${suppressedTag}): ${input.reason ?? input.rawStatus ?? input.bridgeEvent ?? ""}`
+          : input.reason,
       rawStatus: input.rawStatus,
       bridgeEvent: input.bridgeEvent,
       payload: input.payload,
