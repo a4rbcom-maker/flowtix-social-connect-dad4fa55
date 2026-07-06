@@ -10,7 +10,7 @@ import { createHmac, randomUUID } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { handleAiAutoReply, upsertConversationFromMessage } from "./wa-ai.server";
 import { cleanMessageText, mediaTypeFromRaw, mediaUrlFromRaw } from "./wa-chat-helpers.server";
-import { waBridge } from "./wa-bridge.server";
+import { inferStatus, waBridge } from "./wa-bridge.server";
 import { tryKeywordAutoReply } from "./wa-keyword.server";
 import { extractSessionReason, logWaSessionEvent, updateWaSessionStatus } from "./wa-session-events.server";
 import {
@@ -706,6 +706,33 @@ async function markSessionAlive(params: {
   });
 }
 
+async function verifyBridgeConnectedForWebhook(sessionId: string): Promise<{
+  ok: boolean;
+  status: string;
+  phoneNumber: string | null;
+  reason: string | null;
+}> {
+  try {
+    const live = await waBridge.getStatus(sessionId);
+    const status = inferStatus(live);
+    const phoneNumber = normalizePhoneDigits(live.phoneNumber ?? live.phone);
+    if (status === "connected") return { ok: true, status, phoneNumber, reason: null };
+    return {
+      ok: false,
+      status,
+      phoneNumber,
+      reason: live.exists === false ? "bridge_session_missing" : `bridge_live_connected_false:${status}`,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      status: "unknown",
+      phoneNumber: null,
+      reason: `bridge_status_probe_failed:${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+}
+
 async function purgeStaleBridgeSession(sessionId: string, reason: string) {
   try {
     await waBridge.deleteSession(sessionId);
@@ -1279,6 +1306,24 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
   const eventStatus = SESSION_STATUS_MAP[event];
   if (eventStatus) {
     const phoneNumber = normalizePhoneDigits(data.phoneNumber ?? data.phone ?? payload.phoneNumber ?? payload.phone);
+    if (eventStatus === "connected") {
+      const live = await verifyBridgeConnectedForWebhook(sessionId);
+      if (!live.ok) {
+        await updateWaSessionStatus(supabaseAdmin, {
+          userId,
+          sessionId,
+          nextStatus: live.status === "qr" ? "qr" : live.status === "connecting" ? "connecting" : "disconnected",
+          source: "poll_error",
+          reason: live.reason,
+          rawStatus: live.status,
+          bridgeEvent: event,
+          phoneNumber: live.phoneNumber ?? phoneNumber,
+          payload,
+          logEvenIfUnchanged: true,
+        });
+        return new Response("ok");
+      }
+    }
     await updateWaSessionStatus(supabaseAdmin, {
       userId,
       sessionId,
@@ -1322,6 +1367,24 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
     const reason = extractSessionReason(payload, data);
 
     const phoneNumber = normalizePhoneDigits(data.phoneNumber ?? data.phone ?? payload.phoneNumber);
+    if (next === "connected") {
+      const live = await verifyBridgeConnectedForWebhook(sessionId);
+      if (!live.ok) {
+        await updateWaSessionStatus(supabaseAdmin, {
+          userId,
+          sessionId,
+          nextStatus: live.status === "qr" ? "qr" : live.status === "connecting" ? "connecting" : "disconnected",
+          source: "poll_error",
+          reason: live.reason,
+          rawStatus: live.status,
+          bridgeEvent: event,
+          phoneNumber: live.phoneNumber ?? phoneNumber,
+          payload,
+          logEvenIfUnchanged: true,
+        });
+        return new Response("ok");
+      }
+    }
     await updateWaSessionStatus(supabaseAdmin, {
       userId,
       sessionId,

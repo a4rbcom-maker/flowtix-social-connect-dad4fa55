@@ -177,8 +177,11 @@ export function isTrustedUserDisconnect(input: {
     (input.source === "webhook_status" || input.source === "history_sync") &&
     /\b401\b|unauthorized/.test(text) &&
     /disconnect|logged|logout|unlinked|closed/.test(text);
+  const hasAuthoritativeBridgeOffline =
+    (input.source === "poll" || input.source === "poll_error") &&
+    /bridge_live_connected_false|bridge_session_not_live|send_blocked_bridge_not_live|session_not_connected:disconnected/.test(text);
 
-  return hasLogoutWords || hasAuthoritativeMissingSession || hasWebhookLogoutCode;
+  return hasLogoutWords || hasAuthoritativeMissingSession || hasWebhookLogoutCode || hasAuthoritativeBridgeOffline;
 }
 
 function isTransientQrAfterConnected(input: {

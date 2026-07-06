@@ -17,7 +17,7 @@ import {
   isTrustedUserDisconnect,
   updateWaSessionStatus,
 } from "./wa-session-events.server";
-import { BridgeError } from "./wa-bridge.server";
+import { BridgeError, inferStatus } from "./wa-bridge.server";
 
 type Row = Record<string, any>;
 
@@ -135,6 +135,16 @@ describe("isTrustedUserDisconnect", () => {
         reason: "bridge_session_missing: session not found",
       }),
     ).toBe(true);
+  });
+});
+
+describe("inferStatus — bridge truth", () => {
+  it("treats an existing bridge session with connected=false as disconnected, not connecting/connected", () => {
+    expect(inferStatus({ exists: true, connected: false })).toBe("disconnected");
+  });
+
+  it("treats connected=false + restoring=true as connecting while recovery is in progress", () => {
+    expect(inferStatus({ exists: true, connected: false, restoring: true })).toBe("connecting");
   });
 });
 

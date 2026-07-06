@@ -28,7 +28,7 @@ const { execSync } = require('child_process');
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 
-const SERVER_VERSION = '1.8.7-flowtix-history-media';
+const SERVER_VERSION = '1.8.8-session-truth-recovery';
 // ─── OTP Delivery Guarantee (v1.8.0 — conservative) ───
 // Tracks every OTP we send. If WA doesn't ack delivery within OTP_DELIVERY_DEADLINE_MS,
 // we resend (attempt 1: no flush, just bypass device cache; attempt 2: deep Signal flush + resend).
@@ -39,10 +39,10 @@ const OTP_MAX_RETRIES = 2;
 const OTP_WATCHER_TICK_MS = 5000;
 const OTP_STALL_RECOVERY_MS = 2000; // after Bridge timeout response, rebuild hollow paired socket quickly + resend same OTP
 const otpProviderRecoveryLocks = new Map();
-// Cap on reconnect attempts before we give up and stop hammering the WA servers.
-// Without this, a permanently broken session (e.g. revoked from phone, corrupted creds)
-// keeps spamming reconnect every 30s forever, eventually crashing the whole bridge process.
-const MAX_RECONNECT_ATTEMPTS = 20;
+// Fast reconnect attempts are short. After that, keep a calm long-recovery
+// cadence instead of disabling paired customer sessions and forcing QR rescans.
+const MAX_FAST_RECONNECT_ATTEMPTS = 20;
+const LONG_RECOVERY_RETRY_MS = 5 * 60 * 1000;
 // If a restored, already-paired session stays in-memory but never reaches
 // connection=open and never emits a QR, the websocket is hollow/stalled.
 // Rebuild it automatically instead of letting OTP calls fail for hours.
@@ -329,6 +329,22 @@ async function softResetSession(sessionId, reason = 'soft_reset', options = {}) 
   console.warn(`[${sessionId}] SOFT_RESET_SESSION reason=${reason} — preserving paired credentials`);
   const result = await createSession(sessionId, tenantId, webhookUrl, { markOnline, force: true, syncFullHistory });
   return result;
+}
+
+function scheduleSessionRecovery(sessionId, session, reason = 'status_probe') {
+  if (!session || session.disableReconnect || session.connected || session.qr || session.reconnectTimer) return false;
+  session.reconnectAttempts = (session.reconnectAttempts || 0) + 1;
+  const delayMs = session.reconnectAttempts > MAX_FAST_RECONNECT_ATTEMPTS ? LONG_RECOVERY_RETRY_MS : 1000;
+  console.warn(`[${sessionId}] RECOVERY_SCHEDULED reason=${reason} attempt=${session.reconnectAttempts} delay=${delayMs}ms`);
+  session.reconnectTimer = setTimeout(() => {
+    createSession(sessionId, session.tenantId, session.webhookUrl, {
+      markOnline: session.markOnline,
+      force: true,
+      syncFullHistory: false,
+    }).catch((err) => console.error(`[${sessionId}] Recovery recreate failed:`, err.message));
+  }, delayMs);
+  session.reconnectTimer.unref?.();
+  return true;
 }
 
 async function scheduleOtpProviderRecovery(sessionId, sendBody, originalMessageId, delayMs = OTP_STALL_RECOVERY_MS) {
@@ -682,22 +698,14 @@ async function createSession(sessionId, tenantId, webhookUrl, options = {}) {
       if (shouldReconnect) {
         sessionData.reconnectAttempts += 1;
 
-        // GUARD: stop reconnect storms. After MAX_RECONNECT_ATTEMPTS the session
-        // is clearly stuck (revoked, corrupted creds, banned). Mark it disabled
-        // and notify the platform so it can show a re-pair button instead of
-        // silently burning CPU and hammering WhatsApp servers.
-        if (sessionData.reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
-          console.error(`[${sessionId}] Reconnect cap reached (${MAX_RECONNECT_ATTEMPTS}). Stopping. Session needs manual re-pair.`);
-          sessionData.disableReconnect = true;
-          sendWebhook('disconnected', sessionId, { tenantId, reason: 'reconnect_cap_reached', code: statusCode });
-          return;
-        }
-
         // Fast reconnect for restartRequired (515) — WhatsApp expects immediate reconnect.
-        // Otherwise exponential backoff capped at 30s.
+        // Otherwise exponential backoff capped at 30s. After the fast window,
+        // continue with a 5-minute protected recovery loop instead of forcing QR.
         const fastCodes = [515, 428, 440];
         const isFast = fastCodes.includes(statusCode) && sessionData.reconnectAttempts <= 3;
-        const delayMs = isFast
+        const delayMs = sessionData.reconnectAttempts > MAX_FAST_RECONNECT_ATTEMPTS
+          ? LONG_RECOVERY_RETRY_MS
+          : isFast
           ? 500
           : Math.min(3000 * (2 ** Math.min(sessionData.reconnectAttempts - 1, 4)), 30000);
         console.log(`[${sessionId}] Reconnecting in ${delayMs}ms (attempt ${sessionData.reconnectAttempts})`);
@@ -1814,14 +1822,19 @@ app.get('/api/sessions/:id/status', async (req, res) => {
   const sock = session?.socket;
   const credsMeId = sock?.authState?.creds?.me?.id || sock?.user?.id || '';
   const isConnected = session.connected === true;
+  const recoveryScheduled = !isConnected && !session.qr
+    ? scheduleSessionRecovery(req.params.id, session, 'status_connected_false')
+    : false;
   const livePhone = isConnected ? ((credsMeId.split('@')[0].split(':')[0].replace(/[^0-9]/g, '')) || session.phone || null) : null;
   const liveName = isConnected ? (sock?.user?.name || sock?.user?.notify || sock?.authState?.creds?.me?.name || session.name || null) : null;
   // Backfill cached phone so future webhook events carry it
   if (livePhone && !session.phone) session.phone = livePhone;
   res.json({
     connected: isConnected,
+    status: isConnected ? 'connected' : session.qr ? 'qr' : 'disconnected',
     qr: session.qr,
     exists: true,
+    restoring: recoveryScheduled || Boolean(session.reconnectTimer),
     phone: livePhone,
     name: liveName,
   });
@@ -2511,14 +2524,12 @@ setInterval(() => {
       const connectingTooLong = !s.connected && !s.qr && wsState === 0 && quietMs > 120000;
       const connectedButDead = s.connected && isDead;
 
-      if ((connectedButDead || (!s.connected && (isDead || connectingTooLong))) && !s.reconnectTimer) {
+      const disconnectedNoQr = !s.connected && !s.qr && quietMs > 60000;
+
+      if ((connectedButDead || disconnectedNoQr || (!s.connected && (isDead || connectingTooLong))) && !s.reconnectTimer) {
         console.log(`[watchdog] Session ${sessionId} unhealthy (connected=${s.connected}, wsState=${wsState}, quietMs=${quietMs}). Re-creating without deleting credentials.`);
         s.connected = false;
-        s.reconnectAttempts = (s.reconnectAttempts || 0) + 1;
-        s.reconnectTimer = setTimeout(() => {
-          createSession(sessionId, s.tenantId, s.webhookUrl, { markOnline: s.markOnline, force: true })
-            .catch((err) => console.error(`[watchdog] Resurrect failed for ${sessionId}:`, err.message));
-        }, 1000);
+        scheduleSessionRecovery(sessionId, s, 'watchdog_unhealthy');
       }
     });
   } catch (err) {
