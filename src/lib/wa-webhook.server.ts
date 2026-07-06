@@ -1409,7 +1409,17 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       eventAt,
     });
     if (next === "connected") {
+      clearAutoReconnect(sessionId);
       scheduleRecentMessageCatchup(request, { userId, sessionId, phoneNumber });
+    } else if (next === "disconnected" || next === "connecting") {
+      scheduleAutoRevive({
+        userId,
+        sessionId,
+        reason: `webhook_status:${rawStatus}`,
+        rawStatus,
+        bridgeEvent: event,
+        request,
+      });
     }
     return new Response("ok");
   }
