@@ -296,7 +296,7 @@ export async function updateWaSessionStatus(
   }
 
   const trustedDisconnect = input.nextStatus === "disconnected" && isTrustedUserDisconnect(input);
-  const transientQrAfterConnected = isTransientQrAfterConnected({
+  let transientQrAfterConnected = isTransientQrAfterConnected({
     previousStatus,
     nextStatus: input.nextStatus,
     source: input.source,
@@ -304,6 +304,31 @@ export async function updateWaSessionStatus(
     rawStatus: input.rawStatus,
     bridgeEvent: input.bridgeEvent,
   });
+
+  // QR burst break: if the bridge is emitting continuous QR events after a
+  // "connected" state, the underlying socket has actually dropped and the
+  // pairing needs a fresh scan. Stop masking as transient once 3+ ignored QR
+  // events show up within the last 90 seconds for the same session.
+  let qrBurstBroken = false;
+  if (transientQrAfterConnected) {
+    try {
+      const since = new Date(Date.now() - 90_000).toISOString();
+      const { data: bursts } = await db
+        .from("wa_session_events")
+        .select("id")
+        .eq("user_id", input.userId)
+        .eq("session_id", input.sessionId)
+        .eq("raw_status", "qr")
+        .gte("created_at", since)
+        .limit(5);
+      if (Array.isArray(bursts) && bursts.length >= 3) {
+        transientQrAfterConnected = false;
+        qrBurstBroken = true;
+      }
+    } catch {
+      // best effort — if the audit query fails, keep the transient guard on.
+    }
+  }
 
   // Debounce during bulk campaigns: transient disconnect events that arrive
   // while a bulk campaign is running/scheduled for the same user are almost
@@ -354,7 +379,7 @@ export async function updateWaSessionStatus(
         .from("whatsapp_settings")
         .update({ is_connected: true, last_connected_at: new Date().toISOString() })
         .eq("user_id", input.userId);
-    } else if (trustedDisconnect && !isLateEvent) {
+    } else if ((trustedDisconnect && !isLateEvent) || qrBurstBroken) {
       await db
         .from("whatsapp_settings")
         .update({ is_connected: false, last_connected_at: null })
@@ -368,7 +393,8 @@ export async function updateWaSessionStatus(
     input.logEvenIfUnchanged ||
     previousStatus !== nextStatus ||
     trustedDisconnect ||
-    transientQrAfterConnected;
+    transientQrAfterConnected ||
+    qrBurstBroken;
 
   if (shouldLog) {
     const suppressedTag = isLateEvent
@@ -384,9 +410,11 @@ export async function updateWaSessionStatus(
       fromStatus: previousStatus,
       toStatus: nextStatus,
       source: input.source,
-      reason: shouldPreserveConnectedSession
-        ? `ignored_transient_${input.nextStatus === "qr" ? "qr" : "disconnect"}(${suppressedTag}): ${input.reason ?? input.rawStatus ?? input.bridgeEvent ?? ""}`
-        : input.reason,
+      reason: qrBurstBroken
+        ? `qr_burst_break_after_connected: ${input.reason ?? input.rawStatus ?? input.bridgeEvent ?? ""}`
+        : shouldPreserveConnectedSession
+          ? `ignored_transient_${input.nextStatus === "qr" ? "qr" : "disconnect"}(${suppressedTag}): ${input.reason ?? input.rawStatus ?? input.bridgeEvent ?? ""}`
+          : input.reason,
       rawStatus: input.rawStatus,
       bridgeEvent: input.bridgeEvent,
       payload: input.payload,
