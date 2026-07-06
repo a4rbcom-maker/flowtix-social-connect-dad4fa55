@@ -12,13 +12,12 @@
 //      as disconnected on their own.
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
-  inferStatus,
   extractSessionReason,
   isHardSessionGoneError,
   isTrustedUserDisconnect,
   updateWaSessionStatus,
 } from "./wa-session-events.server";
-import { BridgeError } from "./wa-bridge.server";
+import { BridgeError, inferStatus } from "./wa-bridge.server";
 
 type Row = Record<string, any>;
 
