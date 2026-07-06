@@ -13,6 +13,7 @@ import { cleanMessageText, mediaTypeFromRaw, mediaUrlFromRaw } from "./wa-chat-h
 import { inferStatus, waBridge } from "./wa-bridge.server";
 import { tryKeywordAutoReply } from "./wa-keyword.server";
 import { extractSessionReason, logWaSessionEvent, updateWaSessionStatus } from "./wa-session-events.server";
+import { clearAutoReconnect, scheduleAutoRevive } from "./wa-auto-reconnect.server";
 import {
   asObj,
   collectMessageEntries,
