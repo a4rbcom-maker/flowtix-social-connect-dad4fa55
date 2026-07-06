@@ -1114,6 +1114,7 @@ export const deepResetWaSession = createServerFn({ method: "POST" })
 
     const webhookUrl = await deriveWebhookUrl();
     report.webhookUrl = webhookUrl;
+    let nonLiveStatusLogged = false;
 
     try {
       const statusPayload = await waBridge.getStatus(existing.session_id);
@@ -1144,19 +1145,22 @@ export const deepResetWaSession = createServerFn({ method: "POST" })
         phoneNumber: typeof statusPayload.phoneNumber === "string" ? statusPayload.phoneNumber : typeof statusPayload.phone === "string" ? statusPayload.phone : null,
         logEvenIfUnchanged: true,
       });
+      nonLiveStatusLogged = true;
     } catch (err) {
       console.warn("[wa] safeMaintenance: status check failed:", err instanceof Error ? err.message : err);
     }
 
-    await logWaSessionEvent(supabase, {
-      userId,
-      sessionId: existing.session_id,
-      fromStatus: existing.status ?? null,
-      toStatus: existing.status ?? "unknown",
-      source: "reset",
-      reason: "safe_maintenance_skipped_bridge_rebuild",
-      rawStatus: report.status ?? existing.status ?? "unknown",
-    });
+    if (!nonLiveStatusLogged) {
+      await logWaSessionEvent(supabase, {
+        userId,
+        sessionId: existing.session_id,
+        fromStatus: existing.status ?? null,
+        toStatus: existing.status ?? "unknown",
+        source: "reset",
+        reason: "safe_maintenance_skipped_bridge_rebuild",
+        rawStatus: report.status ?? existing.status ?? "unknown",
+      });
+    }
     report.createdSessionId = existing.session_id;
     report.ok = report.status === "connected" || report.status === "connecting";
     report.preserved = true;
