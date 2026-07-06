@@ -178,8 +178,8 @@ export function isTrustedUserDisconnect(input: {
     /\b401\b|unauthorized/.test(text) &&
     /disconnect|logged|logout|unlinked|closed/.test(text);
   const hasAuthoritativeBridgeOffline =
-    (input.source === "poll" || input.source === "poll_error") &&
-    /bridge_live_connected_false|bridge_session_not_live|send_blocked_bridge_not_live|session_not_connected:disconnected/.test(text);
+    (input.source === "poll" || input.source === "poll_error" || input.source === "reset" || input.source === "history_sync") &&
+    /bridge_live_connected_false|bridge_session_not_live|bridge_session_not_connected|history_sync_skipped_non_connected_status|safe_maintenance_bridge_not_live|send_blocked_bridge_not_live|session_not_connected:disconnected/.test(text);
 
   return hasLogoutWords || hasAuthoritativeMissingSession || hasWebhookLogoutCode || hasAuthoritativeBridgeOffline;
 }

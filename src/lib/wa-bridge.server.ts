@@ -787,16 +787,23 @@ export async function sendTextWithReconnect(
 export function inferStatus(res: BridgeStatusResponse | null): BridgeSessionStatus {
   if (!res) return "unknown";
   const explicit = String(res.status ?? res.state ?? "").toLowerCase();
+  // The bridge's boolean socket truth is authoritative. Some Bot-Xtra builds
+  // can briefly keep a stale textual "connected" status while the live socket
+  // is already closed; trusting that string makes the UI show a fake repair.
+  if (res.connected === true) return "connected";
+  if (res.exists === false) return "disconnected";
+  if (res.qr) return "qr";
+  if (res.connected === false) {
+    if (res.restoring === true || ["connecting", "starting", "pairing"].includes(explicit)) return "connecting";
+    if (["qr", "scan", "waiting_qr", "qr_required"].includes(explicit)) return "qr";
+    return "disconnected";
+  }
   if (explicit) {
     if (explicit === "connected" || explicit === "open" || explicit === "ready") return "connected";
     if (["qr", "scan", "waiting_qr", "qr_required"].includes(explicit)) return "qr";
     if (["connecting", "starting", "pairing"].includes(explicit)) return "connecting";
     if (["disconnected", "closed", "logged_out"].includes(explicit)) return "disconnected";
   }
-  if (res.connected === true) return "connected";
-  if (res.exists === false) return "disconnected";
-  if (res.qr) return "qr";
-  if (res.connected === false) return res.restoring === true ? "connecting" : "disconnected";
   return "connecting";
 }
 

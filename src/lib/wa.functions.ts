@@ -1134,6 +1134,16 @@ export const deepResetWaSession = createServerFn({ method: "POST" })
         report.createdSessionId = existing.session_id;
         return report;
       }
+      await updateWaSessionStatus(supabase, {
+        userId,
+        sessionId: existing.session_id,
+        nextStatus: status === "qr" ? "qr" : status === "connecting" ? "connecting" : "disconnected",
+        source: "reset",
+        reason: `safe_maintenance_bridge_not_live:${status}`,
+        rawStatus: String(statusPayload.status ?? statusPayload.state ?? status),
+        phoneNumber: typeof statusPayload.phoneNumber === "string" ? statusPayload.phoneNumber : typeof statusPayload.phone === "string" ? statusPayload.phone : null,
+        logEvenIfUnchanged: true,
+      });
     } catch (err) {
       console.warn("[wa] safeMaintenance: status check failed:", err instanceof Error ? err.message : err);
     }
