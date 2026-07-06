@@ -13,6 +13,7 @@ import { cleanMessageText, mediaTypeFromRaw, mediaUrlFromRaw } from "./wa-chat-h
 import { inferStatus, waBridge } from "./wa-bridge.server";
 import { tryKeywordAutoReply } from "./wa-keyword.server";
 import { extractSessionReason, logWaSessionEvent, updateWaSessionStatus } from "./wa-session-events.server";
+import { clearAutoReconnect, scheduleAutoRevive } from "./wa-auto-reconnect.server";
 import {
   asObj,
   collectMessageEntries,
@@ -1337,7 +1338,17 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       eventAt,
     });
     if (eventStatus === "connected") {
+      clearAutoReconnect(sessionId);
       scheduleRecentMessageCatchup(request, { userId, sessionId, phoneNumber });
+    } else if (eventStatus === "disconnected" || eventStatus === "connecting") {
+      scheduleAutoRevive({
+        userId,
+        sessionId,
+        reason: `webhook_event:${event}`,
+        rawStatus: event,
+        bridgeEvent: event,
+        request,
+      });
     }
     return new Response("ok");
   }
@@ -1398,7 +1409,17 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       eventAt,
     });
     if (next === "connected") {
+      clearAutoReconnect(sessionId);
       scheduleRecentMessageCatchup(request, { userId, sessionId, phoneNumber });
+    } else if (next === "disconnected" || next === "connecting") {
+      scheduleAutoRevive({
+        userId,
+        sessionId,
+        reason: `webhook_status:${rawStatus}`,
+        rawStatus,
+        bridgeEvent: event,
+        request,
+      });
     }
     return new Response("ok");
   }
