@@ -1392,7 +1392,11 @@ async function readState(
   }
   // Preserve last-known phone_number when bridge transiently reports null
   // (e.g. session re-paired). Only overwrite when we actually got a number.
-  const trustedDisconnect = status === "disconnected" && isTrustedUserDisconnect({ source: error ? "poll_error" : "poll", reason: error, rawStatus: status });
+  const trustedDisconnect = status === "disconnected" && isTrustedUserDisconnect({
+    source: error ? "poll_error" : "poll",
+    reason: error ?? "bridge_live_connected_false",
+    rawStatus: status,
+  });
   const qrAfterConnected = false;
   const effectiveStatus = status === "disconnected" && !trustedDisconnect
     ? (previousStatus || "unknown")
@@ -1404,7 +1408,7 @@ async function readState(
     sessionId,
     nextStatus: effectiveStatus,
     source: error ? "poll_error" : "poll",
-    reason: qrAfterConnected ? `ignored_poll_${status}_while_connected` : error,
+    reason: qrAfterConnected ? `ignored_poll_${status}_while_connected` : (error ?? (status === "disconnected" ? "bridge_live_connected_false" : null)),
     rawStatus: status,
     phoneNumber,
     qrDataUrl: null,

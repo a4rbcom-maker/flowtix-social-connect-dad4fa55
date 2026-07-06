@@ -343,6 +343,7 @@ export interface BridgeStatusResponse {
   state?: string;
   connected?: boolean;
   exists?: boolean;
+  restoring?: boolean;
   qr?: string | null;
   phoneNumber?: string;
   phone?: string;
@@ -795,6 +796,7 @@ export function inferStatus(res: BridgeStatusResponse | null): BridgeSessionStat
   if (res.connected === true) return "connected";
   if (res.exists === false) return "disconnected";
   if (res.qr) return "qr";
+  if (res.connected === false) return res.restoring === true ? "connecting" : "disconnected";
   return "connecting";
 }
 
