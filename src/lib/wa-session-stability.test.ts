@@ -12,6 +12,7 @@
 //      as disconnected on their own.
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
+  inferStatus,
   extractSessionReason,
   isHardSessionGoneError,
   isTrustedUserDisconnect,
