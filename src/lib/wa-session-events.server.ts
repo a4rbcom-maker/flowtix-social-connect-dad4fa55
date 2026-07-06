@@ -19,6 +19,10 @@ type DbClient = {
   from: (table: string) => any;
 };
 
+const QR_BURST_WINDOW_MS = 120_000;
+const QR_BURST_MIN_IGNORED_EVENTS = 10;
+const RECENT_ALIVE_GRACE_MS = 90_000;
+
 function asObj(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
 }
@@ -306,28 +310,69 @@ export async function updateWaSessionStatus(
   });
 
   // QR burst break: if the bridge is emitting continuous QR events after a
-  // "connected" state, the underlying socket has actually dropped and the
-  // pairing needs a fresh scan. Stop masking as transient once 3+ ignored QR
-  // events show up within the last 90 seconds for the same session.
+  // "connected" state, the underlying socket may have dropped and the pairing
+  // may need a fresh scan. Do not break during the first moments after a scan or
+  // connected/activity signal: Bot-Xtra can emit stale QR webhooks while
+  // WhatsApp finishes the auth handshake. Only break on a sustained QR-only
+  // burst with no recent alive signal.
   let qrBurstBroken = false;
   if (transientQrAfterConnected) {
     try {
-      const since = new Date(Date.now() - 90_000).toISOString();
-      const { data: bursts } = await db
+      const nowMs = Date.now();
+      const aliveSince = new Date(nowMs - RECENT_ALIVE_GRACE_MS).toISOString();
+      const { data: aliveEvents } = await db
         .from("wa_session_events")
         .select("id")
         .eq("user_id", input.userId)
         .eq("session_id", input.sessionId)
-        .eq("raw_status", "qr")
-        .gte("created_at", since)
-        .limit(5);
-      if (Array.isArray(bursts) && bursts.length >= 3) {
-        transientQrAfterConnected = false;
-        qrBurstBroken = true;
+        .eq("to_status", "connected")
+        .in("raw_status", ["connected", "activity"])
+        .gte("created_at", aliveSince)
+        .limit(1);
+
+      const hasRecentAliveSignal = Array.isArray(aliveEvents) && aliveEvents.length > 0;
+      if (!hasRecentAliveSignal) {
+        const since = new Date(nowMs - QR_BURST_WINDOW_MS).toISOString();
+        const { data: bursts } = await db
+          .from("wa_session_events")
+          .select("id")
+          .eq("user_id", input.userId)
+          .eq("session_id", input.sessionId)
+          .eq("raw_status", "qr")
+          .eq("to_status", previousStatus ?? "connected")
+          .like("reason", "ignored_transient_qr%")
+          .gte("created_at", since)
+          .limit(QR_BURST_MIN_IGNORED_EVENTS + 1);
+        if (Array.isArray(bursts) && bursts.length >= QR_BURST_MIN_IGNORED_EVENTS) {
+          transientQrAfterConnected = false;
+          qrBurstBroken = true;
+        }
       }
     } catch {
       // best effort — if the audit query fails, keep the transient guard on.
     }
+  }
+
+  // Backward-compatible escape hatch: if the app was left in QR by an over-eager
+  // burst break, a fresh connected webhook or proven live poll may promote it
+  // back to connected. History/message catch-up alone is not authoritative.
+  const isAuthoritativeConnected =
+    input.nextStatus === "connected" &&
+    (input.rawStatus === "connected" || input.source === "poll" || input.source === "reset");
+
+  if (previousStatus === "qr" && input.nextStatus === "connected" && !isAuthoritativeConnected) {
+    await logWaSessionEvent(db, {
+      userId: input.userId,
+      sessionId: input.sessionId,
+      fromStatus: previousStatus,
+      toStatus: previousStatus,
+      source: input.source,
+      reason: `ignored_activity_promotion_while_qr: ${input.reason ?? input.rawStatus ?? input.bridgeEvent ?? ""}`,
+      rawStatus: input.rawStatus,
+      bridgeEvent: input.bridgeEvent,
+      payload: input.payload,
+    });
+    return previousStatus;
   }
 
   // Debounce during bulk campaigns: transient disconnect events that arrive
