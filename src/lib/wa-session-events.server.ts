@@ -379,7 +379,7 @@ export async function updateWaSessionStatus(
         .from("whatsapp_settings")
         .update({ is_connected: true, last_connected_at: new Date().toISOString() })
         .eq("user_id", input.userId);
-    } else if (trustedDisconnect && !isLateEvent) {
+    } else if ((trustedDisconnect && !isLateEvent) || qrBurstBroken) {
       await db
         .from("whatsapp_settings")
         .update({ is_connected: false, last_connected_at: null })
@@ -393,7 +393,8 @@ export async function updateWaSessionStatus(
     input.logEvenIfUnchanged ||
     previousStatus !== nextStatus ||
     trustedDisconnect ||
-    transientQrAfterConnected;
+    transientQrAfterConnected ||
+    qrBurstBroken;
 
   if (shouldLog) {
     const suppressedTag = isLateEvent
