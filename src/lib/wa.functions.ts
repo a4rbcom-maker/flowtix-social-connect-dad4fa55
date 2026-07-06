@@ -18,7 +18,6 @@ import {
   describeBridgeError,
   doPing,
   freshWaSessionId,
-  stableWaSessionId,
   type WaBridgeHealth,
 } from "./wa-helpers.server";
 import { upsertConversationFromMessage } from "./wa-ai.server";
