@@ -143,6 +143,10 @@ describe("inferStatus — bridge truth", () => {
     expect(inferStatus({ exists: true, connected: false })).toBe("disconnected");
   });
 
+  it("treats connected=false as authoritative even if the bridge keeps a stale connected text status", () => {
+    expect(inferStatus({ exists: true, connected: false, status: "connected" })).toBe("disconnected");
+  });
+
   it("treats connected=false + restoring=true as connecting while recovery is in progress", () => {
     expect(inferStatus({ exists: true, connected: false, restoring: true })).toBe("connecting");
   });
