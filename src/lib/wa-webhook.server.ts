@@ -1723,7 +1723,16 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
 
 
     const hasMedia = Boolean(mediaUrl) && msgType !== "text";
-    if ((text || hasMedia) && !m.fromMe && !isHistorical) {
+    // Bot-Xtra history sync events also carry very recent messages (the ones
+    // that arrived while the socket was momentarily down). Only skip AI when
+    // the message is BOTH flagged historical AND actually old — a message
+    // whose wa_timestamp is within the last 10 minutes is still "live" from
+    // the customer's perspective and must trigger the agent.
+    const waTsMs = waTimestamp ? Date.parse(waTimestamp) : NaN;
+    const isRecentLiveMessage =
+      Number.isFinite(waTsMs) && Date.now() - waTsMs <= 10 * 60 * 1000;
+    const shouldRunAi = !m.fromMe && (!isHistorical || isRecentLiveMessage);
+    if ((text || hasMedia) && shouldRunAi) {
       // Try keyword auto-reply FIRST (text only). If it matches, skip AI entirely.
       const matched = text
         ? await tryKeywordAutoReply({
