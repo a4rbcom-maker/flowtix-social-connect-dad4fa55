@@ -1338,7 +1338,17 @@ export async function handleWaWebhook(request: Request): Promise<Response> {
       eventAt,
     });
     if (eventStatus === "connected") {
+      clearAutoReconnect(sessionId);
       scheduleRecentMessageCatchup(request, { userId, sessionId, phoneNumber });
+    } else if (eventStatus === "disconnected" || eventStatus === "connecting") {
+      scheduleAutoRevive({
+        userId,
+        sessionId,
+        reason: `webhook_event:${event}`,
+        rawStatus: event,
+        bridgeEvent: event,
+        request,
+      });
     }
     return new Response("ok");
   }
