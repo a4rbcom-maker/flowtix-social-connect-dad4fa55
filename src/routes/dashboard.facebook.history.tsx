@@ -236,6 +236,21 @@ function JobsHistoryPage() {
     return () => { supabase.removeChannel(ch); };
   }, [user]);
 
+  // Poll results while the selected job is still running/pending so counters + rows update live.
+  useEffect(() => {
+    if (!selected) return;
+    if (selected.status !== "running" && selected.status !== "pending") return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const { results: rs } = await call(getJob, { id: selected.id });
+        if (!cancelled) setResults(rs as JobResult[]);
+      } catch { /* ignore transient */ }
+    };
+    const iv = setInterval(tick, 3000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [selected?.id, selected?.status, call]);
+
   const openDetails = async (j: JobRow) => {
     setSelected(j);
     setResultsLoading(true);
