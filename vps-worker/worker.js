@@ -50,6 +50,7 @@ async function fetchNextJob() {
     method: "POST",
     headers: {
       Authorization: `Bearer ${SECRET}`,
+      "X-Flowtix-Worker-Name": process.env.WORKER_NAME || "vps-worker",
       "X-Flowtix-Worker-Version": WORKER_VERSION,
       "X-Flowtix-Worker-Capabilities": WORKER_CAPABILITIES,
     },
