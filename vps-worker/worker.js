@@ -69,11 +69,44 @@ async function postUpdate(payload) {
       },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) console.error("job-update failed", res.status, await res.text());
+    if (!res.ok) {
+      const body = await res.text();
+      console.error("job-update failed", res.status, body);
+      return { ok: false, status: res.status, body };
+    }
+    return { ok: true, status: res.status };
   } catch (e) {
     console.error("job-update error", e.message);
+    return { ok: false, error: e.message };
   }
 }
+
+// ---------- Structured logger ----------
+/**
+ * Emits a single-line JSON log so `pm2 logs flowtix-bot-worker` output is
+ * machine-parseable. Usage: logJSON("comment.saved", { jobId, fbId, ... })
+ * Long text fields are truncated to keep log volume bounded.
+ */
+function truncate(v, n = 300) {
+  if (typeof v !== "string") return v;
+  return v.length > n ? v.slice(0, n) + `…(+${v.length - n})` : v;
+}
+function logJSON(event, fields = {}) {
+  const line = {
+    ts: new Date().toISOString(),
+    event,
+    ...fields,
+  };
+  // Truncate common noisy fields
+  if (typeof line.commentText === "string") line.commentText = truncate(line.commentText, 300);
+  if (typeof line.error === "string") line.error = truncate(line.error, 500);
+  try {
+    console.log(JSON.stringify(line));
+  } catch {
+    console.log(`[log] ${event}`);
+  }
+}
+
 
 // ---------- Cookie normalization ----------
 /**
@@ -246,10 +279,29 @@ async function handleExtractCommenters(job) {
         }
       );
 
+      logJSON("commenters.batch.harvested", {
+        jobId: job.id,
+        postUrl,
+        scrollIteration: i + 1,
+        harvestedInBatch: commenters.length,
+        newInBatch: commenters.filter((c) => !seen.has(c.fbId)).length,
+      });
+
       for (const c of commenters) {
         if (seen.has(c.fbId)) continue;
         seen.add(c.fbId);
-        await postUpdate({
+
+        // BEFORE storage: log what we're about to persist
+        logJSON("comment.saving", {
+          jobId: job.id,
+          fbId: c.fbId,
+          name: c.name,
+          profileUrl: c.profile_url,
+          commentText: c.comment_text,
+          commentLength: (c.comment_text || "").length,
+        });
+
+        const res = await postUpdate({
           jobId: job.id,
           result: {
             target: c.fbId,
@@ -257,6 +309,18 @@ async function handleExtractCommenters(job) {
             data: { name: c.name, profile_url: c.profile_url, comment_text: c.comment_text, source: "comment" },
           },
         });
+
+        // AFTER storage: log persistence outcome
+        logJSON("comment.saved", {
+          jobId: job.id,
+          fbId: c.fbId,
+          name: c.name,
+          commentText: c.comment_text,
+          persisted: res?.ok === true,
+          httpStatus: res?.status,
+          error: res?.ok ? undefined : (res?.body || res?.error),
+        });
+
         extracted++;
       }
 
