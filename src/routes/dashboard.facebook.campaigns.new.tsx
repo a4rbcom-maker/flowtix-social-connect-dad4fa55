@@ -884,14 +884,66 @@ function NewCampaignPage() {
                 </div>
               </div>
 
-              <VirtualGroupList
-                items={visibleGroups}
-                selectedTargets={selectedTargets}
-                onToggle={(id) => setSelectedTargets((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; })}
-                isManualGroup={isManualGroup}
-                emptyLabel={t.empty}
-                manualBadge={t.manualBadge}
-              />
+              {filteredGroups.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border bg-muted/30 p-6 text-center space-y-3">
+                  <Search className="w-8 h-8 mx-auto text-muted-foreground/50" />
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      {lang === "ar" ? "لا توجد نتائج" : "No results"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {deferredSearch.trim()
+                        ? (lang === "ar"
+                          ? `لا يوجد جروب يطابق «${deferredSearch.trim()}»${filterMode !== "all" ? " ضمن الفلتر الحالي" : ""}.`
+                          : `No group matches "${deferredSearch.trim()}"${filterMode !== "all" ? " within the current filter" : ""}.`)
+                        : (lang === "ar"
+                          ? "لا توجد جروبات ضمن الفلتر الحالي."
+                          : "No groups under the current filter.")}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-center gap-2 flex-wrap">
+                    {deferredSearch.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => setSearch("")}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs hover:bg-accent"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        {lang === "ar" ? "مسح البحث" : "Clear search"}
+                      </button>
+                    )}
+                    {filterMode !== "all" && (
+                      <button
+                        type="button"
+                        onClick={() => setFilterMode("all")}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs hover:bg-accent"
+                      >
+                        {lang === "ar" ? "عرض كل الجروبات" : "Show all groups"}
+                      </button>
+                    )}
+                    {groups.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={loadGroups}
+                        disabled={groupsLoading}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                      >
+                        {groupsLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Users className="w-3.5 h-3.5" />}
+                        {t.loadGroups}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <VirtualGroupList
+                  items={visibleGroups}
+                  selectedTargets={selectedTargets}
+                  onToggle={(id) => setSelectedTargets((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; })}
+                  isManualGroup={isManualGroup}
+                  emptyLabel={t.empty}
+                  manualBadge={t.manualBadge}
+                />
+              )}
               {filteredGroups.length > 0 && (
                 <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
                   <span>
