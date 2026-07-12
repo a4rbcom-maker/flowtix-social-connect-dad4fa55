@@ -920,9 +920,22 @@ function JobsHistoryPage() {
                           </button>
                         )}
                       </div>
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {visibleRows.length} / {enrichedRows.length}
-                      </span>
+                      {commentSearch.trim() ? (
+                        <Badge
+                          variant={visibleRows.length === 0 ? "destructive" : "default"}
+                          className="tabular-nums"
+                        >
+                          {lang === "ar"
+                            ? `${visibleRows.length} من ${enrichedRows.length} نتيجة`
+                            : `${visibleRows.length} of ${enrichedRows.length} match${visibleRows.length === 1 ? "" : "es"}`}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="tabular-nums">
+                          {lang === "ar"
+                            ? `${enrichedRows.length} إجمالي`
+                            : `${enrichedRows.length} total`}
+                        </Badge>
+                      )}
                     </div>
                   )}
                   <div className="max-h-[60vh] overflow-auto">
