@@ -225,7 +225,9 @@ function JobsHistoryPage() {
         setJobs((prev) => [payload.new as JobRow, ...prev.filter((j) => j.id !== (payload.new as JobRow).id)]);
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "fb_jobs", filter: `user_id=eq.${user.id}` }, (payload) => {
-        setJobs((prev) => prev.map((j) => (j.id === (payload.new as JobRow).id ? { ...j, ...(payload.new as JobRow) } : j)));
+        const row = payload.new as JobRow;
+        setJobs((prev) => prev.map((j) => (j.id === row.id ? { ...j, ...row } : j)));
+        setSelected((prev) => (prev && prev.id === row.id ? { ...prev, ...row } : prev));
       })
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "fb_jobs", filter: `user_id=eq.${user.id}` }, (payload) => {
         setJobs((prev) => prev.filter((j) => j.id !== (payload.old as JobRow).id));
@@ -233,6 +235,21 @@ function JobsHistoryPage() {
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [user]);
+
+  // Poll results while the selected job is still running/pending so counters + rows update live.
+  useEffect(() => {
+    if (!selected) return;
+    if (selected.status !== "running" && selected.status !== "pending") return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const { results: rs } = await call(getJob, { id: selected.id });
+        if (!cancelled) setResults(rs as JobResult[]);
+      } catch { /* ignore transient */ }
+    };
+    const iv = setInterval(tick, 3000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [selected?.id, selected?.status, call]);
 
   const openDetails = async (j: JobRow) => {
     setSelected(j);
@@ -810,6 +827,57 @@ function JobsHistoryPage() {
                   : selected.error_message}
               </div>
             )}
+            {selected && (() => {
+              const s = selected.status;
+              const total = selected.total_items || 0;
+              const done = selected.processed_items || 0;
+              const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : Math.min(100, selected.progress ?? 0);
+              const label = s === "running"
+                ? (lang === "ar" ? "قيد التشغيل" : "Running")
+                : s === "pending"
+                ? (lang === "ar" ? "بانتظار الـ Worker" : "Waiting for worker")
+                : s === "paused"
+                ? (lang === "ar" ? "متوقفة مؤقتاً" : "Paused")
+                : s === "completed"
+                ? (lang === "ar" ? "اكتملت" : "Completed")
+                : s === "failed"
+                ? (lang === "ar" ? "فشلت" : "Failed")
+                : (lang === "ar" ? "أُلغيت" : "Cancelled");
+              const tone = s === "running" || s === "pending"
+                ? "border-primary/30 bg-primary/5"
+                : s === "completed"
+                ? "border-green-500/30 bg-green-500/5"
+                : s === "failed"
+                ? "border-destructive/30 bg-destructive/5"
+                : "border-border bg-muted/30";
+              const dot = s === "running"
+                ? "bg-primary animate-pulse"
+                : s === "completed"
+                ? "bg-green-500"
+                : s === "failed"
+                ? "bg-destructive"
+                : "bg-muted-foreground";
+              return (
+                <div className={`mb-3 rounded-lg border ${tone} p-3`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className={`h-2 w-2 rounded-full ${dot}`} />
+                      <span className="font-semibold">{label}</span>
+                      <span className="text-muted-foreground">
+                        {lang === "ar" ? "المُستخرج" : "Extracted"}: <span className="font-mono tabular-nums text-foreground">{done.toLocaleString()}</span>
+                        {total > 0 && <> / <span className="font-mono tabular-nums">{total.toLocaleString()}</span></>}
+                      </span>
+                    </div>
+                    {(s === "running" || s === "pending" || total > 0) && (
+                      <span className="text-xs font-bold text-primary tabular-nums">{pct}%</span>
+                    )}
+                  </div>
+                  {(s === "running" || s === "pending" || (total > 0 && s !== "cancelled")) && (
+                    <Progress value={pct} className="mt-2 h-1.5" />
+                  )}
+                </div>
+              );
+            })()}
             {resultsLoading ? (
               <div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
             ) : results.length === 0 ? (
