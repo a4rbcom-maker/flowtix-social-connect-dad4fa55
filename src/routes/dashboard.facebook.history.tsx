@@ -319,9 +319,10 @@ function JobsHistoryPage() {
     if (results.length === 0) return;
     let rows: (string | number)[][];
     if (isPeople) {
+      const isCommenters = selected?.job_type === "extract_commenters";
       rows = [
-        ["name", "facebook_id", "profile", "phone", "city", "governorate", "source"],
-        ...enrichedRows.map((e) => [e.name, e.row.target ?? "", e.profile, e.phone ?? "", e.city ?? "", e.gov ?? "", e.source]),
+        ["name", "facebook_id", "profile", "phone", "city", "governorate", "source", ...(isCommenters ? ["comment_text"] : [])],
+        ...enrichedRows.map((e) => [e.name, e.row.target ?? "", e.profile, e.phone ?? "", e.city ?? "", e.gov ?? "", e.source, ...(isCommenters ? [e.commentText ?? ""] : [])]),
       ];
     } else if (isMessenger) {
       rows = [
