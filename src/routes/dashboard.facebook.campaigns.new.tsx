@@ -229,6 +229,12 @@ function NewCampaignPage() {
       `Added ${n} group${dup ? ` • ${dup} duplicate` : ""}${invalid ? ` • ${invalid} invalid` : ""}`,
     manualBadge: "manual",
     remove: "Remove",
+    confirmTitle: "Confirm publishing",
+    confirmDesc: "Review the groups the post will be sent to before you confirm.",
+    confirmCount: (n: number) => `Selected groups: ${n}`,
+    confirmMore: (n: number) => `+ ${n} more groups`,
+    confirmCancel: "Back",
+    confirmGo: "Confirm & start",
   };
 
   useEffect(() => { if (!loading && !user) navigate({ to: "/login" }); }, [user, loading, navigate]);
