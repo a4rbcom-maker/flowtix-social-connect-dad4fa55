@@ -225,7 +225,9 @@ function JobsHistoryPage() {
         setJobs((prev) => [payload.new as JobRow, ...prev.filter((j) => j.id !== (payload.new as JobRow).id)]);
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "fb_jobs", filter: `user_id=eq.${user.id}` }, (payload) => {
-        setJobs((prev) => prev.map((j) => (j.id === (payload.new as JobRow).id ? { ...j, ...(payload.new as JobRow) } : j)));
+        const row = payload.new as JobRow;
+        setJobs((prev) => prev.map((j) => (j.id === row.id ? { ...j, ...row } : j)));
+        setSelected((prev) => (prev && prev.id === row.id ? { ...prev, ...row } : prev));
       })
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "fb_jobs", filter: `user_id=eq.${user.id}` }, (payload) => {
         setJobs((prev) => prev.filter((j) => j.id !== (payload.old as JobRow).id));
