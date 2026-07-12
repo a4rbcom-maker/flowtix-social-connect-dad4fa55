@@ -396,17 +396,29 @@ function GroupExtractionStatusPage() {
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-background text-xs uppercase text-muted-foreground">
                   <tr>
-                    <th className="px-3 py-2 text-start">Name</th>
-                    <th className="px-3 py-2 text-start">Profile</th>
-                    <th className="px-3 py-2 text-start">City</th>
+                    <th className="px-3 py-2 text-start">ID</th>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "الاسم" : "Name"}</th>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "موبايل" : "Phone"}</th>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "المدينة" : "City"}</th>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "المحافظة" : "Governorate"}</th>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "نبذة" : "Bio"}</th>
+                    <th className="px-3 py-2 text-start">{lang === "ar" ? "البروفايل" : "Profile"}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {enriched.slice(0, 500).map((e) => (
-                    <tr key={e.row.id}>
+                    <tr key={e.row.id} className={e.gov ? "bg-primary/[0.04]" : ""}>
+                      <td className="px-3 py-2 font-mono text-xs"><bdi dir="ltr">{e.fbId || "—"}</bdi></td>
                       <td className="px-3 py-2 font-medium">{e.name}</td>
-                      <td className="px-3 py-2"><a href={e.profile} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{e.profile ? "↗" : "—"}</a></td>
-                      <td className="px-3 py-2 text-muted-foreground">{e.city ?? e.gov ?? "—"}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{e.phone ? <bdi dir="ltr">{e.phone}</bdi> : "—"}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{e.city ?? "—"}</td>
+                      <td className="px-3 py-2">{e.gov ? <Badge variant="outline" className="border-primary/30 text-primary">{e.gov}</Badge> : "—"}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground max-w-[280px]">
+                        <div className="line-clamp-2 break-words" title={e.bio}>{e.bio || "—"}</div>
+                      </td>
+                      <td className="px-3 py-2">
+                        {e.profile ? <a href={e.profile} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline"><bdi dir="ltr">↗</bdi></a> : "—"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
