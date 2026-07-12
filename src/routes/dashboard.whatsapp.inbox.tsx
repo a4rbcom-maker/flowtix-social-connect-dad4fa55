@@ -975,7 +975,7 @@ function InboxPage() {
       return;
     }
     if (!hasMoreOlderServer) return;
-    const cache = qc.getQueryData<ChatMessageRow[]>(["wa-messages", user.id, activeJid]) ?? [];
+    const cache = qc.getQueryData<ChatMessageRow[]>(["wa-messages", user.id, activeSessionId, activeJid]) ?? [];
     // Oldest server row = smallest created_at (server also sorts on it as the
     // secondary key, so the cursor is monotonic with the returned page).
     let cursor: string | null = null;
@@ -997,7 +997,8 @@ function InboxPage() {
       if (older.length < MSG_PAGE_SIZE) markMsgsExhausted(activeJid, true);
       if (older.length > 0) {
         qc.setQueryData<ChatMessageRow[]>(
-          ["wa-messages", user.id, activeJid],
+          ["wa-messages", user.id, activeSessionId, activeJid],
+
           (prev) => {
             // Route both slices through the shared dedupe so a late realtime
             // INSERT + an overlapping older page can never double-render.
