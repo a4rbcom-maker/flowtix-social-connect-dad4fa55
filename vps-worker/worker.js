@@ -279,10 +279,29 @@ async function handleExtractCommenters(job) {
         }
       );
 
+      logJSON("commenters.batch.harvested", {
+        jobId: job.id,
+        postUrl,
+        scrollIteration: i + 1,
+        harvestedInBatch: commenters.length,
+        newInBatch: commenters.filter((c) => !seen.has(c.fbId)).length,
+      });
+
       for (const c of commenters) {
         if (seen.has(c.fbId)) continue;
         seen.add(c.fbId);
-        await postUpdate({
+
+        // BEFORE storage: log what we're about to persist
+        logJSON("comment.saving", {
+          jobId: job.id,
+          fbId: c.fbId,
+          name: c.name,
+          profileUrl: c.profile_url,
+          commentText: c.comment_text,
+          commentLength: (c.comment_text || "").length,
+        });
+
+        const res = await postUpdate({
           jobId: job.id,
           result: {
             target: c.fbId,
@@ -290,6 +309,18 @@ async function handleExtractCommenters(job) {
             data: { name: c.name, profile_url: c.profile_url, comment_text: c.comment_text, source: "comment" },
           },
         });
+
+        // AFTER storage: log persistence outcome
+        logJSON("comment.saved", {
+          jobId: job.id,
+          fbId: c.fbId,
+          name: c.name,
+          commentText: c.comment_text,
+          persisted: res?.ok === true,
+          httpStatus: res?.status,
+          error: res?.ok ? undefined : (res?.body || res?.error),
+        });
+
         extracted++;
       }
 
