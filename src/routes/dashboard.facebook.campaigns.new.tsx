@@ -609,10 +609,9 @@ function NewCampaignPage() {
         await callFn(startCampaign, { id: c.id });
         toast.success(t.started);
       }
-      // Clear persisted selection now that the campaign was created
-      try {
-        if (user) localStorage.removeItem(`${SELECTION_STORAGE_KEY}.${user.id}`);
-      } catch { /* ignore */ }
+      // NOTE: intentionally do NOT clear the persisted selection here — the user
+      // asked to keep the same groups selected when they revisit this page so
+      // they don't have to re-enter IDs manually for the next campaign.
       navigate({ to: "/dashboard/facebook/campaigns" });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
