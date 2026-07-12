@@ -539,7 +539,24 @@ function NewCampaignPage() {
   const validate = (): boolean => {
     if (!name.trim()) { toast.error(t.needName); return false; }
     if (!accountId) { toast.error(t.needAccount); return false; }
-    if (selectedTargets.size === 0) { toast.error(t.needTargets); return false; }
+    if (groups.length === 0) {
+      toast.error(
+        lang === "ar"
+          ? "لا توجد جروبات بعد. اضغط \"جلب الجروبات\" أو استخرجها من صفحة الجروبات قبل النشر."
+          : "No groups loaded yet. Click \"Load groups\" or extract them from the Groups page before publishing.",
+        { duration: 6000 },
+      );
+      return false;
+    }
+    if (selectedTargets.size === 0) {
+      toast.error(
+        lang === "ar"
+          ? "لم يتم تحديد أي جروب. حدّد جروب واحد على الأقل قبل النشر."
+          : "No groups selected. Pick at least one group before publishing.",
+        { duration: 5000 },
+      );
+      return false;
+    }
     if (delayMax < delayMin) { toast.error(t.delayErr); return false; }
     if (!templateId && !customText.trim() && mediaIds.size === 0) { toast.error(t.needContent); return false; }
 
