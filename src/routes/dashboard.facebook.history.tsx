@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
 import { listJobs, getJob, cancelJob, pauseJob, resumeJob, createSendMessengerDmJob, listBotAccounts } from "@/lib/fb-bot.functions";
 import { loadEgyptData, extractEgyptPhone, detectLocation } from "@/lib/egypt-enrich";
+import { filterCommenters, highlightSegments } from "@/lib/comment-search";
 
 export const Route = createFileRoute("/dashboard/facebook/history")({
   ssr: false,
@@ -894,8 +895,8 @@ function JobsHistoryPage() {
             ) : isPeople ? (() => {
               const isCommenters = selected?.job_type === "extract_commenters";
               const q = commentSearch.trim().toLowerCase();
-              const visibleRows = isCommenters && q
-                ? enrichedRows.filter((e) => `${e.commentText ?? ""} ${e.name ?? ""}`.toLowerCase().includes(q))
+              const visibleRows = isCommenters
+                ? filterCommenters(enrichedRows, commentSearch)
                 : enrichedRows;
               return (
                 <div className="space-y-2">
@@ -946,15 +947,18 @@ function JobsHistoryPage() {
                             </td>
                           </tr>
                         ) : visibleRows.map((e) => {
-                          const highlight = (text: string) => {
-                            if (!q || !text) return text || "—";
-                            const idx = text.toLowerCase().indexOf(q);
-                            if (idx < 0) return text;
+                          const highlight = (text: string): ReactNode => {
+                            if (!text) return "—";
+                            const segs = highlightSegments(text, commentSearch);
                             return (
                               <>
-                                {text.slice(0, idx)}
-                                <mark className="rounded bg-primary/25 px-0.5 text-foreground">{text.slice(idx, idx + q.length)}</mark>
-                                {text.slice(idx + q.length)}
+                                {segs.map((s, idx) =>
+                                  s.match ? (
+                                    <mark key={idx} className="rounded bg-primary/25 px-0.5 text-foreground">{s.text}</mark>
+                                  ) : (
+                                    <span key={idx}>{s.text}</span>
+                                  ),
+                                )}
                               </>
                             );
                           };
