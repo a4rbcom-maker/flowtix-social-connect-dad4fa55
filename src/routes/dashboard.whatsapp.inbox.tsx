@@ -3250,10 +3250,14 @@ async function fetchInboxMessages(
     .order("wa_timestamp", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(limit);
+  if (opts?.sessionId) {
+    pq = pq.eq("session_id", opts.sessionId);
+  }
   if (beforeTs) {
     // نفس فلتر الاستبعاد (@g.us) محفوظ — الـcursor لا يغير ذلك.
     pq = pq.lt("created_at", beforeTs);
   }
+
   const { data: rows, error } = await pq;
   const durationMs = nowMs() - startedAt;
   if (error) {
