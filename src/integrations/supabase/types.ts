@@ -662,6 +662,27 @@ export type Database = {
         }
         Relationships: []
       }
+      fb_campaign_drafts: {
+        Row: {
+          groups: Json
+          selected_ids: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          groups?: Json
+          selected_ids?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          groups?: Json
+          selected_ids?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       fb_campaigns: {
         Row: {
           account_id: string | null

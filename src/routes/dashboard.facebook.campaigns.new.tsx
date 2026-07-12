@@ -301,59 +301,113 @@ function NewCampaignPage() {
 
   // Persist selection across visits (per-user) — restores selectedTargets + any
   // manually-added groups so the user's picks survive navigating away and back.
+  // Primary store is the DB (survives browsers/devices); localStorage is a fast
+  // local mirror for offline / first-paint hydration.
   const SELECTION_STORAGE_KEY = "flowtix.fb.campaign.new.selection.v1";
   const selectionHydrated = useRef(false);
+  const dbSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!user || selectionHydrated.current || typeof window === "undefined") return;
-    selectionHydrated.current = true;
-    try {
-      const raw = localStorage.getItem(`${SELECTION_STORAGE_KEY}.${user.id}`);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as { selected?: string[]; groups?: Group[]; ts?: number };
-      // Expire after 7 days
-      if (parsed.ts && Date.now() - parsed.ts > 7 * 24 * 60 * 60 * 1000) {
-        localStorage.removeItem(`${SELECTION_STORAGE_KEY}.${user.id}`);
-        return;
+    let cancelled = false;
+    (async () => {
+      // 1) Local fast-path
+      try {
+        const raw = localStorage.getItem(`${SELECTION_STORAGE_KEY}.${user.id}`);
+        if (raw) {
+          const parsed = JSON.parse(raw) as { selected?: string[]; groups?: Group[]; ts?: number };
+          if (parsed.ts && Date.now() - parsed.ts > 7 * 24 * 60 * 60 * 1000) {
+            localStorage.removeItem(`${SELECTION_STORAGE_KEY}.${user.id}`);
+          } else {
+            if (parsed.groups?.length) {
+              setGroups((prev) => {
+                const map = new Map(prev.map((g) => [g.id, g] as const));
+                for (const g of parsed.groups!) if (!map.has(g.id)) map.set(g.id, g);
+                return Array.from(map.values());
+              });
+            }
+            if (parsed.selected?.length) {
+              setSelectedTargets(new Set(parsed.selected));
+            }
+          }
+        }
+      } catch {
+        // ignore corrupt storage
       }
-      if (parsed.groups?.length) {
-        setGroups((prev) => {
-          const map = new Map(prev.map((g) => [g.id, g] as const));
-          for (const g of parsed.groups!) if (!map.has(g.id)) map.set(g.id, g);
-          return Array.from(map.values());
-        });
+
+      // 2) DB source of truth — wins over local if different
+      try {
+        const { data, error } = await supabase
+          .from("fb_campaign_drafts")
+          .select("selected_ids, groups")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (cancelled || error || !data) return;
+        const dbSelected = Array.isArray(data.selected_ids) ? (data.selected_ids as string[]) : [];
+        const dbGroups = Array.isArray(data.groups) ? (data.groups as unknown as Group[]) : [];
+        if (dbGroups.length) {
+          setGroups((prev) => {
+            const map = new Map(prev.map((g) => [g.id, g] as const));
+            for (const g of dbGroups) if (g?.id && !map.has(g.id)) map.set(g.id, g);
+            return Array.from(map.values());
+          });
+        }
+        if (dbSelected.length) {
+          setSelectedTargets(new Set(dbSelected));
+        }
+      } catch {
+        // ignore — local mirror already applied
+      } finally {
+        if (!cancelled) selectionHydrated.current = true;
       }
-      if (parsed.selected?.length) {
-        setSelectedTargets(new Set(parsed.selected));
-      }
-    } catch {
-      // ignore corrupt storage
-    }
+    })();
+    return () => { cancelled = true; };
   }, [user]);
 
   // Save selection whenever it changes (only after hydration, to avoid clobbering).
   useEffect(() => {
     if (!user || !selectionHydrated.current || typeof window === "undefined") return;
+    const selected = Array.from(selectedTargets);
+    const savedGroups = groups
+      .filter((g) => selectedTargets.has(g.id))
+      .map((g) => ({ id: g.id, name: g.name }));
+
+    // Local mirror (instant)
     try {
       const key = `${SELECTION_STORAGE_KEY}.${user.id}`;
-      if (selectedTargets.size === 0) {
+      if (selected.length === 0) {
         localStorage.removeItem(key);
-        return;
+      } else {
+        localStorage.setItem(
+          key,
+          JSON.stringify({ selected, groups: savedGroups, ts: Date.now() }),
+        );
       }
-      const selected = Array.from(selectedTargets);
-      // Keep the metadata of selected groups only — enough to rehydrate labels
-      // for manual entries that aren't served by the API.
-      const savedGroups = groups
-        .filter((g) => selectedTargets.has(g.id))
-        .map((g) => ({ id: g.id, name: g.name }));
-      localStorage.setItem(
-        key,
-        JSON.stringify({ selected, groups: savedGroups, ts: Date.now() }),
-      );
     } catch {
       // ignore quota / private mode
     }
+
+    // DB upsert (debounced 600ms to avoid a write per checkbox toggle)
+    if (dbSaveTimer.current) clearTimeout(dbSaveTimer.current);
+    dbSaveTimer.current = setTimeout(async () => {
+      try {
+        await supabase
+          .from("fb_campaign_drafts")
+          .upsert(
+            {
+              user_id: user.id,
+              selected_ids: selected,
+              groups: savedGroups as unknown as never,
+            },
+            { onConflict: "user_id" },
+          );
+      } catch {
+        // ignore — local mirror still has the data
+      }
+    }, 600);
   }, [user, selectedTargets, groups]);
+
+
 
 
 
