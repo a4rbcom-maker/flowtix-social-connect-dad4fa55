@@ -991,7 +991,9 @@ function InboxPage() {
       const older = await fetchInboxMessages(user.id, activeJid, {
         beforeTs: cursor,
         limit: MSG_PAGE_SIZE,
+        sessionId: activeSessionId,
       });
+
       if (older.length < MSG_PAGE_SIZE) markMsgsExhausted(activeJid, true);
       if (older.length > 0) {
         qc.setQueryData<ChatMessageRow[]>(
