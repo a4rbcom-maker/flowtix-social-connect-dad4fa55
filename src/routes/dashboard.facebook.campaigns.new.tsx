@@ -373,6 +373,9 @@ function NewCampaignPage() {
   };
 
   // Auto-load previously imported groups (from bot's list_my_groups job) on mount
+  // AND auto-select them as targets — the user's clear intent when they land
+  // on the "new campaign" page after extracting their groups is to publish
+  // to those same groups, not to type IDs by hand.
   useEffect(() => {
     if (!user) return;
     (async () => {
@@ -380,6 +383,12 @@ function NewCampaignPage() {
         const imported = await loadGroupsFromBotResults();
         if (imported.length) {
           setGroups((prev) => (prev.length ? prev : imported));
+          setSelectedTargets((prev) => {
+            if (prev.size > 0) return prev; // respect existing selection (handoff)
+            const next = new Set<string>();
+            for (const g of imported) next.add(g.id);
+            return next;
+          });
         }
       } catch {
         // ignore
@@ -415,6 +424,13 @@ function NewCampaignPage() {
         const map = new Map(prev.map((g) => [g.id, g] as const));
         for (const g of list) map.set(g.id, g);
         return Array.from(map.values());
+      });
+      // Explicit "Load groups" click = user wants these ready to publish.
+      // Auto-select all freshly loaded IDs so they don't have to check each one.
+      setSelectedTargets((prev) => {
+        const next = new Set(prev);
+        for (const g of list) next.add(g.id);
+        return next;
       });
       toast.success(`${list.length} ${lang === "ar" ? "جروب" : "groups"}`);
     } catch (e) {
