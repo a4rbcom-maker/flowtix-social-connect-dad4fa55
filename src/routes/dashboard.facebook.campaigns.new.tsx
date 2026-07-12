@@ -995,6 +995,41 @@ function NewCampaignPage() {
           </div>
         </Section>
 
+        {/* Selected groups counter — visible right before publish */}
+        <div
+          className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
+            selectedTargets.size > 0
+              ? "border-primary/40 bg-primary/5"
+              : "border-amber-500/40 bg-amber-500/10"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Users className={`w-4 h-4 ${selectedTargets.size > 0 ? "text-primary" : "text-amber-600 dark:text-amber-400"}`} />
+            <span className="text-muted-foreground">
+              {lang === "ar" ? "الجروبات المحددة للنشر:" : "Groups selected to publish:"}
+            </span>
+            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold ${
+              selectedTargets.size > 0
+                ? "bg-primary text-primary-foreground"
+                : "bg-amber-500 text-white"
+            }`}>
+              {selectedTargets.size}
+            </span>
+            {groups.length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                / {groups.length}
+              </span>
+            )}
+          </div>
+          {selectedTargets.size === 0 && (
+            <span className="text-xs text-amber-700 dark:text-amber-400">
+              {groups.length === 0
+                ? (lang === "ar" ? "اجلب الجروبات أولاً" : "Load groups first")
+                : (lang === "ar" ? "حدّد جروب واحد على الأقل" : "Pick at least one group")}
+            </span>
+          )}
+        </div>
+
         {/* Actions */}
         <div className="flex gap-3 flex-wrap">
           <button
