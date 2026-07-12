@@ -498,5 +498,19 @@ export async function updateWaSessionStatus(
     });
   }
 
+  if (archivedFromPreviousNumber > 0) {
+    await logWaSessionEvent(db, {
+      userId: input.userId,
+      sessionId: input.sessionId,
+      fromStatus: nextStatus,
+      toStatus: nextStatus,
+      source: "history_sync",
+      reason: `archived_previous_number_conversations:${archivedFromPreviousNumber}`,
+      rawStatus: "connected",
+      bridgeEvent: input.bridgeEvent,
+      payload: null,
+    });
+  }
+
   return previousStatus;
 }
