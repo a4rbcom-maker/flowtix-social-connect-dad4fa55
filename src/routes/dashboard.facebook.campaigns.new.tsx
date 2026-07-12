@@ -839,17 +839,30 @@ function NewCampaignPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTargets((prev) => {
-                      const n = new Set(prev);
-                      filteredGroups.forEach((g) => n.add(g.id));
-                      return n;
-                    })}
-                    className="rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent"
-                  >
-                    {t.selectAllVisible}
-                  </button>
+                  {(() => {
+                    const filterActive = deferredSearch.trim() !== "" || filterMode !== "all";
+                    const primaryLabel = filterActive
+                      ? `${t.selectAll} (${filteredGroups.length})`
+                      : `${t.selectAll} (${groups.length})`;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTargets((prev) => {
+                          const n = new Set(prev);
+                          // When any filter/search is active, only the visible rows are added.
+                          // Without filters, this selects every group.
+                          filteredGroups.forEach((g) => n.add(g.id));
+                          return n;
+                        })}
+                        title={filterActive
+                          ? (lang === "ar" ? "يحدد فقط الجروبات الظاهرة نتيجة الفلتر/البحث" : "Selects only groups visible under the active filter/search")
+                          : undefined}
+                        className="rounded-lg bg-primary/10 text-primary border border-primary/30 px-2.5 py-1.5 text-xs font-semibold hover:bg-primary/20"
+                      >
+                        {primaryLabel}
+                      </button>
+                    );
+                  })()}
                   <button
                     type="button"
                     onClick={() => setSelectedTargets((prev) => {
@@ -860,13 +873,6 @@ function NewCampaignPage() {
                     className="rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent"
                   >
                     {t.invert}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTargets(new Set(groups.map((g) => g.id)))}
-                    className="rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent"
-                  >
-                    {t.selectAll}
                   </button>
                   <button
                     type="button"
