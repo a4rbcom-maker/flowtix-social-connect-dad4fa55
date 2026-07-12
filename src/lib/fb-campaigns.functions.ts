@@ -11,6 +11,7 @@ const saveTemplateSchema = z.object({
   name: z.string().trim().min(1).max(120),
   content: z.string().trim().min(1).max(20_000),
   tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+  mediaIds: z.array(z.string().uuid()).max(10).optional(),
 });
 
 const recordMediaSchema = z.object({
