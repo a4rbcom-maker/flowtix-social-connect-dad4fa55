@@ -3191,10 +3191,14 @@ async function fetchInboxMessages(
       .order("wa_timestamp", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
       .limit(limit);
+    if (opts?.sessionId) {
+      gq = gq.eq("session_id", opts.sessionId);
+    }
     if (beforeTs) {
       // Cursor على created_at — نجلب فقط الأقدم من آخر صف موجود في الـcache.
       gq = gq.lt("created_at", beforeTs);
     }
+
     const { data: groupRows, error: groupError } = await gq;
     const durationMs = nowMs() - startedAt;
     if (groupError) {
