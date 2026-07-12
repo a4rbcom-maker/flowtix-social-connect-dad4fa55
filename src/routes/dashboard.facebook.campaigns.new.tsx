@@ -814,8 +814,29 @@ function NewCampaignPage() {
 
               {/* Bulk actions */}
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="text-xs text-muted-foreground">
-                  <b className="text-foreground">{selectedTargets.size}</b> {t.selected} / {filteredGroups.length}
+                <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+                  <span>
+                    <b className="text-foreground">
+                      {filteredGroups.filter((g) => selectedTargets.has(g.id)).length}
+                    </b>
+                    {" / "}{filteredGroups.length}{" "}
+                    {lang === "ar" ? "ظاهرة" : "visible"}
+                  </span>
+                  <span className="text-muted-foreground/60">•</span>
+                  <span>
+                    <b className="text-foreground">{selectedTargets.size}</b>{" "}
+                    {lang === "ar" ? "محدد من إجمالي" : "selected of"}{" "}
+                    {groups.length}
+                  </span>
+                  {deferredSearch.trim() && (
+                    <>
+                      <span className="text-muted-foreground/60">•</span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5">
+                        <Search className="w-3 h-3" />
+                        "{deferredSearch.trim()}"
+                      </span>
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <button
