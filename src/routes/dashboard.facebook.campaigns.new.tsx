@@ -433,19 +433,39 @@ function NewCampaignPage() {
         );
         return;
       }
+      // Deduplicate incoming IDs (source may include repeats) and against existing groups.
+      const seenInList = new Set<string>();
+      let intraDup = 0;
+      const uniqueList: Group[] = [];
+      for (const g of list) {
+        if (!g?.id) continue;
+        if (seenInList.has(g.id)) { intraDup++; continue; }
+        seenInList.add(g.id);
+        uniqueList.push(g);
+      }
+      let againstExistingDup = 0;
       setGroups((prev) => {
         const map = new Map(prev.map((g) => [g.id, g] as const));
-        for (const g of list) map.set(g.id, g);
+        for (const g of uniqueList) {
+          if (map.has(g.id)) againstExistingDup++;
+          map.set(g.id, g);
+        }
         return Array.from(map.values());
       });
       // Explicit "Load groups" click = user wants these ready to publish.
       // Auto-select all freshly loaded IDs so they don't have to check each one.
       setSelectedTargets((prev) => {
         const next = new Set(prev);
-        for (const g of list) next.add(g.id);
+        for (const g of uniqueList) next.add(g.id);
         return next;
       });
-      toast.success(`${list.length} ${lang === "ar" ? "جروب" : "groups"}`);
+      const totalDup = intraDup + againstExistingDup;
+      toast.success(
+        `${uniqueList.length} ${lang === "ar" ? "جروب" : "groups"}` +
+        (totalDup > 0
+          ? (lang === "ar" ? ` • تم تجاهل ${totalDup} مكرر` : ` • ${totalDup} duplicate removed`)
+          : ""),
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
     } finally {
