@@ -1026,7 +1026,7 @@ function InboxPage() {
   // preserves the same user_id + is_archived=false filters as the initial page.
   const loadMoreConversations = useCallback(async () => {
     if (!user?.id || isLoadingMoreConv || convServerExhaustedRef.current) return;
-    const cache = qc.getQueryData<ConversationRow[]>(["wa-conversations", user.id]) ?? [];
+    const cache = qc.getQueryData<ConversationRow[]>(["wa-conversations", user.id, activeSessionId]) ?? [];
     let cursor: string | null = null;
     for (const c of cache) {
       const ts = c.last_message_at ?? null;
@@ -1039,11 +1039,13 @@ function InboxPage() {
       const older = await fetchInboxConversations(user.id, {
         beforeTs: cursor,
         limit: CONV_PAGE_SIZE,
+        sessionId: activeSessionId,
       });
       if (older.length < CONV_PAGE_SIZE) convServerExhaustedRef.current = true;
       if (older.length > 0) {
         qc.setQueryData<ConversationRow[]>(
-          ["wa-conversations", user.id],
+          ["wa-conversations", user.id, activeSessionId],
+
           (prev) => {
             const cur = prev ?? [];
             const seen = new Set(cur.map((r) => r.id));
