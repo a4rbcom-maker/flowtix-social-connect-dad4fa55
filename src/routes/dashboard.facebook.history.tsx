@@ -917,7 +917,7 @@ function JobsHistoryPage() {
                 </div>
               );
             })()
-          ) : isGroupsList ? (
+            : isGroupsList ? (
             <div className="max-h-[60vh] overflow-auto">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-muted/40 text-muted-foreground">
