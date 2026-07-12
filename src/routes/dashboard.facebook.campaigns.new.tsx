@@ -425,6 +425,13 @@ function NewCampaignPage() {
         for (const g of list) map.set(g.id, g);
         return Array.from(map.values());
       });
+      // Explicit "Load groups" click = user wants these ready to publish.
+      // Auto-select all freshly loaded IDs so they don't have to check each one.
+      setSelectedTargets((prev) => {
+        const next = new Set(prev);
+        for (const g of list) next.add(g.id);
+        return next;
+      });
       toast.success(`${list.length} ${lang === "ar" ? "جروب" : "groups"}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
