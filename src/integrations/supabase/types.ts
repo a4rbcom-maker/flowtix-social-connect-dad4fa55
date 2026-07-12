@@ -1085,6 +1085,7 @@ export type Database = {
           content: string
           created_at: string
           id: string
+          media_ids: string[]
           name: string
           tags: string[] | null
           updated_at: string
@@ -1094,6 +1095,7 @@ export type Database = {
           content: string
           created_at?: string
           id?: string
+          media_ids?: string[]
           name: string
           tags?: string[] | null
           updated_at?: string
@@ -1103,6 +1105,7 @@ export type Database = {
           content?: string
           created_at?: string
           id?: string
+          media_ids?: string[]
           name?: string
           tags?: string[] | null
           updated_at?: string
