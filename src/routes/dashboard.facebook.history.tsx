@@ -828,6 +828,9 @@ function JobsHistoryPage() {
                 <thead className="sticky top-0 bg-muted/40 text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 text-start">{lang === "ar" ? "الاسم" : "Name"}</th>
+                    {selected?.job_type === "extract_commenters" && (
+                      <th className="px-3 py-2 text-start">{lang === "ar" ? "التعليق" : "Comment"}</th>
+                    )}
                     <th className="px-3 py-2 text-start">{lang === "ar" ? "موبايل" : "Phone"}</th>
                     <th className="px-3 py-2 text-start">{lang === "ar" ? "المدينة" : "City"}</th>
                     <th className="px-3 py-2 text-start">{lang === "ar" ? "المحافظة" : "Governorate"}</th>
@@ -838,6 +841,13 @@ function JobsHistoryPage() {
                   {enrichedRows.map((e) => (
                     <tr key={e.row.id} className={e.gov ? "bg-primary/[0.04]" : ""}>
                       <td className="px-3 py-2 font-medium text-start">{e.name}</td>
+                      {selected?.job_type === "extract_commenters" && (
+                        <td className="px-3 py-2 text-start max-w-[320px]">
+                          <div className="line-clamp-3 whitespace-pre-wrap break-words text-muted-foreground" title={e.commentText || ""}>
+                            {e.commentText || "—"}
+                          </div>
+                        </td>
+                      )}
                       <td className="px-3 py-2 font-mono text-start">{e.phone ? <bdi dir="ltr">{e.phone}</bdi> : "—"}</td>
                       <td className="px-3 py-2 text-start">{e.city ?? "—"}</td>
                       <td className="px-3 py-2 text-start">
