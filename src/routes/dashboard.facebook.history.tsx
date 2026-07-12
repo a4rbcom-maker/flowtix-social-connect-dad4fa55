@@ -297,8 +297,8 @@ function JobsHistoryPage() {
     : [];
   const enrichedRows = isPeople
     ? results.map((r) => {
-        const d = (r.data ?? {}) as { name?: string; id?: string; fb_user_id?: string; profile?: string; profile_url?: string; bio?: string; bio_snippet?: string; city?: string; hometown?: string; work?: string; phone?: string; source?: string };
-        const blob = `${d.name ?? ""} ${d.bio ?? ""} ${d.bio_snippet ?? ""} ${d.city ?? ""} ${d.hometown ?? ""} ${r.target ?? ""}`;
+        const d = (r.data ?? {}) as { name?: string; id?: string; fb_user_id?: string; profile?: string; profile_url?: string; bio?: string; bio_snippet?: string; city?: string; hometown?: string; work?: string; phone?: string; source?: string; comment_text?: string };
+        const blob = `${d.name ?? ""} ${d.bio ?? ""} ${d.bio_snippet ?? ""} ${d.city ?? ""} ${d.hometown ?? ""} ${d.comment_text ?? ""} ${r.target ?? ""}`;
         const loc = detectLocation(blob);
         return {
           row: r,
@@ -310,6 +310,7 @@ function JobsHistoryPage() {
           declared: d.city ?? d.hometown ?? null,
           work: d.work ?? null,
           source: d.source ?? "",
+          commentText: d.comment_text ?? "",
         };
       })
     : [];
