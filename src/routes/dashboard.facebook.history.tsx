@@ -823,45 +823,100 @@ function JobsHistoryPage() {
                   </p>
                 )}
               </div>
-            ) : isPeople ? (
-            <div className="max-h-[60vh] overflow-auto">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-muted/40 text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2 text-start">{lang === "ar" ? "الاسم" : "Name"}</th>
-                    {selected?.job_type === "extract_commenters" && (
-                      <th className="px-3 py-2 text-start">{lang === "ar" ? "التعليق" : "Comment"}</th>
-                    )}
-                    <th className="px-3 py-2 text-start">{lang === "ar" ? "موبايل" : "Phone"}</th>
-                    <th className="px-3 py-2 text-start">{lang === "ar" ? "المدينة" : "City"}</th>
-                    <th className="px-3 py-2 text-start">{lang === "ar" ? "المحافظة" : "Governorate"}</th>
-                    <th className="px-3 py-2 text-start">{lang === "ar" ? "البروفايل" : "Profile"}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/50">
-                  {enrichedRows.map((e) => (
-                    <tr key={e.row.id} className={e.gov ? "bg-primary/[0.04]" : ""}>
-                      <td className="px-3 py-2 font-medium text-start">{e.name}</td>
-                      {selected?.job_type === "extract_commenters" && (
-                        <td className="px-3 py-2 text-start max-w-[320px]">
-                          <div className="line-clamp-3 whitespace-pre-wrap break-words text-muted-foreground" title={e.commentText || ""}>
-                            {e.commentText || "—"}
-                          </div>
-                        </td>
-                      )}
-                      <td className="px-3 py-2 font-mono text-start">{e.phone ? <bdi dir="ltr">{e.phone}</bdi> : "—"}</td>
-                      <td className="px-3 py-2 text-start">{e.city ?? "—"}</td>
-                      <td className="px-3 py-2 text-start">
-                        {e.gov ? <Badge variant="outline" className="border-primary/30 text-primary">{e.gov}</Badge> : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-start">
-                        {e.profile ? <bdi dir="ltr"><a href={e.profile} target="_blank" rel="noreferrer" className="text-primary hover:underline">↗</a></bdi> : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            ) : isPeople ? (() => {
+              const isCommenters = selected?.job_type === "extract_commenters";
+              const q = commentSearch.trim().toLowerCase();
+              const visibleRows = isCommenters && q
+                ? enrichedRows.filter((e) => `${e.commentText ?? ""} ${e.name ?? ""}`.toLowerCase().includes(q))
+                : enrichedRows;
+              return (
+                <div className="space-y-2">
+                  {isCommenters && (
+                    <div className="flex flex-wrap items-center gap-2 px-1">
+                      <div className="relative flex-1 min-w-[200px]">
+                        <Input
+                          value={commentSearch}
+                          onChange={(e) => setCommentSearch(e.target.value)}
+                          placeholder={lang === "ar" ? "ابحث داخل نص التعليقات أو الأسماء…" : "Search in comment text or names…"}
+                          className="h-9 pe-8"
+                        />
+                        {commentSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setCommentSearch("")}
+                            className="absolute end-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-muted"
+                            aria-label="clear"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {visibleRows.length} / {enrichedRows.length}
+                      </span>
+                    </div>
+                  )}
+                  <div className="max-h-[60vh] overflow-auto">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-muted/40 text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 text-start">{lang === "ar" ? "الاسم" : "Name"}</th>
+                          {isCommenters && (
+                            <th className="px-3 py-2 text-start">{lang === "ar" ? "التعليق" : "Comment"}</th>
+                          )}
+                          <th className="px-3 py-2 text-start">{lang === "ar" ? "موبايل" : "Phone"}</th>
+                          <th className="px-3 py-2 text-start">{lang === "ar" ? "المدينة" : "City"}</th>
+                          <th className="px-3 py-2 text-start">{lang === "ar" ? "المحافظة" : "Governorate"}</th>
+                          <th className="px-3 py-2 text-start">{lang === "ar" ? "البروفايل" : "Profile"}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/50">
+                        {visibleRows.length === 0 ? (
+                          <tr>
+                            <td colSpan={isCommenters ? 6 : 5} className="px-3 py-6 text-center text-muted-foreground">
+                              {lang === "ar" ? "لا توجد نتائج مطابقة" : "No matching results"}
+                            </td>
+                          </tr>
+                        ) : visibleRows.map((e) => {
+                          const highlight = (text: string) => {
+                            if (!q || !text) return text || "—";
+                            const idx = text.toLowerCase().indexOf(q);
+                            if (idx < 0) return text;
+                            return (
+                              <>
+                                {text.slice(0, idx)}
+                                <mark className="rounded bg-primary/25 px-0.5 text-foreground">{text.slice(idx, idx + q.length)}</mark>
+                                {text.slice(idx + q.length)}
+                              </>
+                            );
+                          };
+                          return (
+                            <tr key={e.row.id} className={e.gov ? "bg-primary/[0.04]" : ""}>
+                              <td className="px-3 py-2 font-medium text-start">{isCommenters && q ? highlight(e.name) : e.name}</td>
+                              {isCommenters && (
+                                <td className="px-3 py-2 text-start max-w-[320px]">
+                                  <div className="line-clamp-3 whitespace-pre-wrap break-words text-muted-foreground" title={e.commentText || ""}>
+                                    {q ? highlight(e.commentText || "—") : (e.commentText || "—")}
+                                  </div>
+                                </td>
+                              )}
+                              <td className="px-3 py-2 font-mono text-start">{e.phone ? <bdi dir="ltr">{e.phone}</bdi> : "—"}</td>
+                              <td className="px-3 py-2 text-start">{e.city ?? "—"}</td>
+                              <td className="px-3 py-2 text-start">
+                                {e.gov ? <Badge variant="outline" className="border-primary/30 text-primary">{e.gov}</Badge> : "—"}
+                              </td>
+                              <td className="px-3 py-2 text-start">
+                                {e.profile ? <bdi dir="ltr"><a href={e.profile} target="_blank" rel="noreferrer" className="text-primary hover:underline">↗</a></bdi> : "—"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()
           ) : isGroupsList ? (
             <div className="max-h-[60vh] overflow-auto">
               <table className="w-full text-xs">
