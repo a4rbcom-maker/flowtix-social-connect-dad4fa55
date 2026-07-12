@@ -402,6 +402,7 @@ export async function updateWaSessionStatus(
     .eq("session_id", input.sessionId);
 
   let adoptedArchive: { conversations: number; messages: number; sourceSessions: number } | null = null;
+  let archivedFromPreviousNumber = 0;
   const phoneIsVerifiedByBridge =
     input.source === "webhook_status" ||
     input.source === "history_sync" ||
@@ -415,6 +416,23 @@ export async function updateWaSessionStatus(
       });
     } catch (err) {
       console.warn("[wa-session-events] archive adoption crashed:", err instanceof Error ? err.message : err);
+    }
+
+    // After adoption, any conversations still tied to a *different* session_id
+    // for this user belong to a PREVIOUS WhatsApp number (adoption already
+    // migrated matching-phone rows onto the current session_id). Hide them
+    // from the inbox so switching numbers gives a clean slate. Rows stay in
+    // the DB (is_archived=true) so nothing is destroyed and can be recovered.
+    try {
+      const { count } = await supabaseAdmin
+        .from("wa_conversations")
+        .update({ is_archived: true, updated_at: new Date().toISOString() }, { count: "exact" })
+        .eq("user_id", input.userId)
+        .neq("session_id", input.sessionId)
+        .eq("is_archived", false);
+      archivedFromPreviousNumber = count ?? 0;
+    } catch (err) {
+      console.warn("[wa-session-events] archive previous-number conversations failed:", err instanceof Error ? err.message : err);
     }
   }
 
@@ -474,6 +492,20 @@ export async function updateWaSessionStatus(
       toStatus: nextStatus,
       source: "history_sync",
       reason: `adopted_verified_phone_archive:${adoptedArchive.conversations}_conversations:${adoptedArchive.messages}_messages:${adoptedArchive.sourceSessions}_sessions`,
+      rawStatus: "connected",
+      bridgeEvent: input.bridgeEvent,
+      payload: null,
+    });
+  }
+
+  if (archivedFromPreviousNumber > 0) {
+    await logWaSessionEvent(db, {
+      userId: input.userId,
+      sessionId: input.sessionId,
+      fromStatus: nextStatus,
+      toStatus: nextStatus,
+      source: "history_sync",
+      reason: `archived_previous_number_conversations:${archivedFromPreviousNumber}`,
       rawStatus: "connected",
       bridgeEvent: input.bridgeEvent,
       payload: null,
