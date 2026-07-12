@@ -761,11 +761,22 @@ function InboxPage() {
       .channel(`wa_inbox_realtime:${uid}`)
       .on(
         "postgres_changes",
+        { event: "*", schema: "public", table: "wa_sessions", filter: `user_id=eq.${uid}` },
+        () => {
+          // Session rotated (unpair → pair a new number) — refetch the active
+          // session id so the inbox re-scopes to the new account's chats.
+          qc.invalidateQueries({ queryKey: ["wa-active-session-id", uid] });
+          scheduleInvalidateConversations();
+        },
+      )
+      .on(
+        "postgres_changes",
         { event: "*", schema: "public", table: "wa_conversations", filter: `user_id=eq.${uid}` },
         () => {
           scheduleInvalidateConversations();
         },
       )
+
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "wa_messages", filter: `user_id=eq.${uid}` },
