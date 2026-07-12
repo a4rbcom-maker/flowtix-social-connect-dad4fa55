@@ -108,7 +108,7 @@ export const getVpsWorkerStatus = createServerFn({ method: "GET" })
         version: string | null;
         capabilities: string[];
         last_seen_at: string;
-        meta: Record<string, unknown>;
+        meta: Record<string, any>;
       }>,
       recentJobs: recentJobs.data ?? [],
       counts: {
