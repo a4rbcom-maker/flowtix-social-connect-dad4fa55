@@ -967,7 +967,12 @@ function JobsHistoryPage() {
                               <>
                                 {segs.map((s, idx) =>
                                   s.match ? (
-                                    <mark key={idx} className="rounded bg-primary/25 px-0.5 text-foreground">{s.text}</mark>
+                                    <mark
+                                      key={idx}
+                                      className="rounded bg-yellow-300/70 px-0.5 font-semibold text-foreground ring-1 ring-yellow-500/50 dark:bg-yellow-500/40 dark:ring-yellow-300/60"
+                                    >
+                                      {s.text}
+                                    </mark>
                                   ) : (
                                     <span key={idx}>{s.text}</span>
                                   ),
@@ -977,11 +982,11 @@ function JobsHistoryPage() {
                           };
                           return (
                             <tr key={e.row.id} className={e.gov ? "bg-primary/[0.04]" : ""}>
-                              <td className="px-3 py-2 font-medium text-start">{isCommenters && q ? highlight(e.name) : e.name}</td>
+                              <td className="px-3 py-2 font-medium text-start">{isCommenters ? highlight(e.name) : e.name}</td>
                               {isCommenters && (
                                 <td className="px-3 py-2 text-start max-w-[320px]">
-                                  <div className="line-clamp-3 whitespace-pre-wrap break-words text-muted-foreground" title={e.commentText || ""}>
-                                    {q ? highlight(e.commentText || "—") : (e.commentText || "—")}
+                                  <div className="line-clamp-3 whitespace-pre-wrap break-words text-foreground/90" title={e.commentText || ""}>
+                                    {e.commentText ? highlight(e.commentText) : "—"}
                                   </div>
                                 </td>
                               )}
