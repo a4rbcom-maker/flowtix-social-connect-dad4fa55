@@ -206,15 +206,16 @@ async function handleExtractCommenters(job) {
       await page.evaluate(() => window.scrollBy(0, window.innerHeight));
       await new Promise(r => setTimeout(r, 1200));
 
-      // Harvest commenter links
+      // Harvest commenters + their comment text by walking each comment article
       const commenters = await page.$$eval(
-        'div[role="article"] a[role="link"][href*="facebook.com"], div[role="article"] a[role="link"][href^="/"]',
-        (anchors) => {
+        'div[role="article"]',
+        (articles) => {
           const out = [];
           const seen = new Set();
-          for (const a of anchors) {
+          for (const art of articles) {
+            const a = art.querySelector('a[role="link"][href*="facebook.com"], a[role="link"][href^="/"]');
+            if (!a) continue;
             const href = a.href;
-            // Filter to profile-like links
             if (!href.match(/facebook\.com\/(profile\.php\?id=\d+|[a-zA-Z0-9.\-_]+)/)) continue;
             if (href.includes("/groups/") || href.includes("/photo") || href.includes("/posts/")) continue;
             const name = (a.innerText || a.textContent || "").trim();
@@ -223,8 +224,22 @@ async function handleExtractCommenters(job) {
             const slugMatch = href.match(/facebook\.com\/([a-zA-Z0-9.\-_]+)/);
             const fbId = idMatch ? idMatch[1] : (slugMatch ? slugMatch[1] : href);
             if (seen.has(fbId)) continue;
+
+            // Comment text: prefer dir="auto" blocks that are NOT the author name
+            const blocks = art.querySelectorAll('div[dir="auto"], span[dir="auto"]');
+            const parts = [];
+            for (const el of blocks) {
+              const t = (el.innerText || el.textContent || "").trim();
+              if (!t || t === name) continue;
+              if (/^(Reply|Like|Share|رد|إعجاب|مشاركة|\d+\s*(y|w|d|h|m|s)$|منذ)/i.test(t)) continue;
+              if (parts.some((p) => p.includes(t) || t.includes(p))) continue;
+              parts.push(t);
+              if (parts.join(" ").length > 500) break;
+            }
+            const commentText = parts.join(" ").slice(0, 1000);
+
             seen.add(fbId);
-            out.push({ fbId, name, profile_url: href.split("?")[0] });
+            out.push({ fbId, name, profile_url: href.split("?")[0], comment_text: commentText });
           }
           return out;
         }
@@ -238,7 +253,7 @@ async function handleExtractCommenters(job) {
           result: {
             target: c.fbId,
             status: "success",
-            data: { name: c.name, profile_url: c.profile_url, source: "comment" },
+            data: { name: c.name, profile_url: c.profile_url, comment_text: c.comment_text, source: "comment" },
           },
         });
         extracted++;

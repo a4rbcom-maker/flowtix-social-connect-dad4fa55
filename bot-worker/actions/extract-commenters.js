@@ -19,9 +19,11 @@ async function runExtractCommenters({ page, job, report }) {
   }
 
   const commenters = await page.evaluate(() => {
-    const links = Array.from(document.querySelectorAll('a[href*="/user/"], a[href*="facebook.com/profile.php"], a[role="link"][href*="facebook.com/"]'));
     const out = new Map();
-    for (const a of links) {
+    const articles = Array.from(document.querySelectorAll('div[role="article"]'));
+    for (const art of articles) {
+      const a = art.querySelector('a[href*="/user/"], a[href*="facebook.com/profile.php"], a[role="link"][href*="facebook.com/"]');
+      if (!a) continue;
       const href = a.getAttribute("href") || "";
       const name = a.textContent?.trim() || "";
       if (!name || name.length < 2 || name.length > 80) continue;
@@ -32,7 +34,21 @@ async function runExtractCommenters({ page, job, report }) {
         const slugM = href.match(/facebook\.com\/([A-Za-z0-9._-]+)(?:\/|$|\?)/);
         if (slugM) id = slugM[1];
       }
-      if (id && !out.has(id)) out.set(id, { id, name, profile: href.split("?")[0] });
+      if (!id || out.has(id)) continue;
+
+      const blocks = art.querySelectorAll('div[dir="auto"], span[dir="auto"]');
+      const parts = [];
+      for (const el of blocks) {
+        const t = (el.textContent || "").trim();
+        if (!t || t === name) continue;
+        if (/^(Reply|Like|Share|رد|إعجاب|مشاركة|منذ)/i.test(t)) continue;
+        if (parts.some((p) => p.includes(t) || t.includes(p))) continue;
+        parts.push(t);
+        if (parts.join(" ").length > 500) break;
+      }
+      const comment_text = parts.join(" ").slice(0, 1000);
+
+      out.set(id, { id, name, profile: href.split("?")[0], comment_text });
     }
     return Array.from(out.values());
   });
