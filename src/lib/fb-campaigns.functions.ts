@@ -65,7 +65,12 @@ export const saveTextTemplate = createServerFn({ method: "POST" })
     if (data.id) {
       const { data: row, error } = await supabase
         .from("fb_text_templates")
-        .update({ name: data.name, content: data.content, tags: data.tags ?? [] })
+        .update({
+          name: data.name,
+          content: data.content,
+          tags: data.tags ?? [],
+          media_ids: data.mediaIds ?? [],
+        })
         .eq("id", data.id)
         .eq("user_id", userId)
         .select()
@@ -75,7 +80,13 @@ export const saveTextTemplate = createServerFn({ method: "POST" })
     }
     const { data: row, error } = await supabase
       .from("fb_text_templates")
-      .insert({ user_id: userId, name: data.name, content: data.content, tags: data.tags ?? [] })
+      .insert({
+        user_id: userId,
+        name: data.name,
+        content: data.content,
+        tags: data.tags ?? [],
+        media_ids: data.mediaIds ?? [],
+      })
       .select()
       .single();
     if (error) throw new Error(error.message);
