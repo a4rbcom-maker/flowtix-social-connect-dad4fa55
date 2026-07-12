@@ -936,6 +936,21 @@ function JobsHistoryPage() {
                             : `${enrichedRows.length} total`}
                         </Badge>
                       )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 gap-1"
+                        disabled={resultsLoading || !selected}
+                        onClick={() => {
+                          setCommentSearch("");
+                          if (selected) void openDetails(selected);
+                        }}
+                        title={lang === "ar" ? "مسح البحث وإعادة تحميل النتائج من السيرفر" : "Clear search and reload results from the server"}
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 ${resultsLoading ? "animate-spin" : ""}`} />
+                        {lang === "ar" ? "مسح وإعادة تحميل" : "Clear & reload"}
+                      </Button>
                     </div>
                   )}
                   <div className="max-h-[60vh] overflow-auto">
