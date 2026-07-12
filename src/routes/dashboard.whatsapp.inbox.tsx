@@ -379,9 +379,37 @@ function InboxPage() {
   // Realtime هو مصدر الحقيقة (INSERT/UPDATE handlers + debounced invalidate)،
   // لذا نبقي البيانات "fresh" لفترة طويلة ونحتفظ بها في الـcache حتى بعد
   // إغلاق النافذة/تبديل المحادثات كي لا نعيد الجلب عند الرجوع للشاشة.
+  // Track the currently-connected WhatsApp session so the inbox only shows
+  // chats/messages belonging to the account that is paired *right now*. When
+  // the user unpairs and pairs a different phone, wa_sessions.session_id
+  // rotates and the inbox refetches — chats from the previous number stay in
+  // the DB but are hidden from view.
+  const activeSessionQuery = useQuery<string | null>({
+    queryKey: ["wa-active-session-id", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data } = await supabase
+        .from("wa_sessions")
+        .select("session_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      return data?.session_id ?? null;
+    },
+    enabled: !!user?.id,
+    staleTime: 5_000,
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: "always",
+  });
+  const activeSessionId = activeSessionQuery.data ?? null;
+
   const convQuery = useQuery<ConversationRow[]>({
-    queryKey: ["wa-conversations", user?.id],
-    queryFn: () => safeCall<ConversationRow[]>(() => fetchInboxConversations(user!.id), []),
+    queryKey: ["wa-conversations", user?.id, activeSessionId],
+    queryFn: () =>
+      safeCall<ConversationRow[]>(
+        () => fetchInboxConversations(user!.id, { sessionId: activeSessionId }),
+        [],
+      ),
     enabled: !!user?.id,
     placeholderData: (prev) => prev,
     staleTime: 10_000,            // اعتبر القائمة "طازجة" لعشر ثوانٍ فقط لتجنب تأخر ظهور الرسائل الجديدة
@@ -406,11 +434,15 @@ function InboxPage() {
     });
   }, []);
   const msgsQuery = useQuery<ChatMessageRow[]>({
-    queryKey: ["wa-messages", user?.id, activeJid],
+    queryKey: ["wa-messages", user?.id, activeSessionId, activeJid],
     queryFn: async () => {
       if (!activeJid || !user?.id) return [];
       const rows = await safeCall<ChatMessageRow[]>(
-        () => fetchInboxMessages(user!.id, activeJid, { limit: MSG_PAGE_SIZE }),
+        () =>
+          fetchInboxMessages(user!.id, activeJid, {
+            limit: MSG_PAGE_SIZE,
+            sessionId: activeSessionId,
+          }),
         [],
       );
       // Initial (cursorless) fetch — إذا رجعت أقل من صفحة كاملة فلا يوجد
@@ -427,6 +459,7 @@ function InboxPage() {
     refetchOnWindowFocus: true,   // عند العودة للتبويب زامن فوراً
     refetchOnReconnect: "always",
   });
+
   // Debounced invalidators so bursts of realtime events don't refetch repeatedly.
   // العقد موثّق ومغطّى باختبارات في src/lib/__tests__/wa-inbox-invalidation.test.ts —
   // أي دفعة بأي حجم = استدعاء invalidate واحد لكل مفتاح خلال نافذة الـdebounce.
