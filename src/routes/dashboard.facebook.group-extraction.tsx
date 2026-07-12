@@ -208,24 +208,27 @@ function GroupExtractionStatusPage() {
   };
 
   const enriched = useMemo(() => results.map((r) => {
-    const d = (r.data ?? {}) as { name?: string; profile?: string; profile_url?: string; bio?: string; bio_snippet?: string; city?: string; hometown?: string; phone?: string; source?: string };
+    const d = (r.data ?? {}) as { name?: string; fb_user_id?: string; profile?: string; profile_url?: string; bio?: string; bio_snippet?: string; city?: string; hometown?: string; phone?: string; source?: string; source_id?: string };
     const blob = `${d.name ?? ""} ${d.bio ?? ""} ${d.bio_snippet ?? ""} ${d.city ?? ""} ${d.hometown ?? ""} ${r.target ?? ""}`;
     const loc = detectLocation(blob);
     return {
       row: r,
+      fbId: d.fb_user_id ?? r.target ?? "",
       name: d.name ?? r.target ?? "—",
       profile: d.profile_url ?? d.profile ?? "",
       phone: d.phone ?? extractEgyptPhone(blob) ?? null,
       city: d.city ?? loc?.city ?? null,
       gov: loc?.gov ?? null,
+      bio: d.bio_snippet ?? d.bio ?? "",
+      groupId: d.source_id ?? "",
     };
   }), [results]);
 
   const downloadCsv = () => {
     if (enriched.length === 0) return;
     const rows = [
-      ["name", "facebook_id", "profile", "phone", "city", "governorate"],
-      ...enriched.map((e) => [e.name, e.row.target ?? "", e.profile, e.phone ?? "", e.city ?? "", e.gov ?? ""]),
+      ["facebook_id", "name", "profile", "phone", "city", "governorate", "bio", "group_id"],
+      ...enriched.map((e) => [e.fbId, e.name, e.profile, e.phone ?? "", e.city ?? "", e.gov ?? "", e.bio, e.groupId]),
     ];
     const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
