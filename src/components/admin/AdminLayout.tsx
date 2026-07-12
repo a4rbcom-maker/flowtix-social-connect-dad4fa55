@@ -30,6 +30,7 @@ import {
   Bell,
   ChevronDown,
   Package,
+  Server,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -64,6 +65,7 @@ type AdminPath =
   | "/admin/whatsapp"
   | "/admin/ai"
   | "/admin/jobs"
+  | "/admin/vps"
   | "/admin/logs"
   | "/admin/notifications"
   | "/admin/settings"
@@ -85,6 +87,7 @@ const NAV: NavItem[] = [
   { to: "/admin/whatsapp", icon: MessageCircle, ar: "واتساب", en: "WhatsApp" },
   { to: "/admin/ai", icon: Sparkles, ar: "استهلاك الذكاء", en: "AI Usage" },
   { to: "/admin/jobs", icon: ListChecks, ar: "المهام", en: "Jobs" },
+  { to: "/admin/vps", icon: Server, ar: "VPS Worker", en: "VPS Worker" },
   { to: "/admin/logs", icon: ScrollText, ar: "السجلات", en: "Logs" },
   { to: "/admin/notifications", icon: Megaphone, ar: "الإشعارات", en: "Announcements" },
   { to: "/admin/settings", icon: Settings, ar: "الإعدادات", en: "Settings" },

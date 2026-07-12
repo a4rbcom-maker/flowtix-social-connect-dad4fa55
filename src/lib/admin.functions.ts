@@ -80,6 +80,46 @@ export const getRecentActivity = createServerFn({ method: "GET" })
     return { events: events.slice(0, 25) };
   });
 
+// ---------- VPS Worker status ----------
+export const getVpsWorkerStatus = createServerFn({ method: "GET" })
+  .middleware([requireAdmin])
+  .handler(async () => {
+    const db = admin();
+    const nowIso = new Date().toISOString();
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const [heartbeats, recentJobs, pendingCount, runningCount, doneToday, failedToday] = await Promise.all([
+      db.from("bot_worker_heartbeats").select("*").order("last_seen_at", { ascending: false }),
+      db
+        .from("fb_jobs")
+        .select("id,user_id,job_type,status,progress,processed_items,total_items,started_at,completed_at,created_at,error_message")
+        .order("created_at", { ascending: false })
+        .limit(25),
+      db.from("fb_jobs").select("id", { count: "exact", head: true }).eq("status", "pending"),
+      db.from("fb_jobs").select("id", { count: "exact", head: true }).eq("status", "running"),
+      db.from("fb_jobs").select("id", { count: "exact", head: true }).eq("status", "completed").gte("completed_at", dayAgo),
+      db.from("fb_jobs").select("id", { count: "exact", head: true }).eq("status", "failed").gte("completed_at", dayAgo),
+    ]);
+
+    return {
+      now: nowIso,
+      workers: (heartbeats.data ?? []) as Array<{
+        worker_name: string;
+        version: string | null;
+        capabilities: string[];
+        last_seen_at: string;
+        meta: Record<string, any>;
+      }>,
+      recentJobs: recentJobs.data ?? [],
+      counts: {
+        pending: pendingCount.count ?? 0,
+        running: runningCount.count ?? 0,
+        completed_24h: doneToday.count ?? 0,
+        failed_24h: failedToday.count ?? 0,
+      },
+    };
+  });
+
 // ---------- Real (non-bot) visitor analytics ----------
 export const getVisitorStats = createServerFn({ method: "GET" })
   .middleware([requireAdmin])

@@ -27,6 +27,7 @@ import { Route as DashboardControlRouteImport } from './routes/dashboard.control
 import { Route as DashboardBulkRouteImport } from './routes/dashboard.bulk'
 import { Route as DashboardActivityRouteImport } from './routes/dashboard.activity'
 import { Route as AdminWhatsappRouteImport } from './routes/admin.whatsapp'
+import { Route as AdminVpsRouteImport } from './routes/admin.vps'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as AdminStorageRouteImport } from './routes/admin.storage'
 import { Route as AdminSettingsRouteImport } from './routes/admin.settings'
@@ -165,6 +166,11 @@ const DashboardActivityRoute = DashboardActivityRouteImport.update({
 const AdminWhatsappRoute = AdminWhatsappRouteImport.update({
   id: '/admin/whatsapp',
   path: '/admin/whatsapp',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminVpsRoute = AdminVpsRouteImport.update({
+  id: '/admin/vps',
+  path: '/admin/vps',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminUsersRoute = AdminUsersRouteImport.update({
@@ -453,6 +459,7 @@ export interface FileRoutesByFullPath {
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/storage': typeof AdminStorageRoute
   '/admin/users': typeof AdminUsersRoute
+  '/admin/vps': typeof AdminVpsRoute
   '/admin/whatsapp': typeof AdminWhatsappRoute
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/bulk': typeof DashboardBulkRoute
@@ -522,6 +529,7 @@ export interface FileRoutesByTo {
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/storage': typeof AdminStorageRoute
   '/admin/users': typeof AdminUsersRoute
+  '/admin/vps': typeof AdminVpsRoute
   '/admin/whatsapp': typeof AdminWhatsappRoute
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/bulk': typeof DashboardBulkRoute
@@ -591,6 +599,7 @@ export interface FileRoutesById {
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/storage': typeof AdminStorageRoute
   '/admin/users': typeof AdminUsersRoute
+  '/admin/vps': typeof AdminVpsRoute
   '/admin/whatsapp': typeof AdminWhatsappRoute
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/bulk': typeof DashboardBulkRoute
@@ -662,6 +671,7 @@ export interface FileRouteTypes {
     | '/admin/settings'
     | '/admin/storage'
     | '/admin/users'
+    | '/admin/vps'
     | '/admin/whatsapp'
     | '/dashboard/activity'
     | '/dashboard/bulk'
@@ -731,6 +741,7 @@ export interface FileRouteTypes {
     | '/admin/settings'
     | '/admin/storage'
     | '/admin/users'
+    | '/admin/vps'
     | '/admin/whatsapp'
     | '/dashboard/activity'
     | '/dashboard/bulk'
@@ -799,6 +810,7 @@ export interface FileRouteTypes {
     | '/admin/settings'
     | '/admin/storage'
     | '/admin/users'
+    | '/admin/vps'
     | '/admin/whatsapp'
     | '/dashboard/activity'
     | '/dashboard/bulk'
@@ -869,6 +881,7 @@ export interface RootRouteChildren {
   AdminSettingsRoute: typeof AdminSettingsRoute
   AdminStorageRoute: typeof AdminStorageRoute
   AdminUsersRoute: typeof AdminUsersRoute
+  AdminVpsRoute: typeof AdminVpsRoute
   AdminWhatsappRoute: typeof AdminWhatsappRoute
   AdminIndexRoute: typeof AdminIndexRoute
   ApiPublicFbPeopleIngestRoute: typeof ApiPublicFbPeopleIngestRoute
@@ -1015,6 +1028,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/whatsapp'
       fullPath: '/admin/whatsapp'
       preLoaderRoute: typeof AdminWhatsappRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/vps': {
+      id: '/admin/vps'
+      path: '/admin/vps'
+      fullPath: '/admin/vps'
+      preLoaderRoute: typeof AdminVpsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/users': {
@@ -1495,6 +1515,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminSettingsRoute: AdminSettingsRoute,
   AdminStorageRoute: AdminStorageRoute,
   AdminUsersRoute: AdminUsersRoute,
+  AdminVpsRoute: AdminVpsRoute,
   AdminWhatsappRoute: AdminWhatsappRoute,
   AdminIndexRoute: AdminIndexRoute,
   ApiPublicFbPeopleIngestRoute: ApiPublicFbPeopleIngestRoute,

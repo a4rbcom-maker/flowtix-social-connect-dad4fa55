@@ -36,6 +36,25 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
           import("@/server/crypto.server"),
         ]);
 
+        // Record heartbeat (best-effort) so admins can see worker liveness.
+        const workerName = (request.headers.get("x-flowtix-worker-name") || "vps-worker").slice(0, 80);
+        const workerVersion = request.headers.get("x-flowtix-worker-version");
+        supabaseAdmin
+          .from("bot_worker_heartbeats")
+          .upsert(
+            {
+              worker_name: workerName,
+              version: workerVersion,
+              capabilities: workerCapabilities,
+              last_seen_at: new Date().toISOString(),
+              meta: { ua: request.headers.get("user-agent") },
+            },
+            { onConflict: "worker_name" },
+          )
+          .then(({ error }) => {
+            if (error) console.error("heartbeat upsert failed", error.message);
+          });
+
         // Atomically claim the oldest pending job whose schedule has arrived.
         // We use an UPDATE … WHERE id = (SELECT … LIMIT 1 FOR UPDATE SKIP LOCKED)
         // pattern via a SECURITY DEFINER RPC for atomicity. Fallback: two-step.
