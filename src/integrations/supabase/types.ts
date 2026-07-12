@@ -217,6 +217,30 @@ export type Database = {
           },
         ]
       }
+      bot_worker_heartbeats: {
+        Row: {
+          capabilities: string[]
+          last_seen_at: string
+          meta: Json
+          version: string | null
+          worker_name: string
+        }
+        Insert: {
+          capabilities?: string[]
+          last_seen_at?: string
+          meta?: Json
+          version?: string | null
+          worker_name: string
+        }
+        Update: {
+          capabilities?: string[]
+          last_seen_at?: string
+          meta?: Json
+          version?: string | null
+          worker_name?: string
+        }
+        Relationships: []
+      }
       bulk_job_recipients: {
         Row: {
           contact_id: string | null
