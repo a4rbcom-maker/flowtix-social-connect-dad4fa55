@@ -185,6 +185,12 @@ function NewCampaignPage() {
       `أُضيفت ${n} جروب${dup ? ` • ${dup} مكرر` : ""}${invalid ? ` • ${invalid} غير صالح` : ""}`,
     manualBadge: "يدوي",
     remove: "إزالة",
+    confirmTitle: "تأكيد النشر",
+    confirmDesc: "راجع الجروبات اللي هيتنشر فيها المنشور قبل ما تأكد.",
+    confirmCount: (n: number) => `عدد الجروبات المستهدفة: ${n}`,
+    confirmMore: (n: number) => `+ ${n} جروب إضافي`,
+    confirmCancel: "رجوع",
+    confirmGo: "تأكيد وبدء النشر",
   } : {
     back: "Back to campaigns",
     title: "New campaign", subtitle: "Post one message to many destinations with a safe interval",
