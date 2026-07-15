@@ -1605,4 +1605,153 @@ export const matchLidPhoneNumbers = createServerFn({ method: "POST" })
     return { scanned: convs.length, matched };
   });
 
+// -----------------------------------------------------------------------------
+// Multi-account support (per-plan wa_accounts_max)
+// -----------------------------------------------------------------------------
+
+export interface WaAccountRow {
+  sessionId: string;
+  status: string;
+  phoneNumber: string | null;
+  label: string | null;
+  isPrimary: boolean;
+  lastSeenAt: string | null;
+  createdAt: string;
+}
+
+/** List every WhatsApp session the current user owns. */
+export const listWaSessions = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<WaAccountRow[]> => {
+    const { supabase, userId } = context;
+    const { data, error } = await supabase
+      .from("wa_sessions")
+      .select("session_id, status, phone_number, label, is_primary, last_seen_at, created_at")
+      .eq("user_id", userId)
+      .order("is_primary", { ascending: false })
+      .order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r) => ({
+      sessionId: r.session_id,
+      status: r.status,
+      phoneNumber: r.phone_number,
+      label: (r as { label?: string | null }).label ?? null,
+      isPrimary: Boolean((r as { is_primary?: boolean }).is_primary),
+      lastSeenAt: r.last_seen_at,
+      createdAt: r.created_at as string,
+    }));
+  });
+
+/** Create an ADDITIONAL WhatsApp session slot (respects plan limit via DB trigger). */
+export const addWaSessionSlot = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { label?: string | null } | undefined) => input ?? {})
+  .handler(async ({ data, context }): Promise<WaConnectionState> => {
+    const { supabase, userId } = context;
+    const label = (data.label ?? "").toString().trim().slice(0, 60) || null;
+
+    const sessionId = freshWaSessionId(userId);
+    const { error: insErr } = await supabase
+      .from("wa_sessions")
+      .insert({
+        user_id: userId,
+        session_id: sessionId,
+        status: "connecting",
+        is_primary: false,
+        label,
+      });
+    if (insErr) {
+      // The DB trigger raises WA_SESSION_LIMIT_REACHED when the plan cap is hit.
+      const msg = /WA_SESSION_LIMIT_REACHED/.test(insErr.message)
+        ? "PLAN_LIMIT_REACHED"
+        : insErr.message;
+      throw new Error(msg);
+    }
+
+    // Register on the bridge (idempotent on 409/400)
+    try {
+      await waBridge.createSession(sessionId, {
+        webhookUrl: (await deriveWebhookUrl()) ?? undefined,
+        tenantId: userId,
+        syncFullHistory: true,
+      });
+    } catch (err) {
+      if (!(err instanceof BridgeError && (err.status === 409 || err.status === 400))) {
+        console.warn("[wa] addWaSessionSlot bridge error:", describeBridgeError(err));
+      }
+    }
+
+    return {
+      status: "connecting",
+      sessionId,
+      qrDataUrl: null,
+      qrRaw: null,
+      phoneNumber: null,
+      lastSeenAt: new Date().toISOString(),
+      error: null,
+    };
+  });
+
+/** Update a session's label. */
+export const renameWaSession = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { sessionId: string; label: string }) =>
+    z.object({ sessionId: z.string().min(4), label: z.string().max(60) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const label = data.label.trim().slice(0, 60) || null;
+    const { error } = await supabase
+      .from("wa_sessions")
+      .update({ label })
+      .eq("user_id", userId)
+      .eq("session_id", data.sessionId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+/** Make a specific session the primary one. */
+export const setPrimaryWaSession = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { sessionId: string }) =>
+    z.object({ sessionId: z.string().min(4) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    // Unset current primary, then set the requested one — order matters because
+    // of the partial unique index (only one is_primary=true per user).
+    const { error: clearErr } = await supabase
+      .from("wa_sessions")
+      .update({ is_primary: false })
+      .eq("user_id", userId)
+      .eq("is_primary", true);
+    if (clearErr) throw new Error(clearErr.message);
+    const { error: setErr } = await supabase
+      .from("wa_sessions")
+      .update({ is_primary: true })
+      .eq("user_id", userId)
+      .eq("session_id", data.sessionId);
+    if (setErr) throw new Error(setErr.message);
+    return { ok: true };
+  });
+
+/** Remove a specific additional session (not the primary — use disconnectWaSession for that). */
+export const removeWaSessionSlot = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { sessionId: string }) =>
+    z.object({ sessionId: z.string().min(4) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    try { await waBridge.deleteSession(data.sessionId); } catch { /* best effort */ }
+    const { error } = await supabase
+      .from("wa_sessions")
+      .delete()
+      .eq("user_id", userId)
+      .eq("session_id", data.sessionId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+
 
