@@ -1886,6 +1886,8 @@ export type Database = {
           daily_sent_count: number
           daily_sent_date: string | null
           id: string
+          is_primary: boolean
+          label: string | null
           last_seen_at: string | null
           phone_number: string | null
           qr_data_url: string | null
@@ -1901,6 +1903,8 @@ export type Database = {
           daily_sent_count?: number
           daily_sent_date?: string | null
           id?: string
+          is_primary?: boolean
+          label?: string | null
           last_seen_at?: string | null
           phone_number?: string | null
           qr_data_url?: string | null
@@ -1916,6 +1920,8 @@ export type Database = {
           daily_sent_count?: number
           daily_sent_date?: string | null
           id?: string
+          is_primary?: boolean
+          label?: string | null
           last_seen_at?: string | null
           phone_number?: string | null
           qr_data_url?: string | null
@@ -2127,6 +2133,7 @@ export type Database = {
         Args: { _user_id?: string }
         Returns: number
       }
+      wa_user_session_limit: { Args: { _user_id: string }; Returns: number }
     }
     Enums: {
       ai_account_status: "active" | "exhausted" | "disabled" | "error"
