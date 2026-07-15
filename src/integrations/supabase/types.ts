@@ -1882,6 +1882,7 @@ export type Database = {
       wa_sessions: {
         Row: {
           batch_counter: number
+          connected_at: string | null
           created_at: string
           daily_sent_count: number
           daily_sent_date: string | null
@@ -1899,6 +1900,7 @@ export type Database = {
         }
         Insert: {
           batch_counter?: number
+          connected_at?: string | null
           created_at?: string
           daily_sent_count?: number
           daily_sent_date?: string | null
@@ -1916,6 +1918,7 @@ export type Database = {
         }
         Update: {
           batch_counter?: number
+          connected_at?: string | null
           created_at?: string
           daily_sent_count?: number
           daily_sent_date?: string | null
