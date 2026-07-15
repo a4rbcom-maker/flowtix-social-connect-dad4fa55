@@ -759,8 +759,8 @@ export const getWaHistorySyncJob = createServerFn({ method: "GET" })
       .from("wa_history_sync_jobs")
       .select("session_id, status, baseline_msg, baseline_conv, imported_msg, imported_conv, message, started_at, deadline_at, finished_at")
       .eq("user_id", userId)
-      .eq("is_primary", true)
       .maybeSingle();
+
     if (error) throw new Error(error.message);
     if (!data) {
       return { status: "idle", sessionId: null, baselineMsg: 0, baselineConv: 0, importedMsg: 0, importedConv: 0, message: null, startedAt: null, deadlineAt: null, finishedAt: null };
