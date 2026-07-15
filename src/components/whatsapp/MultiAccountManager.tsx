@@ -69,6 +69,12 @@ export function MultiAccountManager({ ar, usage }: Props) {
         unnamed: "بدون اسم",
         no_phone: "لم يتم التعرف على الرقم بعد",
         planUpgrade: "لترقية باقتك اذهب لصفحة الباقات.",
+        showQr: "عرض QR للربط",
+        hideQr: "إخفاء QR",
+        refreshQr: "تحديث الكود",
+        scanHint: "افتح واتساب → الأجهزة المرتبطة → ربط جهاز، ثم امسح الكود.",
+        loadingQr: "جارٍ توليد الكود…",
+        qrConnected: "تم ربط هذا الرقم بنجاح ✓",
       }
     : {
         title: "My Linked Numbers",
@@ -81,7 +87,7 @@ export function MultiAccountManager({ ar, usage }: Props) {
         remove: "Remove number",
         removeConfirm: "This will disconnect and remove this number. Continue?",
         namePh: "Optional label — e.g. Cairo store",
-        added: "New number slot created — set it as default then scan the QR from the main session card.",
+        added: "New number slot created — click 'Show QR' on the new card to scan.",
         empty: "No numbers linked yet. Click 'Link new number' above to get started.",
         status_connected: "Connected",
         status_qr: "Awaiting QR",
@@ -90,6 +96,12 @@ export function MultiAccountManager({ ar, usage }: Props) {
         unnamed: "Unnamed",
         no_phone: "Phone not detected yet",
         planUpgrade: "Upgrade your plan for more numbers.",
+        showQr: "Show QR to link",
+        hideQr: "Hide QR",
+        refreshQr: "Refresh code",
+        scanHint: "Open WhatsApp → Linked devices → Link a device, then scan.",
+        loadingQr: "Generating code…",
+        qrConnected: "This number is now linked ✓",
       };
 
   const listQ = useQuery<WaAccountRow[]>({
