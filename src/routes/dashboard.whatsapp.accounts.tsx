@@ -22,6 +22,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
+import { supabase } from "@/integrations/supabase/client";
+
 import {
   connectWaSession,
   getWaConnectionState,
@@ -94,6 +96,40 @@ function WhatsAppPage() {
   const [qrSecondsLeft, setQrSecondsLeft] = useState<number>(60);
   const lastQrValueRef = useRef<string | null>(null);
   const autoRefreshingRef = useRef(false);
+
+  // Multi-account: current usage vs plan limit
+  const accountsUsageQuery = useQuery({
+    queryKey: ["wa-accounts-usage", session?.user?.id],
+    enabled: !!session?.user?.id,
+    queryFn: async () => {
+      const uid = session!.user!.id;
+      const [{ count, error: cntErr }, { data: prof, error: profErr }] = await Promise.all([
+        supabase.from("wa_sessions").select("id", { count: "exact", head: true }).eq("user_id", uid),
+        supabase.from("profiles").select("plan").eq("id", uid).maybeSingle(),
+      ]);
+      if (cntErr) throw cntErr;
+      if (profErr) throw profErr;
+      let maxAccounts = 1;
+      const planSlug = (prof as { plan?: string } | null)?.plan;
+      if (planSlug) {
+        const { data: planRow } = await supabase
+          .from("plans" as never)
+          .select("limits, name_ar, name_en")
+          .eq("slug", planSlug)
+          .maybeSingle();
+        const limits = (planRow as { limits?: Record<string, unknown> } | null)?.limits;
+        const raw = Number(limits?.wa_accounts_max);
+        if (Number.isFinite(raw) && raw >= 1) maxAccounts = Math.floor(raw);
+      }
+      return {
+        used: count ?? 0,
+        max: maxAccounts,
+        planName: (prof as { plan?: string } | null)?.plan ?? "free",
+      };
+    },
+    staleTime: 30_000,
+  });
+
 
   const t = ar
     ? {
@@ -424,8 +460,29 @@ function WhatsAppPage() {
               <p className="mt-1 text-sm text-muted-foreground">{t.subtitle}</p>
             </div>
           </div>
-          <StatusBadge status={status} t={t} />
+          <div className="flex items-center gap-3">
+            {accountsUsageQuery.data ? (
+              <div
+                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${
+                  accountsUsageQuery.data.used >= accountsUsageQuery.data.max
+                    ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                    : "border-primary/30 bg-primary/10 text-primary"
+                }`}
+                title={ar ? "أرقام واتساب المسموح بها في باقتك" : "WhatsApp numbers allowed on your plan"}
+              >
+                <Smartphone className="h-3.5 w-3.5" />
+                <span>
+                  {ar ? "الأرقام:" : "Numbers:"}{" "}
+                  <span className="tabular-nums">
+                    {accountsUsageQuery.data.used}/{accountsUsageQuery.data.max}
+                  </span>
+                </span>
+              </div>
+            ) : null}
+            <StatusBadge status={status} t={t} />
+          </div>
         </div>
+
 
         {stateQuery.isLoading ? (
           <div className="flex items-center justify-center py-16">

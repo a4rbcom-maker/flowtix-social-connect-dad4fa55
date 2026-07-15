@@ -461,6 +461,7 @@ function PlanEditor({
   const save = async () => {
     setSaving(true);
     try {
+      const waMax = Math.max(1, Math.floor(Number((form.limits as Record<string, unknown>)?.wa_accounts_max) || 1));
       const payload = {
         slug: form.slug.trim(),
         name_ar: form.name_ar.trim(),
@@ -473,10 +474,12 @@ function PlanEditor({
         credits: Math.max(0, Math.floor(Number(form.credits) || 0)),
         features_ar: featuresArText.split("\n").map((s) => s.trim()).filter(Boolean),
         features_en: featuresEnText.split("\n").map((s) => s.trim()).filter(Boolean),
+        limits: { ...(form.limits || {}), wa_accounts_max: waMax },
         is_active: form.is_active,
         is_popular: form.is_popular,
         sort_order: Math.floor(Number(form.sort_order) || 0),
       };
+
 
       if (!payload.slug || !payload.name_ar || !payload.name_en) {
         toast.error(t("المعرف والاسم بالعربية والإنجليزية مطلوبة", "Slug and both names are required"));
@@ -572,11 +575,28 @@ function PlanEditor({
             </Field>
           </div>
 
-          <Field label={t("عدد الكريدت", "Credits")}>
-            <input type="number" value={form.credits} onChange={(e) => setForm({ ...form, credits: Number(e.target.value) })} className={inputCls} />
-          </Field>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label={t("عدد الكريدت", "Credits")}>
+              <input type="number" value={form.credits} onChange={(e) => setForm({ ...form, credits: Number(e.target.value) })} className={inputCls} />
+            </Field>
+            <Field label={t("عدد أرقام واتساب المسموح بها", "Max WhatsApp accounts")}>
+              <input
+                type="number"
+                min={1}
+                value={Number((form.limits as Record<string, unknown>)?.wa_accounts_max) || 1}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    limits: { ...(form.limits || {}), wa_accounts_max: Math.max(1, Math.floor(Number(e.target.value) || 1)) },
+                  })
+                }
+                className={inputCls}
+              />
+            </Field>
+          </div>
 
           <Field label={t("المميزات بالعربية (ميزة في كل سطر)", "Features Arabic (one per line)")}>
+
             <textarea
               rows={5}
               value={featuresArText}
