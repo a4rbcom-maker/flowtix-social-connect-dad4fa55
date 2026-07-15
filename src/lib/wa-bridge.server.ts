@@ -684,6 +684,11 @@ export const waBridge = {
           caption,
           text: caption,
           message: caption,
+          // Bridge's /send handler reads `content` and uses it as the caption
+          // for image/video sends. Without this the recipient sees the media
+          // with an empty caption even though the platform logs show text sent.
+          content: caption,
+          body: caption,
           ...(resolvedMimeType ? { mimetype: resolvedMimeType, mimeType: resolvedMimeType } : {}),
           ...(resolvedFileName ? { fileName: resolvedFileName, filename: resolvedFileName } : {}),
         }),
