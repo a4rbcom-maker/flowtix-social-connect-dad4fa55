@@ -73,6 +73,7 @@ export const connectWaSession = createServerFn({ method: "POST" })
       .from("wa_sessions")
       .select("session_id, status, qr_data_url, phone_number, last_seen_at")
       .eq("user_id", userId)
+      .eq("is_primary", true)
       .maybeSingle();
 
     let sessionId = existing?.session_id;
@@ -154,6 +155,7 @@ export const getWaConnectionState = createServerFn({ method: "POST" })
       .from("wa_sessions")
       .select("session_id, status")
       .eq("user_id", userId)
+      .eq("is_primary", true)
       .maybeSingle();
     if (!row?.session_id) return null;
     return readState(supabase, userId, row.session_id);
@@ -328,6 +330,7 @@ export const requestWaHistorySync = createServerFn({ method: "POST" })
       .from("wa_sessions")
       .select("session_id, status")
       .eq("user_id", userId)
+      .eq("is_primary", true)
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!row?.session_id) return { ok: false, sessionId: null, requested: false, attempts: [], error: "no_session" };
@@ -678,6 +681,7 @@ export const requestWaChatSync = createServerFn({ method: "POST" })
       .from("wa_sessions")
       .select("session_id, status")
       .eq("user_id", userId)
+      .eq("is_primary", true)
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!row?.session_id) {
@@ -755,6 +759,7 @@ export const getWaHistorySyncJob = createServerFn({ method: "GET" })
       .from("wa_history_sync_jobs")
       .select("session_id, status, baseline_msg, baseline_conv, imported_msg, imported_conv, message, started_at, deadline_at, finished_at")
       .eq("user_id", userId)
+      .eq("is_primary", true)
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) {
@@ -849,6 +854,7 @@ export const sendWaMessage = createServerFn({ method: "POST" })
       .from("wa_sessions")
       .select("session_id, status")
       .eq("user_id", userId)
+      .eq("is_primary", true)
       .maybeSingle();
     if (rowErr) throw new Error(rowErr.message);
     const notConnectedMsg = "لا توجد جلسة واتساب مربوطة. افتح صفحة WhatsApp واضغط ربط واتساب.";
@@ -930,6 +936,7 @@ export const disconnectWaSession = createServerFn({ method: "POST" })
       .from("wa_sessions")
       .select("session_id, status")
       .eq("user_id", userId)
+      .eq("is_primary", true)
       .maybeSingle();
     if (row?.session_id) {
       try {
@@ -978,6 +985,7 @@ export const resetWaReceiver = createServerFn({ method: "POST" })
       .from("wa_sessions")
       .select("session_id, status, phone_number, qr_data_url")
       .eq("user_id", userId)
+      .eq("is_primary", true)
       .maybeSingle();
 
     // 1) Delete the old bridge session (best-effort)
@@ -1105,6 +1113,7 @@ export const deepResetWaSession = createServerFn({ method: "POST" })
       .from("wa_sessions")
       .select("session_id, status")
       .eq("user_id", userId)
+      .eq("is_primary", true)
       .maybeSingle();
 
     if (!existing?.session_id) {
@@ -1241,6 +1250,7 @@ export const testWaWebhook = createServerFn({ method: "POST" })
       .from("wa_sessions")
       .select("session_id")
       .eq("user_id", userId)
+      .eq("is_primary", true)
       .maybeSingle();
 
     const sessionId = sess?.session_id ?? null;
