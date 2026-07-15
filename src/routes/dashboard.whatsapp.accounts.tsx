@@ -460,8 +460,29 @@ function WhatsAppPage() {
               <p className="mt-1 text-sm text-muted-foreground">{t.subtitle}</p>
             </div>
           </div>
-          <StatusBadge status={status} t={t} />
+          <div className="flex items-center gap-3">
+            {accountsUsageQuery.data ? (
+              <div
+                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${
+                  accountsUsageQuery.data.used >= accountsUsageQuery.data.max
+                    ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                    : "border-primary/30 bg-primary/10 text-primary"
+                }`}
+                title={ar ? "أرقام واتساب المسموح بها في باقتك" : "WhatsApp numbers allowed on your plan"}
+              >
+                <Smartphone className="h-3.5 w-3.5" />
+                <span>
+                  {ar ? "الأرقام:" : "Numbers:"}{" "}
+                  <span className="tabular-nums">
+                    {accountsUsageQuery.data.used}/{accountsUsageQuery.data.max}
+                  </span>
+                </span>
+              </div>
+            ) : null}
+            <StatusBadge status={status} t={t} />
+          </div>
         </div>
+
 
         {stateQuery.isLoading ? (
           <div className="flex items-center justify-center py-16">
