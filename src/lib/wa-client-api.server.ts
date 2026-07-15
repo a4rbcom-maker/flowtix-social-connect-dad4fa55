@@ -62,6 +62,7 @@ async function connect(supabase: ReturnType<typeof getSupabaseForToken>, userId:
     .from("wa_sessions")
     .select("session_id, phone_number")
     .eq("user_id", userId)
+    .eq("is_primary", true)
     .maybeSingle();
 
   let sessionId = existing?.session_id;
@@ -95,6 +96,7 @@ async function getState(supabase: ReturnType<typeof getSupabaseForToken>, userId
     .from("wa_sessions")
     .select("session_id")
     .eq("user_id", userId)
+    .eq("is_primary", true)
     .maybeSingle();
   if (!row?.session_id) return null;
   return readState(supabase, userId, row.session_id);
@@ -105,6 +107,7 @@ async function disconnect(supabase: ReturnType<typeof getSupabaseForToken>, user
     .from("wa_sessions")
     .select("session_id")
     .eq("user_id", userId)
+    .eq("is_primary", true)
     .maybeSingle();
   if (row?.session_id) {
     try { await waBridge.deleteSession(row.session_id); } catch { /* best effort */ }
@@ -126,6 +129,7 @@ async function reset(supabase: ReturnType<typeof getSupabaseForToken>, userId: s
     .from("wa_sessions")
     .select("session_id, status, phone_number, qr_data_url")
     .eq("user_id", userId)
+    .eq("is_primary", true)
     .maybeSingle();
 
   if (existing?.session_id) {
