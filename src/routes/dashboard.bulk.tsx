@@ -793,29 +793,31 @@ function BulkSendPage() {
                       }}
                       dir="auto"
                     >
-                      {/* 1) TEXT bubble first — exactly as server sends via sendText */}
-                      {rendered && (
-                        <div className="flex justify-end">
-                          <div className="relative max-w-[85%] rounded-lg bg-[#dcf8c6] px-3 py-2 text-[13px] leading-relaxed text-gray-900 shadow-sm" dir="auto">
-                            <p className="whitespace-pre-wrap break-words">{rendered}</p>
-                            <span className="mt-1 block text-end text-[10px] text-gray-500">{nowLabel} ✓✓</span>
-                          </div>
-                        </div>
-                      )}
-                      {/* 2) IMAGE bubble second — no caption, matches sendMedia */}
-                      {imageUrl && (
+                      {/* Preview mirrors server: if image → single bubble image+caption; else text-only bubble */}
+                      {imageUrl ? (
                         <div className="flex justify-end">
                           <div className="max-w-[85%] rounded-lg bg-[#dcf8c6] p-1 shadow-sm">
                             <img src={imageUrl} alt="preview" className="max-h-56 w-auto rounded-md object-cover" />
+                            {rendered && (
+                              <p className="whitespace-pre-wrap break-words px-2 py-1 text-[13px] leading-relaxed text-gray-900" dir="auto">{rendered}</p>
+                            )}
                             <span className="mt-1 block px-2 pb-1 text-end text-[10px] text-gray-500">{nowLabel} ✓✓</span>
                           </div>
                         </div>
+                      ) : (
+                        rendered && (
+                          <div className="flex justify-end">
+                            <div className="relative max-w-[85%] rounded-lg bg-[#dcf8c6] px-3 py-2 text-[13px] leading-relaxed text-gray-900 shadow-sm" dir="auto">
+                              <p className="whitespace-pre-wrap break-words">{rendered}</p>
+                              <span className="mt-1 block text-end text-[10px] text-gray-500">{nowLabel} ✓✓</span>
+                            </div>
+                          </div>
+                        )
                       )}
                     </div>
                     <ul className="mt-2 space-y-1 text-[11px] text-muted-foreground">
-                      <li>• {isAr ? "الترتيب: النص أولاً ثم الصورة كرسالتين منفصلتين." : "Order: text first, then image, as two separate messages."}</li>
+                      <li>• {isAr ? "الصورة والنص يُرسَلان في رسالة واحدة (النص كتعليق على الصورة)." : "Image and text are sent as a single message (text as caption)."}</li>
                       <li>• {isAr ? "المتغيرات {{name}} و {{phone}} تُستبدل ببيانات كل مستلم." : "Placeholders {{name}} and {{phone}} are replaced per recipient."}</li>
-                      {imageUrl && <li>• {isAr ? "الصورة تُرسل بدون تعليق (caption) — النص في الرسالة الأولى." : "The image is sent without a caption — text goes in message #1."}</li>}
                     </ul>
                   </div>
                 );
