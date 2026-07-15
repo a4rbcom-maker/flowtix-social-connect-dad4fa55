@@ -203,20 +203,32 @@ export function MultiAccountManager({ ar, usage }: Props) {
           <h2 className="text-base font-bold text-foreground">{t.title}</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">{t.subtitle}</p>
         </div>
-        <button
-          type="button"
-          disabled={atLimit || addMut.isPending}
-          onClick={() => addMut.mutate()}
-          className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-          title={atLimit ? t.limitReached : undefined}
-        >
-          {addMut.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Plus className="h-4 w-4" />
-          )}
-          {t.add}
-        </button>
+        {/* Only users whose plan grants more than 1 WhatsApp number see the add button. */}
+        {usage && usage.max > 1 ? (
+          <button
+            type="button"
+            disabled={atLimit || addMut.isPending}
+            onClick={() => addMut.mutate()}
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            title={atLimit ? t.limitReached : undefined}
+          >
+            {addMut.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Plus className="h-4 w-4" />
+            )}
+            {t.add}
+          </button>
+        ) : usage ? (
+          <span
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-3 text-xs font-medium text-muted-foreground"
+            title={t.planUpgrade}
+          >
+            {ar
+              ? `باقتك تسمح برقم واحد فقط — رقّي الباقة لإضافة المزيد`
+              : `Your plan allows one number only — upgrade to add more`}
+          </span>
+        ) : null}
       </div>
 
       {listQ.isLoading ? (
