@@ -1753,5 +1753,71 @@ export const removeWaSessionSlot = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+/**
+ * Poll bridge state for a SPECIFIC session (any of the user's linked numbers,
+ * not necessarily the primary). Used by MultiAccountManager to show a QR
+ * inline for a non-primary account without promoting it first.
+ */
+export const getWaSessionStateFor = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { sessionId: string }) =>
+    z.object({ sessionId: z.string().min(4) }).parse(input),
+  )
+  .handler(async ({ data, context }): Promise<WaConnectionState | null> => {
+    const { supabase, userId } = context;
+    // Ownership check — never poll a session that isn't ours.
+    const { data: row } = await supabase
+      .from("wa_sessions")
+      .select("session_id")
+      .eq("user_id", userId)
+      .eq("session_id", data.sessionId)
+      .maybeSingle();
+    if (!row?.session_id) return null;
+    return readState(supabase, userId, row.session_id);
+  });
+
+/**
+ * Force a fresh QR for a SPECIFIC (non-primary) session. Deletes the bridge
+ * session and recreates it under the same session_id so the QR polling loop
+ * picks up the new code. Does NOT touch the primary session.
+ */
+export const resetWaSessionFor = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { sessionId: string }) =>
+    z.object({ sessionId: z.string().min(4) }).parse(input),
+  )
+  .handler(async ({ data, context }): Promise<WaConnectionState | null> => {
+    const { supabase, userId } = context;
+    const { data: row } = await supabase
+      .from("wa_sessions")
+      .select("session_id")
+      .eq("user_id", userId)
+      .eq("session_id", data.sessionId)
+      .maybeSingle();
+    if (!row?.session_id) return null;
+
+    try { await waBridge.deleteSession(row.session_id); } catch { /* best effort */ }
+    const now = new Date().toISOString();
+    await supabase
+      .from("wa_sessions")
+      .update({ status: "connecting", qr_data_url: null, last_seen_at: now })
+      .eq("user_id", userId)
+      .eq("session_id", row.session_id);
+
+    try {
+      await waBridge.createSession(row.session_id, {
+        webhookUrl: (await deriveWebhookUrl()) ?? undefined,
+        tenantId: userId,
+        syncFullHistory: true,
+      });
+    } catch (err) {
+      if (!(err instanceof BridgeError && (err.status === 409 || err.status === 400))) {
+        console.warn("[wa] resetWaSessionFor bridge error:", describeBridgeError(err));
+      }
+    }
+    return readState(supabase, userId, row.session_id);
+  });
+
+
 
 
