@@ -461,6 +461,7 @@ function PlanEditor({
   const save = async () => {
     setSaving(true);
     try {
+      const waMax = Math.max(1, Math.floor(Number((form.limits as Record<string, unknown>)?.wa_accounts_max) || 1));
       const payload = {
         slug: form.slug.trim(),
         name_ar: form.name_ar.trim(),
@@ -473,10 +474,12 @@ function PlanEditor({
         credits: Math.max(0, Math.floor(Number(form.credits) || 0)),
         features_ar: featuresArText.split("\n").map((s) => s.trim()).filter(Boolean),
         features_en: featuresEnText.split("\n").map((s) => s.trim()).filter(Boolean),
+        limits: { ...(form.limits || {}), wa_accounts_max: waMax },
         is_active: form.is_active,
         is_popular: form.is_popular,
         sort_order: Math.floor(Number(form.sort_order) || 0),
       };
+
 
       if (!payload.slug || !payload.name_ar || !payload.name_en) {
         toast.error(t("المعرف والاسم بالعربية والإنجليزية مطلوبة", "Slug and both names are required"));
