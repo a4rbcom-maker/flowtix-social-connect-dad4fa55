@@ -483,6 +483,10 @@ function WhatsAppPage() {
           </div>
         </div>
 
+        <MultiAccountManager ar={ar} usage={accountsUsageQuery.data ?? null} />
+
+
+
 
         {stateQuery.isLoading ? (
           <div className="flex items-center justify-center py-16">
