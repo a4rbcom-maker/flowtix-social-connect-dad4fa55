@@ -487,10 +487,3 @@ function SessionQrPanel({ sessionId, t, onConnected }: SessionQrPanelProps) {
     </div>
   );
 }
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
