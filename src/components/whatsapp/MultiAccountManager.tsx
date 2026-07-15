@@ -47,6 +47,7 @@ export function MultiAccountManager({ ar, usage }: Props) {
   const removeFn = useServerFn(removeWaSessionSlot);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState("");
+  const [openQrFor, setOpenQrFor] = useState<string | null>(null);
 
   const t = ar
     ? {
