@@ -1,9 +1,10 @@
 // Multi-account management card for the WhatsApp accounts page.
 // Lists every WhatsApp session the user owns and lets them add / rename /
 // remove / promote them, respecting the plan-level wa_accounts_max limit.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { QRCodeSVG } from "qrcode.react";
 import {
   Plus,
   Loader2,
@@ -16,6 +17,8 @@ import {
   Wifi,
   WifiOff,
   Phone,
+  QrCode,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -24,7 +27,10 @@ import {
   renameWaSession,
   setPrimaryWaSession,
   removeWaSessionSlot,
+  getWaSessionStateFor,
+  resetWaSessionFor,
   type WaAccountRow,
+  type WaConnectionState,
 } from "@/lib/wa.functions";
 
 interface Props {
