@@ -95,6 +95,40 @@ function WhatsAppPage() {
   const lastQrValueRef = useRef<string | null>(null);
   const autoRefreshingRef = useRef(false);
 
+  // Multi-account: current usage vs plan limit
+  const accountsUsageQuery = useQuery({
+    queryKey: ["wa-accounts-usage", session?.user?.id],
+    enabled: !!session?.user?.id,
+    queryFn: async () => {
+      const uid = session!.user!.id;
+      const [{ count, error: cntErr }, { data: prof, error: profErr }] = await Promise.all([
+        supabase.from("wa_sessions").select("id", { count: "exact", head: true }).eq("user_id", uid),
+        supabase.from("profiles").select("plan").eq("id", uid).maybeSingle(),
+      ]);
+      if (cntErr) throw cntErr;
+      if (profErr) throw profErr;
+      let maxAccounts = 1;
+      const planSlug = (prof as { plan?: string } | null)?.plan;
+      if (planSlug) {
+        const { data: planRow } = await supabase
+          .from("plans" as never)
+          .select("limits, name_ar, name_en")
+          .eq("slug", planSlug)
+          .maybeSingle();
+        const limits = (planRow as { limits?: Record<string, unknown> } | null)?.limits;
+        const raw = Number(limits?.wa_accounts_max);
+        if (Number.isFinite(raw) && raw >= 1) maxAccounts = Math.floor(raw);
+      }
+      return {
+        used: count ?? 0,
+        max: maxAccounts,
+        planName: (prof as { plan?: string } | null)?.plan ?? "free",
+      };
+    },
+    staleTime: 30_000,
+  });
+
+
   const t = ar
     ? {
         title: "حسابي على واتساب",
