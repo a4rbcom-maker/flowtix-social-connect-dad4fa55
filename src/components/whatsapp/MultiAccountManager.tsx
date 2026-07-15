@@ -311,45 +311,182 @@ export function MultiAccountManager({ ar, usage }: Props) {
 
                 {/* Actions */}
                 {!editing && (
-                  <div className="mt-3 flex items-center justify-end gap-1 border-t border-border/50 pt-2">
-                    <button
-                      type="button"
-                      title={t.rename}
-                      onClick={() => {
-                        setEditingId(r.sessionId);
-                        setEditingLabel(r.label ?? "");
-                      }}
-                      className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    {!r.isPrimary && (
+                  <div className="mt-3 flex items-center justify-between gap-1 border-t border-border/50 pt-2">
+                    {!connected ? (
                       <button
                         type="button"
-                        title={t.setPrimary}
-                        onClick={() => promoteMut.mutate(r.sessionId)}
-                        disabled={promoteMut.isPending}
-                        className="rounded-md p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                        onClick={() =>
+                          setOpenQrFor((prev) => (prev === r.sessionId ? null : r.sessionId))
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/15"
                       >
-                        <StarOff className="h-3.5 w-3.5" />
+                        <QrCode className="h-3.5 w-3.5" />
+                        {openQrFor === r.sessionId ? t.hideQr : t.showQr}
                       </button>
+                    ) : (
+                      <span />
                     )}
-                    {!r.isPrimary && (
+                    <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        title={t.remove}
+                        title={t.rename}
                         onClick={() => {
-                          if (window.confirm(t.removeConfirm)) removeMut.mutate(r.sessionId);
+                          setEditingId(r.sessionId);
+                          setEditingLabel(r.label ?? "");
                         }}
-                        disabled={removeMut.isPending}
-                        className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Pencil className="h-3.5 w-3.5" />
                       </button>
-                    )}
+                      {!r.isPrimary && (
+                        <button
+                          type="button"
+                          title={t.setPrimary}
+                          onClick={() => promoteMut.mutate(r.sessionId)}
+                          disabled={promoteMut.isPending}
+                          className="rounded-md p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                        >
+                          <StarOff className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {!r.isPrimary && (
+                        <button
+                          type="button"
+                          title={t.remove}
+                          onClick={() => {
+                            if (window.confirm(t.removeConfirm)) removeMut.mutate(r.sessionId);
+                          }}
+                          disabled={removeMut.isPending}
+                          className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
+
+                {/* Inline QR panel (per session) */}
+                {!editing && !connected && openQrFor === r.sessionId && (
+                  <SessionQrPanel
+                    sessionId={r.sessionId}
+                    ar={ar}
+                    t={t}
+                    onConnected={() => {
+                      invalidateAll();
+                    }}
+                  />
+                )}
               </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Per-session inline QR panel
+// ---------------------------------------------------------------------------
+
+interface SessionQrPanelProps {
+  sessionId: string;
+  ar: boolean;
+  t: {
+    showQr: string;
+    hideQr: string;
+    refreshQr: string;
+    scanHint: string;
+    loadingQr: string;
+    qrConnected: string;
+  };
+  onConnected: () => void;
+}
+
+function SessionQrPanel({ sessionId, t, onConnected }: SessionQrPanelProps) {
+  const getStateFn = useServerFn(getWaSessionStateFor);
+  const resetFn = useServerFn(resetWaSessionFor);
+  const notifiedRef = useRef(false);
+
+  const stateQ = useQuery<WaConnectionState | null>({
+    queryKey: ["wa-session-state", sessionId],
+    queryFn: () => getStateFn({ data: { sessionId } }),
+    refetchInterval: (query) =>
+      query.state.data?.status === "connected" ? false : 4_000,
+  });
+
+  const resetMut = useMutation({
+    mutationFn: () => resetFn({ data: { sessionId } }),
+    onSuccess: () => stateQ.refetch(),
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  useEffect(() => {
+    if (stateQ.data?.status === "connected" && !notifiedRef.current) {
+      notifiedRef.current = true;
+      toast.success(t.qrConnected);
+      onConnected();
+    }
+  }, [stateQ.data?.status, t.qrConnected, onConnected]);
+
+  const qr = stateQ.data?.qrRaw ?? stateQ.data?.qrDataUrl ?? null;
+  const connected = stateQ.data?.status === "connected";
+
+  return (
+    <div className="mt-3 rounded-xl border border-border/60 bg-background/50 p-3">
+      {connected ? (
+        <div className="flex items-center justify-center gap-2 py-4 text-sm font-semibold text-emerald-600">
+          <Wifi className="h-4 w-4" /> {t.qrConnected}
+        </div>
+      ) : qr ? (
+        <div className="flex flex-col items-center gap-2">
+          <div className="rounded-lg border-2 border-primary/20 bg-white p-2 shadow-sm">
+            {qr.startsWith("data:image") ? (
+              <img src={qr} alt="WhatsApp QR" className="h-40 w-40" />
+            ) : (
+              <QRCodeSVG value={qr} size={160} level="M" includeMargin={false} />
+            )}
+          </div>
+          <p className="max-w-xs text-center text-[11px] leading-relaxed text-muted-foreground">
+            {t.scanHint}
+          </p>
+          <button
+            type="button"
+            onClick={() => resetMut.mutate()}
+            disabled={resetMut.isPending}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-muted/60 disabled:opacity-60"
+          >
+            {resetMut.isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3 w-3" />
+            )}
+            {t.refreshQr}
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-2 py-6">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          <span className="text-xs text-muted-foreground">{t.loadingQr}</span>
+          <button
+            type="button"
+            onClick={() => resetMut.mutate()}
+            disabled={resetMut.isPending}
+            className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-muted/60 disabled:opacity-60"
+          >
+            {resetMut.isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3 w-3" />
+            )}
+            {t.refreshQr}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
             );
           })}
         </div>
