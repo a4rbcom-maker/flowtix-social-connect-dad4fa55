@@ -143,12 +143,39 @@ export function MultiAccountManager({ ar, usage }: Props) {
     : s === "connecting" ? t.status_connecting
     : t.status_disconnected;
 
-  const statusColor = (s: string) =>
-    s === "connected"
-      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
-      : s === "qr" || s === "connecting"
-      ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
-      : "bg-muted text-muted-foreground border-border";
+  // Each account box gets a strong green/red visual identity.
+  const isConnected = (s: string) => s === "connected";
+  const isPending = (s: string) => s === "qr" || s === "connecting";
+
+  const boxClasses = (s: string) =>
+    isConnected(s)
+      ? "border-emerald-500/60 bg-emerald-500/5 shadow-[0_0_0_1px_rgba(16,185,129,0.15)]"
+      : isPending(s)
+      ? "border-amber-500/50 bg-amber-500/5"
+      : "border-red-500/60 bg-red-500/5 shadow-[0_0_0_1px_rgba(239,68,68,0.15)]";
+
+  const dotClasses = (s: string) =>
+    isConnected(s)
+      ? "bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.15)]"
+      : isPending(s)
+      ? "bg-amber-500 shadow-[0_0_0_4px_rgba(245,158,11,0.15)]"
+      : "bg-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.15)]";
+
+  const badgeClasses = (s: string) =>
+    isConnected(s)
+      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40"
+      : isPending(s)
+      ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40"
+      : "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/40";
+
+  const iconWrapClasses = (s: string) =>
+    isConnected(s)
+      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+      : isPending(s)
+      ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+      : "bg-red-500/15 text-red-600 dark:text-red-400";
+
+  const accountWord = ar ? "حساب" : "Account";
 
   return (
     <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
@@ -182,78 +209,90 @@ export function MultiAccountManager({ ar, usage }: Props) {
           {t.empty}
         </p>
       ) : (
-        <ul className="space-y-2">
-          {rows.map((r) => {
+        <div className="grid gap-3 sm:grid-cols-2">
+          {rows.map((r, idx) => {
             const editing = editingId === r.sessionId;
+            const connected = isConnected(r.status);
             return (
-              <li
+              <div
                 key={r.sessionId}
-                className="flex flex-wrap items-center gap-3 rounded-xl border border-border/60 bg-background/40 px-3 py-2.5"
+                className={`relative rounded-2xl border-2 p-4 transition ${boxClasses(r.status)}`}
               >
-                <div
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                    r.status === "connected" ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {r.status === "connected" ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
+                {/* Header: account number + status */}
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex h-7 items-center justify-center rounded-lg bg-foreground/90 px-2.5 text-xs font-bold text-background">
+                      {accountWord} {idx + 1}
+                    </span>
+                    {r.isPrimary ? (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                        <Star className="h-3 w-3 fill-primary" /> {t.primary}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2.5 w-2.5 rounded-full ${dotClasses(r.status)}`} />
+                    <span
+                      className={`inline-flex shrink-0 items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold ${badgeClasses(r.status)}`}
+                    >
+                      {statusLabel(r.status)}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="min-w-0 flex-1">
-                  {editing ? (
-                    <div className="flex items-center gap-2">
-                      <input
-                        autoFocus
-                        type="text"
-                        value={editingLabel}
-                        onChange={(e) => setEditingLabel(e.target.value)}
-                        placeholder={t.namePh}
-                        maxLength={60}
-                        className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus:border-primary"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => renameMut.mutate({ sessionId: r.sessionId, label: editingLabel })}
-                        className="rounded-md p-1.5 text-emerald-600 hover:bg-emerald-500/10"
-                        disabled={renameMut.isPending}
-                      >
-                        <Check className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditingId(null)}
-                        className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
+                {/* Body */}
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${iconWrapClasses(r.status)}`}
+                  >
+                    {connected ? <Wifi className="h-5 w-5" /> : <WifiOff className="h-5 w-5" />}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    {editing ? (
                       <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-semibold text-foreground">
-                          {r.label || (ar ? t.unnamed : t.unnamed)}
-                        </span>
-                        {r.isPrimary ? (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
-                            <Star className="h-3 w-3 fill-primary" /> {t.primary}
-                          </span>
-                        ) : null}
+                        <input
+                          autoFocus
+                          type="text"
+                          value={editingLabel}
+                          onChange={(e) => setEditingLabel(e.target.value)}
+                          placeholder={t.namePh}
+                          maxLength={60}
+                          className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus:border-primary"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => renameMut.mutate({ sessionId: r.sessionId, label: editingLabel })}
+                          className="rounded-md p-1.5 text-emerald-600 hover:bg-emerald-500/10"
+                          disabled={renameMut.isPending}
+                        >
+                          <Check className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingId(null)}
+                          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
                       </div>
-                      <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground" dir="ltr">
-                        <Phone className="h-3 w-3" />
-                        <span className="tabular-nums">{r.phoneNumber ?? t.no_phone}</span>
-                      </div>
-                    </>
-                  )}
+                    ) : (
+                      <>
+                        <div className="truncate text-sm font-semibold text-foreground">
+                          {r.label || t.unnamed}
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground" dir="ltr">
+                          <Phone className="h-3 w-3" />
+                          <span className="tabular-nums">{r.phoneNumber ? `+${r.phoneNumber}` : t.no_phone}</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
 
-                <span
-                  className={`inline-flex shrink-0 items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold ${statusColor(r.status)}`}
-                >
-                  {statusLabel(r.status)}
-                </span>
-
+                {/* Actions */}
                 {!editing && (
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="mt-3 flex items-center justify-end gap-1 border-t border-border/50 pt-2">
                     <button
                       type="button"
                       title={t.rename}
@@ -291,10 +330,10 @@ export function MultiAccountManager({ ar, usage }: Props) {
                     )}
                   </div>
                 )}
-              </li>
+              </div>
             );
           })}
-        </ul>
+        </div>
       )}
     </div>
   );
