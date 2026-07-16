@@ -256,16 +256,22 @@ function NewCampaignPage() {
     if (!user) return;
     (async () => {
       try {
-        const [a, tpl, med] = await Promise.all([
+        const [a, tpl, med, gAcc] = await Promise.all([
           callFn<{ accounts: BotAccount[] }>(listBotAccounts),
           callFn<Template[]>(listTextTemplates),
           callFn<Media[]>(listMediaAssets),
+          callFn<{ accounts: { id: string; fb_user_name: string | null }[] }>(listGraphAccounts),
         ]);
         const accs = safeArray<BotAccount>(safeObject<{ accounts?: unknown }>(a)?.accounts);
         setAccounts(accs);
         setTemplates(safeArray<Template>(tpl));
         setMedia(safeArray<Media>(med));
         if (accs.length === 1) setAccountId(accs[0].id);
+        const gAccs = safeArray<{ id: string; fb_user_name: string | null }>(
+          safeObject<{ accounts?: unknown }>(gAcc)?.accounts,
+        );
+        setGraphAccounts(gAccs);
+        if (gAccs.length === 1) setGraphConnectionId(gAccs[0].id);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Failed to load");
       }
