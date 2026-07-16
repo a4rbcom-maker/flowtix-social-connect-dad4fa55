@@ -1650,55 +1650,8 @@ function FacebookPage() {
   return (
     <DashboardLayout title={t.title}>
       <div className="mx-auto max-w-5xl space-y-6">
-        {/* Meta 2024 policy notice — explains why pages work with token but groups need VPS Worker. */}
-        <div className="rounded-2xl border border-blue-400/40 bg-blue-50 p-5 shadow-sm dark:border-blue-500/30 dark:bg-blue-950/20">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-card text-blue-600 dark:text-blue-400">
-              <AlertCircle className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 flex-1 space-y-2">
-              <h3 className="text-base font-bold text-foreground">
-                {lang === "ar"
-                  ? "ملاحظة مهمة: تحديثات Meta 2024 لاستخراج المعلقين"
-                  : "Important notice: Meta 2024 updates for extracting commenters"}
-              </h3>
-              <ul className="space-y-1.5 text-sm leading-relaxed text-muted-foreground">
-                <li className="flex gap-2">
-                  <span className="mt-1 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-green-500" />
-                  <span>
-                    <strong className="text-foreground">
-                      {lang === "ar" ? "من صفحة تملكها — يعمل ✓ " : "From a Page you own — works ✓ "}
-                    </strong>
-                    {lang === "ar"
-                      ? "عبر التوكن الرسمي، شريطة أن يحتوي على صلاحية"
-                      : "via the official token, provided it includes the permission"}{" "}
-                    <code className="rounded bg-card px-1.5 py-0.5 text-xs ring-1 ring-border">pages_read_engagement</code>.
-                  </span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-1 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-                  <span>
-                    <strong className="text-foreground">
-                      {lang === "ar" ? "من جروب — غير متاح عبر Graph API ✗ " : "From a Group — not available via Graph API ✗ "}
-                    </strong>
-                    {lang === "ar"
-                      ? "ميتا حدّثت سياستها سنة 2024 ومنعت صلاحية"
-                      : "Meta updated its policy in 2024 and restricted the"}{" "}
-                    <code className="rounded bg-card px-1.5 py-0.5 text-xs ring-1 ring-border">groups_access_member_info</code>{" "}
-                    {lang === "ar"
-                      ? "لأي تطبيق غير معتمد رسمياً من Meta. الحل الوحيد المتاح هو تشغيل VPS Worker بالكوكيز على IP منزلي."
-                      : "permission for any app not officially approved by Meta. The only available workaround is running a VPS Worker with cookies on a residential IP."}
-                  </span>
-                </li>
-              </ul>
-              <p className="text-xs text-muted-foreground/80">
-                {lang === "ar"
-                  ? "المرجع: Meta Platform Terms 2024 — Restricted Group Permissions."
-                  : "Reference: Meta Platform Terms 2024 — Restricted Group Permissions."}
-              </p>
-            </div>
-          </div>
-        </div>
+
+
 
 
         {!connection && (
