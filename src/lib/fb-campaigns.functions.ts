@@ -319,8 +319,15 @@ export const startCampaign = createServerFn({ method: "POST" })
       .eq("user_id", userId)
       .single();
     if (cErr || !c) throw new Error(cErr?.message ?? "Campaign not found");
-    if (!c.account_id) throw new Error("Campaign missing account");
     if (!c.target_ids || c.target_ids.length === 0) throw new Error("No targets selected");
+
+    // Graph API mode runs inline (not via VPS worker). Delegate to the dedicated function.
+    if (c.posting_mode === "graph_api") {
+      const { runGraphCampaign } = await import("./fb-graph-publish.functions");
+      return runGraphCampaign({ data: { campaignId: c.id } } as never);
+    }
+
+    if (!c.account_id) throw new Error("Campaign missing bot account");
 
     let content = c.custom_text ?? "";
     if (c.template_id) {
