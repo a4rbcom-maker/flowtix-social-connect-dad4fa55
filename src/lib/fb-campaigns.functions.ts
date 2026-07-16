@@ -26,7 +26,10 @@ const recordMediaSchema = z.object({
 const saveCampaignSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().trim().min(1).max(120),
-  accountId: z.string().uuid(),
+  // Exactly one of accountId (bot_worker) or graphConnectionId (graph_api) is required.
+  accountId: z.string().uuid().nullable().optional(),
+  graphConnectionId: z.string().uuid().nullable().optional(),
+  postingMode: z.enum(["bot_worker", "graph_api"]).default("bot_worker"),
   contentType: z.enum(["text", "media"]),
   templateId: z.string().uuid().nullable().optional(),
   customText: z.string().trim().max(20_000).nullable().optional(),
@@ -41,7 +44,13 @@ const saveCampaignSchema = z.object({
 }).refine((v) => v.delayMaxSeconds >= v.delayMinSeconds, {
   message: "delay_max must be >= delay_min",
   path: ["delayMaxSeconds"],
-});
+}).refine(
+  (v) => (v.postingMode === "bot_worker" ? !!v.accountId : !!v.graphConnectionId),
+  { message: "account required for the chosen posting mode", path: ["accountId"] },
+).refine(
+  (v) => (v.postingMode === "graph_api" ? v.targetKind === "pages" : true),
+  { message: "Graph API mode only supports Pages", path: ["targetKind"] },
+);
 
 // ---------- Templates ----------
 export const listTextTemplates = createServerFn({ method: "GET" })
