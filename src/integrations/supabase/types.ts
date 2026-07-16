@@ -2323,6 +2323,7 @@ export type Database = {
         | "deep_profile_scrape"
         | "list_my_groups"
         | "send_messenger_dm"
+        | "publish_pages_graph"
       fb_page_connection_type: "official" | "bot"
       fb_page_status: "active" | "expired" | "disconnected"
       fb_result_status: "success" | "failed" | "skipped" | "pending"
@@ -2509,6 +2510,7 @@ export const Constants = {
         "deep_profile_scrape",
         "list_my_groups",
         "send_messenger_dm",
+        "publish_pages_graph",
       ],
       fb_page_connection_type: ["official", "bot"],
       fb_page_status: ["active", "expired", "disconnected"],
