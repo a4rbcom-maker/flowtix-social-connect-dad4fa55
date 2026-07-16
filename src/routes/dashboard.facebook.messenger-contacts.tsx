@@ -120,17 +120,17 @@ function MessengerContactsPage() {
     queryFn: () => listPagesFn(),
   });
 
-  // Auto-pick behaviour: if exactly one page, choose it; if none, show empty
-  // state; if more than one and none selected, open picker.
   const pages = pagesQ.data ?? [];
-  if (!pageId && pages.length === 1) {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    setPageId(pages[0].pageId);
-  }
-  if (!pageId && pages.length > 1 && !showPagePicker) {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    setShowPagePicker(true);
-  }
+  // Auto-pick when there's exactly one page; otherwise force explicit choice.
+  useEffect(() => {
+    if (pageId) return;
+    if (pages.length === 1) {
+      setPageId(pages[0].pageId);
+    } else if (pages.length > 1) {
+      setShowPagePicker(true);
+    }
+  }, [pageId, pages]);
+
 
   const contactsQ = useQuery({
     queryKey: ["msgr-contacts", pageId, search, lastActivity, sort, page],
