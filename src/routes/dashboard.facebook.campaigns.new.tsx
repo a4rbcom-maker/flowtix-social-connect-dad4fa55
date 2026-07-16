@@ -127,9 +127,15 @@ function NewCampaignPage() {
   const [filterMode, setFilterMode] = useState<"all" | "selected" | "unselected" | "manual">("all");
   const [sortMode, setSortMode] = useState<"name" | "id" | "selected">("name");
 
+  // Posting mode: bot cookies (groups) vs Graph API token (pages)
+  const [postingMode, setPostingMode] = useState<"bot_worker" | "graph_api">("bot_worker");
+  const [graphAccounts, setGraphAccounts] = useState<{ id: string; fb_user_name: string | null }[]>([]);
+  const [graphConnectionId, setGraphConnectionId] = useState("");
+
   // Form
   const [name, setName] = useState("");
   const [accountId, setAccountId] = useState("");
+  
   
   const [templateId, setTemplateId] = useState("");
   const [customText, setCustomText] = useState("");
