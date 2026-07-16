@@ -48,7 +48,7 @@ export const Route = createFileRoute("/dashboard/whatsapp/accounts")({
 
 const WA_CLOUD_API_BASE = (
   (import.meta.env.VITE_FLOWTIX_WA_CLOUD_API_BASE as string | undefined) ||
-  "https://project--60cc135f-fba6-4c85-a3db-3604a51301ae.lovable.app"
+  "https://flowtixtools.com"
 ).replace(/\/+$/, "");
 const WA_BRIDGE_MODE_STORAGE_KEY = "flowtix-wa-bridge-mode";
 
