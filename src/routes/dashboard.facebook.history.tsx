@@ -350,7 +350,7 @@ function JobsHistoryPage() {
 
 
   const downloadCsv = () => {
-    if (results.length === 0) return;
+    if (peopleResults.length === 0 && results.length === 0) return;
     let rows: (string | number)[][];
     if (isPeople) {
       const isCommenters = selected?.job_type === "extract_commenters";
