@@ -449,7 +449,7 @@ function JobsHubPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>{t.paMax}</Label>
-                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" type="number" min={50} max={3000} step={50} value={pageMaxItems} onChange={(e) => setPageMaxItems(Number(e.target.value))} />
+                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" type="number" min={50} step={50} value={pageMaxItems} onChange={(e) => setPageMaxItems(Number(e.target.value))} />
                 </div>
                 <Button onClick={submitPageAudience} disabled={busy || !pageAudienceId.trim()} className="w-full">
                   {busy && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{t.create}
