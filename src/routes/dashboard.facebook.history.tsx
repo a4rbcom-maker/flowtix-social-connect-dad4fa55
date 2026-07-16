@@ -2187,3 +2187,91 @@ function PreviewList({
   );
 }
 
+
+// ---------- Extraction Log Panel (extract_page_audience) ----------
+type LogRow = { id: string; created_at: string; data: Record<string, unknown> };
+
+const STOP_REASON_LABEL_AR: Record<string, string> = {
+  cap_reached: "بلغنا الحد الأقصى المطلوب من الحسابات",
+  posts_exhausted: "انتهت المنشورات المتاحة على الصفحة",
+  no_posts_visible: "لم نعثر على منشورات ظاهرة (الصفحة مغلقة أو تخطيط جديد)",
+  engagers_error: "خطأ أثناء فحص المنشورات",
+  sources_done: "انتهت كل المصادر المطلوبة",
+};
+const STOP_REASON_LABEL_EN: Record<string, string> = {
+  cap_reached: "Requested cap reached",
+  posts_exhausted: "All available posts scanned",
+  no_posts_visible: "No visible posts on the page",
+  engagers_error: "Error while scanning posts",
+  sources_done: "All requested sources completed",
+};
+
+function ExtractionLogPanel({ rows, lang }: { rows: LogRow[]; lang: string }) {
+  const ar = lang === "ar";
+  const stop = [...rows].reverse().find((r) => r.data.event === "stop_reason");
+  const stopCode = (stop?.data.code as string | undefined) ?? null;
+  const stopDetail = (stop?.data.detail as string | undefined) ?? null;
+  const stopLabel = stopCode
+    ? (ar ? STOP_REASON_LABEL_AR[stopCode] : STOP_REASON_LABEL_EN[stopCode]) ?? stopCode
+    : null;
+
+  const items = rows.filter((r) => r.data.event !== "stop_reason");
+
+  return (
+    <div className="mb-4 rounded-lg border border-border bg-muted/20 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-muted-foreground">
+          {ar ? "سجل الاستخراج المباشر" : "Live extraction log"}
+        </span>
+        <span className="text-[10px] text-muted-foreground tabular-nums">{items.length}</span>
+      </div>
+
+      {stopLabel && (
+        <div className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
+          <span className="font-semibold">{ar ? "سبب التوقف: " : "Stop reason: "}</span>
+          {stopLabel}
+          {stopDetail && <span className="ms-1 text-amber-700/80 dark:text-amber-300/80">— {stopDetail}</span>}
+        </div>
+      )}
+
+      <ul className="max-h-56 space-y-1 overflow-y-auto pe-1 text-xs">
+        {items.map((r) => {
+          const d = r.data as Record<string, unknown>;
+          const ev = d.event as string;
+          const time = new Date(r.created_at).toLocaleTimeString(ar ? "ar-EG" : "en-US", { hour12: false });
+          let line: string;
+          if (ev === "posts_discovered") {
+            line = ar
+              ? `عثرنا على ${d.found} منشور من ${d.requested} مطلوب.`
+              : `Discovered ${d.found} of ${d.requested} requested posts.`;
+          } else if (ev === "post_scraped") {
+            line = ar
+              ? `منشور ${d.index}/${d.of}: +${d.reactors ?? 0} متفاعل، +${d.commenters ?? 0} معلّق (الإجمالي ${d.total}).`
+              : `Post ${d.index}/${d.of}: +${d.reactors ?? 0} reactors, +${d.commenters ?? 0} commenters (total ${d.total}).`;
+          } else if (ev === "post_failed") {
+            line = ar
+              ? `فشل منشور ${d.index}/${d.of}: ${d.error}`
+              : `Post ${d.index}/${d.of} failed: ${d.error}`;
+          } else if (ev === "preview_pass") {
+            line = ar
+              ? `تمرير ${d.source}: +${d.added} (الإجمالي ${d.total}).`
+              : `Preview ${d.source}: +${d.added} (total ${d.total}).`;
+          } else if (ev === "preview_pass_failed") {
+            line = ar ? `فشل تمرير ${d.source}: ${d.error}` : `Preview ${d.source} failed: ${d.error}`;
+          } else if (ev === "engagers_failed") {
+            line = ar ? `فشل فحص المنشورات: ${d.error}` : `Engagers pass failed: ${d.error}`;
+          } else {
+            line = JSON.stringify(d);
+          }
+          const isFail = ev === "post_failed" || ev === "engagers_failed" || ev === "preview_pass_failed";
+          return (
+            <li key={r.id} className="flex items-start gap-2 border-b border-border/40 pb-1 last:border-b-0">
+              <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">{time}</span>
+              <span className={isFail ? "text-destructive" : "text-foreground/90"}>{line}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
