@@ -272,15 +272,6 @@ function MessengerContactsPage() {
         </div>
       </header>
 
-      {/* Meta policy notice — always visible */}
-      <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-800 dark:text-amber-200">
-        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-        <div>
-          {lang === "ar"
-            ? "وفق سياسة Meta: لا يمكن استخراج رسائل الحساب الشخصي — فقط رسائل الصفحات. خارج نافذة 24 ساعة يجب استخدام Message Tag رسمي."
-            : "Per Meta policy: only Page messages can be imported (not personal accounts). Outside the 24h window, an official Message Tag is required."}
-        </div>
-      </div>
 
       {/* Sync progress banner */}
       {syncJob && (
