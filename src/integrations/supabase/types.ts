@@ -1137,6 +1137,129 @@ export type Database = {
         }
         Relationships: []
       }
+      messenger_contacts: {
+        Row: {
+          conversation_id: string | null
+          created_at: string
+          first_message_at: string | null
+          full_name: string | null
+          id: string
+          last_agent_user_id: string | null
+          last_direction: string | null
+          last_message_at: string | null
+          last_message_preview: string | null
+          messages_count: number
+          metadata: Json
+          page_id: string
+          page_name: string | null
+          profile_pic_url: string | null
+          psid: string
+          tags: string[]
+          unread_count: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          conversation_id?: string | null
+          created_at?: string
+          first_message_at?: string | null
+          full_name?: string | null
+          id?: string
+          last_agent_user_id?: string | null
+          last_direction?: string | null
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          messages_count?: number
+          metadata?: Json
+          page_id: string
+          page_name?: string | null
+          profile_pic_url?: string | null
+          psid: string
+          tags?: string[]
+          unread_count?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          conversation_id?: string | null
+          created_at?: string
+          first_message_at?: string | null
+          full_name?: string | null
+          id?: string
+          last_agent_user_id?: string | null
+          last_direction?: string | null
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          messages_count?: number
+          metadata?: Json
+          page_id?: string
+          page_name?: string | null
+          profile_pic_url?: string | null
+          psid?: string
+          tags?: string[]
+          unread_count?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      messenger_sync_jobs: {
+        Row: {
+          contacts_upserted: number
+          conversations_scanned: number
+          created_at: string
+          cursor: string | null
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          messages_scanned: number
+          mode: string
+          page_id: string
+          page_name: string | null
+          started_at: string | null
+          status: string
+          triggered_by: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          contacts_upserted?: number
+          conversations_scanned?: number
+          created_at?: string
+          cursor?: string | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          messages_scanned?: number
+          mode?: string
+          page_id: string
+          page_name?: string | null
+          started_at?: string | null
+          status?: string
+          triggered_by?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          contacts_upserted?: number
+          conversations_scanned?: number
+          created_at?: string
+          cursor?: string | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          messages_scanned?: number
+          mode?: string
+          page_id?: string
+          page_name?: string | null
+          started_at?: string | null
+          status?: string
+          triggered_by?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       notification_reads: {
         Row: {
           ack_at: string | null

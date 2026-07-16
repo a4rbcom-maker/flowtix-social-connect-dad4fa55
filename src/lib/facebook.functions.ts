@@ -102,7 +102,7 @@ function classifyFbError(
   });
 }
 
-async function fbGet(path: string, token: string) {
+export async function fbGet(path: string, token: string) {
   const url = `${GRAPH_API}${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(token)}`;
   let res: Response;
   try {
@@ -1004,7 +1004,7 @@ export const fetchPageAudienceFromPosts = createServerFn({ method: "POST" })
  * Helper: resolve a Page Access Token for a given pageId from the user's
  * stored connection. Returns either { ok: true, pageToken } or an error envelope.
  */
-async function getPageAccessToken(
+export async function getPageAccessToken(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _supabase: any,
   userId: string,
