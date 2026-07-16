@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
+import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -233,6 +234,7 @@ function MessengerContactsPage() {
   const rtl = lang === "ar";
 
   return (
+    <DashboardLayout title={lang === "ar" ? "جهات اتصال Messenger" : "Messenger Contacts"}>
     <div className="space-y-6 p-4 sm:p-6" dir={rtl ? "rtl" : "ltr"}>
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -671,5 +673,6 @@ function MessengerContactsPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </DashboardLayout>
   );
 }
