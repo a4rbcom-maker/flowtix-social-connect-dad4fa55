@@ -1,0 +1,1 @@
+ALTER TYPE public.fb_job_type ADD VALUE IF NOT EXISTS 'publish_pages_graph';

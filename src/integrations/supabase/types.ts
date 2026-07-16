@@ -717,11 +717,13 @@ export type Database = {
           delay_min_seconds: number
           done_targets: number
           failed_count: number
+          graph_connection_id: string | null
           id: string
           last_job_id: string | null
           last_run_at: string | null
           media_ids: string[] | null
           name: string
+          posting_mode: string
           status: Database["public"]["Enums"]["fb_campaign_status"]
           success_count: number
           target_ids: string[]
@@ -741,11 +743,13 @@ export type Database = {
           delay_min_seconds?: number
           done_targets?: number
           failed_count?: number
+          graph_connection_id?: string | null
           id?: string
           last_job_id?: string | null
           last_run_at?: string | null
           media_ids?: string[] | null
           name: string
+          posting_mode?: string
           status?: Database["public"]["Enums"]["fb_campaign_status"]
           success_count?: number
           target_ids?: string[]
@@ -765,11 +769,13 @@ export type Database = {
           delay_min_seconds?: number
           done_targets?: number
           failed_count?: number
+          graph_connection_id?: string | null
           id?: string
           last_job_id?: string | null
           last_run_at?: string | null
           media_ids?: string[] | null
           name?: string
+          posting_mode?: string
           status?: Database["public"]["Enums"]["fb_campaign_status"]
           success_count?: number
           target_ids?: string[]
@@ -786,6 +792,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "fb_bot_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fb_campaigns_graph_connection_id_fkey"
+            columns: ["graph_connection_id"]
+            isOneToOne: false
+            referencedRelation: "facebook_connections"
             referencedColumns: ["id"]
           },
           {
@@ -2310,6 +2323,7 @@ export type Database = {
         | "deep_profile_scrape"
         | "list_my_groups"
         | "send_messenger_dm"
+        | "publish_pages_graph"
       fb_page_connection_type: "official" | "bot"
       fb_page_status: "active" | "expired" | "disconnected"
       fb_result_status: "success" | "failed" | "skipped" | "pending"
@@ -2496,6 +2510,7 @@ export const Constants = {
         "deep_profile_scrape",
         "list_my_groups",
         "send_messenger_dm",
+        "publish_pages_graph",
       ],
       fb_page_connection_type: ["official", "bot"],
       fb_page_status: ["active", "expired", "disconnected"],

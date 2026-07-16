@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { listBotAccounts } from "@/lib/fb-bot.functions";
 import { fetchFacebookGroups } from "@/lib/facebook.functions";
+import { listGraphAccounts, fetchGraphPages } from "@/lib/fb-graph-publish.functions";
 import {
   listTextTemplates, listMediaAssets, saveCampaign, startCampaign, recordMediaAsset,
 } from "@/lib/fb-campaigns.functions";
@@ -126,9 +127,15 @@ function NewCampaignPage() {
   const [filterMode, setFilterMode] = useState<"all" | "selected" | "unselected" | "manual">("all");
   const [sortMode, setSortMode] = useState<"name" | "id" | "selected">("name");
 
+  // Posting mode: bot cookies (groups) vs Graph API token (pages)
+  const [postingMode, setPostingMode] = useState<"bot_worker" | "graph_api">("bot_worker");
+  const [graphAccounts, setGraphAccounts] = useState<{ id: string; fb_user_name: string | null }[]>([]);
+  const [graphConnectionId, setGraphConnectionId] = useState("");
+
   // Form
   const [name, setName] = useState("");
   const [accountId, setAccountId] = useState("");
+  
   
   const [templateId, setTemplateId] = useState("");
   const [customText, setCustomText] = useState("");
@@ -249,16 +256,22 @@ function NewCampaignPage() {
     if (!user) return;
     (async () => {
       try {
-        const [a, tpl, med] = await Promise.all([
+        const [a, tpl, med, gAcc] = await Promise.all([
           callFn<{ accounts: BotAccount[] }>(listBotAccounts),
           callFn<Template[]>(listTextTemplates),
           callFn<Media[]>(listMediaAssets),
+          callFn<{ accounts: { id: string; fb_user_name: string | null }[] }>(listGraphAccounts),
         ]);
         const accs = safeArray<BotAccount>(safeObject<{ accounts?: unknown }>(a)?.accounts);
         setAccounts(accs);
         setTemplates(safeArray<Template>(tpl));
         setMedia(safeArray<Media>(med));
         if (accs.length === 1) setAccountId(accs[0].id);
+        const gAccs = safeArray<{ id: string; fb_user_name: string | null }>(
+          safeObject<{ accounts?: unknown }>(gAcc)?.accounts,
+        );
+        setGraphAccounts(gAccs);
+        if (gAccs.length === 1) setGraphConnectionId(gAccs[0].id);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Failed to load");
       }
@@ -445,6 +458,7 @@ function NewCampaignPage() {
   // to those same groups, not to type IDs by hand.
   useEffect(() => {
     if (!user) return;
+    if (postingMode !== "bot_worker") return; // pages are loaded on demand via Graph
     (async () => {
       try {
         const imported = await loadGroupsFromBotResults();
@@ -462,31 +476,58 @@ function NewCampaignPage() {
       }
     })();
     // eslint-disable-next-line
-  }, [user]);
+  }, [user, postingMode]);
 
   const loadGroups = async () => {
     setGroupsLoading(true);
     try {
-      // Try Graph API first
       let list: Group[] = [];
-      try {
-        const res = await callFn<{ groups?: unknown; error: unknown }>(fetchFacebookGroups);
-        if (!res.error) list = safeArray<Group>(res.groups);
-      } catch {
-        // ignore — fall back to bot results
-      }
-      // Fallback: load from the last completed list_my_groups bot job
-      if (list.length === 0) {
-        list = await loadGroupsFromBotResults();
-      }
-      if (list.length === 0) {
-        toast.error(
-          lang === "ar"
-            ? "لا توجد جروبات محفوظة. استورد جروباتك من صفحة «جروباتي» أولاً."
-            : "No saved groups. Import your groups from the Groups page first.",
+
+      // Graph API mode: fetch pages managed by the connected account.
+      if (postingMode === "graph_api") {
+        if (!graphConnectionId) {
+          toast.error(lang === "ar" ? "اختر حساب فيسبوك أولاً" : "Select a Facebook account first");
+          return;
+        }
+        const res = await callFn<{ pages?: { id: string; name: string }[]; error: string | null }>(
+          fetchGraphPages,
+          { connectionId: graphConnectionId },
         );
-        return;
+        if (res.error) {
+          toast.error(res.error);
+          return;
+        }
+        list = safeArray<Group>(res.pages).map((p) => ({ id: p.id, name: p.name }));
+        if (list.length === 0) {
+          toast.error(
+            lang === "ar"
+              ? "لا توجد صفحات مربوطة بهذا التوكن — تأكد أنك أدمن في صفحة واحدة على الأقل ومنحت pages_show_list + pages_manage_posts."
+              : "No pages found for this token — make sure you admin at least one page and granted pages_show_list + pages_manage_posts.",
+            { duration: 8000 },
+          );
+          return;
+        }
+      } else {
+        // Bot mode: existing groups flow.
+        try {
+          const res = await callFn<{ groups?: unknown; error: unknown }>(fetchFacebookGroups);
+          if (!res.error) list = safeArray<Group>(res.groups);
+        } catch {
+          // ignore — fall back to bot results
+        }
+        if (list.length === 0) {
+          list = await loadGroupsFromBotResults();
+        }
+        if (list.length === 0) {
+          toast.error(
+            lang === "ar"
+              ? "لا توجد جروبات محفوظة. استورد جروباتك من صفحة «جروباتي» أولاً."
+              : "No saved groups. Import your groups from the Groups page first.",
+          );
+          return;
+        }
       }
+
       // Deduplicate incoming IDs (source may include repeats) and against existing groups.
       const seenInList = new Set<string>();
       let intraDup = 0;
@@ -612,12 +653,20 @@ function NewCampaignPage() {
 
   const validate = (): boolean => {
     if (!name.trim()) { toast.error(t.needName); return false; }
-    if (!accountId) { toast.error(t.needAccount); return false; }
+    if (postingMode === "bot_worker" && !accountId) { toast.error(t.needAccount); return false; }
+    if (postingMode === "graph_api" && !graphConnectionId) {
+      toast.error(lang === "ar" ? "اختر حساب فيسبوك المربوط بالتوكن" : "Select a token-connected Facebook account");
+      return false;
+    }
     if (groups.length === 0) {
       toast.error(
         lang === "ar"
-          ? "لا توجد جروبات بعد. اضغط \"جلب الجروبات\" أو استخرجها من صفحة الجروبات قبل النشر."
-          : "No groups loaded yet. Click \"Load groups\" or extract them from the Groups page before publishing.",
+          ? (postingMode === "graph_api"
+              ? "لا توجد صفحات بعد. اضغط \"جلب الصفحات\" أولاً."
+              : "لا توجد جروبات بعد. اضغط \"جلب الجروبات\" أو استخرجها من صفحة الجروبات قبل النشر.")
+          : (postingMode === "graph_api"
+              ? "No pages loaded yet. Click \"Load pages\" first."
+              : "No groups loaded yet. Click \"Load groups\" or extract them from the Groups page before publishing."),
         { duration: 6000 },
       );
       return false;
@@ -625,8 +674,8 @@ function NewCampaignPage() {
     if (selectedTargets.size === 0) {
       toast.error(
         lang === "ar"
-          ? "لم يتم تحديد أي جروب. حدّد جروب واحد على الأقل قبل النشر."
-          : "No groups selected. Pick at least one group before publishing.",
+          ? (postingMode === "graph_api" ? "حدّد صفحة واحدة على الأقل." : "لم يتم تحديد أي جروب.")
+          : (postingMode === "graph_api" ? "Pick at least one page." : "Pick at least one group."),
         { duration: 5000 },
       );
       return false;
@@ -644,18 +693,20 @@ function NewCampaignPage() {
     });
     return {
       name: name.trim(),
-      accountId,
+      postingMode,
+      accountId: postingMode === "bot_worker" ? accountId : null,
+      graphConnectionId: postingMode === "graph_api" ? graphConnectionId : null,
       contentType: mediaIds.size > 0 ? "media" : "text",
-
       templateId: templateId || null,
       customText: customText.trim() || null,
       mediaIds: Array.from(mediaIds),
-      targetKind: "groups" as const,
+      targetKind: postingMode === "graph_api" ? ("pages" as const) : ("groups" as const),
       targets,
       delayMinSeconds: delayMin,
       delayMaxSeconds: delayMax,
     };
   };
+
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -735,29 +786,93 @@ function NewCampaignPage() {
           />
         </Section>
 
+        {/* Posting Mode Switcher */}
+        <Section icon={<Layers className="w-4 h-4" />} label={lang === "ar" ? "طريقة النشر" : "Publishing method"}>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setPostingMode("bot_worker");
+                setGroups([]); setSelectedTargets(new Set());
+              }}
+              className={`rounded-lg border px-3 py-3 text-sm text-start transition ${
+                postingMode === "bot_worker"
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-border hover:bg-accent text-muted-foreground"
+              }`}
+            >
+              <div className="font-semibold">🍪 {lang === "ar" ? "بوت (كوكيز)" : "Bot (cookies)"}</div>
+              <div className="text-[11px] mt-1 opacity-80">
+                {lang === "ar" ? "للنشر على المجموعات (Groups)" : "For publishing to Groups"}
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPostingMode("graph_api");
+                setGroups([]); setSelectedTargets(new Set());
+              }}
+              className={`rounded-lg border px-3 py-3 text-sm text-start transition ${
+                postingMode === "graph_api"
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-border hover:bg-accent text-muted-foreground"
+              }`}
+            >
+              <div className="font-semibold">🔑 {lang === "ar" ? "توكن (Graph API)" : "Token (Graph API)"}</div>
+              <div className="text-[11px] mt-1 opacity-80">
+                {lang === "ar" ? "للنشر على الصفحات (Pages) — رسمي من Meta" : "For publishing to Pages — official Meta API"}
+              </div>
+            </button>
+          </div>
+        </Section>
+
         {/* Account */}
         <Section icon={<Layers className="w-4 h-4" />} label={t.account}>
           <div className="relative">
-            <select
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              className="w-full appearance-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-            >
-              <option value="">{t.accountPh}</option>
-              {accounts.map((a) => <option key={a.id} value={a.id}>{a.display_name}</option>)}
-            </select>
+            {postingMode === "bot_worker" ? (
+              <select
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+                className="w-full appearance-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              >
+                <option value="">{t.accountPh}</option>
+                {accounts.map((a) => <option key={a.id} value={a.id}>{a.display_name}</option>)}
+              </select>
+            ) : (
+              <select
+                value={graphConnectionId}
+                onChange={(e) => { setGraphConnectionId(e.target.value); setGroups([]); setSelectedTargets(new Set()); }}
+                className="w-full appearance-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              >
+                <option value="">
+                  {graphAccounts.length === 0
+                    ? (lang === "ar" ? "لا يوجد حساب مربوط بتوكن — اربط من صفحة فيسبوك" : "No token-connected account — connect from Facebook page")
+                    : t.accountPh}
+                </option>
+                {graphAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>🔑 {a.fb_user_name ?? a.id.slice(0, 8)}</option>
+                ))}
+              </select>
+            )}
             <ChevronDown className={`w-4 h-4 absolute top-3 ${dir === "rtl" ? "left-3" : "right-3"} text-muted-foreground pointer-events-none`} />
           </div>
         </Section>
+
 
         {/* Targets */}
         <Section icon={<Users className="w-4 h-4" />} label={t.targets} hint={t.targetsHint}>
           {groups.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-3">
-              <p className="text-sm text-muted-foreground">{t.noGroups}</p>
+              <p className="text-sm text-muted-foreground">
+                {postingMode === "graph_api"
+                  ? (lang === "ar" ? "اضغط \"جلب الصفحات\" لتحميل صفحاتك المُدارة." : "Click \"Load pages\" to fetch your managed pages.")
+                  : t.noGroups}
+              </p>
               <button onClick={loadGroups} disabled={groupsLoading} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
                 {groupsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
-                {t.loadGroups}
+                {postingMode === "graph_api"
+                  ? (lang === "ar" ? "جلب الصفحات" : "Load pages")
+                  : t.loadGroups}
               </button>
             </div>
           ) : (

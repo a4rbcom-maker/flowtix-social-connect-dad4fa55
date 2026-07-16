@@ -26,7 +26,10 @@ const recordMediaSchema = z.object({
 const saveCampaignSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().trim().min(1).max(120),
-  accountId: z.string().uuid(),
+  // Exactly one of accountId (bot_worker) or graphConnectionId (graph_api) is required.
+  accountId: z.string().uuid().nullable().optional(),
+  graphConnectionId: z.string().uuid().nullable().optional(),
+  postingMode: z.enum(["bot_worker", "graph_api"]).default("bot_worker"),
   contentType: z.enum(["text", "media"]),
   templateId: z.string().uuid().nullable().optional(),
   customText: z.string().trim().max(20_000).nullable().optional(),
@@ -41,7 +44,13 @@ const saveCampaignSchema = z.object({
 }).refine((v) => v.delayMaxSeconds >= v.delayMinSeconds, {
   message: "delay_max must be >= delay_min",
   path: ["delayMaxSeconds"],
-});
+}).refine(
+  (v) => (v.postingMode === "bot_worker" ? !!v.accountId : !!v.graphConnectionId),
+  { message: "account required for the chosen posting mode", path: ["accountId"] },
+).refine(
+  (v) => (v.postingMode === "graph_api" ? v.targetKind === "pages" : true),
+  { message: "Graph API mode only supports Pages", path: ["targetKind"] },
+);
 
 // ---------- Templates ----------
 export const listTextTemplates = createServerFn({ method: "GET" })
@@ -205,14 +214,24 @@ export const saveCampaign = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
-    // Verify ownership of referenced rows.
-    const { data: acc } = await supabase
-      .from("fb_bot_accounts")
-      .select("id")
-      .eq("id", data.accountId)
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!acc) throw new Error("Account not found");
+    // Verify ownership of the chosen account (bot OR graph connection).
+    if (data.postingMode === "bot_worker") {
+      const { data: acc } = await supabase
+        .from("fb_bot_accounts")
+        .select("id")
+        .eq("id", data.accountId!)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (!acc) throw new Error("Bot account not found");
+    } else {
+      const { data: conn } = await supabase
+        .from("facebook_connections")
+        .select("id")
+        .eq("id", data.graphConnectionId!)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (!conn) throw new Error("Facebook connection not found");
+    }
 
     if (data.templateId) {
       const { data: t } = await supabase
@@ -237,7 +256,9 @@ export const saveCampaign = createServerFn({ method: "POST" })
 
     const payload = {
       name: data.name,
-      account_id: data.accountId,
+      account_id: data.postingMode === "bot_worker" ? data.accountId! : null,
+      graph_connection_id: data.postingMode === "graph_api" ? data.graphConnectionId! : null,
+      posting_mode: data.postingMode,
       content_type: data.contentType,
       template_id: data.templateId ?? null,
       custom_text: data.customText ?? null,
@@ -298,8 +319,15 @@ export const startCampaign = createServerFn({ method: "POST" })
       .eq("user_id", userId)
       .single();
     if (cErr || !c) throw new Error(cErr?.message ?? "Campaign not found");
-    if (!c.account_id) throw new Error("Campaign missing account");
     if (!c.target_ids || c.target_ids.length === 0) throw new Error("No targets selected");
+
+    // Graph API mode runs inline (not via VPS worker). Delegate to the dedicated function.
+    if (c.posting_mode === "graph_api") {
+      const { runGraphCampaign } = await import("./fb-graph-publish.functions");
+      return runGraphCampaign({ data: { campaignId: c.id } } as never);
+    }
+
+    if (!c.account_id) throw new Error("Campaign missing bot account");
 
     let content = c.custom_text ?? "";
     if (c.template_id) {
