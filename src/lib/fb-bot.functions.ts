@@ -761,8 +761,9 @@ export const createExtractPageAudienceJob = createServerFn({ method: "POST" })
       .object({
         accountId: z.string().uuid(),
         pageId: z.string().trim().min(3).max(64),
-        sources: z.array(z.enum(["followers", "likers", "engagers"])).min(1).default(["followers", "likers"]),
-        maxItems: z.number().int().min(50).max(3000).default(1000),
+        sources: z.array(z.enum(["followers", "likers", "engagers"])).min(1).default(["engagers"]),
+        maxItems: z.number().int().min(50).max(5000).default(2000),
+        maxPosts: z.number().int().min(3).max(40).default(20),
       })
       .parse(d),
   )
