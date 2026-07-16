@@ -106,7 +106,7 @@ function JobsHubPage() {
     paFollowersLabel: "المتابعون",
     paLikersLabel: "الإعجابات",
     paEngagersLabel: "المتفاعلون مع البوستات",
-    paHint: "بيسحب الجمهور المرئي علنياً فقط (حد أقصى 3000).",
+    paHint: "بيسحب الجمهور المرئي علنياً فقط (بدون حد أقصى — البوت يفضل يشتغل لحد ما ينتهي).",
     paLimitsTitle: "قيود استخراج جمهور الصفحات",
     paLimitsIntro: "أي صفحة عامة تقدر تستخرج منها، بشرط إن المحتوى ظاهر فعلاً للحساب اللي شغّال بيه البوت. خد بالك من الحالات دي:",
     paLimit1Title: "صفحات أخفت جمهورها",
@@ -156,7 +156,7 @@ function JobsHubPage() {
     paFollowersLabel: "Followers",
     paLikersLabel: "Likers",
     paEngagersLabel: "Post engagers",
-    paHint: "Only publicly visible audience can be extracted (max 3000).",
+    paHint: "Only publicly visible audience is extracted (no cap — bot runs until exhausted).",
     paLimitsTitle: "Page audience extraction limits",
     paLimitsIntro: "You can extract from any public page, as long as the content is actually visible to the linked account. Keep these limits in mind:",
     paLimit1Title: "Pages that hide their audience",
@@ -449,7 +449,7 @@ function JobsHubPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>{t.paMax}</Label>
-                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" type="number" min={50} max={3000} step={50} value={pageMaxItems} onChange={(e) => setPageMaxItems(Number(e.target.value))} />
+                  <Input dir={lang === "ar" ? "rtl" : "ltr"} className="text-start" type="number" min={50} step={50} value={pageMaxItems} onChange={(e) => setPageMaxItems(Number(e.target.value))} />
                 </div>
                 <Button onClick={submitPageAudience} disabled={busy || !pageAudienceId.trim()} className="w-full">
                   {busy && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{t.create}
