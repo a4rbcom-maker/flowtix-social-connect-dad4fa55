@@ -10,9 +10,18 @@ export function ExtractionQuotaBanner() {
   const fetchStatus = useServerFn(getExtractionQuotaStatus);
   const { data } = useQuery({
     queryKey: ["extraction-quota"],
-    queryFn: () => fetchStatus(),
+    queryFn: async () => {
+      try {
+        return await fetchStatus();
+      } catch (err) {
+        console.warn("[ExtractionQuotaBanner] fetch failed", err);
+        return null;
+      }
+    },
     refetchInterval: 15_000,
     staleTime: 10_000,
+    retry: false,
+    throwOnError: false,
   });
 
   const t =
