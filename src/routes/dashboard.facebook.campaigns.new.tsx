@@ -863,10 +863,16 @@ function NewCampaignPage() {
         <Section icon={<Users className="w-4 h-4" />} label={t.targets} hint={t.targetsHint}>
           {groups.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-3">
-              <p className="text-sm text-muted-foreground">{t.noGroups}</p>
+              <p className="text-sm text-muted-foreground">
+                {postingMode === "graph_api"
+                  ? (lang === "ar" ? "اضغط \"جلب الصفحات\" لتحميل صفحاتك المُدارة." : "Click \"Load pages\" to fetch your managed pages.")
+                  : t.noGroups}
+              </p>
               <button onClick={loadGroups} disabled={groupsLoading} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
                 {groupsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
-                {t.loadGroups}
+                {postingMode === "graph_api"
+                  ? (lang === "ar" ? "جلب الصفحات" : "Load pages")
+                  : t.loadGroups}
               </button>
             </div>
           ) : (
