@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { listBotAccounts } from "@/lib/fb-bot.functions";
 import { fetchFacebookGroups } from "@/lib/facebook.functions";
+import { listGraphAccounts, fetchGraphPages } from "@/lib/fb-graph-publish.functions";
 import {
   listTextTemplates, listMediaAssets, saveCampaign, startCampaign, recordMediaAsset,
 } from "@/lib/fb-campaigns.functions";
