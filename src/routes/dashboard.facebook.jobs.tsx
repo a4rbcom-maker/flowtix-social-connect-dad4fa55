@@ -156,7 +156,7 @@ function JobsHubPage() {
     paFollowersLabel: "Followers",
     paLikersLabel: "Likers",
     paEngagersLabel: "Post engagers",
-    paHint: "Only publicly visible audience can be extracted (max 3000).",
+    paHint: "Only publicly visible audience is extracted (no cap — bot runs until exhausted).",
     paLimitsTitle: "Page audience extraction limits",
     paLimitsIntro: "You can extract from any public page, as long as the content is actually visible to the linked account. Keep these limits in mind:",
     paLimit1Title: "Pages that hide their audience",
