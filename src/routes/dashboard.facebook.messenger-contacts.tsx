@@ -673,5 +673,6 @@ function MessengerContactsPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </DashboardLayout>
   );
 }
