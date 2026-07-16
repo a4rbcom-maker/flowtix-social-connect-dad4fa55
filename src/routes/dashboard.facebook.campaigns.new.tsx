@@ -458,6 +458,7 @@ function NewCampaignPage() {
   // to those same groups, not to type IDs by hand.
   useEffect(() => {
     if (!user) return;
+    if (postingMode !== "bot_worker") return; // pages are loaded on demand via Graph
     (async () => {
       try {
         const imported = await loadGroupsFromBotResults();
@@ -475,7 +476,7 @@ function NewCampaignPage() {
       }
     })();
     // eslint-disable-next-line
-  }, [user]);
+  }, [user, postingMode]);
 
   const loadGroups = async () => {
     setGroupsLoading(true);
