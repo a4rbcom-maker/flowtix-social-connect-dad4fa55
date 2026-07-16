@@ -785,20 +785,78 @@ function NewCampaignPage() {
           />
         </Section>
 
+        {/* Posting Mode Switcher */}
+        <Section icon={<Layers className="w-4 h-4" />} label={lang === "ar" ? "طريقة النشر" : "Publishing method"}>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setPostingMode("bot_worker");
+                setGroups([]); setSelectedTargets(new Set());
+              }}
+              className={`rounded-lg border px-3 py-3 text-sm text-start transition ${
+                postingMode === "bot_worker"
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-border hover:bg-accent text-muted-foreground"
+              }`}
+            >
+              <div className="font-semibold">🍪 {lang === "ar" ? "بوت (كوكيز)" : "Bot (cookies)"}</div>
+              <div className="text-[11px] mt-1 opacity-80">
+                {lang === "ar" ? "للنشر على المجموعات (Groups)" : "For publishing to Groups"}
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPostingMode("graph_api");
+                setGroups([]); setSelectedTargets(new Set());
+              }}
+              className={`rounded-lg border px-3 py-3 text-sm text-start transition ${
+                postingMode === "graph_api"
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-border hover:bg-accent text-muted-foreground"
+              }`}
+            >
+              <div className="font-semibold">🔑 {lang === "ar" ? "توكن (Graph API)" : "Token (Graph API)"}</div>
+              <div className="text-[11px] mt-1 opacity-80">
+                {lang === "ar" ? "للنشر على الصفحات (Pages) — رسمي من Meta" : "For publishing to Pages — official Meta API"}
+              </div>
+            </button>
+          </div>
+        </Section>
+
         {/* Account */}
         <Section icon={<Layers className="w-4 h-4" />} label={t.account}>
           <div className="relative">
-            <select
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              className="w-full appearance-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-            >
-              <option value="">{t.accountPh}</option>
-              {accounts.map((a) => <option key={a.id} value={a.id}>{a.display_name}</option>)}
-            </select>
+            {postingMode === "bot_worker" ? (
+              <select
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+                className="w-full appearance-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              >
+                <option value="">{t.accountPh}</option>
+                {accounts.map((a) => <option key={a.id} value={a.id}>{a.display_name}</option>)}
+              </select>
+            ) : (
+              <select
+                value={graphConnectionId}
+                onChange={(e) => { setGraphConnectionId(e.target.value); setGroups([]); setSelectedTargets(new Set()); }}
+                className="w-full appearance-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              >
+                <option value="">
+                  {graphAccounts.length === 0
+                    ? (lang === "ar" ? "لا يوجد حساب مربوط بتوكن — اربط من صفحة فيسبوك" : "No token-connected account — connect from Facebook page")
+                    : t.accountPh}
+                </option>
+                {graphAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>🔑 {a.fb_user_name ?? a.id.slice(0, 8)}</option>
+                ))}
+              </select>
+            )}
             <ChevronDown className={`w-4 h-4 absolute top-3 ${dir === "rtl" ? "left-3" : "right-3"} text-muted-foreground pointer-events-none`} />
           </div>
         </Section>
+
 
         {/* Targets */}
         <Section icon={<Users className="w-4 h-4" />} label={t.targets} hint={t.targetsHint}>
