@@ -1,11 +1,22 @@
-// Extracts publicly visible audience of a Facebook page:
-// - followers (from /{pageId}/followers if visible)
-// - likers (from /{pageId}/likes if visible)
-// - engagers (reactors to the most recent posts)
+// Extracts the *reachable* audience of a Facebook Page.
+//
+// Facebook does NOT expose the full followers/likes list publicly — the
+// /{pageId}/followers and /{pageId}/likes pages usually show only a small
+// "mutual" preview (10-100 profiles). To reach the real, marketing-relevant
+// audience we open the Page's recent posts and harvest:
+//
+//   - reactors    (people who reacted to the post — reactions dialog)
+//   - commenters  (people who commented — comment thread)
+//
+// This yields hundreds to thousands per page depending on activity, and the
+// people surfaced are demonstrably engaged (better targets than a silent
+// follower list).
+//
+// The legacy followers/likers pass is kept as a cheap warm-up when requested.
 
 function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Slugs that are Facebook product/system pages, NOT real users.
 const FB_SYSTEM_SLUGS = new Set([
   "pages","groups","events","watch","marketplace","profile.php","stories","reel","reels",
   "business","help","policies","terms","privacy","ads","adsmanager","careers","about",
@@ -16,9 +27,9 @@ const FB_SYSTEM_SLUGS = new Set([
   "ad_choices","adchoices","privacy_policy","cookies","cookie","branded_content",
   "communitystandards","data_policy","instagram","whatsapp","oculus","portal","workplace",
   "developers","developer","platform","safety","prighting","accessibility",
+  "photo","photo.php","permalink.php","story.php","posts","videos","live","events",
 ]);
 
-// Generic Arabic/English UI labels that look like names but aren't.
 const GENERIC_LABELS = [
   /^ad\s*choices$/i, /^الإعلانات$/, /^إعلانات$/, /^الشروط$/, /^شروط$/,
   /^الخصوصية$/, /^خصوصية$/, /^سياسة(\s+\S+)?$/, /^ملفات\s*تعريف.*$/,
@@ -26,157 +37,248 @@ const GENERIC_LABELS = [
   /^Followers(\s+\d+)?$/i, /^Likes(\s+\d+)?$/i, /^المعجبون(\s+[\u0660-\u0669\d٠-٩]+)?$/,
   /^Ad\s*Choices$/i, /^Terms$/i, /^Privacy$/i, /^Cookies$/i, /^Help$/i, /^About$/i,
   /^المساعدة$/, /^عن(\s+\S+)?$/, /^Meta$/i, /^ميتا$/,
+  /^Like$/i, /^Reply$/i, /^Share$/i, /^Comment$/i, /^See more$/i, /^See all$/i,
+  /^إعجاب$/, /^رد$/, /^مشاركة$/, /^تعليق$/, /^عرض المزيد$/, /^عرض الكل$/,
 ];
 
 function isLikelyPersonName(name) {
   if (!name) return false;
   const s = name.trim();
-  if (s.length < 3 || s.length > 60) return false;
-  if (/^(Like|Follow|Share|See more|See all|Message|متابعة|إعجاب|مشاركة|عرض الكل|رسالة)$/i.test(s)) return false;
-  if (/[#@<>{}|]/.test(s)) return false;
+  if (s.length < 2 || s.length > 60) return false;
   if (!/[A-Za-z\u0600-\u06FF]/.test(s)) return false;
   for (const re of GENERIC_LABELS) if (re.test(s)) return false;
-  // Reject single-word labels in Arabic (real names usually have first + last)
-  // unless it's clearly a multi-word English name.
   return true;
 }
 
-async function scrollAndCollect(page, cap) {
-  const seen = new Map();
-  let emptyScrolls = 0;
-  for (let i = 0; i < 120 && seen.size < cap && emptyScrolls < 4; i++) {
-    const batch = await page.evaluate(() => {
-      // Identify chrome regions we must ignore
-      const skipSelectors = [
-        'footer', '[role="contentinfo"]', '[role="banner"]',
-        '[role="navigation"]', '[data-pagelet="LeftRail"]',
-        '[data-pagelet="RightRail"]', '[data-pagelet*="Footer"]',
-        '[aria-label="Facebook"]',
-      ];
-      const skipRoots = skipSelectors.flatMap(s => Array.from(document.querySelectorAll(s)));
-      const inChrome = (el) => skipRoots.some(r => r.contains(el));
+function parseProfileHref(href) {
+  if (!href) return null;
+  const numeric = href.match(/profile\.php\?id=(\d+)/);
+  if (numeric) return { id: numeric[1], kind: "numeric" };
+  const userPath = href.match(/facebook\.com\/user\/(\d+)/);
+  if (userPath) return { id: userPath[1], kind: "numeric" };
+  const slug = href.match(/facebook\.com\/([A-Za-z0-9._-]+)(?:\/|$|\?)/) ||
+               href.match(/^\/([A-Za-z0-9._-]+)(?:\/|$|\?)/);
+  if (slug) {
+    const id = slug[1];
+    if (FB_SYSTEM_SLUGS.has(id.toLowerCase())) return null;
+    if (id.length < 4) return null;
+    return { id, kind: "slug" };
+  }
+  return null;
+}
 
+// ---------- generic scroller that harvests profile links inside a scope ----------
+async function harvestFromScope(page, scopeSelector, cap, opts = {}) {
+  const { maxScrolls = 60, idleLimit = 4 } = opts;
+  const found = new Map();
+  let idle = 0;
+  for (let i = 0; i < maxScrolls && found.size < cap && idle < idleLimit; i++) {
+    const batch = await page.evaluate((sel) => {
+      const root = sel ? document.querySelector(sel) : document;
+      if (!root) return [];
       const out = [];
-      const links = Array.from(document.querySelectorAll('a[role="link"], a[href*="profile.php"]'));
+      const links = Array.from(root.querySelectorAll('a[role="link"], a[href*="profile.php"], a[href*="/user/"]'));
       for (const a of links) {
-        if (inChrome(a)) continue;
         const href = a.getAttribute("href") || "";
         const name = (a.textContent || "").trim();
-        if (!name || name.length < 3) continue;
-
-        let id = null;
-        let kind = null;
-        const m1 = href.match(/profile\.php\?id=(\d+)/);
-        if (m1) { id = m1[1]; kind = "numeric"; }
-        else {
-          const slug = href.match(/facebook\.com\/([A-Za-z0-9._-]+)(?:\/|$|\?)/) ||
-                       href.match(/^\/([A-Za-z0-9._-]+)(?:\/|$|\?)/);
-          if (slug) { id = slug[1]; kind = "slug"; }
-        }
-        if (!id) continue;
-
-        // Strong signal: profile links on Facebook normally contain an <image>/<img> avatar inside.
+        if (!name) continue;
         const hasAvatar = !!a.querySelector('image, img, svg image');
-        // Or the link points to a person profile via numeric id
-        const isPerson = kind === "numeric" || hasAvatar;
-        if (!isPerson) continue;
+        out.push({ href, name, hasAvatar });
+      }
+      return out;
+    }, scopeSelector);
 
-        const profile = href.startsWith("http")
-          ? href.split("?")[0]
-          : `https://www.facebook.com${href.split("?")[0]}`;
-        out.push({ id, name, profile, kind });
+    let added = 0;
+    for (const item of batch) {
+      const parsed = parseProfileHref(item.href);
+      if (!parsed) continue;
+      // slug links without an avatar are usually chrome/menu entries
+      if (parsed.kind === "slug" && !item.hasAvatar) continue;
+      if (!isLikelyPersonName(item.name)) continue;
+      if (found.has(parsed.id)) continue;
+      const profile = item.href.startsWith("http")
+        ? item.href.split("?")[0]
+        : `https://www.facebook.com${item.href.split("?")[0]}`;
+      found.set(parsed.id, { id: parsed.id, name: item.name, profile });
+      added++;
+      if (found.size >= cap) break;
+    }
+    idle = added === 0 ? idle + 1 : 0;
+
+    // scroll inside the scope if it exists, else scroll the page
+    await page.evaluate((sel) => {
+      const el = sel ? document.querySelector(sel) : null;
+      if (el) el.scrollTop = el.scrollHeight;
+      else window.scrollBy(0, 1800);
+    }, scopeSelector);
+    await sleep(rand(1500, 2800));
+  }
+  return Array.from(found.values());
+}
+
+// ---------- collect recent post permalinks from the page timeline ----------
+async function collectRecentPostUrls(page, pageId, wantPosts) {
+  const urls = new Set();
+  for (let i = 0; i < 25 && urls.size < wantPosts; i++) {
+    const batch = await page.evaluate(() => {
+      const out = [];
+      const links = Array.from(document.querySelectorAll('a[href*="/posts/"], a[href*="/videos/"], a[href*="permalink"], a[href*="story_fbid"]'));
+      for (const a of links) {
+        const href = a.getAttribute("href") || "";
+        if (!href) continue;
+        // must look like a permalink, not a hashtag or ad
+        if (/\/(posts|videos|permalink\.php|story\.php)/.test(href)) out.push(href);
       }
       return out;
     });
-    let newCount = 0;
-    for (const m of batch) {
-      if (m.kind === "slug" && FB_SYSTEM_SLUGS.has(m.id.toLowerCase())) continue;
-      if (m.kind === "slug" && m.id.length < 4) continue;
-      if (!isLikelyPersonName(m.name)) continue;
-      if (!seen.has(m.id)) { seen.set(m.id, { id: m.id, name: m.name, profile: m.profile }); newCount++; }
-      if (seen.size >= cap) break;
+    for (const h of batch) {
+      const full = h.startsWith("http") ? h.split("?")[0] : `https://www.facebook.com${h.split("?")[0]}`;
+      // filter same-page id references + drop translation/like href variants
+      if (!full.includes(pageId) && !full.includes("permalink") && !full.includes("story_fbid")) continue;
+      urls.add(full);
+      if (urls.size >= wantPosts) break;
     }
-    if (newCount === 0) emptyScrolls++; else emptyScrolls = 0;
-    await page.evaluate(() => window.scrollBy(0, 1800));
-    await new Promise(r => setTimeout(r, rand(2000, 4000)));
+    await page.evaluate(() => window.scrollBy(0, 2400));
+    await sleep(rand(1800, 3000));
   }
-  return Array.from(seen.values());
+  return Array.from(urls).slice(0, wantPosts);
 }
 
+// ---------- reactors dialog ----------
+async function harvestReactors(page, cap) {
+  // Try to open the reactions dialog by clicking a reaction summary bar.
+  const opened = await page.evaluate(() => {
+    const candidates = Array.from(document.querySelectorAll('[role="button"], a[role="link"]'));
+    // labels vary a lot; match on aria-label first
+    const byAria = candidates.find((el) => {
+      const a = (el.getAttribute("aria-label") || "").toLowerCase();
+      return /reactions|people who reacted|تفاعل|من تفاعل|إعجاب|إعجابات/.test(a);
+    });
+    const target = byAria || candidates.find((el) => /^\d[\d,.]*$/.test((el.textContent || "").trim()));
+    if (target) { target.click(); return true; }
+    return false;
+  }).catch(() => false);
+  if (!opened) return [];
+  await sleep(2500);
+  // dialog element
+  const scope = 'div[role="dialog"]';
+  const exists = await page.$(scope);
+  if (!exists) return [];
+  const people = await harvestFromScope(page, scope, cap, { maxScrolls: 40, idleLimit: 5 });
+  // close dialog
+  await page.keyboard.press("Escape").catch(() => {});
+  await sleep(800);
+  return people;
+}
 
+// ---------- commenters (expand all comments then scrape article) ----------
+async function harvestCommenters(page, cap) {
+  // expand nested & "view more comments" repeatedly
+  for (let i = 0; i < 40; i++) {
+    const clicked = await page.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll('[role="button"], span'));
+      const target = btns.find((b) => /view more comments|view previous comments|view \d+ replies|more replies|عرض المزيد من التعليقات|عرض تعليقات سابقة|عرض \d+ رد|عرض ردود أخرى/i.test(b.textContent || ""));
+      if (target) { target.click(); return true; }
+      return false;
+    });
+    if (!clicked) {
+      await page.evaluate(() => window.scrollBy(0, 1400));
+    }
+    await sleep(rand(1200, 2200));
+    // early-exit when we've likely exhausted
+    if (!clicked && i > 8) break;
+  }
+  // scrape whole document — commenter links live inside article blocks
+  return harvestFromScope(page, null, cap, { maxScrolls: 3, idleLimit: 2 });
+}
 
 async function runExtractPageAudience({ page, job, report }) {
-  const { pageId, sources = ["followers", "likers"], maxItems = 1500 } = job.payload || {};
+  const { pageId, sources = ["engagers"], maxItems = 1500, maxPosts = 20 } = job.payload || {};
   if (!pageId) {
     await report({ status: "failed", errorMessage: "Missing pageId in payload" });
     return;
   }
   const cap = Math.min(Math.max(50, Number(maxItems) || 1500), 3000);
-  const totalCollected = new Map();
+  const collected = new Map();
 
-  const tasks = [];
-  if (sources.includes("followers")) tasks.push({ src: "page_followers", url: `https://www.facebook.com/${pageId}/followers` });
-  if (sources.includes("likers"))    tasks.push({ src: "page_likers",    url: `https://www.facebook.com/${pageId}/likes` });
+  const emit = async (person, src) => {
+    if (collected.has(person.id)) return;
+    collected.set(person.id, person);
+    await report({
+      result: {
+        target: person.id,
+        status: "success",
+        data: {
+          fb_user_id: person.id,
+          name: person.name,
+          profile_url: person.profile,
+          source: src,
+          source_id: pageId,
+        },
+      },
+    });
+  };
 
-  for (const task of tasks) {
-    if (totalCollected.size >= cap) break;
+  // --- Optional cheap passes: public followers/likes preview (usually tiny) ---
+  const previewTasks = [];
+  if (sources.includes("followers")) previewTasks.push({ src: "page_followers", url: `https://www.facebook.com/${pageId}/followers` });
+  if (sources.includes("likers"))    previewTasks.push({ src: "page_likers",    url: `https://www.facebook.com/${pageId}/likes` });
+  for (const t of previewTasks) {
+    if (collected.size >= cap) break;
     try {
-      await page.goto(task.url, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      await new Promise(r => setTimeout(r, 4000));
-      const remaining = cap - totalCollected.size;
-      const found = await scrollAndCollect(page, remaining);
-      for (const m of found) {
-        if (totalCollected.has(m.id)) continue;
-        totalCollected.set(m.id, m);
-        await report({
-          result: {
-            target: m.id,
-            status: "success",
-            data: {
-              fb_user_id: m.id,
-              name: m.name,
-              profile_url: m.profile,
-              source: task.src,
-              source_id: pageId,
-            },
-          },
-        });
-      }
+      await page.goto(t.url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      await sleep(4000);
+      const people = await harvestFromScope(page, null, cap - collected.size, { maxScrolls: 30, idleLimit: 4 });
+      for (const p of people) await emit(p, t.src);
       await report({
-        progress: Math.min(99, Math.round((totalCollected.size / cap) * 100)),
-        processedItems: totalCollected.size,
+        progress: Math.min(30, Math.round((collected.size / cap) * 30)),
+        processedItems: collected.size,
         totalItems: cap,
         status: "running",
       });
     } catch (err) {
-      console.error(`[extract-page-audience] ${task.src} failed`, err.message);
+      console.error(`[extract-page-audience] ${t.src} failed`, err.message);
     }
   }
 
-  // Engagers — open the page wall and harvest reactors of the most recent posts
-  if (sources.includes("engagers") && totalCollected.size < cap) {
+  // --- Main pass: reactors + commenters on recent posts ---
+  const doEngagers = sources.includes("engagers") || sources.length === 0 || collected.size < cap;
+  if (doEngagers && collected.size < cap) {
     try {
       await page.goto(`https://www.facebook.com/${pageId}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      await new Promise(r => setTimeout(r, 4000));
-      // Just scroll the wall and parse profile-like links — quick & robust fallback
-      const remaining = cap - totalCollected.size;
-      const found = await scrollAndCollect(page, remaining);
-      for (const m of found) {
-        if (totalCollected.has(m.id)) continue;
-        totalCollected.set(m.id, m);
-        await report({
-          result: {
-            target: m.id,
-            status: "success",
-            data: {
-              fb_user_id: m.id,
-              name: m.name,
-              profile_url: m.profile,
-              source: "page_engagers",
-              source_id: pageId,
-            },
-          },
-        });
+      await sleep(4000);
+
+      const wantPosts = Math.min(Math.max(5, Number(maxPosts) || 20), 40);
+      const postUrls = await collectRecentPostUrls(page, pageId, wantPosts);
+      console.log(`[extract-page-audience] found ${postUrls.length} recent posts`);
+
+      for (let i = 0; i < postUrls.length && collected.size < cap; i++) {
+        const url = postUrls[i];
+        try {
+          await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+          await sleep(3500);
+
+          // reactors dialog
+          if (collected.size < cap) {
+            const reactors = await harvestReactors(page, cap - collected.size);
+            for (const p of reactors) await emit(p, "post_reactors");
+          }
+
+          // commenters
+          if (collected.size < cap) {
+            const commenters = await harvestCommenters(page, cap - collected.size);
+            for (const p of commenters) await emit(p, "post_commenters");
+          }
+
+          await report({
+            progress: Math.min(99, 30 + Math.round((i / postUrls.length) * 65)),
+            processedItems: collected.size,
+            totalItems: cap,
+            status: "running",
+          });
+        } catch (err) {
+          console.error(`[extract-page-audience] post ${url} failed`, err.message);
+        }
       }
     } catch (err) {
       console.error("[extract-page-audience] engagers failed", err.message);
@@ -185,8 +287,8 @@ async function runExtractPageAudience({ page, job, report }) {
 
   await report({
     progress: 100,
-    processedItems: totalCollected.size,
-    totalItems: totalCollected.size,
+    processedItems: collected.size,
+    totalItems: collected.size,
     status: "completed",
   });
 }
