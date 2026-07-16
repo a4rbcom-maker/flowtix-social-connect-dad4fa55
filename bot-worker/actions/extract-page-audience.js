@@ -198,7 +198,8 @@ async function runExtractPageAudience({ page, job, report }) {
     await report({ status: "failed", errorMessage: "Missing pageId in payload" });
     return;
   }
-  const cap = Math.min(Math.max(50, Number(maxItems) || 1500), 3000);
+  // No hard cap — bot keeps going until posts/audience are exhausted or the user-supplied maxItems is reached.
+  const cap = Math.max(50, Number(maxItems) || 1500);
   const collected = new Map();
 
   const emit = async (person, src) => {
