@@ -28,7 +28,7 @@ const StatsStrip = lazy(() => import("@/components/landing/PremiumSections").the
 const TestimonialsSection = lazy(() => import("@/components/landing/PremiumSections").then(m => ({ default: m.TestimonialsSection })));
 const ComparisonSection = lazy(() => import("@/components/landing/PremiumSections").then(m => ({ default: m.ComparisonSection })));
 
-const SITE_URL = "https://flowtix-social-connect.lovable.app";
+const SITE_URL = "https://flowtixtools.com";
 const TITLE = "Flowtix Tools — أقوى منصة للتجارة الاجتماعية | فيسبوك وواتساب";
 const DESC = "أدر أعمالك على فيسبوك وواتساب بذكاء اصطناعي. إرسال جماعي للجروبات، بوت واتساب احترافي، ومتابعة العملاء من مكان واحد.";
 

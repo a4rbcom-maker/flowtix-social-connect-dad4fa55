@@ -3,4 +3,4 @@ Allow: /
 Disallow: /admin
 Disallow: /dashboard
 
-Sitemap: https://flowtix-social-connect.lovable.app/sitemap.xml
+Sitemap: https://flowtixtools.com/sitemap.xml
