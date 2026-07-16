@@ -894,6 +894,7 @@ function JobsHistoryPage() {
                 </div>
               );
             })()}
+            {logRows.length > 0 && <ExtractionLogPanel rows={logRows} lang={lang} />}
             {resultsLoading ? (
               <div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
             ) : results.length === 0 ? (
