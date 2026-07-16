@@ -47,6 +47,7 @@ import { Route as DashboardWhatsappAutomationRouteImport } from './routes/dashbo
 import { Route as DashboardWhatsappAccountsRouteImport } from './routes/dashboard.whatsapp.accounts'
 import { Route as DashboardFacebookTemplatesRouteImport } from './routes/dashboard.facebook.templates'
 import { Route as DashboardFacebookStatusRouteImport } from './routes/dashboard.facebook.status'
+import { Route as DashboardFacebookMessengerContactsRouteImport } from './routes/dashboard.facebook.messenger-contacts'
 import { Route as DashboardFacebookMessagesRouteImport } from './routes/dashboard.facebook.messages'
 import { Route as DashboardFacebookMediaRouteImport } from './routes/dashboard.facebook.media'
 import { Route as DashboardFacebookJobsRouteImport } from './routes/dashboard.facebook.jobs'
@@ -70,6 +71,7 @@ import { Route as DashboardFacebookCampaignsNewRouteImport } from './routes/dash
 import { Route as DashboardFacebookCampaignsIdRouteImport } from './routes/dashboard.facebook.campaigns.$id'
 import { Route as ApiPublicWebhooksFacebookRouteImport } from './routes/api/public/webhooks/facebook'
 import { Route as ApiPublicHooksProcessBulkJobsRouteImport } from './routes/api/public/hooks/process-bulk-jobs'
+import { Route as ApiPublicHooksMessengerSyncRouteImport } from './routes/api/public/hooks/messenger-sync'
 import { Route as ApiPublicHooksCleanupWaSessionsRouteImport } from './routes/api/public/hooks/cleanup-wa-sessions'
 import { Route as ApiPublicHooksCleanupOldMediaRouteImport } from './routes/api/public/hooks/cleanup-old-media'
 import { Route as ApiPublicBotNextJobRouteImport } from './routes/api/public/bot/next-job'
@@ -273,6 +275,12 @@ const DashboardFacebookStatusRoute = DashboardFacebookStatusRouteImport.update({
   path: '/status',
   getParentRoute: () => DashboardFacebookRoute,
 } as any)
+const DashboardFacebookMessengerContactsRoute =
+  DashboardFacebookMessengerContactsRouteImport.update({
+    id: '/messenger-contacts',
+    path: '/messenger-contacts',
+    getParentRoute: () => DashboardFacebookRoute,
+  } as any)
 const DashboardFacebookMessagesRoute =
   DashboardFacebookMessagesRouteImport.update({
     id: '/messages',
@@ -401,6 +409,12 @@ const ApiPublicHooksProcessBulkJobsRoute =
     path: '/api/public/hooks/process-bulk-jobs',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksMessengerSyncRoute =
+  ApiPublicHooksMessengerSyncRouteImport.update({
+    id: '/api/public/hooks/messenger-sync',
+    path: '/api/public/hooks/messenger-sync',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksCleanupWaSessionsRoute =
   ApiPublicHooksCleanupWaSessionsRouteImport.update({
     id: '/api/public/hooks/cleanup-wa-sessions',
@@ -490,6 +504,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/facebook/jobs': typeof DashboardFacebookJobsRoute
   '/dashboard/facebook/media': typeof DashboardFacebookMediaRoute
   '/dashboard/facebook/messages': typeof DashboardFacebookMessagesRoute
+  '/dashboard/facebook/messenger-contacts': typeof DashboardFacebookMessengerContactsRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
@@ -505,6 +520,7 @@ export interface FileRoutesByFullPath {
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/cleanup-old-media': typeof ApiPublicHooksCleanupOldMediaRoute
   '/api/public/hooks/cleanup-wa-sessions': typeof ApiPublicHooksCleanupWaSessionsRoute
+  '/api/public/hooks/messenger-sync': typeof ApiPublicHooksMessengerSyncRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
   '/api/public/webhooks/facebook': typeof ApiPublicWebhooksFacebookRoute
   '/dashboard/facebook/campaigns/$id': typeof DashboardFacebookCampaignsIdRoute
@@ -559,6 +575,7 @@ export interface FileRoutesByTo {
   '/dashboard/facebook/jobs': typeof DashboardFacebookJobsRoute
   '/dashboard/facebook/media': typeof DashboardFacebookMediaRoute
   '/dashboard/facebook/messages': typeof DashboardFacebookMessagesRoute
+  '/dashboard/facebook/messenger-contacts': typeof DashboardFacebookMessengerContactsRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
@@ -574,6 +591,7 @@ export interface FileRoutesByTo {
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/cleanup-old-media': typeof ApiPublicHooksCleanupOldMediaRoute
   '/api/public/hooks/cleanup-wa-sessions': typeof ApiPublicHooksCleanupWaSessionsRoute
+  '/api/public/hooks/messenger-sync': typeof ApiPublicHooksMessengerSyncRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
   '/api/public/webhooks/facebook': typeof ApiPublicWebhooksFacebookRoute
   '/dashboard/facebook/campaigns/$id': typeof DashboardFacebookCampaignsIdRoute
@@ -630,6 +648,7 @@ export interface FileRoutesById {
   '/dashboard/facebook/jobs': typeof DashboardFacebookJobsRoute
   '/dashboard/facebook/media': typeof DashboardFacebookMediaRoute
   '/dashboard/facebook/messages': typeof DashboardFacebookMessagesRoute
+  '/dashboard/facebook/messenger-contacts': typeof DashboardFacebookMessengerContactsRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
@@ -645,6 +664,7 @@ export interface FileRoutesById {
   '/api/public/bot/next-job': typeof ApiPublicBotNextJobRoute
   '/api/public/hooks/cleanup-old-media': typeof ApiPublicHooksCleanupOldMediaRoute
   '/api/public/hooks/cleanup-wa-sessions': typeof ApiPublicHooksCleanupWaSessionsRoute
+  '/api/public/hooks/messenger-sync': typeof ApiPublicHooksMessengerSyncRoute
   '/api/public/hooks/process-bulk-jobs': typeof ApiPublicHooksProcessBulkJobsRoute
   '/api/public/webhooks/facebook': typeof ApiPublicWebhooksFacebookRoute
   '/dashboard/facebook/campaigns/$id': typeof DashboardFacebookCampaignsIdRoute
@@ -702,6 +722,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/jobs'
     | '/dashboard/facebook/media'
     | '/dashboard/facebook/messages'
+    | '/dashboard/facebook/messenger-contacts'
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
     | '/dashboard/whatsapp/accounts'
@@ -717,6 +738,7 @@ export interface FileRouteTypes {
     | '/api/public/bot/next-job'
     | '/api/public/hooks/cleanup-old-media'
     | '/api/public/hooks/cleanup-wa-sessions'
+    | '/api/public/hooks/messenger-sync'
     | '/api/public/hooks/process-bulk-jobs'
     | '/api/public/webhooks/facebook'
     | '/dashboard/facebook/campaigns/$id'
@@ -771,6 +793,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/jobs'
     | '/dashboard/facebook/media'
     | '/dashboard/facebook/messages'
+    | '/dashboard/facebook/messenger-contacts'
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
     | '/dashboard/whatsapp/accounts'
@@ -786,6 +809,7 @@ export interface FileRouteTypes {
     | '/api/public/bot/next-job'
     | '/api/public/hooks/cleanup-old-media'
     | '/api/public/hooks/cleanup-wa-sessions'
+    | '/api/public/hooks/messenger-sync'
     | '/api/public/hooks/process-bulk-jobs'
     | '/api/public/webhooks/facebook'
     | '/dashboard/facebook/campaigns/$id'
@@ -841,6 +865,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/jobs'
     | '/dashboard/facebook/media'
     | '/dashboard/facebook/messages'
+    | '/dashboard/facebook/messenger-contacts'
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
     | '/dashboard/whatsapp/accounts'
@@ -856,6 +881,7 @@ export interface FileRouteTypes {
     | '/api/public/bot/next-job'
     | '/api/public/hooks/cleanup-old-media'
     | '/api/public/hooks/cleanup-wa-sessions'
+    | '/api/public/hooks/messenger-sync'
     | '/api/public/hooks/process-bulk-jobs'
     | '/api/public/webhooks/facebook'
     | '/dashboard/facebook/campaigns/$id'
@@ -898,6 +924,7 @@ export interface RootRouteChildren {
   ApiPublicBotNextJobRoute: typeof ApiPublicBotNextJobRoute
   ApiPublicHooksCleanupOldMediaRoute: typeof ApiPublicHooksCleanupOldMediaRoute
   ApiPublicHooksCleanupWaSessionsRoute: typeof ApiPublicHooksCleanupWaSessionsRoute
+  ApiPublicHooksMessengerSyncRoute: typeof ApiPublicHooksMessengerSyncRoute
   ApiPublicHooksProcessBulkJobsRoute: typeof ApiPublicHooksProcessBulkJobsRoute
   ApiPublicWebhooksFacebookRoute: typeof ApiPublicWebhooksFacebookRoute
 }
@@ -1170,6 +1197,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardFacebookStatusRouteImport
       parentRoute: typeof DashboardFacebookRoute
     }
+    '/dashboard/facebook/messenger-contacts': {
+      id: '/dashboard/facebook/messenger-contacts'
+      path: '/messenger-contacts'
+      fullPath: '/dashboard/facebook/messenger-contacts'
+      preLoaderRoute: typeof DashboardFacebookMessengerContactsRouteImport
+      parentRoute: typeof DashboardFacebookRoute
+    }
     '/dashboard/facebook/messages': {
       id: '/dashboard/facebook/messages'
       path: '/messages'
@@ -1331,6 +1365,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksProcessBulkJobsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/messenger-sync': {
+      id: '/api/public/hooks/messenger-sync'
+      path: '/api/public/hooks/messenger-sync'
+      fullPath: '/api/public/hooks/messenger-sync'
+      preLoaderRoute: typeof ApiPublicHooksMessengerSyncRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/cleanup-wa-sessions': {
       id: '/api/public/hooks/cleanup-wa-sessions'
       path: '/api/public/hooks/cleanup-wa-sessions'
@@ -1412,6 +1453,7 @@ interface DashboardFacebookRouteChildren {
   DashboardFacebookJobsRoute: typeof DashboardFacebookJobsRoute
   DashboardFacebookMediaRoute: typeof DashboardFacebookMediaRoute
   DashboardFacebookMessagesRoute: typeof DashboardFacebookMessagesRoute
+  DashboardFacebookMessengerContactsRoute: typeof DashboardFacebookMessengerContactsRoute
   DashboardFacebookStatusRoute: typeof DashboardFacebookStatusRoute
   DashboardFacebookTemplatesRoute: typeof DashboardFacebookTemplatesRoute
 }
@@ -1427,6 +1469,8 @@ const DashboardFacebookRouteChildren: DashboardFacebookRouteChildren = {
   DashboardFacebookJobsRoute: DashboardFacebookJobsRoute,
   DashboardFacebookMediaRoute: DashboardFacebookMediaRoute,
   DashboardFacebookMessagesRoute: DashboardFacebookMessagesRoute,
+  DashboardFacebookMessengerContactsRoute:
+    DashboardFacebookMessengerContactsRoute,
   DashboardFacebookStatusRoute: DashboardFacebookStatusRoute,
   DashboardFacebookTemplatesRoute: DashboardFacebookTemplatesRoute,
 }
@@ -1532,6 +1576,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicBotNextJobRoute: ApiPublicBotNextJobRoute,
   ApiPublicHooksCleanupOldMediaRoute: ApiPublicHooksCleanupOldMediaRoute,
   ApiPublicHooksCleanupWaSessionsRoute: ApiPublicHooksCleanupWaSessionsRoute,
+  ApiPublicHooksMessengerSyncRoute: ApiPublicHooksMessengerSyncRoute,
   ApiPublicHooksProcessBulkJobsRoute: ApiPublicHooksProcessBulkJobsRoute,
   ApiPublicWebhooksFacebookRoute: ApiPublicWebhooksFacebookRoute,
 }
