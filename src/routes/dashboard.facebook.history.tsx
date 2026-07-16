@@ -314,8 +314,22 @@ function JobsHistoryPage() {
         };
       })
     : [];
+  // Log rows are stored inside fb_job_results with data.kind === "log" so the
+  // worker can stream a per-post activity feed without a schema change. Keep
+  // them out of the people list / CSV.
+  const isLogRow = (r: JobResult) => {
+    const d = (r.data ?? null) as { kind?: string } | null;
+    return !!d && d.kind === "log";
+  };
+  const peopleResults = isPeople ? results.filter((r) => !isLogRow(r)) : results;
+  const logRows = useMemo(() => {
+    if (selected?.job_type !== "extract_page_audience") return [];
+    return results
+      .filter(isLogRow)
+      .map((r) => ({ id: r.id, created_at: r.created_at, data: r.data as Record<string, unknown> }));
+  }, [results, selected?.job_type]);
   const enrichedRows = isPeople
-    ? results.map((r) => {
+    ? peopleResults.map((r) => {
         const d = (r.data ?? {}) as { name?: string; id?: string; fb_user_id?: string; profile?: string; profile_url?: string; bio?: string; bio_snippet?: string; city?: string; hometown?: string; work?: string; phone?: string; source?: string; comment_text?: string };
         const blob = `${d.name ?? ""} ${d.bio ?? ""} ${d.bio_snippet ?? ""} ${d.city ?? ""} ${d.hometown ?? ""} ${d.comment_text ?? ""} ${r.target ?? ""}`;
         const loc = detectLocation(blob);
@@ -333,6 +347,7 @@ function JobsHistoryPage() {
         };
       })
     : [];
+
 
   const downloadCsv = () => {
     if (results.length === 0) return;
