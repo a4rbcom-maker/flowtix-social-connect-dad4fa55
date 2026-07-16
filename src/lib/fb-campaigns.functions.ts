@@ -214,14 +214,24 @@ export const saveCampaign = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
-    // Verify ownership of referenced rows.
-    const { data: acc } = await supabase
-      .from("fb_bot_accounts")
-      .select("id")
-      .eq("id", data.accountId)
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!acc) throw new Error("Account not found");
+    // Verify ownership of the chosen account (bot OR graph connection).
+    if (data.postingMode === "bot_worker") {
+      const { data: acc } = await supabase
+        .from("fb_bot_accounts")
+        .select("id")
+        .eq("id", data.accountId!)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (!acc) throw new Error("Bot account not found");
+    } else {
+      const { data: conn } = await supabase
+        .from("facebook_connections")
+        .select("id")
+        .eq("id", data.graphConnectionId!)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (!conn) throw new Error("Facebook connection not found");
+    }
 
     if (data.templateId) {
       const { data: t } = await supabase
@@ -246,7 +256,9 @@ export const saveCampaign = createServerFn({ method: "POST" })
 
     const payload = {
       name: data.name,
-      account_id: data.accountId,
+      account_id: data.postingMode === "bot_worker" ? data.accountId! : null,
+      graph_connection_id: data.postingMode === "graph_api" ? data.graphConnectionId! : null,
+      posting_mode: data.postingMode,
       content_type: data.contentType,
       template_id: data.templateId ?? null,
       custom_text: data.customText ?? null,
