@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   MessageCircle,
   RefreshCw,
@@ -120,17 +120,17 @@ function MessengerContactsPage() {
     queryFn: () => listPagesFn(),
   });
 
-  // Auto-pick behaviour: if exactly one page, choose it; if none, show empty
-  // state; if more than one and none selected, open picker.
   const pages = pagesQ.data ?? [];
-  if (!pageId && pages.length === 1) {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    setPageId(pages[0].pageId);
-  }
-  if (!pageId && pages.length > 1 && !showPagePicker) {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    setShowPagePicker(true);
-  }
+  // Auto-pick when there's exactly one page; otherwise force explicit choice.
+  useEffect(() => {
+    if (pageId) return;
+    if (pages.length === 1) {
+      setPageId(pages[0].pageId);
+    } else if (pages.length > 1) {
+      setShowPagePicker(true);
+    }
+  }, [pageId, pages]);
+
 
   const contactsQ = useQuery({
     queryKey: ["msgr-contacts", pageId, search, lastActivity, sort, page],
@@ -271,6 +271,53 @@ function MessengerContactsPage() {
           </Button>
         </div>
       </header>
+
+      {/* Gate: loading pages */}
+      {pagesQ.isLoading && (
+        <Card className="p-8 text-center text-sm text-muted-foreground">
+          <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
+          {lang === "ar" ? "جاري تحميل صفحاتك..." : "Loading your pages..."}
+        </Card>
+      )}
+
+      {/* Gate: no pages linked */}
+      {!pagesQ.isLoading && pages.length === 0 && (
+        <Card className="p-8 text-center">
+          <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+          <h2 className="mb-1 text-lg font-semibold">
+            {lang === "ar" ? "ليس لديك صفحات في حسابك" : "No pages in your account"}
+          </h2>
+          <p className="mb-4 text-sm text-muted-foreground">
+            {lang === "ar"
+              ? "قم بربط صفحة Facebook أولاً من قسم اتصال Facebook لتتمكن من استيراد جهات اتصال Messenger."
+              : "Link a Facebook Page first from the Facebook connection section to import Messenger contacts."}
+          </p>
+        </Card>
+      )}
+
+      {/* Gate: pages exist but none selected */}
+      {!pagesQ.isLoading && pages.length > 0 && !pageId && (
+        <Card className="p-8 text-center">
+          <MessageCircle className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+          <h2 className="mb-1 text-lg font-semibold">
+            {lang === "ar" ? "حدد الصفحة المستهدفة" : "Select a target page"}
+          </h2>
+          <p className="mb-4 text-sm text-muted-foreground">
+            {lang === "ar"
+              ? "اختر الصفحة التي تريد عرض جهات اتصال Messenger الخاصة بها."
+              : "Choose the page whose Messenger contacts you want to view."}
+          </p>
+          <Button onClick={() => setShowPagePicker(true)}>
+            <Users className="h-4 w-4" />
+            {lang === "ar" ? "اختر صفحة" : "Pick a page"}
+          </Button>
+        </Card>
+      )}
+
+      {/* Main content — only when a page is selected */}
+      {pageId && (
+      <>
+
 
 
       {/* Sync progress banner */}
@@ -488,8 +535,11 @@ function MessengerContactsPage() {
           </div>
         </div>
       </Card>
+      </>
+      )}
 
       {/* Page picker */}
+
       <Dialog open={showPagePicker} onOpenChange={setShowPagePicker}>
         <DialogContent>
           <DialogHeader>
