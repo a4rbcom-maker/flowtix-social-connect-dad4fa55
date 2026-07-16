@@ -290,12 +290,12 @@ export const runGraphCampaign = createServerFn({ method: "POST" })
 
       await supabase.from("fb_job_results").insert({
         job_id: job.id,
-        user_id: userId,
         target: pid,
         status: result.ok ? "success" : "failed",
+        error: result.ok ? null : result.error,
         data: result.ok
           ? { post_id: result.postId, page_name: entry?.name ?? targetNames[pid] ?? null }
-          : { error: result.error, page_name: entry?.name ?? targetNames[pid] ?? null },
+          : { page_name: entry?.name ?? targetNames[pid] ?? null },
       });
 
       await supabase
