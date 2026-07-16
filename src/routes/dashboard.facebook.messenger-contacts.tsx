@@ -535,8 +535,11 @@ function MessengerContactsPage() {
           </div>
         </div>
       </Card>
+      </>
+      )}
 
       {/* Page picker */}
+
       <Dialog open={showPagePicker} onOpenChange={setShowPagePicker}>
         <DialogContent>
           <DialogHeader>
