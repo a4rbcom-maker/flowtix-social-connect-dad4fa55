@@ -779,7 +779,7 @@ export const createExtractPageAudienceJob = createServerFn({ method: "POST" })
         user_id: userId,
         account_id: data.accountId,
         job_type: "extract_page_audience",
-        payload: { pageId, sources: data.sources, maxItems: data.maxItems },
+        payload: { pageId, sources: data.sources, maxItems: data.maxItems, maxPosts: data.maxPosts },
         scheduled_at: new Date().toISOString(),
         status: "pending",
       })
