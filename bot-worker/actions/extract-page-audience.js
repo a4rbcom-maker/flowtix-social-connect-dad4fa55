@@ -219,17 +219,42 @@ async function runExtractPageAudience({ page, job, report }) {
     });
   };
 
+  // Log rows are stored as `status: skipped` with `data.kind = "log"` so the
+  // history UI can render them as a live activity feed without polluting
+  // the people/CSV exports.
+  const emitLog = async (payload) => {
+    console.log(`[extract-page-audience] ${payload.event}`, payload);
+    try {
+      await report({
+        result: {
+          target: null,
+          status: "skipped",
+          data: { kind: "log", ts: Date.now(), ...payload },
+        },
+      });
+    } catch (_) { /* non-fatal */ }
+  };
+
+  let stopReason = null;
+
   // --- Optional cheap passes: public followers/likes preview (usually tiny) ---
   const previewTasks = [];
   if (sources.includes("followers")) previewTasks.push({ src: "page_followers", url: `https://www.facebook.com/${pageId}/followers` });
   if (sources.includes("likers"))    previewTasks.push({ src: "page_likers",    url: `https://www.facebook.com/${pageId}/likes` });
   for (const t of previewTasks) {
     if (collected.size >= cap) break;
+    const beforeCount = collected.size;
     try {
       await page.goto(t.url, { waitUntil: "domcontentloaded", timeout: 60_000 });
       await sleep(4000);
       const people = await harvestFromScope(page, null, cap - collected.size, { maxScrolls: 30, idleLimit: 4 });
       for (const p of people) await emit(p, t.src);
+      await emitLog({
+        event: "preview_pass",
+        source: t.src,
+        added: collected.size - beforeCount,
+        total: collected.size,
+      });
       await report({
         progress: Math.min(30, Math.round((collected.size / cap) * 30)),
         processedItems: collected.size,
@@ -237,7 +262,7 @@ async function runExtractPageAudience({ page, job, report }) {
         status: "running",
       });
     } catch (err) {
-      console.error(`[extract-page-audience] ${t.src} failed`, err.message);
+      await emitLog({ event: "preview_pass_failed", source: t.src, error: String(err.message || err) });
     }
   }
 
@@ -250,40 +275,77 @@ async function runExtractPageAudience({ page, job, report }) {
 
       const wantPosts = Math.min(Math.max(5, Number(maxPosts) || 20), 40);
       const postUrls = await collectRecentPostUrls(page, pageId, wantPosts);
-      console.log(`[extract-page-audience] found ${postUrls.length} recent posts`);
+      await emitLog({ event: "posts_discovered", requested: wantPosts, found: postUrls.length });
 
-      for (let i = 0; i < postUrls.length && collected.size < cap; i++) {
+      if (postUrls.length === 0) {
+        stopReason = { code: "no_posts_visible", detail: "لم يعثر البوت على منشورات ظاهرة في هذه الصفحة (خصوصية / لغة / تخطيط جديد)." };
+      }
+
+      for (let i = 0; i < postUrls.length; i++) {
+        if (collected.size >= cap) { stopReason = { code: "cap_reached", detail: `تم بلوغ الحد الأقصى (${cap} حساب).` }; break; }
         const url = postUrls[i];
+        const beforeCount = collected.size;
+        let reactorsAdded = 0;
+        let commentersAdded = 0;
         try {
           await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
           await sleep(3500);
 
-          // reactors dialog
           if (collected.size < cap) {
             const reactors = await harvestReactors(page, cap - collected.size);
+            const beforeR = collected.size;
             for (const p of reactors) await emit(p, "post_reactors");
+            reactorsAdded = collected.size - beforeR;
           }
 
-          // commenters
           if (collected.size < cap) {
             const commenters = await harvestCommenters(page, cap - collected.size);
+            const beforeC = collected.size;
             for (const p of commenters) await emit(p, "post_commenters");
+            commentersAdded = collected.size - beforeC;
           }
 
-          await report({
-            progress: Math.min(99, 30 + Math.round((i / postUrls.length) * 65)),
-            processedItems: collected.size,
-            totalItems: cap,
-            status: "running",
+          await emitLog({
+            event: "post_scraped",
+            index: i + 1,
+            of: postUrls.length,
+            url,
+            reactors: reactorsAdded,
+            commenters: commentersAdded,
+            added: collected.size - beforeCount,
+            total: collected.size,
           });
         } catch (err) {
-          console.error(`[extract-page-audience] post ${url} failed`, err.message);
+          await emitLog({
+            event: "post_failed",
+            index: i + 1,
+            of: postUrls.length,
+            url,
+            error: String(err.message || err),
+          });
         }
+
+        await report({
+          progress: Math.min(99, 30 + Math.round(((i + 1) / postUrls.length) * 65)),
+          processedItems: collected.size,
+          totalItems: cap,
+          status: "running",
+        });
+      }
+
+      if (!stopReason) {
+        stopReason = { code: "posts_exhausted", detail: `تم فحص كل المنشورات المتاحة (${postUrls.length}).` };
       }
     } catch (err) {
-      console.error("[extract-page-audience] engagers failed", err.message);
+      stopReason = { code: "engagers_error", detail: String(err.message || err) };
+      await emitLog({ event: "engagers_failed", error: String(err.message || err) });
     }
   }
+
+  if (!stopReason) {
+    stopReason = { code: "sources_done", detail: "انتهت كل المصادر المطلوبة." };
+  }
+  await emitLog({ event: "stop_reason", ...stopReason, total: collected.size });
 
   await report({
     progress: 100,
@@ -292,5 +354,6 @@ async function runExtractPageAudience({ page, job, report }) {
     status: "completed",
   });
 }
+
 
 module.exports = { runExtractPageAudience };
