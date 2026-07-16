@@ -652,12 +652,20 @@ function NewCampaignPage() {
 
   const validate = (): boolean => {
     if (!name.trim()) { toast.error(t.needName); return false; }
-    if (!accountId) { toast.error(t.needAccount); return false; }
+    if (postingMode === "bot_worker" && !accountId) { toast.error(t.needAccount); return false; }
+    if (postingMode === "graph_api" && !graphConnectionId) {
+      toast.error(lang === "ar" ? "اختر حساب فيسبوك المربوط بالتوكن" : "Select a token-connected Facebook account");
+      return false;
+    }
     if (groups.length === 0) {
       toast.error(
         lang === "ar"
-          ? "لا توجد جروبات بعد. اضغط \"جلب الجروبات\" أو استخرجها من صفحة الجروبات قبل النشر."
-          : "No groups loaded yet. Click \"Load groups\" or extract them from the Groups page before publishing.",
+          ? (postingMode === "graph_api"
+              ? "لا توجد صفحات بعد. اضغط \"جلب الصفحات\" أولاً."
+              : "لا توجد جروبات بعد. اضغط \"جلب الجروبات\" أو استخرجها من صفحة الجروبات قبل النشر.")
+          : (postingMode === "graph_api"
+              ? "No pages loaded yet. Click \"Load pages\" first."
+              : "No groups loaded yet. Click \"Load groups\" or extract them from the Groups page before publishing."),
         { duration: 6000 },
       );
       return false;
@@ -665,8 +673,8 @@ function NewCampaignPage() {
     if (selectedTargets.size === 0) {
       toast.error(
         lang === "ar"
-          ? "لم يتم تحديد أي جروب. حدّد جروب واحد على الأقل قبل النشر."
-          : "No groups selected. Pick at least one group before publishing.",
+          ? (postingMode === "graph_api" ? "حدّد صفحة واحدة على الأقل." : "لم يتم تحديد أي جروب.")
+          : (postingMode === "graph_api" ? "Pick at least one page." : "Pick at least one group."),
         { duration: 5000 },
       );
       return false;
@@ -684,18 +692,20 @@ function NewCampaignPage() {
     });
     return {
       name: name.trim(),
-      accountId,
+      postingMode,
+      accountId: postingMode === "bot_worker" ? accountId : null,
+      graphConnectionId: postingMode === "graph_api" ? graphConnectionId : null,
       contentType: mediaIds.size > 0 ? "media" : "text",
-
       templateId: templateId || null,
       customText: customText.trim() || null,
       mediaIds: Array.from(mediaIds),
-      targetKind: "groups" as const,
+      targetKind: postingMode === "graph_api" ? ("pages" as const) : ("groups" as const),
       targets,
       delayMinSeconds: delayMin,
       delayMaxSeconds: delayMax,
     };
   };
+
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
