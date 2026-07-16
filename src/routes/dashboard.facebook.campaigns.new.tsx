@@ -480,26 +480,53 @@ function NewCampaignPage() {
   const loadGroups = async () => {
     setGroupsLoading(true);
     try {
-      // Try Graph API first
       let list: Group[] = [];
-      try {
-        const res = await callFn<{ groups?: unknown; error: unknown }>(fetchFacebookGroups);
-        if (!res.error) list = safeArray<Group>(res.groups);
-      } catch {
-        // ignore — fall back to bot results
-      }
-      // Fallback: load from the last completed list_my_groups bot job
-      if (list.length === 0) {
-        list = await loadGroupsFromBotResults();
-      }
-      if (list.length === 0) {
-        toast.error(
-          lang === "ar"
-            ? "لا توجد جروبات محفوظة. استورد جروباتك من صفحة «جروباتي» أولاً."
-            : "No saved groups. Import your groups from the Groups page first.",
+
+      // Graph API mode: fetch pages managed by the connected account.
+      if (postingMode === "graph_api") {
+        if (!graphConnectionId) {
+          toast.error(lang === "ar" ? "اختر حساب فيسبوك أولاً" : "Select a Facebook account first");
+          return;
+        }
+        const res = await callFn<{ pages?: { id: string; name: string }[]; error: string | null }>(
+          fetchGraphPages,
+          { connectionId: graphConnectionId },
         );
-        return;
+        if (res.error) {
+          toast.error(res.error);
+          return;
+        }
+        list = safeArray<Group>(res.pages).map((p) => ({ id: p.id, name: p.name }));
+        if (list.length === 0) {
+          toast.error(
+            lang === "ar"
+              ? "لا توجد صفحات مربوطة بهذا التوكن — تأكد أنك أدمن في صفحة واحدة على الأقل ومنحت pages_show_list + pages_manage_posts."
+              : "No pages found for this token — make sure you admin at least one page and granted pages_show_list + pages_manage_posts.",
+            { duration: 8000 },
+          );
+          return;
+        }
+      } else {
+        // Bot mode: existing groups flow.
+        try {
+          const res = await callFn<{ groups?: unknown; error: unknown }>(fetchFacebookGroups);
+          if (!res.error) list = safeArray<Group>(res.groups);
+        } catch {
+          // ignore — fall back to bot results
+        }
+        if (list.length === 0) {
+          list = await loadGroupsFromBotResults();
+        }
+        if (list.length === 0) {
+          toast.error(
+            lang === "ar"
+              ? "لا توجد جروبات محفوظة. استورد جروباتك من صفحة «جروباتي» أولاً."
+              : "No saved groups. Import your groups from the Groups page first.",
+          );
+          return;
+        }
       }
+
       // Deduplicate incoming IDs (source may include repeats) and against existing groups.
       const seenInList = new Set<string>();
       let intraDup = 0;
