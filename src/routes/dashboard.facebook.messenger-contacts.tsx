@@ -179,7 +179,7 @@ function MessengerContactsPage() {
     refetchInterval: (q) => {
       const jobs = (q.state.data ?? []) as FbJob[];
       return jobs.some((job) => job.job_type === "extract_pages" && ["pending", "running"].includes(job.status))
-        ? 4000
+        ? 2000
         : false;
     },
   });
