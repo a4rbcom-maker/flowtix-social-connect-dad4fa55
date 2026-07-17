@@ -656,6 +656,7 @@ export type Database = {
           last_error: string | null
           status: Database["public"]["Enums"]["fb_account_status"]
           updated_at: string
+          user_agent: string | null
           user_id: string
         }
         Insert: {
@@ -669,6 +670,7 @@ export type Database = {
           last_error?: string | null
           status?: Database["public"]["Enums"]["fb_account_status"]
           updated_at?: string
+          user_agent?: string | null
           user_id: string
         }
         Update: {
@@ -682,6 +684,7 @@ export type Database = {
           last_error?: string | null
           status?: Database["public"]["Enums"]["fb_account_status"]
           updated_at?: string
+          user_agent?: string | null
           user_id?: string
         }
         Relationships: []

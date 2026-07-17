@@ -1,0 +1,1 @@
+ALTER TABLE public.fb_bot_accounts ADD COLUMN IF NOT EXISTS user_agent TEXT;
