@@ -156,9 +156,9 @@ function OnboardingPage() {
     setChecking(true);
     try {
       const [conn, bots, gAcc] = await Promise.all([
-        callFn(getFacebookConnection)().catch(() => ({ connection: null })),
-        callFn(listBotAccounts)().catch(() => ({ accounts: [] })),
-        callFn(listGraphAccounts)().catch(() => ({ accounts: [] })),
+        callFn<{ connection: unknown } | null>(getFacebookConnection as never).catch(() => ({ connection: null })),
+        callFn<{ accounts: unknown[] }>(listBotAccounts as never).catch(() => ({ accounts: [] })),
+        callFn<{ accounts: unknown[] }>(listGraphAccounts as never).catch(() => ({ accounts: [] })),
       ]);
       const connection = safeObject<{ connection: unknown }>(conn)?.connection;
       const botsList = safeArray(safeObject<{ accounts?: unknown }>(bots)?.accounts);
@@ -168,7 +168,7 @@ function OnboardingPage() {
     } finally {
       setChecking(false);
     }
-  }, [user, callFn]);
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -178,8 +178,8 @@ function OnboardingPage() {
   const handleFetchPages = async () => {
     setFetchingPages(true);
     try {
-      const res = await (callFn(fetchGraphPages) as unknown as (a: Record<string, unknown>) => Promise<unknown>)({});
-      const arr = safeArray((res as { pages?: unknown })?.pages);
+      const res = await callFn<{ pages?: unknown[] }>(fetchGraphPages as never);
+      const arr = safeArray(res?.pages);
       setHasPages(arr.length > 0);
     } catch {
       // ignore — user can retry from the main page
@@ -187,6 +187,8 @@ function OnboardingPage() {
       setFetchingPages(false);
     }
   };
+
+
 
   const markDoneAndGo = () => {
     try {
