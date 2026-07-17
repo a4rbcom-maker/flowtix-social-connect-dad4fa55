@@ -1,5 +1,6 @@
 import { createMiddleware } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
+import { isAppAuthError } from "@/lib/reauth-classifier";
 
 /**
  * Client-side middleware for server-function calls.
@@ -13,24 +14,6 @@ import { supabase } from "@/integrations/supabase/client";
  */
 export const reauthOnExpiredSession = createMiddleware({ type: "function" }).client(
   async ({ next, fetch }) => {
-    const getStatus = (err: unknown) =>
-      err instanceof Response
-        ? err.status
-        : (err as { status?: number; statusCode?: number } | null)?.status ??
-          (err as { statusCode?: number } | null)?.statusCode;
-
-    const AUTH_ERROR_MESSAGE = /unauthorized|401|jwt|invalid.*token|token.*expired|session.*expired|انتهت.*الجلسة/i;
-
-    const isAuthError = (err: unknown) => {
-      const status = getStatus(err);
-      const message = err instanceof Error ? err.message : typeof err === "string" ? err : "";
-      if (status === 401) return true;
-      // 403 can also be CSRF / permissions / edge protection. Treat it as an
-      // auth-expired signal only when the message explicitly says token/session.
-      if (status === 403) return AUTH_ERROR_MESSAGE.test(message);
-      return AUTH_ERROR_MESSAGE.test(message);
-    };
-
     const responseToError = async (response: Response) => {
       const body = await response.clone().text().catch(() => "");
       const contentType = response.headers.get("content-type") ?? "";
@@ -41,6 +24,11 @@ export const reauthOnExpiredSession = createMiddleware({ type: "function" }).cli
       (normalized as { status?: number }).status = response.status;
       (normalized as { cause?: unknown }).cause = response;
       return normalized;
+    };
+
+    const hasValidCurrentUser = async () => {
+      const { data, error } = await supabase.auth.getUser();
+      return !error && Boolean(data.user);
     };
 
     const redirectToLogin = async (cause: unknown): Promise<never> => {
@@ -83,24 +71,47 @@ export const reauthOnExpiredSession = createMiddleware({ type: "function" }).cli
           if (retryResponse.status !== 401 && retryResponse.status !== 403) {
             return retryResponse;
           }
+          if (await hasValidCurrentUser()) return retryResponse;
           return redirectToLogin(retryResponse);
         }
       }
 
+      if (await hasValidCurrentUser()) return response;
       return redirectToLogin(response);
     };
 
     try {
       const result = await next({ fetch: fetchWithReauth });
       const middlewareResult = result as { error?: unknown; result?: unknown };
-      if (isAuthError(middlewareResult.error)) throw middlewareResult.error;
-      if (isAuthError(middlewareResult.result)) return redirectToLogin(middlewareResult.result);
-      if (middlewareResult.error instanceof Response) throw await responseToError(middlewareResult.error);
-      if (middlewareResult.result instanceof Response) throw await responseToError(middlewareResult.result);
+      if (middlewareResult.error instanceof Response) {
+        const normalized = await responseToError(middlewareResult.error);
+        if (isAppAuthError(normalized) && !(await hasValidCurrentUser())) return redirectToLogin(normalized);
+        throw normalized;
+      }
+      if (middlewareResult.result instanceof Response) {
+        const normalized = await responseToError(middlewareResult.result);
+        if (isAppAuthError(normalized) && !(await hasValidCurrentUser())) return redirectToLogin(normalized);
+        throw normalized;
+      }
+      if (isAppAuthError(middlewareResult.error)) {
+        if (!(await hasValidCurrentUser())) return redirectToLogin(middlewareResult.error);
+        throw middlewareResult.error;
+      }
+      if (isAppAuthError(middlewareResult.result)) {
+        if (!(await hasValidCurrentUser())) return redirectToLogin(middlewareResult.result);
+        throw middlewareResult.result;
+      }
       return result;
     } catch (err: unknown) {
-      if (isAuthError(err)) return redirectToLogin(err);
-      if (err instanceof Response) throw await responseToError(err);
+      if (err instanceof Response) {
+        const normalized = await responseToError(err);
+        if (isAppAuthError(normalized) && !(await hasValidCurrentUser())) return redirectToLogin(normalized);
+        throw normalized;
+      }
+      if (isAppAuthError(err)) {
+        if (!(await hasValidCurrentUser())) return redirectToLogin(err);
+        throw err;
+      }
       throw err;
     }
   },

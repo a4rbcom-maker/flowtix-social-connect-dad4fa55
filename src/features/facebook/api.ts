@@ -14,6 +14,7 @@
 import { useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { FB_CALL_TIMEOUT_MS } from "./constants";
+import { isExternalServiceSessionError } from "@/lib/reauth-classifier";
 
 export type FbErrorKind =
   | "auth"
@@ -39,6 +40,7 @@ export class FbCallError extends Error {
 
 function classify(message: string, status: number | null): FbErrorKind {
   const m = message.toLowerCase();
+  if (isExternalServiceSessionError(message)) return "expired";
   if (status === 401 || m.includes("unauthorized")) return "auth";
   if (m.includes("aborted") || m.includes("timeout")) return "timeout";
   if (m.includes("expired")) return "expired";
@@ -56,13 +58,6 @@ async function getBearer(forceRefresh = false): Promise<string> {
   if (forceRefresh) {
     const { data, error } = await supabase.auth.refreshSession();
     if (error || !data.session) {
-      // Refresh token is gone or rejected — clear the broken local session so
-      // the UI can prompt a fresh login instead of looping on a dead token.
-      try {
-        await supabase.auth.signOut({ scope: "local" });
-      } catch {
-        /* ignore */
-      }
       throw new FbCallError("session_expired", "auth", 401);
     }
     return data.session.access_token;
