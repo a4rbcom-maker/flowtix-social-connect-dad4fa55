@@ -24,6 +24,7 @@ const cookiesSchema = z.object({
   method: z.literal("cookies"),
   displayName: z.string().trim().min(1).max(80),
   cookies: z.string().trim().min(10).max(1_000_000), // raw JSON/Header/Netscape export from Cookie-Editor
+  userAgent: z.string().trim().min(10).max(500).optional().nullable(),
 });
 const credentialsSchema = z.object({
   method: z.literal("credentials"),
@@ -31,6 +32,7 @@ const credentialsSchema = z.object({
   email: z.string().trim().email().max(200),
   password: z.string().min(1).max(200),
   twoFactorSecret: z.string().trim().max(200).optional().nullable(),
+  userAgent: z.string().trim().min(10).max(500).optional().nullable(),
 });
 const addAccountSchema = z.union([cookiesSchema, credentialsSchema]);
 type AddAccountInput = z.infer<typeof addAccountSchema>;
