@@ -743,6 +743,32 @@ export const createPostJob = createServerFn({ method: "POST" })
     return row;
   });
 
+async function assertExtractPagesWorkerAvailable(supabase: { from: (table: string) => any }) {
+  const cutoff = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("bot_worker_heartbeats")
+    .select("worker_name, version, capabilities, last_seen_at")
+    .gte("last_seen_at", cutoff)
+    .contains("capabilities", ["extract_pages_resilient"])
+    .order("last_seen_at", { ascending: false })
+    .limit(1);
+  if (error) {
+    console.warn("[createExtractPagesJob] could not check worker heartbeat", error.message);
+    return;
+  }
+  if (!data || data.length === 0) {
+    throw new Error(
+      "لا يوجد Worker محدث لاستقبال مهمة استخراج الصفحات حالياً. أعد تشغيل flowtix-bot-worker على السيرفر ثم جرّب مرة أخرى؛ لن نترك المهمة معلّقة في Pending.",
+    );
+  }
+  const workerVersion = String(data[0]?.version || "");
+  if (!workerVersion.includes("pages-extraction-diagnostics-v4")) {
+    throw new Error(
+      "الـ Worker المتصل قديم ولا يحتوي إصلاحات استخراج الصفحات الأخيرة. أعد نشر التحديث/إعادة تشغيل flowtix-bot-worker ثم جرّب مرة أخرى.",
+    );
+  }
+}
+
 // ---------- createExtractPagesJob ----------
 export const createExtractPagesJob = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -752,6 +778,8 @@ export const createExtractPagesJob = createServerFn({ method: "POST" })
     await assertUsableBotAccount(supabase, userId, data.accountId);
     await assertBotAccountReadyForExtraction(supabase, userId, data.accountId);
     await assertExtractionQuota(supabase, userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await assertExtractPagesWorkerAvailable(supabaseAdmin);
     const { data: row, error } = await supabase
       .from("fb_jobs")
       .insert({

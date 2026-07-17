@@ -21,7 +21,7 @@ const SECRET = process.env.BOT_WORKER_SECRET;
 const MIN_INT = Math.max(5, parseInt(process.env.POLL_INTERVAL_SEC || "15", 10)) * 1000;
 const MAX_INT = Math.max(MIN_INT, parseInt(process.env.POLL_MAX_INTERVAL_SEC || "60", 10) * 1000);
 const HEADLESS = process.env.HEADLESS !== "false";
-const WORKER_VERSION = "bot-worker-2026-07-17-pages-extraction-diagnostics-v2";
+const WORKER_VERSION = "bot-worker-2026-07-17-pages-extraction-diagnostics-v4";
 const WORKER_CAPABILITIES = [
   "post_to_groups",
   "extract_pages",
@@ -82,16 +82,62 @@ async function reportUpdate(payload) {
   }
 }
 
+function shortError(error) {
+  const message = String(error?.message || error || "Unknown error");
+  return message.length > 500 ? `${message.slice(0, 500)}…` : message;
+}
+
+async function emitExtractPagesWorkerLog(job, event, stage, data = {}) {
+  if (job.type !== "extract_pages") return;
+  await reportUpdate({
+    jobId: job.id,
+    result: {
+      target: `extract-pages-worker:${Date.now()}:${event}`,
+      status: "skipped",
+      data: {
+        kind: "log",
+        job_type: "extract_pages",
+        event,
+        stage,
+        at: new Date().toISOString(),
+        workerVersion: WORKER_VERSION,
+        ...data,
+      },
+    },
+  });
+}
+
+async function timedExtractPagesWorkerStep(job, stage, fn, data = {}) {
+  const startedAt = Date.now();
+  await emitExtractPagesWorkerLog(job, "step_started", stage, data);
+  try {
+    const result = await fn();
+    await emitExtractPagesWorkerLog(job, "step_finished", stage, {
+      ...data,
+      duration_ms: Date.now() - startedAt,
+    });
+    return result;
+  } catch (error) {
+    await emitExtractPagesWorkerLog(job, "step_failed", stage, {
+      ...data,
+      duration_ms: Date.now() - startedAt,
+      error: shortError(error),
+    });
+    throw error;
+  }
+}
+
 async function runJob(job) {
   console.log(`[job ${job.id}] starting (${job.type})`);
   let browser = null;
   try {
-    browser = await puppeteer.launch({
+    await emitExtractPagesWorkerLog(job, "worker_claimed", "queue", { type: job.type });
+    browser = await timedExtractPagesWorkerStep(job, "browser_launch", () => puppeteer.launch({
       headless: HEADLESS,
       args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--lang=en-US,en"],
-    });
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1366, height: 800 });
+    }));
+    const page = await timedExtractPagesWorkerStep(job, "browser_page", () => browser.newPage());
+    await timedExtractPagesWorkerStep(job, "browser_viewport", () => page.setViewport({ width: 1366, height: 800 }));
     const DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
     // Reuse the exact User-Agent captured from the user's real browser at
     // account-link time. This keeps the browser fingerprint stable across
@@ -100,24 +146,28 @@ async function runJob(job) {
     const accountUA = (job.account && typeof job.account.userAgent === "string" && job.account.userAgent.trim().length > 10)
       ? job.account.userAgent.trim()
       : DEFAULT_UA;
-    await page.setUserAgent(accountUA);
+    await timedExtractPagesWorkerStep(job, "browser_user_agent", () => page.setUserAgent(accountUA), {
+      customUserAgent: accountUA !== DEFAULT_UA,
+    });
 
     if (job.account) {
       // Signal to the UI immediately that the worker picked the job up.
       await reportUpdate({ jobId: job.id, status: "running", progress: 3 });
       let loginFailureReason = "SESSION_EXPIRED: انتهت صلاحية جلسة حساب فيسبوك — أعد ربط الحساب من صفحة حسابات البوت.";
-      const ok = await ensureLogin(page, job.account, async (status, error) => {
+      const ok = await timedExtractPagesWorkerStep(job, "facebook_login", () => ensureLogin(page, job.account, async (status, error) => {
         if (error) loginFailureReason = /session|cookie|login|auth|c_user/i.test(error)
           ? `SESSION_EXPIRED: ${error}`
           : error;
         await reportUpdate({ jobId: job.id, accountStatus: { accountId: job.account.id, status, error } });
-      }, {});
+      }, {}), { accountId: job.account.id, authMethod: job.account.authMethod });
       if (!ok) {
+        await emitExtractPagesWorkerLog(job, "step_failed", "facebook_login", { error: loginFailureReason });
         await reportUpdate({ jobId: job.id, status: "failed", errorMessage: loginFailureReason });
         return;
       }
       // Session verified — jump progress so the UI stops looking stuck.
       await reportUpdate({ jobId: job.id, progress: 12 });
+      await emitExtractPagesWorkerLog(job, "login_verified", "facebook_login", { accountId: job.account.id });
     }
 
     const ctx = {
@@ -127,7 +177,7 @@ async function runJob(job) {
     };
 
     if (job.type === "post_to_groups") await runPostToGroups(ctx);
-    else if (job.type === "extract_pages") await runExtractPages(ctx);
+    else if (job.type === "extract_pages") await timedExtractPagesWorkerStep(job, "extract_pages_action", () => runExtractPages(ctx));
     else if (job.type === "extract_commenters") await runExtractCommenters(ctx);
     else if (job.type === "extract_group_members") await runExtractGroupMembers(ctx);
     else if (job.type === "extract_page_audience") await runExtractPageAudience(ctx);
