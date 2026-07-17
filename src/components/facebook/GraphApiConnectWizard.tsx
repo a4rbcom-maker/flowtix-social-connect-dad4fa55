@@ -13,6 +13,7 @@ const SCOPES = [
   { key: "groups_access_member_info", icon: Lock, ar: "groups_access_member_info", arDesc: "الوصول لمعلومات أساسية عن الجروب (الاسم، الخصوصية، عدد الأعضاء).", enDesc: "Access basic group metadata (name, privacy, members count)." },
   { key: "pages_show_list", icon: Layers, ar: "pages_show_list", arDesc: "عرض قائمة الصفحات التي تديرها لاستخدامها لاحقًا.", enDesc: "List Pages you manage to use them later." },
   { key: "pages_read_engagement", icon: Eye, ar: "pages_read_engagement", arDesc: "قراءة بيانات التفاعل على صفحاتك (للإحصاءات والمنشورات).", enDesc: "Read engagement data from your Pages (insights, posts)." },
+  { key: "pages_messaging", icon: MessageCircle, ar: "pages_messaging", arDesc: "قراءة محادثات Messenger للصفحة وإعادة مراسلة من تواصلوا معها وفق سياسات Meta.", enDesc: "Read Page Messenger conversations and message contacts again according to Meta policies." },
 ];
 
 type Props = { open: boolean; onClose: () => void };

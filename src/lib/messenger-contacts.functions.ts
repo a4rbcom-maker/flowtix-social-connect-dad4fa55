@@ -19,6 +19,29 @@ type MessageTag = (typeof MESSAGE_TAGS)[number];
 
 const MS_24H = 24 * 60 * 60 * 1000;
 
+const REQUIRED_MESSENGER_SCOPES = ["pages_show_list", "pages_messaging"] as const;
+
+async function assertMessengerScopes(token: string) {
+  const perms = await fbGet("/me/permissions", token);
+  const granted = new Set(
+    ((perms?.data ?? []) as Array<{ permission?: string; status?: string }>)
+      .filter((p) => p.status === "granted" && typeof p.permission === "string")
+      .map((p) => p.permission as string),
+  );
+  const missing = REQUIRED_MESSENGER_SCOPES.filter((scope) => !granted.has(scope));
+  if (missing.length > 0) {
+    throw new Error(
+      `صلاحيات Messenger ناقصة: ${missing.join(", ")}. أعد ربط Facebook Token بهذه الصلاحيات حتى تظهر الصفحات التي يمكن قراءة رسائلها.`,
+    );
+  }
+}
+
+function hasMessengerManagementTask(tasks: unknown) {
+  if (!Array.isArray(tasks)) return false;
+  const normalized = tasks.map((task) => String(task).toUpperCase());
+  return normalized.some((task) => ["MESSAGING", "MANAGE", "MODERATE"].includes(task));
+}
+
 // ---------- List pages (official Graph only) ----------
 export const listMessengerPages = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -56,14 +79,16 @@ export const listMessengerPages = createServerFn({ method: "GET" })
     if (!token) return [];
 
     try {
+      await assertMessengerScopes(token);
       const result = await fbGet(
-        "/me/accounts?fields=id,name,access_token,picture.type(square){url}&limit=200",
+        "/me/accounts?fields=id,name,access_token,tasks,picture.type(square){url}&limit=200",
         token,
       );
       const arr = (result?.data ?? []) as Array<{
         id: string;
         name: string;
         access_token?: string;
+        tasks?: string[];
         picture?: { data?: { url?: string } };
       }>;
       const graphPages = arr
@@ -71,9 +96,16 @@ export const listMessengerPages = createServerFn({ method: "GET" })
           id: String(p.id ?? "").trim(),
           name: String(p.name ?? "").replace(/\s+/g, " ").trim(),
           accessToken: p.access_token,
+          tasks: p.tasks ?? [],
           avatarUrl: p.picture?.data?.url ?? null,
         }))
-        .filter((p) => /^\d{5,}$/.test(p.id) && p.name.length > 0);
+        .filter(
+          (p) =>
+            /^\d{5,}$/.test(p.id) &&
+            p.name.length > 0 &&
+            Boolean(p.accessToken) &&
+            hasMessengerManagementTask(p.tasks),
+        );
       if (graphPages.length === 0) return [];
 
       const { encryptJson } = await import("@/server/crypto.server");
@@ -92,6 +124,16 @@ export const listMessengerPages = createServerFn({ method: "GET" })
         .from("fb_pages")
         .upsert(rows, { onConflict: "user_id,page_id", ignoreDuplicates: false });
       if (upsertError) throw new Error(upsertError.message);
+
+      const officialIds = graphPages.map((p) => p.id);
+      if (officialIds.length > 0) {
+        await supabase
+          .from("fb_pages")
+          .delete()
+          .eq("user_id", userId)
+          .eq("connection_type", "official")
+          .not("page_id", "in", `(${officialIds.join(",")})`);
+      }
 
       return rows
         .map((row) => mapDbPage(row))

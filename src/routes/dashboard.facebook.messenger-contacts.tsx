@@ -124,12 +124,10 @@ function MessengerContactsPage() {
   const pages = pagesQ.data ?? [];
   const noPagesReady = !pagesQ.isLoading && !pagesQ.error && pages.length === 0;
 
-  // Auto-pick when there's exactly one page; otherwise force explicit choice.
+  // Always make the user explicitly choose the target Page first.
   useEffect(() => {
     if (pageId) return;
-    if (pages.length === 1) {
-      setPageId(pages[0].pageId);
-    } else if (pages.length > 1) {
+    if (pages.length > 0) {
       setShowPagePicker(true);
     }
   }, [pageId, pages]);
@@ -173,7 +171,7 @@ function MessengerContactsPage() {
 
   const syncM = useMutation({
     mutationFn: (mode: "initial" | "incremental") =>
-      startSyncFn({ data: { pageId: pageId!, mode } }),
+      startSyncFn({ data: { pageId: pageId!, mode, maxConversations: mode === "initial" ? 2000 : 300 } }),
     onSuccess: (res) => {
       toast.success(
         lang === "ar"
@@ -264,7 +262,7 @@ function MessengerContactsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {pages.length > 1 && (
+          {pages.length > 0 && (
             <Button variant="outline" size="sm" onClick={() => setShowPagePicker(true)}>
               <Users className="h-4 w-4" />
               {currentPage?.pageName ?? (lang === "ar" ? "اختر صفحة" : "Pick a page")}
@@ -273,14 +271,14 @@ function MessengerContactsPage() {
           <Button
             size="sm"
             disabled={!pageId || syncM.isPending || syncRunning}
-            onClick={() => syncM.mutate("incremental")}
+            onClick={() => syncM.mutate(total > 0 ? "incremental" : "initial")}
           >
             {syncM.isPending || syncRunning ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="h-4 w-4" />
             )}
-            {lang === "ar" ? "مزامنة الآن" : "Sync now"}
+            {lang === "ar" ? "جلب/تحديث العملاء" : "Import/update contacts"}
           </Button>
         </div>
       </header>
@@ -319,8 +317,8 @@ function MessengerContactsPage() {
           </h2>
           <p className="mx-auto mb-5 max-w-2xl text-sm text-muted-foreground">
             {lang === "ar"
-              ? "هذه الشاشة تعرض صفحات Facebook التي يديرها حسابك فقط من الربط الرسمي، ثم تختار صفحة واحدة لاستخراج محادثات Messenger الخاصة بها. لن تظهر الجروبات أو الملف الشخصي أو طلبات الصداقة هنا."
-              : "This screen lists only Facebook Pages managed by your official connection, then you select one Page to import its Messenger conversations. Groups, profiles, and friend requests are not shown here."}
+              ? "هذه الشاشة تعرض فقط صفحات Facebook التي تمتلك صلاحية Messenger عليها من الربط الرسمي. أعد توليد التوكن بصلاحيات pages_show_list و pages_messaging إذا كانت صفحاتك لا تظهر."
+              : "This screen lists only Facebook Pages where your official connection has Messenger access. Re-generate the token with pages_show_list and pages_messaging if your Pages do not appear."}
           </p>
           <Button variant="outline" onClick={() => pagesQ.refetch()}>
             <RefreshCw className="h-4 w-4" />
@@ -475,8 +473,8 @@ function MessengerContactsPage() {
                 <tr>
                   <td colSpan={7} className="p-8 text-center text-muted-foreground">
                     {lang === "ar"
-                      ? "لا توجد جهات اتصال بعد. اضغط \"مزامنة الآن\" لجلبها من Messenger."
-                      : "No contacts yet. Click \"Sync now\" to import from Messenger."}
+                      ? "لا توجد أسماء بعد لهذه الصفحة. اضغط \"جلب/تحديث العملاء\" لجلب كل من تواصلوا معها عبر Messenger."
+                      : "No contacts yet for this Page. Click \"Import/update contacts\" to fetch everyone who messaged it."}
                   </td>
                 </tr>
               ) : (
@@ -582,8 +580,8 @@ function MessengerContactsPage() {
             </DialogTitle>
             <DialogDescription>
               {lang === "ar"
-                ? "اختر الصفحة التي تريد استيراد محادثاتها."
-                : "Choose the page whose conversations you want to import."}
+                ? "تظهر هنا صفحاتك المُدارة فقط التي لديها صلاحية Messenger. اختر صفحة واحدة لجلب أسماء من تواصلوا معها."
+                : "Only managed Pages with Messenger access appear here. Pick one Page to import its contacts."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 overflow-y-auto flex-1 pr-1">
@@ -605,7 +603,12 @@ function MessengerContactsPage() {
                 )}
                 <div className="flex-1">
                   <div className="font-medium">{p.pageName}</div>
-                  <div className="text-xs text-muted-foreground">{p.pageId}</div>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Badge variant="secondary" className="text-[10px]">
+                      {lang === "ar" ? "صفحة مُدارة" : "Managed Page"}
+                    </Badge>
+                    <span>{p.pageId}</span>
+                  </div>
                 </div>
               </button>
             ))}

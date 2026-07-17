@@ -7,6 +7,7 @@ export const REQUIRED_SCOPES = [
   "pages_show_list",
   "pages_read_engagement",
   "pages_manage_metadata",
+  "pages_messaging",
 ] as const;
 
 export type RequiredScope = (typeof REQUIRED_SCOPES)[number];
