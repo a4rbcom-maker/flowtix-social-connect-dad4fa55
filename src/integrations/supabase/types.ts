@@ -2232,6 +2232,10 @@ export type Database = {
         }[]
       }
       admin_kpi_snapshot: { Args: never; Returns: Json }
+      assert_fb_campaigns_account_source_trigger_ok: {
+        Args: never
+        Returns: string
+      }
       fb_enrichment_record: {
         Args: { _hits: number; _lookups: number; _user_id: string }
         Returns: undefined
