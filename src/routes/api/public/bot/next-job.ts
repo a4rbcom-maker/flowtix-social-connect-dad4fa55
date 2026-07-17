@@ -25,6 +25,11 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
           .split(",")
           .map((item) => item.trim())
           .filter(Boolean);
+        // `extract_pages` existed in older workers but several versions either
+        // returned group data or completed with 0 rows. Only the resilient
+        // extractor advertises this explicit capability, so legacy workers must
+        // never claim page-extraction jobs.
+        const supportsExtractPages = workerCapabilities.includes("extract_pages_resilient");
         const supportsGroupMembers = workerCapabilities.includes("extract_group_members");
         const supportsPageAudience = workerCapabilities.includes("extract_page_audience");
         const supportsListMyGroups = workerCapabilities.includes("list_my_groups");
@@ -83,6 +88,9 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         // "not implemented". Never let those stale workers claim this job type.
         if (!supportsGroupMembers) {
           candidateQuery = candidateQuery.neq("job_type", "extract_group_members");
+        }
+        if (!supportsExtractPages) {
+          candidateQuery = candidateQuery.neq("job_type", "extract_pages");
         }
         if (!supportsPageAudience) {
           candidateQuery = candidateQuery.neq("job_type", "extract_page_audience");

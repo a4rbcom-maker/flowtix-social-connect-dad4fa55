@@ -194,7 +194,7 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
               Math.max(body.processedItems ?? 0, current.total_items ?? 0) <= 0
             ) {
               update.status = "failed";
-              update.error_message = "لم يتم العثور على أي صفحة في حساب فيسبوك أثناء الاستخراج.";
+              update.error_message = "انتهى فحص صفحات فيسبوك بدون أي نتيجة محفوظة. راجع سجل التشخيص لمعرفة آخر مرحلة وصل لها البوت؛ لن يتم اعتبار 0 صفحات نجاحاً.";
             }
             if (
               typeof body.totalItems !== "number" &&

@@ -108,8 +108,8 @@ function describeExtractPagesError(message: string | null | undefined, lang: "ar
   }
   if (/لم يعثر|no pages|0 pages|لم يتم العثور/i.test(raw)) {
     return lang === "ar"
-      ? "لم يتم العثور على صفحات داخل هذا الحساب. تأكد أن الحساب نفسه مدير/مالك للصفحات ثم أعد المحاولة."
-      : "No pages were found in this account. Make sure this account manages the pages, then try again.";
+      ? "لم يرجع البوت أي صفحة من فيسبوك. هذا يعني أن الفشل حدث داخل مرحلة قراءة واجهة/بيانات فيسبوك، وليس دليلاً على أن الحساب لا يملك صفحات. أعد المحاولة بعد تحديث البوت، وسيظهر التشخيص في السجل."
+      : "The bot did not return any Facebook pages. This means extraction failed while reading Facebook UI/data, not that the account has no pages. Retry after the worker is updated; diagnostics are saved in the job log.";
   }
   return raw || (lang === "ar" ? "فشل استخراج الصفحات. حاول مرة أخرى." : "Page extraction failed. Try again.");
 }

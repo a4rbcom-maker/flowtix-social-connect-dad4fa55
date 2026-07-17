@@ -1,17 +1,24 @@
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const PAGE_SURFACES = [
+  // Start with the light/mobile surfaces because they expose page links in
+  // simpler markup and are less dependent on Comet's frequently changing CSS.
+  "https://mbasic.facebook.com/pages/?category=your_pages",
+  "https://mbasic.facebook.com/bookmarks/pages",
+  "https://m.facebook.com/pages/manage",
+  "https://m.facebook.com/pages/?category=your_pages",
+  "https://m.facebook.com/bookmarks/pages",
   "https://www.facebook.com/pages/manage",
   "https://www.facebook.com/pages/?category=your_pages",
   "https://www.facebook.com/bookmarks/pages",
   "https://www.facebook.com/profile.php?sk=pages",
-  "https://m.facebook.com/pages/manage",
-  "https://m.facebook.com/pages/?category=your_pages",
-  "https://mbasic.facebook.com/pages/?category=your_pages",
   "https://business.facebook.com/latest/home",
   "https://business.facebook.com/latest/pages",
+  "https://business.facebook.com/latest/settings/pages",
   "https://www.facebook.com/pages/",
 ];
+
+const DIAGNOSTIC_TARGET = "__extract_pages_diagnostic__";
 
 async function autoScroll(page, steps = 10) {
   let lastHeight = 0;
@@ -47,6 +54,7 @@ async function collectFromRenderedPage(page) {
       "bookmarks", "gaming", "help", "privacy", "policies", "settings", "login", "recover", "me",
       "profile.php", "photo", "photo.php", "story.php", "permalink.php", "ads", "business", "latest",
       "home", "notifications", "inbox", "content", "planner", "monetization", "settings", "billing",
+      "pages_manager", "people", "account", "accounts", "overview", "alltools", "tools",
     ]);
     const genericLabels = /^(Pages|Your Pages|Create|Manage|Home|About|Photos|Videos|Posts|Following|Followers|Like|Share|Comment|More|See more|View page|Switch|Meta Business Suite|Business Suite|Notifications|Inbox|الصفحات|صفحاتك|إنشاء|إدارة|الرئيسية|حول|الصور|الفيديوهات|المنشورات|متابعة|المتابعون|إعجاب|مشاركة|تعليق|عرض المزيد|عرض الصفحة|تبديل|الإشعارات|صندوق الوارد)$/i;
     const out = [];
@@ -65,8 +73,10 @@ async function collectFromRenderedPage(page) {
       let parsed;
       try { parsed = new URL(rawHref, location.origin); } catch { return null; }
       if (!/(^|\.)facebook\.com$/i.test(parsed.hostname)) return null;
-      const assetId = parsed.searchParams.get("asset_id") || parsed.searchParams.get("page_id") || parsed.searchParams.get("id");
+      const assetId = parsed.searchParams.get("asset_id") || parsed.searchParams.get("page_id") || parsed.searchParams.get("id") || parsed.searchParams.get("profile_id");
       if (assetId && /^\d{5,}$/.test(assetId)) return { id: assetId, href: parsed.toString().split("#")[0] };
+      const hoverPageId = parsed.pathname.includes("/ajax/hovercard/page.php") ? parsed.searchParams.get("id") : null;
+      if (hoverPageId && /^\d{5,}$/.test(hoverPageId)) return { id: hoverPageId, href: `https://www.facebook.com/${hoverPageId}` };
       if (/\/groups\/|\/events\/|\/posts\/|\/videos\/|\/reel\/|\/stories\/|\/photo\.php|\/permalink\.php|\/story\.php|\/login\//i.test(parsed.pathname)) return null;
       const profileId = parsed.pathname === "/profile.php" ? parsed.searchParams.get("id") : null;
       const numericId = profileId || parsed.pathname.match(/\/(\d{6,})(?:\/|$)/)?.[1] || parsed.pathname.match(/-(\d{6,})(?:\/|$)/)?.[1];
@@ -76,9 +86,12 @@ async function collectFromRenderedPage(page) {
       return id ? { id, href: parsed.toString().split("?")[0].split("#")[0] } : null;
     };
 
-    const anchors = Array.from(document.querySelectorAll('a[role="link"], a[href*="facebook.com"], a[href^="/"], a[href*="asset_id="]'));
+    const anchors = Array.from(document.querySelectorAll('a[role="link"], a[href*="facebook.com"], a[href^="/"], a[href*="asset_id="], a[href*="page_id="], a[href*="/pages/edit"]'));
     for (const a of anchors) {
-      const parsed = parseHref(a.getAttribute("href") || "");
+      const parsed =
+        parseHref(a.getAttribute("href") || "") ||
+        parseHref(a.getAttribute("data-hovercard") || "") ||
+        parseHref(a.getAttribute("ajaxify") || "");
       if (!parsed) continue;
       const container = a.closest('[role="listitem"], [role="article"], [data-pagelet], div[aria-label], div') || a;
       const imgAlt = a.querySelector("img[alt]")?.getAttribute("alt") || container.querySelector?.("img[alt]")?.getAttribute("alt") || "";
@@ -125,10 +138,11 @@ async function collectFromBootData(page) {
     const safeJsonParse = (text) => {
       try { return JSON.parse(text); } catch { return null; }
     };
-    const walk = (value, depth = 0) => {
+    const pageContextKey = (key) => /(^|_|\b)(page|pages|owned_pages|managed_pages|business_pages|page_profiles|profile_switcher|asset|assets)(_|\b|$)/i.test(String(key || ""));
+    const walk = (value, depth = 0, inPageContext = false) => {
       if (!value || depth > 12) return;
       if (Array.isArray(value)) {
-        for (const item of value) walk(item, depth + 1);
+        for (const item of value) walk(item, depth + 1, inPageContext);
         return;
       }
       if (typeof value !== "object") return;
@@ -139,11 +153,12 @@ async function collectFromBootData(page) {
       const url = obj.url || obj.uri || obj.profile_url || obj.page_url || obj.link;
       const picture = obj.profile_picture || obj.profilePicture || obj.image || obj.photo || obj.thumbnail;
       const avatar = typeof picture === "string" ? picture : (picture && (picture.uri || picture.url || picture.src));
-      const looksLikePage = /Page/i.test(type) || obj.page_id || obj.pageID || obj.pageId || /\/pages\/manager|asset_id=|business\.facebook\.com\/latest/i.test(String(url || ""));
+      const looksLikePage = /Page/i.test(type) || obj.page_id || obj.pageID || obj.pageId || /\/pages\/manager|\/pages\/edit|asset_id=|business\.facebook\.com\/latest/i.test(String(url || ""));
       if (looksLikePage && id && name) push(id, name, url, avatar);
+      if (!looksLikePage && inPageContext && id && name) push(id, name, url, avatar);
       for (const key of Object.keys(obj)) {
         const child = obj[key];
-        if (child && (typeof child === "object" || Array.isArray(child))) walk(child, depth + 1);
+        if (child && (typeof child === "object" || Array.isArray(child))) walk(child, depth + 1, inPageContext || pageContextKey(key));
       }
     };
 
@@ -179,6 +194,20 @@ async function collectFromBootData(page) {
   });
 }
 
+async function emitDiagnostic(report, data) {
+  await report({
+    result: {
+      target: DIAGNOSTIC_TARGET,
+      status: "skipped",
+      data: {
+        kind: "extract_pages_diagnostic",
+        at: new Date().toISOString(),
+        ...data,
+      },
+    },
+  });
+}
+
 async function runExtractPages({ page, report }) {
   const collected = new Map();
   let openedAny = false;
@@ -199,6 +228,7 @@ async function runExtractPages({ page, report }) {
   };
 
   await report({ progress: 15, processedItems: 0, totalItems: 0 });
+  await emitDiagnostic(report, { event: "started", surfaces: PAGE_SURFACES.length });
 
   for (let urlIdx = 0; urlIdx < PAGE_SURFACES.length; urlIdx++) {
     const url = PAGE_SURFACES[urlIdx];
@@ -217,7 +247,9 @@ async function runExtractPages({ page, report }) {
     }
 
     await sleep(3500);
+    const finalUrl = page.url();
     if (/\/login(?:\/|\?|$)|checkpoint|two_factor|two_step_verification/i.test(page.url())) {
+      await emitDiagnostic(report, { event: "session_rejected", surface: url, finalUrl });
       await report({ status: "failed", errorMessage: "SESSION_EXPIRED: حساب فيسبوك حوّلك لتسجيل الدخول أو checkpoint. أعد ربط الكوكيز." });
       return;
     }
@@ -228,12 +260,21 @@ async function runExtractPages({ page, report }) {
       collectFromRenderedPage(page).catch(() => []),
       collectFromBootData(page).catch(() => []),
     ]);
+    await emitDiagnostic(report, {
+      event: "surface_scanned",
+      surface: url,
+      finalUrl,
+      renderedCount: rendered.length,
+      bootCount: boot.length,
+      collectedCount: collected.size,
+    });
     for (const candidate of [...rendered, ...boot]) await emitCandidate(candidate);
 
     lastVisibleText = await page.evaluate(() => (document.body?.innerText || "").slice(0, 1000)).catch(() => lastVisibleText);
   }
 
   if (!openedAny) {
+    await emitDiagnostic(report, { event: "no_surface_opened" });
     await report({ status: "failed", errorMessage: "تعذر فتح صفحات فيسبوك من المتصفح." });
     return;
   }
@@ -244,7 +285,7 @@ async function runExtractPages({ page, report }) {
       status: "failed",
       errorMessage: hasPermissionHint
         ? `فتح البوت صفحة إدارة الصفحات بنجاح لكن فيسبوك عرض أن الحساب لا يدير صفحات. آخر مسار: ${lastUrl}`
-        : `فشل اكتشاف الصفحات من واجهة فيسبوك رغم فتحها. آخر مسار: ${lastUrl}`,
+        : `فشل اكتشاف الصفحات من واجهة فيسبوك رغم فتحها. تم حفظ سجل تشخيص لكل مسار لمعرفة هل الفشل في التنقل أم DOM أم BootData. آخر مسار: ${lastUrl}`,
       processedItems: 0,
       totalItems: 0,
       progress: 100,
@@ -260,4 +301,4 @@ async function runExtractPages({ page, report }) {
   });
 }
 
-module.exports = { runExtractPages };
+module.exports = { runExtractPages, collectFromRenderedPage, collectFromBootData, dedupePageCandidate };
