@@ -5,6 +5,9 @@ const PAGE_SURFACES = [
   "https://www.facebook.com/pages/?category=your_pages",
   "https://www.facebook.com/bookmarks/pages",
   "https://www.facebook.com/profile.php?sk=pages",
+  "https://m.facebook.com/pages/manage",
+  "https://m.facebook.com/pages/?category=your_pages",
+  "https://mbasic.facebook.com/pages/?category=your_pages",
   "https://business.facebook.com/latest/home",
   "https://business.facebook.com/latest/pages",
   "https://www.facebook.com/pages/",
@@ -51,6 +54,7 @@ async function collectFromRenderedPage(page) {
     const cleanText = (value) => String(value || "")
       .replace(/\s+/g, " ")
       .replace(/^(Open|Visit|Go to|Switch into|Switch to|عرض|فتح|انتقال إلى|تبديل إلى)\s+/i, "")
+      .replace(/^(Profile picture of|Profile photo of|صورة الملف الشخصي لـ|صورة الملف الشخصي الخاصة بـ)\s+/i, "")
       .trim();
     const validName = (value) => {
       const s = cleanText(value);
@@ -80,7 +84,13 @@ async function collectFromRenderedPage(page) {
       const imgAlt = a.querySelector("img[alt]")?.getAttribute("alt") || container.querySelector?.("img[alt]")?.getAttribute("alt") || "";
       const aria = a.getAttribute("aria-label") || "";
       const title = a.getAttribute("title") || "";
-      const lines = [a.textContent, container.textContent]
+      const ownText = Array.from(a.childNodes || [])
+        .filter((node) => node.nodeType === Node.TEXT_NODE)
+        .map((node) => node.textContent || "")
+        .join(" ");
+      const headings = Array.from(container.querySelectorAll?.('h1,h2,h3,strong,span[dir="auto"],div[dir="auto"]') || [])
+        .map((el) => el.textContent || "");
+      const lines = [ownText, a.textContent, ...headings, container.textContent]
         .flatMap((text) => String(text || "").split(/\n|\s{2,}/))
         .map(validName)
         .filter(Boolean);
@@ -156,6 +166,13 @@ async function collectFromBootData(page) {
         let name = m[1];
         try { name = JSON.parse(`"${name}"`); } catch {}
         push(m[2], name, null, null);
+      }
+
+      const entityRe = /"(?:__typename|type)"\s*:\s*"(?:Page|XFBPage|BusinessPage|CometPage)"[\s\S]{0,1600}?"(?:id|page_id|pageID)"\s*:\s*"?(\d{5,})"?[\s\S]{0,1600}?"(?:name|title|display_name)"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/g;
+      while ((m = entityRe.exec(text))) {
+        let name = m[2];
+        try { name = JSON.parse(`"${name}"`); } catch {}
+        push(m[1], name, null, null);
       }
     }
     return out;
