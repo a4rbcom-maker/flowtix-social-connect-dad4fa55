@@ -43,6 +43,13 @@ function isBlockedPageLink(rawLink) {
     const parsed = new URL(rawLink, "https://www.facebook.com");
     const path = parsed.pathname.toLowerCase();
     if (path.includes("/ajax/hovercard/page.php")) return false;
+    if (
+      /(^|\.)business\.facebook\.com$/i.test(parsed.hostname) &&
+      path.startsWith("/latest") &&
+      (parsed.searchParams.has("asset_id") || parsed.searchParams.has("page_id"))
+    ) {
+      return false;
+    }
     if (BLOCKED_PAGE_PATH_RE.test(path)) return true;
     const firstSlug = path.split("/").filter(Boolean)[0] || "";
     if (NON_PAGE_SLUGS.has(firstSlug)) return true;
