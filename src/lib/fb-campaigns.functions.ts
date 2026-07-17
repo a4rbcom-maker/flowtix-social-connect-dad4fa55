@@ -52,6 +52,28 @@ const saveCampaignSchema = z.object({
   { message: "Graph API mode only supports Pages", path: ["targetKind"] },
 );
 
+// Turn raw Postgres/PostgREST errors from fb_campaigns writes into a clear
+// Arabic message so users don't see "new row for relation ... violates check
+// constraint ...". The most common cause today is a bot account that was
+// deleted (FK ON DELETE SET NULL) leaving posting_mode='bot_worker' with
+// account_id NULL, or a missing graph connection in graph_api mode.
+function translateCampaignDbError(raw: string): string {
+  const msg = raw || "";
+  if (/fb_campaigns_account_source_chk|posting_mode=bot_worker يتطلب|posting_mode=graph_api يتطلب|check_violation/i.test(msg)) {
+    return "لا يمكن حفظ الحملة: الحساب المرتبط بها لم يعد موجوداً أو لم يتم اختياره. اختر حساب بوت أو حساب فيسبوك مربوط ثم أعد المحاولة.";
+  }
+  if (/violates foreign key constraint.*account_id/i.test(msg)) {
+    return "الحساب المختار غير موجود. حدّث القائمة واختر حساباً صالحاً.";
+  }
+  if (/violates foreign key constraint.*graph_connection/i.test(msg)) {
+    return "حساب فيسبوك المربوط بالتوكن غير موجود. أعد ربطه ثم حاول مجدداً.";
+  }
+  if (/violates row-level security/i.test(msg)) {
+    return "ليست لديك صلاحية تعديل هذه الحملة.";
+  }
+  return msg;
+}
+
 // ---------- Templates ----------
 export const listTextTemplates = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -278,16 +300,18 @@ export const saveCampaign = createServerFn({ method: "POST" })
         .eq("id", data.id)
         .eq("user_id", userId)
         .select()
-        .single();
-      if (error) throw new Error(error.message);
+        .maybeSingle();
+      if (error) throw new Error(translateCampaignDbError(error.message));
+      if (!row) throw new Error("لم يتم العثور على الحملة أو أنك لا تملك صلاحية تعديلها.");
       return row;
     }
     const { data: row, error } = await supabase
       .from("fb_campaigns")
       .insert({ ...payload, user_id: userId, status: "draft" })
       .select()
-      .single();
-    if (error) throw new Error(error.message);
+      .maybeSingle();
+    if (error) throw new Error(translateCampaignDbError(error.message));
+    if (!row) throw new Error("تعذّر إنشاء الحملة. حاول مرة أخرى.");
     return row;
   });
 
