@@ -9,7 +9,7 @@ const GRAPH_API = "https://graph.facebook.com/v21.0";
 // Helper: fetch a user's stored Facebook user-access-token via the admin client.
 // The `access_token` column is intentionally not readable by the `authenticated`
 // Postgres role (column-level GRANT revoked), so we must read it server-side.
-async function getStoredAccessToken(userId: string): Promise<string | null> {
+export async function getStoredAccessToken(userId: string): Promise<string | null> {
   const { data, error } = await supabaseAdmin
     .from("facebook_connections")
     .select("access_token")
