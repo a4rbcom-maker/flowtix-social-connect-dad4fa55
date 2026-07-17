@@ -48,29 +48,6 @@ export const listMessengerPages = createServerFn({ method: "GET" })
       return `تعذر تحميل صفحات فيسبوك الآن. التفاصيل: ${msg}`;
     };
 
-    const normalizeBotExtractedPage = (row: { target?: string | null; data?: unknown }) => {
-      const payload = row.data && typeof row.data === "object" ? (row.data as Record<string, unknown>) : {};
-      const pageId =
-        typeof payload.id === "string" && payload.id.trim()
-          ? payload.id.trim()
-          : typeof row.target === "string"
-            ? row.target.trim()
-            : "";
-      const pageName = typeof payload.name === "string" ? payload.name.trim() : "";
-      const avatarUrl =
-        typeof payload.avatar_url === "string"
-          ? payload.avatar_url
-          : typeof payload.avatarUrl === "string"
-            ? payload.avatarUrl
-            : null;
-      if (!pageId || !pageName) return null;
-      return {
-        page_id: pageId,
-        page_name: pageName.slice(0, 200),
-        avatar_url: avatarUrl && /^https?:\/\//i.test(avatarUrl) ? avatarUrl : null,
-      };
-    };
-
     // Messenger contacts must start from a real Facebook Page returned by
     // /me/accounts. Cookie/bot extraction can include UI entities such as
     // groups, friend requests, or the personal profile, so it is deliberately
