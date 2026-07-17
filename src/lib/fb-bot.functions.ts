@@ -270,6 +270,7 @@ export const addBotAccount = createServerFn({ method: "POST" })
           status: data.method === "cookies" ? "active" : "untested",
           last_check_at: data.method === "cookies" ? new Date().toISOString() : null,
           cookie_expires_at: cookieExpiresAt,
+          user_agent: data.userAgent?.trim() || null,
         })
         .select(
           "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at",
