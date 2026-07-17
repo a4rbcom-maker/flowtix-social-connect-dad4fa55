@@ -483,6 +483,64 @@ jobs:
             echo "::warning::Public domain did not show ${SHORT_SHA} during CI. Deployment kept successful because local SSR health already passed. Check proxy/vhost/cache separately."
           fi
 
+      # ─── 11.b Restart the bot-worker (separate PM2 process) ─────────────
+      # The web app deploy above only refreshes ${APP_NAME}. The Facebook
+      # bot-worker runs as a separate PM2 process from its own checkout, so
+      # we SSH in and run scripts/restart-bot-worker.sh which pulls the
+      # latest code, installs deps, and restarts the PM2 process.
+      - name: Restart bot-worker on VPS
+        if: success() && steps.lock.outputs.skip != 'true'
+        continue-on-error: true
+        env:
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          BOT_WORKER_PROC: ${{ vars.BOT_WORKER_PROC || 'flowtix-bot-worker' }}
+        run: |
+          set -eu
+          USER="${SERVER_USER:-${SSH_USER:-}}"
+          HOST="${SERVER_IP:-${SSH_HOST:-}}"
+          PORT="${SSH_PORT:-22}"
+          ssh -i ~/.ssh/deploy_key -p "$PORT" -o StrictHostKeyChecking=no \
+            "${USER}@${HOST}" \
+            "PROC='${BOT_WORKER_PROC}' bash -s" <<'EOSSH'
+          set -eu
+          if ! command -v pm2 >/dev/null 2>&1; then
+            echo "::warning::pm2 not installed on server — skipping bot-worker restart"
+            exit 0
+          fi
+          if ! pm2 jlist | grep -q "\"name\":\"$PROC\""; then
+            echo "::warning::PM2 process '$PROC' not found — skipping bot-worker restart"
+            pm2 ls || true
+            exit 0
+          fi
+          CWD="$(pm2 jlist | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const p=JSON.parse(s).find(x=>x.name===process.argv[1]);process.stdout.write(p&&p.pm2_env&&p.pm2_env.pm_cwd||'')})" "$PROC")"
+          if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
+            echo "::warning::Could not resolve cwd for '$PROC' — skipping restart"
+            exit 0
+          fi
+          echo "==> bot-worker cwd: $CWD"
+          REPO="$CWD"
+          while [ "$REPO" != "/" ] && [ ! -d "$REPO/.git" ]; do REPO="$(dirname "$REPO")"; done
+          if [ -d "$REPO/.git" ]; then
+            echo "==> git pull ($REPO)"
+            git -C "$REPO" fetch --all --prune
+            git -C "$REPO" reset --hard origin/main 2>/dev/null || git -C "$REPO" reset --hard origin/master
+          fi
+          if [ -f "$CWD/package.json" ]; then
+            echo "==> npm install (bot-worker)"
+            cd "$CWD"
+            npm install --omit=dev --no-audit --no-fund
+          fi
+          echo "==> pm2 restart $PROC"
+          pm2 restart "$PROC" --update-env
+          pm2 save >/dev/null 2>&1 || true
+          echo "==> bot-worker restarted"
+          EOSSH
+
+
       - name: Mark SHA as deployed on server
         if: success() && steps.lock.outputs.skip != 'true'
         env:
