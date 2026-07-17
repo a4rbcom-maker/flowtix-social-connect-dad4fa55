@@ -323,17 +323,17 @@ function MessengerContactsPage() {
         <Card className="p-8 text-center">
           <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
           <h2 className="mb-1 text-lg font-semibold">
-            {lang === "ar" ? "لا توجد صفحات مُدارة في الربط الرسمي" : "No managed Pages in the official connection"}
+            {lang === "ar" ? "لا توجد صفحات من التوكن الحالي" : "No Pages from the current token"}
           </h2>
           <p className="mx-auto mb-5 max-w-2xl text-sm text-muted-foreground">
             {lang === "ar"
-              ? "لم يصلنا من الربط الرسمي أي صفحة مُدارة. هذا يحدث إذا كان الحساب مربوطاً بالكوكيز فقط، أو إذا كان Facebook Token لا يحتوي pages_show_list. اربط التوكن الرسمي ثم وافق على صلاحيات الصفحات والرسائل."
-              : "The official connection did not return any managed Page. This happens when only cookies are connected, or the Facebook Token lacks pages_show_list. Connect the official token and allow Pages/Messenger permissions."}
+              ? "لم نغيّر طريقة الربط: المطلوب هنا هو نفس Facebook Access Token. إذا لم تظهر الصفحات فغالباً التوكن ناقص صلاحيات pages_show_list أو pages_messaging، أو لم يتم حفظه بعد. الصق التوكن في صفحة فيسبوك ثم اضغط حفظ."
+              : "The connection method did not change: this uses the same Facebook Access Token. If Pages do not appear, the token likely lacks pages_show_list or pages_messaging, or it was not saved yet. Paste the token on the Facebook page and save it."}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Button asChild>
               <Link to="/dashboard/facebook">
-                {lang === "ar" ? "ربط Facebook Token الرسمي" : "Connect official Facebook Token"}
+                {lang === "ar" ? "الذهاب لحقل لصق التوكن" : "Go to token field"}
               </Link>
             </Button>
             <Button variant="outline" onClick={() => pagesQ.refetch()}>

@@ -34,7 +34,7 @@ export const listMessengerPages = createServerFn({ method: "GET" })
       );
       if (!granted.has("pages_show_list")) {
         throw new Error(
-          "صلاحية pages_show_list ناقصة. أعد ربط Facebook Token بهذه الصلاحية حتى تظهر الصفحات التي تديرها.",
+          "صلاحية pages_show_list ناقصة. أعد حفظ Facebook Access Token بهذه الصلاحية حتى تظهر الصفحات التي تديرها.",
         );
       }
     };
@@ -54,10 +54,10 @@ export const listMessengerPages = createServerFn({ method: "GET" })
     const friendlyError = (err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
       if (/permissions?|الصلاحيات|pages_show_list|pages_messaging/i.test(msg)) {
-        return `تعذر قراءة صفحات فيسبوك بسبب نقص الصلاحيات. أعد ربط حساب فيسبوك الرسمي ثم وافق على صلاحيات الصفحات والرسائل. التفاصيل: ${msg}`;
+        return `تعذر قراءة صفحات فيسبوك بسبب نقص الصلاحيات. أعد حفظ Facebook Access Token ثم وافق على صلاحيات الصفحات والرسائل. التفاصيل: ${msg}`;
       }
       if (/token|OAuth|expired|invalid/i.test(msg)) {
-        return `ربط فيسبوك الرسمي غير صالح أو منتهي. أعد الربط ثم جرّب مرة أخرى. التفاصيل: ${msg}`;
+        return `Facebook Access Token غير صالح أو منتهي. الصق توكن جديد ثم جرّب مرة أخرى. التفاصيل: ${msg}`;
       }
       return `تعذر تحميل صفحات فيسبوك الآن. التفاصيل: ${msg}`;
     };
@@ -180,7 +180,7 @@ export const startMessengerSync = createServerFn({ method: "POST" })
       .eq("page_id", data.pageId)
       .eq("connection_type", "official")
       .maybeSingle();
-    if (!page) throw new Error("هذه ليست صفحة Facebook مُدارة عبر الربط الرسمي لهذا الحساب.");
+    if (!page) throw new Error("هذه الصفحة غير موجودة ضمن الصفحات التي رجعت من Facebook Access Token لهذا الحساب.");
 
     // Refuse to start when a job is already running for this page.
     const { data: running } = await supabase
