@@ -71,7 +71,9 @@ async function collectFromRenderedPage(page) {
       .trim();
     const validName = (value) => {
       const s = cleanText(value);
-      return s.length >= 2 && s.length <= 120 && /[A-Za-z\u0600-\u06FF]/.test(s) && !genericLabels.test(s) ? s : "";
+      // Loosened: accept 1-200 chars with any printable char (Arabic/Latin/digits/emoji).
+      // Only reject exact generic-label matches; anything else passes.
+      return s.length >= 1 && s.length <= 200 && /\S/.test(s) && !genericLabels.test(s) ? s : "";
     };
     const parseHref = (rawHref) => {
       if (!rawHref || rawHref.startsWith("#") || /^javascript:/i.test(rawHref)) return null;
