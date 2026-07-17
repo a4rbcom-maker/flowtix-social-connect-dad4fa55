@@ -1216,6 +1216,36 @@ export const resumeJob = createServerFn({ method: "POST" })
         ...p,
         recipients: p.recipients.filter((r) => !doneSet.has(String(r.profile || ""))),
       };
+    } else if (job.job_type === "extract_page_audience") {
+      // Compute resume-from-post-index from the "post_scraped" log entries so
+      // the worker can skip posts it already processed and re-hydrate the
+      // deduplication set from previously-persisted successful results.
+      const { data: logRows } = await supabase
+        .from("fb_job_results")
+        .select("data")
+        .eq("job_id", data.id)
+        .eq("status", "skipped");
+      let lastPostIndex = 0;
+      for (const row of logRows ?? []) {
+        const d = (row as { data: Record<string, unknown> | null }).data || {};
+        if (d.kind === "log" && d.event === "post_scraped" && typeof d.index === "number") {
+          if (d.index > lastPostIndex) lastPostIndex = d.index;
+        }
+      }
+      const { data: doneRows } = await supabase
+        .from("fb_job_results")
+        .select("target")
+        .eq("job_id", data.id)
+        .eq("status", "success");
+      const alreadyCollectedIds = (doneRows ?? [])
+        .map((r) => String((r as { target: string | null }).target || ""))
+        .filter(Boolean);
+      const p = (job.payload as Record<string, unknown>) || {};
+      newPayload = {
+        ...p,
+        resumeFromIndex: lastPostIndex,
+        alreadyCollectedIds,
+      };
     }
 
     const { error } = await supabase
