@@ -291,12 +291,12 @@ function MessengerContactsPage() {
         <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
         <div>
           <p className="text-sm font-semibold text-foreground">
-            {lang === "ar" ? "الصق التوكن هنا مباشرة" : "Paste the token here directly"}
+            {lang === "ar" ? "ربط Messenger يتم بالتوكن فقط" : "Messenger connects with a token only"}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {lang === "ar"
-              ? "بعد الحفظ سنعرض الصفحات المُدارة من نفس الحساب فوراً، بدون الانتقال لأي شاشة أخرى."
-              : "After saving, managed Pages from the same account will appear here immediately."}
+              ? "الصق Facebook Access Token هنا وسنعرض الصفحات المُدارة من نفس الحساب فوراً. Cookies تخص حسابات البوت فقط ولا تجلب عملاء Messenger."
+              : "Paste the Facebook Access Token here and managed Pages from the same account will appear immediately. Cookies are for bot accounts only and do not import Messenger contacts."}
           </p>
         </div>
       </div>
@@ -395,12 +395,12 @@ function MessengerContactsPage() {
         <Card className="p-8 text-center">
           <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
           <h2 className="mb-1 text-lg font-semibold">
-            {lang === "ar" ? "لا توجد صفحات من التوكن الحالي" : "No Pages from the current token"}
+            {lang === "ar" ? "لا توجد صفحات مُدارة من التوكن الحالي" : "No managed Pages from the current token"}
           </h2>
           <p className="mx-auto mb-5 max-w-2xl text-sm text-muted-foreground">
             {lang === "ar"
-              ? "هذه الشاشة تعتمد على التوكن فقط. الصق التوكن هنا وسنعرض أسماء الصفحات المُدارة فوراً لتختار الصفحة وتبدأ جلب عملاء Messenger."
-              : "This screen uses the token only. Paste it here and managed Page names will appear immediately so you can pick a Page and import Messenger contacts."}
+              ? "هذه الشاشة لا تستخدم Cookies نهائياً. الصق Access Token الخاص بحسابك وسيظهر هنا فقط أسماء الصفحات التي تديرها لتختار صفحة وتبدأ جلب عملاء Messenger."
+              : "This screen does not use Cookies. Paste your account Access Token and only Pages you manage will appear here so you can pick one and import Messenger contacts."}
           </p>
           {tokenConnectBox}
           <Button className="mt-3" variant="outline" onClick={() => pagesQ.refetch()}>
