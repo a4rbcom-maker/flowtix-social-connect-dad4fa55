@@ -130,8 +130,7 @@ async function collectFromBootData(page) {
     const seen = new Set();
     const validName = (name) => {
       const s = String(name || "").replace(/\\u0025/g, "%").replace(/\s+/g, " ").trim();
-      if (s.length < 2 || s.length > 160) return "";
-      if (!/[A-Za-z\u0600-\u06FF]/.test(s)) return "";
+      if (s.length < 1 || s.length > 200) return "";
       if (/^(Pages|Create|Manage|Home|Meta Business Suite|Business Suite|الصفحات|إنشاء|إدارة|الرئيسية)$/i.test(s)) return "";
       return s;
     };
