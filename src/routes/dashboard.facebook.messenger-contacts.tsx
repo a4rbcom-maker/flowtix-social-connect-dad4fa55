@@ -1002,6 +1002,12 @@ function CookiesModePanel(props: {
     },
   });
 
+  const pages = pagesResultQ.data?.pages ?? [];
+  const listJob = listPagesJobQ.data?.job;
+  const syncJob = syncJobQ.data?.job;
+  const listRunning = listJob?.status === "running" || listJob?.status === "pending";
+  const syncRunning = syncJob?.status === "running" || syncJob?.status === "pending";
+
   const startListPagesM = useMutation({
     mutationFn: () => listPagesFn({ data: { accountId: accountId! } }),
     onSuccess: () => {
@@ -1010,21 +1016,28 @@ function CookiesModePanel(props: {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const [lastSyncedPage, setLastSyncedPage] = useState<{ pageId: string; pageName: string } | null>(null);
   const startSyncM = useMutation({
     mutationFn: (p: { pageId: string; pageName: string }) =>
       syncCookiesFn({ data: { accountId: accountId!, pageId: p.pageId, pageName: p.pageName } }),
-    onSuccess: () => {
-      toast.success(lang === "ar" ? "بدأت مزامنة المحادثات — راقب التقدم بالأسفل" : "Sync started — watch progress below");
+    onSuccess: (_d, vars) => {
+      setLastSyncedPage(vars);
+      toast.success(lang === "ar" ? "بدأت مزامنة المحادثات — سيتم فتح قائمة العملاء تلقائياً عند الانتهاء" : "Sync started — contacts will open automatically");
       syncJobQ.refetch();
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const pages = pagesResultQ.data?.pages ?? [];
-  const listJob = listPagesJobQ.data?.job;
-  const syncJob = syncJobQ.data?.job;
-  const listRunning = listJob?.status === "running" || listJob?.status === "pending";
-  const syncRunning = syncJob?.status === "running" || syncJob?.status === "pending";
+  // Auto-open contacts view when sync completes
+  useEffect(() => {
+    if (syncJob?.status === "completed" && lastSyncedPage) {
+      onImportedContacts({ pageId: lastSyncedPage.pageId, pageName: lastSyncedPage.pageName, avatarUrl: null });
+      setLastSyncedPage(null);
+    }
+  }, [syncJob?.status, lastSyncedPage, onImportedContacts]);
+
+
+
 
   return (
     <Card className="border-amber-500/30 bg-amber-500/5 p-4">
