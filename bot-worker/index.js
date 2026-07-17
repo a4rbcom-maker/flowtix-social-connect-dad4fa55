@@ -100,7 +100,7 @@ async function runJob(job) {
           ? `SESSION_EXPIRED: ${error}`
           : error;
         await reportUpdate({ jobId: job.id, accountStatus: { accountId: job.account.id, status, error } });
-      });
+      }, job.type === "extract_pages" ? { verifyUrl: "https://www.facebook.com/pages/manage", verifyTimeoutMs: 45_000 } : {});
       if (!ok) {
         await reportUpdate({ jobId: job.id, status: "failed", errorMessage: loginFailureReason });
         return;

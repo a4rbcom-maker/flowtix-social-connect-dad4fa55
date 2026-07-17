@@ -381,6 +381,83 @@ async function assertUsableBotAccount(
   }
 }
 
+async function assertBotAccountReadyForExtraction(
+  supabase: { from: (table: string) => any },
+  userId: string,
+  accountId: string,
+) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: account, error } = await supabaseAdmin
+    .from("fb_bot_accounts")
+    .select("id, user_id, auth_method, encrypted_payload, status, last_error, cookie_expires_at")
+    .eq("id", accountId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!account) throw new Error("حساب فيسبوك المختار غير موجود أو غير تابع لك.");
+
+  const storedError = typeof account.last_error === "string" ? account.last_error : "";
+  if (account.status === "invalid" || account.status === "checkpoint") {
+    throw new Error(
+      storedError && isFacebookSessionRejectedError(storedError)
+        ? "جلسة فيسبوك لهذا الحساب مرفوضة من فيسبوك. أعد ربط الحساب بكوكيز جديدة قبل استخراج الصفحات."
+        : storedError || "حساب فيسبوك غير جاهز لإنشاء مهام استخراج. أعد ربط الحساب أو اختر حسابًا آخر.",
+    );
+  }
+
+  const { data: latestJob } = await supabaseAdmin
+    .from("fb_jobs")
+    .select("status, error_message, completed_at, created_at")
+    .eq("account_id", accountId)
+    .eq("user_id", userId)
+    .in("status", ["completed", "failed"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const latestError = typeof latestJob?.error_message === "string" ? latestJob.error_message : "";
+  const rejectedSessionError = isFacebookSessionRejectedError(latestError)
+    ? latestError
+    : isFacebookSessionRejectedError(storedError)
+      ? storedError
+      : null;
+  if (rejectedSessionError && (latestJob?.status === "failed" || isFacebookSessionRejectedError(storedError))) {
+    const checkedAt = (latestJob?.completed_at as string | null) ?? (latestJob?.created_at as string | null) ?? new Date().toISOString();
+    await supabase
+      .from("fb_bot_accounts")
+      .update({ status: "invalid", last_check_at: checkedAt, last_error: rejectedSessionError })
+      .eq("id", accountId)
+      .eq("user_id", userId);
+    throw new Error("فيسبوك رفض جلسة هذا الحساب في آخر محاولة فعلية. أعد تصدير الكوكيز من نفس المتصفح ثم اربط الحساب من جديد.");
+  }
+
+  if (account.auth_method !== "cookies") return;
+
+  try {
+    const { decryptJson } = await import("@/server/crypto.server");
+    const cookies = normalizeStoredCookies(decryptJson<unknown>(account.encrypted_payload));
+    const { missingCritical, invalid } = validateFacebookCookies(cookies);
+    const minExp = earliestRequiredExpiry(cookies);
+    const expired = minExp !== null && minExp * 1000 <= Date.now();
+    if (missingCritical.length > 0 || invalid.length > 0 || expired) {
+      const message = expired
+        ? "انتهت صلاحية كوكيز فيسبوك المحفوظة. أعد تصدير الكوكيز من نفس المتصفح ثم اربط الحساب من جديد."
+        : missingCritical.length > 0
+          ? `كوكيز فيسبوك الأساسية ناقصة: ${missingCritical.join(", ")}. أعد ربط الحساب بكوكيز كاملة.`
+          : `كوكيز فيسبوك غير صالحة: ${invalid.map((i) => i.name).join(", ")}. أعد ربط الحساب.`;
+      await supabase
+        .from("fb_bot_accounts")
+        .update({ status: "invalid", last_check_at: new Date().toISOString(), last_error: message })
+        .eq("id", accountId)
+        .eq("user_id", userId);
+      throw new Error(message);
+    }
+  } catch (e) {
+    if (e instanceof Error) throw e;
+    throw new Error("تعذّر فحص كوكيز فيسبوك قبل الاستخراج. احذف الحساب وأعد ربطه بكوكيز جديدة.");
+  }
+}
+
 // ---------- Extraction quotas (per-user) ----------
 // Friendly, user-facing limits to guarantee stable, high-quality extraction
 // and to protect the Facebook accounts themselves from safety triggers.
@@ -670,6 +747,7 @@ export const createExtractPagesJob = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     await assertUsableBotAccount(supabase, userId, data.accountId);
+    await assertBotAccountReadyForExtraction(supabase, userId, data.accountId);
     await assertExtractionQuota(supabase, userId);
     const { data: row, error } = await supabase
       .from("fb_jobs")
@@ -1040,7 +1118,7 @@ export const listJobs = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("fb_jobs")
       .select(
-        "id, job_type, status, progress, total_items, processed_items, created_at, completed_at, error_message, account_id",
+        "id, job_type, status, progress, total_items, processed_items, created_at, started_at, completed_at, error_message, account_id",
       )
       .order("created_at", { ascending: false })
       .limit(100);

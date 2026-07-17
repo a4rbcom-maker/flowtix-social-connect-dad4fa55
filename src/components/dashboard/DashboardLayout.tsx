@@ -475,8 +475,10 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
                       </span>
                       {sidebarOpen && (
                         <>
-                          <span className="flex-1 truncate text-start">{item.label}</span>
-                          {channelState && <ChannelStatusDot state={channelState} lang={lang} />}
+                          <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                            <span className="truncate text-start">{item.label}</span>
+                            {channelState && <ChannelStatusDot state={channelState} lang={lang} />}
+                          </span>
                           <ChevronDown
                             className={`h-4 w-4 shrink-0 text-muted-foreground/60 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
                           />

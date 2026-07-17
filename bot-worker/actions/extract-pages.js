@@ -2,9 +2,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function runExtractPages({ page, report }) {
   const urls = [
-    "https://www.facebook.com/pages/?category=your_pages",
     "https://www.facebook.com/pages/manage",
+    "https://www.facebook.com/pages/?category=your_pages",
     "https://www.facebook.com/bookmarks/pages",
+    "https://www.facebook.com/profile.php?sk=pages",
     "https://www.facebook.com/pages/",
   ];
 
@@ -23,8 +24,8 @@ async function runExtractPages({ page, report }) {
       continue;
     }
 
-    await sleep(4500);
-    if (/\/login\/|checkpoint/i.test(page.url())) {
+      await sleep(2500);
+      if (/\/login(?:\/|\?|$)|checkpoint|two_factor|two_step_verification/i.test(page.url())) {
       await report({ status: "failed", errorMessage: "SESSION_EXPIRED: حساب فيسبوك حوّلك لتسجيل الدخول أو checkpoint. أعد ربط الكوكيز." });
       return;
     }
@@ -38,7 +39,7 @@ async function runExtractPages({ page, report }) {
           "bookmarks", "gaming", "help", "privacy", "policies", "settings", "login", "recover", "me",
           "profile.php", "photo", "photo.php", "story.php", "permalink.php", "ads", "business",
         ]);
-        const genericLabels = /^(Pages|Your Pages|Create|Manage|Home|About|Photos|Videos|Posts|Following|Followers|Like|Share|Comment|الصفحات|صفحاتك|إنشاء|إدارة|الرئيسية|حول|الصور|الفيديوهات|المنشورات|متابعة|المتابعون|إعجاب|مشاركة|تعليق)$/i;
+          const genericLabels = /^(Pages|Your Pages|Create|Manage|Home|About|Photos|Videos|Posts|Following|Followers|Like|Share|Comment|More|See more|View page|الصفحات|صفحاتك|إنشاء|إدارة|الرئيسية|حول|الصور|الفيديوهات|المنشورات|متابعة|المتابعون|إعجاب|مشاركة|تعليق|عرض المزيد|عرض الصفحة)$/i;
         const out = [];
         const anchors = Array.from(document.querySelectorAll('a[role="link"], a[href*="facebook.com"], a[href^="/"]'));
         for (const a of anchors) {
@@ -62,7 +63,7 @@ async function runExtractPages({ page, report }) {
             parsed.pathname.match(/-(\d{6,})(?:\/|$)/)?.[1];
 
           const firstSlug = parsed.pathname.split("/").filter(Boolean)[0] || "";
-          const slug = firstSlug && !systemSlugs.has(firstSlug.toLowerCase()) && /^[A-Za-z0-9._-]{4,}$/.test(firstSlug)
+          const slug = firstSlug && !systemSlugs.has(firstSlug.toLowerCase()) && /^[A-Za-z0-9._-]{3,}$/.test(firstSlug)
             ? firstSlug
             : "";
           const id = numericId || slug;
@@ -79,7 +80,8 @@ async function runExtractPages({ page, report }) {
             .find((s) => s.length >= 2 && s.length <= 120 && /[A-Za-z\u0600-\u06FF]/.test(s) && !genericLabels.test(s));
 
           if (!name) continue;
-          out.push({ id, name, link: href.split("?")[0] });
+          const avatar = a.querySelector("img[src]")?.getAttribute("src") || null;
+          out.push({ id, name, link: href.split("?")[0], avatar_url: avatar });
         }
         return out;
       });
@@ -104,7 +106,8 @@ async function runExtractPages({ page, report }) {
       await sleep(1600);
     }
 
-    if (collected.size > 0) break;
+    // Do not stop at the first URL: Facebook often shows only a partial list
+    // in one surface and the remaining managed pages in another.
   }
 
   if (!openedAny) {
