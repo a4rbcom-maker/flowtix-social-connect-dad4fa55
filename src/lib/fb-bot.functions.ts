@@ -772,7 +772,8 @@ export const createExtractPagesJob = createServerFn({ method: "POST" })
     await assertUsableBotAccount(supabase, userId, data.accountId);
     await assertBotAccountReadyForExtraction(supabase, userId, data.accountId);
     await assertExtractionQuota(supabase, userId);
-    await assertExtractPagesWorkerAvailable(supabase);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await assertExtractPagesWorkerAvailable(supabaseAdmin);
     const { data: row, error } = await supabase
       .from("fb_jobs")
       .insert({
