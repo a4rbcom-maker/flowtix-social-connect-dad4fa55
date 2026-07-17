@@ -958,7 +958,7 @@ function CookiesModePanel(props: {
   onImportedContacts: (p: { pageId: string; pageName: string; avatarUrl: string | null }) => void;
 }) {
   const { lang, onImportedContacts } = props;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [accountId, setAccountId] = useState<string | null>(null);
 
   const listAccountsFn = useServerFn(listBotAccountsForMessenger);
