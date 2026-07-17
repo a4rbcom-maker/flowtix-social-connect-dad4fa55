@@ -35,10 +35,15 @@ async function autoScroll(page, steps = 10) {
 function dedupePageCandidate(candidate) {
   if (!candidate || typeof candidate !== "object") return null;
   const id = String(candidate.id || candidate.page_id || candidate.pageId || "").trim();
-  const name = String(candidate.name || candidate.page_name || candidate.pageName || "").trim();
-  if (!id || !name) return null;
-  if (id.length < 3 || id.length > 120 || name.length < 2 || name.length > 200) return null;
-  if (!/[A-Za-z\u0600-\u06FF]/.test(name)) return null;
+  let name = String(candidate.name || candidate.page_name || candidate.pageName || "").trim();
+  if (!id) return null;
+  if (id.length < 3 || id.length > 160) return null;
+  // Fallback name: if missing, derive a placeholder from the id/slug so we
+  // don't silently drop otherwise valid page links.
+  if (!name) name = `Page ${id}`;
+  if (name.length > 240) name = name.slice(0, 240);
+  // Accept any name with at least one printable char (Arabic/Latin/Digits/Emoji).
+  if (!/\S/.test(name)) return null;
   return {
     id,
     name,
