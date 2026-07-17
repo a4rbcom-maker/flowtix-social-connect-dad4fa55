@@ -819,11 +819,13 @@ function BotAccountsPage() {
     setSaveLogs([]);
     appendSaveLog("info", "client:send-to-server", `method=cookies; displayName=${form.displayName.trim()}; cookie_bytes=${form.cookies.length}`);
     try {
+      const currentUA = typeof navigator !== "undefined" ? navigator.userAgent : null;
       const row = await addAccountFn({
         data: {
           method: "cookies",
           displayName: form.displayName,
           cookies: form.cookies,
+          userAgent: currentUA,
         },
       });
       const dto = unwrapServerPayload(row) as { diagnostics?: unknown } | null;
