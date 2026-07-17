@@ -1431,9 +1431,11 @@ export const testBotAccount = createServerFn({ method: "POST" })
           last_error: rejectedSessionError,
         })
         .eq("id", data.id)
+        .eq("user_id", userId)
         .select(BOT_ACCOUNT_SAFE_SELECT)
-        .single();
+        .maybeSingle();
       if (upErr) throw new Error(upErr.message);
+      if (!updated) throw new Error("تعذّر تحديث حالة الحساب — حدّث الصفحة وأعد المحاولة");
       return { ...updated, groups: [] as { id: string; name: string }[] };
     }
 
@@ -1480,8 +1482,10 @@ export const testBotAccount = createServerFn({ method: "POST" })
         last_error: lastError,
       })
       .eq("id", data.id)
+      .eq("user_id", userId)
       .select(BOT_ACCOUNT_SAFE_SELECT)
-      .single();
+      .maybeSingle();
     if (upErr) throw new Error(upErr.message);
+    if (!updated) throw new Error("تعذّر تحديث حالة الحساب — حدّث الصفحة وأعد المحاولة");
     return { ...updated, groups: [] as { id: string; name: string }[] };
   });
