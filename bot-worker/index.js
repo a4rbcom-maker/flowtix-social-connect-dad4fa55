@@ -35,6 +35,9 @@ const WORKER_CAPABILITIES = [
   "list_my_groups",
   "deep_profile_scrape",
   "send_messenger_dm",
+  "messenger_list_pages",
+  "messenger_sync_cookies",
+  "messenger_send_cookies",
 ].join(",");
 
 if (!API || !SECRET) {
