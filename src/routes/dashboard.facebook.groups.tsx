@@ -291,6 +291,7 @@ function FacebookGroupsPage() {
   const handleBotImport = async () => {
     if (!botAccountId) return;
     setBotImporting(true);
+    setBotSessionExpired(null);
     try {
       await callServerFn(createListMyGroupsJob, { accountId: botAccountId, max: 500 });
       toast.success(
@@ -300,7 +301,18 @@ function FacebookGroupsPage() {
       );
       navigate({ to: "/dashboard/facebook/history" });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+      const msg = getErrorMessage(err);
+      if (isExternalServiceSessionError(err) || /SESSION_EXPIRED|كوكيز|cookies?/i.test(msg)) {
+        setBotSessionExpired(msg);
+        toast.error(
+          lang === "ar"
+            ? "انتهت صلاحية كوكيز فيسبوك — جدّد الربط ثم أعد المحاولة"
+            : "Facebook cookies expired — refresh the link and retry",
+          { id: "fb-groups-session" },
+        );
+      } else {
+        toast.error(msg || "Failed");
+      }
     } finally {
       setBotImporting(false);
     }
