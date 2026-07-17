@@ -12,6 +12,30 @@ function authorize(request: Request): Response | null {
 const FACEBOOK_SESSION_REJECTED_RE =
   /SESSION_EXPIRED|Facebook rejected|stored session cookies|redirected to login|login required|checkpoint|c_user|not logged in|Session cookies rejected/i;
 
+function normalizeExtractedPage(result: { target?: string; data?: unknown } | undefined) {
+  if (!result) return null;
+  const data = result.data && typeof result.data === "object" ? (result.data as Record<string, unknown>) : {};
+  const pageId =
+    typeof data.id === "string" && data.id.trim()
+      ? data.id.trim()
+      : typeof result.target === "string"
+        ? result.target.trim()
+        : "";
+  const pageName = typeof data.name === "string" ? data.name.trim() : "";
+  const avatar =
+    typeof data.avatar_url === "string"
+      ? data.avatar_url
+      : typeof data.avatarUrl === "string"
+        ? data.avatarUrl
+        : null;
+  if (!pageId || !pageName) return null;
+  return {
+    page_id: pageId,
+    page_name: pageName.slice(0, 200),
+    avatar_url: avatar && /^https?:\/\//i.test(avatar) ? avatar : null,
+  };
+}
+
 export const Route = createFileRoute("/api/public/bot/job-update")({
   server: {
     handlers: {
@@ -39,7 +63,7 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
         // signal the worker to abort and stop persisting further results/progress.
         const { data: current } = await supabaseAdmin
           .from("fb_jobs")
-          .select("status, job_type, account_id, total_items")
+          .select("status, job_type, account_id, user_id, total_items")
           .eq("id", body.jobId)
           .maybeSingle();
         if (body.status === "failed" && /is not implemented in this worker/i.test(body.errorMessage || "")) {
@@ -99,6 +123,30 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
             data: (body.result.data ?? null) as never,
             error: body.result.error ?? null,
           }]);
+
+          if (
+            current?.job_type === "extract_pages" &&
+            current.user_id &&
+            current.account_id &&
+            body.result.status === "success"
+          ) {
+            const extractedPage = normalizeExtractedPage(body.result);
+            if (extractedPage) {
+              await supabaseAdmin.from("fb_pages").upsert(
+                {
+                  user_id: current.user_id,
+                  page_id: extractedPage.page_id,
+                  page_name: extractedPage.page_name,
+                  avatar_url: extractedPage.avatar_url,
+                  connection_type: "bot",
+                  bot_account_id: current.account_id,
+                  status: "active",
+                  last_error: null,
+                } as never,
+                { onConflict: "user_id,page_id", ignoreDuplicates: false },
+              );
+            }
+          }
         }
 
         // Optional: update account status
