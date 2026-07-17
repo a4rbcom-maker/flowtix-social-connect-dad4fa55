@@ -1002,6 +1002,12 @@ function CookiesModePanel(props: {
     },
   });
 
+  const pages = pagesResultQ.data?.pages ?? [];
+  const listJob = listPagesJobQ.data?.job;
+  const syncJob = syncJobQ.data?.job;
+  const listRunning = listJob?.status === "running" || listJob?.status === "pending";
+  const syncRunning = syncJob?.status === "running" || syncJob?.status === "pending";
+
   const startListPagesM = useMutation({
     mutationFn: () => listPagesFn({ data: { accountId: accountId! } }),
     onSuccess: () => {
@@ -1030,7 +1036,7 @@ function CookiesModePanel(props: {
     }
   }, [syncJob?.status, lastSyncedPage, onImportedContacts]);
 
-  // moved up to satisfy TDZ for the effect above
+
 
 
   return (
