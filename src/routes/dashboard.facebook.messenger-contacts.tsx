@@ -479,6 +479,20 @@ function MessengerContactsPage() {
         </div>
       </header>
 
+      <CookiesModePanel
+        lang={lang}
+        onImportedContacts={(p) => {
+          setCookiesPages((prev) =>
+            prev.some((x) => x.pageId === p.pageId) ? prev : [...prev, p],
+          );
+          setPageId(p.pageId);
+          setSelected(new Set());
+          setPage(1);
+          qc.invalidateQueries({ queryKey: ["msgr-contacts", p.pageId] });
+        }}
+      />
+
+
       {/* Gate: loading pages */}
       {pagesQ.isLoading && (
         <Card className="p-8 text-center text-sm text-muted-foreground">
