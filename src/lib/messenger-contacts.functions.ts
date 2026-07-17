@@ -25,30 +25,18 @@ export const listMessengerPages = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
 
-    const requiredMessengerScopes = ["pages_show_list", "pages_messaging"] as const;
-    const assertMessengerScopes = async (token: string) => {
+    const assertPagesListScope = async (token: string) => {
       const perms = await fbGet("/me/permissions", token);
       const granted = new Set(
         ((perms?.data ?? []) as Array<{ permission?: string; status?: string }>)
           .filter((p) => p.status === "granted" && typeof p.permission === "string")
           .map((p) => p.permission as string),
       );
-      const missing = requiredMessengerScopes.filter((scope) => !granted.has(scope));
-      if (missing.length > 0) {
+      if (!granted.has("pages_show_list")) {
         throw new Error(
-          `صلاحيات Messenger ناقصة: ${missing.join(", ")}. أعد ربط Facebook Token بهذه الصلاحيات حتى تظهر الصفحات التي يمكن قراءة رسائلها.`,
+          "صلاحية pages_show_list ناقصة. أعد ربط Facebook Token بهذه الصلاحية حتى تظهر الصفحات التي تديرها.",
         );
       }
-    };
-
-    const hasMessengerManagementTask = (tasks: unknown) => {
-      if (!Array.isArray(tasks)) return false;
-      const normalized = tasks.map((task) => String(task).toUpperCase());
-      return normalized.some((task) =>
-        ["MESSAGING", "MANAGE", "MODERATE", "ADMINISTER", "EDIT_PROFILE", "MODERATE_CONTENT"].includes(
-          task,
-        ),
-      );
     };
 
     const mapDbPage = (p: {
@@ -82,17 +70,15 @@ export const listMessengerPages = createServerFn({ method: "GET" })
     if (!token) return [];
 
     try {
-      await assertMessengerScopes(token);
+      await assertPagesListScope(token);
       const result = await fbGet(
-        "/me/accounts?fields=id,name,access_token,tasks,perms,picture.type(square){url}&limit=200",
+        "/me/accounts?fields=id,name,access_token,picture.type(square){url}&limit=200",
         token,
       );
       const arr = (result?.data ?? []) as Array<{
         id: string;
         name: string;
         access_token?: string;
-        tasks?: string[];
-        perms?: string[];
         picture?: { data?: { url?: string } };
       }>;
       const graphPages = arr
@@ -100,15 +86,13 @@ export const listMessengerPages = createServerFn({ method: "GET" })
           id: String(p.id ?? "").trim(),
           name: String(p.name ?? "").replace(/\s+/g, " ").trim(),
           accessToken: p.access_token,
-          tasks: [...(p.tasks ?? []), ...(p.perms ?? [])],
           avatarUrl: p.picture?.data?.url ?? null,
         }))
         .filter(
           (p) =>
             /^\d{5,}$/.test(p.id) &&
             p.name.length > 0 &&
-            Boolean(p.accessToken) &&
-            hasMessengerManagementTask(p.tasks),
+            Boolean(p.accessToken),
         );
       if (graphPages.length === 0) return [];
 
