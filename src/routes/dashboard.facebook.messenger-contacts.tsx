@@ -137,6 +137,7 @@ function MessengerContactsPage() {
   const [campaignTag, setCampaignTag] = useState<(typeof MESSAGE_TAGS)[number]>("HUMAN_AGENT");
   const [tagContact, setTagContact] = useState<Contact | null>(null);
   const [tagInput, setTagInput] = useState("");
+  const [refetchedForExtractJobId, setRefetchedForExtractJobId] = useState<string | null>(null);
 
   // Pages query — decides whether to show picker.
   const pagesQ = useQuery({
@@ -167,10 +168,12 @@ function MessengerContactsPage() {
 
   useEffect(() => {
     const jobs = (extractJobsQ.data ?? []) as FbJob[];
-    if (jobs.some((job) => job.job_type === "extract_pages" && job.status === "completed")) {
+    const completedJob = jobs.find((job) => job.job_type === "extract_pages" && job.status === "completed");
+    if (completedJob && completedJob.id !== refetchedForExtractJobId) {
+      setRefetchedForExtractJobId(completedJob.id);
       pagesQ.refetch();
     }
-  }, [extractJobsQ.data, pagesQ]);
+  }, [extractJobsQ.data, pagesQ, refetchedForExtractJobId]);
 
   const extractPagesM = useMutation({
     mutationFn: (accountId: string) => createExtractPagesJobFn({ data: { accountId } }),
