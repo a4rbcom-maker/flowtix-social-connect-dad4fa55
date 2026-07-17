@@ -421,7 +421,7 @@ async function assertBotAccountReadyForExtraction(
     : isFacebookSessionRejectedError(storedError)
       ? storedError
       : null;
-  if ((latestJob?.status === "failed" && rejectedSessionError) || rejectedSessionError && account.status !== "active") {
+  if (rejectedSessionError && (latestJob?.status === "failed" || isFacebookSessionRejectedError(storedError))) {
     const checkedAt = (latestJob?.completed_at as string | null) ?? (latestJob?.created_at as string | null) ?? new Date().toISOString();
     await supabase
       .from("fb_bot_accounts")
