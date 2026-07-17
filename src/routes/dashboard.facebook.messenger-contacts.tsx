@@ -214,14 +214,20 @@ function MessengerContactsPage() {
     }
   }, [pageId, pages]);
 
+  const [cookiesPages, setCookiesPages] = useState<
+    Array<{ pageId: string; pageName: string; avatarUrl: string | null }>
+  >([]);
+  const cookiesPageIds = new Set(cookiesPages.map((p) => p.pageId));
+
   useEffect(() => {
     if (!pageId || pagesQ.isLoading) return;
+    if (cookiesPageIds.has(pageId)) return; // keep cookies-mode selection
     if (!pages.some((p) => p.pageId === pageId)) {
       setPageId(null);
       setSelected(new Set());
       setPage(1);
     }
-  }, [pageId, pages, pagesQ.isLoading]);
+  }, [pageId, pages, pagesQ.isLoading, cookiesPageIds]);
 
 
   const contactsQ = useQuery({
