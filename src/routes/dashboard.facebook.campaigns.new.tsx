@@ -775,6 +775,29 @@ function NewCampaignPage() {
           <p className="text-sm text-muted-foreground mt-1">{t.subtitle}</p>
         </div>
 
+        {/* First-time onboarding banner: shown when the user has no bot account and no Graph token connection */}
+        {accounts.length === 0 && graphAccounts.length === 0 && (
+          <div className="rounded-2xl border border-primary/30 bg-primary/5 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex-1">
+              <h3 className="text-base font-semibold text-foreground mb-1">
+                {lang === "ar" ? "لم تربط أي حساب بعد" : "No account connected yet"}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {lang === "ar"
+                  ? "قبل إنشاء أي حملة، اتبع دليل الإعداد لربط حسابك بالتوكن أو الكوكيز ثم جلب صفحاتك."
+                  : "Before creating a campaign, follow the setup guide to link an account (token or cookies) then fetch your pages."}
+              </p>
+            </div>
+            <Link
+              to="/dashboard/facebook/onboarding"
+              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 shrink-0"
+            >
+              {lang === "ar" ? "ابدأ دليل الإعداد" : "Open setup guide"}
+            </Link>
+          </div>
+        )}
+
+
         {/* Name */}
         <Section icon={<Type className="w-4 h-4" />} label={t.name}>
           <input

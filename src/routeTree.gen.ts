@@ -47,6 +47,7 @@ import { Route as DashboardWhatsappAutomationRouteImport } from './routes/dashbo
 import { Route as DashboardWhatsappAccountsRouteImport } from './routes/dashboard.whatsapp.accounts'
 import { Route as DashboardFacebookTemplatesRouteImport } from './routes/dashboard.facebook.templates'
 import { Route as DashboardFacebookStatusRouteImport } from './routes/dashboard.facebook.status'
+import { Route as DashboardFacebookOnboardingRouteImport } from './routes/dashboard.facebook.onboarding'
 import { Route as DashboardFacebookMessengerContactsRouteImport } from './routes/dashboard.facebook.messenger-contacts'
 import { Route as DashboardFacebookMessagesRouteImport } from './routes/dashboard.facebook.messages'
 import { Route as DashboardFacebookMediaRouteImport } from './routes/dashboard.facebook.media'
@@ -275,6 +276,12 @@ const DashboardFacebookStatusRoute = DashboardFacebookStatusRouteImport.update({
   path: '/status',
   getParentRoute: () => DashboardFacebookRoute,
 } as any)
+const DashboardFacebookOnboardingRoute =
+  DashboardFacebookOnboardingRouteImport.update({
+    id: '/onboarding',
+    path: '/onboarding',
+    getParentRoute: () => DashboardFacebookRoute,
+  } as any)
 const DashboardFacebookMessengerContactsRoute =
   DashboardFacebookMessengerContactsRouteImport.update({
     id: '/messenger-contacts',
@@ -505,6 +512,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/facebook/media': typeof DashboardFacebookMediaRoute
   '/dashboard/facebook/messages': typeof DashboardFacebookMessagesRoute
   '/dashboard/facebook/messenger-contacts': typeof DashboardFacebookMessengerContactsRoute
+  '/dashboard/facebook/onboarding': typeof DashboardFacebookOnboardingRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
@@ -576,6 +584,7 @@ export interface FileRoutesByTo {
   '/dashboard/facebook/media': typeof DashboardFacebookMediaRoute
   '/dashboard/facebook/messages': typeof DashboardFacebookMessagesRoute
   '/dashboard/facebook/messenger-contacts': typeof DashboardFacebookMessengerContactsRoute
+  '/dashboard/facebook/onboarding': typeof DashboardFacebookOnboardingRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
@@ -649,6 +658,7 @@ export interface FileRoutesById {
   '/dashboard/facebook/media': typeof DashboardFacebookMediaRoute
   '/dashboard/facebook/messages': typeof DashboardFacebookMessagesRoute
   '/dashboard/facebook/messenger-contacts': typeof DashboardFacebookMessengerContactsRoute
+  '/dashboard/facebook/onboarding': typeof DashboardFacebookOnboardingRoute
   '/dashboard/facebook/status': typeof DashboardFacebookStatusRoute
   '/dashboard/facebook/templates': typeof DashboardFacebookTemplatesRoute
   '/dashboard/whatsapp/accounts': typeof DashboardWhatsappAccountsRoute
@@ -723,6 +733,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/media'
     | '/dashboard/facebook/messages'
     | '/dashboard/facebook/messenger-contacts'
+    | '/dashboard/facebook/onboarding'
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
     | '/dashboard/whatsapp/accounts'
@@ -794,6 +805,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/media'
     | '/dashboard/facebook/messages'
     | '/dashboard/facebook/messenger-contacts'
+    | '/dashboard/facebook/onboarding'
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
     | '/dashboard/whatsapp/accounts'
@@ -866,6 +878,7 @@ export interface FileRouteTypes {
     | '/dashboard/facebook/media'
     | '/dashboard/facebook/messages'
     | '/dashboard/facebook/messenger-contacts'
+    | '/dashboard/facebook/onboarding'
     | '/dashboard/facebook/status'
     | '/dashboard/facebook/templates'
     | '/dashboard/whatsapp/accounts'
@@ -1197,6 +1210,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardFacebookStatusRouteImport
       parentRoute: typeof DashboardFacebookRoute
     }
+    '/dashboard/facebook/onboarding': {
+      id: '/dashboard/facebook/onboarding'
+      path: '/onboarding'
+      fullPath: '/dashboard/facebook/onboarding'
+      preLoaderRoute: typeof DashboardFacebookOnboardingRouteImport
+      parentRoute: typeof DashboardFacebookRoute
+    }
     '/dashboard/facebook/messenger-contacts': {
       id: '/dashboard/facebook/messenger-contacts'
       path: '/messenger-contacts'
@@ -1454,6 +1474,7 @@ interface DashboardFacebookRouteChildren {
   DashboardFacebookMediaRoute: typeof DashboardFacebookMediaRoute
   DashboardFacebookMessagesRoute: typeof DashboardFacebookMessagesRoute
   DashboardFacebookMessengerContactsRoute: typeof DashboardFacebookMessengerContactsRoute
+  DashboardFacebookOnboardingRoute: typeof DashboardFacebookOnboardingRoute
   DashboardFacebookStatusRoute: typeof DashboardFacebookStatusRoute
   DashboardFacebookTemplatesRoute: typeof DashboardFacebookTemplatesRoute
 }
@@ -1471,6 +1492,7 @@ const DashboardFacebookRouteChildren: DashboardFacebookRouteChildren = {
   DashboardFacebookMessagesRoute: DashboardFacebookMessagesRoute,
   DashboardFacebookMessengerContactsRoute:
     DashboardFacebookMessengerContactsRoute,
+  DashboardFacebookOnboardingRoute: DashboardFacebookOnboardingRoute,
   DashboardFacebookStatusRoute: DashboardFacebookStatusRoute,
   DashboardFacebookTemplatesRoute: DashboardFacebookTemplatesRoute,
 }

@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Plus, Play, Pause, Trash2, Megaphone, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle } from "lucide-react";
+import { Plus, Play, Pause, Trash2, Megaphone, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -171,13 +171,23 @@ function CampaignsPage() {
             <h2 className="text-2xl font-bold text-foreground">{t.title}</h2>
             <p className="text-sm text-muted-foreground mt-1 max-w-2xl">{t.subtitle}</p>
           </div>
-          <Link
-            to="/dashboard/facebook/campaigns/new"
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90"
-          >
-            <Plus className="w-4 h-4" />
-            {t.create}
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to="/dashboard/facebook/onboarding"
+              className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent"
+            >
+              <BookOpen className="w-4 h-4" />
+              {lang === "ar" ? "دليل الإعداد" : "Setup guide"}
+            </Link>
+            <Link
+              to="/dashboard/facebook/campaigns/new"
+              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90"
+            >
+              <Plus className="w-4 h-4" />
+              {t.create}
+            </Link>
+          </div>
+
         </div>
 
         {items.length === 0 ? (
