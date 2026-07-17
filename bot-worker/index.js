@@ -190,6 +190,9 @@ async function runJob(job) {
     else if (job.type === "list_my_groups") await runListMyGroups(ctx);
     else if (job.type === "deep_profile_scrape") await runDeepProfileScrape(ctx);
     else if (job.type === "send_messenger_dm") await runSendMessengerDm(ctx);
+    else if (job.type === "messenger_list_pages") await runMessengerListPages(ctx);
+    else if (job.type === "messenger_sync_cookies") await runMessengerSyncCookies(ctx);
+    else if (job.type === "messenger_send_cookies") await runMessengerSendCookies(ctx);
     else await reportUpdate({ jobId: job.id, status: "failed", errorMessage: `Unknown job type: ${job.type}` });
 
   } catch (err) {
