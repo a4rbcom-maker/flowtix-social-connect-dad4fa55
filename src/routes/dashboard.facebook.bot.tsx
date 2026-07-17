@@ -132,11 +132,6 @@ type SaveLogEvent = {
 };
 
 const LEGACY_ERROR = /صفحة \/me|login page|\/me أعادت/i;
-// Narrow on purpose: avoid matching the word "session" inside unrelated
-// error messages (e.g. "Session cookies invalid") which would incorrectly
-// sign the user out when saving a Facebook bot account.
-const AUTH_ERROR_RE = /\b(unauthorized|auth_required|auth_invalid|invalid[_ ]token|jwt expired|no auth session|not authenticated)\b|\b401\b/i;
-
 // One row in the per-account test timeline. `key` matches a step in TEST_STEPS
 // so labels can be localized; `state` drives the icon (spinner/check/x).
 type TestEvent = {

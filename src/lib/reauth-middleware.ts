@@ -83,14 +83,35 @@ export const reauthOnExpiredSession = createMiddleware({ type: "function" }).cli
     try {
       const result = await next({ fetch: fetchWithReauth });
       const middlewareResult = result as { error?: unknown; result?: unknown };
-      if (isAppAuthError(middlewareResult.error)) throw middlewareResult.error;
-      if (isAppAuthError(middlewareResult.result)) return redirectToLogin(middlewareResult.result);
-      if (middlewareResult.error instanceof Response) throw await responseToError(middlewareResult.error);
-      if (middlewareResult.result instanceof Response) throw await responseToError(middlewareResult.result);
+      if (middlewareResult.error instanceof Response) {
+        const normalized = await responseToError(middlewareResult.error);
+        if (isAppAuthError(normalized) && !(await hasValidCurrentUser())) return redirectToLogin(normalized);
+        throw normalized;
+      }
+      if (middlewareResult.result instanceof Response) {
+        const normalized = await responseToError(middlewareResult.result);
+        if (isAppAuthError(normalized) && !(await hasValidCurrentUser())) return redirectToLogin(normalized);
+        throw normalized;
+      }
+      if (isAppAuthError(middlewareResult.error)) {
+        if (!(await hasValidCurrentUser())) return redirectToLogin(middlewareResult.error);
+        throw middlewareResult.error;
+      }
+      if (isAppAuthError(middlewareResult.result)) {
+        if (!(await hasValidCurrentUser())) return redirectToLogin(middlewareResult.result);
+        throw middlewareResult.result;
+      }
       return result;
     } catch (err: unknown) {
-      if (isAppAuthError(err)) return redirectToLogin(err);
-      if (err instanceof Response) throw await responseToError(err);
+      if (err instanceof Response) {
+        const normalized = await responseToError(err);
+        if (isAppAuthError(normalized) && !(await hasValidCurrentUser())) return redirectToLogin(normalized);
+        throw normalized;
+      }
+      if (isAppAuthError(err)) {
+        if (!(await hasValidCurrentUser())) return redirectToLogin(err);
+        throw err;
+      }
       throw err;
     }
   },
