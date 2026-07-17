@@ -476,6 +476,7 @@ function MessengerContactsPage() {
     : null;
   const elapsedSec = jobStartMs ? Math.max(0, Math.floor((nowTick - jobStartMs) / 1000)) : 0;
   const elapsedLabel = `${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, "0")}`;
+  const pendingTooLong = latestExtractJob?.status === "pending" && elapsedSec >= 120;
 
   // Phase timeline — derived from status + progress + count.
   type Phase = { key: string; ar: string; en: string };
@@ -497,9 +498,13 @@ function MessengerContactsPage() {
 
   const latestExtractStatusText = latestExtractJob
     ? latestExtractJob.status === "pending"
-      ? lang === "ar"
-        ? "المهمة في الانتظار حتى يلتقطها البوت (عادةً خلال ثوانٍ)."
-        : "Waiting for the bot to pick up the job (usually a few seconds)."
+      ? pendingTooLong
+        ? lang === "ar"
+          ? "المهمة لم يلتقطها الوركر خلال دقيقتين؛ غالبًا الوركر متوقف أو لا يعلن صلاحية extract_pages_resilient."
+          : "The worker did not pick this up within two minutes; it is likely offline or missing extract_pages_resilient capability."
+        : lang === "ar"
+          ? "المهمة في الانتظار حتى يلتقطها البوت (عادةً خلال ثوانٍ)."
+          : "Waiting for the bot to pick up the job (usually a few seconds)."
       : latestExtractJob.status === "running"
         ? phases[currentPhaseIdx][lang === "ar" ? "ar" : "en"]
         : latestExtractJob.status === "completed"
