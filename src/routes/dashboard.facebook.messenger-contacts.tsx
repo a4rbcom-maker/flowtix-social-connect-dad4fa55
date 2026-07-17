@@ -947,3 +947,204 @@ function MessengerContactsPage() {
     </DashboardLayout>
   );
 }
+
+// ------------------------------------------------------------
+// Cookies mode panel: alternative to the official Access Token.
+// Uses an existing bot Cookies account to list managed Pages, then
+// import Messenger contacts for a selected Page via the bot worker.
+// ------------------------------------------------------------
+function CookiesModePanel(props: {
+  lang: "ar" | "en";
+  onImportedContacts: (p: { pageId: string; pageName: string; avatarUrl: string | null }) => void;
+}) {
+  const { lang, onImportedContacts } = props;
+  const [open, setOpen] = useState(false);
+  const [accountId, setAccountId] = useState<string | null>(null);
+
+  const listAccountsFn = useServerFn(listBotAccountsForMessenger);
+  const listPagesFn = useServerFn(queueMessengerListPages);
+  const syncCookiesFn = useServerFn(queueMessengerCookiesSync);
+  const getPagesFn = useServerFn(getBotMessengerPages);
+  const getJobFn = useServerFn(getBotMessengerJob);
+
+  const accountsQ = useQuery({
+    queryKey: ["cookies-bot-accounts"],
+    enabled: open,
+    queryFn: () => listAccountsFn(),
+  });
+  const accounts = accountsQ.data ?? [];
+
+  useEffect(() => {
+    if (!accountId && accounts.length > 0) setAccountId(accounts[0].id);
+  }, [accountId, accounts]);
+
+  const listPagesJobQ = useQuery({
+    queryKey: ["cookies-list-pages-job", accountId],
+    enabled: open && !!accountId,
+    queryFn: () => getJobFn({ data: { accountId: accountId!, jobType: "messenger_list_pages" } }),
+    refetchInterval: (q) => {
+      const s = (q.state.data as { job?: { status?: string } } | undefined)?.job?.status;
+      return s === "running" || s === "pending" ? 3000 : false;
+    },
+  });
+  const pagesResultQ = useQuery({
+    queryKey: ["cookies-pages-result", accountId, listPagesJobQ.data?.job?.status],
+    enabled: open && !!accountId && listPagesJobQ.data?.job?.status === "completed",
+    queryFn: () => getPagesFn({ data: { accountId: accountId! } }),
+  });
+  const syncJobQ = useQuery({
+    queryKey: ["cookies-sync-job", accountId],
+    enabled: open && !!accountId,
+    queryFn: () => getJobFn({ data: { accountId: accountId!, jobType: "messenger_sync_cookies" } }),
+    refetchInterval: (q) => {
+      const s = (q.state.data as { job?: { status?: string } } | undefined)?.job?.status;
+      return s === "running" || s === "pending" ? 3000 : false;
+    },
+  });
+
+  const startListPagesM = useMutation({
+    mutationFn: () => listPagesFn({ data: { accountId: accountId! } }),
+    onSuccess: () => {
+      toast.success(lang === "ar" ? "تم إرسال طلب جلب الصفحات للـ Bot" : "List-pages job queued to the bot");
+      listPagesJobQ.refetch();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const startSyncM = useMutation({
+    mutationFn: (p: { pageId: string; pageName: string }) =>
+      syncCookiesFn({ data: { accountId: accountId!, pageId: p.pageId, pageName: p.pageName } }),
+    onSuccess: () => {
+      toast.success(lang === "ar" ? "بدأت مزامنة المحادثات — راقب التقدم بالأسفل" : "Sync started — watch progress below");
+      syncJobQ.refetch();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const pages = pagesResultQ.data?.pages ?? [];
+  const listJob = listPagesJobQ.data?.job;
+  const syncJob = syncJobQ.data?.job;
+  const listRunning = listJob?.status === "running" || listJob?.status === "pending";
+  const syncRunning = syncJob?.status === "running" || syncJob?.status === "pending";
+
+  return (
+    <Card className="border-amber-500/30 bg-amber-500/5 p-4">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 text-start"
+      >
+        <div className="flex items-center gap-2">
+          <Cookie className="h-4 w-4 text-amber-600" />
+          <span className="text-sm font-semibold">
+            {lang === "ar"
+              ? "طريقة بديلة: استخدام حساب Cookies للبوت (بدون توكن رسمي)"
+              : "Alternative: use a bot Cookies account (no official token)"}
+          </span>
+        </div>
+        <ChevronRight className={`h-4 w-4 transition-transform ${open ? "rotate-90" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="mt-4 space-y-4">
+          <p className="text-xs text-muted-foreground">
+            {lang === "ar"
+              ? "أقل استقراراً من التوكن الرسمي وقد تنقطع جلسة البوت أحياناً، لكنها لا تحتاج موافقة Meta. يجب أن يكون حساب البوت Active."
+              : "Less stable than the official token and the bot session may drop, but no Meta approval is needed. The bot account must be Active."}
+          </p>
+
+          {accountsQ.isLoading ? (
+            <div className="text-xs text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin" /> …</div>
+          ) : accounts.length === 0 ? (
+            <div className="rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground">
+              {lang === "ar"
+                ? "لا يوجد أي حساب بوت مربوط. أضف حساب Cookies من صفحة (حسابات البوت) أولاً."
+                : "No bot account linked. Add a Cookies account from the Bot Accounts page first."}
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={accountId ?? undefined} onValueChange={(v) => setAccountId(v)}>
+                <SelectTrigger className="h-9 w-64">
+                  <SelectValue placeholder={lang === "ar" ? "اختر حساب البوت" : "Pick bot account"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.displayName} {a.status !== "active" ? `(${a.status})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                disabled={!accountId || startListPagesM.isPending || listRunning}
+                onClick={() => startListPagesM.mutate()}
+              >
+                {startListPagesM.isPending || listRunning ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                {lang === "ar" ? "جلب صفحاتي المدارة" : "Fetch my managed Pages"}
+              </Button>
+              {listJob && (
+                <Badge variant="outline" className="text-[10px]">
+                  {lang === "ar" ? "حالة الجلب" : "List job"}: {listJob.status}
+                  {typeof listJob.progress === "number" ? ` — ${listJob.progress}%` : ""}
+                </Badge>
+              )}
+            </div>
+          )}
+
+          {pages.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-foreground">
+                {lang === "ar" ? "الصفحات المكتشفة" : "Discovered Pages"} ({pages.length})
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {pages.map((p) => (
+                  <div
+                    key={p.pageId}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background p-2 text-xs"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-foreground">{p.pageName}</p>
+                      <p className="truncate text-muted-foreground">{p.pageId}</p>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!accountId || startSyncM.isPending || syncRunning}
+                        onClick={() => startSyncM.mutate({ pageId: p.pageId, pageName: p.pageName })}
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                        {lang === "ar" ? "استيراد المحادثات" : "Import chats"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => onImportedContacts(p)}
+                      >
+                        <Users className="h-3 w-3" />
+                        {lang === "ar" ? "عرض العملاء" : "View contacts"}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {syncJob && (
+                <div className="rounded-lg border border-border bg-background p-2 text-xs">
+                  {lang === "ar" ? "آخر مزامنة عملاء" : "Last sync"}: {syncJob.status}
+                  {typeof syncJob.progress === "number" ? ` — ${syncJob.progress}%` : ""}
+                  {typeof syncJob.processed_items === "number"
+                    ? ` (${syncJob.processed_items}/${syncJob.total_items ?? "?"})`
+                    : ""}
+                  {syncJob.error_message ? ` — ${syncJob.error_message}` : ""}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
