@@ -1010,15 +1010,25 @@ function CookiesModePanel(props: {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const [lastSyncedPage, setLastSyncedPage] = useState<{ pageId: string; pageName: string } | null>(null);
   const startSyncM = useMutation({
     mutationFn: (p: { pageId: string; pageName: string }) =>
       syncCookiesFn({ data: { accountId: accountId!, pageId: p.pageId, pageName: p.pageName } }),
-    onSuccess: () => {
-      toast.success(lang === "ar" ? "بدأت مزامنة المحادثات — راقب التقدم بالأسفل" : "Sync started — watch progress below");
+    onSuccess: (_d, vars) => {
+      setLastSyncedPage(vars);
+      toast.success(lang === "ar" ? "بدأت مزامنة المحادثات — سيتم فتح قائمة العملاء تلقائياً عند الانتهاء" : "Sync started — contacts will open automatically");
       syncJobQ.refetch();
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  // Auto-open contacts view when sync completes
+  useEffect(() => {
+    if (syncJob?.status === "completed" && lastSyncedPage) {
+      onImportedContacts({ pageId: lastSyncedPage.pageId, pageName: lastSyncedPage.pageName, avatarUrl: null });
+      setLastSyncedPage(null);
+    }
+  }, [syncJob?.status, lastSyncedPage, onImportedContacts]);
 
   const pages = pagesResultQ.data?.pages ?? [];
   const listJob = listPagesJobQ.data?.job;
