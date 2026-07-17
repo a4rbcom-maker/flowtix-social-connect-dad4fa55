@@ -22,6 +22,8 @@ import {
   getFacebookConnection,
 } from "@/lib/facebook.functions";
 import { createListMyGroupsJob } from "@/lib/fb-bot.functions";
+import { isExternalServiceSessionError, getErrorMessage } from "@/lib/reauth-classifier";
+import { KeyRound } from "lucide-react";
 
 import { GraphApiConnectWizard } from "@/components/facebook/GraphApiConnectWizard";
 
