@@ -131,7 +131,7 @@ type SaveLogEvent = {
   detail: string;
 };
 
-const LEGACY_ERROR = /صفحة \/me|login page|\/me أعادت/i;
+const LEGACY_ERROR = /صفحة \/me|login page|\/me أعادت|Cannot coerce|PGRST116|single JSON object|JSON object requested|results contain 0 rows/i;
 // One row in the per-account test timeline. `key` matches a step in TEST_STEPS
 // so labels can be localized; `state` drives the icon (spinner/check/x).
 type TestEvent = {
@@ -143,6 +143,8 @@ type TestEvent = {
 
 const MAX_AUTO_RETRIES = 3;
 const RETRY_BACKOFF_MS = [1500, 3000, 6000]; // attempt 1/2/3
+const NON_RETRYABLE_TEST_ERROR =
+  /تعذّر تحديث حالة الحساب|هذا الحساب لم يعد موجود|Could not update the account state|account no longer exists|Cannot coerce|PGRST116|single JSON object|JSON object requested|results contain 0 rows/i;
 
 // Classify cookie session lifetime for badges/alerts. Returns null when the
 // account has no expiry info (credentials accounts or session-only cookies).
@@ -937,7 +939,7 @@ function BotAccountsPage() {
     });
   };
 
-  const handleTest = async (id: string, isRetry = false) => {
+  const handleTest = async (id: string, isRetry = false, existingToastId?: string | number) => {
     setTestingId(id);
     const attempt = (retryCounts[id] ?? 0) + (isRetry ? 1 : 0);
     if (isRetry) setRetryCounts((p) => ({ ...p, [id]: attempt }));
@@ -948,7 +950,8 @@ function BotAccountsPage() {
     }
     pushEvent(id, { key: "init", state: "running" });
     setTestProgress({ value: 10, label: t.progressInit });
-    const toastId = toast.loading(t.testing, { description: t.progressInit });
+    const toastId = existingToastId ?? toast.loading(t.testing, { description: t.progressInit });
+    if (existingToastId) toast.loading(t.testing, { id: toastId, description: t.progressInit });
 
     // Animated progress + event timeline while the request is in-flight.
     const steps: Array<{ value: number; label: string; delay: number; key: TestEvent["key"] }> = [
@@ -968,6 +971,7 @@ function BotAccountsPage() {
 
     const scheduleAutoRetry = (reason: string) => {
       if (!autoRetry) return false;
+      if (NON_RETRYABLE_TEST_ERROR.test(reason)) return false;
       if (attempt + 1 >= MAX_AUTO_RETRIES) return false;
       const wait = RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)];
       pushEvent(id, {
@@ -978,7 +982,7 @@ function BotAccountsPage() {
             ? `إعادة محاولة تلقائية خلال ${Math.round(wait / 1000)} ث — ${reason}`
             : `Auto-retry in ${Math.round(wait / 1000)}s — ${reason}`,
       });
-      setTimeout(() => void handleTest(id, true), wait);
+      setTimeout(() => void handleTest(id, true, toastId), wait);
       return true;
     };
 
@@ -1740,7 +1744,7 @@ function BotAccountsPage() {
                           );
                           setGroupsResult(null);
                         } catch (e) {
-                          toast.error(String((e as Error).message || e));
+                          toast.error(describeServerActionError(e, lang === "ar" ? "ar" : "en"));
                         } finally {
                           setListGroupsLoading(false);
                         }
