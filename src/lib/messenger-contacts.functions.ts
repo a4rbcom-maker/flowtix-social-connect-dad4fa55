@@ -83,6 +83,10 @@ export const listMessengerPages = createServerFn({ method: "GET" })
         tasks?: string[];
         picture?: { data?: { url?: string } };
       }>;
+      // Trust /me/accounts: Meta only returns pages the user manages. Keep the
+      // filter minimal (id + name + access token) so any real managed page shows
+      // up, exactly like other Messenger tools do. Category/tasks are optional
+      // hints, not gating conditions.
       const graphPages = arr
         .map((p) => ({
           id: String(p.id ?? "").trim(),
@@ -92,14 +96,7 @@ export const listMessengerPages = createServerFn({ method: "GET" })
           tasks: Array.isArray(p.tasks) ? p.tasks.map((task) => String(task)) : [],
           avatarUrl: p.picture?.data?.url ?? null,
         }))
-        .filter(
-          (p) =>
-            /^\d{5,}$/.test(p.id) &&
-            p.name.length > 0 &&
-            p.category.length > 0 &&
-            Boolean(p.accessToken) &&
-            (p.tasks.length === 0 || p.tasks.some((task) => /MESSAGING|MODERATE|CREATE_CONTENT|MANAGE/i.test(task))),
-        );
+        .filter((p) => /^\d{5,}$/.test(p.id) && p.name.length > 0 && Boolean(p.accessToken));
       if (graphPages.length === 0) return [];
 
       const { encryptJson } = await import("@/server/crypto.server");
