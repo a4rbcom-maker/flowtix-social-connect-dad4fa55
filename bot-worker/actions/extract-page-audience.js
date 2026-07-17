@@ -295,7 +295,12 @@ async function runExtractPageAudience({ page, job, report }) {
         stopReason = { code: "no_posts_visible", detail: "لم يعثر البوت على منشورات ظاهرة في هذه الصفحة (خصوصية / لغة / تخطيط جديد)." };
       }
 
+      if (skipUntilIndex > 0) {
+        await emitLog({ event: "resume_from_post", index: skipUntilIndex, of: postUrls.length, alreadyCollected: collected.size });
+      }
       for (let i = 0; i < postUrls.length; i++) {
+        // Post index in logs is 1-based (see emitLog "post_scraped" below).
+        if (i + 1 <= skipUntilIndex) continue;
         if (collected.size >= cap) { stopReason = { code: "cap_reached", detail: `تم بلوغ الحد الأقصى (${cap} حساب).` }; break; }
         const url = postUrls[i];
         const beforeCount = collected.size;
