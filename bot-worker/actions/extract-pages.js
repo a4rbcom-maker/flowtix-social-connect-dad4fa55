@@ -199,11 +199,18 @@ async function collectFromBootData(page) {
     const safeJsonParse = (text) => {
       try { return JSON.parse(text); } catch { return null; }
     };
-    const pageContextKey = (key) => /(^|_|\b)(page|pages|owned_pages|managed_pages|business_pages|page_profiles|profile_switcher|asset|assets)(_|\b|$)/i.test(String(key || ""));
-    const walk = (value, depth = 0, inPageContext = false) => {
+    // STRICT: only accept boot-data pages that clearly belong to the "you manage"
+    // graph. We ignore generic `__typename: Page` entities that appear anywhere
+    // in the JSON (feed, suggestions, followed, mentions...) because those are
+    // NOT owned/managed. We require an explicit management context key AND an
+    // explicit management URL/id signal.
+    const OWNED_CONTEXT_KEYS = /(^|_)(owned_pages|managed_pages|admined_pages|admin_pages|business_pages|profile_switcher|profile_switcher_pages|assets|assigned_assets|page_admin|pages_you_admin|switcher_pages)($|_)/i;
+    const MANAGE_URL_RE = /\/pages\/(?:edit|manage)|business\.facebook\.com\/latest|asset_id=|switch(?:_to)?[_-]?page|page_admin/i;
+    const pageContextKey = (key) => OWNED_CONTEXT_KEYS.test(String(key || ""));
+    const walk = (value, depth = 0, inManageContext = false) => {
       if (!value || depth > 12) return;
       if (Array.isArray(value)) {
-        for (const item of value) walk(item, depth + 1, inPageContext);
+        for (const item of value) walk(item, depth + 1, inManageContext);
         return;
       }
       if (typeof value !== "object") return;
@@ -214,14 +221,19 @@ async function collectFromBootData(page) {
       const url = obj.url || obj.uri || obj.profile_url || obj.page_url || obj.link;
       const picture = obj.profile_picture || obj.profilePicture || obj.image || obj.photo || obj.thumbnail;
       const avatar = typeof picture === "string" ? picture : (picture && (picture.uri || picture.url || picture.src));
-      const looksLikePage = /Page/i.test(type) || obj.page_id || obj.pageID || obj.pageId || /\/pages\/manager|\/pages\/edit|asset_id=|business\.facebook\.com\/latest/i.test(String(url || ""));
-      if (looksLikePage && id && name) push(id, name, url, avatar);
-      if (!looksLikePage && inPageContext && id && name) push(id, name, url, avatar);
+      const looksLikePage = /Page/i.test(type) || obj.page_id || obj.pageID || obj.pageId;
+      const manageUrl = MANAGE_URL_RE.test(String(url || ""));
+      // Only push when we are inside a manage/owned context AND (url signals management OR the field itself is an asset_id).
+      const isAssetIdField = !!(obj.asset_id || obj.assetID);
+      if (looksLikePage && id && name && inManageContext && (manageUrl || isAssetIdField)) {
+        push(id, name, url, avatar);
+      }
       for (const key of Object.keys(obj)) {
         const child = obj[key];
-        if (child && (typeof child === "object" || Array.isArray(child))) walk(child, depth + 1, inPageContext || pageContextKey(key));
+        if (child && (typeof child === "object" || Array.isArray(child))) walk(child, depth + 1, inManageContext || pageContextKey(key));
       }
     };
+
 
     for (const script of Array.from(document.querySelectorAll('script[type="application/json"], script:not([src])'))) {
       const text = script.textContent || "";
