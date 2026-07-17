@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Cookie,
   X,
+  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
@@ -179,7 +180,7 @@ function MessengerContactsPage() {
     refetchInterval: (q) => {
       const jobs = (q.state.data ?? []) as FbJob[];
       return jobs.some((job) => job.job_type === "extract_pages" && ["pending", "running"].includes(job.status))
-        ? 4000
+        ? 2000
         : false;
     },
   });
@@ -337,15 +338,45 @@ function MessengerContactsPage() {
   const latestExtractProgress = latestExtractJob?.progress ?? 0;
   const latestExtractProcessed = latestExtractJob?.processed_items ?? 0;
   const latestExtractTotal = latestExtractJob?.total_items ?? 0;
+
+  // Live elapsed timer for the running job.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (!extractRunning) return;
+    const t = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [extractRunning]);
+  const jobStartMs = latestExtractJob
+    ? new Date(latestExtractJob.started_at || latestExtractJob.created_at).getTime()
+    : null;
+  const elapsedSec = jobStartMs ? Math.max(0, Math.floor((nowTick - jobStartMs) / 1000)) : 0;
+  const elapsedLabel = `${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, "0")}`;
+
+  // Phase timeline — derived from status + progress + count.
+  type Phase = { key: string; ar: string; en: string };
+  const phases: Phase[] = [
+    { key: "queued", ar: "في قائمة الانتظار", en: "Queued" },
+    { key: "login", ar: "فتح فيسبوك والتحقق من الجلسة", en: "Opening Facebook & verifying session" },
+    { key: "scan", ar: "قراءة صفحات الحساب", en: "Reading account pages" },
+    { key: "collect", ar: "اكتشاف الصفحات وحفظها", en: "Discovering & saving pages" },
+    { key: "done", ar: "اكتملت المهمة", en: "Completed" },
+  ];
+  let currentPhaseIdx = 0;
+  if (latestExtractJob) {
+    if (latestExtractJob.status === "pending") currentPhaseIdx = 0;
+    else if (latestExtractJob.status === "completed") currentPhaseIdx = 4;
+    else if (latestExtractProcessed > 0) currentPhaseIdx = 3;
+    else if (latestExtractProgress >= 12) currentPhaseIdx = 2;
+    else currentPhaseIdx = 1;
+  }
+
   const latestExtractStatusText = latestExtractJob
     ? latestExtractJob.status === "pending"
       ? lang === "ar"
-        ? "المهمة في الانتظار حتى يلتقطها البوت. إذا كانت الجلسة مرفوضة سابقًا لن تبدأ المهمة وسيظهر السبب فورًا."
-        : "Waiting for the bot to pick up the job. If the session was previously rejected, the job will not start."
-      : latestExtractJob.status === "running" && latestExtractProcessed === 0
-        ? lang === "ar"
-          ? "يتم الآن فتح فيسبوك وفحص صلاحية الجلسة فعليًا قبل قراءة الصفحات."
-          : "Opening Facebook now and validating the live session before reading pages."
+        ? "المهمة في الانتظار حتى يلتقطها البوت (عادةً خلال ثوانٍ)."
+        : "Waiting for the bot to pick up the job (usually a few seconds)."
+      : latestExtractJob.status === "running"
+        ? phases[currentPhaseIdx][lang === "ar" ? "ar" : "en"]
         : latestExtractJob.status === "completed"
           ? lang === "ar"
             ? `اكتمل الاستخراج: ${latestExtractProcessed || latestExtractTotal} صفحة مكتشفة.`
@@ -444,31 +475,97 @@ function MessengerContactsPage() {
           ) : botAccounts.length > 0 ? (
             <div className="mx-auto max-w-2xl space-y-3 text-start">
               {latestExtractJob && (
-                <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                <div className="rounded-lg border bg-card p-4 text-sm shadow-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium">
-                      {lang === "ar" ? "آخر مهمة استخراج صفحات" : "Latest page extraction job"}
+                    <div className="flex items-center gap-2">
+                      {extractRunning ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      ) : latestExtractJob.status === "completed" ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                      ) : latestExtractJob.status === "failed" ? (
+                        <AlertCircle className="h-4 w-4 text-destructive" />
+                      ) : null}
+                      <span className="font-semibold">
+                        {lang === "ar" ? "استخراج الصفحات" : "Page extraction"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {extractRunning && (
+                        <span className="rounded-md bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">
+                          {elapsedLabel}
+                        </span>
+                      )}
+                      <Badge variant={extractRunning ? "secondary" : latestExtractJob.status === "completed" ? "default" : "destructive"}>
+                        {latestExtractJob.status}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Big live counter */}
+                  <div className="mt-4 flex items-baseline gap-2">
+                    <span className={`text-4xl font-bold tabular-nums ${extractRunning ? "text-primary" : "text-foreground"}`}>
+                      {latestExtractProcessed}
                     </span>
-                    <Badge variant={extractRunning ? "secondary" : latestExtractJob.status === "completed" ? "default" : "destructive"}>
-                      {latestExtractJob.status}
-                    </Badge>
+                    <span className="text-sm text-muted-foreground">
+                      {lang === "ar" ? "صفحة تم اكتشافها" : "pages discovered"}
+                    </span>
                   </div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-primary transition-all"
-                      style={{ width: `${Math.max(0, Math.min(100, latestExtractProgress))}%` }}
-                    />
+
+                  {/* Progress bar (indeterminate stripe when 0 while running) */}
+                  <div className="relative mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                    {extractRunning && latestExtractProgress < 5 ? (
+                      <div className="absolute inset-y-0 w-1/3 animate-pulse rounded-full bg-primary/70" />
+                    ) : (
+                      <div
+                        className="h-full rounded-full bg-primary transition-all duration-500"
+                        style={{ width: `${Math.max(3, Math.min(100, latestExtractProgress))}%` }}
+                      />
+                    )}
                   </div>
+                  <div className="mt-1 flex justify-between text-[11px] text-muted-foreground tabular-nums">
+                    <span>{Math.max(0, Math.min(100, Math.round(latestExtractProgress)))}%</span>
+                    {extractRunning && (
+                      <span>{lang === "ar" ? "التحديث كل ثانيتين" : "auto-refresh every 2s"}</span>
+                    )}
+                  </div>
+
+                  {/* Phase timeline */}
+                  {latestExtractJob.status !== "failed" && (
+                    <ol className="mt-4 space-y-1.5">
+                      {phases.map((p, i) => {
+                        const done = i < currentPhaseIdx || latestExtractJob.status === "completed";
+                        const active = i === currentPhaseIdx && extractRunning;
+                        return (
+                          <li key={p.key} className="flex items-center gap-2 text-xs">
+                            <span
+                              className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                                done
+                                  ? "border-emerald-600 bg-emerald-600 text-white"
+                                  : active
+                                    ? "border-primary bg-primary/10 text-primary"
+                                    : "border-muted-foreground/30 text-muted-foreground/60"
+                              }`}
+                            >
+                              {done ? (
+                                <CheckCircle2 className="h-3 w-3" />
+                              ) : active ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <span className="text-[9px]">{i + 1}</span>
+                              )}
+                            </span>
+                            <span className={active ? "font-medium text-foreground" : done ? "text-foreground/70" : "text-muted-foreground"}>
+                              {lang === "ar" ? p.ar : p.en}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  )}
+
                   {latestExtractStatusText ? (
-                    <p className={`mt-2 text-xs ${latestExtractJob.status === "failed" ? "text-destructive" : "text-muted-foreground"}`}>
+                    <p className={`mt-3 text-xs ${latestExtractJob.status === "failed" ? "text-destructive" : "text-muted-foreground"}`}>
                       {latestExtractStatusText}
-                    </p>
-                  ) : null}
-                  {latestExtractJob.status === "running" || latestExtractJob.status === "completed" ? (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {lang === "ar"
-                        ? `المكتشف: ${latestExtractProcessed} / ${latestExtractTotal || latestExtractProcessed}`
-                        : `Found: ${latestExtractProcessed} / ${latestExtractTotal || latestExtractProcessed}`}
                     </p>
                   ) : null}
                 </div>
