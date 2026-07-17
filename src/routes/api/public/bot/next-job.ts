@@ -107,6 +107,15 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         if (!supportsMessengerDm) {
           candidateQuery = candidateQuery.neq("job_type", "send_messenger_dm");
         }
+        if (!supportsMessengerListPages) {
+          candidateQuery = candidateQuery.neq("job_type", "messenger_list_pages");
+        }
+        if (!supportsMessengerSyncCookies) {
+          candidateQuery = candidateQuery.neq("job_type", "messenger_sync_cookies");
+        }
+        if (!supportsMessengerSendCookies) {
+          candidateQuery = candidateQuery.neq("job_type", "messenger_send_cookies");
+        }
 
         const { data: candidate, error: selErr } = await candidateQuery
           .order("scheduled_at", { ascending: true })
