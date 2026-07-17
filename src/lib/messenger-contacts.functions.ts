@@ -7,7 +7,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { fbGet, getPageAccessToken } from "@/lib/facebook.functions";
+import { fbGet, getPageAccessToken, getStoredAccessToken } from "@/lib/facebook.functions";
 
 const MESSAGE_TAGS = [
   "HUMAN_AGENT",
@@ -24,18 +24,40 @@ export const listMessengerPages = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
+    // Prefer explicitly linked pages from fb_pages.
     const { data, error } = await supabase
       .from("fb_pages")
       .select("page_id, page_name, avatar_url, status")
       .eq("user_id", userId)
       .order("page_name", { ascending: true });
     if (error) throw new Error(error.message);
-    return (data ?? []).map((p) => ({
-      pageId: p.page_id,
-      pageName: p.page_name,
-      avatarUrl: p.avatar_url,
-      status: p.status,
-    }));
+    if (data && data.length > 0) {
+      return data.map((p) => ({
+        pageId: p.page_id,
+        pageName: p.page_name,
+        avatarUrl: p.avatar_url,
+        status: p.status,
+      }));
+    }
+    // Fallback: fetch live from Facebook Graph so users who linked FB
+    // (but haven't added pages to autoreply) still see their pages here.
+    try {
+      const token = await getStoredAccessToken(userId);
+      if (!token) return [];
+      const result = await fbGet(
+        "/me/accounts?fields=id,name,picture&limit=100",
+        token,
+      );
+      const arr = (result?.data ?? []) as Array<{ id: string; name: string; picture?: { data?: { url?: string } } }>;
+      return arr.map((p) => ({
+        pageId: p.id,
+        pageName: p.name,
+        avatarUrl: p.picture?.data?.url ?? null,
+        status: "active" as string | null,
+      }));
+    } catch {
+      return [];
+    }
   });
 
 // ---------- Sync status ----------
