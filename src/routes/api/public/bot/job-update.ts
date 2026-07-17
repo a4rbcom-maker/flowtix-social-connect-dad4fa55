@@ -36,6 +36,75 @@ function normalizeExtractedPage(result: { target?: string; data?: unknown } | un
   };
 }
 
+type BotJobResult = {
+  target?: string;
+  status: "success" | "failed" | "skipped";
+  data?: unknown;
+  error?: string;
+};
+
+async function persistJobResult(
+  supabaseAdmin: { from: (table: string) => any },
+  input: {
+    jobId: string;
+    result: BotJobResult;
+    current?: { job_type?: string | null; user_id?: string | null; account_id?: string | null } | null;
+  },
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const { error: insertError } = await supabaseAdmin.from("fb_job_results").insert([
+    {
+      job_id: input.jobId,
+      target: input.result.target ?? null,
+      status: input.result.status,
+      data: (input.result.data ?? null) as never,
+      error: input.result.error ?? null,
+    },
+  ]);
+  if (insertError) {
+    console.error("[bot/job-update] fb_job_results insert failed", {
+      jobId: input.jobId,
+      target: input.result.target,
+      status: input.result.status,
+      message: insertError.message,
+    });
+    return { ok: false, message: `تعذر حفظ نتيجة الاستخراج في قاعدة البيانات: ${insertError.message}` };
+  }
+
+  if (
+    input.current?.job_type === "extract_pages" &&
+    input.current.user_id &&
+    input.current.account_id &&
+    input.result.status === "success"
+  ) {
+    const extractedPage = normalizeExtractedPage(input.result);
+    if (extractedPage) {
+      const { error: upsertError } = await supabaseAdmin.from("fb_pages").upsert(
+        {
+          user_id: input.current.user_id,
+          page_id: extractedPage.page_id,
+          page_name: extractedPage.page_name,
+          avatar_url: extractedPage.avatar_url,
+          connection_type: "bot",
+          bot_account_id: input.current.account_id,
+          status: "active",
+          last_error: null,
+        } as never,
+        { onConflict: "user_id,page_id", ignoreDuplicates: false },
+      );
+      if (upsertError) {
+        console.error("[bot/job-update] fb_pages upsert failed", {
+          jobId: input.jobId,
+          pageId: extractedPage.page_id,
+          message: upsertError.message,
+        });
+        return { ok: false, message: `تم اكتشاف الصفحة لكن تعذر حفظها: ${upsertError.message}` };
+      }
+    }
+  }
+
+  return { ok: true };
+}
+
 export const Route = createFileRoute("/api/public/bot/job-update")({
   server: {
     handlers: {
@@ -53,7 +122,7 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
               totalItems?: number;
               status?: "completed" | "failed" | "running";
               errorMessage?: string;
-              result?: { target?: string; status: "success" | "failed" | "skipped"; data?: unknown; error?: string };
+              result?: BotJobResult;
               accountStatus?: { accountId: string; status: "active" | "invalid" | "checkpoint" | "disabled"; error?: string };
             }
           | null;
@@ -66,6 +135,27 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
           .select("status, job_type, account_id, user_id, total_items")
           .eq("id", body.jobId)
           .maybeSingle();
+        if (body.result) {
+          const persisted = await persistJobResult(supabaseAdmin, {
+            jobId: body.jobId,
+            result: body.result,
+            current,
+          });
+          if (!persisted.ok) {
+            await supabaseAdmin
+              .from("fb_jobs")
+              .update({
+                status: "failed",
+                progress: 100,
+                completed_at: new Date().toISOString(),
+                error_message: persisted.message,
+              } as never)
+              .eq("id", body.jobId)
+              .in("status", ["pending", "running"]);
+            return Response.json({ error: persisted.message }, { status: 500 });
+          }
+        }
+
         if (body.status === "failed" && /is not implemented in this worker/i.test(body.errorMessage || "")) {
           await supabaseAdmin
             .from("fb_jobs")
@@ -95,17 +185,8 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
               })
               .eq("id", body.accountStatus.accountId);
           }
-          // For paused jobs we still want any in-flight result row that the
-          // worker just produced to be saved, so it isn't re-sent on resume.
-          if (paused && body.result) {
-            await supabaseAdmin.from("fb_job_results").insert([{
-              job_id: body.jobId,
-              target: body.result.target ?? null,
-              status: body.result.status,
-              data: (body.result.data ?? null) as never,
-              error: body.result.error ?? null,
-            }]);
-          }
+          // Results are persisted before this branch even for completed/failed
+          // jobs, so late successful page candidates are not silently dropped.
           return Response.json({
             ok: true,
             cancelled: current?.status === "cancelled",
@@ -114,40 +195,8 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
           });
         }
 
-        // Optional: insert a result row
-        if (body.result) {
-          await supabaseAdmin.from("fb_job_results").insert([{
-            job_id: body.jobId,
-            target: body.result.target ?? null,
-            status: body.result.status,
-            data: (body.result.data ?? null) as never,
-            error: body.result.error ?? null,
-          }]);
-
-          if (
-            current?.job_type === "extract_pages" &&
-            current.user_id &&
-            current.account_id &&
-            body.result.status === "success"
-          ) {
-            const extractedPage = normalizeExtractedPage(body.result);
-            if (extractedPage) {
-              await supabaseAdmin.from("fb_pages").upsert(
-                {
-                  user_id: current.user_id,
-                  page_id: extractedPage.page_id,
-                  page_name: extractedPage.page_name,
-                  avatar_url: extractedPage.avatar_url,
-                  connection_type: "bot",
-                  bot_account_id: current.account_id,
-                  status: "active",
-                  last_error: null,
-                } as never,
-                { onConflict: "user_id,page_id", ignoreDuplicates: false },
-              );
-            }
-          }
-        }
+        // Optional result rows were already persisted above. From this point on,
+        // counters/status updates cannot advance while extracted pages are lost.
 
         // Optional: update account status
         if (body.accountStatus) {
@@ -194,7 +243,7 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
               Math.max(body.processedItems ?? 0, current.total_items ?? 0) <= 0
             ) {
               update.status = "failed";
-              update.error_message = "لم يتم العثور على أي صفحة في حساب فيسبوك أثناء الاستخراج.";
+              update.error_message = "انتهى فحص صفحات فيسبوك بدون أي نتيجة محفوظة. راجع سجل التشخيص لمعرفة آخر مرحلة وصل لها البوت؛ لن يتم اعتبار 0 صفحات نجاحاً.";
             }
             if (
               typeof body.totalItems !== "number" &&

@@ -192,7 +192,7 @@ async function runOne() {
         if (done < targets.length) await sleep(rand(min, max));
       }
       await api("/api/public/bot/job-update", { jobId: job.id, status: "completed", processedItems: done });
-    } else if (job.type === "extract_pages" || job.type === "fetch_groups") {
+    } else if (job.type === "fetch_groups") {
       const groups = await fetchGroups(page);
       await api("/api/public/bot/job-update", {
         jobId: job.id,
