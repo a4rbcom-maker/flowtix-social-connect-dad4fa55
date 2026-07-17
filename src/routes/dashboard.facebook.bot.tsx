@@ -469,11 +469,11 @@ function BotAccountsPage() {
     lang === "ar"
       ? {
           title: "حسابات بوت فيسبوك",
-          subtitle: "اربط حسابات فيسبوك للنشر التلقائي والاستخراج عبر VPS Worker",
+          subtitle: "Cookies للبوت فقط: نشر/استخراج عبر Worker — ليست طريقة جلب عملاء Messenger",
           add: "ربط حساب جديد",
-          directTitle: "إضافة حساب بالـ Cookies مباشرة",
+          directTitle: "إضافة حساب Cookies للبوت فقط",
           directSubtitle:
-            "الصق JSON من إضافة Cookie Editor هنا واحفظ الحساب بدون فتح نوافذ أو تبويبات إضافية.",
+            "هذه الآلية لتشغيل مهام البوت فقط. عملاء Messenger والصفحات المُدارة يتمون من تبويب جهات اتصال Messenger عبر Access Token.",
           cookiesLabel: "Cookies JSON",
           saveCookies: "حفظ حساب Cookies",
           cookiesRequired: "الصق Cookies JSON أولاً",
@@ -542,11 +542,11 @@ function BotAccountsPage() {
         }
       : {
           title: "Facebook Bot Accounts",
-          subtitle: "Link Facebook accounts for VPS Worker automation",
+          subtitle: "Cookies for bot automation only — not for importing Messenger contacts",
           add: "Add new account",
-          directTitle: "Add a Cookies account directly",
+          directTitle: "Add a bot Cookies account only",
           directSubtitle:
-            "Paste the Cookie Editor JSON here and save without opening extra dialogs or tabs.",
+            "This method only powers bot jobs. Messenger contacts and managed Pages use the Messenger Contacts tab with an Access Token.",
           cookiesLabel: "Cookies JSON",
           saveCookies: "Save Cookies account",
           cookiesRequired: "Paste the Cookies JSON first",
