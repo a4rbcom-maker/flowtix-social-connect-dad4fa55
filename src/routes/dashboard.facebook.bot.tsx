@@ -890,10 +890,9 @@ function BotAccountsPage() {
       });
     } catch (e) {
       console.error("[precheck] failed:", e);
-      const raw = e instanceof Error ? e.message : String(e);
       // Distinguish auth from other failures so the toast routes the user
       // back to login when the session has expired.
-      if (/unauthorized|401|session/i.test(raw)) {
+      if (isAuthErr(e)) {
         handleAuthExpired();
         return;
       }
