@@ -590,12 +590,12 @@ function MessengerContactsPage() {
         <Card className="p-8 text-center">
           <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
           <h2 className="mb-1 text-lg font-semibold">
-            {lang === "ar" ? "لم يتم تحميل صفحاتك بعد" : "Your pages are not loaded yet"}
+            {lang === "ar" ? "لم يتم تحميل صفحاتك التي تديرها بعد" : "Your managed pages are not loaded yet"}
           </h2>
           <p className="mx-auto mb-5 max-w-2xl text-sm text-muted-foreground">
             {lang === "ar"
-              ? "إذا كنت تستخدم ربط الكوكيز، اختر حساب بوت متصل لاستخراج الصفحات أولاً، وبعدها ستحدد الصفحة المستهدفة."
-              : "If you use cookie login, choose an active bot account to extract pages first, then select the target page."}
+              ? "سيتم استخراج الصفحات التي تملكها أو تديرها فقط (لن يتم استيراد الصفحات التي تتابعها أو أُعجبت بها). بعد اكتمال الاستخراج ستظهر قائمة الصفحات لتختار الصفحة المستهدفة."
+              : "Only pages you own or manage will be extracted (followed/liked pages are excluded). Once the extraction finishes, pick the target page to load its Messenger contacts."}
           </p>
 
           {botAccountsQ.isLoading ? (
