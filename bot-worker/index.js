@@ -102,6 +102,8 @@ async function runJob(job) {
     await page.setUserAgent(accountUA);
 
     if (job.account) {
+      // Signal to the UI immediately that the worker picked the job up.
+      await reportUpdate({ jobId: job.id, status: "running", progress: 3 });
       let loginFailureReason = "SESSION_EXPIRED: انتهت صلاحية جلسة حساب فيسبوك — أعد ربط الحساب من صفحة حسابات البوت.";
       const ok = await ensureLogin(page, job.account, async (status, error) => {
         if (error) loginFailureReason = /session|cookie|login|auth|c_user/i.test(error)
@@ -113,6 +115,8 @@ async function runJob(job) {
         await reportUpdate({ jobId: job.id, status: "failed", errorMessage: loginFailureReason });
         return;
       }
+      // Session verified — jump progress so the UI stops looking stuck.
+      await reportUpdate({ jobId: job.id, progress: 12 });
     }
 
     const ctx = {
