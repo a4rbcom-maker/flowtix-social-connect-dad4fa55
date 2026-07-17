@@ -25,6 +25,20 @@ export const listMessengerPages = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
 
+    const assertPagesListScope = async (token: string) => {
+      const perms = await fbGet("/me/permissions", token);
+      const granted = new Set(
+        ((perms?.data ?? []) as Array<{ permission?: string; status?: string }>)
+          .filter((p) => p.status === "granted" && typeof p.permission === "string")
+          .map((p) => p.permission as string),
+      );
+      if (!granted.has("pages_show_list")) {
+        throw new Error(
+          "صلاحية pages_show_list ناقصة. أعد ربط Facebook Token بهذه الصلاحية حتى تظهر الصفحات التي تديرها.",
+        );
+      }
+    };
+
     const mapDbPage = (p: {
       page_id: string;
       page_name: string;
@@ -56,24 +70,36 @@ export const listMessengerPages = createServerFn({ method: "GET" })
     if (!token) return [];
 
     try {
+      await assertPagesListScope(token);
       const result = await fbGet(
-        "/me/accounts?fields=id,name,access_token,picture.type(square){url}&limit=200",
+        "/me/accounts?fields=id,name,category,access_token,tasks,picture.type(square){url}&limit=200",
         token,
       );
       const arr = (result?.data ?? []) as Array<{
         id: string;
         name: string;
+        category?: string;
         access_token?: string;
+        tasks?: string[];
         picture?: { data?: { url?: string } };
       }>;
       const graphPages = arr
         .map((p) => ({
           id: String(p.id ?? "").trim(),
           name: String(p.name ?? "").replace(/\s+/g, " ").trim(),
+          category: String(p.category ?? "").replace(/\s+/g, " ").trim(),
           accessToken: p.access_token,
+          tasks: Array.isArray(p.tasks) ? p.tasks.map((task) => String(task)) : [],
           avatarUrl: p.picture?.data?.url ?? null,
         }))
-        .filter((p) => /^\d{5,}$/.test(p.id) && p.name.length > 0);
+        .filter(
+          (p) =>
+            /^\d{5,}$/.test(p.id) &&
+            p.name.length > 0 &&
+            p.category.length > 0 &&
+            Boolean(p.accessToken) &&
+            (p.tasks.length === 0 || p.tasks.some((task) => /MESSAGING|MODERATE|CREATE_CONTENT|MANAGE/i.test(task))),
+        );
       if (graphPages.length === 0) return [];
 
       const { encryptJson } = await import("@/server/crypto.server");
@@ -92,6 +118,16 @@ export const listMessengerPages = createServerFn({ method: "GET" })
         .from("fb_pages")
         .upsert(rows, { onConflict: "user_id,page_id", ignoreDuplicates: false });
       if (upsertError) throw new Error(upsertError.message);
+
+      const officialIds = graphPages.map((p) => p.id);
+      if (officialIds.length > 0) {
+        await supabase
+          .from("fb_pages")
+          .delete()
+          .eq("user_id", userId)
+          .eq("connection_type", "official")
+          .not("page_id", "in", `(${officialIds.join(",")})`);
+      }
 
       return rows
         .map((row) => mapDbPage(row))
@@ -132,7 +168,7 @@ export const startMessengerSync = createServerFn({ method: "POST" })
       .object({
         pageId: z.string().min(1).max(100),
         mode: z.enum(["initial", "incremental"]).default("incremental"),
-        maxConversations: z.number().int().min(10).max(2000).optional(),
+        maxConversations: z.number().int().min(10).max(10000).optional(),
       })
       .parse(d),
   )
@@ -219,7 +255,7 @@ export const startMessengerSync = createServerFn({ method: "POST" })
     // Page through /{page-id}/conversations. Meta caps at ~2min per call chain
     // in a serverless worker, so bound the total work and mark cursor for
     // future resumption.
-    const maxConv = data.maxConversations ?? (data.mode === "initial" ? 1000 : 300);
+    const maxConv = data.maxConversations ?? (data.mode === "initial" ? 10000 : 300);
     let after: string | undefined;
     let scannedConv = 0;
     let scannedMsg = 0;
@@ -227,7 +263,7 @@ export const startMessengerSync = createServerFn({ method: "POST" })
     let stopReason: string | null = null;
     let lastCursor: string | null = null;
 
-    outer: for (let pageIdx = 0; pageIdx < 40; pageIdx += 1) {
+    outer: for (let pageIdx = 0; pageIdx < 120; pageIdx += 1) {
       const qs = new URLSearchParams();
       qs.set(
         "fields",

@@ -26,8 +26,9 @@ export const Route = createFileRoute("/api/public/hooks/messenger-sync")({
         // Snapshot every (user_id, page_id) with a connected page.
         const { data: pages, error } = await supabaseAdmin
           .from("fb_pages")
-          .select("user_id, page_id, page_name, status")
-          .eq("status", "active");
+          .select("user_id, page_id, page_name, status, connection_type")
+          .eq("status", "active")
+          .eq("connection_type", "official");
         if (error) {
           return new Response(JSON.stringify({ ok: false, error: error.message }), {
             status: 500,

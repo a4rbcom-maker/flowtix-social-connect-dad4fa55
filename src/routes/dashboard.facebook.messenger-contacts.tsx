@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -114,6 +114,7 @@ function MessengerContactsPage() {
   const [campaignTag, setCampaignTag] = useState<(typeof MESSAGE_TAGS)[number]>("HUMAN_AGENT");
   const [tagContact, setTagContact] = useState<Contact | null>(null);
   const [tagInput, setTagInput] = useState("");
+  const [autoSyncStarted, setAutoSyncStarted] = useState<Set<string>>(new Set());
 
   // Pages query — decides whether to show picker.
   const pagesQ = useQuery({
@@ -124,12 +125,10 @@ function MessengerContactsPage() {
   const pages = pagesQ.data ?? [];
   const noPagesReady = !pagesQ.isLoading && !pagesQ.error && pages.length === 0;
 
-  // Auto-pick when there's exactly one page; otherwise force explicit choice.
+  // Always make the user explicitly choose the target Page first.
   useEffect(() => {
     if (pageId) return;
-    if (pages.length === 1) {
-      setPageId(pages[0].pageId);
-    } else if (pages.length > 1) {
+    if (pages.length > 0) {
       setShowPagePicker(true);
     }
   }, [pageId, pages]);
@@ -173,7 +172,7 @@ function MessengerContactsPage() {
 
   const syncM = useMutation({
     mutationFn: (mode: "initial" | "incremental") =>
-      startSyncFn({ data: { pageId: pageId!, mode } }),
+      startSyncFn({ data: { pageId: pageId!, mode, maxConversations: mode === "initial" ? 10000 : 300 } }),
     onSuccess: (res) => {
       toast.success(
         lang === "ar"
@@ -242,6 +241,15 @@ function MessengerContactsPage() {
   const syncJob = statusQ.data?.job;
   const syncRunning = syncJob?.status === "running" || syncJob?.status === "queued";
 
+  useEffect(() => {
+    if (!pageId) return;
+    if (autoSyncStarted.has(pageId)) return;
+    if (!contactsQ.isSuccess || contactsQ.isFetching || syncM.isPending || syncRunning) return;
+    if ((contactsQ.data?.total ?? 0) > 0) return;
+    setAutoSyncStarted((prev) => new Set(prev).add(pageId));
+    syncM.mutate("initial");
+  }, [autoSyncStarted, contactsQ.data?.total, contactsQ.isFetching, contactsQ.isSuccess, pageId, syncM, syncRunning]);
+
   const rtl = lang === "ar";
 
   return (
@@ -264,7 +272,7 @@ function MessengerContactsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {pages.length > 1 && (
+          {pages.length > 0 && (
             <Button variant="outline" size="sm" onClick={() => setShowPagePicker(true)}>
               <Users className="h-4 w-4" />
               {currentPage?.pageName ?? (lang === "ar" ? "اختر صفحة" : "Pick a page")}
@@ -273,14 +281,14 @@ function MessengerContactsPage() {
           <Button
             size="sm"
             disabled={!pageId || syncM.isPending || syncRunning}
-            onClick={() => syncM.mutate("incremental")}
+            onClick={() => syncM.mutate(total > 0 ? "incremental" : "initial")}
           >
             {syncM.isPending || syncRunning ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="h-4 w-4" />
             )}
-            {lang === "ar" ? "مزامنة الآن" : "Sync now"}
+            {lang === "ar" ? "جلب/تحديث العملاء" : "Import/update contacts"}
           </Button>
         </div>
       </header>
@@ -319,13 +327,20 @@ function MessengerContactsPage() {
           </h2>
           <p className="mx-auto mb-5 max-w-2xl text-sm text-muted-foreground">
             {lang === "ar"
-              ? "هذه الشاشة تعرض صفحات Facebook التي يديرها حسابك فقط من الربط الرسمي، ثم تختار صفحة واحدة لاستخراج محادثات Messenger الخاصة بها. لن تظهر الجروبات أو الملف الشخصي أو طلبات الصداقة هنا."
-              : "This screen lists only Facebook Pages managed by your official connection, then you select one Page to import its Messenger conversations. Groups, profiles, and friend requests are not shown here."}
+              ? "لم يصلنا من الربط الرسمي أي صفحة مُدارة. هذا يحدث إذا كان الحساب مربوطاً بالكوكيز فقط، أو إذا كان Facebook Token لا يحتوي pages_show_list. اربط التوكن الرسمي ثم وافق على صلاحيات الصفحات والرسائل."
+              : "The official connection did not return any managed Page. This happens when only cookies are connected, or the Facebook Token lacks pages_show_list. Connect the official token and allow Pages/Messenger permissions."}
           </p>
-          <Button variant="outline" onClick={() => pagesQ.refetch()}>
-            <RefreshCw className="h-4 w-4" />
-            {lang === "ar" ? "إعادة تحميل الصفحات" : "Reload Pages"}
-          </Button>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button asChild>
+              <Link to="/dashboard/facebook">
+                {lang === "ar" ? "ربط Facebook Token الرسمي" : "Connect official Facebook Token"}
+              </Link>
+            </Button>
+            <Button variant="outline" onClick={() => pagesQ.refetch()}>
+              <RefreshCw className="h-4 w-4" />
+              {lang === "ar" ? "إعادة تحميل الصفحات" : "Reload Pages"}
+            </Button>
+          </div>
         </Card>
       )}
 
@@ -435,9 +450,9 @@ function MessengerContactsPage() {
               <X className="h-4 w-4" />
               {lang === "ar" ? "إلغاء" : "Clear"}
             </Button>
-            <Button size="sm" onClick={() => setCampaignOpen(true)}>
+              <Button size="sm" onClick={() => setCampaignOpen(true)}>
               <Send className="h-4 w-4" />
-              {lang === "ar" ? "إرسال حملة Messenger" : "Send Messenger campaign"}
+                {lang === "ar" ? "إعادة مراسلة المحددين" : "Message selected again"}
             </Button>
           </div>
         </div>
@@ -462,21 +477,26 @@ function MessengerContactsPage() {
                 <th className="p-3 text-start">{lang === "ar" ? "الرسائل" : "Messages"}</th>
                 <th className="p-3 text-start">{lang === "ar" ? "آخر رسالة" : "Last message"}</th>
                 <th className="p-3 text-start">{lang === "ar" ? "الوسوم" : "Tags"}</th>
+                <th className="p-3 text-start">{lang === "ar" ? "مراسلة" : "Message"}</th>
               </tr>
             </thead>
             <tbody>
               {contactsQ.isLoading ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
                     <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
                     {lang === "ar"
-                      ? "لا توجد جهات اتصال بعد. اضغط \"مزامنة الآن\" لجلبها من Messenger."
-                      : "No contacts yet. Click \"Sync now\" to import from Messenger."}
+                      ? syncM.isPending || syncRunning
+                        ? "جاري جلب أسماء من تواصلوا مع هذه الصفحة عبر Messenger..."
+                        : "لا توجد أسماء بعد لهذه الصفحة. سيتم الجلب تلقائياً عند اختيار الصفحة، ويمكنك الضغط على \"جلب/تحديث العملاء\" لإعادة المحاولة."
+                      : syncM.isPending || syncRunning
+                        ? "Importing everyone who messaged this Page..."
+                        : "No contacts yet for this Page. Import starts automatically after choosing the Page; you can retry with Import/update contacts."}
                   </td>
                 </tr>
               ) : (
@@ -534,6 +554,19 @@ function MessengerContactsPage() {
                         </Button>
                       </div>
                     </td>
+                    <td className="p-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelected(new Set([c.id]));
+                          setCampaignOpen(true);
+                        }}
+                      >
+                        <Send className="h-4 w-4" />
+                        {lang === "ar" ? "مراسلة" : "Message"}
+                      </Button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -582,8 +615,8 @@ function MessengerContactsPage() {
             </DialogTitle>
             <DialogDescription>
               {lang === "ar"
-                ? "اختر الصفحة التي تريد استيراد محادثاتها."
-                : "Choose the page whose conversations you want to import."}
+                ? "تظهر هنا صفحاتك المُدارة فقط التي لديها صلاحية Messenger. اختر صفحة واحدة لجلب أسماء من تواصلوا معها."
+                : "Only managed Pages with Messenger access appear here. Pick one Page to import its contacts."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 overflow-y-auto flex-1 pr-1">
@@ -605,7 +638,12 @@ function MessengerContactsPage() {
                 )}
                 <div className="flex-1">
                   <div className="font-medium">{p.pageName}</div>
-                  <div className="text-xs text-muted-foreground">{p.pageId}</div>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Badge variant="secondary" className="text-[10px]">
+                      {lang === "ar" ? "صفحة مُدارة" : "Managed Page"}
+                    </Badge>
+                    <span>{p.pageId}</span>
+                  </div>
                 </div>
               </button>
             ))}
