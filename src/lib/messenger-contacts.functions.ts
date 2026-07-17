@@ -41,6 +41,8 @@ export const listMessengerPages = createServerFn({ method: "GET" })
     }
     // Fallback: fetch live from Facebook Graph so users who linked FB
     // (but haven't added pages to autoreply) still see their pages here.
+    // Also upsert into fb_pages so downstream sync (which verifies ownership
+    // via fb_pages) works without requiring the user to visit autoreply first.
     try {
       const token = await getStoredAccessToken(userId);
       if (!token) return [];
@@ -49,6 +51,21 @@ export const listMessengerPages = createServerFn({ method: "GET" })
         token,
       );
       const arr = (result?.data ?? []) as Array<{ id: string; name: string; picture?: { data?: { url?: string } } }>;
+      if (arr.length > 0) {
+        const rows = arr.map((p) => ({
+          user_id: userId,
+          page_id: p.id,
+          page_name: p.name,
+          avatar_url: p.picture?.data?.url ?? null,
+          connection_type: "official" as const,
+          status: "active" as const,
+        }));
+        // Best-effort upsert; ignore errors so listing never breaks.
+        await supabase
+          .from("fb_pages")
+          .upsert(rows, { onConflict: "user_id,page_id", ignoreDuplicates: false })
+          .then(() => null, () => null);
+      }
       return arr.map((p) => ({
         pageId: p.id,
         pageName: p.name,
@@ -59,6 +76,7 @@ export const listMessengerPages = createServerFn({ method: "GET" })
       return [];
     }
   });
+
 
 // ---------- Sync status ----------
 export const getMessengerSyncStatus = createServerFn({ method: "POST" })
