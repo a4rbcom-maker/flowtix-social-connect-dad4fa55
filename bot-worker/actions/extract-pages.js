@@ -233,36 +233,17 @@ async function collectFromBootData(page) {
         if (child && (typeof child === "object" || Array.isArray(child))) walk(child, depth + 1, inManageContext || pageContextKey(key));
       }
     };
-
-
+    // We only rely on the STRICT `walk()` above. The old loose regex extractors
+    // (any id+name in JSON, any `__typename: Page`) were the primary source of
+    // the "126 pages" leak because Facebook's JSON also contains suggested,
+    // followed, mentioned, and feed pages that the user does NOT manage.
     for (const script of Array.from(document.querySelectorAll('script[type="application/json"], script:not([src])'))) {
       const text = script.textContent || "";
-      if (!text || !/(page_id|pageID|__typename|asset_id|profile_picture|profilePicture|Pages|الصفحات)/i.test(text)) continue;
+      if (!text || !/(owned_pages|managed_pages|admined_pages|business_pages|profile_switcher|asset_id|pages\/manage|pages\/edit)/i.test(text)) continue;
       const parsed = safeJsonParse(text);
       if (parsed) walk(parsed);
-
-      const re = /(?:"page_id"|"pageID"|"id"|"asset_id")\s*:\s*"?(\d{5,})"?[\s\S]{0,900}?(?:"name"|"page_name"|"title")\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/g;
-      let m;
-      while ((m = re.exec(text))) {
-        let name = m[2];
-        try { name = JSON.parse(`"${name}"`); } catch {}
-        push(m[1], name, null, null);
-      }
-
-      const reverseRe = /(?:"name"|"page_name"|"title")\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"[\s\S]{0,900}?(?:"page_id"|"pageID"|"id"|"asset_id")\s*:\s*"?(\d{5,})"?/g;
-      while ((m = reverseRe.exec(text))) {
-        let name = m[1];
-        try { name = JSON.parse(`"${name}"`); } catch {}
-        push(m[2], name, null, null);
-      }
-
-      const entityRe = /"(?:__typename|type)"\s*:\s*"(?:Page|XFBPage|BusinessPage|CometPage)"[\s\S]{0,1600}?"(?:id|page_id|pageID)"\s*:\s*"?(\d{5,})"?[\s\S]{0,1600}?"(?:name|title|display_name)"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/g;
-      while ((m = entityRe.exec(text))) {
-        let name = m[2];
-        try { name = JSON.parse(`"${name}"`); } catch {}
-        push(m[1], name, null, null);
-      }
     }
+
     return out;
   });
 }
