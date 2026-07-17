@@ -213,7 +213,7 @@ async function collectFromBootData(page) {
     // in the JSON (feed, suggestions, followed, mentions...) because those are
     // NOT owned/managed. We require an explicit management context key AND an
     // explicit management URL/id signal.
-    const OWNED_CONTEXT_KEYS = /(^|_)(owned_pages|managed_pages|admined_pages|admin_pages|business_pages|profile_switcher|profile_switcher_pages|assets|assigned_assets|page_admin|pages_you_admin|switcher_pages)($|_)/i;
+    const OWNED_CONTEXT_KEYS = /(^|_)(owned_pages|managed_pages|admined_pages|admin_pages|business_pages|profile_switcher_pages|page_admin|pages_you_admin|switcher_pages)($|_)/i;
     const MANAGE_URL_RE = /\/pages\/(?:edit|manage)|business\.facebook\.com\/latest|asset_id=|switch(?:_to)?[_-]?page|page_admin/i;
     const pageContextKey = (key) => OWNED_CONTEXT_KEYS.test(String(key || ""));
     const walk = (value, depth = 0, inManageContext = false) => {
