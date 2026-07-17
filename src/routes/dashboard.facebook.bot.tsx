@@ -41,6 +41,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { isAppAuthError, isExternalServiceSessionError } from "@/lib/reauth-classifier";
 import {
   addBotAccount,
   listBotAccounts,
@@ -306,8 +307,13 @@ const normalizePrecheckPayload = (raw: unknown, lang: "ar" | "en"): PrecheckUiRe
 
 const describeServerActionError = (err: unknown, lang: "ar" | "en") => {
   const message = err instanceof Error ? err.message : String(err ?? "");
-  if (AUTH_ERROR_RE.test(message)) {
+  if (isAppAuthError(err)) {
     return lang === "ar" ? "انتهت جلسة الدخول. سجّل الدخول مرة أخرى." : "Session expired. Please sign in again.";
+  }
+  if (isExternalServiceSessionError(err)) {
+    return lang === "ar"
+      ? "جلسة فيسبوك غير صالحة أو انتهت. أعد ربط حساب فيسبوك فقط؛ لن يتم تسجيل خروجك من الموقع."
+      : "The Facebook session is invalid or expired. Reconnect the Facebook account only; you will stay signed in.";
   }
   if (/timeout|aborted/i.test(message)) {
     return lang === "ar" ? "استغرقت العملية وقتًا طويلًا. حاول مرة أخرى." : "The request took too long. Please try again.";
@@ -628,7 +634,7 @@ function BotAccountsPage() {
     });
   };
 
-  const isAuthErr = (e: unknown) => AUTH_ERROR_RE.test(e instanceof Error ? e.message : String(e ?? ""));
+  const isAuthErr = (e: unknown) => isAppAuthError(e);
 
   const load = async () => {
     setLoading(true);
