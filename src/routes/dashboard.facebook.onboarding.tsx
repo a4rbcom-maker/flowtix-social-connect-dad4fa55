@@ -44,7 +44,12 @@ function OnboardingPage() {
   const { user, loading } = useAuth();
   const { lang, dir } = useI18n();
   const navigate = useNavigate();
-  const callFn = useServerFn as unknown as <T>(fn: T) => T;
+  const callFn = async <T,>(fn: (opts: never) => Promise<T>, body?: unknown): Promise<T> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error("Not authenticated");
+    return fn({ data: body, headers: { Authorization: `Bearer ${session.access_token}` } } as never);
+  };
+
 
   const [checking, setChecking] = useState(true);
   const [hasToken, setHasToken] = useState(false);
