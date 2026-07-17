@@ -117,7 +117,7 @@ function MessengerContactsPage() {
 
   // Pages query — decides whether to show picker.
   const pagesQ = useQuery({
-    queryKey: ["msgr-pages"],
+    queryKey: ["msgr-pages", "official-managed-only"],
     queryFn: () => listPagesFn(),
   });
 
@@ -133,6 +133,15 @@ function MessengerContactsPage() {
       setShowPagePicker(true);
     }
   }, [pageId, pages]);
+
+  useEffect(() => {
+    if (!pageId || pagesQ.isLoading) return;
+    if (!pages.some((p) => p.pageId === pageId)) {
+      setPageId(null);
+      setSelected(new Set());
+      setPage(1);
+    }
+  }, [pageId, pages, pagesQ.isLoading]);
 
 
   const contactsQ = useQuery({
