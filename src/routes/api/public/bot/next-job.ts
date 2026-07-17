@@ -119,6 +119,7 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         let credentials: unknown = null;
         let displayName: string | null = null;
         let authMethod: string | null = null;
+        let userAgent: string | null = null;
         if (claimed.account_id) {
           const { data: acc } = await supabaseAdmin
             .from("fb_bot_accounts")
