@@ -278,16 +278,18 @@ export const saveCampaign = createServerFn({ method: "POST" })
         .eq("id", data.id)
         .eq("user_id", userId)
         .select()
-        .single();
-      if (error) throw new Error(error.message);
+        .maybeSingle();
+      if (error) throw new Error(translateCampaignDbError(error.message));
+      if (!row) throw new Error("لم يتم العثور على الحملة أو أنك لا تملك صلاحية تعديلها.");
       return row;
     }
     const { data: row, error } = await supabase
       .from("fb_campaigns")
       .insert({ ...payload, user_id: userId, status: "draft" })
       .select()
-      .single();
-    if (error) throw new Error(error.message);
+      .maybeSingle();
+    if (error) throw new Error(translateCampaignDbError(error.message));
+    if (!row) throw new Error("تعذّر إنشاء الحملة. حاول مرة أخرى.");
     return row;
   });
 
