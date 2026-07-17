@@ -13,6 +13,7 @@ import {
   Tag,
   ChevronLeft,
   ChevronRight,
+  Cookie,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -47,6 +48,7 @@ import {
   sendMessengerBroadcast,
   updateMessengerContactTags,
 } from "@/lib/messenger-contacts.functions";
+import { createExtractPagesJob, listBotAccounts, listJobs } from "@/lib/fb-bot.functions";
 
 export const Route = createFileRoute("/dashboard/facebook/messenger-contacts")({
   ssr: false,
@@ -75,6 +77,24 @@ type Contact = {
   tags: string[];
 };
 
+type BotAccount = {
+  id: string;
+  display_name: string;
+  status: "untested" | "active" | "invalid" | "checkpoint" | "disabled";
+  last_error: string | null;
+};
+
+type FbJob = {
+  id: string;
+  job_type: string;
+  status: string;
+  progress: number | null;
+  created_at: string;
+  completed_at: string | null;
+  error_message: string | null;
+  account_id: string | null;
+};
+
 function timeAgo(iso: string | null, lang: "ar" | "en"): string {
   if (!iso) return lang === "ar" ? "—" : "—";
   const diff = Date.now() - new Date(iso).getTime();
@@ -98,6 +118,9 @@ function MessengerContactsPage() {
   const startSyncFn = useServerFn(startMessengerSync);
   const sendBroadcastFn = useServerFn(sendMessengerBroadcast);
   const updateTagsFn = useServerFn(updateMessengerContactTags);
+  const listBotAccountsFn = useServerFn(listBotAccounts);
+  const createExtractPagesJobFn = useServerFn(createExtractPagesJob);
+  const listJobsFn = useServerFn(listJobs);
 
   const [pageId, setPageId] = useState<string | null>(null);
   const [showPagePicker, setShowPagePicker] = useState(false);
@@ -114,6 +137,7 @@ function MessengerContactsPage() {
   const [campaignTag, setCampaignTag] = useState<(typeof MESSAGE_TAGS)[number]>("HUMAN_AGENT");
   const [tagContact, setTagContact] = useState<Contact | null>(null);
   const [tagInput, setTagInput] = useState("");
+  const [refetchedForExtractJobId, setRefetchedForExtractJobId] = useState<string | null>(null);
 
   // Pages query — decides whether to show picker.
   const pagesQ = useQuery({
@@ -122,6 +146,45 @@ function MessengerContactsPage() {
   });
 
   const pages = pagesQ.data ?? [];
+  const noPagesReady = !pagesQ.isLoading && !pagesQ.error && pages.length === 0;
+
+  const botAccountsQ = useQuery({
+    queryKey: ["msgr-bot-accounts"],
+    enabled: noPagesReady,
+    queryFn: () => listBotAccountsFn(),
+  });
+
+  const extractJobsQ = useQuery({
+    queryKey: ["msgr-extract-pages-jobs"],
+    enabled: noPagesReady,
+    queryFn: () => listJobsFn(),
+    refetchInterval: (q) => {
+      const jobs = (q.state.data ?? []) as FbJob[];
+      return jobs.some((job) => job.job_type === "extract_pages" && ["pending", "running"].includes(job.status))
+        ? 4000
+        : false;
+    },
+  });
+
+  useEffect(() => {
+    const jobs = (extractJobsQ.data ?? []) as FbJob[];
+    const completedJob = jobs.find((job) => job.job_type === "extract_pages" && job.status === "completed");
+    if (completedJob && completedJob.id !== refetchedForExtractJobId) {
+      setRefetchedForExtractJobId(completedJob.id);
+      pagesQ.refetch();
+    }
+  }, [extractJobsQ.data, pagesQ, refetchedForExtractJobId]);
+
+  const extractPagesM = useMutation({
+    mutationFn: (accountId: string) => createExtractPagesJobFn({ data: { accountId } }),
+    onSuccess: () => {
+      toast.success(lang === "ar" ? "تم بدء استخراج الصفحات. ستظهر هنا تلقائياً بعد انتهاء المهمة." : "Page extraction started. Pages will appear here automatically when it finishes.");
+      qc.invalidateQueries({ queryKey: ["msgr-extract-pages-jobs"] });
+      qc.invalidateQueries({ queryKey: ["msgr-pages"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   // Auto-pick when there's exactly one page; otherwise force explicit choice.
   useEffect(() => {
     if (pageId) return;
@@ -230,6 +293,12 @@ function MessengerContactsPage() {
   const currentPage = pages.find((p) => p.pageId === pageId);
   const syncJob = statusQ.data?.job;
   const syncRunning = syncJob?.status === "running" || syncJob?.status === "queued";
+  const botAccounts = ((botAccountsQ.data?.accounts ?? []) as BotAccount[]).filter(
+    (account) => account.status === "active",
+  );
+  const extractJobs = ((extractJobsQ.data ?? []) as FbJob[]).filter((job) => job.job_type === "extract_pages");
+  const latestExtractJob = extractJobs[0];
+  const extractRunning = latestExtractJob && ["pending", "running"].includes(latestExtractJob.status);
 
   const rtl = lang === "ar";
 
@@ -282,18 +351,92 @@ function MessengerContactsPage() {
         </Card>
       )}
 
+      {/* Gate: page loading failed */}
+      {!pagesQ.isLoading && pagesQ.error && (
+        <Card className="p-8 text-center">
+          <AlertCircle className="mx-auto mb-3 h-10 w-10 text-destructive" />
+          <h2 className="mb-1 text-lg font-semibold">
+            {lang === "ar" ? "تعذر تحميل صفحاتك" : "Could not load your pages"}
+          </h2>
+          <p className="mx-auto mb-4 max-w-2xl text-sm text-muted-foreground">
+            {pagesQ.error instanceof Error ? pagesQ.error.message : String(pagesQ.error)}
+          </p>
+          <Button variant="outline" onClick={() => pagesQ.refetch()}>
+            <RefreshCw className="h-4 w-4" />
+            {lang === "ar" ? "إعادة المحاولة" : "Retry"}
+          </Button>
+        </Card>
+      )}
+
       {/* Gate: no pages linked */}
-      {!pagesQ.isLoading && pages.length === 0 && (
+      {noPagesReady && (
         <Card className="p-8 text-center">
           <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
           <h2 className="mb-1 text-lg font-semibold">
-            {lang === "ar" ? "ليس لديك صفحات في حسابك" : "No pages in your account"}
+            {lang === "ar" ? "لم يتم تحميل صفحاتك بعد" : "Your pages are not loaded yet"}
           </h2>
-          <p className="mb-4 text-sm text-muted-foreground">
+          <p className="mx-auto mb-5 max-w-2xl text-sm text-muted-foreground">
             {lang === "ar"
-              ? "قم بربط صفحة Facebook أولاً من قسم اتصال Facebook لتتمكن من استيراد جهات اتصال Messenger."
-              : "Link a Facebook Page first from the Facebook connection section to import Messenger contacts."}
+              ? "إذا كنت تستخدم ربط الكوكيز، اختر حساب بوت متصل لاستخراج الصفحات أولاً، وبعدها ستحدد الصفحة المستهدفة."
+              : "If you use cookie login, choose an active bot account to extract pages first, then select the target page."}
           </p>
+
+          {botAccountsQ.isLoading ? (
+            <div className="text-sm text-muted-foreground">
+              <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
+              {lang === "ar" ? "جاري فحص حسابات البوت..." : "Checking bot accounts..."}
+            </div>
+          ) : botAccounts.length > 0 ? (
+            <div className="mx-auto max-w-2xl space-y-3 text-start">
+              {latestExtractJob && (
+                <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">
+                      {lang === "ar" ? "آخر مهمة استخراج صفحات" : "Latest page extraction job"}
+                    </span>
+                    <Badge variant={extractRunning ? "secondary" : latestExtractJob.status === "completed" ? "default" : "destructive"}>
+                      {latestExtractJob.status}
+                    </Badge>
+                  </div>
+                  {latestExtractJob.error_message ? (
+                    <p className="mt-2 text-xs text-destructive">{latestExtractJob.error_message}</p>
+                  ) : null}
+                </div>
+              )}
+
+              {botAccounts.map((account) => (
+                <div key={account.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-md bg-primary/10 p-2 text-primary">
+                      <Cookie className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="font-medium">{account.display_name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {lang === "ar" ? "حساب بوت متصل" : "Active bot account"}
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={extractPagesM.isPending || Boolean(extractRunning)}
+                    onClick={() => extractPagesM.mutate(account.id)}
+                  >
+                    {(extractPagesM.isPending || extractRunning) && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {lang === "ar" ? "استخراج الصفحات" : "Extract pages"}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                {lang === "ar"
+                  ? "لا يوجد ربط رسمي ولا حساب بوت متصل حالياً. اربط حساب Facebook أولاً ثم ارجع لهذا التبويب."
+                  : "No official connection or active bot account is available. Connect Facebook first, then return here."}
+              </p>
+            </div>
+          )}
         </Card>
       )}
 

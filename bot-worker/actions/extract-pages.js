@@ -1,39 +1,132 @@
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function runExtractPages({ page, report }) {
-  await page.goto("https://www.facebook.com/pages/?category=your_pages", { waitUntil: "domcontentloaded", timeout: 60_000 });
-  await new Promise(r => setTimeout(r, 4000));
+  const urls = [
+    "https://www.facebook.com/pages/?category=your_pages",
+    "https://www.facebook.com/pages/manage",
+    "https://www.facebook.com/bookmarks/pages",
+    "https://www.facebook.com/pages/",
+  ];
 
-  // Scroll to load all
-  let lastH = 0;
-  for (let i = 0; i < 10; i++) {
-    await page.evaluate(() => window.scrollBy(0, 1500));
-    await new Promise(r => setTimeout(r, 1500));
-    const h = await page.evaluate(() => document.body.scrollHeight);
-    if (h === lastH) break;
-    lastH = h;
-  }
+  const collected = new Map();
+  let openedAny = false;
+  let lastUrl = "";
 
-  const pages = await page.evaluate(() => {
-    const items = Array.from(document.querySelectorAll('a[href*="/pages/"], a[href*="facebook.com/"][role="link"]'));
-    const map = new Map();
-    for (const a of items) {
-      const href = a.getAttribute("href") || "";
-      const m = href.match(/\/(\d{6,})\/?/);
-      if (m) {
-        const id = m[1];
-        const name = a.textContent?.trim() || "";
-        if (!map.has(id) && name) map.set(id, { id, name, link: href });
-      }
+  await report({ progress: 5, processedItems: 0, totalItems: 0 });
+
+  for (const url of urls) {
+    lastUrl = url;
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      openedAny = true;
+    } catch (e) {
+      continue;
     }
-    return Array.from(map.values());
-  });
 
-  for (const p of pages) {
-    await report({ result: { target: p.id, status: "success", data: p } });
+    await sleep(4500);
+    if (/\/login\/|checkpoint/i.test(page.url())) {
+      await report({ status: "failed", errorMessage: "SESSION_EXPIRED: حساب فيسبوك حوّلك لتسجيل الدخول أو checkpoint. أعد ربط الكوكيز." });
+      return;
+    }
+
+    let lastHeight = 0;
+    let idle = 0;
+    for (let i = 0; i < 18 && idle < 4; i++) {
+      const batch = await page.evaluate(() => {
+        const systemSlugs = new Set([
+          "pages", "groups", "events", "watch", "marketplace", "friends", "messages", "notifications",
+          "bookmarks", "gaming", "help", "privacy", "policies", "settings", "login", "recover", "me",
+          "profile.php", "photo", "photo.php", "story.php", "permalink.php", "ads", "business",
+        ]);
+        const genericLabels = /^(Pages|Your Pages|Create|Manage|Home|About|Photos|Videos|Posts|Following|Followers|Like|Share|Comment|الصفحات|صفحاتك|إنشاء|إدارة|الرئيسية|حول|الصور|الفيديوهات|المنشورات|متابعة|المتابعون|إعجاب|مشاركة|تعليق)$/i;
+        const out = [];
+        const anchors = Array.from(document.querySelectorAll('a[role="link"], a[href*="facebook.com"], a[href^="/"]'));
+        for (const a of anchors) {
+          const rawHref = a.getAttribute("href") || "";
+          if (!rawHref || rawHref.startsWith("#")) continue;
+          let href;
+          try {
+            href = new URL(rawHref, location.origin).toString();
+          } catch {
+            continue;
+          }
+          let parsed;
+          try { parsed = new URL(href); } catch { continue; }
+          if (!/(^|\.)facebook\.com$/i.test(parsed.hostname)) continue;
+          if (/\/groups\/|\/events\/|\/posts\/|\/videos\/|\/reel\/|\/stories\/|\/photo\.php|\/permalink\.php|\/story\.php|\/login\//i.test(parsed.pathname)) continue;
+
+          const profileId = parsed.pathname === "/profile.php" ? parsed.searchParams.get("id") : null;
+          const numericId =
+            profileId ||
+            parsed.pathname.match(/\/(\d{6,})(?:\/|$)/)?.[1] ||
+            parsed.pathname.match(/-(\d{6,})(?:\/|$)/)?.[1];
+
+          const firstSlug = parsed.pathname.split("/").filter(Boolean)[0] || "";
+          const slug = firstSlug && !systemSlugs.has(firstSlug.toLowerCase()) && /^[A-Za-z0-9._-]{4,}$/.test(firstSlug)
+            ? firstSlug
+            : "";
+          const id = numericId || slug;
+          if (!id) continue;
+
+          const imgAlt = a.querySelector("img[alt]")?.getAttribute("alt") || "";
+          const aria = a.getAttribute("aria-label") || "";
+          const lines = (a.textContent || "")
+            .split(/\n|\s{2,}/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const name = [imgAlt, aria, ...lines]
+            .map((s) => s.replace(/^(Open|Visit|Go to|عرض|فتح)\s+/i, "").trim())
+            .find((s) => s.length >= 2 && s.length <= 120 && /[A-Za-z\u0600-\u06FF]/.test(s) && !genericLabels.test(s));
+
+          if (!name) continue;
+          out.push({ id, name, link: href.split("?")[0] });
+        }
+        return out;
+      });
+
+      let added = 0;
+      for (const p of batch) {
+        if (collected.has(p.id)) continue;
+        collected.set(p.id, p);
+        added += 1;
+        await report({
+          result: { target: p.id, status: "success", data: p },
+          processedItems: collected.size,
+          totalItems: collected.size,
+          progress: Math.min(95, 5 + collected.size * 8),
+        });
+      }
+
+      const height = await page.evaluate(() => document.body.scrollHeight).catch(() => lastHeight);
+      idle = added === 0 && height === lastHeight ? idle + 1 : 0;
+      lastHeight = height;
+      await page.evaluate(() => window.scrollBy(0, Math.max(1200, window.innerHeight * 1.2))).catch(() => {});
+      await sleep(1600);
+    }
+
+    if (collected.size > 0) break;
   }
+
+  if (!openedAny) {
+    await report({ status: "failed", errorMessage: "تعذر فتح صفحات فيسبوك من المتصفح." });
+    return;
+  }
+
+  if (collected.size === 0) {
+    await report({
+      status: "failed",
+      errorMessage: `لم يعثر البوت على صفحات داخل حساب فيسبوك. آخر مسار تم فحصه: ${lastUrl}`,
+      processedItems: 0,
+      totalItems: 0,
+      progress: 100,
+    });
+    return;
+  }
+
   await report({
     progress: 100,
-    processedItems: pages.length,
-    totalItems: pages.length,
+    processedItems: collected.size,
+    totalItems: collected.size,
     status: "completed",
   });
 }

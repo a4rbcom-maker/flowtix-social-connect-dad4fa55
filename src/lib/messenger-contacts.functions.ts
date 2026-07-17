@@ -19,12 +19,59 @@ type MessageTag = (typeof MESSAGE_TAGS)[number];
 
 const MS_24H = 24 * 60 * 60 * 1000;
 
-// ---------- List pages (from fb_pages) ----------
+// ---------- List pages (from fb_pages + live Graph fallback) ----------
 export const listMessengerPages = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    // Prefer explicitly linked pages from fb_pages.
+
+    const mapDbPage = (p: {
+      page_id: string;
+      page_name: string;
+      avatar_url: string | null;
+      status: string | null;
+    }) => ({
+      pageId: p.page_id,
+      pageName: p.page_name,
+      avatarUrl: p.avatar_url,
+      status: p.status,
+    });
+
+    const friendlyError = (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/permissions?|الصلاحيات|pages_show_list|pages_messaging/i.test(msg)) {
+        return `تعذر قراءة صفحات فيسبوك بسبب نقص الصلاحيات. أعد ربط حساب فيسبوك الرسمي ثم وافق على صلاحيات الصفحات والرسائل. التفاصيل: ${msg}`;
+      }
+      if (/token|OAuth|expired|invalid/i.test(msg)) {
+        return `ربط فيسبوك الرسمي غير صالح أو منتهي. أعد الربط ثم جرّب مرة أخرى. التفاصيل: ${msg}`;
+      }
+      return `تعذر تحميل صفحات فيسبوك الآن. التفاصيل: ${msg}`;
+    };
+
+    const normalizeBotExtractedPage = (row: { target?: string | null; data?: unknown }) => {
+      const payload = row.data && typeof row.data === "object" ? (row.data as Record<string, unknown>) : {};
+      const pageId =
+        typeof payload.id === "string" && payload.id.trim()
+          ? payload.id.trim()
+          : typeof row.target === "string"
+            ? row.target.trim()
+            : "";
+      const pageName = typeof payload.name === "string" ? payload.name.trim() : "";
+      const avatarUrl =
+        typeof payload.avatar_url === "string"
+          ? payload.avatar_url
+          : typeof payload.avatarUrl === "string"
+            ? payload.avatarUrl
+            : null;
+      if (!pageId || !pageName) return null;
+      return {
+        page_id: pageId,
+        page_name: pageName.slice(0, 200),
+        avatar_url: avatarUrl && /^https?:\/\//i.test(avatarUrl) ? avatarUrl : null,
+      };
+    };
+
+    // Prefer explicitly linked/synced pages from fb_pages.
     const { data, error } = await supabase
       .from("fb_pages")
       .select("page_id, page_name, avatar_url, status")
@@ -32,48 +79,120 @@ export const listMessengerPages = createServerFn({ method: "GET" })
       .order("page_name", { ascending: true });
     if (error) throw new Error(error.message);
     if (data && data.length > 0) {
-      return data.map((p) => ({
-        pageId: p.page_id,
-        pageName: p.page_name,
-        avatarUrl: p.avatar_url,
-        status: p.status,
-      }));
+      return data.map(mapDbPage);
     }
+
+    // Cookie/bot fallback: users may have already run "extract_pages" from a
+    // bot account. Promote those successful results into fb_pages so this tab
+    // can show the real page list instead of a misleading empty state.
+    const { data: botJobs } = await supabase
+      .from("fb_jobs")
+      .select("id, account_id")
+      .eq("user_id", userId)
+      .eq("job_type", "extract_pages")
+      .eq("status", "completed")
+      .not("account_id", "is", null)
+      .order("completed_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    if (botJobs && botJobs.length > 0) {
+      const accountByJobId = new Map(
+        botJobs.map((job) => [job.id as string, job.account_id as string]),
+      );
+      const { data: results } = await supabase
+        .from("fb_job_results")
+        .select("job_id, target, data")
+        .in("job_id", Array.from(accountByJobId.keys()))
+        .eq("status", "success")
+        .limit(500);
+
+      const rows = (results ?? [])
+        .map((result) => {
+          const page = normalizeBotExtractedPage(result);
+          const botAccountId = accountByJobId.get(result.job_id as string);
+          if (!page || !botAccountId) return null;
+          return {
+            user_id: userId,
+            page_id: page.page_id,
+            page_name: page.page_name,
+            avatar_url: page.avatar_url,
+            connection_type: "bot" as const,
+            bot_account_id: botAccountId,
+            status: "active" as const,
+            last_error: null,
+          };
+        })
+        .filter((row): row is NonNullable<typeof row> => Boolean(row));
+
+      if (rows.length > 0) {
+        const { error: upsertBotError } = await supabase
+          .from("fb_pages")
+          .upsert(rows, { onConflict: "user_id,page_id", ignoreDuplicates: false });
+        if (!upsertBotError) {
+          const { data: savedBotPages } = await supabase
+            .from("fb_pages")
+            .select("page_id, page_name, avatar_url, status")
+            .eq("user_id", userId)
+            .order("page_name", { ascending: true });
+          if (savedBotPages && savedBotPages.length > 0) return savedBotPages.map(mapDbPage);
+        }
+      }
+    }
+
     // Fallback: fetch live from Facebook Graph so users who linked FB
     // (but haven't added pages to autoreply) still see their pages here.
-    // Also upsert into fb_pages so downstream sync (which verifies ownership
-    // via fb_pages) works without requiring the user to visit autoreply first.
+    // Also persist them into fb_pages with required fields so downstream sync
+    // ownership checks work without requiring the user to visit autoreply first.
+    const token = await getStoredAccessToken(userId);
+    if (!token) return [];
+
     try {
-      const token = await getStoredAccessToken(userId);
-      if (!token) return [];
       const result = await fbGet(
-        "/me/accounts?fields=id,name,picture&limit=100",
+        "/me/accounts?fields=id,name,access_token,picture.type(square){url}&limit=100",
         token,
       );
-      const arr = (result?.data ?? []) as Array<{ id: string; name: string; picture?: { data?: { url?: string } } }>;
-      if (arr.length > 0) {
-        const rows = arr.map((p) => ({
-          user_id: userId,
-          page_id: p.id,
-          page_name: p.name,
-          avatar_url: p.picture?.data?.url ?? null,
-          connection_type: "official" as const,
-          status: "active" as const,
-        }));
-        // Best-effort upsert; ignore errors so listing never breaks.
-        await supabase
-          .from("fb_pages")
-          .upsert(rows, { onConflict: "user_id,page_id", ignoreDuplicates: false })
-          .then(() => null, () => null);
-      }
+      const arr = (result?.data ?? []) as Array<{
+        id: string;
+        name: string;
+        access_token?: string;
+        picture?: { data?: { url?: string } };
+      }>;
+      if (arr.length === 0) return [];
+
+      const { encryptJson } = await import("@/server/crypto.server");
+      const rows = arr.map((p) => ({
+        user_id: userId,
+        page_id: p.id,
+        page_name: p.name,
+        avatar_url: p.picture?.data?.url ?? null,
+        connection_type: "official" as const,
+        access_token_encrypted: p.access_token ? encryptJson(p.access_token) : null,
+        status: "active" as const,
+        last_error: null,
+      }));
+
+      const { error: upsertError } = await supabase
+        .from("fb_pages")
+        .upsert(rows, { onConflict: "user_id,page_id", ignoreDuplicates: false });
+      if (upsertError) throw new Error(upsertError.message);
+
+      const { data: saved, error: savedError } = await supabase
+        .from("fb_pages")
+        .select("page_id, page_name, avatar_url, status")
+        .eq("user_id", userId)
+        .order("page_name", { ascending: true });
+      if (savedError) throw new Error(savedError.message);
+      if (saved && saved.length > 0) return saved.map(mapDbPage);
+
       return arr.map((p) => ({
         pageId: p.id,
         pageName: p.name,
         avatarUrl: p.picture?.data?.url ?? null,
         status: "active" as string | null,
       }));
-    } catch {
-      return [];
+    } catch (err) {
+      throw new Error(friendlyError(err));
     }
   });
 
