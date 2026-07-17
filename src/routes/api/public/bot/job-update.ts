@@ -285,6 +285,44 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
             .in("status", ["pending", "running"]); // do not resurrect cancelled/completed/failed
         }
 
+        // On successful completion of an extract_pages job, purge previously
+        // saved bot pages for this account that were NOT discovered in this
+        // run. This removes stale entries left over from earlier (looser)
+        // extractions so the picker only shows currently managed pages.
+        if (
+          body.status === "completed" &&
+          current?.job_type === "extract_pages" &&
+          current.user_id &&
+          current.account_id
+        ) {
+          const { data: results } = await supabaseAdmin
+            .from("fb_job_results")
+            .select("target,status,data")
+            .eq("job_id", body.jobId)
+            .eq("status", "success");
+          const keepIds = new Set<string>();
+          for (const r of results ?? []) {
+            const pid = String((r as { data?: { page_id?: string; id?: string } }).data?.page_id
+              || (r as { data?: { id?: string } }).data?.id
+              || (r as { target?: string }).target
+              || "").trim();
+            if (pid) keepIds.add(pid);
+          }
+          if (keepIds.size > 0) {
+            const { error: purgeError } = await supabaseAdmin
+              .from("fb_pages")
+              .delete()
+              .eq("user_id", current.user_id)
+              .eq("bot_account_id", current.account_id)
+              .eq("connection_type", "bot")
+              .not("page_id", "in", `(${Array.from(keepIds).map((p) => `"${p.replace(/"/g, '')}"`).join(",")})`);
+            if (purgeError) {
+              console.error("[bot/job-update] fb_pages purge failed", purgeError.message);
+            }
+          }
+        }
+
+
         return Response.json({ ok: true });
       },
       GET: methodNotAllowedHandler(["POST"]),
