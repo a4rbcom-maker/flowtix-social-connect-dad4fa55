@@ -14,6 +14,9 @@ const { runExtractPageAudience } = require("./actions/extract-page-audience");
 const { runListMyGroups } = require("./actions/list-my-groups");
 const { runDeepProfileScrape } = require("./actions/deep-profile-scrape");
 const { runSendMessengerDm } = require("./actions/send-messenger-dm");
+const { runMessengerListPages } = require("./actions/messenger-list-pages");
+const { runMessengerSyncCookies } = require("./actions/messenger-sync-cookies");
+const { runMessengerSendCookies } = require("./actions/messenger-send-cookies");
 const { ensureLogin } = require("./actions/login");
 
 const API = process.env.API_BASE_URL;
