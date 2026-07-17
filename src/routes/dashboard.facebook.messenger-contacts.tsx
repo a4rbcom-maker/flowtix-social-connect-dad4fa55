@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   MessageCircle,
   RefreshCw,
@@ -49,7 +49,7 @@ import {
   sendMessengerBroadcast,
   updateMessengerContactTags,
 } from "@/lib/messenger-contacts.functions";
-import { createExtractPagesJob, listBotAccounts, listJobs } from "@/lib/fb-bot.functions";
+import { createExtractPagesJob, getJob, listBotAccounts, listJobs } from "@/lib/fb-bot.functions";
 
 export const Route = createFileRoute("/dashboard/facebook/messenger-contacts")({
   ssr: false,
@@ -99,6 +99,66 @@ type FbJob = {
   account_id: string | null;
 };
 
+type JobResult = {
+  id: string;
+  target: string | null;
+  status: string;
+  data: Record<string, unknown> | null;
+  error: string | null;
+  created_at: string;
+};
+
+type ExtractLogRow = {
+  id: string;
+  created_at: string;
+  data: Record<string, unknown>;
+};
+
+function compactText(value: unknown, fallback = "") {
+  return String(value ?? fallback).replace(/\s+/g, " ").trim();
+}
+
+function formatDuration(ms: unknown, lang: "ar" | "en") {
+  const n = typeof ms === "number" ? ms : Number(ms || 0);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  if (n < 1000) return lang === "ar" ? `${Math.round(n)} مللي ثانية` : `${Math.round(n)}ms`;
+  return lang === "ar" ? `${(n / 1000).toFixed(1)} ثانية` : `${(n / 1000).toFixed(1)}s`;
+}
+
+function formatExtractPagesLog(row: ExtractLogRow, lang: "ar" | "en") {
+  const d = row.data;
+  const event = compactText(d.event);
+  const stage = compactText(d.stage);
+  const surface = compactText(d.surface);
+  const duration = formatDuration(d.duration_ms, lang);
+  const count = d.collectedCount ?? d.discoveredOnSurface ?? d.renderedCount ?? d.bootCount;
+  const label = lang === "ar";
+
+  if (event === "worker_claimed") return label ? "استلم الوركر المهمة من قائمة الانتظار." : "Worker claimed the job.";
+  if (event === "login_verified") return label ? "تم تأكيد جلسة فيسبوك بنجاح." : "Facebook session verified.";
+  if (event === "surface_started") return label ? `بدء فتح مسار فيسبوك: ${surface}` : `Opening Facebook surface: ${surface}`;
+  if (event === "surface_open_failed") return label ? `فشل فتح المسار: ${compactText(d.error)}` : `Surface open failed: ${compactText(d.error)}`;
+  if (event === "surface_finished") {
+    return label
+      ? `تم فحص المسار: ${d.discoveredOnSurface ?? 0} صفحة جديدة، الإجمالي ${d.collectedCount ?? 0}.`
+      : `Surface scanned: ${d.discoveredOnSurface ?? 0} new pages, ${d.collectedCount ?? 0} total.`;
+  }
+  if (event === "page_discovered") return label ? `تم اكتشاف صفحة: ${compactText(d.pageName, "Page")}` : `Page discovered: ${compactText(d.pageName, "Page")}`;
+  if (event === "early_finish") return label ? `تم إنهاء الفحص مبكرًا بعد العثور على ${d.collectedCount ?? 0} صفحة.` : `Finished early after finding ${d.collectedCount ?? 0} pages.`;
+  if (event === "early_stop_no_results") return label ? "توقف الفحص بعد عدة مسارات بدون نتائج." : "Stopped after multiple empty surfaces.";
+  if (event === "job_completed") return label ? `اكتملت المهمة: ${d.collectedCount ?? 0} صفحة محفوظة.` : `Job completed: ${d.collectedCount ?? 0} pages saved.`;
+  if (event === "job_failed") return label ? `فشلت المهمة: ${compactText(d.reason ?? d.error)}` : `Job failed: ${compactText(d.reason ?? d.error)}`;
+  if (event === "step_started") return label ? `بدء مرحلة ${stage || "غير معروفة"}.` : `Started ${stage || "step"}.`;
+  if (event === "step_finished") {
+    const suffix = count !== undefined ? (label ? ` — نتائج: ${count}` : ` — count: ${count}`) : "";
+    return label ? `انتهت مرحلة ${stage || "غير معروفة"}${duration ? ` خلال ${duration}` : ""}${suffix}.` : `Finished ${stage || "step"}${duration ? ` in ${duration}` : ""}${suffix}.`;
+  }
+  if (event === "step_failed") return label ? `فشلت مرحلة ${stage || "غير معروفة"}: ${compactText(d.error)}` : `${stage || "Step"} failed: ${compactText(d.error)}`;
+  if (event === "collector_failed") return label ? `فشل قارئ ${compactText(d.collector)}: ${compactText(d.error)}` : `${compactText(d.collector)} collector failed: ${compactText(d.error)}`;
+
+  return label ? `حدث ${event || "تشخيص"}${stage ? ` في ${stage}` : ""}.` : `${event || "Diagnostic"}${stage ? ` at ${stage}` : ""}.`;
+}
+
 function describeExtractPagesError(message: string | null | undefined, lang: "ar" | "en") {
   const raw = message || "";
   if (/SESSION_EXPIRED|Facebook rejected|stored session cookies|redirected to login|checkpoint|c_user|not logged in/i.test(raw)) {
@@ -140,6 +200,7 @@ function MessengerContactsPage() {
   const listBotAccountsFn = useServerFn(listBotAccounts);
   const createExtractPagesJobFn = useServerFn(createExtractPagesJob);
   const listJobsFn = useServerFn(listJobs);
+  const getJobFn = useServerFn(getJob);
 
   const [pageId, setPageId] = useState<string | null>(null);
   const [showPagePicker, setShowPagePicker] = useState(false);
@@ -334,10 +395,27 @@ function MessengerContactsPage() {
   const invalidBotAccounts = botAccountsAll.filter((account) => account.status !== "active");
   const extractJobs = ((extractJobsQ.data ?? []) as FbJob[]).filter((job) => job.job_type === "extract_pages");
   const latestExtractJob = extractJobs[0];
+  const latestExtractJobDetailsQ = useQuery({
+    queryKey: ["msgr-extract-pages-job-details", latestExtractJob?.id],
+    enabled: Boolean(noPagesReady && latestExtractJob?.id),
+    queryFn: () => getJobFn({ data: { id: latestExtractJob!.id } }),
+    refetchInterval: (q) => {
+      const job = (q.state.data as { job?: FbJob | null } | undefined)?.job ?? latestExtractJob;
+      return job && ["pending", "running"].includes(job.status) ? 2000 : false;
+    },
+  });
   const extractRunning = latestExtractJob && ["pending", "running"].includes(latestExtractJob.status);
   const latestExtractProgress = latestExtractJob?.progress ?? 0;
   const latestExtractProcessed = latestExtractJob?.processed_items ?? 0;
   const latestExtractTotal = latestExtractJob?.total_items ?? 0;
+  const extractLogRows = useMemo<ExtractLogRow[]>(() => {
+    const results = ((latestExtractJobDetailsQ.data as { results?: JobResult[] } | undefined)?.results ?? []) as JobResult[];
+    return results
+      .filter((row) => row.data?.kind === "log" && row.data?.job_type === "extract_pages")
+      .map((row) => ({ id: row.id, created_at: row.created_at, data: row.data as Record<string, unknown> }))
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  }, [latestExtractJobDetailsQ.data]);
+  const latestExtractLog = extractLogRows[extractLogRows.length - 1] ?? null;
 
   // Live elapsed timer for the running job.
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -385,6 +463,7 @@ function MessengerContactsPage() {
             ? describeExtractPagesError(latestExtractJob.error_message, lang)
             : latestExtractJob.status
     : null;
+  const currentActivityText = latestExtractLog ? formatExtractPagesLog(latestExtractLog, lang) : latestExtractStatusText;
 
   const rtl = lang === "ar";
 
@@ -563,11 +642,16 @@ function MessengerContactsPage() {
                     </ol>
                   )}
 
-                  {latestExtractStatusText ? (
+                  {currentActivityText ? (
                     <p className={`mt-3 text-xs ${latestExtractJob.status === "failed" ? "text-destructive" : "text-muted-foreground"}`}>
-                      {latestExtractStatusText}
+                      <span className="font-medium text-foreground">
+                        {lang === "ar" ? "النشاط الحالي: " : "Current activity: "}
+                      </span>
+                      {currentActivityText}
                     </p>
                   ) : null}
+
+                  <ExtractPagesLogPanel rows={extractLogRows} lang={lang} loading={latestExtractJobDetailsQ.isFetching && extractLogRows.length === 0} />
                 </div>
               )}
 
