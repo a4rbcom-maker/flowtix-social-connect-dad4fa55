@@ -72,27 +72,33 @@ export const listMessengerPages = createServerFn({ method: "GET" })
     try {
       await assertPagesListScope(token);
       const result = await fbGet(
-        "/me/accounts?fields=id,name,access_token,picture.type(square){url}&limit=200",
+        "/me/accounts?fields=id,name,category,access_token,tasks,picture.type(square){url}&limit=200",
         token,
       );
       const arr = (result?.data ?? []) as Array<{
         id: string;
         name: string;
+        category?: string;
         access_token?: string;
+        tasks?: string[];
         picture?: { data?: { url?: string } };
       }>;
       const graphPages = arr
         .map((p) => ({
           id: String(p.id ?? "").trim(),
           name: String(p.name ?? "").replace(/\s+/g, " ").trim(),
+          category: String(p.category ?? "").replace(/\s+/g, " ").trim(),
           accessToken: p.access_token,
+          tasks: Array.isArray(p.tasks) ? p.tasks.map((task) => String(task)) : [],
           avatarUrl: p.picture?.data?.url ?? null,
         }))
         .filter(
           (p) =>
             /^\d{5,}$/.test(p.id) &&
             p.name.length > 0 &&
-            Boolean(p.accessToken),
+            p.category.length > 0 &&
+            Boolean(p.accessToken) &&
+            (p.tasks.length === 0 || p.tasks.some((task) => /MESSAGING|MODERATE|CREATE_CONTENT|MANAGE/i.test(task))),
         );
       if (graphPages.length === 0) return [];
 
