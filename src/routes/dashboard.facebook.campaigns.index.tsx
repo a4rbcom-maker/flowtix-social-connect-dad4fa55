@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Plus, Play, Pause, Trash2, Megaphone, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle } from "lucide-react";
+import { Plus, Play, Pause, Trash2, Megaphone, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
