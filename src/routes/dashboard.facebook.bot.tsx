@@ -1707,17 +1707,6 @@ function BotAccountsPage() {
           <div className="max-h-[420px] overflow-y-auto">
             {!groupsResult || groupsResult.groups.length === 0 ? (
               <div className="space-y-4 py-4">
-                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-200">
-                  <p className="font-semibold mb-1">
-
-                    {lang === "ar" ? "لماذا لم تظهر الجروبات هنا؟" : "Why no groups here?"}
-                  </p>
-                  <p className="leading-relaxed">
-                    {lang === "ar"
-                      ? "هذا الزر (اختبر الآن) يعمل من السيرفر، وفيسبوك يحجب طلبات الجروبات من مراكز البيانات. لكن الـ VPS Worker عندك يقدر يفتح حسابك في متصفح حقيقي ويجلب القائمة تلقائيًا — اضغط الزر بالأسفل."
-                      : "The Test button runs from the server, and Facebook blocks group-list calls from datacenters. Your VPS Worker can open the account in a real browser and fetch the list automatically — use the button below."}
-                  </p>
-                </div>
                 <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm">
                   <p className="font-semibold mb-2 text-foreground">
                     {lang === "ar" ? "استخراج جروباتي تلقائيًا عبر الـ Worker" : "Auto-extract my groups via the Worker"}
