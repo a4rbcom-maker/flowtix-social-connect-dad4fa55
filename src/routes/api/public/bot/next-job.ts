@@ -122,7 +122,7 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         if (claimed.account_id) {
           const { data: acc } = await supabaseAdmin
             .from("fb_bot_accounts")
-            .select("display_name, auth_method, status, last_error, encrypted_payload")
+            .select("display_name, auth_method, status, last_error, encrypted_payload, user_agent")
             .eq("id", claimed.account_id)
             .maybeSingle();
           if (acc) {
@@ -143,6 +143,7 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
             }
             displayName = acc.display_name;
             authMethod = acc.auth_method;
+            userAgent = acc.user_agent ?? null;
             try {
               credentials = decryptJson(acc.encrypted_payload);
             } catch (e) {
@@ -172,7 +173,7 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
             type: claimed.job_type,
             payload: claimed.payload,
             account: claimed.account_id
-              ? { id: claimed.account_id, displayName, authMethod, credentials }
+              ? { id: claimed.account_id, displayName, authMethod, credentials, userAgent }
               : null,
           },
         });
