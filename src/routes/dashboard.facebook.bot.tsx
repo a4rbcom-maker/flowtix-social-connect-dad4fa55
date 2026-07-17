@@ -748,6 +748,7 @@ function BotAccountsPage() {
     setSaveLogs([]);
     appendSaveLog("info", "client:send-to-server", `method=${tab}; displayName=${form.displayName.trim()}; cookie_bytes=${form.cookies.length}`);
     try {
+      const currentUA = typeof navigator !== "undefined" ? navigator.userAgent : null;
       const row =
         tab === "cookies"
           ? await addAccountFn({
@@ -755,6 +756,7 @@ function BotAccountsPage() {
                 method: "cookies",
                 displayName: form.displayName,
                 cookies: form.cookies,
+                userAgent: currentUA,
               },
             })
           : await addAccountFn({
@@ -764,6 +766,7 @@ function BotAccountsPage() {
                 email: form.email,
                 password: form.password,
                 twoFactorSecret: form.twoFactorSecret || null,
+                userAgent: currentUA,
               },
             });
       const dto = unwrapServerPayload(row) as { diagnostics?: unknown } | null;
