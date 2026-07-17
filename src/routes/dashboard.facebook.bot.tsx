@@ -143,6 +143,8 @@ type TestEvent = {
 
 const MAX_AUTO_RETRIES = 3;
 const RETRY_BACKOFF_MS = [1500, 3000, 6000]; // attempt 1/2/3
+const NON_RETRYABLE_TEST_ERROR =
+  /تعذّر تحديث حالة الحساب|هذا الحساب لم يعد موجود|Could not update the account state|account no longer exists|Cannot coerce|PGRST116|single JSON object|JSON object requested|results contain 0 rows/i;
 
 // Classify cookie session lifetime for badges/alerts. Returns null when the
 // account has no expiry info (credentials accounts or session-only cookies).
@@ -968,6 +970,7 @@ function BotAccountsPage() {
 
     const scheduleAutoRetry = (reason: string) => {
       if (!autoRetry) return false;
+      if (NON_RETRYABLE_TEST_ERROR.test(reason)) return false;
       if (attempt + 1 >= MAX_AUTO_RETRIES) return false;
       const wait = RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)];
       pushEvent(id, {
