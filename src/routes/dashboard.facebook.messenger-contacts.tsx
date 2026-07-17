@@ -1016,7 +1016,7 @@ function MessengerContactsPage() {
       {/* Page picker */}
 
       <Dialog open={showPagePicker} onOpenChange={setShowPagePicker}>
-        <DialogContent>
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>
               {lang === "ar" ? "اختر الصفحة" : "Pick a page"}
@@ -1027,7 +1027,7 @@ function MessengerContactsPage() {
                 : "Choose the page whose conversations you want to import."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
+          <div className="space-y-2 overflow-y-auto flex-1 pr-1">
             {pages.map((p) => (
               <button
                 key={p.pageId}
@@ -1051,8 +1051,14 @@ function MessengerContactsPage() {
               </button>
             ))}
           </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPagePicker(false)}>
+              {lang === "ar" ? "إغلاق" : "Close"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
+
 
       {/* Campaign dialog */}
       <Dialog open={campaignOpen} onOpenChange={setCampaignOpen}>
