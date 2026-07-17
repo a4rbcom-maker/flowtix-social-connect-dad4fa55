@@ -1,4 +1,4 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -10,6 +10,7 @@ import {
   Users,
   Loader2,
   AlertCircle,
+  KeyRound,
   Tag,
   ChevronLeft,
   ChevronRight,
@@ -47,6 +48,7 @@ import {
   sendMessengerBroadcast,
   updateMessengerContactTags,
 } from "@/lib/messenger-contacts.functions";
+import { connectFacebook } from "@/lib/facebook.functions";
 
 export const Route = createFileRoute("/dashboard/facebook/messenger-contacts")({
   ssr: false,
@@ -98,9 +100,11 @@ function MessengerContactsPage() {
   const startSyncFn = useServerFn(startMessengerSync);
   const sendBroadcastFn = useServerFn(sendMessengerBroadcast);
   const updateTagsFn = useServerFn(updateMessengerContactTags);
+  const connectFacebookFn = useServerFn(connectFacebook);
 
   const [pageId, setPageId] = useState<string | null>(null);
   const [showPagePicker, setShowPagePicker] = useState(false);
+  const [inlineToken, setInlineToken] = useState("");
   const [search, setSearch] = useState("");
   const [lastActivity, setLastActivity] = useState<string>("all");
   const [sort, setSort] = useState<"last_message_desc" | "last_message_asc" | "messages_desc" | "name_asc">(
@@ -124,6 +128,35 @@ function MessengerContactsPage() {
 
   const pages = pagesQ.data ?? [];
   const noPagesReady = !pagesQ.isLoading && !pagesQ.error && pages.length === 0;
+
+  const saveTokenM = useMutation({
+    mutationFn: async (rawToken: string) => {
+      const cleaned = rawToken.replace(/\s+/g, "");
+      if (cleaned.length < 20) {
+        throw new Error(lang === "ar" ? "الصق Facebook Access Token صحيح أولاً" : "Paste a valid Facebook Access Token first");
+      }
+      const res = await connectFacebookFn({ data: { access_token: cleaned } });
+      const payload = ((res as { data?: unknown })?.data ?? res) as {
+        success?: boolean;
+        error?: { message?: string } | null;
+        profile?: { name?: string } | null;
+      };
+      if (payload?.success === false) {
+        throw new Error(payload.error?.message || (lang === "ar" ? "فشل حفظ التوكن" : "Token save failed"));
+      }
+      return payload;
+    },
+    onSuccess: async () => {
+      toast.success(lang === "ar" ? "تم حفظ التوكن، جاري تحميل صفحاتك الآن" : "Token saved, loading your Pages now");
+      setInlineToken("");
+      const refreshed = await pagesQ.refetch();
+      const count = refreshed.data?.length ?? 0;
+      if (count > 0) {
+        toast.success(lang === "ar" ? `تم العثور على ${count} صفحة مُدارة` : `Found ${count} managed Pages`);
+      }
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   // Always make the user explicitly choose the target Page first.
   useEffect(() => {
@@ -252,6 +285,44 @@ function MessengerContactsPage() {
 
   const rtl = lang === "ar";
 
+  const tokenConnectBox = (
+    <div className="mx-auto mt-5 max-w-2xl rounded-xl border border-primary/20 bg-primary/5 p-4 text-start">
+      <div className="mb-3 flex items-start gap-2">
+        <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <div>
+          <p className="text-sm font-semibold text-foreground">
+            {lang === "ar" ? "الصق التوكن هنا مباشرة" : "Paste the token here directly"}
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {lang === "ar"
+              ? "بعد الحفظ سنعرض الصفحات المُدارة من نفس الحساب فوراً، بدون الانتقال لأي شاشة أخرى."
+              : "After saving, managed Pages from the same account will appear here immediately."}
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Input
+          dir="ltr"
+          type="password"
+          value={inlineToken}
+          onChange={(e) => setInlineToken(e.target.value)}
+          placeholder="EAAB..."
+          className="font-mono text-sm"
+          disabled={saveTokenM.isPending}
+        />
+        <Button
+          type="button"
+          onClick={() => saveTokenM.mutate(inlineToken)}
+          disabled={saveTokenM.isPending || !inlineToken.trim()}
+          className="shrink-0"
+        >
+          {saveTokenM.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          {lang === "ar" ? "حفظ وجلب الصفحات" : "Save & load Pages"}
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <DashboardLayout title={lang === "ar" ? "جهات اتصال Messenger" : "Messenger Contacts"}>
     <div className="space-y-6 p-4 sm:p-6" dir={rtl ? "rtl" : "ltr"}>
@@ -315,6 +386,7 @@ function MessengerContactsPage() {
             <RefreshCw className="h-4 w-4" />
             {lang === "ar" ? "إعادة المحاولة" : "Retry"}
           </Button>
+          {tokenConnectBox}
         </Card>
       )}
 
@@ -327,20 +399,14 @@ function MessengerContactsPage() {
           </h2>
           <p className="mx-auto mb-5 max-w-2xl text-sm text-muted-foreground">
             {lang === "ar"
-              ? "لم نغيّر طريقة الربط: المطلوب هنا هو نفس Facebook Access Token. إذا لم تظهر الصفحات فغالباً التوكن ناقص صلاحيات pages_show_list أو pages_messaging، أو لم يتم حفظه بعد. الصق التوكن في صفحة فيسبوك ثم اضغط حفظ."
-              : "The connection method did not change: this uses the same Facebook Access Token. If Pages do not appear, the token likely lacks pages_show_list or pages_messaging, or it was not saved yet. Paste the token on the Facebook page and save it."}
+              ? "هذه الشاشة تعتمد على التوكن فقط. الصق التوكن هنا وسنعرض أسماء الصفحات المُدارة فوراً لتختار الصفحة وتبدأ جلب عملاء Messenger."
+              : "This screen uses the token only. Paste it here and managed Page names will appear immediately so you can pick a Page and import Messenger contacts."}
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <Button asChild>
-              <Link to="/dashboard/facebook">
-                {lang === "ar" ? "الذهاب لحقل لصق التوكن" : "Go to token field"}
-              </Link>
-            </Button>
-            <Button variant="outline" onClick={() => pagesQ.refetch()}>
-              <RefreshCw className="h-4 w-4" />
-              {lang === "ar" ? "إعادة تحميل الصفحات" : "Reload Pages"}
-            </Button>
-          </div>
+          {tokenConnectBox}
+          <Button className="mt-3" variant="outline" onClick={() => pagesQ.refetch()}>
+            <RefreshCw className="h-4 w-4" />
+            {lang === "ar" ? "إعادة تحميل الصفحات" : "Reload Pages"}
+          </Button>
         </Card>
       )}
 
