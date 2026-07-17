@@ -1,5 +1,4 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState, useCallback } from "react";
 import {
   KeyRound,
@@ -19,6 +18,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
+import { supabase } from "@/integrations/supabase/client";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { getFacebookConnection } from "@/lib/facebook.functions";
 import { listBotAccounts } from "@/lib/fb-bot.functions";
@@ -34,6 +34,7 @@ export const Route = createFileRoute("/dashboard/facebook/onboarding")({
   },
   component: OnboardingPage,
 });
+
 
 const ONBOARDING_DONE_KEY = "fb_onboarding_completed_v1";
 
