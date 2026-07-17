@@ -159,6 +159,53 @@ function formatExtractPagesLog(row: ExtractLogRow, lang: "ar" | "en") {
   return label ? `حدث ${event || "تشخيص"}${stage ? ` في ${stage}` : ""}.` : `${event || "Diagnostic"}${stage ? ` at ${stage}` : ""}.`;
 }
 
+function ExtractPagesLogPanel({ rows, lang, loading }: { rows: ExtractLogRow[]; lang: "ar" | "en"; loading?: boolean }) {
+  const items = rows.slice(-20).reverse();
+  const ar = lang === "ar";
+
+  return (
+    <div className="mt-4 rounded-md border bg-muted/20 p-3 text-xs">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="font-semibold text-foreground">
+          {ar ? "سجل مراحل استخراج الصفحات" : "Page extraction stage log"}
+        </span>
+        <Badge variant="secondary" className="text-[10px] tabular-nums">
+          {rows.length}
+        </Badge>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          {ar ? "جاري تحميل سجل التشخيص..." : "Loading diagnostics..."}
+        </div>
+      ) : items.length === 0 ? (
+        <p className="text-muted-foreground">
+          {ar
+            ? "لم يصل سجل مراحل بعد. إذا ظلت المهمة Pending أكثر من دقيقتين فهذا يعني أن الوركر لم يلتقطها."
+            : "No stage log yet. If the job stays pending for over two minutes, the worker has not picked it up."}
+        </p>
+      ) : (
+        <ul className="max-h-64 space-y-1.5 overflow-y-auto pe-1">
+          {items.map((row) => {
+            const event = compactText(row.data.event);
+            const isFail = /failed|rejected|expired/i.test(event) || Boolean(row.data.error);
+            const time = new Date(row.created_at).toLocaleTimeString(ar ? "ar-EG" : "en-US", { hour12: false });
+            return (
+              <li key={row.id} className="flex items-start gap-2 border-b border-border/40 pb-1.5 last:border-b-0">
+                <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">{time}</span>
+                <span className={isFail ? "text-destructive" : "text-foreground/90"}>
+                  {formatExtractPagesLog(row, lang)}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function describeExtractPagesError(message: string | null | undefined, lang: "ar" | "en") {
   const raw = message || "";
   if (/SESSION_EXPIRED|Facebook rejected|stored session cookies|redirected to login|checkpoint|c_user|not logged in/i.test(raw)) {
