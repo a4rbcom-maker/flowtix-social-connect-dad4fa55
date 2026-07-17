@@ -48,6 +48,29 @@ export const listMessengerPages = createServerFn({ method: "GET" })
       return `تعذر تحميل صفحات فيسبوك الآن. التفاصيل: ${msg}`;
     };
 
+    const normalizeBotExtractedPage = (row: { target?: string | null; data?: unknown }) => {
+      const payload = row.data && typeof row.data === "object" ? (row.data as Record<string, unknown>) : {};
+      const pageId =
+        typeof payload.id === "string" && payload.id.trim()
+          ? payload.id.trim()
+          : typeof row.target === "string"
+            ? row.target.trim()
+            : "";
+      const pageName = typeof payload.name === "string" ? payload.name.trim() : "";
+      const avatarUrl =
+        typeof payload.avatar_url === "string"
+          ? payload.avatar_url
+          : typeof payload.avatarUrl === "string"
+            ? payload.avatarUrl
+            : null;
+      if (!pageId || !pageName) return null;
+      return {
+        page_id: pageId,
+        page_name: pageName.slice(0, 200),
+        avatar_url: avatarUrl && /^https?:\/\//i.test(avatarUrl) ? avatarUrl : null,
+      };
+    };
+
     // Prefer explicitly linked/synced pages from fb_pages.
     const { data, error } = await supabase
       .from("fb_pages")
@@ -57,6 +80,64 @@ export const listMessengerPages = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     if (data && data.length > 0) {
       return data.map(mapDbPage);
+    }
+
+    // Cookie/bot fallback: users may have already run "extract_pages" from a
+    // bot account. Promote those successful results into fb_pages so this tab
+    // can show the real page list instead of a misleading empty state.
+    const { data: botJobs } = await supabase
+      .from("fb_jobs")
+      .select("id, account_id")
+      .eq("user_id", userId)
+      .eq("job_type", "extract_pages")
+      .eq("status", "completed")
+      .not("account_id", "is", null)
+      .order("completed_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    if (botJobs && botJobs.length > 0) {
+      const accountByJobId = new Map(
+        botJobs.map((job) => [job.id as string, job.account_id as string]),
+      );
+      const { data: results } = await supabase
+        .from("fb_job_results")
+        .select("job_id, target, data")
+        .in("job_id", Array.from(accountByJobId.keys()))
+        .eq("status", "success")
+        .limit(500);
+
+      const rows = (results ?? [])
+        .map((result) => {
+          const page = normalizeBotExtractedPage(result);
+          const botAccountId = accountByJobId.get(result.job_id as string);
+          if (!page || !botAccountId) return null;
+          return {
+            user_id: userId,
+            page_id: page.page_id,
+            page_name: page.page_name,
+            avatar_url: page.avatar_url,
+            connection_type: "bot" as const,
+            bot_account_id: botAccountId,
+            status: "active" as const,
+            last_error: null,
+          };
+        })
+        .filter((row): row is NonNullable<typeof row> => Boolean(row));
+
+      if (rows.length > 0) {
+        const { error: upsertBotError } = await supabase
+          .from("fb_pages")
+          .upsert(rows, { onConflict: "user_id,page_id", ignoreDuplicates: false });
+        if (!upsertBotError) {
+          const { data: savedBotPages } = await supabase
+            .from("fb_pages")
+            .select("page_id, page_name, avatar_url, status")
+            .eq("user_id", userId)
+            .order("page_name", { ascending: true });
+          if (savedBotPages && savedBotPages.length > 0) return savedBotPages.map(mapDbPage);
+        }
+      }
     }
 
     // Fallback: fetch live from Facebook Graph so users who linked FB
