@@ -378,6 +378,72 @@ function FacebookGroupsPage() {
         </div>
 
 
+        {/* Session expired banner — bot cookies rejected by Facebook */}
+        {botSessionExpired && (
+          <div className="rounded-2xl border border-amber-400/40 bg-amber-50 p-5 dark:bg-amber-950/20">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                <KeyRound className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="font-semibold text-foreground">
+                  {lang === "ar" ? "انتهت صلاحية كوكيز فيسبوك" : "Facebook cookies expired"}
+                </h4>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {lang === "ar"
+                    ? "رفض فيسبوك الجلسة المحفوظة لحساب البوت. هذا لا يعني تسجيل خروجك من الموقع — تحتاج فقط لتحديث الكوكيز لمتابعة استيراد الجروبات."
+                    : "Facebook rejected the stored bot session. You are not signed out — just refresh the cookies to keep importing groups."}
+                </p>
+                <ol className="mt-3 list-decimal space-y-1 pe-5 text-sm text-foreground">
+                  <li>
+                    {lang === "ar"
+                      ? "افتح متصفحك وسجّل دخول فيسبوك على الحساب المستخدم مع البوت."
+                      : "Open your browser and sign in to Facebook with the account you use with the bot."}
+                  </li>
+                  <li>
+                    {lang === "ar"
+                      ? "انسخ الكوكيز الجديدة (باستخدام إضافة تصدير الكوكيز الموصى بها)."
+                      : "Copy the fresh cookies (using the recommended cookie exporter extension)."}
+                  </li>
+                  <li>
+                    {lang === "ar"
+                      ? "افتح لوحة \"حسابات البوت\" واضغط \"إعادة تحديث الربط\" ثم ألصق الكوكيز."
+                      : "Open the Bot Accounts panel, click \"Refresh link\" and paste the cookies."}
+                  </li>
+                  <li>
+                    {lang === "ar"
+                      ? "ارجع هنا وأعد \"استيراد جروباتي عبر البوت\"."
+                      : "Return here and retry \"Import my groups via bot\"."}
+                  </li>
+                </ol>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Link
+                    to="/dashboard/facebook/bot"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+                  >
+                    <KeyRound className="h-3.5 w-3.5" />
+                    {lang === "ar" ? "إعادة تحديث الربط" : "Refresh link"}
+                  </Link>
+                  <button
+                    onClick={handleBotImport}
+                    disabled={botImporting}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-accent disabled:opacity-60"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${botImporting ? "animate-spin" : ""}`} />
+                    {lang === "ar" ? "إعادة المحاولة" : "Retry"}
+                  </button>
+                  <button
+                    onClick={() => setBotSessionExpired(null)}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    {lang === "ar" ? "إخفاء" : "Dismiss"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Not connected via Graph API AND no bot-imported groups yet */}
         {connected === false && groups.length === 0 && (
 
