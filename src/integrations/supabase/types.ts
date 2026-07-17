@@ -1170,6 +1170,7 @@ export type Database = {
           page_name: string | null
           profile_pic_url: string | null
           psid: string
+          source: string
           tags: string[]
           unread_count: number
           updated_at: string
@@ -1191,6 +1192,7 @@ export type Database = {
           page_name?: string | null
           profile_pic_url?: string | null
           psid: string
+          source?: string
           tags?: string[]
           unread_count?: number
           updated_at?: string
@@ -1212,6 +1214,7 @@ export type Database = {
           page_name?: string | null
           profile_pic_url?: string | null
           psid?: string
+          source?: string
           tags?: string[]
           unread_count?: number
           updated_at?: string
@@ -2327,6 +2330,9 @@ export type Database = {
         | "list_my_groups"
         | "send_messenger_dm"
         | "publish_pages_graph"
+        | "messenger_list_pages"
+        | "messenger_sync_cookies"
+        | "messenger_send_cookies"
       fb_page_connection_type: "official" | "bot"
       fb_page_status: "active" | "expired" | "disconnected"
       fb_result_status: "success" | "failed" | "skipped" | "pending"
@@ -2514,6 +2520,9 @@ export const Constants = {
         "list_my_groups",
         "send_messenger_dm",
         "publish_pages_graph",
+        "messenger_list_pages",
+        "messenger_sync_cookies",
+        "messenger_send_cookies",
       ],
       fb_page_connection_type: ["official", "bot"],
       fb_page_status: ["active", "expired", "disconnected"],
