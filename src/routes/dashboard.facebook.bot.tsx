@@ -316,6 +316,14 @@ const describeServerActionError = (err: unknown, lang: "ar" | "en") => {
   if (/fetch|network|failed to fetch/i.test(message)) {
     return lang === "ar" ? "تعذّر الاتصال بالخادم. تحقّق من الإنترنت." : "Couldn't reach the server. Check your internet.";
   }
+  // PostgREST "Cannot coerce the result to a single JSON object" — happens when
+  // an UPDATE/SELECT with .single() returns 0 or >1 rows (usually an RLS or
+  // timing issue). Translate to a friendly message instead of leaking raw SQL.
+  if (/coerce.*single json|JSON object requested, multiple|results contain 0 rows|PGRST116/i.test(message)) {
+    return lang === "ar"
+      ? "تعذّر تحديث حالة الحساب مؤقتًا — حدّث الصفحة وأعد المحاولة."
+      : "Could not update the account state temporarily — refresh and try again.";
+  }
   return message && message !== "[object Object]"
     ? message
     : lang === "ar"
