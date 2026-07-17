@@ -90,11 +90,10 @@ export const listMessengerPages = createServerFn({ method: "GET" })
       .select("id, account_id")
       .eq("user_id", userId)
       .eq("job_type", "extract_pages")
-      .eq("status", "completed")
       .not("account_id", "is", null)
       .order("completed_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
-      .limit(10);
+      .limit(20);
 
     if (botJobs && botJobs.length > 0) {
       const accountByJobId = new Map(

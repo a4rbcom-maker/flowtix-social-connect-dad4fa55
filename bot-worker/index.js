@@ -21,7 +21,7 @@ const SECRET = process.env.BOT_WORKER_SECRET;
 const MIN_INT = Math.max(5, parseInt(process.env.POLL_INTERVAL_SEC || "15", 10)) * 1000;
 const MAX_INT = Math.max(MIN_INT, parseInt(process.env.POLL_MAX_INTERVAL_SEC || "60", 10) * 1000);
 const HEADLESS = process.env.HEADLESS !== "false";
-const WORKER_VERSION = "bot-worker-2026-06-30-deep-profile-resilient";
+const WORKER_VERSION = "bot-worker-2026-07-17-pages-extraction-resilient";
 const WORKER_CAPABILITIES = [
   "post_to_groups",
   "extract_pages",
@@ -110,7 +110,7 @@ async function runJob(job) {
           ? `SESSION_EXPIRED: ${error}`
           : error;
         await reportUpdate({ jobId: job.id, accountStatus: { accountId: job.account.id, status, error } });
-      }, job.type === "extract_pages" ? { verifyUrl: "https://www.facebook.com/pages/manage", verifyTimeoutMs: 45_000 } : {});
+      }, {});
       if (!ok) {
         await reportUpdate({ jobId: job.id, status: "failed", errorMessage: loginFailureReason });
         return;
