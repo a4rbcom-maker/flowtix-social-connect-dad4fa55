@@ -19,38 +19,37 @@ type MessageTag = (typeof MESSAGE_TAGS)[number];
 
 const MS_24H = 24 * 60 * 60 * 1000;
 
-const REQUIRED_MESSENGER_SCOPES = ["pages_show_list", "pages_messaging"] as const;
-
-async function assertMessengerScopes(token: string) {
-  const perms = await fbGet("/me/permissions", token);
-  const granted = new Set(
-    ((perms?.data ?? []) as Array<{ permission?: string; status?: string }>)
-      .filter((p) => p.status === "granted" && typeof p.permission === "string")
-      .map((p) => p.permission as string),
-  );
-  const missing = REQUIRED_MESSENGER_SCOPES.filter((scope) => !granted.has(scope));
-  if (missing.length > 0) {
-    throw new Error(
-      `صلاحيات Messenger ناقصة: ${missing.join(", ")}. أعد ربط Facebook Token بهذه الصلاحيات حتى تظهر الصفحات التي يمكن قراءة رسائلها.`,
-    );
-  }
-}
-
-function hasMessengerManagementTask(tasks: unknown) {
-  if (!Array.isArray(tasks)) return false;
-  const normalized = tasks.map((task) => String(task).toUpperCase());
-  return normalized.some((task) =>
-    ["MESSAGING", "MANAGE", "MODERATE", "ADMINISTER", "EDIT_PROFILE", "MODERATE_CONTENT"].includes(
-      task,
-    ),
-  );
-}
-
 // ---------- List pages (official Graph only) ----------
 export const listMessengerPages = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
+
+    const requiredMessengerScopes = ["pages_show_list", "pages_messaging"] as const;
+    const assertMessengerScopes = async (token: string) => {
+      const perms = await fbGet("/me/permissions", token);
+      const granted = new Set(
+        ((perms?.data ?? []) as Array<{ permission?: string; status?: string }>)
+          .filter((p) => p.status === "granted" && typeof p.permission === "string")
+          .map((p) => p.permission as string),
+      );
+      const missing = requiredMessengerScopes.filter((scope) => !granted.has(scope));
+      if (missing.length > 0) {
+        throw new Error(
+          `صلاحيات Messenger ناقصة: ${missing.join(", ")}. أعد ربط Facebook Token بهذه الصلاحيات حتى تظهر الصفحات التي يمكن قراءة رسائلها.`,
+        );
+      }
+    };
+
+    const hasMessengerManagementTask = (tasks: unknown) => {
+      if (!Array.isArray(tasks)) return false;
+      const normalized = tasks.map((task) => String(task).toUpperCase());
+      return normalized.some((task) =>
+        ["MESSAGING", "MANAGE", "MODERATE", "ADMINISTER", "EDIT_PROFILE", "MODERATE_CONTENT"].includes(
+          task,
+        ),
+      );
+    };
 
     const mapDbPage = (p: {
       page_id: string;
