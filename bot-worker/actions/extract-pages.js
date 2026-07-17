@@ -136,11 +136,11 @@ async function collectFromBootData(page) {
     };
     const push = (id, name, url, avatar) => {
       id = String(id || "").trim();
-      name = validName(name);
-      if (!id || !name || seen.has(id)) return;
+      const cleaned = validName(name);
+      if (!id || seen.has(id)) return;
       if (!/^\d{5,}$/.test(id) && !/^[A-Za-z0-9._-]{3,}$/.test(id)) return;
       seen.add(id);
-      out.push({ id, name, link: url || `https://www.facebook.com/${id}`, avatar_url: avatar || null });
+      out.push({ id, name: cleaned || `Page ${id}`, link: url || `https://www.facebook.com/${id}`, avatar_url: avatar || null });
     };
     const safeJsonParse = (text) => {
       try { return JSON.parse(text); } catch { return null; }
