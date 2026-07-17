@@ -131,7 +131,23 @@ function MessengerContactsPage() {
   // Pages query — decides whether to show picker.
   const pagesQ = useQuery({
     queryKey: ["msgr-pages", "official-managed-only"],
-    queryFn: () => listPagesFn(),
+    queryFn: async () => {
+      try {
+        return await listPagesFn();
+      } catch (err) {
+        if (err instanceof Response) {
+          const body = await err.clone().text().catch(() => "");
+          throw new Error(
+            body?.trim() ||
+              (lang === "ar"
+                ? `تعذر تحميل صفحاتك (${err.status})`
+                : `Failed to load your Pages (${err.status})`),
+          );
+        }
+        throw err instanceof Error ? err : new Error(String(err));
+      }
+    },
+    retry: false,
   });
 
   const pages = pagesQ.data ?? [];
