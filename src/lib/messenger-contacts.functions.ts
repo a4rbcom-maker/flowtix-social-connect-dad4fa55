@@ -19,7 +19,7 @@ type MessageTag = (typeof MESSAGE_TAGS)[number];
 
 const MS_24H = 24 * 60 * 60 * 1000;
 
-// ---------- List pages (from fb_pages + live Graph fallback) ----------
+// ---------- List pages (official Graph only) ----------
 export const listMessengerPages = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -71,84 +71,16 @@ export const listMessengerPages = createServerFn({ method: "GET" })
       };
     };
 
-    // Prefer explicitly linked/synced pages from fb_pages.
-    const { data, error } = await supabase
-      .from("fb_pages")
-      .select("page_id, page_name, avatar_url, status")
-      .eq("user_id", userId)
-      .order("page_name", { ascending: true });
-    if (error) throw new Error(error.message);
-    if (data && data.length > 0) {
-      return data.map(mapDbPage);
-    }
-
-    // Cookie/bot fallback: users may have already run "extract_pages" from a
-    // bot account. Promote those successful results into fb_pages so this tab
-    // can show the real page list instead of a misleading empty state.
-    const { data: botJobs } = await supabase
-      .from("fb_jobs")
-      .select("id, account_id")
-      .eq("user_id", userId)
-      .eq("job_type", "extract_pages")
-      .not("account_id", "is", null)
-      .order("completed_at", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .limit(20);
-
-    if (botJobs && botJobs.length > 0) {
-      const accountByJobId = new Map(
-        botJobs.map((job) => [job.id as string, job.account_id as string]),
-      );
-      const { data: results } = await supabase
-        .from("fb_job_results")
-        .select("job_id, target, data")
-        .in("job_id", Array.from(accountByJobId.keys()))
-        .eq("status", "success")
-        .limit(500);
-
-      const rows = (results ?? [])
-        .map((result) => {
-          const page = normalizeBotExtractedPage(result);
-          const botAccountId = accountByJobId.get(result.job_id as string);
-          if (!page || !botAccountId) return null;
-          return {
-            user_id: userId,
-            page_id: page.page_id,
-            page_name: page.page_name,
-            avatar_url: page.avatar_url,
-            connection_type: "bot" as const,
-            bot_account_id: botAccountId,
-            status: "active" as const,
-            last_error: null,
-          };
-        })
-        .filter((row): row is NonNullable<typeof row> => Boolean(row));
-
-      if (rows.length > 0) {
-        const { error: upsertBotError } = await supabase
-          .from("fb_pages")
-          .upsert(rows, { onConflict: "user_id,page_id", ignoreDuplicates: false });
-        if (!upsertBotError) {
-          const { data: savedBotPages } = await supabase
-            .from("fb_pages")
-            .select("page_id, page_name, avatar_url, status")
-            .eq("user_id", userId)
-            .order("page_name", { ascending: true });
-          if (savedBotPages && savedBotPages.length > 0) return savedBotPages.map(mapDbPage);
-        }
-      }
-    }
-
-    // Fallback: fetch live from Facebook Graph so users who linked FB
-    // (but haven't added pages to autoreply) still see their pages here.
-    // Also persist them into fb_pages with required fields so downstream sync
-    // ownership checks work without requiring the user to visit autoreply first.
+    // Messenger contacts must start from a real Facebook Page returned by
+    // /me/accounts. Cookie/bot extraction can include UI entities such as
+    // groups, friend requests, or the personal profile, so it is deliberately
+    // not used here.
     const token = await getStoredAccessToken(userId);
     if (!token) return [];
 
     try {
       const result = await fbGet(
-        "/me/accounts?fields=id,name,access_token,picture.type(square){url}&limit=100",
+        "/me/accounts?fields=id,name,access_token,picture.type(square){url}&limit=200",
         token,
       );
       const arr = (result?.data ?? []) as Array<{
@@ -157,16 +89,24 @@ export const listMessengerPages = createServerFn({ method: "GET" })
         access_token?: string;
         picture?: { data?: { url?: string } };
       }>;
-      if (arr.length === 0) return [];
+      const graphPages = arr
+        .map((p) => ({
+          id: String(p.id ?? "").trim(),
+          name: String(p.name ?? "").replace(/\s+/g, " ").trim(),
+          accessToken: p.access_token,
+          avatarUrl: p.picture?.data?.url ?? null,
+        }))
+        .filter((p) => /^\d{5,}$/.test(p.id) && p.name.length > 0);
+      if (graphPages.length === 0) return [];
 
       const { encryptJson } = await import("@/server/crypto.server");
-      const rows = arr.map((p) => ({
+      const rows = graphPages.map((p) => ({
         user_id: userId,
         page_id: p.id,
         page_name: p.name,
-        avatar_url: p.picture?.data?.url ?? null,
+        avatar_url: p.avatarUrl,
         connection_type: "official" as const,
-        access_token_encrypted: p.access_token ? encryptJson(p.access_token) : null,
+        access_token_encrypted: p.accessToken ? encryptJson(p.accessToken) : null,
         status: "active" as const,
         last_error: null,
       }));
@@ -176,20 +116,9 @@ export const listMessengerPages = createServerFn({ method: "GET" })
         .upsert(rows, { onConflict: "user_id,page_id", ignoreDuplicates: false });
       if (upsertError) throw new Error(upsertError.message);
 
-      const { data: saved, error: savedError } = await supabase
-        .from("fb_pages")
-        .select("page_id, page_name, avatar_url, status")
-        .eq("user_id", userId)
-        .order("page_name", { ascending: true });
-      if (savedError) throw new Error(savedError.message);
-      if (saved && saved.length > 0) return saved.map(mapDbPage);
-
-      return arr.map((p) => ({
-        pageId: p.id,
-        pageName: p.name,
-        avatarUrl: p.picture?.data?.url ?? null,
-        status: "active" as string | null,
-      }));
+      return rows
+        .map((row) => mapDbPage(row))
+        .sort((a, b) => a.pageName.localeCompare(b.pageName, "ar"));
     } catch (err) {
       throw new Error(friendlyError(err));
     }
@@ -239,8 +168,9 @@ export const startMessengerSync = createServerFn({ method: "POST" })
       .select("page_id, page_name")
       .eq("user_id", userId)
       .eq("page_id", data.pageId)
+      .eq("connection_type", "official")
       .maybeSingle();
-    if (!page) throw new Error("Page not linked to this user");
+    if (!page) throw new Error("هذه ليست صفحة Facebook مُدارة عبر الربط الرسمي لهذا الحساب.");
 
     // Refuse to start when a job is already running for this page.
     const { data: running } = await supabase

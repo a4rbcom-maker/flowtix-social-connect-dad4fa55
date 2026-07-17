@@ -35,6 +35,7 @@ const NON_PAGE_SLUGS = new Set([
 ]);
 
 const BLOCKED_PAGE_PATH_RE = /^\/(?:home(?:\.php)?|notifications(?:\.php)?|friends|messages|help|dcb|wui|settings|privacy|policies|login|recover|menu|feed|saved|reels|watch|marketplace)(?:\/|\?|#|$)/i;
+const NON_PAGE_ENTITY_RE = /\/groups\/|\/friends\/|friendrequests|friend_requests|addfriend|profile\.php|طلبات الصداقة|صورة ملف|personal profile|profile picture|group|جروب|مجموعة/i;
 
 function isBlockedPageLink(rawLink) {
   if (!rawLink) return false;
@@ -74,6 +75,7 @@ function dedupePageCandidate(candidate) {
   if (NON_PAGE_SLUGS.has(idKey) || /\.php$/i.test(idKey)) return null;
   const link = candidate.link || candidate.url || `https://www.facebook.com/${id}`;
   if (isBlockedPageLink(link)) return null;
+  if (NON_PAGE_ENTITY_RE.test(`${id} ${name} ${link}`)) return null;
   // Fallback name: if missing, derive a placeholder from the id/slug so we
   // don't silently drop otherwise valid page links.
   if (!name) name = `Page ${id}`;
@@ -99,6 +101,7 @@ async function collectFromRenderedPage(page) {
       "l.php", "menu", "feed", "saved", "reels", "search",
     ]);
     const blockedPathRe = /^\/(?:home(?:\.php)?|notifications(?:\.php)?|friends|messages|help|dcb|wui|settings|privacy|policies|login|recover|menu|feed|saved|reels|watch|marketplace)(?:\/|\?|#|$)/i;
+    const nonPageEntityRe = /\/groups\/|\/friends\/|friendrequests|friend_requests|addfriend|profile\.php|طلبات الصداقة|صورة ملف|personal profile|profile picture|group|جروب|مجموعة/i;
     const genericLabels = /^(Pages|Your Pages|Create|Manage|Home|About|Photos|Videos|Posts|Following|Followers|Like|Share|Comment|More|See more|View page|Switch|Meta Business Suite|Business Suite|Notifications|Inbox|News Feed|Download|Learn more|Google Chrome|الصفحات|صفحاتك|إنشاء|إدارة|الرئيسية|حول|الصور|الفيديوهات|المنشورات|متابعة|المتابعون|إعجاب|مشاركة|تعليق|عرض المزيد|عرض الصفحة|تبديل|الإشعارات|صندوق الوارد|الموجز|طلبات الصداقة|تنزيل متصفح Google Chrome|تعرف على المزيد)$/i;
     const out = [];
 
@@ -123,8 +126,10 @@ async function collectFromRenderedPage(page) {
         if (hoverPageId && /^\d{5,}$/.test(hoverPageId)) return { id: hoverPageId, href: `https://www.facebook.com/${hoverPageId}`, confidence: "explicit", reason: "hovercard_page" };
       }
       if (blockedPathRe.test(parsed.pathname)) return null;
-      const assetId = parsed.searchParams.get("asset_id") || parsed.searchParams.get("page_id") || parsed.searchParams.get("id") || parsed.searchParams.get("profile_id");
-      if (assetId && /^\d{5,}$/.test(assetId)) return { id: assetId, href: parsed.toString().split("#")[0], confidence: "explicit", reason: "page_id_param" };
+      const managementHref = `${parsed.hostname}${parsed.pathname}${parsed.search}`;
+      const hasManagementContext = /\/pages\/(?:edit|manage)|business\.facebook\.com\/latest|asset_id=|page_id=/i.test(managementHref);
+      const assetId = parsed.searchParams.get("asset_id") || parsed.searchParams.get("page_id") || (hasManagementContext ? parsed.searchParams.get("id") : null);
+      if (assetId && /^\d{5,}$/.test(assetId) && hasManagementContext) return { id: assetId, href: parsed.toString().split("#")[0], confidence: "explicit", reason: "page_id_param" };
       if (/\/groups\/|\/events\/|\/posts\/|\/videos\/|\/reel\/|\/stories\/|\/photo\.php|\/permalink\.php|\/story\.php|\/login\//i.test(parsed.pathname)) return null;
       const profileId = parsed.pathname === "/profile.php" ? parsed.searchParams.get("id") : null;
       const numericId = profileId || parsed.pathname.match(/\/(\d{6,})(?:\/|$)/)?.[1] || parsed.pathname.match(/-(\d{6,})(?:\/|$)/)?.[1];
@@ -160,6 +165,7 @@ async function collectFromRenderedPage(page) {
       const name = [imgAlt, aria, title, ...lines].map(validName).find(Boolean) || "";
       const avatar = a.querySelector("img[src]")?.getAttribute("src") || container.querySelector?.("img[src]")?.getAttribute("src") || null;
       const combinedText = [imgAlt, aria, title, ownText, a.textContent, container.textContent].join(" ");
+      if (nonPageEntityRe.test(`${combinedText} ${parsed.href}`)) continue;
       // STRICT ownership signal — only accept anchors that clearly point at a
       // page the user MANAGES. We reject the loose "followers/إعجاب" heuristic
       // that previously matched pages the user merely LIKES/FOLLOWS.
@@ -182,16 +188,19 @@ async function collectFromBootData(page) {
   return page.evaluate(() => {
     const out = [];
     const seen = new Set();
+    const nonPageEntityRe = /\/groups\/|\/friends\/|friendrequests|friend_requests|addfriend|profile\.php|طلبات الصداقة|صورة ملف|personal profile|profile picture|group|جروب|مجموعة/i;
     const validName = (name) => {
       const s = String(name || "").replace(/\\u0025/g, "%").replace(/\s+/g, " ").trim();
       if (s.length < 1 || s.length > 200) return "";
       if (/^(Pages|Create|Manage|Home|Meta Business Suite|Business Suite|الصفحات|إنشاء|إدارة|الرئيسية)$/i.test(s)) return "";
+      if (nonPageEntityRe.test(s)) return "";
       return s;
     };
     const push = (id, name, url, avatar) => {
       id = String(id || "").trim();
       const cleaned = validName(name);
       if (!id || seen.has(id)) return;
+      if (nonPageEntityRe.test(`${id} ${name || ""} ${url || ""}`)) return;
       if (!/^\d{5,}$/.test(id) && !/^[A-Za-z0-9._-]{3,}$/.test(id)) return;
       seen.add(id);
       out.push({ id, name: cleaned || `Page ${id}`, link: url || `https://www.facebook.com/${id}`, avatar_url: avatar || null });

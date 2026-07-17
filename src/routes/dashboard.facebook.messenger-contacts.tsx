@@ -13,9 +13,7 @@ import {
   Tag,
   ChevronLeft,
   ChevronRight,
-  Cookie,
   X,
-  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
@@ -49,7 +47,6 @@ import {
   sendMessengerBroadcast,
   updateMessengerContactTags,
 } from "@/lib/messenger-contacts.functions";
-import { createExtractPagesJob, getJob, listBotAccounts, listJobs } from "@/lib/fb-bot.functions";
 
 export const Route = createFileRoute("/dashboard/facebook/messenger-contacts")({
   ssr: false,
@@ -78,149 +75,6 @@ type Contact = {
   tags: string[];
 };
 
-type BotAccount = {
-  id: string;
-  display_name: string;
-  status: "untested" | "active" | "invalid" | "checkpoint" | "disabled";
-  last_error: string | null;
-};
-
-type FbJob = {
-  id: string;
-  job_type: string;
-  status: string;
-  progress: number | null;
-  total_items: number | null;
-  processed_items: number | null;
-  created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-  error_message: string | null;
-  account_id: string | null;
-};
-
-type JobResult = {
-  id: string;
-  target: string | null;
-  status: string;
-  data: Record<string, unknown> | null;
-  error: string | null;
-  created_at: string;
-};
-
-type ExtractLogRow = {
-  id: string;
-  created_at: string;
-  data: Record<string, unknown>;
-};
-
-function compactText(value: unknown, fallback = "") {
-  return String(value ?? fallback).replace(/\s+/g, " ").trim();
-}
-
-function formatDuration(ms: unknown, lang: "ar" | "en") {
-  const n = typeof ms === "number" ? ms : Number(ms || 0);
-  if (!Number.isFinite(n) || n <= 0) return "";
-  if (n < 1000) return lang === "ar" ? `${Math.round(n)} مللي ثانية` : `${Math.round(n)}ms`;
-  return lang === "ar" ? `${(n / 1000).toFixed(1)} ثانية` : `${(n / 1000).toFixed(1)}s`;
-}
-
-function formatExtractPagesLog(row: ExtractLogRow, lang: "ar" | "en") {
-  const d = row.data;
-  const event = compactText(d.event);
-  const stage = compactText(d.stage);
-  const surface = compactText(d.surface);
-  const duration = formatDuration(d.duration_ms, lang);
-  const count = d.collectedCount ?? d.discoveredOnSurface ?? d.renderedCount ?? d.bootCount;
-  const label = lang === "ar";
-
-  if (event === "worker_claimed") return label ? "استلم الوركر المهمة من قائمة الانتظار." : "Worker claimed the job.";
-  if (event === "login_verified") return label ? "تم تأكيد جلسة فيسبوك بنجاح." : "Facebook session verified.";
-  if (event === "surface_started") return label ? `بدء فتح مسار فيسبوك: ${surface}` : `Opening Facebook surface: ${surface}`;
-  if (event === "surface_open_failed") return label ? `فشل فتح المسار: ${compactText(d.error)}` : `Surface open failed: ${compactText(d.error)}`;
-  if (event === "surface_finished") {
-    return label
-      ? `تم فحص المسار: ${d.discoveredOnSurface ?? 0} صفحة جديدة، الإجمالي ${d.collectedCount ?? 0}.`
-      : `Surface scanned: ${d.discoveredOnSurface ?? 0} new pages, ${d.collectedCount ?? 0} total.`;
-  }
-  if (event === "page_discovered") return label ? `تم اكتشاف صفحة: ${compactText(d.pageName, "Page")}` : `Page discovered: ${compactText(d.pageName, "Page")}`;
-  if (event === "early_finish") return label ? `تم إنهاء الفحص مبكرًا بعد العثور على ${d.collectedCount ?? 0} صفحة.` : `Finished early after finding ${d.collectedCount ?? 0} pages.`;
-  if (event === "early_stop_no_results") return label ? "توقف الفحص بعد عدة مسارات بدون نتائج." : "Stopped after multiple empty surfaces.";
-  if (event === "job_completed") return label ? `اكتملت المهمة: ${d.collectedCount ?? 0} صفحة محفوظة.` : `Job completed: ${d.collectedCount ?? 0} pages saved.`;
-  if (event === "job_failed") return label ? `فشلت المهمة: ${compactText(d.reason ?? d.error)}` : `Job failed: ${compactText(d.reason ?? d.error)}`;
-  if (event === "step_started") return label ? `بدء مرحلة ${stage || "غير معروفة"}.` : `Started ${stage || "step"}.`;
-  if (event === "step_finished") {
-    const suffix = count !== undefined ? (label ? ` — نتائج: ${count}` : ` — count: ${count}`) : "";
-    return label ? `انتهت مرحلة ${stage || "غير معروفة"}${duration ? ` خلال ${duration}` : ""}${suffix}.` : `Finished ${stage || "step"}${duration ? ` in ${duration}` : ""}${suffix}.`;
-  }
-  if (event === "step_failed") return label ? `فشلت مرحلة ${stage || "غير معروفة"}: ${compactText(d.error)}` : `${stage || "Step"} failed: ${compactText(d.error)}`;
-  if (event === "collector_failed") return label ? `فشل قارئ ${compactText(d.collector)}: ${compactText(d.error)}` : `${compactText(d.collector)} collector failed: ${compactText(d.error)}`;
-
-  return label ? `حدث ${event || "تشخيص"}${stage ? ` في ${stage}` : ""}.` : `${event || "Diagnostic"}${stage ? ` at ${stage}` : ""}.`;
-}
-
-function ExtractPagesLogPanel({ rows, lang, loading }: { rows: ExtractLogRow[]; lang: "ar" | "en"; loading?: boolean }) {
-  const items = rows.slice(-20).reverse();
-  const ar = lang === "ar";
-
-  return (
-    <div className="mt-4 rounded-md border bg-muted/20 p-3 text-xs">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="font-semibold text-foreground">
-          {ar ? "سجل مراحل استخراج الصفحات" : "Page extraction stage log"}
-        </span>
-        <Badge variant="secondary" className="text-[10px] tabular-nums">
-          {rows.length}
-        </Badge>
-      </div>
-
-      {loading ? (
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          {ar ? "جاري تحميل سجل التشخيص..." : "Loading diagnostics..."}
-        </div>
-      ) : items.length === 0 ? (
-        <p className="text-muted-foreground">
-          {ar
-            ? "لم يصل سجل مراحل بعد. إذا ظلت المهمة Pending أكثر من دقيقتين فهذا يعني أن الوركر لم يلتقطها."
-            : "No stage log yet. If the job stays pending for over two minutes, the worker has not picked it up."}
-        </p>
-      ) : (
-        <ul className="max-h-64 space-y-1.5 overflow-y-auto pe-1">
-          {items.map((row) => {
-            const event = compactText(row.data.event);
-            const isFail = /failed|rejected|expired/i.test(event) || Boolean(row.data.error);
-            const time = new Date(row.created_at).toLocaleTimeString(ar ? "ar-EG" : "en-US", { hour12: false });
-            return (
-              <li key={row.id} className="flex items-start gap-2 border-b border-border/40 pb-1.5 last:border-b-0">
-                <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">{time}</span>
-                <span className={isFail ? "text-destructive" : "text-foreground/90"}>
-                  {formatExtractPagesLog(row, lang)}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function describeExtractPagesError(message: string | null | undefined, lang: "ar" | "en") {
-  const raw = message || "";
-  if (/SESSION_EXPIRED|Facebook rejected|stored session cookies|redirected to login|checkpoint|c_user|not logged in/i.test(raw)) {
-    return lang === "ar"
-      ? "جلسة فيسبوك لهذا الحساب غير صالحة فعليًا. أعد تصدير الكوكيز من نفس المتصفح الذي الحساب مفتوح عليه، ثم اربط الحساب من جديد."
-      : "This Facebook session is not valid anymore. Re-export fresh cookies from the same logged-in browser, then reconnect the account.";
-  }
-  if (/لم يعثر|no pages|0 pages|لم يتم العثور/i.test(raw)) {
-    return lang === "ar"
-      ? "لم يرجع البوت أي صفحة من فيسبوك. هذا يعني أن الفشل حدث داخل مرحلة قراءة واجهة/بيانات فيسبوك، وليس دليلاً على أن الحساب لا يملك صفحات. أعد المحاولة بعد تحديث البوت، وسيظهر التشخيص في السجل."
-      : "The bot did not return any Facebook pages. This means extraction failed while reading Facebook UI/data, not that the account has no pages. Retry after the worker is updated; diagnostics are saved in the job log.";
-  }
-  return raw || (lang === "ar" ? "فشل استخراج الصفحات. حاول مرة أخرى." : "Page extraction failed. Try again.");
-}
-
 function timeAgo(iso: string | null, lang: "ar" | "en"): string {
   if (!iso) return lang === "ar" ? "—" : "—";
   const diff = Date.now() - new Date(iso).getTime();
@@ -244,10 +98,6 @@ function MessengerContactsPage() {
   const startSyncFn = useServerFn(startMessengerSync);
   const sendBroadcastFn = useServerFn(sendMessengerBroadcast);
   const updateTagsFn = useServerFn(updateMessengerContactTags);
-  const listBotAccountsFn = useServerFn(listBotAccounts);
-  const createExtractPagesJobFn = useServerFn(createExtractPagesJob);
-  const listJobsFn = useServerFn(listJobs);
-  const getJobFn = useServerFn(getJob);
 
   const [pageId, setPageId] = useState<string | null>(null);
   const [showPagePicker, setShowPagePicker] = useState(false);
@@ -264,7 +114,6 @@ function MessengerContactsPage() {
   const [campaignTag, setCampaignTag] = useState<(typeof MESSAGE_TAGS)[number]>("HUMAN_AGENT");
   const [tagContact, setTagContact] = useState<Contact | null>(null);
   const [tagInput, setTagInput] = useState("");
-  const [refetchedForExtractJobId, setRefetchedForExtractJobId] = useState<string | null>(null);
 
   // Pages query — decides whether to show picker.
   const pagesQ = useQuery({
@@ -274,58 +123,6 @@ function MessengerContactsPage() {
 
   const pages = pagesQ.data ?? [];
   const noPagesReady = !pagesQ.isLoading && !pagesQ.error && pages.length === 0;
-
-  const botAccountsQ = useQuery({
-    queryKey: ["msgr-bot-accounts"],
-    enabled: noPagesReady,
-    queryFn: () => listBotAccountsFn(),
-  });
-
-  const extractJobsQ = useQuery({
-    queryKey: ["msgr-extract-pages-jobs"],
-    enabled: noPagesReady,
-    queryFn: () => listJobsFn(),
-    refetchInterval: (q) => {
-      const jobs = (q.state.data ?? []) as FbJob[];
-      return jobs.some((job) => job.job_type === "extract_pages" && ["pending", "running"].includes(job.status))
-        ? 2000
-        : false;
-    },
-  });
-
-  useEffect(() => {
-    const jobs = (extractJobsQ.data ?? []) as FbJob[];
-    const completedJob = jobs.find((job) => job.job_type === "extract_pages" && job.status === "completed");
-    if (completedJob && completedJob.id !== refetchedForExtractJobId) {
-      setRefetchedForExtractJobId(completedJob.id);
-      pagesQ.refetch();
-    }
-  }, [extractJobsQ.data, pagesQ, refetchedForExtractJobId]);
-
-  useEffect(() => {
-    const jobs = (extractJobsQ.data ?? []) as FbJob[];
-    const failedSessionJob = jobs.find(
-      (job) =>
-        job.job_type === "extract_pages" &&
-        job.status === "failed" &&
-        /SESSION_EXPIRED|Facebook rejected|stored session cookies|redirected to login|checkpoint|c_user/i.test(job.error_message || ""),
-    );
-    if (failedSessionJob) qc.invalidateQueries({ queryKey: ["msgr-bot-accounts"] });
-  }, [extractJobsQ.data, qc]);
-
-  const extractPagesM = useMutation({
-    mutationFn: (accountId: string) => createExtractPagesJobFn({ data: { accountId } }),
-    onSuccess: () => {
-      toast.success(lang === "ar" ? "تم بدء فحص جلسة فيسبوك واستخراج الصفحات. ستظهر الصفحات هنا تلقائياً عند اكتمال المهمة." : "Facebook session check and page extraction started. Pages will appear here automatically when it finishes.");
-      qc.invalidateQueries({ queryKey: ["msgr-extract-pages-jobs"] });
-      qc.invalidateQueries({ queryKey: ["msgr-pages"] });
-    },
-    onError: (e: Error) => {
-      toast.error(describeExtractPagesError(e.message, lang));
-      qc.invalidateQueries({ queryKey: ["msgr-bot-accounts"] });
-      qc.invalidateQueries({ queryKey: ["msgr-extract-pages-jobs"] });
-    },
-  });
 
   // Auto-pick when there's exactly one page; otherwise force explicit choice.
   useEffect(() => {
@@ -435,87 +232,6 @@ function MessengerContactsPage() {
   const currentPage = pages.find((p) => p.pageId === pageId);
   const syncJob = statusQ.data?.job;
   const syncRunning = syncJob?.status === "running" || syncJob?.status === "queued";
-  const botAccountsAll = (botAccountsQ.data?.accounts ?? []) as BotAccount[];
-  const botAccounts = botAccountsAll.filter(
-    (account) => account.status === "active",
-  );
-  const invalidBotAccounts = botAccountsAll.filter((account) => account.status !== "active");
-  const extractJobs = ((extractJobsQ.data ?? []) as FbJob[]).filter((job) => job.job_type === "extract_pages");
-  const latestExtractJob = extractJobs[0];
-  const latestExtractJobDetailsQ = useQuery({
-    queryKey: ["msgr-extract-pages-job-details", latestExtractJob?.id],
-    enabled: Boolean(noPagesReady && latestExtractJob?.id),
-    queryFn: () => getJobFn({ data: { id: latestExtractJob!.id } }),
-    refetchInterval: (q) => {
-      const job = (q.state.data as { job?: FbJob | null } | undefined)?.job ?? latestExtractJob;
-      return job && ["pending", "running"].includes(job.status) ? 2000 : false;
-    },
-  });
-  const extractRunning = latestExtractJob && ["pending", "running"].includes(latestExtractJob.status);
-  const latestExtractProgress = latestExtractJob?.progress ?? 0;
-  const latestExtractProcessed = latestExtractJob?.processed_items ?? 0;
-  const latestExtractTotal = latestExtractJob?.total_items ?? 0;
-  const extractLogRows = useMemo<ExtractLogRow[]>(() => {
-    const results = ((latestExtractJobDetailsQ.data as { results?: JobResult[] } | undefined)?.results ?? []) as JobResult[];
-    return results
-      .filter((row) => row.data?.kind === "log" && row.data?.job_type === "extract_pages")
-      .map((row) => ({ id: row.id, created_at: row.created_at, data: row.data as Record<string, unknown> }))
-      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-  }, [latestExtractJobDetailsQ.data]);
-  const latestExtractLog = extractLogRows[extractLogRows.length - 1] ?? null;
-
-  // Live elapsed timer for the running job.
-  const [nowTick, setNowTick] = useState(() => Date.now());
-  useEffect(() => {
-    if (!extractRunning) return;
-    const t = setInterval(() => setNowTick(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [extractRunning]);
-  const jobStartMs = latestExtractJob
-    ? new Date(latestExtractJob.started_at || latestExtractJob.created_at).getTime()
-    : null;
-  const elapsedSec = jobStartMs ? Math.max(0, Math.floor((nowTick - jobStartMs) / 1000)) : 0;
-  const elapsedLabel = `${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, "0")}`;
-  const pendingTooLong = latestExtractJob?.status === "pending" && elapsedSec >= 120;
-
-  // Phase timeline — derived from status + progress + count.
-  type Phase = { key: string; ar: string; en: string };
-  const phases: Phase[] = [
-    { key: "queued", ar: "في قائمة الانتظار", en: "Queued" },
-    { key: "login", ar: "فتح فيسبوك والتحقق من الجلسة", en: "Opening Facebook & verifying session" },
-    { key: "scan", ar: "قراءة قائمة الصفحات التي تديرها", en: "Reading pages you manage" },
-    { key: "collect", ar: "حفظ الصفحات المُدارة فقط", en: "Saving managed pages only" },
-    { key: "done", ar: "اكتملت المهمة", en: "Completed" },
-  ];
-  let currentPhaseIdx = 0;
-  if (latestExtractJob) {
-    if (latestExtractJob.status === "pending") currentPhaseIdx = 0;
-    else if (latestExtractJob.status === "completed") currentPhaseIdx = 4;
-    else if (latestExtractProcessed > 0) currentPhaseIdx = 3;
-    else if (latestExtractProgress >= 12) currentPhaseIdx = 2;
-    else currentPhaseIdx = 1;
-  }
-
-  const latestExtractStatusText = latestExtractJob
-    ? latestExtractJob.status === "pending"
-      ? pendingTooLong
-        ? lang === "ar"
-          ? "المهمة لم يلتقطها الوركر خلال دقيقتين؛ غالبًا الوركر متوقف أو لا يعلن صلاحية extract_pages_resilient."
-          : "The worker did not pick this up within two minutes; it is likely offline or missing extract_pages_resilient capability."
-        : lang === "ar"
-          ? "المهمة في الانتظار حتى يلتقطها البوت (عادةً خلال ثوانٍ)."
-          : "Waiting for the bot to pick up the job (usually a few seconds)."
-      : latestExtractJob.status === "running"
-        ? phases[currentPhaseIdx][lang === "ar" ? "ar" : "en"]
-        : latestExtractJob.status === "completed"
-          ? lang === "ar"
-            ? `اكتمل الاستخراج: ${latestExtractProcessed || latestExtractTotal} صفحة مكتشفة.`
-            : `Extraction completed: ${latestExtractProcessed || latestExtractTotal} pages found.`
-          : latestExtractJob.status === "failed"
-            ? describeExtractPagesError(latestExtractJob.error_message, lang)
-            : latestExtractJob.status
-    : null;
-  const currentActivityText = latestExtractLog ? formatExtractPagesLog(latestExtractLog, lang) : latestExtractStatusText;
 
   const rtl = lang === "ar";
 
@@ -590,183 +306,17 @@ function MessengerContactsPage() {
         <Card className="p-8 text-center">
           <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
           <h2 className="mb-1 text-lg font-semibold">
-            {lang === "ar" ? "لم يتم تحميل صفحاتك التي تديرها بعد" : "Your managed pages are not loaded yet"}
+            {lang === "ar" ? "لا توجد صفحات مُدارة في الربط الرسمي" : "No managed Pages in the official connection"}
           </h2>
           <p className="mx-auto mb-5 max-w-2xl text-sm text-muted-foreground">
             {lang === "ar"
-              ? "سيتم استخراج الصفحات التي تملكها أو تديرها فقط (لن يتم استيراد الصفحات التي تتابعها أو أُعجبت بها). بعد اكتمال الاستخراج ستظهر قائمة الصفحات لتختار الصفحة المستهدفة."
-              : "Only pages you own or manage will be extracted (followed/liked pages are excluded). Once the extraction finishes, pick the target page to load its Messenger contacts."}
+              ? "هذه الشاشة تعرض صفحات Facebook التي يديرها حسابك فقط من الربط الرسمي، ثم تختار صفحة واحدة لاستخراج محادثات Messenger الخاصة بها. لن تظهر الجروبات أو الملف الشخصي أو طلبات الصداقة هنا."
+              : "This screen lists only Facebook Pages managed by your official connection, then you select one Page to import its Messenger conversations. Groups, profiles, and friend requests are not shown here."}
           </p>
-
-          {botAccountsQ.isLoading ? (
-            <div className="text-sm text-muted-foreground">
-              <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
-              {lang === "ar" ? "جاري فحص حسابات البوت..." : "Checking bot accounts..."}
-            </div>
-          ) : botAccounts.length > 0 ? (
-            <div className="mx-auto max-w-2xl space-y-3 text-start">
-              {latestExtractJob && (
-                <div className="rounded-lg border bg-card p-4 text-sm shadow-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      {extractRunning ? (
-                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                      ) : latestExtractJob.status === "completed" ? (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                      ) : latestExtractJob.status === "failed" ? (
-                        <AlertCircle className="h-4 w-4 text-destructive" />
-                      ) : null}
-                      <span className="font-semibold">
-                        {lang === "ar" ? "استخراج الصفحات" : "Page extraction"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {extractRunning && (
-                        <span className="rounded-md bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">
-                          {elapsedLabel}
-                        </span>
-                      )}
-                      <Badge variant={extractRunning ? "secondary" : latestExtractJob.status === "completed" ? "default" : "destructive"}>
-                        {latestExtractJob.status}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {/* Big live counter */}
-                  <div className="mt-4 flex items-baseline gap-2">
-                    <span className={`text-4xl font-bold tabular-nums ${extractRunning ? "text-primary" : "text-foreground"}`}>
-                      {latestExtractProcessed}
-                    </span>
-                    <span className="text-sm text-muted-foreground">
-                      {lang === "ar" ? "صفحة تديرها تم اكتشافها" : "managed pages discovered"}
-                    </span>
-                  </div>
-
-                  {/* Progress bar (indeterminate stripe when 0 while running) */}
-                  <div className="relative mt-3 h-2 overflow-hidden rounded-full bg-muted">
-                    {extractRunning && latestExtractProgress < 5 ? (
-                      <div className="absolute inset-y-0 w-1/3 animate-pulse rounded-full bg-primary/70" />
-                    ) : (
-                      <div
-                        className="h-full rounded-full bg-primary transition-all duration-500"
-                        style={{ width: `${Math.max(3, Math.min(100, latestExtractProgress))}%` }}
-                      />
-                    )}
-                  </div>
-                  <div className="mt-1 flex justify-between text-[11px] text-muted-foreground tabular-nums">
-                    <span>{Math.max(0, Math.min(100, Math.round(latestExtractProgress)))}%</span>
-                    {extractRunning && (
-                      <span>{lang === "ar" ? "التحديث كل ثانيتين" : "auto-refresh every 2s"}</span>
-                    )}
-                  </div>
-
-                  {/* Phase timeline */}
-                  {latestExtractJob.status !== "failed" && (
-                    <ol className="mt-4 space-y-1.5">
-                      {phases.map((p, i) => {
-                        const done = i < currentPhaseIdx || latestExtractJob.status === "completed";
-                        const active = i === currentPhaseIdx && extractRunning;
-                        return (
-                          <li key={p.key} className="flex items-center gap-2 text-xs">
-                            <span
-                              className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-                                done
-                                  ? "border-emerald-600 bg-emerald-600 text-white"
-                                  : active
-                                    ? "border-primary bg-primary/10 text-primary"
-                                    : "border-muted-foreground/30 text-muted-foreground/60"
-                              }`}
-                            >
-                              {done ? (
-                                <CheckCircle2 className="h-3 w-3" />
-                              ) : active ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <span className="text-[9px]">{i + 1}</span>
-                              )}
-                            </span>
-                            <span className={active ? "font-medium text-foreground" : done ? "text-foreground/70" : "text-muted-foreground"}>
-                              {lang === "ar" ? p.ar : p.en}
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ol>
-                  )}
-
-                  {currentActivityText ? (
-                    <p className={`mt-3 text-xs ${latestExtractJob.status === "failed" ? "text-destructive" : "text-muted-foreground"}`}>
-                      <span className="font-medium text-foreground">
-                        {lang === "ar" ? "النشاط الحالي: " : "Current activity: "}
-                      </span>
-                      {currentActivityText}
-                    </p>
-                  ) : null}
-
-                  <ExtractPagesLogPanel rows={extractLogRows} lang={lang} loading={latestExtractJobDetailsQ.isFetching && extractLogRows.length === 0} />
-                </div>
-              )}
-
-              {botAccounts.map((account) => (
-                <div key={account.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-md bg-primary/10 p-2 text-primary">
-                      <Cookie className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <div className="font-medium">{account.display_name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {lang === "ar" ? "حساب بوت متصل" : "Active bot account"}
-                      </div>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    disabled={extractPagesM.isPending || Boolean(extractRunning)}
-                    onClick={() => extractPagesM.mutate(account.id)}
-                  >
-                    {(extractPagesM.isPending || extractRunning) && <Loader2 className="h-4 w-4 animate-spin" />}
-                    {lang === "ar" ? "استخراج الصفحات" : "Extract pages"}
-                  </Button>
-                </div>
-              ))}
-            </div>
-          ) : invalidBotAccounts.length > 0 ? (
-            <div className="mx-auto max-w-2xl space-y-3 text-start">
-              <div className="rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm">
-                <div className="flex items-center gap-2 font-medium text-destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  {lang === "ar" ? "الحسابات المرتبطة غير جاهزة للاستخراج" : "Connected accounts are not ready for extraction"}
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {lang === "ar"
-                    ? "لن يتم إنشاء مهمة استخراج صفحات لحساب رفضه فيسبوك أو انتهت جلسته. أعد ربط الحساب بكوكيز جديدة ثم جرّب مرة أخرى."
-                    : "A page extraction job will not be created for an account rejected by Facebook or with an expired session. Reconnect with fresh cookies and try again."}
-                </p>
-              </div>
-              {invalidBotAccounts.slice(0, 4).map((account) => (
-                <div key={account.id} className="rounded-md border p-3 text-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium">{account.display_name}</span>
-                    <Badge variant="destructive">{account.status}</Badge>
-                  </div>
-                  {account.last_error ? (
-                    <p className="mt-2 text-xs text-destructive">
-                      {describeExtractPagesError(account.last_error, lang)}
-                    </p>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                {lang === "ar"
-                  ? "لا يوجد ربط رسمي ولا حساب بوت متصل حالياً. اربط حساب Facebook أولاً ثم ارجع لهذا التبويب."
-                  : "No official connection or active bot account is available. Connect Facebook first, then return here."}
-              </p>
-            </div>
-          )}
+          <Button variant="outline" onClick={() => pagesQ.refetch()}>
+            <RefreshCw className="h-4 w-4" />
+            {lang === "ar" ? "إعادة تحميل الصفحات" : "Reload Pages"}
+          </Button>
         </Card>
       )}
 
