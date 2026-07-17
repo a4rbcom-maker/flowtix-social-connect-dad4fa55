@@ -7,7 +7,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { fbGet, getPageAccessToken } from "@/lib/facebook.functions";
+import { fbGet, getPageAccessToken, getStoredAccessToken } from "@/lib/facebook.functions";
 
 const MESSAGE_TAGS = [
   "HUMAN_AGENT",
