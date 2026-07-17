@@ -483,8 +483,8 @@ function MessengerContactsPage() {
   const phases: Phase[] = [
     { key: "queued", ar: "في قائمة الانتظار", en: "Queued" },
     { key: "login", ar: "فتح فيسبوك والتحقق من الجلسة", en: "Opening Facebook & verifying session" },
-    { key: "scan", ar: "قراءة صفحات الحساب", en: "Reading account pages" },
-    { key: "collect", ar: "اكتشاف الصفحات وحفظها", en: "Discovering & saving pages" },
+    { key: "scan", ar: "قراءة قائمة الصفحات التي تديرها", en: "Reading pages you manage" },
+    { key: "collect", ar: "حفظ الصفحات المُدارة فقط", en: "Saving managed pages only" },
     { key: "done", ar: "اكتملت المهمة", en: "Completed" },
   ];
   let currentPhaseIdx = 0;
