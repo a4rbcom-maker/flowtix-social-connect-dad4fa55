@@ -19,12 +19,36 @@ type MessageTag = (typeof MESSAGE_TAGS)[number];
 
 const MS_24H = 24 * 60 * 60 * 1000;
 
-// ---------- List pages (from fb_pages) ----------
+// ---------- List pages (from fb_pages + live Graph fallback) ----------
 export const listMessengerPages = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    // Prefer explicitly linked pages from fb_pages.
+
+    const mapDbPage = (p: {
+      page_id: string;
+      page_name: string;
+      avatar_url: string | null;
+      status: string | null;
+    }) => ({
+      pageId: p.page_id,
+      pageName: p.page_name,
+      avatarUrl: p.avatar_url,
+      status: p.status,
+    });
+
+    const friendlyError = (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/permissions?|الصلاحيات|pages_show_list|pages_messaging/i.test(msg)) {
+        return `تعذر قراءة صفحات فيسبوك بسبب نقص الصلاحيات. أعد ربط حساب فيسبوك الرسمي ثم وافق على صلاحيات الصفحات والرسائل. التفاصيل: ${msg}`;
+      }
+      if (/token|OAuth|expired|invalid/i.test(msg)) {
+        return `ربط فيسبوك الرسمي غير صالح أو منتهي. أعد الربط ثم جرّب مرة أخرى. التفاصيل: ${msg}`;
+      }
+      return `تعذر تحميل صفحات فيسبوك الآن. التفاصيل: ${msg}`;
+    };
+
+    // Prefer explicitly linked/synced pages from fb_pages.
     const { data, error } = await supabase
       .from("fb_pages")
       .select("page_id, page_name, avatar_url, status")
@@ -32,48 +56,62 @@ export const listMessengerPages = createServerFn({ method: "GET" })
       .order("page_name", { ascending: true });
     if (error) throw new Error(error.message);
     if (data && data.length > 0) {
-      return data.map((p) => ({
-        pageId: p.page_id,
-        pageName: p.page_name,
-        avatarUrl: p.avatar_url,
-        status: p.status,
-      }));
+      return data.map(mapDbPage);
     }
+
     // Fallback: fetch live from Facebook Graph so users who linked FB
     // (but haven't added pages to autoreply) still see their pages here.
-    // Also upsert into fb_pages so downstream sync (which verifies ownership
-    // via fb_pages) works without requiring the user to visit autoreply first.
+    // Also persist them into fb_pages with required fields so downstream sync
+    // ownership checks work without requiring the user to visit autoreply first.
+    const token = await getStoredAccessToken(userId);
+    if (!token) return [];
+
     try {
-      const token = await getStoredAccessToken(userId);
-      if (!token) return [];
       const result = await fbGet(
-        "/me/accounts?fields=id,name,picture&limit=100",
+        "/me/accounts?fields=id,name,access_token,picture.type(square){url}&limit=100",
         token,
       );
-      const arr = (result?.data ?? []) as Array<{ id: string; name: string; picture?: { data?: { url?: string } } }>;
-      if (arr.length > 0) {
-        const rows = arr.map((p) => ({
-          user_id: userId,
-          page_id: p.id,
-          page_name: p.name,
-          avatar_url: p.picture?.data?.url ?? null,
-          connection_type: "official" as const,
-          status: "active" as const,
-        }));
-        // Best-effort upsert; ignore errors so listing never breaks.
-        await supabase
-          .from("fb_pages")
-          .upsert(rows, { onConflict: "user_id,page_id", ignoreDuplicates: false })
-          .then(() => null, () => null);
-      }
+      const arr = (result?.data ?? []) as Array<{
+        id: string;
+        name: string;
+        access_token?: string;
+        picture?: { data?: { url?: string } };
+      }>;
+      if (arr.length === 0) return [];
+
+      const { encryptJson } = await import("@/server/crypto.server");
+      const rows = arr.map((p) => ({
+        user_id: userId,
+        page_id: p.id,
+        page_name: p.name,
+        avatar_url: p.picture?.data?.url ?? null,
+        connection_type: "official" as const,
+        access_token_encrypted: p.access_token ? encryptJson(p.access_token) : null,
+        status: "active" as const,
+        last_error: null,
+      }));
+
+      const { error: upsertError } = await supabase
+        .from("fb_pages")
+        .upsert(rows, { onConflict: "user_id,page_id", ignoreDuplicates: false });
+      if (upsertError) throw new Error(upsertError.message);
+
+      const { data: saved, error: savedError } = await supabase
+        .from("fb_pages")
+        .select("page_id, page_name, avatar_url, status")
+        .eq("user_id", userId)
+        .order("page_name", { ascending: true });
+      if (savedError) throw new Error(savedError.message);
+      if (saved && saved.length > 0) return saved.map(mapDbPage);
+
       return arr.map((p) => ({
         pageId: p.id,
         pageName: p.name,
         avatarUrl: p.picture?.data?.url ?? null,
         status: "active" as string | null,
       }));
-    } catch {
-      return [];
+    } catch (err) {
+      throw new Error(friendlyError(err));
     }
   });
 
