@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
@@ -319,6 +320,20 @@ function MessengerContactsPage() {
           {saveTokenM.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           {lang === "ar" ? "حفظ وجلب الصفحات" : "Save & load Pages"}
         </Button>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+        <a
+          href="https://developers.facebook.com/tools/explorer/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-background px-3 py-1.5 font-semibold text-primary hover:bg-primary/10"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          {lang === "ar" ? "فتح Graph API Explorer في نافذة جديدة لنسخ التوكن" : "Open Graph API Explorer in a new window to copy the token"}
+        </a>
+        <span className="text-muted-foreground">
+          {lang === "ar" ? "ثم الصق التوكن هنا واضغط حفظ." : "Then paste the token here and press save."}
+        </span>
       </div>
     </div>
   );
