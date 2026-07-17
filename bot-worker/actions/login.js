@@ -2,7 +2,7 @@
 // On checkpoint/2FA detection, reports back so the UI marks the account as "checkpoint".
 const FB_HOME = "https://www.facebook.com/";
 
-async function ensureLogin(page, account, reportStatus) {
+async function ensureLogin(page, account, reportStatus, options = {}) {
   try {
     if (account.authMethod === "cookies" && account.credentials?.cookies) {
       const sourceCookies = Array.isArray(account.credentials.cookies) ? account.credentials.cookies : [];
@@ -86,6 +86,32 @@ async function ensureLogin(page, account, reportStatus) {
         "Could not confirm logged-in UI (no nav/profile/composer detected)",
       );
       return false;
+    }
+
+    // Some Facebook sessions look valid on the homepage but are rejected only
+    // when opening a protected product surface (Pages/Groups/Messenger). For
+    // page extraction, perform that navigation before the job starts scraping
+    // so the UI fails early with a precise reason instead of waiting for a
+    // long extraction attempt.
+    if (options.verifyUrl) {
+      try {
+        await page.goto(options.verifyUrl, { waitUntil: "domcontentloaded", timeout: options.verifyTimeoutMs || 45_000 });
+      } catch (e) {
+        await reportStatus("invalid", `FACEBOOK_PAGE_TIMEOUT: ${String(e.message || e)}`);
+        return false;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      const verifyUrl = page.url();
+      if (/\/login(?:\/|\?|$)|checkpoint|two_factor|two_step_verification/i.test(verifyUrl)) {
+        await reportStatus("invalid", `Facebook redirected to login/checkpoint while opening ${options.verifyUrl}`);
+        return false;
+      }
+      const protectedCookies = await page.cookies("https://www.facebook.com");
+      const protectedCUser = protectedCookies.find((c) => c.name === "c_user");
+      if (!protectedCUser || !protectedCUser.value) {
+        await reportStatus("invalid", "Facebook rejected the stored session cookies after opening the requested Facebook section. Re-export fresh cookies from the same logged-in browser, then update the bot account.");
+        return false;
+      }
     }
 
     await reportStatus("active", null);

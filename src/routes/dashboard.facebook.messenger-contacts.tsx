@@ -89,11 +89,29 @@ type FbJob = {
   job_type: string;
   status: string;
   progress: number | null;
+  total_items: number | null;
+  processed_items: number | null;
   created_at: string;
+  started_at: string | null;
   completed_at: string | null;
   error_message: string | null;
   account_id: string | null;
 };
+
+function describeExtractPagesError(message: string | null | undefined, lang: "ar" | "en") {
+  const raw = message || "";
+  if (/SESSION_EXPIRED|Facebook rejected|stored session cookies|redirected to login|checkpoint|c_user|not logged in/i.test(raw)) {
+    return lang === "ar"
+      ? "جلسة فيسبوك لهذا الحساب غير صالحة فعليًا. أعد تصدير الكوكيز من نفس المتصفح الذي الحساب مفتوح عليه، ثم اربط الحساب من جديد."
+      : "This Facebook session is not valid anymore. Re-export fresh cookies from the same logged-in browser, then reconnect the account.";
+  }
+  if (/لم يعثر|no pages|0 pages|لم يتم العثور/i.test(raw)) {
+    return lang === "ar"
+      ? "لم يتم العثور على صفحات داخل هذا الحساب. تأكد أن الحساب نفسه مدير/مالك للصفحات ثم أعد المحاولة."
+      : "No pages were found in this account. Make sure this account manages the pages, then try again.";
+  }
+  return raw || (lang === "ar" ? "فشل استخراج الصفحات. حاول مرة أخرى." : "Page extraction failed. Try again.");
+}
 
 function timeAgo(iso: string | null, lang: "ar" | "en"): string {
   if (!iso) return lang === "ar" ? "—" : "—";
@@ -175,14 +193,29 @@ function MessengerContactsPage() {
     }
   }, [extractJobsQ.data, pagesQ, refetchedForExtractJobId]);
 
+  useEffect(() => {
+    const jobs = (extractJobsQ.data ?? []) as FbJob[];
+    const failedSessionJob = jobs.find(
+      (job) =>
+        job.job_type === "extract_pages" &&
+        job.status === "failed" &&
+        /SESSION_EXPIRED|Facebook rejected|stored session cookies|redirected to login|checkpoint|c_user/i.test(job.error_message || ""),
+    );
+    if (failedSessionJob) qc.invalidateQueries({ queryKey: ["msgr-bot-accounts"] });
+  }, [extractJobsQ.data, qc]);
+
   const extractPagesM = useMutation({
     mutationFn: (accountId: string) => createExtractPagesJobFn({ data: { accountId } }),
     onSuccess: () => {
-      toast.success(lang === "ar" ? "تم بدء استخراج الصفحات. ستظهر هنا تلقائياً بعد انتهاء المهمة." : "Page extraction started. Pages will appear here automatically when it finishes.");
+      toast.success(lang === "ar" ? "تم بدء فحص جلسة فيسبوك واستخراج الصفحات. ستظهر الصفحات هنا تلقائياً عند اكتمال المهمة." : "Facebook session check and page extraction started. Pages will appear here automatically when it finishes.");
       qc.invalidateQueries({ queryKey: ["msgr-extract-pages-jobs"] });
       qc.invalidateQueries({ queryKey: ["msgr-pages"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      toast.error(describeExtractPagesError(e.message, lang));
+      qc.invalidateQueries({ queryKey: ["msgr-bot-accounts"] });
+      qc.invalidateQueries({ queryKey: ["msgr-extract-pages-jobs"] });
+    },
   });
 
   // Auto-pick when there's exactly one page; otherwise force explicit choice.
@@ -293,12 +326,34 @@ function MessengerContactsPage() {
   const currentPage = pages.find((p) => p.pageId === pageId);
   const syncJob = statusQ.data?.job;
   const syncRunning = syncJob?.status === "running" || syncJob?.status === "queued";
-  const botAccounts = ((botAccountsQ.data?.accounts ?? []) as BotAccount[]).filter(
+  const botAccountsAll = (botAccountsQ.data?.accounts ?? []) as BotAccount[];
+  const botAccounts = botAccountsAll.filter(
     (account) => account.status === "active",
   );
+  const invalidBotAccounts = botAccountsAll.filter((account) => account.status !== "active");
   const extractJobs = ((extractJobsQ.data ?? []) as FbJob[]).filter((job) => job.job_type === "extract_pages");
   const latestExtractJob = extractJobs[0];
   const extractRunning = latestExtractJob && ["pending", "running"].includes(latestExtractJob.status);
+  const latestExtractProgress = latestExtractJob?.progress ?? 0;
+  const latestExtractProcessed = latestExtractJob?.processed_items ?? 0;
+  const latestExtractTotal = latestExtractJob?.total_items ?? 0;
+  const latestExtractStatusText = latestExtractJob
+    ? latestExtractJob.status === "pending"
+      ? lang === "ar"
+        ? "المهمة في الانتظار حتى يلتقطها البوت. إذا كانت الجلسة مرفوضة سابقًا لن تبدأ المهمة وسيظهر السبب فورًا."
+        : "Waiting for the bot to pick up the job. If the session was previously rejected, the job will not start."
+      : latestExtractJob.status === "running" && latestExtractProcessed === 0
+        ? lang === "ar"
+          ? "يتم الآن فتح فيسبوك وفحص صلاحية الجلسة فعليًا قبل قراءة الصفحات."
+          : "Opening Facebook now and validating the live session before reading pages."
+        : latestExtractJob.status === "completed"
+          ? lang === "ar"
+            ? `اكتمل الاستخراج: ${latestExtractProcessed || latestExtractTotal} صفحة مكتشفة.`
+            : `Extraction completed: ${latestExtractProcessed || latestExtractTotal} pages found.`
+          : latestExtractJob.status === "failed"
+            ? describeExtractPagesError(latestExtractJob.error_message, lang)
+            : latestExtractJob.status
+    : null;
 
   const rtl = lang === "ar";
 
@@ -398,8 +453,23 @@ function MessengerContactsPage() {
                       {latestExtractJob.status}
                     </Badge>
                   </div>
-                  {latestExtractJob.error_message ? (
-                    <p className="mt-2 text-xs text-destructive">{latestExtractJob.error_message}</p>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all"
+                      style={{ width: `${Math.max(0, Math.min(100, latestExtractProgress))}%` }}
+                    />
+                  </div>
+                  {latestExtractStatusText ? (
+                    <p className={`mt-2 text-xs ${latestExtractJob.status === "failed" ? "text-destructive" : "text-muted-foreground"}`}>
+                      {latestExtractStatusText}
+                    </p>
+                  ) : null}
+                  {latestExtractJob.status === "running" || latestExtractJob.status === "completed" ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {lang === "ar"
+                        ? `المكتشف: ${latestExtractProcessed} / ${latestExtractTotal || latestExtractProcessed}`
+                        : `Found: ${latestExtractProcessed} / ${latestExtractTotal || latestExtractProcessed}`}
+                    </p>
                   ) : null}
                 </div>
               )}
@@ -425,6 +495,33 @@ function MessengerContactsPage() {
                     {(extractPagesM.isPending || extractRunning) && <Loader2 className="h-4 w-4 animate-spin" />}
                     {lang === "ar" ? "استخراج الصفحات" : "Extract pages"}
                   </Button>
+                </div>
+              ))}
+            </div>
+          ) : invalidBotAccounts.length > 0 ? (
+            <div className="mx-auto max-w-2xl space-y-3 text-start">
+              <div className="rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm">
+                <div className="flex items-center gap-2 font-medium text-destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  {lang === "ar" ? "الحسابات المرتبطة غير جاهزة للاستخراج" : "Connected accounts are not ready for extraction"}
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {lang === "ar"
+                    ? "لن يتم إنشاء مهمة استخراج صفحات لحساب رفضه فيسبوك أو انتهت جلسته. أعد ربط الحساب بكوكيز جديدة ثم جرّب مرة أخرى."
+                    : "A page extraction job will not be created for an account rejected by Facebook or with an expired session. Reconnect with fresh cookies and try again."}
+                </p>
+              </div>
+              {invalidBotAccounts.slice(0, 4).map((account) => (
+                <div key={account.id} className="rounded-md border p-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">{account.display_name}</span>
+                    <Badge variant="destructive">{account.status}</Badge>
+                  </div>
+                  {account.last_error ? (
+                    <p className="mt-2 text-xs text-destructive">
+                      {describeExtractPagesError(account.last_error, lang)}
+                    </p>
+                  ) : null}
                 </div>
               ))}
             </div>

@@ -189,6 +189,14 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
             update.completed_at = new Date().toISOString();
             update.progress = 100;
             if (
+              body.status === "completed" &&
+              current?.job_type === "extract_pages" &&
+              Math.max(body.processedItems ?? 0, current.total_items ?? 0) <= 0
+            ) {
+              update.status = "failed";
+              update.error_message = "لم يتم العثور على أي صفحة في حساب فيسبوك أثناء الاستخراج.";
+            }
+            if (
               typeof body.totalItems !== "number" &&
               typeof body.processedItems === "number" &&
               (!current?.total_items || current.total_items <= 0)
