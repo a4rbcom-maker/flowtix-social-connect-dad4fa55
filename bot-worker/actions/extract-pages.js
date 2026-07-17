@@ -13,10 +13,15 @@ async function runExtractPages({ page, report }) {
   let openedAny = false;
   let lastUrl = "";
 
-  await report({ progress: 5, processedItems: 0, totalItems: 0 });
+  await report({ progress: 15, processedItems: 0, totalItems: 0 });
 
-  for (const url of urls) {
+  for (let urlIdx = 0; urlIdx < urls.length; urlIdx++) {
+    const url = urls[urlIdx];
     lastUrl = url;
+    // Advance a base progress per URL so the bar keeps moving even when no
+    // page has been discovered yet on a given surface. Each surface adds ~8%.
+    const surfaceBase = Math.min(70, 20 + urlIdx * 8);
+    await report({ progress: surfaceBase, processedItems: collected.size, totalItems: collected.size });
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
       openedAny = true;
