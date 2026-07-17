@@ -638,7 +638,7 @@ function MessengerContactsPage() {
                       {latestExtractProcessed}
                     </span>
                     <span className="text-sm text-muted-foreground">
-                      {lang === "ar" ? "صفحة تم اكتشافها" : "pages discovered"}
+                      {lang === "ar" ? "صفحة تديرها تم اكتشافها" : "managed pages discovered"}
                     </span>
                   </div>
 
