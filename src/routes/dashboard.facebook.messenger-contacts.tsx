@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -114,6 +114,7 @@ function MessengerContactsPage() {
   const [campaignTag, setCampaignTag] = useState<(typeof MESSAGE_TAGS)[number]>("HUMAN_AGENT");
   const [tagContact, setTagContact] = useState<Contact | null>(null);
   const [tagInput, setTagInput] = useState("");
+  const [autoSyncStarted, setAutoSyncStarted] = useState<Set<string>>(new Set());
 
   // Pages query — decides whether to show picker.
   const pagesQ = useQuery({
@@ -240,6 +241,15 @@ function MessengerContactsPage() {
   const syncJob = statusQ.data?.job;
   const syncRunning = syncJob?.status === "running" || syncJob?.status === "queued";
 
+  useEffect(() => {
+    if (!pageId) return;
+    if (autoSyncStarted.has(pageId)) return;
+    if (!contactsQ.isSuccess || contactsQ.isFetching || syncM.isPending || syncRunning) return;
+    if ((contactsQ.data?.total ?? 0) > 0) return;
+    setAutoSyncStarted((prev) => new Set(prev).add(pageId));
+    syncM.mutate("initial");
+  }, [autoSyncStarted, contactsQ.data?.total, contactsQ.isFetching, contactsQ.isSuccess, pageId, syncM, syncRunning]);
+
   const rtl = lang === "ar";
 
   return (
@@ -317,13 +327,20 @@ function MessengerContactsPage() {
           </h2>
           <p className="mx-auto mb-5 max-w-2xl text-sm text-muted-foreground">
             {lang === "ar"
-              ? "هذه الشاشة تعرض فقط صفحات Facebook التي تمتلك صلاحية Messenger عليها من الربط الرسمي. أعد توليد التوكن بصلاحيات pages_show_list و pages_messaging إذا كانت صفحاتك لا تظهر."
-              : "This screen lists only Facebook Pages where your official connection has Messenger access. Re-generate the token with pages_show_list and pages_messaging if your Pages do not appear."}
+              ? "لم يصلنا من الربط الرسمي أي صفحة مُدارة. هذا يحدث إذا كان الحساب مربوطاً بالكوكيز فقط، أو إذا كان Facebook Token لا يحتوي pages_show_list. اربط التوكن الرسمي ثم وافق على صلاحيات الصفحات والرسائل."
+              : "The official connection did not return any managed Page. This happens when only cookies are connected, or the Facebook Token lacks pages_show_list. Connect the official token and allow Pages/Messenger permissions."}
           </p>
-          <Button variant="outline" onClick={() => pagesQ.refetch()}>
-            <RefreshCw className="h-4 w-4" />
-            {lang === "ar" ? "إعادة تحميل الصفحات" : "Reload Pages"}
-          </Button>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button asChild>
+              <Link to="/dashboard/facebook">
+                {lang === "ar" ? "ربط Facebook Token الرسمي" : "Connect official Facebook Token"}
+              </Link>
+            </Button>
+            <Button variant="outline" onClick={() => pagesQ.refetch()}>
+              <RefreshCw className="h-4 w-4" />
+              {lang === "ar" ? "إعادة تحميل الصفحات" : "Reload Pages"}
+            </Button>
+          </div>
         </Card>
       )}
 
@@ -474,8 +491,12 @@ function MessengerContactsPage() {
                 <tr>
                   <td colSpan={8} className="p-8 text-center text-muted-foreground">
                     {lang === "ar"
-                      ? "لا توجد أسماء بعد لهذه الصفحة. اضغط \"جلب/تحديث العملاء\" لجلب كل من تواصلوا معها عبر Messenger."
-                      : "No contacts yet for this Page. Click \"Import/update contacts\" to fetch everyone who messaged it."}
+                      ? syncM.isPending || syncRunning
+                        ? "جاري جلب أسماء من تواصلوا مع هذه الصفحة عبر Messenger..."
+                        : "لا توجد أسماء بعد لهذه الصفحة. سيتم الجلب تلقائياً عند اختيار الصفحة، ويمكنك الضغط على \"جلب/تحديث العملاء\" لإعادة المحاولة."
+                      : syncM.isPending || syncRunning
+                        ? "Importing everyone who messaged this Page..."
+                        : "No contacts yet for this Page. Import starts automatically after choosing the Page; you can retry with Import/update contacts."}
                   </td>
                 </tr>
               ) : (
