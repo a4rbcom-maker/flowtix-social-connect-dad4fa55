@@ -35,6 +35,9 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         const supportsListMyGroups = workerCapabilities.includes("list_my_groups");
         const supportsDeepProfile = workerCapabilities.includes("deep_profile_scrape");
         const supportsMessengerDm = workerCapabilities.includes("send_messenger_dm");
+        const supportsMessengerListPages = workerCapabilities.includes("messenger_list_pages");
+        const supportsMessengerSyncCookies = workerCapabilities.includes("messenger_sync_cookies");
+        const supportsMessengerSendCookies = workerCapabilities.includes("messenger_send_cookies");
 
         const [{ supabaseAdmin }, { decryptJson }] = await Promise.all([
           import("@/integrations/supabase/client.server"),
