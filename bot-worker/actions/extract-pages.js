@@ -114,9 +114,10 @@ async function collectFromRenderedPage(page) {
         .flatMap((text) => String(text || "").split(/\n|\s{2,}/))
         .map(validName)
         .filter(Boolean);
-      const name = [imgAlt, aria, title, ...lines].map(validName).find(Boolean);
-      if (!name) continue;
+      const name = [imgAlt, aria, title, ...lines].map(validName).find(Boolean) || "";
       const avatar = a.querySelector("img[src]")?.getAttribute("src") || container.querySelector?.("img[src]")?.getAttribute("src") || null;
+      // Emit even if name is missing — dedupePageCandidate assigns a fallback
+      // so we don't silently drop otherwise-valid page links.
       out.push({ id: parsed.id, name, link: parsed.href, avatar_url: avatar });
     }
     return out;
