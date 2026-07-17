@@ -1,6 +1,6 @@
 import { createMiddleware } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { getErrorStatus, isAppAuthError } from "@/lib/reauth-classifier";
+import { isAppAuthError } from "@/lib/reauth-classifier";
 
 /**
  * Client-side middleware for server-function calls.
