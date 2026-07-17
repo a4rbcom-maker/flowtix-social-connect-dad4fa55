@@ -57,6 +57,7 @@ function FacebookGroupsPage() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [botSessionExpired, setBotSessionExpired] = useState<string | null>(null);
 
 
   const t = lang === "ar"
