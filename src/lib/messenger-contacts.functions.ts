@@ -39,7 +39,11 @@ async function assertMessengerScopes(token: string) {
 function hasMessengerManagementTask(tasks: unknown) {
   if (!Array.isArray(tasks)) return false;
   const normalized = tasks.map((task) => String(task).toUpperCase());
-  return normalized.some((task) => ["MESSAGING", "MANAGE", "MODERATE"].includes(task));
+  return normalized.some((task) =>
+    ["MESSAGING", "MANAGE", "MODERATE", "ADMINISTER", "EDIT_PROFILE", "MODERATE_CONTENT"].includes(
+      task,
+    ),
+  );
 }
 
 // ---------- List pages (official Graph only) ----------
@@ -81,7 +85,7 @@ export const listMessengerPages = createServerFn({ method: "GET" })
     try {
       await assertMessengerScopes(token);
       const result = await fbGet(
-        "/me/accounts?fields=id,name,access_token,tasks,picture.type(square){url}&limit=200",
+        "/me/accounts?fields=id,name,access_token,tasks,perms,picture.type(square){url}&limit=200",
         token,
       );
       const arr = (result?.data ?? []) as Array<{
@@ -89,6 +93,7 @@ export const listMessengerPages = createServerFn({ method: "GET" })
         name: string;
         access_token?: string;
         tasks?: string[];
+        perms?: string[];
         picture?: { data?: { url?: string } };
       }>;
       const graphPages = arr
@@ -96,7 +101,7 @@ export const listMessengerPages = createServerFn({ method: "GET" })
           id: String(p.id ?? "").trim(),
           name: String(p.name ?? "").replace(/\s+/g, " ").trim(),
           accessToken: p.access_token,
-          tasks: p.tasks ?? [],
+          tasks: [...(p.tasks ?? []), ...(p.perms ?? [])],
           avatarUrl: p.picture?.data?.url ?? null,
         }))
         .filter(
@@ -174,7 +179,7 @@ export const startMessengerSync = createServerFn({ method: "POST" })
       .object({
         pageId: z.string().min(1).max(100),
         mode: z.enum(["initial", "incremental"]).default("incremental"),
-        maxConversations: z.number().int().min(10).max(2000).optional(),
+        maxConversations: z.number().int().min(10).max(10000).optional(),
       })
       .parse(d),
   )
@@ -261,7 +266,7 @@ export const startMessengerSync = createServerFn({ method: "POST" })
     // Page through /{page-id}/conversations. Meta caps at ~2min per call chain
     // in a serverless worker, so bound the total work and mark cursor for
     // future resumption.
-    const maxConv = data.maxConversations ?? (data.mode === "initial" ? 1000 : 300);
+    const maxConv = data.maxConversations ?? (data.mode === "initial" ? 10000 : 300);
     let after: string | undefined;
     let scannedConv = 0;
     let scannedMsg = 0;
@@ -269,7 +274,7 @@ export const startMessengerSync = createServerFn({ method: "POST" })
     let stopReason: string | null = null;
     let lastCursor: string | null = null;
 
-    outer: for (let pageIdx = 0; pageIdx < 40; pageIdx += 1) {
+    outer: for (let pageIdx = 0; pageIdx < 120; pageIdx += 1) {
       const qs = new URLSearchParams();
       qs.set(
         "fields",

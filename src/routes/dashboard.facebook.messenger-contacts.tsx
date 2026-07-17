@@ -171,7 +171,7 @@ function MessengerContactsPage() {
 
   const syncM = useMutation({
     mutationFn: (mode: "initial" | "incremental") =>
-      startSyncFn({ data: { pageId: pageId!, mode, maxConversations: mode === "initial" ? 2000 : 300 } }),
+      startSyncFn({ data: { pageId: pageId!, mode, maxConversations: mode === "initial" ? 10000 : 300 } }),
     onSuccess: (res) => {
       toast.success(
         lang === "ar"
@@ -433,9 +433,9 @@ function MessengerContactsPage() {
               <X className="h-4 w-4" />
               {lang === "ar" ? "إلغاء" : "Clear"}
             </Button>
-            <Button size="sm" onClick={() => setCampaignOpen(true)}>
+              <Button size="sm" onClick={() => setCampaignOpen(true)}>
               <Send className="h-4 w-4" />
-              {lang === "ar" ? "إرسال حملة Messenger" : "Send Messenger campaign"}
+                {lang === "ar" ? "إعادة مراسلة المحددين" : "Message selected again"}
             </Button>
           </div>
         </div>
@@ -460,18 +460,19 @@ function MessengerContactsPage() {
                 <th className="p-3 text-start">{lang === "ar" ? "الرسائل" : "Messages"}</th>
                 <th className="p-3 text-start">{lang === "ar" ? "آخر رسالة" : "Last message"}</th>
                 <th className="p-3 text-start">{lang === "ar" ? "الوسوم" : "Tags"}</th>
+                <th className="p-3 text-start">{lang === "ar" ? "مراسلة" : "Message"}</th>
               </tr>
             </thead>
             <tbody>
               {contactsQ.isLoading ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
                     <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
                     {lang === "ar"
                       ? "لا توجد أسماء بعد لهذه الصفحة. اضغط \"جلب/تحديث العملاء\" لجلب كل من تواصلوا معها عبر Messenger."
                       : "No contacts yet for this Page. Click \"Import/update contacts\" to fetch everyone who messaged it."}
@@ -531,6 +532,19 @@ function MessengerContactsPage() {
                           <Tag className="h-3 w-3" />
                         </Button>
                       </div>
+                    </td>
+                    <td className="p-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelected(new Set([c.id]));
+                          setCampaignOpen(true);
+                        }}
+                      >
+                        <Send className="h-4 w-4" />
+                        {lang === "ar" ? "مراسلة" : "Message"}
+                      </Button>
                     </td>
                   </tr>
                 ))
