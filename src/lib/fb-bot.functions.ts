@@ -272,7 +272,7 @@ export const addBotAccount = createServerFn({ method: "POST" })
         .select(
           "id, display_name, auth_method, status, last_check_at, last_error, created_at, cookie_expires_at",
         )
-        .single();
+        .maybeSingle();
       row = result.data as BotAccountRow | null;
       error = result.error;
     } catch (e) {
@@ -657,8 +657,9 @@ export const createPostJob = createServerFn({ method: "POST" })
         status: "pending",
       })
       .select("id")
-      .single();
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!row) throw new Error("تم إنشاء المهمة لكن تعذّر قراءة رقمها. حدّث الصفحة وأعد المحاولة.");
     return row;
   });
 
@@ -681,8 +682,9 @@ export const createExtractPagesJob = createServerFn({ method: "POST" })
         status: "pending",
       })
       .select("id")
-      .single();
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!row) throw new Error("تم إنشاء مهمة الاستخراج لكن تعذّر قراءة رقمها. حدّث الصفحة وأعد المحاولة.");
     return row;
   });
 
@@ -712,8 +714,9 @@ export const createExtractCommentersJob = createServerFn({ method: "POST" })
         status: "pending",
       })
       .select("id")
-      .single();
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!row) throw new Error("تم إنشاء مهمة الاستخراج لكن تعذّر قراءة رقمها. حدّث الصفحة وأعد المحاولة.");
     return row;
   });
 
@@ -748,8 +751,9 @@ export const createExtractGroupMembersJob = createServerFn({ method: "POST" })
         status: "pending",
       })
       .select("id")
-      .single();
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!row) throw new Error("تم إنشاء مهمة الاستخراج لكن تعذّر قراءة رقمها. حدّث الصفحة وأعد المحاولة.");
     return row;
   });
 
@@ -784,8 +788,9 @@ export const createExtractPageAudienceJob = createServerFn({ method: "POST" })
         status: "pending",
       })
       .select("id")
-      .single();
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!row) throw new Error("تم إنشاء مهمة الاستخراج لكن تعذّر قراءة رقمها. حدّث الصفحة وأعد المحاولة.");
     return row;
   });
 
@@ -816,8 +821,9 @@ export const createListMyGroupsJob = createServerFn({ method: "POST" })
         status: "pending",
       })
       .select("id")
-      .single();
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!row) throw new Error("تم إنشاء مهمة عرض الجروبات لكن تعذّر قراءة رقمها. حدّث الصفحة وأعد المحاولة.");
     return row;
   });
 
@@ -857,8 +863,9 @@ export const createDeepProfileScrapeJob = createServerFn({ method: "POST" })
         status: "pending",
       })
       .select("id")
-      .single();
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!row) throw new Error("تم إنشاء مهمة الفحص لكن تعذّر قراءة رقمها. حدّث الصفحة وأعد المحاولة.");
     return row;
   });
 
@@ -885,7 +892,7 @@ export const createDeepProfileScrapeFromJob = createServerFn({ method: "POST" })
       .select("id, account_id, user_id")
       .eq("id", data.sourceJobId)
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
     if (srcErr || !srcJob) throw new Error(srcErr?.message || "Source job not found");
     const accountId = data.accountId ?? srcJob.account_id;
     if (!accountId) throw new Error("No account linked");
@@ -932,8 +939,9 @@ export const createDeepProfileScrapeFromJob = createServerFn({ method: "POST" })
         status: "pending",
       })
       .select("id")
-      .single();
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!row) throw new Error("تم إنشاء مهمة الفحص لكن تعذّر قراءة رقمها. حدّث الصفحة وأعد المحاولة.");
     return { id: row.id, count: list.length };
   });
 
@@ -1017,8 +1025,9 @@ export const createSendMessengerDmJob = createServerFn({ method: "POST" })
         status: "pending",
       })
       .select("id")
-      .single();
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!row) throw new Error("تم إنشاء مهمة ماسنجر لكن تعذّر قراءة رقمها. حدّث الصفحة وأعد المحاولة.");
     return row;
   });
 
@@ -1402,8 +1411,9 @@ export const testBotAccount = createServerFn({ method: "POST" })
       .select("id, auth_method, encrypted_payload, status, last_error")
       .eq("id", data.id)
       .eq("user_id", userId)
-      .single();
-    if (error || !acc) throw new Error(error?.message ?? "Account not found");
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!acc) throw new Error("هذا الحساب لم يعد موجودًا. حدّث الصفحة ثم أعد إضافته إن لزم.");
 
     const { data: latestJob } = await supabaseAdmin
       .from("fb_jobs")
