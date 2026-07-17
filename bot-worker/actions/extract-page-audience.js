@@ -193,7 +193,14 @@ async function harvestCommenters(page, cap) {
 }
 
 async function runExtractPageAudience({ page, job, report }) {
-  const { pageId, sources = ["engagers"], maxItems = 1500, maxPosts = 20 } = job.payload || {};
+  const {
+    pageId,
+    sources = ["engagers"],
+    maxItems = 1500,
+    maxPosts = 20,
+    resumeFromIndex = 0,
+    alreadyCollectedIds = [],
+  } = job.payload || {};
   if (!pageId) {
     await report({ status: "failed", errorMessage: "Missing pageId in payload" });
     return;
@@ -201,6 +208,12 @@ async function runExtractPageAudience({ page, job, report }) {
   // No hard cap — bot keeps going until posts/audience are exhausted or the user-supplied maxItems is reached.
   const cap = Math.max(50, Number(maxItems) || 1500);
   const collected = new Map();
+  // Pre-seed dedupe set from results persisted in a previous (paused) run so
+  // we don't re-emit the same profiles and the cap logic stays accurate.
+  for (const id of Array.isArray(alreadyCollectedIds) ? alreadyCollectedIds : []) {
+    if (id) collected.set(String(id), { id: String(id), name: "", profile: "" });
+  }
+  const skipUntilIndex = Math.max(0, Number(resumeFromIndex) || 0);
 
   const emit = async (person, src) => {
     if (collected.has(person.id)) return;
