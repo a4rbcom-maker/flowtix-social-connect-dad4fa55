@@ -91,7 +91,15 @@ async function runJob(job) {
     });
     const page = await browser.newPage();
     await page.setViewport({ width: 1366, height: 800 });
-    await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+    const DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+    // Reuse the exact User-Agent captured from the user's real browser at
+    // account-link time. This keeps the browser fingerprint stable across
+    // devices so Facebook is less likely to flag the session as compromised
+    // and log the user out from their own browser session.
+    const accountUA = (job.account && typeof job.account.userAgent === "string" && job.account.userAgent.trim().length > 10)
+      ? job.account.userAgent.trim()
+      : DEFAULT_UA;
+    await page.setUserAgent(accountUA);
 
     if (job.account) {
       let loginFailureReason = "SESSION_EXPIRED: انتهت صلاحية جلسة حساب فيسبوك — أعد ربط الحساب من صفحة حسابات البوت.";
