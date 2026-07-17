@@ -35,10 +35,15 @@ async function autoScroll(page, steps = 10) {
 function dedupePageCandidate(candidate) {
   if (!candidate || typeof candidate !== "object") return null;
   const id = String(candidate.id || candidate.page_id || candidate.pageId || "").trim();
-  const name = String(candidate.name || candidate.page_name || candidate.pageName || "").trim();
-  if (!id || !name) return null;
-  if (id.length < 3 || id.length > 120 || name.length < 2 || name.length > 200) return null;
-  if (!/[A-Za-z\u0600-\u06FF]/.test(name)) return null;
+  let name = String(candidate.name || candidate.page_name || candidate.pageName || "").trim();
+  if (!id) return null;
+  if (id.length < 3 || id.length > 160) return null;
+  // Fallback name: if missing, derive a placeholder from the id/slug so we
+  // don't silently drop otherwise valid page links.
+  if (!name) name = `Page ${id}`;
+  if (name.length > 240) name = name.slice(0, 240);
+  // Accept any name with at least one printable char (Arabic/Latin/Digits/Emoji).
+  if (!/\S/.test(name)) return null;
   return {
     id,
     name,
@@ -66,7 +71,9 @@ async function collectFromRenderedPage(page) {
       .trim();
     const validName = (value) => {
       const s = cleanText(value);
-      return s.length >= 2 && s.length <= 120 && /[A-Za-z\u0600-\u06FF]/.test(s) && !genericLabels.test(s) ? s : "";
+      // Loosened: accept 1-200 chars with any printable char (Arabic/Latin/digits/emoji).
+      // Only reject exact generic-label matches; anything else passes.
+      return s.length >= 1 && s.length <= 200 && /\S/.test(s) && !genericLabels.test(s) ? s : "";
     };
     const parseHref = (rawHref) => {
       if (!rawHref || rawHref.startsWith("#") || /^javascript:/i.test(rawHref)) return null;
@@ -107,9 +114,10 @@ async function collectFromRenderedPage(page) {
         .flatMap((text) => String(text || "").split(/\n|\s{2,}/))
         .map(validName)
         .filter(Boolean);
-      const name = [imgAlt, aria, title, ...lines].map(validName).find(Boolean);
-      if (!name) continue;
+      const name = [imgAlt, aria, title, ...lines].map(validName).find(Boolean) || "";
       const avatar = a.querySelector("img[src]")?.getAttribute("src") || container.querySelector?.("img[src]")?.getAttribute("src") || null;
+      // Emit even if name is missing — dedupePageCandidate assigns a fallback
+      // so we don't silently drop otherwise-valid page links.
       out.push({ id: parsed.id, name, link: parsed.href, avatar_url: avatar });
     }
     return out;
@@ -122,18 +130,17 @@ async function collectFromBootData(page) {
     const seen = new Set();
     const validName = (name) => {
       const s = String(name || "").replace(/\\u0025/g, "%").replace(/\s+/g, " ").trim();
-      if (s.length < 2 || s.length > 160) return "";
-      if (!/[A-Za-z\u0600-\u06FF]/.test(s)) return "";
+      if (s.length < 1 || s.length > 200) return "";
       if (/^(Pages|Create|Manage|Home|Meta Business Suite|Business Suite|الصفحات|إنشاء|إدارة|الرئيسية)$/i.test(s)) return "";
       return s;
     };
     const push = (id, name, url, avatar) => {
       id = String(id || "").trim();
-      name = validName(name);
-      if (!id || !name || seen.has(id)) return;
+      const cleaned = validName(name);
+      if (!id || seen.has(id)) return;
       if (!/^\d{5,}$/.test(id) && !/^[A-Za-z0-9._-]{3,}$/.test(id)) return;
       seen.add(id);
-      out.push({ id, name, link: url || `https://www.facebook.com/${id}`, avatar_url: avatar || null });
+      out.push({ id, name: cleaned || `Page ${id}`, link: url || `https://www.facebook.com/${id}`, avatar_url: avatar || null });
     };
     const safeJsonParse = (text) => {
       try { return JSON.parse(text); } catch { return null; }
