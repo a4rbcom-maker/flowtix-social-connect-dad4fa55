@@ -14,6 +14,9 @@ const { runExtractPageAudience } = require("./actions/extract-page-audience");
 const { runListMyGroups } = require("./actions/list-my-groups");
 const { runDeepProfileScrape } = require("./actions/deep-profile-scrape");
 const { runSendMessengerDm } = require("./actions/send-messenger-dm");
+const { runMessengerListPages } = require("./actions/messenger-list-pages");
+const { runMessengerSyncCookies } = require("./actions/messenger-sync-cookies");
+const { runMessengerSendCookies } = require("./actions/messenger-send-cookies");
 const { ensureLogin } = require("./actions/login");
 
 const API = process.env.API_BASE_URL;
@@ -32,6 +35,9 @@ const WORKER_CAPABILITIES = [
   "list_my_groups",
   "deep_profile_scrape",
   "send_messenger_dm",
+  "messenger_list_pages",
+  "messenger_sync_cookies",
+  "messenger_send_cookies",
 ].join(",");
 
 if (!API || !SECRET) {
@@ -184,6 +190,9 @@ async function runJob(job) {
     else if (job.type === "list_my_groups") await runListMyGroups(ctx);
     else if (job.type === "deep_profile_scrape") await runDeepProfileScrape(ctx);
     else if (job.type === "send_messenger_dm") await runSendMessengerDm(ctx);
+    else if (job.type === "messenger_list_pages") await runMessengerListPages(ctx);
+    else if (job.type === "messenger_sync_cookies") await runMessengerSyncCookies(ctx);
+    else if (job.type === "messenger_send_cookies") await runMessengerSendCookies(ctx);
     else await reportUpdate({ jobId: job.id, status: "failed", errorMessage: `Unknown job type: ${job.type}` });
 
   } catch (err) {

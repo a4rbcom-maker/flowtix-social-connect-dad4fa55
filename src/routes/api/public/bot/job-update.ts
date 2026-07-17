@@ -102,6 +102,36 @@ async function persistJobResult(
     }
   }
 
+  // Persist Messenger contacts discovered via cookies sync.
+  if (
+    input.current?.job_type === "messenger_sync_cookies" &&
+    input.current.user_id &&
+    input.result.status === "success"
+  ) {
+    const d = (input.result.data ?? {}) as {
+      kind?: string;
+      psid?: string;
+      full_name?: string | null;
+      page_id?: string;
+      page_name?: string | null;
+    };
+    if (d.kind === "messenger_contact" && d.psid && d.page_id) {
+      const { error: upErr } = await supabaseAdmin.from("messenger_contacts").upsert(
+        {
+          user_id: input.current.user_id,
+          page_id: d.page_id,
+          psid: String(d.psid),
+          full_name: d.full_name ?? null,
+          source: "cookies_bot",
+        } as never,
+        { onConflict: "user_id,page_id,psid", ignoreDuplicates: false },
+      );
+      if (upErr) {
+        console.error("[bot/job-update] messenger_contacts upsert failed", upErr.message);
+      }
+    }
+  }
+
   return { ok: true };
 }
 
