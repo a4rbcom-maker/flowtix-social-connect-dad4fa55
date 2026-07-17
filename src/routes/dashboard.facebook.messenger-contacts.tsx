@@ -337,15 +337,45 @@ function MessengerContactsPage() {
   const latestExtractProgress = latestExtractJob?.progress ?? 0;
   const latestExtractProcessed = latestExtractJob?.processed_items ?? 0;
   const latestExtractTotal = latestExtractJob?.total_items ?? 0;
+
+  // Live elapsed timer for the running job.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (!extractRunning) return;
+    const t = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [extractRunning]);
+  const jobStartMs = latestExtractJob
+    ? new Date(latestExtractJob.started_at || latestExtractJob.created_at).getTime()
+    : null;
+  const elapsedSec = jobStartMs ? Math.max(0, Math.floor((nowTick - jobStartMs) / 1000)) : 0;
+  const elapsedLabel = `${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, "0")}`;
+
+  // Phase timeline — derived from status + progress + count.
+  type Phase = { key: string; ar: string; en: string };
+  const phases: Phase[] = [
+    { key: "queued", ar: "في قائمة الانتظار", en: "Queued" },
+    { key: "login", ar: "فتح فيسبوك والتحقق من الجلسة", en: "Opening Facebook & verifying session" },
+    { key: "scan", ar: "قراءة صفحات الحساب", en: "Reading account pages" },
+    { key: "collect", ar: "اكتشاف الصفحات وحفظها", en: "Discovering & saving pages" },
+    { key: "done", ar: "اكتملت المهمة", en: "Completed" },
+  ];
+  let currentPhaseIdx = 0;
+  if (latestExtractJob) {
+    if (latestExtractJob.status === "pending") currentPhaseIdx = 0;
+    else if (latestExtractJob.status === "completed") currentPhaseIdx = 4;
+    else if (latestExtractProcessed > 0) currentPhaseIdx = 3;
+    else if (latestExtractProgress >= 12) currentPhaseIdx = 2;
+    else currentPhaseIdx = 1;
+  }
+
   const latestExtractStatusText = latestExtractJob
     ? latestExtractJob.status === "pending"
       ? lang === "ar"
-        ? "المهمة في الانتظار حتى يلتقطها البوت. إذا كانت الجلسة مرفوضة سابقًا لن تبدأ المهمة وسيظهر السبب فورًا."
-        : "Waiting for the bot to pick up the job. If the session was previously rejected, the job will not start."
-      : latestExtractJob.status === "running" && latestExtractProcessed === 0
-        ? lang === "ar"
-          ? "يتم الآن فتح فيسبوك وفحص صلاحية الجلسة فعليًا قبل قراءة الصفحات."
-          : "Opening Facebook now and validating the live session before reading pages."
+        ? "المهمة في الانتظار حتى يلتقطها البوت (عادةً خلال ثوانٍ)."
+        : "Waiting for the bot to pick up the job (usually a few seconds)."
+      : latestExtractJob.status === "running"
+        ? phases[currentPhaseIdx][lang === "ar" ? "ar" : "en"]
         : latestExtractJob.status === "completed"
           ? lang === "ar"
             ? `اكتمل الاستخراج: ${latestExtractProcessed || latestExtractTotal} صفحة مكتشفة.`
