@@ -6,22 +6,21 @@ const SURFACE_SETTLE_MS = 800;
 const MAX_EMPTY_SURFACES = 6;
 const MAX_EXTRA_SURFACES_AFTER_FIRST_RESULT = 2;
 
+// STRICT: only surfaces that list pages the user OWNS or MANAGES.
+// Deliberately excluded (they leak followed / liked pages, not owned):
+//   - */bookmarks/pages           → "Pages you like/follow"
+//   - */profile.php?sk=pages      → mixed public tab
+//   - */pages/                    → generic pages hub
+// Keeping this list tight is the primary fix for the "126 pages" bug:
+// followed pages must never enter fb_pages.
 const PAGE_SURFACES = [
-  // Start with the light/mobile surfaces because they expose page links in
-  // simpler markup and are less dependent on Comet's frequently changing CSS.
   "https://mbasic.facebook.com/pages/?category=your_pages",
-  "https://mbasic.facebook.com/bookmarks/pages",
-  "https://m.facebook.com/pages/manage",
   "https://m.facebook.com/pages/?category=your_pages",
-  "https://m.facebook.com/bookmarks/pages",
-  "https://www.facebook.com/pages/manage",
+  "https://m.facebook.com/pages/manage",
   "https://www.facebook.com/pages/?category=your_pages",
-  "https://www.facebook.com/bookmarks/pages",
-  "https://www.facebook.com/profile.php?sk=pages",
-  "https://business.facebook.com/latest/home",
-  "https://business.facebook.com/latest/pages",
+  "https://www.facebook.com/pages/manage",
   "https://business.facebook.com/latest/settings/pages",
-  "https://www.facebook.com/pages/",
+  "https://business.facebook.com/latest/pages",
 ];
 
 const DIAGNOSTIC_TARGET = "__extract_pages_diagnostic__";
