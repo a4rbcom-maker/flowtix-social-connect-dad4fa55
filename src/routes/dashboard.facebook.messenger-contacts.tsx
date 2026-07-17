@@ -16,6 +16,7 @@ import {
   ChevronRight,
   X,
   ExternalLink,
+  Copy,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
@@ -62,6 +63,8 @@ const MESSAGE_TAGS = [
   "POST_PURCHASE_UPDATE",
   "ACCOUNT_UPDATE",
 ] as const;
+
+const MESSENGER_REQUIRED_SCOPES = ["pages_show_list", "pages_messaging"] as const;
 
 type Contact = {
   id: string;
@@ -120,6 +123,10 @@ function MessengerContactsPage() {
   const [tagContact, setTagContact] = useState<Contact | null>(null);
   const [tagInput, setTagInput] = useState("");
   const [autoSyncStarted, setAutoSyncStarted] = useState<Set<string>>(new Set());
+  const [tokenNotice, setTokenNotice] = useState<{
+    kind: "missing_scopes" | "no_pages" | "saved";
+    missing?: string[];
+  } | null>(null);
 
   // Pages query — decides whether to show picker.
   const pagesQ = useQuery({
@@ -141,19 +148,35 @@ function MessengerContactsPage() {
         success?: boolean;
         error?: { message?: string } | null;
         profile?: { name?: string } | null;
+        granted?: string[];
       };
       if (payload?.success === false) {
         throw new Error(payload.error?.message || (lang === "ar" ? "فشل حفظ التوكن" : "Token save failed"));
       }
       return payload;
     },
-    onSuccess: async () => {
+    onSuccess: async (payload) => {
       toast.success(lang === "ar" ? "تم حفظ التوكن، جاري تحميل صفحاتك الآن" : "Token saved, loading your Pages now");
       setInlineToken("");
+      const granted = new Set(payload.granted ?? []);
+      const missing = MESSENGER_REQUIRED_SCOPES.filter((scope) => !granted.has(scope));
+      if ((payload.granted?.length ?? 0) > 0 && missing.length > 0) {
+        setTokenNotice({ kind: "missing_scopes", missing });
+        toast.error(
+          lang === "ar"
+            ? `التوكن محفوظ لكن ناقص صلاحيات: ${missing.join(", ")}`
+            : `Token saved but missing scopes: ${missing.join(", ")}`,
+        );
+      } else {
+        setTokenNotice({ kind: "saved" });
+      }
       const refreshed = await pagesQ.refetch();
       const count = refreshed.data?.length ?? 0;
       if (count > 0) {
         toast.success(lang === "ar" ? `تم العثور على ${count} صفحة مُدارة` : `Found ${count} managed Pages`);
+        setTokenNotice(null);
+      } else if (!refreshed.error && missing.length === 0) {
+        setTokenNotice({ kind: "no_pages" });
       }
     },
     onError: (e: Error) => toast.error(e.message),
@@ -285,6 +308,19 @@ function MessengerContactsPage() {
   }, [autoSyncStarted, contactsQ.data?.total, contactsQ.isFetching, contactsQ.isSuccess, pageId, syncM, syncRunning]);
 
   const rtl = lang === "ar";
+  const scopesText = MESSENGER_REQUIRED_SCOPES.join(",");
+  const pagesErrorText = pagesQ.error instanceof Error ? pagesQ.error.message : pagesQ.error ? String(pagesQ.error) : "";
+  const shouldShowPermissionSteps =
+    tokenNotice?.kind === "missing_scopes" || /pages_show_list|pages_messaging|permission|الصلاحيات|صلاحية/i.test(pagesErrorText);
+
+  const copyMessengerScopes = async () => {
+    try {
+      await navigator.clipboard.writeText(scopesText);
+      toast.success(lang === "ar" ? "تم نسخ صلاحيات Messenger" : "Messenger scopes copied");
+    } catch {
+      toast.error(lang === "ar" ? "تعذر نسخ الصلاحيات" : "Could not copy scopes");
+    }
+  };
 
   const tokenConnectBox = (
     <div className="mx-auto mt-5 max-w-2xl rounded-xl border border-primary/20 bg-primary/5 p-4 text-start">
@@ -322,6 +358,10 @@ function MessengerContactsPage() {
         </Button>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+        <Button type="button" variant="outline" size="sm" onClick={copyMessengerScopes}>
+          <Copy className="h-3.5 w-3.5" />
+          {lang === "ar" ? "نسخ صلاحيات Messenger" : "Copy Messenger scopes"}
+        </Button>
         <a
           href="https://developers.facebook.com/tools/explorer/"
           target="_blank"
@@ -332,9 +372,39 @@ function MessengerContactsPage() {
           {lang === "ar" ? "فتح Graph API Explorer في نافذة جديدة لنسخ التوكن" : "Open Graph API Explorer in a new window to copy the token"}
         </a>
         <span className="text-muted-foreground">
-          {lang === "ar" ? "ثم الصق التوكن هنا واضغط حفظ." : "Then paste the token here and press save."}
+          {lang === "ar" ? "ثم الصق التوكن الجديد هنا واضغط حفظ." : "Then paste the new token here and press save."}
         </span>
       </div>
+      {shouldShowPermissionSteps && (
+        <div className="mt-4 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs text-foreground">
+          <p className="font-semibold">
+            {lang === "ar" ? "الخطوة التالية المطلوبة" : "Required next step"}
+          </p>
+          <ol className="mt-2 list-decimal space-y-1 ps-5 text-muted-foreground">
+            <li>{lang === "ar" ? "اضغط نسخ صلاحيات Messenger." : "Click Copy Messenger scopes."}</li>
+            <li>
+              {lang === "ar"
+                ? "افتح Graph API Explorer، ثم من Add a Permission الصق الصلاحيات المنسوخة."
+                : "Open Graph API Explorer, then paste the copied scopes in Add a Permission."}
+            </li>
+            <li>
+              {lang === "ar"
+                ? "اضغط Generate Access Token ووافق على الصفحات والرسائل، ثم الصق التوكن الجديد هنا."
+                : "Click Generate Access Token, approve Pages and messages, then paste the new token here."}
+            </li>
+          </ol>
+          <code className="mt-2 block select-all rounded-md bg-background px-2 py-1 font-mono text-[11px] text-foreground">
+            {scopesText}
+          </code>
+        </div>
+      )}
+      {tokenNotice?.kind === "no_pages" && (
+        <div className="mt-4 rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground">
+          {lang === "ar"
+            ? "التوكن محفوظ لكن فيسبوك لم يرجع أي صفحات. تأكد أنك Admin أو Editor على صفحة واحدة على الأقل وأنك وافقت على pages_show_list."
+            : "Token saved, but Facebook returned no Pages. Make sure you are Admin or Editor on at least one Page and approved pages_show_list."}
+        </div>
+      )}
     </div>
   );
 
