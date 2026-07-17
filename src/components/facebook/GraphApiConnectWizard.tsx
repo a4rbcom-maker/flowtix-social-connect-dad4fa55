@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, ArrowRight, ArrowLeft, Check, ShieldCheck, Sparkles, Key, ExternalLink,
-  Users, Layers, Eye, FileText, Copy, AlertTriangle, Lock,
+  Users, Layers, Eye, FileText, Copy, AlertTriangle, Lock, MessageCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
