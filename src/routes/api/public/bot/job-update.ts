@@ -114,6 +114,28 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
+        const workerCapabilities = (request.headers.get("x-flowtix-worker-capabilities") || "")
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean);
+        const workerName = (request.headers.get("x-flowtix-worker-name") || "vps-worker").slice(0, 80);
+        const workerVersion = request.headers.get("x-flowtix-worker-version");
+        supabaseAdmin
+          .from("bot_worker_heartbeats")
+          .upsert(
+            {
+              worker_name: workerName,
+              version: workerVersion,
+              capabilities: workerCapabilities,
+              last_seen_at: new Date().toISOString(),
+              meta: { ua: request.headers.get("user-agent"), source: "job-update" },
+            },
+            { onConflict: "worker_name" },
+          )
+          .then(({ error }) => {
+            if (error) console.error("heartbeat upsert failed from job-update", error.message);
+          });
+
         const body = (await request.json().catch(() => null)) as
           | {
               jobId?: string;

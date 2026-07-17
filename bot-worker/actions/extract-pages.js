@@ -3,8 +3,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const NAVIGATION_TIMEOUT_MS = 18_000;
 const BODY_WAIT_TIMEOUT_MS = 8_000;
 const SURFACE_SETTLE_MS = 800;
-const MAX_EMPTY_SURFACES = 9;
-const MAX_EXTRA_SURFACES_AFTER_FIRST_RESULT = 3;
+const MAX_EMPTY_SURFACES = 6;
+const MAX_EXTRA_SURFACES_AFTER_FIRST_RESULT = 2;
 
 const PAGE_SURFACES = [
   // Start with the light/mobile surfaces because they expose page links in
@@ -26,6 +26,33 @@ const PAGE_SURFACES = [
 
 const DIAGNOSTIC_TARGET = "__extract_pages_diagnostic__";
 
+const NON_PAGE_SLUGS = new Set([
+  "pages", "groups", "events", "watch", "marketplace", "friends", "messages", "notifications",
+  "bookmarks", "gaming", "help", "privacy", "policies", "settings", "login", "recover", "me",
+  "profile.php", "photo", "photo.php", "story.php", "permalink.php", "ads", "business", "latest",
+  "home", "home.php", "notifications.php", "inbox", "content", "planner", "monetization", "billing",
+  "pages_manager", "people", "account", "accounts", "overview", "alltools", "tools", "dcb", "wui",
+  "l.php", "menu", "notifications", "feed", "friends", "search", "saved", "reels",
+]);
+
+const BLOCKED_PAGE_PATH_RE = /^\/(?:home(?:\.php)?|notifications(?:\.php)?|friends|messages|help|dcb|wui|settings|privacy|policies|login|recover|menu|feed|saved|reels|watch|marketplace)(?:\/|\?|#|$)/i;
+
+function isBlockedPageLink(rawLink) {
+  if (!rawLink) return false;
+  try {
+    const parsed = new URL(rawLink, "https://www.facebook.com");
+    const path = parsed.pathname.toLowerCase();
+    if (path.includes("/ajax/hovercard/page.php")) return false;
+    if (BLOCKED_PAGE_PATH_RE.test(path)) return true;
+    const firstSlug = path.split("/").filter(Boolean)[0] || "";
+    if (NON_PAGE_SLUGS.has(firstSlug)) return true;
+    if (/\.php$/i.test(firstSlug) && firstSlug !== "profile.php") return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 async function autoScroll(page, steps = 5) {
   let lastHeight = 0;
   let idle = 0;
@@ -44,6 +71,10 @@ function dedupePageCandidate(candidate) {
   let name = String(candidate.name || candidate.page_name || candidate.pageName || "").trim();
   if (!id) return null;
   if (id.length < 3 || id.length > 160) return null;
+  const idKey = id.toLowerCase();
+  if (NON_PAGE_SLUGS.has(idKey) || /\.php$/i.test(idKey)) return null;
+  const link = candidate.link || candidate.url || `https://www.facebook.com/${id}`;
+  if (isBlockedPageLink(link)) return null;
   // Fallback name: if missing, derive a placeholder from the id/slug so we
   // don't silently drop otherwise valid page links.
   if (!name) name = `Page ${id}`;
@@ -53,7 +84,7 @@ function dedupePageCandidate(candidate) {
   return {
     id,
     name,
-    link: candidate.link || candidate.url || `https://www.facebook.com/${id}`,
+    link,
     avatar_url: candidate.avatar_url || candidate.avatarUrl || null,
   };
 }
@@ -64,10 +95,12 @@ async function collectFromRenderedPage(page) {
       "pages", "groups", "events", "watch", "marketplace", "friends", "messages", "notifications",
       "bookmarks", "gaming", "help", "privacy", "policies", "settings", "login", "recover", "me",
       "profile.php", "photo", "photo.php", "story.php", "permalink.php", "ads", "business", "latest",
-      "home", "notifications", "inbox", "content", "planner", "monetization", "settings", "billing",
-      "pages_manager", "people", "account", "accounts", "overview", "alltools", "tools",
+      "home", "home.php", "notifications.php", "inbox", "content", "planner", "monetization", "billing",
+      "pages_manager", "people", "account", "accounts", "overview", "alltools", "tools", "dcb", "wui",
+      "l.php", "menu", "feed", "saved", "reels", "search",
     ]);
-    const genericLabels = /^(Pages|Your Pages|Create|Manage|Home|About|Photos|Videos|Posts|Following|Followers|Like|Share|Comment|More|See more|View page|Switch|Meta Business Suite|Business Suite|Notifications|Inbox|الصفحات|صفحاتك|إنشاء|إدارة|الرئيسية|حول|الصور|الفيديوهات|المنشورات|متابعة|المتابعون|إعجاب|مشاركة|تعليق|عرض المزيد|عرض الصفحة|تبديل|الإشعارات|صندوق الوارد)$/i;
+    const blockedPathRe = /^\/(?:home(?:\.php)?|notifications(?:\.php)?|friends|messages|help|dcb|wui|settings|privacy|policies|login|recover|menu|feed|saved|reels|watch|marketplace)(?:\/|\?|#|$)/i;
+    const genericLabels = /^(Pages|Your Pages|Create|Manage|Home|About|Photos|Videos|Posts|Following|Followers|Like|Share|Comment|More|See more|View page|Switch|Meta Business Suite|Business Suite|Notifications|Inbox|News Feed|Download|Learn more|Google Chrome|الصفحات|صفحاتك|إنشاء|إدارة|الرئيسية|حول|الصور|الفيديوهات|المنشورات|متابعة|المتابعون|إعجاب|مشاركة|تعليق|عرض المزيد|عرض الصفحة|تبديل|الإشعارات|صندوق الوارد|الموجز|طلبات الصداقة|تنزيل متصفح Google Chrome|تعرف على المزيد)$/i;
     const out = [];
 
     const cleanText = (value) => String(value || "")
@@ -86,17 +119,22 @@ async function collectFromRenderedPage(page) {
       let parsed;
       try { parsed = new URL(rawHref, location.origin); } catch { return null; }
       if (!/(^|\.)facebook\.com$/i.test(parsed.hostname)) return null;
+      if (parsed.pathname.includes("/ajax/hovercard/page.php")) {
+        const hoverPageId = parsed.searchParams.get("id");
+        if (hoverPageId && /^\d{5,}$/.test(hoverPageId)) return { id: hoverPageId, href: `https://www.facebook.com/${hoverPageId}`, confidence: "explicit", reason: "hovercard_page" };
+      }
+      if (blockedPathRe.test(parsed.pathname)) return null;
       const assetId = parsed.searchParams.get("asset_id") || parsed.searchParams.get("page_id") || parsed.searchParams.get("id") || parsed.searchParams.get("profile_id");
-      if (assetId && /^\d{5,}$/.test(assetId)) return { id: assetId, href: parsed.toString().split("#")[0] };
-      const hoverPageId = parsed.pathname.includes("/ajax/hovercard/page.php") ? parsed.searchParams.get("id") : null;
-      if (hoverPageId && /^\d{5,}$/.test(hoverPageId)) return { id: hoverPageId, href: `https://www.facebook.com/${hoverPageId}` };
+      if (assetId && /^\d{5,}$/.test(assetId)) return { id: assetId, href: parsed.toString().split("#")[0], confidence: "explicit", reason: "page_id_param" };
       if (/\/groups\/|\/events\/|\/posts\/|\/videos\/|\/reel\/|\/stories\/|\/photo\.php|\/permalink\.php|\/story\.php|\/login\//i.test(parsed.pathname)) return null;
       const profileId = parsed.pathname === "/profile.php" ? parsed.searchParams.get("id") : null;
       const numericId = profileId || parsed.pathname.match(/\/(\d{6,})(?:\/|$)/)?.[1] || parsed.pathname.match(/-(\d{6,})(?:\/|$)/)?.[1];
       const firstSlug = parsed.pathname.split("/").filter(Boolean)[0] || "";
+      if (systemSlugs.has(firstSlug.toLowerCase())) return null;
+      if (/\.php$/i.test(firstSlug) && firstSlug.toLowerCase() !== "profile.php") return null;
       const slug = firstSlug && !systemSlugs.has(firstSlug.toLowerCase()) && /^[A-Za-z0-9._-]{3,}$/.test(firstSlug) ? firstSlug : "";
       const id = numericId || slug;
-      return id ? { id, href: parsed.toString().split("?")[0].split("#")[0] } : null;
+      return id ? { id, href: parsed.toString().split("?")[0].split("#")[0], confidence: "path", reason: numericId ? "numeric_path" : "slug_path" } : null;
     };
 
     const anchors = Array.from(document.querySelectorAll('a[role="link"], a[href*="facebook.com"], a[href^="/"], a[href*="asset_id="], a[href*="page_id="], a[href*="/pages/edit"]'));
@@ -122,9 +160,13 @@ async function collectFromRenderedPage(page) {
         .filter(Boolean);
       const name = [imgAlt, aria, title, ...lines].map(validName).find(Boolean) || "";
       const avatar = a.querySelector("img[src]")?.getAttribute("src") || container.querySelector?.("img[src]")?.getAttribute("src") || null;
+      const combinedText = [imgAlt, aria, title, ownText, a.textContent, container.textContent].join(" ");
+      const hasPageSignal = parsed.confidence === "explicit" || /page|pages|صفحة|صفحات|Meta Business|Business Suite|followers|متابع|إعجاب/i.test(`${combinedText} ${parsed.href}`);
+      if (!hasPageSignal) continue;
+      if (avatar && /static\.xx\.fbcdn\.net\/rsrc\.php/i.test(avatar) && parsed.confidence !== "explicit") continue;
       // Emit even if name is missing — dedupePageCandidate assigns a fallback
       // so we don't silently drop otherwise-valid page links.
-      out.push({ id: parsed.id, name, link: parsed.href, avatar_url: avatar });
+      out.push({ id: parsed.id, name, link: parsed.href, avatar_url: avatar, confidence: parsed.confidence, reason: parsed.reason });
     }
     return out;
   });
