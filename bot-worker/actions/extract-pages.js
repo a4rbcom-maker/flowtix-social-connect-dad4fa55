@@ -160,8 +160,15 @@ async function collectFromRenderedPage(page) {
       const name = [imgAlt, aria, title, ...lines].map(validName).find(Boolean) || "";
       const avatar = a.querySelector("img[src]")?.getAttribute("src") || container.querySelector?.("img[src]")?.getAttribute("src") || null;
       const combinedText = [imgAlt, aria, title, ownText, a.textContent, container.textContent].join(" ");
-      const hasPageSignal = parsed.confidence === "explicit" || /page|pages|صفحة|صفحات|Meta Business|Business Suite|followers|متابع|إعجاب/i.test(`${combinedText} ${parsed.href}`);
-      if (!hasPageSignal) continue;
+      // STRICT ownership signal — only accept anchors that clearly point at a
+      // page the user MANAGES. We reject the loose "followers/إعجاب" heuristic
+      // that previously matched pages the user merely LIKES/FOLLOWS.
+      const managesSignal =
+        parsed.confidence === "explicit" ||
+        /\/pages\/(?:edit|manage)|business\.facebook\.com\/latest|asset_id=|page_id=|switch(?:_to)?[_-]?page|manage[_-]?page|صلاحيات|أنت مشرف|You manage|You're an admin|Meta Business Suite/i.test(
+          `${combinedText} ${parsed.href}`,
+        );
+      if (!managesSignal) continue;
       if (avatar && /static\.xx\.fbcdn\.net\/rsrc\.php/i.test(avatar) && parsed.confidence !== "explicit") continue;
       // Emit even if name is missing — dedupePageCandidate assigns a fallback
       // so we don't silently drop otherwise-valid page links.
