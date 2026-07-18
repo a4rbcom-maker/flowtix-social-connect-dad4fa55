@@ -25,6 +25,7 @@ const cookiesSchema = z.object({
   displayName: z.string().trim().min(1).max(80),
   cookies: z.string().trim().min(10).max(1_000_000), // raw JSON/Header/Netscape export from Cookie-Editor
   userAgent: z.string().trim().min(10).max(500).optional().nullable(),
+  proxyUrl: z.string().trim().max(1000).optional().nullable(),
 });
 const credentialsSchema = z.object({
   method: z.literal("credentials"),
@@ -33,6 +34,7 @@ const credentialsSchema = z.object({
   password: z.string().min(1).max(200),
   twoFactorSecret: z.string().trim().max(200).optional().nullable(),
   userAgent: z.string().trim().min(10).max(500).optional().nullable(),
+  proxyUrl: z.string().trim().max(1000).optional().nullable(),
 });
 const addAccountSchema = z.union([cookiesSchema, credentialsSchema]);
 type AddAccountInput = z.infer<typeof addAccountSchema>;
@@ -105,6 +107,21 @@ const FACEBOOK_SESSION_REJECTED_RE =
 
 function isFacebookSessionRejectedError(value: unknown) {
   return typeof value === "string" && FACEBOOK_SESSION_REJECTED_RE.test(value);
+}
+
+function normalizeProxyUrl(value: string | null | undefined) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (!["http:", "https:", "socks4:", "socks5:"].includes(url.protocol)) {
+      throw new Error("unsupported protocol");
+    }
+    if (!url.hostname) throw new Error("missing host");
+    return url.toString();
+  } catch {
+    throw new Error("صيغة البروكسي غير صحيحة. استخدم مثال: http://user:pass@host:port أو socks5://host:port");
+  }
 }
 
 // ---------- addBotAccount ----------
@@ -183,7 +200,7 @@ export const addBotAccount = createServerFn({ method: "POST" })
         };
       }
 
-      payload = { cookies: parsed.cookies, detectedUserId: validation.detectedUserId };
+      payload = { cookies: parsed.cookies, detectedUserId: validation.detectedUserId, proxyUrl: normalizeProxyUrl(data.proxyUrl) };
       addDiag(diagnostics, {
         phase: "extract",
         ok: true,
@@ -214,6 +231,7 @@ export const addBotAccount = createServerFn({ method: "POST" })
         email: data.email,
         password: data.password,
         twoFactorSecret: data.twoFactorSecret || null,
+        proxyUrl: normalizeProxyUrl(data.proxyUrl),
       };
       addDiag(diagnostics, {
         phase: "extract",
