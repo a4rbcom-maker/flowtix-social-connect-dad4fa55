@@ -2,6 +2,8 @@
 // Polls /api/public/bot/next-job, executes via Puppeteer, reports back.
 require("dotenv").config();
 const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
 const puppeteer = require("puppeteer-extra");
 const Stealth = require("puppeteer-extra-plugin-stealth");
 puppeteer.use(Stealth());
@@ -24,7 +26,8 @@ const SECRET = process.env.BOT_WORKER_SECRET;
 const MIN_INT = Math.max(5, parseInt(process.env.POLL_INTERVAL_SEC || "15", 10)) * 1000;
 const MAX_INT = Math.max(MIN_INT, parseInt(process.env.POLL_MAX_INTERVAL_SEC || "60", 10) * 1000);
 const HEADLESS = process.env.HEADLESS !== "false";
-const WORKER_VERSION = "bot-worker-2026-07-18-messenger-inbox-diagnostics-v1";
+const PROFILE_ROOT = process.env.BOT_PROFILE_DIR || path.join(__dirname, ".browser-profiles");
+const WORKER_VERSION = "bot-worker-2026-07-18-stable-fb-session-v2";
 const WORKER_CAPABILITIES = [
   "post_to_groups",
   "extract_pages",
@@ -93,6 +96,45 @@ function shortError(error) {
   return message.length > 500 ? `${message.slice(0, 500)}…` : message;
 }
 
+function accountProfileDir(accountId) {
+  const safeId = String(accountId || "anonymous").replace(/[^a-zA-Z0-9_-]/g, "_");
+  const dir = path.join(PROFILE_ROOT, safeId);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function parseProxy(proxyUrl) {
+  if (!proxyUrl || typeof proxyUrl !== "string") return null;
+  try {
+    const u = new URL(proxyUrl);
+    if (!/^https?:$|^socks5?:$/i.test(u.protocol)) return null;
+    return {
+      server: `${u.protocol}//${u.hostname}${u.port ? `:${u.port}` : ""}`,
+      username: decodeURIComponent(u.username || ""),
+      password: decodeURIComponent(u.password || ""),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function loginOptionsForJob(job) {
+  const payload = job.payload || {};
+  if (job.type === "messenger_sync_cookies" && payload.pageId) {
+    const inboxUrl = `https://business.facebook.com/latest/inbox?asset_id=${encodeURIComponent(payload.pageId)}`;
+    return { initialUrl: inboxUrl, verifyUrl: inboxUrl, preferExistingSession: true, verifyTimeoutMs: 60_000 };
+  }
+  if (job.type === "messenger_send_cookies" && payload.pageId) {
+    const inboxUrl = `https://business.facebook.com/latest/inbox?asset_id=${encodeURIComponent(payload.pageId)}`;
+    return { initialUrl: inboxUrl, verifyUrl: inboxUrl, preferExistingSession: true, verifyTimeoutMs: 60_000 };
+  }
+  if (job.type === "messenger_list_pages") {
+    const suiteUrl = "https://business.facebook.com/latest/home";
+    return { initialUrl: suiteUrl, verifyUrl: suiteUrl, preferExistingSession: true, verifyTimeoutMs: 60_000 };
+  }
+  return { preferExistingSession: true };
+}
+
 async function emitExtractPagesWorkerLog(job, event, stage, data = {}) {
   if (job.type !== "extract_pages") return;
   await reportUpdate({
@@ -138,11 +180,18 @@ async function runJob(job) {
   let browser = null;
   try {
     await emitExtractPagesWorkerLog(job, "worker_claimed", "queue", { type: job.type });
+    const proxy = parseProxy(job.account?.proxyUrl);
+    const launchArgs = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--lang=en-US,en"];
+    if (proxy?.server) launchArgs.push(`--proxy-server=${proxy.server}`);
     browser = await timedExtractPagesWorkerStep(job, "browser_launch", () => puppeteer.launch({
       headless: HEADLESS,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--lang=en-US,en"],
-    }));
+      userDataDir: job.account?.id ? accountProfileDir(job.account.id) : undefined,
+      args: launchArgs,
+    }), { persistentProfile: Boolean(job.account?.id), proxyEnabled: Boolean(proxy?.server) });
     const page = await timedExtractPagesWorkerStep(job, "browser_page", () => browser.newPage());
+    if (proxy?.username) {
+      await timedExtractPagesWorkerStep(job, "browser_proxy_auth", () => page.authenticate({ username: proxy.username, password: proxy.password || "" }));
+    }
     await timedExtractPagesWorkerStep(job, "browser_viewport", () => page.setViewport({ width: 1366, height: 800 }));
     const DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
     // Reuse the exact User-Agent captured from the user's real browser at
@@ -160,12 +209,13 @@ async function runJob(job) {
       // Signal to the UI immediately that the worker picked the job up.
       await reportUpdate({ jobId: job.id, status: "running", progress: 3 });
       let loginFailureReason = "SESSION_EXPIRED: انتهت صلاحية جلسة حساب فيسبوك — أعد ربط الحساب من صفحة حسابات البوت.";
+      const loginOptions = loginOptionsForJob(job);
       const ok = await timedExtractPagesWorkerStep(job, "facebook_login", () => ensureLogin(page, job.account, async (status, error) => {
         if (error) loginFailureReason = /session|cookie|login|auth|c_user/i.test(error)
           ? `SESSION_EXPIRED: ${error}`
           : error;
         await reportUpdate({ jobId: job.id, accountStatus: { accountId: job.account.id, status, error } });
-      }, {}), { accountId: job.account.id, authMethod: job.account.authMethod });
+      }, loginOptions), { accountId: job.account.id, authMethod: job.account.authMethod, protectedSurface: Boolean(loginOptions.verifyUrl) });
       if (!ok) {
         await emitExtractPagesWorkerLog(job, "step_failed", "facebook_login", { error: loginFailureReason });
         await reportUpdate({ jobId: job.id, status: "failed", errorMessage: loginFailureReason });
