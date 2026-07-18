@@ -331,8 +331,9 @@ function MessengerContactsPage() {
       }),
     // Live refresh while a sync is running so contacts appear as they arrive.
     refetchInterval: () => {
+      if (refreshIntervalMs <= 0) return false;
       const s = (qc.getQueryData(["msgr-sync-status", pageId]) as { job?: { status?: string } } | undefined)?.job?.status;
-      return s === "running" || s === "queued" ? 3000 : false;
+      return s === "running" || s === "queued" ? refreshIntervalMs : false;
     },
 
   });
@@ -343,8 +344,9 @@ function MessengerContactsPage() {
     enabled: Boolean(pageId),
     queryFn: () => syncStatusFn({ data: { pageId: pageId! } }),
     refetchInterval: (q) => {
+      if (refreshIntervalMs <= 0) return false;
       const s = (q.state.data as { job?: { status?: string } } | undefined)?.job?.status;
-      return s === "running" || s === "queued" ? 3000 : false;
+      return s === "running" || s === "queued" ? refreshIntervalMs : false;
     },
   });
 
