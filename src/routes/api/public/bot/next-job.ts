@@ -81,12 +81,34 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
           .lte("scheduled_at", nowIso)
           .is("account_id", null);
 
+        // Serial-per-account lock: never hand out a second job for an account
+        // that already has a running job. Two concurrent sessions for the same
+        // Facebook account (even from the same worker at different phases) is
+        // one of the strongest signals FB uses to invalidate the user's own
+        // browser session. Enforce single-flight here at the dispatcher.
+        const { data: busy } = await supabaseAdmin
+          .from("fb_jobs")
+          .select("account_id")
+          .eq("status", "running")
+          .not("account_id", "is", null);
+        const busyAccountIds = Array.from(
+          new Set((busy || []).map((r) => r.account_id).filter(Boolean)),
+        ) as string[];
+
         let candidateQuery = supabaseAdmin
           .from("fb_jobs")
           .select("id")
           .eq("status", "pending")
           .not("account_id", "is", null)
           .lte("scheduled_at", nowIso);
+        if (busyAccountIds.length > 0) {
+          candidateQuery = candidateQuery.not(
+            "account_id",
+            "in",
+            `(${busyAccountIds.join(",")})`,
+          );
+        }
+
         // Old VPS workers do not send capabilities and may mark group-member jobs as
         // "not implemented". Never let those stale workers claim this job type.
         if (!supportsGroupMembers) {

@@ -1,20 +1,12 @@
 // Syncs Messenger conversations for a Page using the bot cookies session.
 // Payload: { pageId, pageName?, maxConversations }
 
-async function verifyFacebookSession(page) {
-  // Check the base facebook.com session is alive BEFORE touching Business Suite.
-  // Business Suite has its own login redirect that can trigger even when the
-  // core cookies are fine (e.g. account not enrolled in Business Suite),
-  // which used to be misreported as SESSION_EXPIRED.
-  try {
-    await page.goto("https://www.facebook.com/me", { waitUntil: "domcontentloaded", timeout: 45_000 });
-    const url = page.url();
-    if (/\/login|checkpoint|\/recover/i.test(url)) return false;
-    return true;
-  } catch (_) {
-    return false;
-  }
-}
+// NOTE: We intentionally do NOT hit facebook.com/me here.
+// The worker's ensureLogin() has already verified the base FB session before
+// dispatching this action. Adding a second /me navigation used to double
+// Facebook's "new login" fingerprint and increased the chance FB invalidated
+// the user's real browser session. Removed on purpose.
+
 
 function normalizeText(value) {
   return String(value || "")
@@ -203,15 +195,10 @@ async function runMessengerSyncCookies({ page, job, report }) {
     return;
   }
 
-  // 1) Verify base facebook.com session first — only THIS constitutes SESSION_EXPIRED.
-  const sessionOk = await verifyFacebookSession(page);
-  if (!sessionOk) {
-    await report({
-      status: "failed",
-      errorMessage: "SESSION_EXPIRED: انتهت جلسة حساب البوت على فيسبوك. حدّث الكوكيز من نفس المتصفح المسجّل دخوله.",
-    });
-    return;
-  }
+  // Session was already verified by ensureLogin() in the worker before
+  // dispatching this action; skip the extra /me hop to reduce FB fingerprint.
+
+
 
   // 2) Try to open an inbox surface. A failure here is NOT a session expiry.
   const opened = await tryOpenInbox(page, pageId, pageName);
