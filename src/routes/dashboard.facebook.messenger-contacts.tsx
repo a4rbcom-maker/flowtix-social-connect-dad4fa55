@@ -570,23 +570,6 @@ function MessengerContactsPage() {
         </Card>
       )}
 
-      {/* Gate: page loading failed */}
-      {officialOpen && !pagesQ.isLoading && pagesQ.error && (
-        <Card className="p-8 text-center">
-          <AlertCircle className="mx-auto mb-3 h-10 w-10 text-destructive" />
-          <h2 className="mb-1 text-lg font-semibold">
-            {lang === "ar" ? "تعذر تحميل صفحاتك" : "Could not load your pages"}
-          </h2>
-          <p className="mx-auto mb-4 max-w-2xl text-sm text-muted-foreground">
-            {pagesQ.error instanceof Error ? pagesQ.error.message : String(pagesQ.error)}
-          </p>
-          <Button variant="outline" onClick={() => pagesQ.refetch()}>
-            <RefreshCw className="h-4 w-4" />
-            {lang === "ar" ? "إعادة المحاولة" : "Retry"}
-          </Button>
-          {tokenConnectBox}
-        </Card>
-      )}
 
       {/* Gate: no pages linked */}
       {noPagesReady && (
