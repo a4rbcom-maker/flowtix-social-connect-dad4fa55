@@ -55,6 +55,13 @@ export const queueMessengerListPages = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     await assertOwnedActiveAccount(supabase, userId, data.accountId);
+    const { error: clearError } = await supabase
+      .from("messenger_contacts")
+      .delete()
+      .eq("user_id", userId)
+      .eq("page_id", data.pageId)
+      .eq("source", "cookies_bot");
+    if (clearError) throw new Error(`تعذّر تنظيف نتائج Cookies القديمة لهذه الصفحة: ${clearError.message}`);
     const { data: row, error } = await supabase
       .from("fb_jobs")
       .insert({

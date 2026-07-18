@@ -17,20 +17,14 @@ async function verifyFacebookSession(page) {
 }
 
 async function tryOpenInbox(page, pageId) {
-  // Try multiple inbox surfaces. We accept the first one that renders threads
-  // WITHOUT redirecting us to a login page. Business Suite redirects to its
-  // own /login even with valid facebook.com cookies for accounts that aren't
-  // enrolled — that's NOT a session expiry, just a missing surface.
+  // Strictly use Meta Business Suite only. Do NOT fall back to
+  // facebook.com/messages or legacy Page inbox URLs: those can silently open the
+  // personal Messenger inbox and pollute the selected Page with personal chats.
   const candidates = [
-    // Meta Business Suite (best: real page inbox)
     `https://business.facebook.com/latest/inbox?asset_id=${encodeURIComponent(pageId)}`,
     `https://business.facebook.com/latest/inbox/messenger?asset_id=${encodeURIComponent(pageId)}`,
     `https://business.facebook.com/latest/inbox/all?asset_id=${encodeURIComponent(pageId)}&mailbox_id=${encodeURIComponent(pageId)}`,
     `https://business.facebook.com/latest/inbox/all?asset_id=${encodeURIComponent(pageId)}`,
-    // Legacy Pages inbox
-    `https://www.facebook.com/${encodeURIComponent(pageId)}/inbox/`,
-    // Messenger with page_inbox hint (fallback)
-    `https://www.facebook.com/messages/t/?entry_point=page_inbox&page_id=${encodeURIComponent(pageId)}`,
   ];
   for (const url of candidates) {
     try {
@@ -38,11 +32,20 @@ async function tryOpenInbox(page, pageId) {
       const currentUrl = page.url();
       // Skip surface-specific login redirects — not a session expiry.
       if (/\/login|checkpoint/i.test(currentUrl)) continue;
+      const openedExpectedBusinessInbox = await page.evaluate((expectedPageId) => {
+        const current = new URL(window.location.href);
+        const onBusinessSuite = /(^|\.)business\.facebook\.com$/i.test(current.hostname);
+        const inInbox = /\/latest\/inbox/i.test(current.pathname);
+        const params = new URLSearchParams(current.search);
+        const selectedAsset = params.get("asset_id") || params.get("mailbox_id") || params.get("page_id") || "";
+        return onBusinessSuite && inInbox && selectedAsset === String(expectedPageId);
+      }, String(pageId));
+      if (!openedExpectedBusinessInbox) continue;
       await new Promise((r) => setTimeout(r, 5000));
       const hasThreads = await page.evaluate(() =>
         Boolean(
           document.querySelector(
-            '[role="row"], [role="listitem"], a[href*="/inbox/"], a[href*="thread"], a[href*="/messages/t/"]',
+            '[role="row"], [role="listitem"], a[href*="thread"], a[href*="selected_item_id"], a[href*="thread_id"]',
           ),
         ),
       );
@@ -62,24 +65,26 @@ async function collectConversations(page, maxConversations) {
   for (let i = 0; i < 200; i += 1) {
     if (Date.now() - start > 8 * 60 * 1000) break;
     const batch = await page.evaluate(() => {
+      const current = new URL(window.location.href);
+      if (!/(^|\.)business\.facebook\.com$/i.test(current.hostname) || !/\/latest\/inbox/i.test(current.pathname)) {
+        return [];
+      }
       const items = [];
       const rows = Array.from(
         document.querySelectorAll(
-          '[role="row"], [role="listitem"], a[href*="thread_fbid"], a[href*="/inbox/"], a[href*="/messages/t/"], a[href*="selected_item_id"], a[href*="thread_id"]',
+          '[role="row"], [role="listitem"], a[href*="thread_fbid"], a[href*="selected_item_id"], a[href*="thread_id"]',
         ),
       );
       for (const row of rows) {
         const html = row.outerHTML || "";
         const href = row instanceof HTMLAnchorElement ? row.href : row.querySelector("a[href]")?.href || "";
         const psidMatch =
-          href.match(/\/messages\/t\/(\d{5,})/) ||
           href.match(/[?&](?:selected_item_id|participant_id|user_id|profile_id|psid)=(\d{5,})/) ||
           html.match(/thread_fbid[=:]"?(\d{5,})"?/) ||
           html.match(/user_id[=:]"?(\d{5,})"?/) ||
           html.match(/other_user_id[=:]"?(\d{5,})"?/) ||
           html.match(/participant_id[=:]"?(\d{5,})"?/) ||
           html.match(/profile_id[=:]"?(\d{5,})"?/) ||
-          html.match(/\/messages\/t\/(\d{5,})/) ||
           html.match(/"id":"(\d{10,})"/);
         if (!psidMatch) continue;
         const psid = psidMatch[1];
@@ -153,7 +158,7 @@ async function runMessengerSyncCookies({ page, job, report }) {
     await report({
       status: "failed",
       errorMessage:
-        "تعذّر فتح صندوق واردات الصفحة. تأكّد أن حساب البوت مسؤول على هذه الصفحة ولديه صلاحية إدارة الرسائل (Messaging). الجلسة نفسها ما زالت صالحة.",
+        "تعذّر فتح صندوق واردات الصفحة داخل Meta Business Suite بالمعرّف المحدد. لم يتم جلب أي أسماء حتى لا نخلطها مع رسائل الحساب الشخصي. تأكّد أن حساب البوت مسؤول على هذه الصفحة ولديه صلاحية إدارة الرسائل.",
     });
     return;
   }

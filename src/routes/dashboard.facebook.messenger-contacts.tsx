@@ -1046,6 +1046,11 @@ function CookiesModePanel(props: {
     onSuccess: (_d, vars) => {
       setLastSyncedPage(vars);
       setActiveSyncPageId(vars.pageId);
+      qc.setQueriesData<{ rows?: Contact[]; total?: number; page?: number; pageSize?: number }>(
+        { queryKey: ["msgr-contacts", vars.pageId] },
+        (old) => old ? { ...old, rows: [], total: 0, page: 1 } : old,
+      );
+      qc.invalidateQueries({ queryKey: ["msgr-contacts", vars.pageId] });
       onImportedContacts({ pageId: vars.pageId, pageName: vars.pageName, avatarUrl: null });
       toast.success(lang === "ar" ? "بدأت مزامنة المحادثات — سيتم فتح قائمة العملاء تلقائياً عند الانتهاء" : "Sync started — contacts will open automatically");
       syncJobQ.refetch();
