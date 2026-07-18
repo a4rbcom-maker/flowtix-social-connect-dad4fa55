@@ -313,7 +313,11 @@ function MessengerContactsPage() {
         },
       }),
     // Live refresh while a sync is running so contacts appear as they arrive.
-    refetchInterval: () => (syncRunning ? 3000 : false),
+    refetchInterval: () => {
+      const s = (qc.getQueryData(["msgr-sync-status", pageId]) as { job?: { status?: string } } | undefined)?.job?.status;
+      return s === "running" || s === "queued" ? 3000 : false;
+    },
+
   });
 
 
