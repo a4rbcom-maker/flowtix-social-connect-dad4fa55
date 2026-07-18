@@ -1267,7 +1267,7 @@ function CookiesModePanel(props: {
                     className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background p-2 text-xs"
                   >
                     <div className="min-w-0">
-                      <p className="truncate font-semibold text-foreground">{p.pageName}</p>
+                      <p className="truncate font-semibold text-foreground">{cleanPageName(p.pageName)}</p>
                       <p className="truncate text-muted-foreground">{p.pageId}</p>
                     </div>
                     <div className="flex gap-1">
