@@ -1,0 +1,1 @@
+DELETE FROM public.fb_pages WHERE connection_type = 'official' AND (page_name ~* '^(ترويج|promotion|boosted post|promoted)$' OR page_name IS NULL OR trim(page_name) = '');
