@@ -540,57 +540,6 @@ function MessengerContactsPage() {
         }}
       />
 
-      <Card className="border-border/70 bg-muted/20 p-3">
-        <button
-          type="button"
-          onClick={() => setOfficialOpen((v) => !v)}
-          className="flex w-full items-center justify-between gap-3 text-start"
-        >
-          <span className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-            <KeyRound className="h-4 w-4" />
-            {lang === "ar" ? "التوكن الرسمي — اختياري ومغلق حتى لا يخلط مع Cookies" : "Official token — optional and closed to avoid mixing with Cookies"}
-          </span>
-          <ChevronRight className={`h-4 w-4 transition-transform ${officialOpen ? "rotate-90" : ""}`} />
-        </button>
-        {officialOpen && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            {lang === "ar"
-              ? "افتحه فقط إذا أردت استخدام Access Token بدل حساب Cookies. خطأ التوكن القديم لن يمنع مسار Cookies."
-              : "Open this only if you want to use an Access Token instead of Cookies. Old token errors do not block Cookies mode."}
-          </p>
-        )}
-      </Card>
-
-
-      {/* Gate: loading pages */}
-      {officialOpen && pagesQ.isLoading && (
-        <Card className="p-8 text-center text-sm text-muted-foreground">
-          <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
-          {lang === "ar" ? "جاري تحميل صفحاتك..." : "Loading your pages..."}
-        </Card>
-      )}
-
-
-      {/* Gate: no pages linked */}
-      {noPagesReady && (
-        <Card className="p-8 text-center">
-          <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
-          <h2 className="mb-1 text-lg font-semibold">
-            {lang === "ar" ? "لا توجد صفحات مُدارة من التوكن الحالي" : "No managed Pages from the current token"}
-          </h2>
-          <p className="mx-auto mb-5 max-w-2xl text-sm text-muted-foreground">
-            {lang === "ar"
-              ? "هذه الشاشة لا تستخدم Cookies نهائياً. الصق Access Token الخاص بحسابك وسيظهر هنا فقط أسماء الصفحات التي تديرها لتختار صفحة وتبدأ جلب عملاء Messenger."
-              : "This screen does not use Cookies. Paste your account Access Token and only Pages you manage will appear here so you can pick one and import Messenger contacts."}
-          </p>
-          {tokenConnectBox}
-          <Button className="mt-3" variant="outline" onClick={() => pagesQ.refetch()}>
-            <RefreshCw className="h-4 w-4" />
-            {lang === "ar" ? "إعادة تحميل الصفحات" : "Reload Pages"}
-          </Button>
-        </Card>
-      )}
-
       {/* Gate: pages exist but none selected */}
       {officialOpen && !pagesQ.isLoading && pages.length > 0 && !pageId && (
         <Card className="p-8 text-center">
