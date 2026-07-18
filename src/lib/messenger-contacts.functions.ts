@@ -134,6 +134,113 @@ export const listMessengerPages = createServerFn({ method: "GET" })
     }
   });
 
+// ---------- Pre-sync access check ----------
+// Runs a lightweight test that mirrors what the sync will do:
+// 1) confirms token + pages_messaging scope
+// 2) resolves a Page Access Token (proves the user is admin/editor on the Page)
+// 3) issues a benign GET /{page-id}/conversations?limit=1 to prove Messaging works
+// Returns a structured, Arabic-friendly result the UI can render directly.
+export const checkMessengerPageAccess = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ pageId: z.string().min(1).max(100) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    type Check = { key: string; label: string; ok: boolean; detail: string };
+    const checks: Check[] = [];
+    const fail = (message: string, hint: string) => ({
+      ok: false as const,
+      canSync: false,
+      message,
+      hint,
+      checks,
+    });
+
+    // 1) Token + required scopes
+    const token = await getStoredAccessToken(userId).catch(() => null);
+    if (!token) {
+      checks.push({ key: "token", label: "Facebook Access Token", ok: false, detail: "لا يوجد توكن محفوظ." });
+      return fail("لا يوجد Facebook Access Token محفوظ.", "الصق توكن من Graph API Explorer ثم أعد المحاولة.");
+    }
+    checks.push({ key: "token", label: "Facebook Access Token", ok: true, detail: "التوكن موجود." });
+
+    try {
+      const perms = await fbGet("/me/permissions", token);
+      const granted = new Set(
+        ((perms?.data ?? []) as Array<{ permission?: string; status?: string }>)
+          .filter((p) => p.status === "granted" && typeof p.permission === "string")
+          .map((p) => p.permission as string),
+      );
+      const missing = ["pages_show_list", "pages_messaging"].filter((s) => !granted.has(s));
+      if (missing.length > 0) {
+        checks.push({
+          key: "scopes",
+          label: "صلاحيات التوكن",
+          ok: false,
+          detail: `ناقص: ${missing.join(", ")}`,
+        });
+        return fail(
+          `صلاحيات ناقصة على التوكن: ${missing.join(", ")}.`,
+          "أعد توليد التوكن مع اختيار pages_show_list و pages_messaging ثم احفظه مجدداً.",
+        );
+      }
+      checks.push({ key: "scopes", label: "صلاحيات التوكن", ok: true, detail: "pages_show_list, pages_messaging ✓" });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      checks.push({ key: "scopes", label: "صلاحيات التوكن", ok: false, detail: msg });
+      return fail("تعذّر قراءة صلاحيات التوكن من فيسبوك.", msg);
+    }
+
+    // 2) Page ownership + Page Access Token
+    const got = await getPageAccessToken(supabase, userId, data.pageId, [
+      "pages_show_list",
+      "pages_messaging",
+    ]);
+    if (!got.ok) {
+      checks.push({ key: "page_admin", label: "أدمن الصفحة + Page Access Token", ok: false, detail: got.error.message });
+      return fail(
+        "لم نستطع الحصول على Page Access Token لهذه الصفحة.",
+        "تأكد أن الحساب المصدر للتوكن هو أدمن/محرر رسائل على هذه الصفحة تحديداً في Meta Business Suite.",
+      );
+    }
+    checks.push({ key: "page_admin", label: "أدمن الصفحة + Page Access Token", ok: true, detail: "تم إصدار Page Token." });
+
+    // 3) Benign Messaging call
+    try {
+      const res = (await fbGet(
+        `/${encodeURIComponent(data.pageId)}/conversations?fields=id&limit=1`,
+        got.pageToken,
+      )) as { data?: unknown[] };
+      const count = Array.isArray(res?.data) ? res.data.length : 0;
+      checks.push({
+        key: "messaging_probe",
+        label: "اختبار قراءة رسائل الصفحة",
+        ok: true,
+        detail: count > 0 ? "الصفحة تحتوي على محادثات ويمكن قراءتها." : "الاتصال ناجح لكن لا توجد محادثات بعد.",
+      });
+      return {
+        ok: true as const,
+        canSync: true,
+        message: count > 0
+          ? "كل شيء جاهز — يمكن بدء المزامنة."
+          : "الصلاحيات تعمل، لكن الصفحة لا تحتوي على محادثات Messenger حتى الآن.",
+        hint: "",
+        checks,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      checks.push({ key: "messaging_probe", label: "اختبار قراءة رسائل الصفحة", ok: false, detail: msg });
+      let hint = "افتح الصفحة في Meta Business Suite بنفس الحساب وتأكد من صلاحية Messaging؛ ثم أعد المحاولة.";
+      if (/\(#10\)|\(#200\)|permission|OAuthException/i.test(msg)) {
+        hint = "فيسبوك رفض طلب قراءة الرسائل لهذه الصفحة — الحساب ليس لديه دور Messaging عليها. أضفه كأدمن/موظف بصلاحية Messaging ثم أعد المحاولة.";
+      } else if (/expired|invalid|OAuth/i.test(msg)) {
+        hint = "التوكن أو Page Token غير صالح/منتهي — أعد توليد Facebook Access Token واحفظه.";
+      }
+      return fail("فشل اختبار قراءة رسائل الصفحة عبر Graph API.", hint);
+    }
+  });
+
+
+
 
 // ---------- Sync status ----------
 export const getMessengerSyncStatus = createServerFn({ method: "POST" })
