@@ -1033,6 +1033,7 @@ function CookiesModePanel(props: {
   const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
   const activeAccounts = accounts.filter((a) => a.status === "active");
   const canRunWithSelectedAccount = !!selectedAccount && selectedAccount.status === "active";
+  const selectedAccountFailure = selectedAccount ? explainCookiesFailure(selectedAccount.lastError, lang) : "";
 
   useEffect(() => {
     if (!accountId && accounts.length > 0) setAccountId((activeAccounts[0] ?? accounts[0]).id);
@@ -1067,6 +1068,7 @@ function CookiesModePanel(props: {
   const syncJob = syncJobQ.data?.job;
   const listRunning = listJob?.status === "running" || listJob?.status === "pending";
   const syncRunning = syncJob?.status === "running" || syncJob?.status === "pending";
+  const listFailureText = listJob?.status === "failed" ? explainCookiesFailure(listJob.error_message, lang) : "";
 
   useEffect(() => {
     if (listJob?.status === "failed" || syncJob?.status === "failed") accountsQ.refetch();
@@ -1125,7 +1127,7 @@ function CookiesModePanel(props: {
         <div className="mt-4 space-y-4">
           <p className="text-xs text-muted-foreground">
             {lang === "ar"
-              ? "أقل استقراراً من التوكن الرسمي وقد تنقطع جلسة البوت أحياناً، لكنها لا تحتاج موافقة Meta. يجب أن يكون حساب البوت Active."
+              ? "المسار الأساسي هنا: اختر حساب Cookies صالح ثم اضغط جلب الصفحات. إذا رفض فيسبوك الجلسة فلن تظهر صفحات حتى تحدّث Cookies الحساب."
               : "Less stable than the official token and the bot session may drop, but no Meta approval is needed. The bot account must be Active."}
           </p>
 
@@ -1168,7 +1170,9 @@ function CookiesModePanel(props: {
                 ) : (
                   <RefreshCw className="h-4 w-4" />
                 )}
-                {lang === "ar" ? "جلب صفحاتي المدارة" : "Fetch my managed Pages"}
+                {!canRunWithSelectedAccount && selectedAccount
+                  ? lang === "ar" ? "حدّث Cookies أولاً" : "Refresh Cookies first"
+                  : lang === "ar" ? "جلب صفحاتي المدارة" : "Fetch my managed Pages"}
               </Button>
               {listJob && (
                 <Badge variant="outline" className="text-[10px]">
@@ -1182,13 +1186,13 @@ function CookiesModePanel(props: {
           {selectedAccount && !canRunWithSelectedAccount && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>{lang === "ar" ? "لا يمكن جلب الصفحات بهذا الحساب" : "This account cannot fetch Pages"}</AlertTitle>
+              <AlertTitle>{lang === "ar" ? "سبب عدم نجاح الاستخراج" : "Why extraction did not work"}</AlertTitle>
               <AlertDescription className="space-y-2 text-xs">
-                <p>
-                  {selectedAccount.lastError ||
-                    (lang === "ar"
-                      ? "جلسة Cookies لهذا الحساب غير صالحة حالياً."
-                      : "This account's Cookies session is not valid right now.")}
+                <p>{selectedAccountFailure}</p>
+                <p className="font-semibold text-destructive">
+                  {lang === "ar"
+                    ? "ما تم في آخر المحاولات: تم تشغيل الـ worker، وتم إرسال مهمة جلب الصفحات، لكن فيسبوك أعاد رفض الجلسة قبل استخراج أي صفحة. لذلك المشكلة ليست في زر الجلب؛ المشكلة في Cookies الحساب المختار."
+                    : "What happened recently: the worker ran and the Pages job was queued, but Facebook rejected the session before any Page could be extracted. The fetch button is not the issue; the selected account Cookies are."}
                 </p>
                 <Button asChild size="sm" variant="outline">
                   <Link to="/dashboard/facebook/bot">
@@ -1202,9 +1206,9 @@ function CookiesModePanel(props: {
           {listJob?.status === "failed" && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>{lang === "ar" ? "فشل جلب الصفحات" : "Pages fetch failed"}</AlertTitle>
+              <AlertTitle>{lang === "ar" ? "نتيجة آخر محاولة جلب" : "Latest fetch attempt"}</AlertTitle>
               <AlertDescription className="space-y-2 text-xs">
-                <p>{listJob.error_message || (lang === "ar" ? "لم يتمكن البوت من فتح فيسبوك بهذا الحساب." : "The bot could not open Facebook with this account.")}</p>
+                <p>{listFailureText}</p>
                 <Button asChild size="sm" variant="outline">
                   <Link to="/dashboard/facebook/bot">
                     {lang === "ar" ? "إعادة ربط حساب البوت" : "Reconnect bot account"}
