@@ -227,7 +227,7 @@ async function runMessengerSyncCookies({ page, job, report }) {
     return;
   }
 
-  const contacts = await collectConversations(page, maxConversations);
+  const contacts = await collectConversations(page, maxConversations, pageId);
   if (contacts.length === 0) {
     await report({
       status: "failed",
