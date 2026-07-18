@@ -629,7 +629,42 @@ function MessengerContactsPage() {
 
 
 
+      {/* Access check result */}
+      {accessCheck && !selectedFromCookies && (
+        <Alert variant={accessCheck.ok ? "default" : "destructive"} className="relative">
+          {accessCheck.ok ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+          <button
+            type="button"
+            onClick={() => setAccessCheck(null)}
+            className="absolute top-2 end-2 text-muted-foreground hover:text-foreground"
+            aria-label="close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <AlertTitle>
+            {accessCheck.ok
+              ? (lang === "ar" ? "الصفحة جاهزة للمزامنة" : "Page is ready to sync")
+              : (lang === "ar" ? "لا يمكن مزامنة هذه الصفحة الآن" : "Cannot sync this page yet")}
+          </AlertTitle>
+          <AlertDescription>
+            <p className="mb-2">{accessCheck.message}</p>
+            {accessCheck.hint && <p className="mb-2 text-xs opacity-90">{accessCheck.hint}</p>}
+            <ul className="space-y-1 text-xs">
+              {accessCheck.checks.map((c) => (
+                <li key={c.key} className="flex items-start gap-2">
+                  {c.ok
+                    ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 text-green-600 shrink-0" />
+                    : <XCircle className="mt-0.5 h-3.5 w-3.5 text-red-600 shrink-0" />}
+                  <span><span className="font-medium">{c.label}:</span> {c.detail}</span>
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Sync progress banner */}
+
       {syncJob && (
         <Card className="p-3 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
