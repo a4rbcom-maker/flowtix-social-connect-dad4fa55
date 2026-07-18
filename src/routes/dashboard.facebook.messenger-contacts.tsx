@@ -191,6 +191,15 @@ function MessengerContactsPage() {
     missing?: string[];
   } | null>(null);
   const [officialOpen, setOfficialOpen] = useState(false);
+  type AccessCheckResult = {
+    ok: boolean;
+    canSync: boolean;
+    message: string;
+    hint: string;
+    checks: Array<{ key: string; label: string; ok: boolean; detail: string }>;
+  };
+  const [accessCheck, setAccessCheck] = useState<AccessCheckResult | null>(null);
+
 
   // Pages query — decides whether to show picker.
   const pagesQ = useQuery({
