@@ -375,12 +375,13 @@ function MessengerContactsPage() {
 
   useEffect(() => {
     if (!pageId) return;
+    if (selectedFromCookies) return; // Cookies-mode pages sync via the bot, not the official token
     if (autoSyncStarted.has(pageId)) return;
     if (!contactsQ.isSuccess || contactsQ.isFetching || syncM.isPending || syncRunning) return;
     if ((contactsQ.data?.total ?? 0) > 0) return;
     setAutoSyncStarted((prev) => new Set(prev).add(pageId));
     syncM.mutate("initial");
-  }, [autoSyncStarted, contactsQ.data?.total, contactsQ.isFetching, contactsQ.isSuccess, pageId, syncM, syncRunning]);
+  }, [autoSyncStarted, contactsQ.data?.total, contactsQ.isFetching, contactsQ.isSuccess, pageId, selectedFromCookies, syncM, syncRunning]);
 
   const rtl = lang === "ar";
   const scopesText = MESSENGER_REQUIRED_SCOPES.join(",");
