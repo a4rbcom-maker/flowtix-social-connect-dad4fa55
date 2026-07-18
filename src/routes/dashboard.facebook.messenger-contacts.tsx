@@ -204,6 +204,19 @@ function MessengerContactsPage() {
   };
   const [accessCheck, setAccessCheck] = useState<AccessCheckResult | null>(null);
 
+  // Configurable refresh interval (ms) for the contacts list while a sync runs.
+  // 0 = off. Persisted in localStorage so it survives reloads.
+  const [refreshIntervalMs, setRefreshIntervalMs] = useState<number>(() => {
+    if (typeof window === "undefined") return 3000;
+    const raw = window.localStorage.getItem("msgr-refresh-interval-ms");
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n >= 0 ? n : 3000;
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("msgr-refresh-interval-ms", String(refreshIntervalMs));
+  }, [refreshIntervalMs]);
+
 
   // Pages query — decides whether to show picker.
   const pagesQ = useQuery({
@@ -318,8 +331,9 @@ function MessengerContactsPage() {
       }),
     // Live refresh while a sync is running so contacts appear as they arrive.
     refetchInterval: () => {
+      if (refreshIntervalMs <= 0) return false;
       const s = (qc.getQueryData(["msgr-sync-status", pageId]) as { job?: { status?: string } } | undefined)?.job?.status;
-      return s === "running" || s === "queued" ? 3000 : false;
+      return s === "running" || s === "queued" ? refreshIntervalMs : false;
     },
 
   });
@@ -330,8 +344,9 @@ function MessengerContactsPage() {
     enabled: Boolean(pageId),
     queryFn: () => syncStatusFn({ data: { pageId: pageId! } }),
     refetchInterval: (q) => {
+      if (refreshIntervalMs <= 0) return false;
       const s = (q.state.data as { job?: { status?: string } } | undefined)?.job?.status;
-      return s === "running" || s === "queued" ? 3000 : false;
+      return s === "running" || s === "queued" ? refreshIntervalMs : false;
     },
   });
 
@@ -572,6 +587,26 @@ function MessengerContactsPage() {
               {currentPage ? cleanPageName(currentPage.pageName) : (lang === "ar" ? "اختر صفحة" : "Pick a page")}
             </Button>
           )}
+          <Select
+            value={String(refreshIntervalMs)}
+            onValueChange={(v) => setRefreshIntervalMs(Number(v))}
+          >
+            <SelectTrigger
+              className="h-9 w-auto gap-1 text-xs"
+              title={lang === "ar" ? "فترة تحديث قائمة العملاء أثناء المزامنة" : "Contacts refresh interval during sync"}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1000">{lang === "ar" ? "تحديث كل ثانية" : "Every 1s"}</SelectItem>
+              <SelectItem value="3000">{lang === "ar" ? "تحديث كل 3 ثوانٍ" : "Every 3s"}</SelectItem>
+              <SelectItem value="5000">{lang === "ar" ? "تحديث كل 5 ثوانٍ" : "Every 5s"}</SelectItem>
+              <SelectItem value="10000">{lang === "ar" ? "تحديث كل 10 ثوانٍ" : "Every 10s"}</SelectItem>
+              <SelectItem value="30000">{lang === "ar" ? "تحديث كل 30 ثانية" : "Every 30s"}</SelectItem>
+              <SelectItem value="0">{lang === "ar" ? "إيقاف التحديث" : "Off"}</SelectItem>
+            </SelectContent>
+          </Select>
           {!selectedFromCookies && (
             <Button
               variant="outline"
