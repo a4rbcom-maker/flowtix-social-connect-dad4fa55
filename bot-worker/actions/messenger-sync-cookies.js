@@ -74,40 +74,39 @@ function inboxFailureMessage(snapshot, pageId, pageName) {
 }
 
 async function tryOpenInbox(page, pageId, pageName) {
-  // Strictly use Meta Business Suite only. Do NOT fall back to
-  // facebook.com/messages or legacy Page inbox URLs: those can silently open the
-  // personal Messenger inbox and pollute the selected Page with personal chats.
+  // STRICT MODE: only accept when Facebook confirms asset_id === pageId in the URL.
+  // If FB drops the asset_id param → the account does NOT manage this page in
+  // Business Suite; do NOT fall back to name/html heuristics (they matched the
+  // personal inbox before).
   const candidates = [
+    `https://business.facebook.com/latest/inbox/all?asset_id=${encodeURIComponent(pageId)}&mailbox_id=${encodeURIComponent(pageId)}`,
     `https://business.facebook.com/latest/inbox?asset_id=${encodeURIComponent(pageId)}`,
     `https://business.facebook.com/latest/inbox/messenger?asset_id=${encodeURIComponent(pageId)}`,
-    `https://business.facebook.com/latest/inbox/all?asset_id=${encodeURIComponent(pageId)}&mailbox_id=${encodeURIComponent(pageId)}`,
     `https://business.facebook.com/latest/inbox/all?asset_id=${encodeURIComponent(pageId)}`,
-    `https://business.facebook.com/latest/inbox/all?page_id=${encodeURIComponent(pageId)}`,
   ];
   let lastSnapshot = null;
   for (const url of candidates) {
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
       const currentUrl = page.url();
-      // Skip surface-specific login redirects — not a session expiry.
       if (/\/login|checkpoint/i.test(currentUrl)) continue;
       await new Promise((r) => setTimeout(r, 5000));
       const snapshot = await inspectInboxSurface(page, pageId, pageName);
       lastSnapshot = snapshot;
-      const nameMatches = normalizeText(pageName).length > 1 && snapshot.bodyHasPageName;
-      const openedExpectedBusinessInbox =
-        snapshot.onBusinessSuite &&
-        snapshot.inInbox &&
-        (snapshot.selectedAssetMatches || snapshot.htmlHasPageId || nameMatches);
-      // Opening the correct Page inbox is success even if it currently renders 0
-      // visible rows. The next step will report “opened but no conversations”;
-      // this avoids incorrectly telling users we could not open the inbox.
-      if (openedExpectedBusinessInbox) return { ok: true, url: snapshot.url, snapshot };
+      // STRICT: URL must still carry our asset_id after FB's own redirects.
+      if (snapshot.onBusinessSuite && snapshot.inInbox && snapshot.selectedAssetMatches) {
+        return { ok: true, url: snapshot.url, snapshot };
+      }
     } catch (_) {
       /* try next */
     }
   }
-  return { ok: false, snapshot: lastSnapshot, message: inboxFailureMessage(lastSnapshot, pageId, pageName) };
+  // FB never accepted asset_id → the account does not manage this page inside
+  // Business Suite (or the page is not linked to a Business portfolio).
+  const explicit = lastSnapshot && lastSnapshot.onBusinessSuite && !lastSnapshot.selectedAssetMatches
+    ? `الحساب لا يدير هذه الصفحة (${pageId}${pageName ? ` — ${pageName}` : ""}) داخل Meta Business Suite. افتح business.facebook.com بنفس الحساب وتأكد أن الصفحة تظهر كأصل مُدار (Managed Asset) ثم أعد المحاولة.`
+    : inboxFailureMessage(lastSnapshot, pageId, pageName);
+  return { ok: false, snapshot: lastSnapshot, message: explicit };
 }
 
 async function collectConversations(page, maxConversations) {
