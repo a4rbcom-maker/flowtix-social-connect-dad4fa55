@@ -1174,8 +1174,8 @@ function CookiesModePanel(props: {
           <Cookie className="h-4 w-4 text-amber-600" />
           <span className="text-sm font-semibold">
             {lang === "ar"
-              ? "طريقة بديلة: استخدام حساب Cookies للبوت (بدون توكن رسمي)"
-              : "Alternative: use a bot Cookies account (no official token)"}
+              ? "حسابات Cookies المرتبطة"
+              : "Linked Cookies accounts"}
           </span>
         </div>
         <ChevronRight className={`h-4 w-4 transition-transform ${open ? "rotate-90" : ""}`} />
@@ -1185,9 +1185,10 @@ function CookiesModePanel(props: {
         <div className="mt-4 space-y-4">
           <p className="text-xs text-muted-foreground">
             {lang === "ar"
-              ? "المسار الأساسي هنا: اختر حساب Cookies صالح ثم اضغط جلب الصفحات. إذا رفض فيسبوك الجلسة فلن تظهر صفحات حتى تحدّث Cookies الحساب."
-              : "Less stable than the official token and the bot session may drop, but no Meta approval is needed. The bot account must be Active."}
+              ? "اختر حساب Cookies صالح ثم اضغط جلب الصفحات."
+              : "Pick a valid Cookies account then click fetch pages."}
           </p>
+
 
           {accountsQ.isLoading ? (
             <div className="text-xs text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin" /> …</div>
