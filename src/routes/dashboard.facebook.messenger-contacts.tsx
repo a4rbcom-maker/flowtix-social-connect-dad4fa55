@@ -90,6 +90,36 @@ type Contact = {
   tags: string[];
 };
 
+type MessengerPageOption = {
+  pageId: string;
+  pageName: string;
+  avatarUrl: string | null;
+  source: "cookies" | "official";
+};
+
+const FACEBOOK_COOKIES_SESSION_RE =
+  /SESSION_EXPIRED|Facebook rejected|stored session cookies|redirected to login|checkpoint|c_user|cookies?.*(expired|invalid|rejected)|login/i;
+
+function explainCookiesFailure(raw: string | null | undefined, lang: "ar" | "en") {
+  const message = String(raw || "").trim();
+  if (FACEBOOK_COOKIES_SESSION_RE.test(message)) {
+    return lang === "ar"
+      ? "لم تنجح عملية الاستخراج لأن فيسبوك رفض Cookies الحساب عند فتح صفحاتك. البوت يعمل، لكن جلسة الحساب نفسها منتهية أو غير مقبولة. الحل: افتح facebook.com بنفس الحساب، تأكد أنه لا يطلب Login/Checkpoint، صدّر Cookies جديدة من نفس المتصفح، ثم حدّث حساب البوت."
+      : "Extraction failed because Facebook rejected this account's Cookies while opening your Pages. The bot is running, but the Facebook session itself is expired or not accepted. Open facebook.com with the same account, make sure there is no login/checkpoint, export fresh Cookies, then refresh the bot account.";
+  }
+  return message || (lang === "ar" ? "تعذّر تشغيل المهمة بهذا الحساب." : "Could not run this job with this account.");
+}
+
+function mergePageOptions(
+  official: Array<{ pageId: string; pageName: string; avatarUrl: string | null }>,
+  cookies: Array<{ pageId: string; pageName: string; avatarUrl: string | null }>,
+): MessengerPageOption[] {
+  const map = new Map<string, MessengerPageOption>();
+  for (const p of cookies) map.set(p.pageId, { ...p, source: "cookies" });
+  for (const p of official) if (!map.has(p.pageId)) map.set(p.pageId, { ...p, source: "official" });
+  return Array.from(map.values());
+}
+
 function timeAgo(iso: string | null, lang: "ar" | "en"): string {
   if (!iso) return lang === "ar" ? "—" : "—";
   const diff = Date.now() - new Date(iso).getTime();
@@ -136,10 +166,12 @@ function MessengerContactsPage() {
     kind: "missing_scopes" | "no_pages" | "saved";
     missing?: string[];
   } | null>(null);
+  const [officialOpen, setOfficialOpen] = useState(false);
 
   // Pages query — decides whether to show picker.
   const pagesQ = useQuery({
     queryKey: ["msgr-pages", "official-managed-only"],
+    enabled: officialOpen,
     queryFn: async () => {
       try {
         return await listPagesFn();
@@ -160,7 +192,7 @@ function MessengerContactsPage() {
   });
 
   const pages = pagesQ.data ?? [];
-  const noPagesReady = !pagesQ.isLoading && !pagesQ.error && pages.length === 0;
+  const noPagesReady = officialOpen && !pagesQ.isLoading && !pagesQ.error && pages.length === 0;
 
   const saveTokenM = useMutation({
     mutationFn: async (rawToken: string) => {
@@ -219,16 +251,17 @@ function MessengerContactsPage() {
     Array<{ pageId: string; pageName: string; avatarUrl: string | null }>
   >([]);
   const cookiesPageIds = new Set(cookiesPages.map((p) => p.pageId));
+  const allPageOptions = mergePageOptions(pages, cookiesPages);
 
   useEffect(() => {
-    if (!pageId || pagesQ.isLoading) return;
+    if (!officialOpen || !pageId || pagesQ.isLoading) return;
     if (cookiesPageIds.has(pageId)) return; // keep cookies-mode selection
     if (!pages.some((p) => p.pageId === pageId)) {
       setPageId(null);
       setSelected(new Set());
       setPage(1);
     }
-  }, [pageId, pages, pagesQ.isLoading, cookiesPageIds]);
+  }, [officialOpen, pageId, pages, pagesQ.isLoading, cookiesPageIds]);
 
 
   const contactsQ = useQuery({
@@ -325,7 +358,8 @@ function MessengerContactsPage() {
     setSelected(n);
   };
 
-  const currentPage = pages.find((p) => p.pageId === pageId);
+  const currentPage = allPageOptions.find((p) => p.pageId === pageId);
+  const selectedFromCookies = currentPage?.source === "cookies";
   const syncJob = statusQ.data?.job;
   const syncRunning = syncJob?.status === "running" || syncJob?.status === "queued";
 
@@ -459,24 +493,26 @@ function MessengerContactsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {pages.length > 0 && (
+          {allPageOptions.length > 0 && (
             <Button variant="outline" size="sm" onClick={() => setShowPagePicker(true)}>
               <Users className="h-4 w-4" />
               {currentPage?.pageName ?? (lang === "ar" ? "اختر صفحة" : "Pick a page")}
             </Button>
           )}
-          <Button
-            size="sm"
-            disabled={!pageId || syncM.isPending || syncRunning}
-            onClick={() => syncM.mutate(total > 0 ? "incremental" : "initial")}
-          >
-            {syncM.isPending || syncRunning ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            {lang === "ar" ? "جلب/تحديث العملاء" : "Import/update contacts"}
-          </Button>
+          {!selectedFromCookies && (
+            <Button
+              size="sm"
+              disabled={!pageId || syncM.isPending || syncRunning}
+              onClick={() => syncM.mutate(total > 0 ? "incremental" : "initial")}
+            >
+              {syncM.isPending || syncRunning ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {lang === "ar" ? "جلب/تحديث العملاء" : "Import/update contacts"}
+            </Button>
+          )}
         </div>
       </header>
 
@@ -493,9 +529,30 @@ function MessengerContactsPage() {
         }}
       />
 
+      <Card className="border-border/70 bg-muted/20 p-3">
+        <button
+          type="button"
+          onClick={() => setOfficialOpen((v) => !v)}
+          className="flex w-full items-center justify-between gap-3 text-start"
+        >
+          <span className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+            <KeyRound className="h-4 w-4" />
+            {lang === "ar" ? "التوكن الرسمي — اختياري ومغلق حتى لا يخلط مع Cookies" : "Official token — optional and closed to avoid mixing with Cookies"}
+          </span>
+          <ChevronRight className={`h-4 w-4 transition-transform ${officialOpen ? "rotate-90" : ""}`} />
+        </button>
+        {officialOpen && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {lang === "ar"
+              ? "افتحه فقط إذا أردت استخدام Access Token بدل حساب Cookies. خطأ التوكن القديم لن يمنع مسار Cookies."
+              : "Open this only if you want to use an Access Token instead of Cookies. Old token errors do not block Cookies mode."}
+          </p>
+        )}
+      </Card>
+
 
       {/* Gate: loading pages */}
-      {pagesQ.isLoading && (
+      {officialOpen && pagesQ.isLoading && (
         <Card className="p-8 text-center text-sm text-muted-foreground">
           <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
           {lang === "ar" ? "جاري تحميل صفحاتك..." : "Loading your pages..."}
@@ -503,7 +560,7 @@ function MessengerContactsPage() {
       )}
 
       {/* Gate: page loading failed */}
-      {!pagesQ.isLoading && pagesQ.error && (
+      {officialOpen && !pagesQ.isLoading && pagesQ.error && (
         <Card className="p-8 text-center">
           <AlertCircle className="mx-auto mb-3 h-10 w-10 text-destructive" />
           <h2 className="mb-1 text-lg font-semibold">
@@ -541,7 +598,7 @@ function MessengerContactsPage() {
       )}
 
       {/* Gate: pages exist but none selected */}
-      {!pagesQ.isLoading && pages.length > 0 && !pageId && (
+      {officialOpen && !pagesQ.isLoading && pages.length > 0 && !pageId && (
         <Card className="p-8 text-center">
           <MessageCircle className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
           <h2 className="mb-1 text-lg font-semibold">
@@ -816,7 +873,7 @@ function MessengerContactsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 overflow-y-auto flex-1 pr-1">
-            {pages.map((p) => (
+            {allPageOptions.map((p) => (
               <button
                 key={p.pageId}
                 onClick={() => {
@@ -836,7 +893,9 @@ function MessengerContactsPage() {
                   <div className="font-medium">{p.pageName}</div>
                   <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                     <Badge variant="secondary" className="text-[10px]">
-                      {lang === "ar" ? "صفحة مُدارة" : "Managed Page"}
+                      {p.source === "cookies"
+                        ? lang === "ar" ? "من Cookies" : "From Cookies"
+                        : lang === "ar" ? "من التوكن" : "From token"}
                     </Badge>
                     <span>{p.pageId}</span>
                   </div>
@@ -977,6 +1036,7 @@ function CookiesModePanel(props: {
   const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
   const activeAccounts = accounts.filter((a) => a.status === "active");
   const canRunWithSelectedAccount = !!selectedAccount && selectedAccount.status === "active";
+  const selectedAccountFailure = selectedAccount ? explainCookiesFailure(selectedAccount.lastError, lang) : "";
 
   useEffect(() => {
     if (!accountId && accounts.length > 0) setAccountId((activeAccounts[0] ?? accounts[0]).id);
@@ -1011,6 +1071,7 @@ function CookiesModePanel(props: {
   const syncJob = syncJobQ.data?.job;
   const listRunning = listJob?.status === "running" || listJob?.status === "pending";
   const syncRunning = syncJob?.status === "running" || syncJob?.status === "pending";
+  const listFailureText = listJob?.status === "failed" ? explainCookiesFailure(listJob.error_message, lang) : "";
 
   useEffect(() => {
     if (listJob?.status === "failed" || syncJob?.status === "failed") accountsQ.refetch();
@@ -1069,7 +1130,7 @@ function CookiesModePanel(props: {
         <div className="mt-4 space-y-4">
           <p className="text-xs text-muted-foreground">
             {lang === "ar"
-              ? "أقل استقراراً من التوكن الرسمي وقد تنقطع جلسة البوت أحياناً، لكنها لا تحتاج موافقة Meta. يجب أن يكون حساب البوت Active."
+              ? "المسار الأساسي هنا: اختر حساب Cookies صالح ثم اضغط جلب الصفحات. إذا رفض فيسبوك الجلسة فلن تظهر صفحات حتى تحدّث Cookies الحساب."
               : "Less stable than the official token and the bot session may drop, but no Meta approval is needed. The bot account must be Active."}
           </p>
 
@@ -1112,7 +1173,9 @@ function CookiesModePanel(props: {
                 ) : (
                   <RefreshCw className="h-4 w-4" />
                 )}
-                {lang === "ar" ? "جلب صفحاتي المدارة" : "Fetch my managed Pages"}
+                {!canRunWithSelectedAccount && selectedAccount
+                  ? lang === "ar" ? "حدّث Cookies أولاً" : "Refresh Cookies first"
+                  : lang === "ar" ? "جلب صفحاتي المدارة" : "Fetch my managed Pages"}
               </Button>
               {listJob && (
                 <Badge variant="outline" className="text-[10px]">
@@ -1126,13 +1189,13 @@ function CookiesModePanel(props: {
           {selectedAccount && !canRunWithSelectedAccount && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>{lang === "ar" ? "لا يمكن جلب الصفحات بهذا الحساب" : "This account cannot fetch Pages"}</AlertTitle>
+              <AlertTitle>{lang === "ar" ? "سبب عدم نجاح الاستخراج" : "Why extraction did not work"}</AlertTitle>
               <AlertDescription className="space-y-2 text-xs">
-                <p>
-                  {selectedAccount.lastError ||
-                    (lang === "ar"
-                      ? "جلسة Cookies لهذا الحساب غير صالحة حالياً."
-                      : "This account's Cookies session is not valid right now.")}
+                <p>{selectedAccountFailure}</p>
+                <p className="font-semibold text-destructive">
+                  {lang === "ar"
+                    ? "ما تم في آخر المحاولات: تم تشغيل الـ worker، وتم إرسال مهمة جلب الصفحات، لكن فيسبوك أعاد رفض الجلسة قبل استخراج أي صفحة. لذلك المشكلة ليست في زر الجلب؛ المشكلة في Cookies الحساب المختار."
+                    : "What happened recently: the worker ran and the Pages job was queued, but Facebook rejected the session before any Page could be extracted. The fetch button is not the issue; the selected account Cookies are."}
                 </p>
                 <Button asChild size="sm" variant="outline">
                   <Link to="/dashboard/facebook/bot">
@@ -1146,9 +1209,9 @@ function CookiesModePanel(props: {
           {listJob?.status === "failed" && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>{lang === "ar" ? "فشل جلب الصفحات" : "Pages fetch failed"}</AlertTitle>
+              <AlertTitle>{lang === "ar" ? "نتيجة آخر محاولة جلب" : "Latest fetch attempt"}</AlertTitle>
               <AlertDescription className="space-y-2 text-xs">
-                <p>{listJob.error_message || (lang === "ar" ? "لم يتمكن البوت من فتح فيسبوك بهذا الحساب." : "The bot could not open Facebook with this account.")}</p>
+                <p>{listFailureText}</p>
                 <Button asChild size="sm" variant="outline">
                   <Link to="/dashboard/facebook/bot">
                     {lang === "ar" ? "إعادة ربط حساب البوت" : "Reconnect bot account"}
