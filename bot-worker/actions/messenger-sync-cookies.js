@@ -16,7 +16,72 @@ async function verifyFacebookSession(page) {
   }
 }
 
-async function tryOpenInbox(page, pageId) {
+function normalizeText(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+async function inspectInboxSurface(page, expectedPageId, expectedPageName) {
+  return page.evaluate(({ expectedPageId, expectedPageName }) => {
+    const current = new URL(window.location.href);
+    const params = new URLSearchParams(current.search);
+    const selectedAsset = params.get("asset_id") || params.get("mailbox_id") || params.get("page_id") || params.get("selected_asset_id") || "";
+    const onBusinessSuite = /(^|\.)business\.facebook\.com$/i.test(current.hostname);
+    const inInbox = /\/latest\/inbox/i.test(current.pathname);
+    const title = document.title || "";
+    const bodyText = (document.body?.innerText || "").replace(/\s+/g, " ").slice(0, 4000);
+    const html = document.documentElement.innerHTML || "";
+    const expectedName = String(expectedPageName || "").trim().toLowerCase();
+    const bodyLower = bodyText.toLowerCase();
+    const htmlHasPageId = html.includes(String(expectedPageId));
+    const bodyHasPageName = expectedName.length > 1 && bodyLower.includes(expectedName);
+    const hasThreads = Boolean(
+      document.querySelector(
+        '[role="row"], [role="listitem"], a[href*="thread"], a[href*="selected_item_id"], a[href*="thread_id"], a[href*="participant_id"]',
+      ),
+    );
+    const noAccess = /you don.?t have access|not available|permission|ليس لديك|غير متاح|صلاحية|إذن|لا يمكنك الوصول/i.test(bodyText);
+    const loginLike = /log in|login|checkpoint|تسجيل الدخول|تحقق/i.test(bodyText) || /\/login|checkpoint/i.test(current.href);
+
+    return {
+      url: current.href,
+      title,
+      selectedAsset,
+      onBusinessSuite,
+      inInbox,
+      selectedAssetMatches: selectedAsset === String(expectedPageId),
+      htmlHasPageId,
+      bodyHasPageName,
+      hasThreads,
+      noAccess,
+      loginLike,
+    };
+  }, { expectedPageId: String(expectedPageId), expectedPageName: expectedPageName || "" });
+}
+
+function inboxFailureMessage(snapshot, pageId, pageName) {
+  const safePageName = pageName ? ` (${pageName})` : "";
+  if (!snapshot) {
+    return `تعذّر فتح صندوق واردات الصفحة ${pageId}${safePageName}. لم نستطع قراءة حالة صفحة Meta Business Suite بعد فتحها.`;
+  }
+  if (snapshot.loginLike) {
+    return `فيسبوك طلب تسجيل دخول/تحقق عند فتح Meta Business Suite للصفحة ${pageId}${safePageName}. جلسة Facebook الأساسية تعمل، لكن Business Suite رفضها؛ افتح business.facebook.com بنفس الحساب وتأكد أنه لا يطلب Login أو Checkpoint ثم حدّث Cookies.`;
+  }
+  if (snapshot.noAccess) {
+    return `تم فتح Meta Business Suite لكن الحساب لا يملك صلاحية رسائل لهذه الصفحة ${pageId}${safePageName}. أضف حساب البوت كمسؤول/محرر للصفحة مع صلاحية Messaging ثم حدّث Cookies.`;
+  }
+  if (!snapshot.onBusinessSuite) {
+    return `فيسبوك حوّل البوت خارج Meta Business Suite أثناء فتح رسائل الصفحة ${pageId}${safePageName}. لم نحفظ أي أسماء حتى لا نخلطها مع الحساب الشخصي.`;
+  }
+  if (!snapshot.inInbox) {
+    return `تم دخول Business Suite لكن لم يتم فتح شاشة Inbox للصفحة ${pageId}${safePageName}. افتح Inbox الصفحة يدوياً مرة واحدة من نفس الحساب ثم أعد المحاولة.`;
+  }
+  return `فتحنا Business Inbox لكن لم نستطع تأكيد أنه تابع للصفحة المختارة ${pageId}${safePageName}. لم نحفظ أي أسماء حتى لا نخلطها مع رسائل صفحة أخرى أو الحساب الشخصي. آخر تحقق: asset=${snapshot.selectedAsset || "غير ظاهر"}.`;
+}
+
+async function tryOpenInbox(page, pageId, pageName) {
   // Strictly use Meta Business Suite only. Do NOT fall back to
   // facebook.com/messages or legacy Page inbox URLs: those can silently open the
   // personal Messenger inbox and pollute the selected Page with personal chats.
@@ -25,36 +90,32 @@ async function tryOpenInbox(page, pageId) {
     `https://business.facebook.com/latest/inbox/messenger?asset_id=${encodeURIComponent(pageId)}`,
     `https://business.facebook.com/latest/inbox/all?asset_id=${encodeURIComponent(pageId)}&mailbox_id=${encodeURIComponent(pageId)}`,
     `https://business.facebook.com/latest/inbox/all?asset_id=${encodeURIComponent(pageId)}`,
+    `https://business.facebook.com/latest/inbox/all?page_id=${encodeURIComponent(pageId)}`,
   ];
+  let lastSnapshot = null;
   for (const url of candidates) {
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
       const currentUrl = page.url();
       // Skip surface-specific login redirects — not a session expiry.
       if (/\/login|checkpoint/i.test(currentUrl)) continue;
-      const openedExpectedBusinessInbox = await page.evaluate((expectedPageId) => {
-        const current = new URL(window.location.href);
-        const onBusinessSuite = /(^|\.)business\.facebook\.com$/i.test(current.hostname);
-        const inInbox = /\/latest\/inbox/i.test(current.pathname);
-        const params = new URLSearchParams(current.search);
-        const selectedAsset = params.get("asset_id") || params.get("mailbox_id") || params.get("page_id") || "";
-        return onBusinessSuite && inInbox && selectedAsset === String(expectedPageId);
-      }, String(pageId));
-      if (!openedExpectedBusinessInbox) continue;
       await new Promise((r) => setTimeout(r, 5000));
-      const hasThreads = await page.evaluate(() =>
-        Boolean(
-          document.querySelector(
-            '[role="row"], [role="listitem"], a[href*="thread"], a[href*="selected_item_id"], a[href*="thread_id"]',
-          ),
-        ),
-      );
-      if (hasThreads) return { ok: true, url: currentUrl };
+      const snapshot = await inspectInboxSurface(page, pageId, pageName);
+      lastSnapshot = snapshot;
+      const nameMatches = normalizeText(pageName).length > 1 && snapshot.bodyHasPageName;
+      const openedExpectedBusinessInbox =
+        snapshot.onBusinessSuite &&
+        snapshot.inInbox &&
+        (snapshot.selectedAssetMatches || snapshot.htmlHasPageId || nameMatches);
+      // Opening the correct Page inbox is success even if it currently renders 0
+      // visible rows. The next step will report “opened but no conversations”;
+      // this avoids incorrectly telling users we could not open the inbox.
+      if (openedExpectedBusinessInbox) return { ok: true, url: snapshot.url, snapshot };
     } catch (_) {
       /* try next */
     }
   }
-  return { ok: false };
+  return { ok: false, snapshot: lastSnapshot, message: inboxFailureMessage(lastSnapshot, pageId, pageName) };
 }
 
 async function collectConversations(page, maxConversations) {
@@ -153,12 +214,12 @@ async function runMessengerSyncCookies({ page, job, report }) {
   }
 
   // 2) Try to open an inbox surface. A failure here is NOT a session expiry.
-  const opened = await tryOpenInbox(page, pageId);
+  const opened = await tryOpenInbox(page, pageId, pageName);
   if (!opened.ok) {
     await report({
       status: "failed",
-      errorMessage:
-        "تعذّر فتح صندوق واردات الصفحة داخل Meta Business Suite بالمعرّف المحدد. لم يتم جلب أي أسماء حتى لا نخلطها مع رسائل الحساب الشخصي. تأكّد أن حساب البوت مسؤول على هذه الصفحة ولديه صلاحية إدارة الرسائل.",
+      errorMessage: opened.message ||
+        "تعذّر فتح صندوق واردات الصفحة داخل Meta Business Suite. لم يتم جلب أي أسماء حتى لا نخلطها مع رسائل الحساب الشخصي.",
     });
     return;
   }
