@@ -79,7 +79,7 @@ export const queueMessengerCookiesSync = createServerFn({ method: "POST" })
     z
       .object({
         accountId: z.string().uuid(),
-        pageId: z.string().trim().min(3).max(100),
+        pageId: z.string().trim().regex(/^\d{5,}$/, "اختر الصفحة مرة أخرى بعد جلب الصفحات؛ يجب أن يكون معرّف الصفحة رقميًا حتى لا يفتح Inbox خاطئ."),
         pageName: z.string().trim().max(200).optional().nullable(),
         maxConversations: z.number().int().min(50).max(10000).default(2000),
       })
@@ -195,15 +195,24 @@ export const getBotMessengerPages = createServerFn({ method: "POST" })
       .eq("status", "success");
     if (error) throw new Error(error.message);
 
+    const cleanPageName = (name: string) =>
+      name
+        .replace(/^\s*صورة\s+ملف\s+/u, "")
+        .replace(/\s+الشخصية?$/u, "")
+        .replace(/^\s*Profile\s+picture\s+of\s+/iu, "")
+        .replace(/'s\s+profile\s+picture$/iu, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
     const pages = (results ?? [])
       .map((r) => {
         const d = (r.data ?? {}) as { id?: string; name?: string; avatar_url?: string; avatarUrl?: string };
         const id = String(d.id ?? r.target ?? "").trim();
-        const name = String(d.name ?? "").trim();
+        const name = cleanPageName(String(d.name ?? ""));
         const avatar = String(d.avatar_url ?? d.avatarUrl ?? "").trim() || null;
         return id && name ? { pageId: id, pageName: name, avatarUrl: avatar } : null;
       })
-      .filter((p): p is { pageId: string; pageName: string; avatarUrl: string | null } => !!p);
+      .filter((p): p is { pageId: string; pageName: string; avatarUrl: string | null } => !!p && /^\d{5,}$/.test(p.pageId));
 
     return { job, pages };
   });
@@ -220,19 +229,24 @@ export const getBotMessengerJob = createServerFn({ method: "POST" })
           "messenger_sync_cookies",
           "messenger_send_cookies",
         ]),
+        pageId: z.string().trim().regex(/^\d{5,}$/).optional(),
       })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const { data: job } = await supabase
+    let query = supabase
       .from("fb_jobs")
       .select(
-        "id, status, progress, total_items, processed_items, error_message, created_at, completed_at",
+        "id, status, progress, total_items, processed_items, error_message, created_at, completed_at, payload",
       )
       .eq("user_id", userId)
       .eq("account_id", data.accountId)
-      .eq("job_type", data.jobType)
+      .eq("job_type", data.jobType);
+    if (data.pageId && data.jobType === "messenger_sync_cookies") {
+      query = query.eq("payload->>pageId", data.pageId);
+    }
+    const { data: job } = await query
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();

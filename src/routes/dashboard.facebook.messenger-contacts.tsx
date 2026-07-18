@@ -143,6 +143,12 @@ function timeAgo(iso: string | null, lang: "ar" | "en"): string {
   return new Date(iso).toLocaleDateString();
 }
 
+function isStaleBotJob(job: { status?: string | null; created_at?: string | null } | null | undefined): boolean {
+  if (!job || (job.status !== "running" && job.status !== "pending")) return false;
+  const createdAt = job.created_at ? new Date(job.created_at).getTime() : 0;
+  return createdAt > 0 && Date.now() - createdAt > 12 * 60 * 1000;
+}
+
 function MessengerContactsPage() {
   const { lang } = useI18n();
   const qc = useQueryClient();
@@ -961,8 +967,10 @@ function CookiesModePanel(props: {
   onImportedContacts: (p: { pageId: string; pageName: string; avatarUrl: string | null }) => void;
 }) {
   const { lang, onImportedContacts } = props;
+  const qc = useQueryClient();
   const [open, setOpen] = useState(true);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [activeSyncPageId, setActiveSyncPageId] = useState<string | null>(null);
 
   const listAccountsFn = useServerFn(listBotAccountsForMessenger);
   const listPagesFn = useServerFn(queueMessengerListPages);
@@ -1000,9 +1008,9 @@ function CookiesModePanel(props: {
     queryFn: () => getPagesFn({ data: { accountId: accountId! } }),
   });
   const syncJobQ = useQuery({
-    queryKey: ["cookies-sync-job", accountId],
-    enabled: open && !!accountId,
-    queryFn: () => getJobFn({ data: { accountId: accountId!, jobType: "messenger_sync_cookies" } }),
+    queryKey: ["cookies-sync-job", accountId, activeSyncPageId],
+    enabled: open && !!accountId && !!activeSyncPageId,
+    queryFn: () => getJobFn({ data: { accountId: accountId!, jobType: "messenger_sync_cookies", pageId: activeSyncPageId! } }),
     refetchInterval: (q) => {
       const s = (q.state.data as { job?: { status?: string } } | undefined)?.job?.status;
       return s === "running" || s === "pending" ? 3000 : false;
@@ -1012,9 +1020,12 @@ function CookiesModePanel(props: {
   const pages = pagesResultQ.data?.pages ?? [];
   const listJob = listPagesJobQ.data?.job;
   const syncJob = syncJobQ.data?.job;
-  const listRunning = listJob?.status === "running" || listJob?.status === "pending";
-  const syncRunning = syncJob?.status === "running" || syncJob?.status === "pending";
+  const listStale = isStaleBotJob(listJob);
+  const syncStale = isStaleBotJob(syncJob);
+  const listRunning = !listStale && (listJob?.status === "running" || listJob?.status === "pending");
+  const syncRunning = !syncStale && (syncJob?.status === "running" || syncJob?.status === "pending");
   const listFailureText = listJob?.status === "failed" ? explainCookiesFailure(listJob.error_message, lang) : "";
+  const syncFailureText = syncJob?.status === "failed" ? explainCookiesFailure(syncJob.error_message, lang) : "";
 
   useEffect(() => {
     if (listJob?.status === "failed" || syncJob?.status === "failed") accountsQ.refetch();
@@ -1034,6 +1045,8 @@ function CookiesModePanel(props: {
       syncCookiesFn({ data: { accountId: accountId!, pageId: p.pageId, pageName: p.pageName } }),
     onSuccess: (_d, vars) => {
       setLastSyncedPage(vars);
+      setActiveSyncPageId(vars.pageId);
+      onImportedContacts({ pageId: vars.pageId, pageName: vars.pageName, avatarUrl: null });
       toast.success(lang === "ar" ? "بدأت مزامنة المحادثات — سيتم فتح قائمة العملاء تلقائياً عند الانتهاء" : "Sync started — contacts will open automatically");
       syncJobQ.refetch();
     },
@@ -1044,9 +1057,10 @@ function CookiesModePanel(props: {
   useEffect(() => {
     if (syncJob?.status === "completed" && lastSyncedPage) {
       onImportedContacts({ pageId: lastSyncedPage.pageId, pageName: lastSyncedPage.pageName, avatarUrl: null });
+      qc.invalidateQueries({ queryKey: ["msgr-contacts", lastSyncedPage.pageId] });
       setLastSyncedPage(null);
     }
-  }, [syncJob?.status, lastSyncedPage, onImportedContacts]);
+  }, [syncJob?.status, lastSyncedPage, onImportedContacts, qc]);
 
 
 
@@ -1157,6 +1171,7 @@ function CookiesModePanel(props: {
                   <Badge variant="outline" className="text-[10px]">
                     {lang === "ar" ? "حالة الجلب" : "List job"}: {listJob.status}
                     {typeof listJob.progress === "number" ? ` — ${listJob.progress}%` : ""}
+                    {listStale ? (lang === "ar" ? " — متوقفة" : " — stale") : ""}
                   </Badge>
                 )}
               </div>
@@ -1188,6 +1203,18 @@ function CookiesModePanel(props: {
             </Alert>
           )}
 
+          {listStale && canRunWithSelectedAccount && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>{lang === "ar" ? "مهمة جلب الصفحات توقفت" : "Page fetch stalled"}</AlertTitle>
+              <AlertDescription className="text-xs">
+                {lang === "ar"
+                  ? "لن نترك الواجهة على جاري الجلب. اضغط جلب صفحاتي المدارة مرة أخرى؛ إذا تكررت فالعامل على السيرفر يحتاج إعادة تشغيل."
+                  : "The UI will not stay loading forever. Try fetching Pages again; if it repeats, restart the server worker."}
+              </AlertDescription>
+            </Alert>
+          )}
+
           {pages.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-semibold text-foreground">
@@ -1204,6 +1231,7 @@ function CookiesModePanel(props: {
                       key={p.pageId}
                       disabled={!accountId || startSyncM.isPending || syncRunning}
                       onClick={() => {
+                        setActiveSyncPageId(p.pageId);
                         setLastSyncedPage({ pageId: p.pageId, pageName: p.pageName });
                         startSyncM.mutate({ pageId: p.pageId, pageName: p.pageName });
                       }}
@@ -1234,10 +1262,11 @@ function CookiesModePanel(props: {
                 <div className="rounded-lg border border-border bg-background p-2 text-xs">
                   {lang === "ar" ? "آخر مزامنة عملاء" : "Last sync"}: {syncJob.status}
                   {typeof syncJob.progress === "number" ? ` — ${syncJob.progress}%` : ""}
+                  {syncStale ? (lang === "ar" ? " — متوقفة" : " — stale") : ""}
                   {typeof syncJob.processed_items === "number"
                     ? ` (${syncJob.processed_items}/${syncJob.total_items ?? "?"})`
                     : ""}
-                  {syncJob.error_message ? ` — ${syncJob.error_message}` : ""}
+                  {syncJob.error_message ? ` — ${syncFailureText}` : ""}
                 </div>
               )}
             </div>
