@@ -324,9 +324,36 @@ function MessengerContactsPage() {
     },
   });
 
+  const checkM = useMutation({
+    mutationFn: () => checkAccessFn({ data: { pageId: pageId! } }) as Promise<AccessCheckResult>,
+    onSuccess: (res) => {
+      setAccessCheck(res);
+      if (res.ok) toast.success(res.message);
+      else toast.error(res.message);
+    },
+    onError: (e: Error) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      setAccessCheck({
+        ok: false,
+        canSync: false,
+        message: lang === "ar" ? "فشل فحص الصلاحية" : "Access check failed",
+        hint: msg,
+        checks: [],
+      });
+      toast.error(msg);
+    },
+  });
+
   const syncM = useMutation({
-    mutationFn: (mode: "initial" | "incremental") =>
-      startSyncFn({ data: { pageId: pageId!, mode, maxConversations: mode === "initial" ? 10000 : 300 } }),
+    mutationFn: async (mode: "initial" | "incremental") => {
+      // Pre-sync automatic access check — abort with a clear message on failure
+      const probe = (await checkAccessFn({ data: { pageId: pageId! } })) as AccessCheckResult;
+      setAccessCheck(probe);
+      if (!probe.canSync) {
+        throw new Error(`${probe.message}${probe.hint ? ` — ${probe.hint}` : ""}`);
+      }
+      return startSyncFn({ data: { pageId: pageId!, mode, maxConversations: mode === "initial" ? 10000 : 300 } });
+    },
     onSuccess: (res) => {
       toast.success(
         lang === "ar"
@@ -338,6 +365,7 @@ function MessengerContactsPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
 
   const broadcastM = useMutation({
     mutationFn: (input: { text: string; tag: (typeof MESSAGE_TAGS)[number] }) =>
