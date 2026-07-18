@@ -60,95 +60,96 @@ async function resolveNumericPageId(page, candidate) {
   if (/^\d{5,}$/.test(idOrSlug)) return idOrSlug;
   if (!idOrSlug || isReservedFacebookPath(idOrSlug)) return null;
 
-  const urls = [];
-  if (candidate.href) {
-    try {
-      urls.push(new URL(candidate.href, "https://www.facebook.com").href);
-    } catch (_) {
-      // ignore malformed href
-    }
-  }
-  urls.push(
-    `https://www.facebook.com/${encodeURIComponent(idOrSlug)}`,
-    `https://www.facebook.com/${encodeURIComponent(idOrSlug)}/about_profile_transparency`,
-    `https://www.facebook.com/${encodeURIComponent(idOrSlug)}/about`,
-  );
+  // Only try ONE URL per candidate — the direct page URL. The previous 4-URL
+  // fan-out multiplied resolution time by ~4× for every slug and was the
+  // biggest source of "why is fetching pages so slow?".
+  const target = candidate.href
+    ? (() => {
+        try { return new URL(candidate.href, "https://www.facebook.com").href; }
+        catch (_) { return `https://www.facebook.com/${encodeURIComponent(idOrSlug)}`; }
+      })()
+    : `https://www.facebook.com/${encodeURIComponent(idOrSlug)}`;
 
-  const uniqueUrls = Array.from(new Set(urls));
-  for (const url of uniqueUrls) {
-    try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 });
-      await new Promise((r) => setTimeout(r, 2000));
-      if (/\/login|checkpoint/i.test(page.url())) continue;
-
-      const found = await page.evaluate(() => {
-        const html = document.documentElement.innerHTML || "";
-        const patterns = [
-          /"pageID"\s*:\s*"?(\d{5,})"?/,
-          /"page_id"\s*:\s*"?(\d{5,})"?/,
-          /"profile_id"\s*:\s*"?(\d{5,})"?/,
-          /"entity_id"\s*:\s*"?(\d{5,})"?/,
-          /"delegate_page_id"\s*:\s*"?(\d{5,})"?/,
-          /"associated_page_id"\s*:\s*"?(\d{5,})"?/,
-          /fb:\/\/page\/\?id=(\d{5,})/,
-          /[?&](?:page_id|profile_id|id)=(\d{5,})/,
-        ];
-        for (const re of patterns) {
-          const m = html.match(re);
-          if (m?.[1]) return m[1];
-        }
-        const metas = Array.from(document.querySelectorAll("meta[content]")).map((m) => m.getAttribute("content") || "");
-        for (const content of metas) {
-          const m = content.match(/(?:fb:\/\/page\/\?id=|[?&](?:page_id|profile_id|id)=)(\d{5,})/);
-          if (m?.[1]) return m[1];
-        }
-        return null;
-      });
-      if (found && /^\d{5,}$/.test(found)) return found;
-    } catch (_) {
-      // try next URL
-    }
+  try {
+    await page.goto(target, { waitUntil: "domcontentloaded", timeout: 20_000 });
+    if (/\/login|checkpoint/i.test(page.url())) return null;
+    const found = await page.evaluate(() => {
+      const html = document.documentElement.innerHTML || "";
+      const patterns = [
+        /"pageID"\s*:\s*"?(\d{5,})"?/,
+        /"page_id"\s*:\s*"?(\d{5,})"?/,
+        /"profile_id"\s*:\s*"?(\d{5,})"?/,
+        /"entity_id"\s*:\s*"?(\d{5,})"?/,
+        /fb:\/\/page\/\?id=(\d{5,})/,
+        /[?&](?:page_id|profile_id|id)=(\d{5,})/,
+      ];
+      for (const re of patterns) {
+        const m = html.match(re);
+        if (m?.[1]) return m[1];
+      }
+      return null;
+    });
+    if (found && /^\d{5,}$/.test(found)) return found;
+  } catch (_) {
+    // give up on this candidate
   }
   return null;
 }
 
 async function runMessengerListPages({ page, job, report }) {
+  // Only hit the primary "Your Pages" URL first. Fall back to the other URLs
+  // ONLY if the first one returned nothing. Previously we always visited all
+  // three URLs even when the first one already had every page.
   const urls = [
     "https://www.facebook.com/pages/?category=your_pages",
     "https://www.facebook.com/bookmarks/pages",
-    "https://www.facebook.com/me/allactivity?category_key=pagesadmin",
   ];
   let all = [];
   for (const url of urls) {
     try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 });
-      await new Promise((r) => setTimeout(r, 4000));
-      // Scroll to force lazy list to render.
-      for (let i = 0; i < 4; i += 1) {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+      await new Promise((r) => setTimeout(r, 2500));
+      for (let i = 0; i < 2; i += 1) {
         await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-        await new Promise((r) => setTimeout(r, 1500));
+        await new Promise((r) => setTimeout(r, 900));
       }
       const found = await extractPageCandidatesFromDom(page);
       if (found.length) all = all.concat(found);
-      if (all.length >= 5) break;
+      if (all.length >= 3) break; // enough — stop hitting more URLs
     } catch (e) {
       console.warn("[messenger_list_pages] nav failed", url, e.message);
     }
   }
-  // De-dup candidates, then resolve slugs to numeric Page IDs.
-  const candidatesMap = new Map();
+
+  // Split candidates: direct numeric IDs are trusted immediately (no extra
+  // navigation). Slug-only candidates need resolution and are capped tightly.
+  const directs = [];
+  const slugs = [];
+  const seenKeys = new Set();
   for (const p of all) {
     const key = String(p.idOrSlug || "").trim();
-    if (key && !candidatesMap.has(key)) candidatesMap.set(key, p);
+    if (!key || seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    if (/^\d{5,}$/.test(key)) directs.push(p);
+    else if (!isReservedFacebookPath(key)) slugs.push(p);
   }
 
   const pagesMap = new Map();
-  const candidates = Array.from(candidatesMap.values()).slice(0, 40);
+  for (const c of directs) {
+    const name = cleanPageName(c.name);
+    if (!name || name.length < 2) continue;
+    pagesMap.set(c.idOrSlug, { id: c.idOrSlug, name, avatar_url: c.avatar_url || null });
+  }
+  await report({ progress: 40 });
+
+  // Cap slug resolution at 15 candidates to keep the job short.
+  const slugCap = 15;
+  const candidates = slugs.slice(0, slugCap);
   let checked = 0;
   for (const candidate of candidates) {
     checked += 1;
     const numericId = await resolveNumericPageId(page, candidate);
-    await report({ progress: Math.min(90, Math.round((checked / Math.max(candidates.length, 1)) * 90)) });
+    await report({ progress: Math.min(90, 40 + Math.round((checked / Math.max(candidates.length, 1)) * 50)) });
     if (!numericId) continue;
     const name = cleanPageName(candidate.name);
     if (!name || name.length < 2) continue;
@@ -157,6 +158,7 @@ async function runMessengerListPages({ page, job, report }) {
     }
   }
   const pages = Array.from(pagesMap.values());
+
 
   if (pages.length === 0) {
     await report({ status: "failed", errorMessage: "لم يتم العثور على صفحات مدارة بمعرّف رقمي صالح. تأكد أن الحساب مسؤول عن الصفحة وأن صفحة Facebook نفسها تفتح بدون Checkpoint." });
