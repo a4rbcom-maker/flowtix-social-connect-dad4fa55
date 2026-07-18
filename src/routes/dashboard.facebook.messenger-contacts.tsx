@@ -97,6 +97,16 @@ type MessengerPageOption = {
   source: "cookies" | "official";
 };
 
+function cleanPageName(name: string): string {
+  if (!name) return name;
+  return name
+    .replace(/^\s*صورة\s+ملف\s+/u, "")
+    .replace(/\s+الشخصية?$/u, "")
+    .replace(/^\s*Profile\s+picture\s+of\s+/iu, "")
+    .replace(/'s\s+profile\s+picture$/iu, "")
+    .trim();
+}
+
 const FACEBOOK_COOKIES_SESSION_RE =
   /SESSION_EXPIRED|Facebook rejected|stored session cookies|redirected to login|checkpoint|c_user|cookies?.*(expired|invalid|rejected)|login/i;
 
