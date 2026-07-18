@@ -109,17 +109,23 @@ async function tryOpenInbox(page, pageId, pageName) {
   return { ok: false, snapshot: lastSnapshot, message: explicit };
 }
 
-async function collectConversations(page, maxConversations) {
+async function collectConversations(page, maxConversations, expectedPageId) {
   const start = Date.now();
   const seen = new Map();
   let stableRounds = 0;
   let lastCount = 0;
   for (let i = 0; i < 200; i += 1) {
     if (Date.now() - start > 8 * 60 * 1000) break;
-    const batch = await page.evaluate(() => {
+    const batch = await page.evaluate((expectedPageId) => {
       const current = new URL(window.location.href);
       if (!/(^|\.)business\.facebook\.com$/i.test(current.hostname) || !/\/latest\/inbox/i.test(current.pathname)) {
-        return [];
+        return { items: [], scopeOk: false };
+      }
+      // Verify current URL still scoped to our page.
+      const params = new URLSearchParams(current.search);
+      const currentAsset = params.get("asset_id") || params.get("mailbox_id") || "";
+      if (currentAsset && currentAsset !== String(expectedPageId)) {
+        return { items: [], scopeOk: false };
       }
       const items = [];
       const rows = Array.from(
@@ -130,6 +136,13 @@ async function collectConversations(page, maxConversations) {
       for (const row of rows) {
         const html = row.outerHTML || "";
         const href = row instanceof HTMLAnchorElement ? row.href : row.querySelector("a[href]")?.href || "";
+        // STRICT: thread anchor must reference our page via asset_id/mailbox_id.
+        if (href) {
+          const hrefParams = (() => { try { return new URL(href).searchParams; } catch { return null; } })();
+          const hAsset = hrefParams?.get("asset_id") || hrefParams?.get("mailbox_id") || "";
+          if (hAsset && hAsset !== String(expectedPageId)) continue;
+          // If href has no asset scoping at all, require the DOM ancestor URL scope (already checked above).
+        }
         const psidMatch =
           href.match(/[?&](?:selected_item_id|participant_id|user_id|profile_id|psid)=(\d{5,})/) ||
           html.match(/thread_fbid[=:]"?(\d{5,})"?/) ||
@@ -140,6 +153,8 @@ async function collectConversations(page, maxConversations) {
           html.match(/"id":"(\d{10,})"/);
         if (!psidMatch) continue;
         const psid = psidMatch[1];
+        // Never accept the page id itself as a contact psid.
+        if (psid === String(expectedPageId)) continue;
         const nameEl = row.querySelector(
           'span[dir="auto"] span, span[dir="auto"], strong, [aria-label], [data-visualcompletion="ignore-dynamic"] span',
         );
@@ -147,9 +162,11 @@ async function collectConversations(page, maxConversations) {
         if (!psid || /^(Inbox|Messenger|Search|Chats|All|Unread|Spam|Done|صندوق|بحث|الكل|غير مقروء)$/i.test(name)) continue;
         items.push({ psid, name: name.slice(0, 200) });
       }
-      return items;
-    });
-    for (const c of batch) if (!seen.has(c.psid)) seen.set(c.psid, c);
+      return { items, scopeOk: true };
+    }, String(expectedPageId));
+
+    if (!batch.scopeOk) break; // page navigated away from our asset scope — stop.
+    for (const c of batch.items) if (!seen.has(c.psid)) seen.set(c.psid, c);
     if (seen.size >= maxConversations) break;
 
     if (seen.size === lastCount) {
