@@ -1,0 +1,1 @@
+DELETE FROM public.messenger_contacts WHERE page_id !~ '^[0-9]+$';
