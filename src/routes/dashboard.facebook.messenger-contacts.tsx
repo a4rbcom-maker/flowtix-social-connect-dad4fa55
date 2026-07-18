@@ -563,6 +563,19 @@ function MessengerContactsPage() {
           )}
           {!selectedFromCookies && (
             <Button
+              variant="outline"
+              size="sm"
+              disabled={!pageId || checkM.isPending}
+              onClick={() => checkM.mutate()}
+              title={lang === "ar" ? "اختبار صلاحية Messaging على هذه الصفحة" : "Test Messaging permission on this page"}
+            >
+              {checkM.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+              {lang === "ar" ? "فحص الصلاحية" : "Check access"}
+            </Button>
+          )}
+          {!selectedFromCookies && (
+
+            <Button
               size="sm"
               disabled={!pageId || syncM.isPending || syncRunning}
               onClick={() => syncM.mutate(total > 0 ? "incremental" : "initial")}
