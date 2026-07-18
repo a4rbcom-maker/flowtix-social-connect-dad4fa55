@@ -900,7 +900,7 @@ function MessengerContactsPage() {
                   <div className="h-9 w-9 rounded-full bg-muted" />
                 )}
                 <div className="flex-1">
-                  <div className="font-medium">{p.pageName}</div>
+                  <div className="font-medium">{cleanPageName(p.pageName)}</div>
                   <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                     <Badge variant="secondary" className="text-[10px]">
                       {p.source === "cookies"
