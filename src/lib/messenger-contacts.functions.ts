@@ -83,20 +83,35 @@ export const listMessengerPages = createServerFn({ method: "GET" })
         tasks?: string[];
         picture?: { data?: { url?: string } };
       }>;
-      // Trust /me/accounts: Meta only returns pages the user manages. Keep the
-      // filter minimal (id + name + access token) so any real managed page shows
-      // up, exactly like other Messenger tools do. Category/tasks are optional
-      // hints, not gating conditions.
+      // Trust /me/accounts but reject non-page entities that Meta sometimes
+      // returns when the token has ads_management (boosted posts / promoted
+      // entities show up with the default name "ترويج" / "Promotion" and no
+      // real page tasks). A real managed Page always exposes at least one of
+      // the standard page tasks.
+      const PAGE_TASKS = new Set([
+        "ANALYZE", "ADVERTISE", "MESSAGING", "MODERATE",
+        "CREATE_CONTENT", "MANAGE", "PROFILE_PLUS_FULL_CONTROL",
+        "PROFILE_PLUS_MANAGE", "PROFILE_PLUS_MODERATE",
+        "PROFILE_PLUS_MESSAGING", "PROFILE_PLUS_CREATE_CONTENT",
+      ]);
+      const BLOCKED_NAMES = /^(ترويج|promotion|boosted post|promoted)$/i;
       const graphPages = arr
         .map((p) => ({
           id: String(p.id ?? "").trim(),
           name: String(p.name ?? "").replace(/\s+/g, " ").trim(),
           category: String(p.category ?? "").replace(/\s+/g, " ").trim(),
           accessToken: p.access_token,
-          tasks: Array.isArray(p.tasks) ? p.tasks.map((task) => String(task)) : [],
+          tasks: Array.isArray(p.tasks) ? p.tasks.map((task) => String(task).toUpperCase()) : [],
           avatarUrl: p.picture?.data?.url ?? null,
         }))
-        .filter((p) => /^\d{5,}$/.test(p.id) && p.name.length > 0 && Boolean(p.accessToken));
+        .filter((p) =>
+          /^\d{5,}$/.test(p.id) &&
+          p.name.length > 0 &&
+          !BLOCKED_NAMES.test(p.name) &&
+          Boolean(p.accessToken) &&
+          p.tasks.some((t) => PAGE_TASKS.has(t))
+        );
+
       if (graphPages.length === 0) return [];
 
       const { encryptJson } = await import("@/server/crypto.server");
