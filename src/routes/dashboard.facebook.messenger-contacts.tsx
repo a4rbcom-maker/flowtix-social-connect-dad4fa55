@@ -204,6 +204,19 @@ function MessengerContactsPage() {
   };
   const [accessCheck, setAccessCheck] = useState<AccessCheckResult | null>(null);
 
+  // Configurable refresh interval (ms) for the contacts list while a sync runs.
+  // 0 = off. Persisted in localStorage so it survives reloads.
+  const [refreshIntervalMs, setRefreshIntervalMs] = useState<number>(() => {
+    if (typeof window === "undefined") return 3000;
+    const raw = window.localStorage.getItem("msgr-refresh-interval-ms");
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n >= 0 ? n : 3000;
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("msgr-refresh-interval-ms", String(refreshIntervalMs));
+  }, [refreshIntervalMs]);
+
 
   // Pages query — decides whether to show picker.
   const pagesQ = useQuery({
