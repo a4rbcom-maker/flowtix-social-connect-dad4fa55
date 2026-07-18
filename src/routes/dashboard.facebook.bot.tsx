@@ -460,6 +460,7 @@ function BotAccountsPage() {
   const [form, setForm] = useState({
     displayName: "",
     cookies: "",
+    proxyUrl: "",
     email: "",
     password: "",
     twoFactorSecret: "",
@@ -475,6 +476,9 @@ function BotAccountsPage() {
           directSubtitle:
             "هذه الآلية لتشغيل مهام البوت فقط. عملاء Messenger والصفحات المُدارة يتمون من تبويب جهات اتصال Messenger عبر Access Token.",
           cookiesLabel: "Cookies JSON",
+          proxyLabel: "Proxy ثابت اختياري",
+          proxyPh: "مثال: http://user:pass@host:port",
+          proxyHelp: "استخدمه لو فيسبوك يرفض اختلاف مكان السيرفر عن متصفحك؛ يفضّل IP ثابت وقريب من بلد الحساب.",
           saveCookies: "حفظ حساب Cookies",
           cookiesRequired: "الصق Cookies JSON أولاً",
           none: "لا توجد حسابات بعد",
@@ -548,6 +552,9 @@ function BotAccountsPage() {
           directSubtitle:
             "This method only powers bot jobs. Messenger contacts and managed Pages use the Messenger Contacts tab with an Access Token.",
           cookiesLabel: "Cookies JSON",
+          proxyLabel: "Optional fixed proxy",
+          proxyPh: "Example: http://user:pass@host:port",
+          proxyHelp: "Use this when Facebook rejects server/location changes; prefer a stable IP near the account country.",
           saveCookies: "Save Cookies account",
           cookiesRequired: "Paste the Cookies JSON first",
           none: "No accounts yet",
@@ -757,6 +764,7 @@ function BotAccountsPage() {
                 displayName: form.displayName,
                 cookies: form.cookies,
                 userAgent: currentUA,
+                proxyUrl: form.proxyUrl || null,
               },
             })
           : await addAccountFn({
@@ -767,6 +775,7 @@ function BotAccountsPage() {
                 password: form.password,
                 twoFactorSecret: form.twoFactorSecret || null,
                 userAgent: currentUA,
+                proxyUrl: form.proxyUrl || null,
               },
             });
       const dto = unwrapServerPayload(row) as { diagnostics?: unknown } | null;
@@ -785,7 +794,7 @@ function BotAccountsPage() {
       }
       toast.success(t.saved, { description: t.savedDesc });
       setOpen(false);
-      setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
+      setForm({ displayName: "", cookies: "", proxyUrl: "", email: "", password: "", twoFactorSecret: "" });
       // NOTE: do NOT call load() here. The optimistic insert above already
       // shows the row; a refetch would flip `loading` to true (hiding the
       // table) and, if the read returns an empty/stale list for any reason
@@ -826,6 +835,7 @@ function BotAccountsPage() {
           displayName: form.displayName,
           cookies: form.cookies,
           userAgent: currentUA,
+          proxyUrl: form.proxyUrl || null,
         },
       });
       const dto = unwrapServerPayload(row) as { diagnostics?: unknown } | null;
@@ -843,7 +853,7 @@ function BotAccountsPage() {
         );
       }
       toast.success(t.saved, { description: t.savedDesc });
-      setForm({ displayName: "", cookies: "", email: "", password: "", twoFactorSecret: "" });
+      setForm({ displayName: "", cookies: "", proxyUrl: "", email: "", password: "", twoFactorSecret: "" });
       // Optimistic insert above is the source of truth; skip the refetch so
       // a stale/timed-out list response can't blank the row.
     } catch (e) {
@@ -1233,6 +1243,16 @@ function BotAccountsPage() {
                 value={form.cookies}
                 onChange={(e) => setForm({ ...form, cookies: e.target.value })}
               />
+            </div>
+            <div className="space-y-2 lg:col-start-2">
+              <Label>{t.proxyLabel}</Label>
+              <Input
+                dir="ltr"
+                placeholder={t.proxyPh}
+                value={form.proxyUrl}
+                onChange={(e) => setForm({ ...form, proxyUrl: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">{t.proxyHelp}</p>
             </div>
           </div>
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
@@ -1670,6 +1690,16 @@ function BotAccountsPage() {
                   value={form.cookies}
                   onChange={(e) => setForm({ ...form, cookies: e.target.value })}
                 />
+                <div className="space-y-2">
+                  <Label>{t.proxyLabel}</Label>
+                  <Input
+                    dir="ltr"
+                    placeholder={t.proxyPh}
+                    value={form.proxyUrl}
+                    onChange={(e) => setForm({ ...form, proxyUrl: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">{t.proxyHelp}</p>
+                </div>
               </TabsContent>
               <TabsContent value="credentials" className="space-y-3 pt-3">
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
@@ -1697,6 +1727,16 @@ function BotAccountsPage() {
                     value={form.twoFactorSecret}
                     onChange={(e) => setForm({ ...form, twoFactorSecret: e.target.value })}
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t.proxyLabel}</Label>
+                  <Input
+                    dir="ltr"
+                    placeholder={t.proxyPh}
+                    value={form.proxyUrl}
+                    onChange={(e) => setForm({ ...form, proxyUrl: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">{t.proxyHelp}</p>
                 </div>
               </TabsContent>
             </Tabs>
