@@ -48,7 +48,7 @@ async function persistJobResult(
   input: {
     jobId: string;
     result: BotJobResult;
-    current?: { job_type?: string | null; user_id?: string | null; account_id?: string | null } | null;
+    current?: { job_type?: string | null; user_id?: string | null; account_id?: string | null; payload?: unknown } | null;
   },
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const { error: insertError } = await supabaseAdmin.from("fb_job_results").insert([
@@ -116,13 +116,24 @@ async function persistJobResult(
       page_name?: string | null;
     };
     if (d.kind === "messenger_contact" && d.psid && d.page_id) {
+      const payload = input.current.payload && typeof input.current.payload === "object" ? input.current.payload as { pageId?: string } : {};
+      const expectedPageId = String(payload.pageId ?? "").trim();
+      const reportedPageId = String(d.page_id).trim();
+      if (!/^\d{5,}$/.test(reportedPageId) || (expectedPageId && reportedPageId !== expectedPageId)) {
+        return {
+          ok: false,
+          message: "تم رفض نتائج Messenger لأنها لا تطابق معرّف الصفحة المختارة؛ لن نحفظ بيانات قد تكون من Inbox شخصي أو صفحة أخرى.",
+        };
+      }
       const { error: upErr } = await supabaseAdmin.from("messenger_contacts").upsert(
         {
           user_id: input.current.user_id,
-          page_id: d.page_id,
+          page_id: reportedPageId,
+          page_name: d.page_name ?? null,
           psid: String(d.psid),
           full_name: d.full_name ?? null,
           source: "cookies_bot",
+          metadata: { source: "cookies_bot", imported_at: new Date().toISOString(), worker_job_id: input.jobId },
         } as never,
         { onConflict: "user_id,page_id,psid", ignoreDuplicates: false },
       );
@@ -184,7 +195,7 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
         // signal the worker to abort and stop persisting further results/progress.
         const { data: current } = await supabaseAdmin
           .from("fb_jobs")
-          .select("status, job_type, account_id, user_id, total_items")
+          .select("status, job_type, account_id, user_id, total_items, payload")
           .eq("id", body.jobId)
           .maybeSingle();
         if (body.result) {
