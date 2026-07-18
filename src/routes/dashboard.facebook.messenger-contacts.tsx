@@ -118,10 +118,13 @@ const FACEBOOK_COOKIES_SESSION_RE =
 
 function explainCookiesFailure(raw: string | null | undefined, lang: "ar" | "en") {
   const message = String(raw || "").trim();
+  if (/Business Suite|صندوق واردات|Inbox|صلاحية رسائل|Messaging|permission|لا يملك صلاحية|فتحنا Business Inbox/i.test(message)) {
+    return message;
+  }
   if (FACEBOOK_COOKIES_SESSION_RE.test(message)) {
     return lang === "ar"
-      ? "لم تنجح عملية الاستخراج لأن فيسبوك رفض Cookies الحساب عند فتح صفحاتك. البوت يعمل، لكن جلسة الحساب نفسها منتهية أو غير مقبولة. الحل: افتح facebook.com بنفس الحساب، تأكد أنه لا يطلب Login/Checkpoint، صدّر Cookies جديدة من نفس المتصفح، ثم حدّث حساب البوت."
-      : "Extraction failed because Facebook rejected this account's Cookies while opening your Pages. The bot is running, but the Facebook session itself is expired or not accepted. Open facebook.com with the same account, make sure there is no login/checkpoint, export fresh Cookies, then refresh the bot account.";
+      ? "فيسبوك رفض جلسة الحساب عند فتح Business Suite. تم تثبيت البصمة وتقليل التنقلات، لكن لو استمر الرفض استخدم Proxy ثابت قريب من بلد الحساب عند ربط حساب البوت ثم صدّر Cookies جديدة من نفس المتصفح."
+      : "Facebook rejected the account session while opening Business Suite. The bot now keeps a stable browser fingerprint; if rejection continues, add a fixed proxy near the account country when linking the bot account, then export fresh Cookies from the same browser.";
   }
   return message || (lang === "ar" ? "تعذّر تشغيل المهمة بهذا الحساب." : "Could not run this job with this account.");
 }
