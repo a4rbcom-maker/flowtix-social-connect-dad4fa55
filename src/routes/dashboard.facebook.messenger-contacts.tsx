@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   listMessengerPages,
   listMessengerContacts,
@@ -973,9 +974,12 @@ function CookiesModePanel(props: {
     queryFn: () => listAccountsFn(),
   });
   const accounts = accountsQ.data ?? [];
+  const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
+  const activeAccounts = accounts.filter((a) => a.status === "active");
+  const canRunWithSelectedAccount = !!selectedAccount && selectedAccount.status === "active";
 
   useEffect(() => {
-    if (!accountId && accounts.length > 0) setAccountId(accounts[0].id);
+    if (!accountId && accounts.length > 0) setAccountId((activeAccounts[0] ?? accounts[0]).id);
   }, [accountId, accounts]);
 
   const listPagesJobQ = useQuery({
@@ -1007,6 +1011,10 @@ function CookiesModePanel(props: {
   const syncJob = syncJobQ.data?.job;
   const listRunning = listJob?.status === "running" || listJob?.status === "pending";
   const syncRunning = syncJob?.status === "running" || syncJob?.status === "pending";
+
+  useEffect(() => {
+    if (listJob?.status === "failed" || syncJob?.status === "failed") accountsQ.refetch();
+  }, [listJob?.status, syncJob?.status]);
 
   const startListPagesM = useMutation({
     mutationFn: () => listPagesFn({ data: { accountId: accountId! } }),
@@ -1082,14 +1090,21 @@ function CookiesModePanel(props: {
                 <SelectContent>
                   {accounts.map((a) => (
                     <SelectItem key={a.id} value={a.id}>
-                      {a.displayName} {a.status !== "active" ? `(${a.status})` : ""}
+                      {a.displayName} {a.status === "active" ? "(Active)" : `(${a.status})`}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {selectedAccount && (
+                <Badge variant={canRunWithSelectedAccount ? "default" : "destructive"} className="text-[10px]">
+                  {canRunWithSelectedAccount
+                    ? lang === "ar" ? "جلسة صالحة" : "Session active"
+                    : lang === "ar" ? "الجلسة منتهية" : "Session invalid"}
+                </Badge>
+              )}
               <Button
                 size="sm"
-                disabled={!accountId || startListPagesM.isPending || listRunning}
+                disabled={!accountId || !canRunWithSelectedAccount || startListPagesM.isPending || listRunning}
                 onClick={() => startListPagesM.mutate()}
               >
                 {startListPagesM.isPending || listRunning ? (
@@ -1106,6 +1121,41 @@ function CookiesModePanel(props: {
                 </Badge>
               )}
             </div>
+          )}
+
+          {selectedAccount && !canRunWithSelectedAccount && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>{lang === "ar" ? "لا يمكن جلب الصفحات بهذا الحساب" : "This account cannot fetch Pages"}</AlertTitle>
+              <AlertDescription className="space-y-2 text-xs">
+                <p>
+                  {selectedAccount.lastError ||
+                    (lang === "ar"
+                      ? "جلسة Cookies لهذا الحساب غير صالحة حالياً."
+                      : "This account's Cookies session is not valid right now.")}
+                </p>
+                <Button asChild size="sm" variant="outline">
+                  <Link to="/dashboard/facebook/bot">
+                    {lang === "ar" ? "تحديث Cookies الحساب" : "Refresh account Cookies"}
+                  </Link>
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {listJob?.status === "failed" && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>{lang === "ar" ? "فشل جلب الصفحات" : "Pages fetch failed"}</AlertTitle>
+              <AlertDescription className="space-y-2 text-xs">
+                <p>{listJob.error_message || (lang === "ar" ? "لم يتمكن البوت من فتح فيسبوك بهذا الحساب." : "The bot could not open Facebook with this account.")}</p>
+                <Button asChild size="sm" variant="outline">
+                  <Link to="/dashboard/facebook/bot">
+                    {lang === "ar" ? "إعادة ربط حساب البوت" : "Reconnect bot account"}
+                  </Link>
+                </Button>
+              </AlertDescription>
+            </Alert>
           )}
 
           {pages.length > 0 && (
