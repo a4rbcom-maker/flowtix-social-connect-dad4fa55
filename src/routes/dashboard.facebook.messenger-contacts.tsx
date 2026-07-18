@@ -1163,17 +1163,12 @@ function CookiesModePanel(props: {
             </>
           )}
 
-          {selectedAccount && !canRunWithSelectedAccount && (
+          {selectedAccount && !canRunWithSelectedAccount && activeAccounts.length > 0 && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>{lang === "ar" ? "سبب عدم نجاح الاستخراج" : "Why extraction did not work"}</AlertTitle>
+              <AlertTitle>{lang === "ar" ? "جلسة هذا الحساب منتهية" : "This account's session expired"}</AlertTitle>
               <AlertDescription className="space-y-2 text-xs">
                 <p>{selectedAccountFailure}</p>
-                <p className="font-semibold text-destructive">
-                  {lang === "ar"
-                    ? "ما تم في آخر المحاولات: تم تشغيل الـ worker، وتم إرسال مهمة جلب الصفحات، لكن فيسبوك أعاد رفض الجلسة قبل استخراج أي صفحة. لذلك المشكلة ليست في زر الجلب؛ المشكلة في Cookies الحساب المختار."
-                    : "What happened recently: the worker ran and the Pages job was queued, but Facebook rejected the session before any Page could be extracted. The fetch button is not the issue; the selected account Cookies are."}
-                </p>
                 <Button asChild size="sm" variant="outline">
                   <Link to="/dashboard/facebook/bot">
                     {lang === "ar" ? "تحديث Cookies الحساب" : "Refresh account Cookies"}
@@ -1183,17 +1178,12 @@ function CookiesModePanel(props: {
             </Alert>
           )}
 
-          {listJob?.status === "failed" && (
+          {listJob?.status === "failed" && canRunWithSelectedAccount && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>{lang === "ar" ? "نتيجة آخر محاولة جلب" : "Latest fetch attempt"}</AlertTitle>
+              <AlertTitle>{lang === "ar" ? "فشلت آخر محاولة جلب" : "Latest fetch attempt failed"}</AlertTitle>
               <AlertDescription className="space-y-2 text-xs">
                 <p>{listFailureText}</p>
-                <Button asChild size="sm" variant="outline">
-                  <Link to="/dashboard/facebook/bot">
-                    {lang === "ar" ? "إعادة ربط حساب البوت" : "Reconnect bot account"}
-                  </Link>
-                </Button>
               </AlertDescription>
             </Alert>
           )}
