@@ -1,31 +1,50 @@
 // Syncs Messenger conversations for a Page using the bot cookies session.
 // Payload: { pageId, pageName?, maxConversations }
-// Emits one result row per contact:
-//   { target: psid, status: "success", data: { kind:"messenger_contact", psid, full_name, page_id, page_name } }
-//
-// IMPORTANT: We must open the *Page* inbox (Meta Business Suite), NOT the
-// personal Messenger inbox. The old URL `facebook.com/messages/t/?entry_point=page_inbox&page_id=...`
-// silently redirects to the personal inbox, so previous runs returned the
-// bot account's own DMs (13 items) instead of the page's real conversations.
 
-async function openPageInbox(page, pageId) {
-  // Try Business Suite inbox variants (real page inbox).
+async function verifyFacebookSession(page) {
+  // Check the base facebook.com session is alive BEFORE touching Business Suite.
+  // Business Suite has its own login redirect that can trigger even when the
+  // core cookies are fine (e.g. account not enrolled in Business Suite),
+  // which used to be misreported as SESSION_EXPIRED.
+  try {
+    await page.goto("https://www.facebook.com/me", { waitUntil: "domcontentloaded", timeout: 45_000 });
+    const url = page.url();
+    if (/\/login|checkpoint|\/recover/i.test(url)) return false;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function tryOpenInbox(page, pageId) {
+  // Try multiple inbox surfaces. We accept the first one that renders threads
+  // WITHOUT redirecting us to a login page. Business Suite redirects to its
+  // own /login even with valid facebook.com cookies for accounts that aren't
+  // enrolled — that's NOT a session expiry, just a missing surface.
   const candidates = [
+    // Meta Business Suite (best: real page inbox)
     `https://business.facebook.com/latest/inbox/all?asset_id=${encodeURIComponent(pageId)}&mailbox_id=${encodeURIComponent(pageId)}`,
     `https://business.facebook.com/latest/inbox/all?asset_id=${encodeURIComponent(pageId)}`,
-    `https://business.facebook.com/latest/inbox?asset_id=${encodeURIComponent(pageId)}`,
-    `https://business.facebook.com/${encodeURIComponent(pageId)}/inbox/`,
+    // Legacy Pages inbox
+    `https://www.facebook.com/${encodeURIComponent(pageId)}/inbox/`,
+    // Messenger with page_inbox hint (fallback)
+    `https://www.facebook.com/messages/t/?entry_point=page_inbox&page_id=${encodeURIComponent(pageId)}`,
   ];
   for (const url of candidates) {
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      if (/\/login|checkpoint/i.test(page.url())) continue;
-      // Wait for the inbox list to render.
+      const currentUrl = page.url();
+      // Skip surface-specific login redirects — not a session expiry.
+      if (/\/login|checkpoint/i.test(currentUrl)) continue;
       await new Promise((r) => setTimeout(r, 5000));
       const hasThreads = await page.evaluate(() =>
-        Boolean(document.querySelector('[role="row"], [role="listitem"], a[href*="/inbox/"], a[href*="thread"]')),
+        Boolean(
+          document.querySelector(
+            '[role="row"], [role="listitem"], a[href*="/inbox/"], a[href*="thread"], a[href*="/messages/t/"]',
+          ),
+        ),
       );
-      if (hasThreads) return { ok: true, url };
+      if (hasThreads) return { ok: true, url: currentUrl };
     } catch (_) {
       /* try next */
     }
@@ -42,13 +61,13 @@ async function collectConversations(page, maxConversations) {
     if (Date.now() - start > 8 * 60 * 1000) break;
     const batch = await page.evaluate(() => {
       const items = [];
-      // Business Suite thread rows expose participant PSID via various links.
       const rows = Array.from(
-        document.querySelectorAll('[role="row"], [role="listitem"], a[href*="thread_fbid"], a[href*="/inbox/"]'),
+        document.querySelectorAll(
+          '[role="row"], [role="listitem"], a[href*="thread_fbid"], a[href*="/inbox/"], a[href*="/messages/t/"]',
+        ),
       );
       for (const row of rows) {
         const html = row.outerHTML || "";
-        // Try to extract a PSID (numeric >= 5 digits).
         const psidMatch =
           html.match(/thread_fbid[=:]"?(\d{5,})"?/) ||
           html.match(/user_id[=:]"?(\d{5,})"?/) ||
@@ -56,8 +75,9 @@ async function collectConversations(page, maxConversations) {
           html.match(/"id":"(\d{10,})"/);
         if (!psidMatch) continue;
         const psid = psidMatch[1];
-        const nameEl =
-          row.querySelector('span[dir="auto"] span, span[dir="auto"], strong, [data-visualcompletion="ignore-dynamic"] span');
+        const nameEl = row.querySelector(
+          'span[dir="auto"] span, span[dir="auto"], strong, [data-visualcompletion="ignore-dynamic"] span',
+        );
         const name = (nameEl?.innerText || row.innerText || "").trim().split("\n")[0];
         if (!psid) continue;
         items.push({ psid, name: name.slice(0, 200) });
@@ -67,7 +87,6 @@ async function collectConversations(page, maxConversations) {
     for (const c of batch) if (!seen.has(c.psid)) seen.set(c.psid, c);
     if (seen.size >= maxConversations) break;
 
-    // Detect end of list: if count didn't grow for several rounds, stop.
     if (seen.size === lastCount) {
       stableRounds += 1;
       if (stableRounds >= 6) break;
@@ -76,9 +95,8 @@ async function collectConversations(page, maxConversations) {
       lastCount = seen.size;
     }
 
-    // Scroll the inner inbox list (Business Suite uses a virtualized grid).
     await page.evaluate(() => {
-      const scrollables = Array.from(document.querySelectorAll('div')).filter((el) => {
+      const scrollables = Array.from(document.querySelectorAll("div")).filter((el) => {
         const style = window.getComputedStyle(el);
         return (
           (style.overflowY === "auto" || style.overflowY === "scroll") &&
@@ -86,7 +104,6 @@ async function collectConversations(page, maxConversations) {
           el.scrollHeight > el.clientHeight
         );
       });
-      // Prefer the tallest scrollable (usually the inbox list).
       scrollables.sort((a, b) => b.clientHeight - a.clientHeight);
       const target = scrollables[0];
       if (target) target.scrollBy(0, target.clientHeight);
@@ -104,17 +121,24 @@ async function runMessengerSyncCookies({ page, job, report }) {
     return;
   }
 
-  const opened = await openPageInbox(page, pageId);
+  // 1) Verify base facebook.com session first — only THIS constitutes SESSION_EXPIRED.
+  const sessionOk = await verifyFacebookSession(page);
+  if (!sessionOk) {
+    await report({
+      status: "failed",
+      errorMessage: "SESSION_EXPIRED: انتهت جلسة حساب البوت على فيسبوك. حدّث الكوكيز من نفس المتصفح المسجّل دخوله.",
+    });
+    return;
+  }
+
+  // 2) Try to open an inbox surface. A failure here is NOT a session expiry.
+  const opened = await tryOpenInbox(page, pageId);
   if (!opened.ok) {
-    if (/\/login|checkpoint/i.test(page.url())) {
-      await report({ status: "failed", errorMessage: "SESSION_EXPIRED: أعد ربط حساب البوت." });
-    } else {
-      await report({
-        status: "failed",
-        errorMessage:
-          "تعذر فتح صندوق واردات الصفحة عبر Meta Business Suite. تأكد أن حساب البوت لديه صلاحية إدارة الرسائل على هذه الصفحة.",
-      });
-    }
+    await report({
+      status: "failed",
+      errorMessage:
+        "تعذّر فتح صندوق واردات الصفحة. تأكّد أن حساب البوت مسؤول على هذه الصفحة ولديه صلاحية إدارة الرسائل (Messaging). الجلسة نفسها ما زالت صالحة.",
+    });
     return;
   }
 
@@ -123,7 +147,7 @@ async function runMessengerSyncCookies({ page, job, report }) {
     await report({
       status: "failed",
       errorMessage:
-        "فتحنا صندوق واردات الصفحة لكن لم نعثر على محادثات. تأكد أن هذه الصفحة عليها رسائل وأن حساب البوت مسؤول عنها.",
+        "فتحنا صندوق واردات الصفحة لكن لم نعثر على محادثات. تأكد أن الصفحة عليها رسائل فعلاً وأن حساب البوت له صلاحية عرضها.",
     });
     return;
   }
