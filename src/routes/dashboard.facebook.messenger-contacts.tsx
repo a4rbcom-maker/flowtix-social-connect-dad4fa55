@@ -359,6 +359,7 @@ function MessengerContactsPage() {
   };
 
   const currentPage = allPageOptions.find((p) => p.pageId === pageId);
+  const selectedFromCookies = currentPage?.source === "cookies";
   const syncJob = statusQ.data?.job;
   const syncRunning = syncJob?.status === "running" || syncJob?.status === "queued";
 
@@ -498,18 +499,20 @@ function MessengerContactsPage() {
               {currentPage?.pageName ?? (lang === "ar" ? "اختر صفحة" : "Pick a page")}
             </Button>
           )}
-          <Button
-            size="sm"
-            disabled={!pageId || syncM.isPending || syncRunning}
-            onClick={() => syncM.mutate(total > 0 ? "incremental" : "initial")}
-          >
-            {syncM.isPending || syncRunning ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            {lang === "ar" ? "جلب/تحديث العملاء" : "Import/update contacts"}
-          </Button>
+          {!selectedFromCookies && (
+            <Button
+              size="sm"
+              disabled={!pageId || syncM.isPending || syncRunning}
+              onClick={() => syncM.mutate(total > 0 ? "incremental" : "initial")}
+            >
+              {syncM.isPending || syncRunning ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {lang === "ar" ? "جلب/تحديث العملاء" : "Import/update contacts"}
+            </Button>
+          )}
         </div>
       </header>
 
