@@ -1204,35 +1204,41 @@ function CookiesModePanel(props: {
                 {lang === "ar" ? "الصفحات المكتشفة" : "Discovered Pages"} ({pages.length})
               </p>
               <div className="grid gap-2 sm:grid-cols-2">
-                {pages.map((p) => (
-                  <div
-                    key={p.pageId}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background p-2 text-xs"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-foreground">{cleanPageName(p.pageName)}</p>
-                      <p className="truncate text-muted-foreground">{p.pageId}</p>
-                    </div>
-                    <div className="flex gap-1">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={!accountId || startSyncM.isPending || syncRunning}
-                        onClick={() => startSyncM.mutate({ pageId: p.pageId, pageName: p.pageName })}
-                      >
-                        <RefreshCw className="h-3 w-3" />
-                        {lang === "ar" ? "استيراد المحادثات" : "Import chats"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => onImportedContacts(p)}
-                      >
-                        <Users className="h-3 w-3" />
-                        {lang === "ar" ? "عرض العملاء" : "View contacts"}
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                {pages.map((p) => {
+                  const isActive =
+                    (startSyncM.isPending && startSyncM.variables?.pageId === p.pageId) ||
+                    (syncRunning && lastSyncedPage?.pageId === p.pageId);
+                  return (
+                    <button
+                      type="button"
+                      key={p.pageId}
+                      disabled={!accountId || startSyncM.isPending || syncRunning}
+                      onClick={() => {
+                        setLastSyncedPage({ pageId: p.pageId, pageName: p.pageName });
+                        startSyncM.mutate({ pageId: p.pageId, pageName: p.pageName });
+                      }}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background p-3 text-xs text-start transition hover:border-primary hover:bg-primary/5 disabled:opacity-60"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-semibold text-foreground">{cleanPageName(p.pageName)}</p>
+                        <p className="truncate text-muted-foreground">{p.pageId}</p>
+                      </div>
+                      <div className="flex items-center gap-1 text-primary font-medium whitespace-nowrap">
+                        {isActive ? (
+                          <>
+                            <RefreshCw className="h-3 w-3 animate-spin" />
+                            {lang === "ar" ? "جارٍ الجلب…" : "Loading…"}
+                          </>
+                        ) : (
+                          <>
+                            <Users className="h-3 w-3" />
+                            {lang === "ar" ? "جلب العملاء" : "Fetch contacts"}
+                          </>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
               {syncJob && (
                 <div className="rounded-lg border border-border bg-background p-2 text-xs">
