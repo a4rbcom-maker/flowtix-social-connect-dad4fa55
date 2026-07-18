@@ -162,6 +162,7 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         let displayName: string | null = null;
         let authMethod: string | null = null;
         let userAgent: string | null = null;
+        let proxyUrl: string | null = null;
         if (claimed.account_id) {
           const { data: acc } = await supabaseAdmin
             .from("fb_bot_accounts")
@@ -189,6 +190,9 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
             userAgent = acc.user_agent ?? null;
             try {
               credentials = decryptJson(acc.encrypted_payload);
+              if (credentials && typeof credentials === "object" && typeof (credentials as { proxyUrl?: unknown }).proxyUrl === "string") {
+                proxyUrl = (credentials as { proxyUrl: string }).proxyUrl;
+              }
             } catch (e) {
               return Response.json(
                 { error: "Failed to decrypt credentials", details: String(e) },
@@ -216,7 +220,7 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
             type: claimed.job_type,
             payload: claimed.payload,
             account: claimed.account_id
-              ? { id: claimed.account_id, displayName, authMethod, credentials, userAgent }
+              ? { id: claimed.account_id, displayName, authMethod, credentials, userAgent, proxyUrl }
               : null,
           },
         });
