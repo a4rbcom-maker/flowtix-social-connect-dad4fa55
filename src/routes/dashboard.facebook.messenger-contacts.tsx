@@ -587,6 +587,26 @@ function MessengerContactsPage() {
               {currentPage ? cleanPageName(currentPage.pageName) : (lang === "ar" ? "اختر صفحة" : "Pick a page")}
             </Button>
           )}
+          <Select
+            value={String(refreshIntervalMs)}
+            onValueChange={(v) => setRefreshIntervalMs(Number(v))}
+          >
+            <SelectTrigger
+              className="h-9 w-auto gap-1 text-xs"
+              title={lang === "ar" ? "فترة تحديث قائمة العملاء أثناء المزامنة" : "Contacts refresh interval during sync"}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1000">{lang === "ar" ? "تحديث كل ثانية" : "Every 1s"}</SelectItem>
+              <SelectItem value="3000">{lang === "ar" ? "تحديث كل 3 ثوانٍ" : "Every 3s"}</SelectItem>
+              <SelectItem value="5000">{lang === "ar" ? "تحديث كل 5 ثوانٍ" : "Every 5s"}</SelectItem>
+              <SelectItem value="10000">{lang === "ar" ? "تحديث كل 10 ثوانٍ" : "Every 10s"}</SelectItem>
+              <SelectItem value="30000">{lang === "ar" ? "تحديث كل 30 ثانية" : "Every 30s"}</SelectItem>
+              <SelectItem value="0">{lang === "ar" ? "إيقاف التحديث" : "Off"}</SelectItem>
+            </SelectContent>
+          </Select>
           {!selectedFromCookies && (
             <Button
               variant="outline"
