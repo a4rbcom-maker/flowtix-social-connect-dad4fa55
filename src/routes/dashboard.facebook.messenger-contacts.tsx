@@ -506,7 +506,7 @@ function MessengerContactsPage() {
           {allPageOptions.length > 0 && (
             <Button variant="outline" size="sm" onClick={() => setShowPagePicker(true)}>
               <Users className="h-4 w-4" />
-              {currentPage?.pageName ?? (lang === "ar" ? "اختر صفحة" : "Pick a page")}
+              {currentPage ? cleanPageName(currentPage.pageName) : (lang === "ar" ? "اختر صفحة" : "Pick a page")}
             </Button>
           )}
           {!selectedFromCookies && (
