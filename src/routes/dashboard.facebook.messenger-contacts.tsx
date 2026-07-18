@@ -58,6 +58,7 @@ import {
   checkMessengerPageAccess,
 } from "@/lib/messenger-contacts.functions";
 import { connectFacebook } from "@/lib/facebook.functions";
+import { supabase } from "@/integrations/supabase/client";
 
 import {
   listBotAccountsForMessenger,
@@ -349,6 +350,39 @@ function MessengerContactsPage() {
       return s === "running" || s === "queued" ? refreshIntervalMs : false;
     },
   });
+
+  // Realtime: listen to messenger_contacts + messenger_sync_jobs for this page
+  // and invalidate the corresponding queries — no polling needed. The
+  // `refreshIntervalMs` setting still acts as a fallback if WS drops.
+  useEffect(() => {
+    if (!pageId) return;
+    let debounce: ReturnType<typeof setTimeout> | null = null;
+    const invalidateSoon = () => {
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ["msgr-contacts", pageId] });
+        qc.invalidateQueries({ queryKey: ["msgr-sync-status", pageId] });
+      }, 250);
+    };
+    const channel = supabase
+      .channel(`msgr-live-${pageId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "messenger_contacts", filter: `page_id=eq.${pageId}` },
+        invalidateSoon,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "messenger_sync_jobs", filter: `page_id=eq.${pageId}` },
+        invalidateSoon,
+      )
+      .subscribe();
+    return () => {
+      if (debounce) clearTimeout(debounce);
+      supabase.removeChannel(channel);
+    };
+  }, [pageId, qc]);
+
 
   const checkM = useMutation({
     mutationFn: () => checkAccessFn({ data: { pageId: pageId! } }) as Promise<AccessCheckResult>,
