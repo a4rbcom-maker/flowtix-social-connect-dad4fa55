@@ -1117,7 +1117,7 @@ function CookiesModePanel(props: {
     queryFn: () => getJobFn({ data: { accountId: accountId!, jobType: "messenger_sync_cookies", pageId: activeSyncPageId! } }),
     refetchInterval: (q) => {
       const s = (q.state.data as { job?: { status?: string } } | undefined)?.job?.status;
-      return s === "running" || s === "pending" ? 3000 : false;
+      return s === "running" || s === "pending" ? 1500 : false;
     },
   });
 
