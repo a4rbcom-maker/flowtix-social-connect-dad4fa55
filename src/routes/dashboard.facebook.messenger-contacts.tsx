@@ -312,7 +312,10 @@ function MessengerContactsPage() {
           pageSize,
         },
       }),
+    // Live refresh while a sync is running so contacts appear as they arrive.
+    refetchInterval: () => (syncRunning ? 3000 : false),
   });
+
 
   const statusQ = useQuery({
     queryKey: ["msgr-sync-status", pageId],
