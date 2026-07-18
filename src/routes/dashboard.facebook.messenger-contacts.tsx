@@ -1368,17 +1368,61 @@ function CookiesModePanel(props: {
                   );
                 })}
               </div>
-              {syncJob && (
-                <div className="rounded-lg border border-border bg-background p-2 text-xs">
-                  {lang === "ar" ? "آخر مزامنة عملاء" : "Last sync"}: {syncJob.status}
-                  {typeof syncJob.progress === "number" ? ` — ${syncJob.progress}%` : ""}
-                  {syncStale ? (lang === "ar" ? " — متوقفة" : " — stale") : ""}
-                  {typeof syncJob.processed_items === "number"
-                    ? ` (${syncJob.processed_items}/${syncJob.total_items ?? "?"})`
-                    : ""}
-                  {syncJob.error_message ? ` — ${syncFailureText}` : ""}
-                </div>
-              )}
+              {syncJob && (() => {
+                const processed = typeof syncJob.processed_items === "number" ? syncJob.processed_items : 0;
+                const total = typeof syncJob.total_items === "number" && syncJob.total_items > 0 ? syncJob.total_items : 0;
+                const pct = typeof syncJob.progress === "number"
+                  ? Math.max(0, Math.min(100, syncJob.progress))
+                  : (total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0);
+                const isRunning = syncRunning;
+                const isDone = syncJob.status === "completed";
+                const isFailed = syncJob.status === "failed";
+                const barColor = isFailed
+                  ? "bg-red-500"
+                  : isDone
+                    ? "bg-emerald-500"
+                    : "bg-primary";
+                return (
+                  <div className="space-y-2 rounded-lg border border-border bg-background p-3 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 font-medium">
+                        {isRunning ? (
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />
+                        ) : isDone ? (
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                        ) : isFailed ? (
+                          <XCircle className="h-3.5 w-3.5 text-red-500" />
+                        ) : null}
+                        <span>{lang === "ar" ? "مزامنة العملاء" : "Contacts sync"}</span>
+                        <Badge variant="outline" className="h-5 px-1.5 text-[10px]">{syncJob.status}</Badge>
+                        {syncStale && <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">{lang === "ar" ? "متوقفة" : "stale"}</Badge>}
+                      </div>
+                      <span className="tabular-nums font-semibold text-foreground">{pct}%</span>
+                    </div>
+                    <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={`h-full transition-all duration-500 ${barColor}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span className="tabular-nums">
+                        {lang === "ar" ? "تم استخراج" : "Extracted"}: <span className="font-semibold text-foreground">{processed}</span>
+                        {total > 0 ? <> / <span className="tabular-nums">{total}</span></> : null}
+                        {" "}{lang === "ar" ? "عميل" : "contacts"}
+                      </span>
+                      {isRunning && (
+                        <span className="text-primary">{lang === "ar" ? "يتحدّث تلقائياً…" : "Live updating…"}</span>
+                      )}
+                    </div>
+                    {syncJob.error_message && (
+                      <div className="rounded border border-red-500/30 bg-red-500/5 p-2 text-red-600">
+                        {syncFailureText}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
