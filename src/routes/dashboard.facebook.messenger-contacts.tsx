@@ -50,8 +50,10 @@ import {
   startMessengerSync,
   sendMessengerBroadcast,
   updateMessengerContactTags,
+  checkMessengerPageAccess,
 } from "@/lib/messenger-contacts.functions";
 import { connectFacebook } from "@/lib/facebook.functions";
+
 import {
   listBotAccountsForMessenger,
   queueMessengerListPages,
