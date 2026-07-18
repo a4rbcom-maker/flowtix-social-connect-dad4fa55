@@ -97,6 +97,16 @@ type MessengerPageOption = {
   source: "cookies" | "official";
 };
 
+function cleanPageName(name: string): string {
+  if (!name) return name;
+  return name
+    .replace(/^\s*صورة\s+ملف\s+/u, "")
+    .replace(/\s+الشخصية?$/u, "")
+    .replace(/^\s*Profile\s+picture\s+of\s+/iu, "")
+    .replace(/'s\s+profile\s+picture$/iu, "")
+    .trim();
+}
+
 const FACEBOOK_COOKIES_SESSION_RE =
   /SESSION_EXPIRED|Facebook rejected|stored session cookies|redirected to login|checkpoint|c_user|cookies?.*(expired|invalid|rejected)|login/i;
 
@@ -496,7 +506,7 @@ function MessengerContactsPage() {
           {allPageOptions.length > 0 && (
             <Button variant="outline" size="sm" onClick={() => setShowPagePicker(true)}>
               <Users className="h-4 w-4" />
-              {currentPage?.pageName ?? (lang === "ar" ? "اختر صفحة" : "Pick a page")}
+              {currentPage ? cleanPageName(currentPage.pageName) : (lang === "ar" ? "اختر صفحة" : "Pick a page")}
             </Button>
           )}
           {!selectedFromCookies && (
@@ -890,7 +900,7 @@ function MessengerContactsPage() {
                   <div className="h-9 w-9 rounded-full bg-muted" />
                 )}
                 <div className="flex-1">
-                  <div className="font-medium">{p.pageName}</div>
+                  <div className="font-medium">{cleanPageName(p.pageName)}</div>
                   <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                     <Badge variant="secondary" className="text-[10px]">
                       {p.source === "cookies"
@@ -1267,7 +1277,7 @@ function CookiesModePanel(props: {
                     className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background p-2 text-xs"
                   >
                     <div className="min-w-0">
-                      <p className="truncate font-semibold text-foreground">{p.pageName}</p>
+                      <p className="truncate font-semibold text-foreground">{cleanPageName(p.pageName)}</p>
                       <p className="truncate text-muted-foreground">{p.pageId}</p>
                     </div>
                     <div className="flex gap-1">
