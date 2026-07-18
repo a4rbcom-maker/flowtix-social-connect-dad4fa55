@@ -58,6 +58,7 @@ import {
   checkMessengerPageAccess,
 } from "@/lib/messenger-contacts.functions";
 import { connectFacebook } from "@/lib/facebook.functions";
+import { supabase } from "@/integrations/supabase/client";
 
 import {
   listBotAccountsForMessenger,
