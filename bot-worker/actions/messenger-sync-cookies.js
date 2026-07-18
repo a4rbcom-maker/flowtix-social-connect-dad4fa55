@@ -195,15 +195,10 @@ async function runMessengerSyncCookies({ page, job, report }) {
     return;
   }
 
-  // 1) Verify base facebook.com session first — only THIS constitutes SESSION_EXPIRED.
-  const sessionOk = await verifyFacebookSession(page);
-  if (!sessionOk) {
-    await report({
-      status: "failed",
-      errorMessage: "SESSION_EXPIRED: انتهت جلسة حساب البوت على فيسبوك. حدّث الكوكيز من نفس المتصفح المسجّل دخوله.",
-    });
-    return;
-  }
+  // Session was already verified by ensureLogin() in the worker before
+  // dispatching this action; skip the extra /me hop to reduce FB fingerprint.
+
+
 
   // 2) Try to open an inbox surface. A failure here is NOT a session expiry.
   const opened = await tryOpenInbox(page, pageId, pageName);
