@@ -23,6 +23,8 @@ async function tryOpenInbox(page, pageId) {
   // enrolled — that's NOT a session expiry, just a missing surface.
   const candidates = [
     // Meta Business Suite (best: real page inbox)
+    `https://business.facebook.com/latest/inbox?asset_id=${encodeURIComponent(pageId)}`,
+    `https://business.facebook.com/latest/inbox/messenger?asset_id=${encodeURIComponent(pageId)}`,
     `https://business.facebook.com/latest/inbox/all?asset_id=${encodeURIComponent(pageId)}&mailbox_id=${encodeURIComponent(pageId)}`,
     `https://business.facebook.com/latest/inbox/all?asset_id=${encodeURIComponent(pageId)}`,
     // Legacy Pages inbox
@@ -63,23 +65,29 @@ async function collectConversations(page, maxConversations) {
       const items = [];
       const rows = Array.from(
         document.querySelectorAll(
-          '[role="row"], [role="listitem"], a[href*="thread_fbid"], a[href*="/inbox/"], a[href*="/messages/t/"]',
+          '[role="row"], [role="listitem"], a[href*="thread_fbid"], a[href*="/inbox/"], a[href*="/messages/t/"], a[href*="selected_item_id"], a[href*="thread_id"]',
         ),
       );
       for (const row of rows) {
         const html = row.outerHTML || "";
+        const href = row instanceof HTMLAnchorElement ? row.href : row.querySelector("a[href]")?.href || "";
         const psidMatch =
+          href.match(/\/messages\/t\/(\d{5,})/) ||
+          href.match(/[?&](?:selected_item_id|participant_id|user_id|profile_id|psid)=(\d{5,})/) ||
           html.match(/thread_fbid[=:]"?(\d{5,})"?/) ||
           html.match(/user_id[=:]"?(\d{5,})"?/) ||
+          html.match(/other_user_id[=:]"?(\d{5,})"?/) ||
+          html.match(/participant_id[=:]"?(\d{5,})"?/) ||
+          html.match(/profile_id[=:]"?(\d{5,})"?/) ||
           html.match(/\/messages\/t\/(\d{5,})/) ||
           html.match(/"id":"(\d{10,})"/);
         if (!psidMatch) continue;
         const psid = psidMatch[1];
         const nameEl = row.querySelector(
-          'span[dir="auto"] span, span[dir="auto"], strong, [data-visualcompletion="ignore-dynamic"] span',
+          'span[dir="auto"] span, span[dir="auto"], strong, [aria-label], [data-visualcompletion="ignore-dynamic"] span',
         );
-        const name = (nameEl?.innerText || row.innerText || "").trim().split("\n")[0];
-        if (!psid) continue;
+        const name = (nameEl?.innerText || nameEl?.getAttribute?.("aria-label") || row.innerText || "").trim().split("\n")[0];
+        if (!psid || /^(Inbox|Messenger|Search|Chats|All|Unread|Spam|Done|صندوق|بحث|الكل|غير مقروء)$/i.test(name)) continue;
         items.push({ psid, name: name.slice(0, 200) });
       }
       return items;
@@ -118,6 +126,14 @@ async function runMessengerSyncCookies({ page, job, report }) {
   const { pageId, pageName = null, maxConversations = 5000 } = job.payload || {};
   if (!pageId) {
     await report({ status: "failed", errorMessage: "pageId is required" });
+    return;
+  }
+  if (!/^\d{5,}$/.test(String(pageId))) {
+    await report({
+      status: "failed",
+      errorMessage:
+        "معرّف الصفحة الحالي غير رقمي، وهذا يعني أنه ناتج من طريقة جلب قديمة وقد يفتح Inbox غلط. اضغط «جلب صفحاتي المدارة» مرة أخرى ثم اختر الصفحة من القائمة الجديدة.",
+    });
     return;
   }
 
