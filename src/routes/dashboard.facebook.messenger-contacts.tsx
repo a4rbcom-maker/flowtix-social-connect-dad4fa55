@@ -17,7 +17,11 @@ import {
   X,
   ExternalLink,
   Copy,
+  ShieldCheck,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
+
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
@@ -50,8 +54,10 @@ import {
   startMessengerSync,
   sendMessengerBroadcast,
   updateMessengerContactTags,
+  checkMessengerPageAccess,
 } from "@/lib/messenger-contacts.functions";
 import { connectFacebook } from "@/lib/facebook.functions";
+
 import {
   listBotAccountsForMessenger,
   queueMessengerListPages,
@@ -159,7 +165,9 @@ function MessengerContactsPage() {
   const startSyncFn = useServerFn(startMessengerSync);
   const sendBroadcastFn = useServerFn(sendMessengerBroadcast);
   const updateTagsFn = useServerFn(updateMessengerContactTags);
+  const checkAccessFn = useServerFn(checkMessengerPageAccess);
   const connectFacebookFn = useServerFn(connectFacebook);
+
 
   const [pageId, setPageId] = useState<string | null>(null);
   const [showPagePicker, setShowPagePicker] = useState(false);
@@ -183,6 +191,15 @@ function MessengerContactsPage() {
     missing?: string[];
   } | null>(null);
   const [officialOpen, setOfficialOpen] = useState(false);
+  type AccessCheckResult = {
+    ok: boolean;
+    canSync: boolean;
+    message: string;
+    hint: string;
+    checks: Array<{ key: string; label: string; ok: boolean; detail: string }>;
+  };
+  const [accessCheck, setAccessCheck] = useState<AccessCheckResult | null>(null);
+
 
   // Pages query — decides whether to show picker.
   const pagesQ = useQuery({
@@ -307,9 +324,36 @@ function MessengerContactsPage() {
     },
   });
 
+  const checkM = useMutation({
+    mutationFn: () => checkAccessFn({ data: { pageId: pageId! } }) as Promise<AccessCheckResult>,
+    onSuccess: (res) => {
+      setAccessCheck(res);
+      if (res.ok) toast.success(res.message);
+      else toast.error(res.message);
+    },
+    onError: (e: Error) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      setAccessCheck({
+        ok: false,
+        canSync: false,
+        message: lang === "ar" ? "فشل فحص الصلاحية" : "Access check failed",
+        hint: msg,
+        checks: [],
+      });
+      toast.error(msg);
+    },
+  });
+
   const syncM = useMutation({
-    mutationFn: (mode: "initial" | "incremental") =>
-      startSyncFn({ data: { pageId: pageId!, mode, maxConversations: mode === "initial" ? 10000 : 300 } }),
+    mutationFn: async (mode: "initial" | "incremental") => {
+      // Pre-sync automatic access check — abort with a clear message on failure
+      const probe = (await checkAccessFn({ data: { pageId: pageId! } })) as AccessCheckResult;
+      setAccessCheck(probe);
+      if (!probe.canSync) {
+        throw new Error(`${probe.message}${probe.hint ? ` — ${probe.hint}` : ""}`);
+      }
+      return startSyncFn({ data: { pageId: pageId!, mode, maxConversations: mode === "initial" ? 10000 : 300 } });
+    },
     onSuccess: (res) => {
       toast.success(
         lang === "ar"
@@ -321,6 +365,7 @@ function MessengerContactsPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
 
   const broadcastM = useMutation({
     mutationFn: (input: { text: string; tag: (typeof MESSAGE_TAGS)[number] }) =>
@@ -518,6 +563,19 @@ function MessengerContactsPage() {
           )}
           {!selectedFromCookies && (
             <Button
+              variant="outline"
+              size="sm"
+              disabled={!pageId || checkM.isPending}
+              onClick={() => checkM.mutate()}
+              title={lang === "ar" ? "اختبار صلاحية Messaging على هذه الصفحة" : "Test Messaging permission on this page"}
+            >
+              {checkM.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+              {lang === "ar" ? "فحص الصلاحية" : "Check access"}
+            </Button>
+          )}
+          {!selectedFromCookies && (
+
+            <Button
               size="sm"
               disabled={!pageId || syncM.isPending || syncRunning}
               onClick={() => syncM.mutate(total > 0 ? "incremental" : "initial")}
@@ -571,7 +629,42 @@ function MessengerContactsPage() {
 
 
 
+      {/* Access check result */}
+      {accessCheck && !selectedFromCookies && (
+        <Alert variant={accessCheck.ok ? "default" : "destructive"} className="relative">
+          {accessCheck.ok ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+          <button
+            type="button"
+            onClick={() => setAccessCheck(null)}
+            className="absolute top-2 end-2 text-muted-foreground hover:text-foreground"
+            aria-label="close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <AlertTitle>
+            {accessCheck.ok
+              ? (lang === "ar" ? "الصفحة جاهزة للمزامنة" : "Page is ready to sync")
+              : (lang === "ar" ? "لا يمكن مزامنة هذه الصفحة الآن" : "Cannot sync this page yet")}
+          </AlertTitle>
+          <AlertDescription>
+            <p className="mb-2">{accessCheck.message}</p>
+            {accessCheck.hint && <p className="mb-2 text-xs opacity-90">{accessCheck.hint}</p>}
+            <ul className="space-y-1 text-xs">
+              {accessCheck.checks.map((c) => (
+                <li key={c.key} className="flex items-start gap-2">
+                  {c.ok
+                    ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 text-green-600 shrink-0" />
+                    : <XCircle className="mt-0.5 h-3.5 w-3.5 text-red-600 shrink-0" />}
+                  <span><span className="font-medium">{c.label}:</span> {c.detail}</span>
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Sync progress banner */}
+
       {syncJob && (
         <Card className="p-3 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
