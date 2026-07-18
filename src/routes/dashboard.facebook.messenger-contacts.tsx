@@ -165,7 +165,9 @@ function MessengerContactsPage() {
   const startSyncFn = useServerFn(startMessengerSync);
   const sendBroadcastFn = useServerFn(sendMessengerBroadcast);
   const updateTagsFn = useServerFn(updateMessengerContactTags);
+  const checkAccessFn = useServerFn(checkMessengerPageAccess);
   const connectFacebookFn = useServerFn(connectFacebook);
+
 
   const [pageId, setPageId] = useState<string | null>(null);
   const [showPagePicker, setShowPagePicker] = useState(false);
