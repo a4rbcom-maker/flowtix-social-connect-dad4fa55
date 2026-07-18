@@ -119,19 +119,12 @@ function parseProxy(proxyUrl) {
 }
 
 function loginOptionsForJob(job) {
-  const payload = job.payload || {};
-  if (job.type === "messenger_sync_cookies" && payload.pageId) {
-    const inboxUrl = `https://business.facebook.com/latest/inbox?asset_id=${encodeURIComponent(payload.pageId)}`;
-    return { initialUrl: inboxUrl, verifyUrl: inboxUrl, preferExistingSession: true, verifyTimeoutMs: 60_000 };
-  }
-  if (job.type === "messenger_send_cookies" && payload.pageId) {
-    const inboxUrl = `https://business.facebook.com/latest/inbox?asset_id=${encodeURIComponent(payload.pageId)}`;
-    return { initialUrl: inboxUrl, verifyUrl: inboxUrl, preferExistingSession: true, verifyTimeoutMs: 60_000 };
-  }
-  if (job.type === "messenger_list_pages") {
-    const suiteUrl = "https://business.facebook.com/latest/home";
-    return { initialUrl: suiteUrl, verifyUrl: suiteUrl, preferExistingSession: true, verifyTimeoutMs: 60_000 };
-  }
+  // Verify the base facebook.com session only. We deliberately do NOT set a
+  // verifyUrl pointing at business.facebook.com/latest/* for Messenger jobs:
+  // Business Suite has its own shell/loading behaviour and a slow render was
+  // getting misclassified as "SESSION_EXPIRED / cookies rejected" even for
+  // freshly-exported cookies. Each Messenger action already reports a precise
+  // reason (permissions / inbox not opened / etc.) if Business Suite fails.
   return { preferExistingSession: true };
 }
 
