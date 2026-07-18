@@ -1143,47 +1143,81 @@ function CookiesModePanel(props: {
                 : "No bot account linked. Add a Cookies account from the Bot Accounts page first."}
             </div>
           ) : (
-            <div className="flex flex-wrap items-center gap-2">
-              <Select value={accountId ?? undefined} onValueChange={(v) => setAccountId(v)}>
-                <SelectTrigger className="h-9 w-64">
-                  <SelectValue placeholder={lang === "ar" ? "اختر حساب البوت" : "Pick bot account"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.displayName} {a.status === "active" ? "(Active)" : `(${a.status})`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedAccount && (
-                <Badge variant={canRunWithSelectedAccount ? "default" : "destructive"} className="text-[10px]">
-                  {canRunWithSelectedAccount
-                    ? lang === "ar" ? "جلسة صالحة" : "Session active"
-                    : lang === "ar" ? "الجلسة منتهية" : "Session invalid"}
-                </Badge>
+            <>
+              {activeAccounts.length === 0 && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>
+                    {lang === "ar" ? "كل حسابات البوت لديك منتهية الجلسة" : "All your bot accounts have expired sessions"}
+                  </AlertTitle>
+                  <AlertDescription className="space-y-2 text-xs">
+                    <p>
+                      {lang === "ar"
+                        ? "الخدمة تعمل بشكل صحيح، لكن فيسبوك رفض Cookies جميع الحسابات المربوطة. يجب تحديث Cookies حساب واحد على الأقل قبل أن يظهر أي شيء هنا."
+                        : "The service works — Facebook rejected the Cookies of all your linked accounts. Refresh the Cookies of at least one account first."}
+                    </p>
+                    <Button asChild size="sm" variant="outline">
+                      <Link to="/dashboard/facebook/bot">
+                        {lang === "ar" ? "الذهاب لتحديث Cookies الآن" : "Go refresh Cookies now"}
+                      </Link>
+                    </Button>
+                  </AlertDescription>
+                </Alert>
               )}
-              <Button
-                size="sm"
-                disabled={!accountId || !canRunWithSelectedAccount || startListPagesM.isPending || listRunning}
-                onClick={() => startListPagesM.mutate()}
-              >
-                {startListPagesM.isPending || listRunning ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Select value={accountId ?? undefined} onValueChange={(v) => setAccountId(v)}>
+                  <SelectTrigger className="h-9 w-72">
+                    <SelectValue placeholder={lang === "ar" ? "اختر حساب البوت" : "Pick bot account"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((a) => {
+                      const ok = a.status === "active";
+                      const statusLabel = ok
+                        ? (lang === "ar" ? "متصل" : "Active")
+                        : (lang === "ar" ? "جلسة منتهية" : "Expired");
+                      return (
+                        <SelectItem key={a.id} value={a.id}>
+                          <span className="inline-flex items-center gap-2">
+                            <span className={`inline-block h-2 w-2 rounded-full ${ok ? "bg-green-500" : "bg-red-500"}`} />
+                            <span>{a.displayName}</span>
+                            <span className={`text-[10px] ${ok ? "text-green-600" : "text-red-600"}`}>({statusLabel})</span>
+                          </span>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                {selectedAccount && (
+                  <Badge variant={canRunWithSelectedAccount ? "default" : "destructive"} className="text-[10px]">
+                    <span className={`me-1 inline-block h-2 w-2 rounded-full ${canRunWithSelectedAccount ? "bg-green-400" : "bg-red-300"}`} />
+                    {canRunWithSelectedAccount
+                      ? lang === "ar" ? "جلسة صالحة" : "Session active"
+                      : lang === "ar" ? "الجلسة منتهية — حدّث Cookies" : "Session expired — refresh Cookies"}
+                  </Badge>
                 )}
-                {!canRunWithSelectedAccount && selectedAccount
-                  ? lang === "ar" ? "حدّث Cookies أولاً" : "Refresh Cookies first"
-                  : lang === "ar" ? "جلب صفحاتي المدارة" : "Fetch my managed Pages"}
-              </Button>
-              {listJob && (
-                <Badge variant="outline" className="text-[10px]">
-                  {lang === "ar" ? "حالة الجلب" : "List job"}: {listJob.status}
-                  {typeof listJob.progress === "number" ? ` — ${listJob.progress}%` : ""}
-                </Badge>
-              )}
-            </div>
+                <Button
+                  size="sm"
+                  disabled={!accountId || !canRunWithSelectedAccount || startListPagesM.isPending || listRunning}
+                  onClick={() => startListPagesM.mutate()}
+                >
+                  {startListPagesM.isPending || listRunning ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  {!canRunWithSelectedAccount && selectedAccount
+                    ? lang === "ar" ? "حدّث Cookies أولاً" : "Refresh Cookies first"
+                    : lang === "ar" ? "جلب صفحاتي المدارة" : "Fetch my managed Pages"}
+                </Button>
+                {listJob && (
+                  <Badge variant="outline" className="text-[10px]">
+                    {lang === "ar" ? "حالة الجلب" : "List job"}: {listJob.status}
+                    {typeof listJob.progress === "number" ? ` — ${listJob.progress}%` : ""}
+                  </Badge>
+                )}
+              </div>
+            </>
           )}
 
           {selectedAccount && !canRunWithSelectedAccount && (
