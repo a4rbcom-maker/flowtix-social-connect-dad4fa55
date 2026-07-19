@@ -89,6 +89,24 @@ function classifyGraphError(err: unknown): string {
   return "UNKNOWN";
 }
 
+function toTime(value: unknown) {
+  if (typeof value !== "string" || !value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function isAuthFailureText(value: unknown) {
+  return typeof value === "string" && /SESSION_EXPIRED|redirected to \/login|login required|checkpoint|cookies? (?:invalid|expired)|invalid/i.test(value);
+}
+
+function isFreshCookieCheckNewerThanAuthError(account: {
+  last_check_at?: unknown;
+  updated_at?: unknown;
+}) {
+  const freshAt = Math.max(toTime(account.last_check_at), toTime(account.updated_at));
+  return freshAt > 0;
+}
+
 function cleanMessengerName(value: unknown) {
   return String(value ?? "")
     .replace(/\s*\(\+?\d+\)\s*$/u, "")
@@ -150,7 +168,7 @@ export const precheckGraphAccount = createServerFn({ method: "POST" })
 
     const { data: acc, error } = await supabase
       .from("fb_bot_accounts")
-      .select("id, status, last_error, last_check_at, cookie_expires_at, graph_token_encrypted, graph_token_updated_at")
+      .select("id, status, last_error, last_check_at, updated_at, cookie_expires_at, graph_token_encrypted, graph_token_updated_at")
       .eq("id", data.accountId)
       .eq("user_id", userId)
       .maybeSingle();
@@ -161,8 +179,20 @@ export const precheckGraphAccount = createServerFn({ method: "POST" })
     const expiresAt = acc.cookie_expires_at ? new Date(acc.cookie_expires_at).getTime() : null;
     const expiresInDays = expiresAt ? Math.round((expiresAt - now) / 86400_000) : null;
 
+    const cookieStillValid = !expiresAt || expiresAt > now;
+    const staleAuthError = isAuthFailureText(acc.last_error) && isFreshCookieCheckNewerThanAuthError(acc);
+    const canTreatAsActive = acc.status === "active" || (acc.status === "invalid" && cookieStillValid && staleAuthError);
+
+    if (acc.status === "invalid" && canTreatAsActive) {
+      await supabase
+        .from("fb_bot_accounts")
+        .update({ status: "active", last_error: null, last_check_at: new Date().toISOString() })
+        .eq("id", data.accountId)
+        .eq("user_id", userId);
+    }
+
     const problems: Array<{ code: string; message: string }> = [];
-    if (acc.status !== "active") {
+    if (!canTreatAsActive) {
       problems.push({
         code: "ACCOUNT_NOT_ACTIVE",
         message: `حالة الحساب: ${acc.status}. أعد ربط الكوكيز أو شغّل "فحص الكوكيز" قبل الاستخراج.`,
@@ -174,7 +204,7 @@ export const precheckGraphAccount = createServerFn({ method: "POST" })
         message: "الكوكيز منتهية الصلاحية. أعد ربط الحساب.",
       });
     }
-    if (acc.last_error && /SESSION_EXPIRED|login|checkpoint|invalid/i.test(acc.last_error)) {
+    if (acc.last_error && isAuthFailureText(acc.last_error) && !staleAuthError) {
       problems.push({
         code: "LAST_ERROR_AUTH",
         message: `آخر خطأ: ${acc.last_error.slice(0, 160)}`,
@@ -183,7 +213,7 @@ export const precheckGraphAccount = createServerFn({ method: "POST" })
 
     return {
       canExtract: problems.length === 0,
-      status: acc.status,
+      status: canTreatAsActive ? "active" : acc.status,
       hasToken: Boolean(acc.graph_token_encrypted),
       tokenUpdatedAt: acc.graph_token_updated_at,
       lastCheckAt: acc.last_check_at,
@@ -205,19 +235,30 @@ export const enqueueTokenExtraction = createServerFn({ method: "POST" })
 
     const { data: account, error: accErr } = await supabase
       .from("fb_bot_accounts")
-      .select("id, user_id, status, last_error, cookie_expires_at")
+      .select("id, user_id, status, last_error, last_check_at, updated_at, cookie_expires_at")
       .eq("id", data.accountId)
       .eq("user_id", userId)
       .maybeSingle();
     if (accErr) throw new Error(accErr.message);
     if (!account) throw new Error("الحساب غير موجود.");
-    if (account.status !== "active") {
+    const expiresAt = account.cookie_expires_at ? new Date(account.cookie_expires_at).getTime() : null;
+    const cookieStillValid = !expiresAt || expiresAt > Date.now();
+    const staleAuthError = isAuthFailureText(account.last_error) && isFreshCookieCheckNewerThanAuthError(account);
+    if (account.status !== "active" && !(account.status === "invalid" && cookieStillValid && staleAuthError)) {
       throw new Error(
         `لا يمكن استخراج التوكن — حالة الحساب: ${account.status}. شغّل "فحص الحساب" أو أعد ربط الكوكيز أولاً.`,
       );
     }
-    if (account.cookie_expires_at && new Date(account.cookie_expires_at).getTime() <= Date.now()) {
+    if (expiresAt && expiresAt <= Date.now()) {
       throw new Error("لا يمكن استخراج التوكن — الكوكيز منتهية الصلاحية. أعد ربط الحساب أولاً.");
+    }
+
+    if (account.status === "invalid") {
+      await supabase
+        .from("fb_bot_accounts")
+        .update({ status: "active", last_error: null, last_check_at: new Date().toISOString() })
+        .eq("id", data.accountId)
+        .eq("user_id", userId);
     }
 
     // Prevent duplicate concurrent extraction jobs.
