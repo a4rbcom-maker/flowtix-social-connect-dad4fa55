@@ -102,11 +102,9 @@ function isAuthFailureText(value: unknown) {
 function isFreshCookieCheckNewerThanAuthError(account: {
   last_check_at?: unknown;
   updated_at?: unknown;
-  last_error_at?: unknown;
 }) {
   const freshAt = Math.max(toTime(account.last_check_at), toTime(account.updated_at));
-  const errorAt = toTime(account.last_error_at);
-  return freshAt > 0 && (errorAt === 0 || freshAt >= errorAt - 1000);
+  return freshAt > 0;
 }
 
 function cleanMessengerName(value: unknown) {
@@ -170,7 +168,7 @@ export const precheckGraphAccount = createServerFn({ method: "POST" })
 
     const { data: acc, error } = await supabase
       .from("fb_bot_accounts")
-      .select("id, status, last_error, last_error_at, last_check_at, updated_at, cookie_expires_at, graph_token_encrypted, graph_token_updated_at")
+      .select("id, status, last_error, last_check_at, updated_at, cookie_expires_at, graph_token_encrypted, graph_token_updated_at")
       .eq("id", data.accountId)
       .eq("user_id", userId)
       .maybeSingle();
@@ -237,7 +235,7 @@ export const enqueueTokenExtraction = createServerFn({ method: "POST" })
 
     const { data: account, error: accErr } = await supabase
       .from("fb_bot_accounts")
-      .select("id, user_id, status, last_error, last_error_at, last_check_at, updated_at, cookie_expires_at")
+      .select("id, user_id, status, last_error, last_check_at, updated_at, cookie_expires_at")
       .eq("id", data.accountId)
       .eq("user_id", userId)
       .maybeSingle();
