@@ -69,7 +69,9 @@ function parseProfileHref(href) {
 
 // ---------- generic scroller that harvests profile links inside a scope ----------
 async function harvestFromScope(page, scopeSelector, cap, opts = {}) {
-  const { maxScrolls = 60, idleLimit = 4 } = opts;
+  // Tightened defaults: FB renders new batches in <1s; long waits just burn time
+  // without collecting anything new. We compensate by exiting early on idle.
+  const { maxScrolls = 30, idleLimit = 2 } = opts;
   const found = new Map();
   let idle = 0;
   for (let i = 0; i < maxScrolls && found.size < cap && idle < idleLimit; i++) {
@@ -111,10 +113,12 @@ async function harvestFromScope(page, scopeSelector, cap, opts = {}) {
       if (el) el.scrollTop = el.scrollHeight;
       else window.scrollBy(0, 1800);
     }, scopeSelector);
-    await sleep(rand(1500, 2800));
+    // Shorter jitter — enough for lazy-loaded batches, half of the old 1.5-2.8s.
+    await sleep(rand(700, 1300));
   }
   return Array.from(found.values());
 }
+
 
 // ---------- collect recent post permalinks from the page timeline ----------
 async function collectRecentPostUrls(page, pageId, wantPosts) {
