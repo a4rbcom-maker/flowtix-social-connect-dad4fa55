@@ -163,6 +163,20 @@ export function MessengerGraphPanel() {
 
   const selectedPage = pages.find((p: any) => p.id === selectedPageId);
 
+  // Determine current active step in the flow
+  const step1Done = !!selectedAccountId;
+  const step2Done = !!precheck?.hasToken;
+  const step3Done = pages.length > 0;
+  const step4Done = !!selectedPageId;
+  const activeStep = !step1Done ? 1 : !step2Done ? 2 : !step3Done ? 3 : 4;
+
+  const steps = [
+    { n: 1, label: "اختر الحساب", done: step1Done },
+    { n: 2, label: "استخراج التوكن", done: step2Done },
+    { n: 3, label: "جلب الصفحات", done: step3Done },
+    { n: 4, label: "مزامنة وإرسال", done: step4Done },
+  ];
+
   return (
     <Card className="p-5 space-y-5 border-primary/30">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -179,6 +193,49 @@ export function MessengerGraphPanel() {
         </div>
         <Badge variant="outline" className="bg-primary/5">مستقر</Badge>
       </div>
+
+      {/* Numbered stepper — shows the exact order to follow */}
+      <div className="rounded-xl border bg-muted/30 p-3">
+        <div className="text-xs font-semibold text-muted-foreground mb-2">
+          اتبع الخطوات بالترتيب:
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {steps.map((s, i) => {
+            const isActive = activeStep === s.n;
+            const isDone = s.done;
+            return (
+              <div key={s.n} className="flex items-center gap-2">
+                <div
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs transition ${
+                    isDone
+                      ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-700"
+                      : isActive
+                      ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                      : "bg-background border-border text-muted-foreground"
+                  }`}
+                >
+                  <span
+                    className={`h-5 w-5 rounded-full flex items-center justify-center text-[11px] font-bold ${
+                      isDone
+                        ? "bg-emerald-500 text-white"
+                        : isActive
+                        ? "bg-primary-foreground/20"
+                        : "bg-muted"
+                    }`}
+                  >
+                    {isDone ? "✓" : s.n}
+                  </span>
+                  <span className="font-medium">{s.label}</span>
+                </div>
+                {i < steps.length - 1 && (
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground rtl:rotate-180" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
 
       {/* Account selector */}
       <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
