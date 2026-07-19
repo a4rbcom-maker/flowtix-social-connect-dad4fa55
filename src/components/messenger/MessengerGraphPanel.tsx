@@ -58,8 +58,10 @@ export function MessengerGraphPanel() {
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [selectedPageId, setSelectedPageId] = useState<string>("");
   const [tokenJobId, setTokenJobId] = useState<string | null>(null);
+  const [tokenJobStartedAt, setTokenJobStartedAt] = useState<number | null>(null);
   const [sendOpen, setSendOpen] = useState(false);
   const [sendText, setSendText] = useState("");
+  const TOKEN_JOB_HARD_TIMEOUT_MS = 3 * 60 * 1000;
 
   const listAccountsFn = useServerFn(listBotAccounts);
   const enqueueTokenFn = useServerFn(enqueueTokenExtraction);
@@ -96,7 +98,8 @@ export function MessengerGraphPanel() {
     refetchInterval: tokenJobId ? 3000 : 15000,
   });
 
-  // Poll token extraction job
+  // Poll token extraction job — with a client-side hard timeout so the UI
+  // never spins forever if the DB reaper hasn't caught up yet.
   useQuery({
     queryKey: ["mgraph-token-job", tokenJobId],
     queryFn: async () => {
@@ -106,11 +109,20 @@ export function MessengerGraphPanel() {
       if (job?.status === "completed") {
         toast.success("تم استخراج التوكن بنجاح. يمكنك الآن جلب الصفحات.");
         setTokenJobId(null);
+        setTokenJobStartedAt(null);
         qc.invalidateQueries({ queryKey: ["mgraph-accounts"] });
         qc.invalidateQueries({ queryKey: ["mgraph-precheck", selectedAccountId] });
       } else if (job?.status === "failed") {
         toast.error(`فشل استخراج التوكن: ${job.error_message ?? "خطأ غير معروف"}`);
         setTokenJobId(null);
+        setTokenJobStartedAt(null);
+        qc.invalidateQueries({ queryKey: ["mgraph-precheck", selectedAccountId] });
+      } else if (tokenJobStartedAt && Date.now() - tokenJobStartedAt > TOKEN_JOB_HARD_TIMEOUT_MS) {
+        // Client-side safety net — stops the "جاري الاستخراج…" state instead
+        // of waiting indefinitely for the DB reaper or a stuck worker.
+        toast.error("انتهت المهلة الزمنية لاستخراج التوكن (3 دقائق). تحقّق من تشغيل البوت وأعد المحاولة.");
+        setTokenJobId(null);
+        setTokenJobStartedAt(null);
         qc.invalidateQueries({ queryKey: ["mgraph-precheck", selectedAccountId] });
       }
       return res;
@@ -124,6 +136,7 @@ export function MessengerGraphPanel() {
     onSuccess: (res) => {
       toast.info("بدأت مهمة استخراج التوكن من جلسة المتصفح…");
       setTokenJobId(res.jobId);
+      setTokenJobStartedAt(Date.now());
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : String(e)),
   });
