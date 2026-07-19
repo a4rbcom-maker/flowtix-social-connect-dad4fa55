@@ -429,7 +429,7 @@ async function assertBotAccountReadyForExtraction(
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data: account, error } = await supabaseAdmin
     .from("fb_bot_accounts")
-    .select("id, user_id, auth_method, encrypted_payload, status, last_error, cookie_expires_at")
+    .select("id, user_id, auth_method, encrypted_payload, status, last_error, last_check_at, cookie_expires_at, updated_at")
     .eq("id", accountId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -461,7 +461,10 @@ async function assertBotAccountReadyForExtraction(
     : isFacebookSessionRejectedError(storedError)
       ? storedError
       : null;
-  if (rejectedSessionError && (latestJob?.status === "failed" || isFacebookSessionRejectedError(storedError))) {
+  if (
+    rejectedSessionError &&
+    (isFailureNewerThanAccountCheck(latestJob, account) || (isFacebookSessionRejectedError(storedError) && account.status === "invalid"))
+  ) {
     const checkedAt = (latestJob?.completed_at as string | null) ?? (latestJob?.created_at as string | null) ?? new Date().toISOString();
     await supabase
       .from("fb_bot_accounts")
