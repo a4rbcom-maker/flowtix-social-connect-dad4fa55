@@ -1306,7 +1306,11 @@ function CookiesModePanel(props: {
               ? "حسابات Cookies المرتبطة"
               : "Linked Cookies accounts"}
           </span>
+          <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white">
+            {lang === "ar" ? "بديل احتياطي" : "Fallback"}
+          </span>
         </div>
+
         <ChevronRight className={`h-4 w-4 transition-transform ${open ? "rotate-90" : ""}`} />
       </button>
 
