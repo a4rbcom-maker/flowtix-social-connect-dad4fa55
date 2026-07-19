@@ -175,7 +175,7 @@ async function ensureLogin(page, account, reportStatus, options = {}) {
         try {
           await page.goto(firstUrl, { waitUntil: "domcontentloaded", timeout: options.initialTimeoutMs || 45_000 });
           await new Promise((resolve) => setTimeout(resolve, options.initialSettleMs || 1200));
-          const existingOk = await verifyLoggedInSession(page, async () => {}, { verifyUrl: options.verifyUrl });
+          const existingOk = await verifyLoggedInSession(page, async () => {}, options);
           if (existingOk) {
             await reportStatus("active", null);
             return true;
