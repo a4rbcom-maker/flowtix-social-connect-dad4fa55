@@ -17,6 +17,18 @@
 function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Smart-wait: race a real content signal against a max ceiling. Cuts the "blind
+// 4s sleep after goto" pattern — pages that render in 800ms don't waste 3.2s.
+async function waitForContent(page, selectors, maxMs = 3500, minMs = 700) {
+  const start = Date.now();
+  await sleep(minMs);
+  const remaining = Math.max(0, maxMs - (Date.now() - start));
+  if (remaining <= 0) return;
+  const sel = Array.isArray(selectors) ? selectors.join(",") : selectors;
+  await page.waitForSelector(sel, { timeout: remaining }).catch(() => {});
+}
+
+
 const FB_SYSTEM_SLUGS = new Set([
   "pages","groups","events","watch","marketplace","profile.php","stories","reel","reels",
   "business","help","policies","terms","privacy","ads","adsmanager","careers","about",
