@@ -238,6 +238,24 @@ async function collectConversations(page, maxConversations, expectedPageId, repo
     }
     if (seen.size >= maxConversations) break;
 
+    // Live progress: 12% baseline (already reported by worker after session
+    // check) → up to 90% while scrolling/collecting. Keeps the UI moving so
+    // the user never sees "12% - 0 عميل" frozen for minutes.
+    if (typeof report === "function") {
+      const pct = Math.min(
+        90,
+        12 + Math.round((seen.size / Math.max(maxConversations, 1)) * 78),
+      );
+      try {
+        await report({
+          status: "running",
+          progress: pct,
+          processedItems: seen.size,
+          totalItems: seen.size,
+        });
+      } catch (_) { /* non-fatal */ }
+    }
+
     if (seen.size === lastCount) {
       stableRounds += 1;
       if (stableRounds >= 6) break;
