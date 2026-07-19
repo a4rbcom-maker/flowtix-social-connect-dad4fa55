@@ -941,6 +941,7 @@ function BotAccountsPage() {
       if (payload?.account) {
         setAccounts((prev) => prev.map((a) => (a.id === payload.account!.id ? payload.account! : a)));
       }
+      invalidateProxyTest(proxyEdit.id);
       toast.success(proxyEdit.proxyUrl.trim() ? t.proxySaved : t.proxyRemoved);
       setProxyEdit(null);
     } catch (e) {
