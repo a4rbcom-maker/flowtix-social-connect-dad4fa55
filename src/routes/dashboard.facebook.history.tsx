@@ -318,6 +318,21 @@ function JobsHistoryPage() {
     finally { setPausingId(null); }
   };
 
+  const handleRetry = async (j: JobRow) => {
+    setPausingId(j.id);
+    try {
+      const { id: newId } = await call(retryJob, { id: j.id });
+      toast.success(lang === "ar" ? "تم إعادة تشغيل المهمة" : "Task restarted");
+      // Refresh list so the new pending row appears at the top.
+      const rows = await call(listJobs, {});
+      setJobs(rows as JobRow[]);
+      // Optionally focus the new row (best-effort — silent on failure).
+      const created = (rows as JobRow[]).find((r) => r.id === newId);
+      if (created) void openJob(created);
+    } catch (e) { toast.error(String(e)); }
+    finally { setPausingId(null); }
+  };
+
   const isPeople = selected?.job_type === "extract_commenters"
     || selected?.job_type === "extract_group_members"
     || selected?.job_type === "extract_page_audience"
