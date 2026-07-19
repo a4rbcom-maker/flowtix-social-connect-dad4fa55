@@ -1015,6 +1015,10 @@ function BotAccountsPage() {
         proxyEnabled: false,
         elapsedMs: null,
         error: msg,
+        reasonCode: null,
+        reasonAr: null,
+        reasonEn: null,
+        rawError: null,
       });
       toast.error(msg);
     } finally {
