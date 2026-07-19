@@ -50,6 +50,14 @@ function buildPuppeteerCookies(sourceCookies) {
   return expanded;
 }
 
+async function clearFacebookSessionCookies(page) {
+  const existing = await page.cookies("https://www.facebook.com", "https://business.facebook.com").catch(() => []);
+  const facebookCookies = existing
+    .filter((c) => /(^|\.)facebook\.com$/i.test(String(c.domain || "").replace(/^\./, "")))
+    .map((c) => ({ name: c.name, domain: c.domain, path: c.path || "/" }));
+  if (facebookCookies.length > 0) await page.deleteCookie(...facebookCookies).catch(() => {});
+}
+
 async function verifyLoggedInSession(page, reportStatus, options = {}) {
   const url = page.url();
 
@@ -70,6 +78,13 @@ async function verifyLoggedInSession(page, reportStatus, options = {}) {
   const cUser = browserCookies.find((c) => c.name === "c_user");
   if (!cUser || !cUser.value) {
     await reportStatus("invalid", "Facebook rejected the stored session cookies after navigation. Re-export fresh cookies from the same logged-in browser, then update the bot account.");
+    return false;
+  }
+  if (options.expectedCUser && cUser.value !== String(options.expectedCUser)) {
+    await reportStatus(
+      "invalid",
+      "Facebook browser profile is using a different account than the stored cookies. Clear the bot browser profile and re-link the intended Facebook account.",
+    );
     return false;
   }
 
@@ -150,6 +165,13 @@ async function verifyLoggedInSession(page, reportStatus, options = {}) {
       await reportStatus("invalid", "Facebook rejected the stored session cookies after opening the requested Facebook section. Re-export fresh cookies from the same logged-in browser, then update the bot account.");
       return false;
     }
+    if (options.expectedCUser && protectedCUser.value !== String(options.expectedCUser)) {
+      await reportStatus(
+        "invalid",
+        "Facebook opened a different account than the stored cookies while checking the protected section. Clear the bot browser profile and re-link the intended Facebook account.",
+      );
+      return false;
+    }
   }
 
   await reportStatus("active", null);
@@ -158,9 +180,11 @@ async function verifyLoggedInSession(page, reportStatus, options = {}) {
 
 async function ensureLogin(page, account, reportStatus, options = {}) {
   try {
+    let verifyOptions = options;
     if (account.authMethod === "cookies" && account.credentials?.cookies) {
       const sourceCookies = Array.isArray(account.credentials.cookies) ? account.credentials.cookies : [];
       const cookieNames = new Set(sourceCookies.map((c) => String(c?.name || "")));
+      const expectedCUser = sourceCookies.find((c) => String(c?.name || "") === "c_user")?.value || null;
       const missingRequired = ["c_user", "xs"].filter((name) => !cookieNames.has(name));
       if (missingRequired.length > 0) {
         await reportStatus(
@@ -171,11 +195,21 @@ async function ensureLogin(page, account, reportStatus, options = {}) {
       }
 
       const firstUrl = options.initialUrl || FB_HOME;
+      const cookies = buildPuppeteerCookies(sourceCookies);
+      // Always inject the CURRENT stored cookies before touching facebook.com.
+      // The persistent Chromium profile can contain stale session cookies from
+      // an older run; navigating with those stale cookies is exactly what makes
+      // Facebook invalidate the user's real browser session again. Overlaying
+      // the latest exported cookies first keeps the bot profile aligned with the
+      // account record and prevents cross-account/profile drift.
+      await clearFacebookSessionCookies(page);
+      await page.setCookie(...cookies);
+      verifyOptions = { ...options, expectedCUser };
       if (options.preferExistingSession) {
         try {
           await page.goto(firstUrl, { waitUntil: "domcontentloaded", timeout: options.initialTimeoutMs || 45_000 });
           await new Promise((resolve) => setTimeout(resolve, options.initialSettleMs || 1200));
-          const existingOk = await verifyLoggedInSession(page, async () => {}, options);
+          const existingOk = await verifyLoggedInSession(page, async () => {}, verifyOptions);
           if (existingOk) {
             await reportStatus("active", null);
             return true;
@@ -185,7 +219,6 @@ async function ensureLogin(page, account, reportStatus, options = {}) {
         }
       }
 
-      const cookies = buildPuppeteerCookies(sourceCookies);
       await page.setCookie(...cookies);
       try {
         await page.goto(firstUrl, { waitUntil: "domcontentloaded", timeout: options.initialTimeoutMs || 60_000 });
@@ -209,7 +242,7 @@ async function ensureLogin(page, account, reportStatus, options = {}) {
       return false;
     }
 
-    return verifyLoggedInSession(page, reportStatus, options);
+    return verifyLoggedInSession(page, reportStatus, verifyOptions);
   } catch (e) {
     await reportStatus("invalid", `LOGIN_EXCEPTION: ${String(e.message || e)}`);
     return false;
