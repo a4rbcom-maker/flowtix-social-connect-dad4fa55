@@ -72,6 +72,13 @@ async function verifyLoggedInSession(page, reportStatus, options = {}) {
     await reportStatus("invalid", "Facebook rejected the stored session cookies after navigation. Re-export fresh cookies from the same logged-in browser, then update the bot account.");
     return false;
   }
+  if (options.expectedCUser && cUser.value !== String(options.expectedCUser)) {
+    await reportStatus(
+      "invalid",
+      "Facebook browser profile is using a different account than the stored cookies. Clear the bot browser profile and re-link the intended Facebook account.",
+    );
+    return false;
+  }
 
   // Messenger token extraction does not need to prove that the full Facebook
   // UI shell rendered. On slow/proxied Business Suite loads Facebook may keep
@@ -161,6 +168,7 @@ async function ensureLogin(page, account, reportStatus, options = {}) {
     if (account.authMethod === "cookies" && account.credentials?.cookies) {
       const sourceCookies = Array.isArray(account.credentials.cookies) ? account.credentials.cookies : [];
       const cookieNames = new Set(sourceCookies.map((c) => String(c?.name || "")));
+      const expectedCUser = sourceCookies.find((c) => String(c?.name || "") === "c_user")?.value || null;
       const missingRequired = ["c_user", "xs"].filter((name) => !cookieNames.has(name));
       if (missingRequired.length > 0) {
         await reportStatus(
@@ -171,11 +179,20 @@ async function ensureLogin(page, account, reportStatus, options = {}) {
       }
 
       const firstUrl = options.initialUrl || FB_HOME;
+      const cookies = buildPuppeteerCookies(sourceCookies);
+      // Always inject the CURRENT stored cookies before touching facebook.com.
+      // The persistent Chromium profile can contain stale session cookies from
+      // an older run; navigating with those stale cookies is exactly what makes
+      // Facebook invalidate the user's real browser session again. Overlaying
+      // the latest exported cookies first keeps the bot profile aligned with the
+      // account record and prevents cross-account/profile drift.
+      await page.setCookie(...cookies);
+      const verifyOptions = { ...options, expectedCUser };
       if (options.preferExistingSession) {
         try {
           await page.goto(firstUrl, { waitUntil: "domcontentloaded", timeout: options.initialTimeoutMs || 45_000 });
           await new Promise((resolve) => setTimeout(resolve, options.initialSettleMs || 1200));
-          const existingOk = await verifyLoggedInSession(page, async () => {}, options);
+          const existingOk = await verifyLoggedInSession(page, async () => {}, verifyOptions);
           if (existingOk) {
             await reportStatus("active", null);
             return true;
@@ -185,7 +202,6 @@ async function ensureLogin(page, account, reportStatus, options = {}) {
         }
       }
 
-      const cookies = buildPuppeteerCookies(sourceCookies);
       await page.setCookie(...cookies);
       try {
         await page.goto(firstUrl, { waitUntil: "domcontentloaded", timeout: options.initialTimeoutMs || 60_000 });
