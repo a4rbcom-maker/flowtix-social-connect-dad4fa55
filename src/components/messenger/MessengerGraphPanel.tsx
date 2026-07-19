@@ -92,16 +92,17 @@ export function MessengerGraphPanel() {
     queryKey: ["mgraph-token-job", tokenJobId],
     queryFn: async () => {
       if (!tokenJobId) return null;
-      const j = await getJobFn({ data: { jobId: tokenJobId } });
-      if (j?.status === "completed") {
+      const res = await getJobFn({ data: { jobId: tokenJobId } });
+      const job = res?.job;
+      if (job?.status === "completed") {
         toast.success("تم استخراج التوكن بنجاح. يمكنك الآن جلب الصفحات.");
         setTokenJobId(null);
         qc.invalidateQueries({ queryKey: ["mgraph-accounts"] });
-      } else if (j?.status === "failed") {
-        toast.error(`فشل استخراج التوكن: ${j.error_message ?? "خطأ غير معروف"}`);
+      } else if (job?.status === "failed") {
+        toast.error(`فشل استخراج التوكن: ${job.error_message ?? "خطأ غير معروف"}`);
         setTokenJobId(null);
       }
-      return j;
+      return res;
     },
     enabled: !!tokenJobId,
     refetchInterval: 3000,
