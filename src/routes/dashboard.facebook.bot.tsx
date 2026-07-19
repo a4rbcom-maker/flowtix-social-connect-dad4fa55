@@ -1071,11 +1071,11 @@ function BotAccountsPage() {
             if (jobStatus === "failed") {
               const fallbackReasonAr = payload.job.error_message || payload.result?.error || "تعذّر تشغيل اختبار البروكسي";
               const fallbackReasonEn = payload.job.error_message || payload.result?.error || "Could not run proxy test";
-              setProxyTest({
+              const snapshot = {
                 accountId,
                 accountName,
                 jobId,
-                status: "failed",
+                status: "failed" as const,
                 ip: null,
                 proxyEnabled: Boolean(rd?.proxyEnabled),
                 elapsedMs: rd?.elapsedMs ?? null,
@@ -1084,7 +1084,9 @@ function BotAccountsPage() {
                 reasonAr: rd?.reasonAr ?? fallbackReasonAr,
                 reasonEn: rd?.reasonEn ?? fallbackReasonEn,
                 rawError: rd?.rawError ?? null,
-              });
+              };
+              setProxyTest(snapshot);
+              setCachedProxyTest(accountId, snapshot, 30_000);
               toast.error(rd?.reasonAr || payload.job.error_message || "تعذّر تشغيل اختبار البروكسي");
               recordProxyTestFailure(breakerKey, rd?.reasonAr ?? payload.job.error_message ?? null);
               return;
