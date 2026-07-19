@@ -19,6 +19,51 @@ type MessageTag = (typeof MESSAGE_TAGS)[number];
 
 const MS_24H = 24 * 60 * 60 * 1000;
 
+function cleanMessengerName(value: unknown) {
+  return String(value ?? "")
+    .replace(/\s*\(\+?\d+\)\s*$/u, "")
+    .replace(/^\s*صورة\s+ملف\s+/u, "")
+    .replace(/\s+الشخصية?$/u, "")
+    .replace(/^\s*Profile\s+picture\s+of\s+/iu, "")
+    .replace(/'s\s+profile\s+picture$/iu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isTrustedMessengerName(value: unknown) {
+  const name = cleanMessengerName(value);
+  if (!name || name.length < 2 || name.length > 200) return false;
+  if (/^facebook$/i.test(name)) return false;
+  if (/^\d{5,}$/.test(name)) return false;
+  if (/^(ترويج|روّج|روج|إعلان|اعلان|الإعلانات?|الاعلانات?|اختيار\s+هدف|اختر\s+هدف|جلب\s+العملاء|promote|boost|ad|ads|advertise|sponsor(ed)?|create ad)$/i.test(name)) return false;
+  if (/profile\s+picture|لا يتوفر وصف للصورة|قد تكون صورة/i.test(name)) return false;
+  return true;
+}
+
+async function resolveConversationParticipant(conversationId: string, pageId: string, pageToken: string) {
+  try {
+    const detail = await fbGet(
+      `/${encodeURIComponent(conversationId)}?fields=participants{id,name},messages.limit(2){from{id,name}}`,
+      pageToken,
+    ) as {
+      participants?: { data?: Array<{ id?: string; name?: string }> };
+      messages?: { data?: Array<{ from?: { id?: string; name?: string } }> };
+    };
+    const candidates = [
+      ...(detail.participants?.data ?? []),
+      ...(detail.messages?.data ?? []).map((m) => m.from).filter(Boolean),
+    ];
+    for (const candidate of candidates) {
+      const id = String(candidate?.id ?? "").trim();
+      const name = cleanMessengerName(candidate?.name);
+      if (/^\d{5,}$/.test(id) && id !== String(pageId) && isTrustedMessengerName(name)) return { id, name };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 // ---------- List pages (official Graph only) ----------
 export const listMessengerPages = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -442,10 +487,10 @@ export const startMessengerSync = createServerFn({ method: "POST" })
         }
 
         const others = (conv.participants?.data ?? []).filter(
-          (p) => String(p.id) !== String(data.pageId),
+          (p) => String(p.id) !== String(data.pageId) && isTrustedMessengerName(p.name),
         );
-        const other = others[0] ?? conv.participants?.data?.[0];
-        if (!other?.id) continue;
+        const other = others[0] ?? (await resolveConversationParticipant(conv.id, data.pageId, got.pageToken));
+        if (!other?.id || !/^\d{5,}$/.test(String(other.id)) || !isTrustedMessengerName(other.name)) continue;
 
         contactsPayload.push({
           user_id: userId,
@@ -453,7 +498,7 @@ export const startMessengerSync = createServerFn({ method: "POST" })
           page_name: page.page_name ?? null,
           psid: other.id,
           conversation_id: conv.id,
-          full_name: other.name ?? null,
+          full_name: cleanMessengerName(other.name),
           profile_pic_url: `https://graph.facebook.com/${encodeURIComponent(other.id)}/picture?type=normal`,
           last_message_at: conv.updated_time ?? null,
           messages_count: conv.message_count ?? 0,

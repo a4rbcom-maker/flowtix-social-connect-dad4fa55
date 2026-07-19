@@ -28,12 +28,42 @@ function normalizeExtractedPage(result: { target?: string; data?: unknown } | un
       : typeof data.avatarUrl === "string"
         ? data.avatarUrl
         : null;
-  if (!pageId || !pageName) return null;
+  if (!pageId || !pageName || !/^\d{5,}$/.test(pageId) || !isTrustedPageName(pageName)) return null;
   return {
     page_id: pageId,
     page_name: pageName.slice(0, 200),
     avatar_url: avatar && /^https?:\/\//i.test(avatar) ? avatar : null,
   };
+}
+
+function cleanMessengerName(value: unknown) {
+  return String(value ?? "")
+    .replace(/\s*\(\+?\d+\)\s*$/u, "")
+    .replace(/^\s*صورة\s+ملف\s+/u, "")
+    .replace(/\s+الشخصية?$/u, "")
+    .replace(/^\s*Profile\s+picture\s+of\s+/iu, "")
+    .replace(/'s\s+profile\s+picture$/iu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isTrustedPageName(value: unknown) {
+  const name = cleanMessengerName(value);
+  if (!name || name.length < 2 || name.length > 200) return false;
+  if (/^facebook$/i.test(name)) return false;
+  if (/^\d{5,}$/.test(name)) return false;
+  if (/^(ترويج|روّج|روج|إعلان|اعلان|الإعلانات?|الاعلانات?|اختبار\s+هدف|اختيار\s+هدف|اختر\s+هدف|جلب\s+العملاء|promote|boost|ad|ads|advertise|sponsor(ed)?|create ad|choose target)$/i.test(name)) return false;
+  if (/profile\s+picture|لا يتوفر وصف للصورة|قد تكون صورة/i.test(name)) return false;
+  return true;
+}
+
+function isTrustedContactName(value: unknown) {
+  const name = cleanMessengerName(value);
+  if (!name || name.length < 2 || name.length > 200) return false;
+  if (/^facebook$/i.test(name)) return false;
+  if (/^\d{5,}$/.test(name)) return false;
+  if (/^(Inbox|Messenger|Search|Chats|All|Unread|Spam|Done|Priority|صندوق|بحث|الكل|غير مقروء|مكتمل|الرسائل)$/i.test(name)) return false;
+  return true;
 }
 
 type BotJobResult = {
@@ -135,6 +165,14 @@ async function persistJobResults(
         full_name?: string | null;
         page_id?: string;
         page_name?: string | null;
+        conversation_id?: string | null;
+        profile_pic_url?: string | null;
+        profile_url?: string | null;
+        last_message_at?: string | null;
+        messages_count?: number | null;
+        unread_count?: number | null;
+        last_message_preview?: string | null;
+        source?: string | null;
       };
       if (d.kind === "messenger_contact" && d.psid && d.page_id) {
         const payload = input.current.payload && typeof input.current.payload === "object" ? input.current.payload as { pageId?: string } : {};
@@ -146,14 +184,28 @@ async function persistJobResults(
             message: "تم رفض نتائج Messenger لأنها لا تطابق معرّف الصفحة المختارة؛ لن نحفظ بيانات قد تكون من Inbox شخصي أو صفحة أخرى.",
           };
         }
+        const fullName = cleanMessengerName(d.full_name);
+        if (!/^\d{5,}$/.test(String(d.psid)) || !isTrustedContactName(fullName)) continue;
+        const source = typeof d.source === "string" && d.source.trim() ? d.source.trim().slice(0, 80) : "graph_api";
         contactUpserts.push({
           user_id: input.current.user_id,
           page_id: reportedPageId,
           page_name: d.page_name ?? null,
           psid: String(d.psid),
-          full_name: d.full_name ?? null,
-          source: "cookies_bot",
-          metadata: { source: "cookies_bot", imported_at: new Date().toISOString(), worker_job_id: input.jobId },
+          full_name: fullName,
+          conversation_id: d.conversation_id ?? null,
+          profile_pic_url: typeof d.profile_pic_url === "string" && /^https?:\/\//i.test(d.profile_pic_url) ? d.profile_pic_url : null,
+          last_message_at: d.last_message_at ?? null,
+          messages_count: d.messages_count ?? 0,
+          unread_count: d.unread_count ?? 0,
+          last_message_preview: d.last_message_preview ?? null,
+          source,
+          metadata: {
+            source,
+            imported_at: new Date().toISOString(),
+            worker_job_id: input.jobId,
+            profile_url: d.profile_url ?? null,
+          },
         });
       }
     }

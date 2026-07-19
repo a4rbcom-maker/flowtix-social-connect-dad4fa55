@@ -138,7 +138,7 @@ function mergePageOptions(
 ): MessengerPageOption[] {
   const map = new Map<string, MessengerPageOption>();
   for (const p of cookies) map.set(p.pageId, { ...p, source: "cookies" });
-  for (const p of official) if (!map.has(p.pageId)) map.set(p.pageId, { ...p, source: "official" });
+  for (const p of official) map.set(p.pageId, { ...p, source: "official" });
   return Array.from(map.values());
 }
 

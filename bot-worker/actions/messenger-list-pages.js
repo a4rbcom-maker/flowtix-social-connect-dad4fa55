@@ -1,8 +1,14 @@
-// Lists Facebook Pages the logged-in user manages, using the cookies session.
-// Emits one fb_job_results row per page (target=NUMERIC pageId, data={id,name,avatar_url}).
-// Facebook often renders page links as slugs and “profile picture of …” anchors;
-// those are not safe for Messenger inbox routing. We therefore resolve every
-// candidate to the real numeric Page ID before returning it to the app.
+// Lists Facebook Pages the logged-in user manages.
+// API-first: extract the Business/Graph token from the authenticated session,
+// then trust /me/accounts only. We deliberately do NOT scrape page cards from
+// Facebook DOM because that produced fake rows such as "Facebook" / ad targets.
+
+const {
+  extractGraphTokenFromSession,
+  listManagedPagesFromGraph,
+  emitPipelineLog,
+  shortError,
+} = require("./messenger-stable-pipeline");
 
 function cleanPageName(name) {
   return String(name || "")
@@ -137,84 +143,52 @@ function isTrustedName(name) {
 }
 
 async function runMessengerListPages({ page, job, report }) {
-  // Only hit the primary "Your Pages" URL first. Fall back to the other URLs
-  // ONLY if the first one returned nothing. Previously we always visited all
-  // three URLs even when the first one already had every page.
-  const urls = [
-    "https://www.facebook.com/pages/?category=your_pages",
-    "https://www.facebook.com/bookmarks/pages",
-  ];
-  let all = [];
-  for (const url of urls) {
-    try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
-      await new Promise((r) => setTimeout(r, 2500));
-      for (let i = 0; i < 2; i += 1) {
-        await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-        await new Promise((r) => setTimeout(r, 900));
-      }
-      const found = await extractPageCandidatesFromDom(page);
-      if (found.length) all = all.concat(found);
-      if (all.length >= 3) break; // enough — stop hitting more URLs
-    } catch (e) {
-      console.warn("[messenger_list_pages] nav failed", url, e.message);
-    }
+  await report({ status: "running", progress: 10 });
+  let token;
+  try {
+    const extracted = await extractGraphTokenFromSession(page, report);
+    token = extracted.token;
+  } catch (error) {
+    await emitPipelineLog(report, "token_extract", "failed", "فشل استخراج توكن الجلسة", { error: shortError(error) });
   }
 
-  // Split candidates: direct numeric IDs are trusted immediately (no extra
-  // navigation). Slug-only candidates need resolution and are capped tightly.
-  const directs = [];
-  const slugs = [];
-  const seenKeys = new Set();
-  for (const p of all) {
-    const key = String(p.idOrSlug || "").trim();
-    if (!key || seenKeys.has(key)) continue;
-    seenKeys.add(key);
-    if (/^\d{5,}$/.test(key)) directs.push(p);
-    else if (!isReservedFacebookPath(key)) slugs.push(p);
-  }
-
-  const pagesMap = new Map();
-  const needsResolve = [];
-  for (const c of directs) {
-    const name = cleanPageName(c.name);
-    // Trust the DOM name ONLY when: (a) it isn't an ad label, (b) the anchor
-    // wasn't an ads-manager CTA, and (c) it doesn't carry a "(+NN)" badge.
-    const rawHasBadge = /\(\+?\d+\)/.test(String(c.name || ""));
-    if (isTrustedName(name) && !c.isAdHref && !rawHasBadge) {
-      pagesMap.set(c.idOrSlug, { id: c.idOrSlug, name, avatar_url: c.avatar_url || null });
-    } else {
-      // Direct numeric ID but the DOM name is an ad CTA / badge / placeholder
-      // — visit facebook.com/{id} to grab the real og:title.
-      needsResolve.push(c);
-    }
-  }
-  await report({ progress: 30 });
-
-  // Cap navigation-based resolution so the job stays under ~2 minutes.
-  const resolveCap = 60;
-  const candidates = needsResolve.concat(slugs).slice(0, resolveCap);
-  let checked = 0;
-  for (const candidate of candidates) {
-    checked += 1;
-    const meta = await resolvePageMeta(page, candidate);
-    await report({ progress: Math.min(90, 30 + Math.round((checked / Math.max(candidates.length, 1)) * 60)) });
-    if (!meta?.id || !isTrustedName(meta.name)) continue;
-    if (!pagesMap.has(meta.id)) {
-      pagesMap.set(meta.id, { id: meta.id, name: meta.name, avatar_url: meta.avatar || candidate.avatar_url || null });
-    }
-  }
-  const pages = Array.from(pagesMap.values());
-
-
-  if (pages.length === 0) {
-    await report({ status: "failed", errorMessage: "لم يتم العثور على صفحات مدارة باسم صالح. تأكد أن الحساب مسؤول عن الصفحة وأن صفحة Facebook تفتح بدون Checkpoint." });
+  if (!token) {
+    await report({
+      status: "failed",
+      errorMessage: "لم نستطع قراءة صفحاتك من فيسبوك. الجلسة لا توفر صلاحية Graph حالياً؛ أعد ربط الحساب ثم جرّب مرة أخرى.",
+      progress: 100,
+    });
     return;
   }
+
+  let pages;
+  try {
+    await report({ progress: 35 });
+    pages = await listManagedPagesFromGraph(token, report);
+  } catch (error) {
+    await report({
+      status: "failed",
+      errorMessage: `فشل جلب الصفحات من فيسبوك: ${shortError(error)}`,
+      progress: 100,
+    });
+    return;
+  }
+
   let done = 0;
   for (const p of pages) {
     await report({
-      result: { target: p.id, status: "success", data: p },
+      result: {
+        target: p.id,
+        status: "success",
+        data: {
+          id: p.id,
+          name: p.name,
+          avatar_url: p.avatar_url,
+          category: p.category,
+          tasks: p.tasks,
+          source: "graph_api",
+        },
+      },
       processedItems: ++done,
       totalItems: pages.length,
       progress: Math.min(99, Math.round((done / pages.length) * 100)),

@@ -89,6 +89,51 @@ function classifyGraphError(err: unknown): string {
   return "UNKNOWN";
 }
 
+function cleanMessengerName(value: unknown) {
+  return String(value ?? "")
+    .replace(/\s*\(\+?\d+\)\s*$/u, "")
+    .replace(/^\s*صورة\s+ملف\s+/u, "")
+    .replace(/\s+الشخصية?$/u, "")
+    .replace(/^\s*Profile\s+picture\s+of\s+/iu, "")
+    .replace(/'s\s+profile\s+picture$/iu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isTrustedMessengerName(value: unknown) {
+  const name = cleanMessengerName(value);
+  if (!name || name.length < 2 || name.length > 200) return false;
+  if (/^facebook$/i.test(name)) return false;
+  if (/^\d{5,}$/.test(name)) return false;
+  if (/^(ترويج|روّج|روج|إعلان|اعلان|الإعلانات?|الاعلانات?|اختيار\s+هدف|اختر\s+هدف|جلب\s+العملاء|promote|boost|ad|ads|advertise|sponsor(ed)?|create ad)$/i.test(name)) return false;
+  if (/profile\s+picture|لا يتوفر وصف للصورة|قد تكون صورة/i.test(name)) return false;
+  return true;
+}
+
+async function resolveConversationParticipant(conversationId: string, pageId: string, pageToken: string) {
+  try {
+    const detail = await fbGet(
+      `/${encodeURIComponent(conversationId)}?fields=participants{id,name},messages.limit(2){from{id,name}}`,
+      pageToken,
+    ) as {
+      participants?: { data?: Array<{ id?: string; name?: string }> };
+      messages?: { data?: Array<{ from?: { id?: string; name?: string } }> };
+    };
+    const candidates = [
+      ...(detail.participants?.data ?? []),
+      ...(detail.messages?.data ?? []).map((m) => m.from).filter(Boolean),
+    ];
+    for (const candidate of candidates) {
+      const id = String(candidate?.id ?? "").trim();
+      const name = cleanMessengerName(candidate?.name);
+      if (/^\d{5,}$/.test(id) && id !== String(pageId) && isTrustedMessengerName(name)) return { id, name };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 // ---------- 1a) Preflight check on an account (fast, no bot job) ----------
 // Reports whether the account is ready for a Graph API token extraction:
 // - status must be 'active' (cookies validated)
@@ -246,7 +291,10 @@ export const syncPagesForAccount = createServerFn({ method: "POST" })
         "/me/accounts?fields=id,name,category,access_token,tasks,picture.type(square){url}&limit=200",
         token,
       );
-      pages = ((res?.data ?? []) as typeof pages).filter((p) => p?.id && p?.name);
+      pages = ((res?.data ?? []) as typeof pages).filter((p) => {
+        const id = String(p?.id ?? "").trim();
+        return /^\d{5,}$/.test(id) && isTrustedMessengerName(p?.name) && Boolean(p?.access_token);
+      });
       await logStage(supabase, userId, {
         accountId: data.accountId,
         stage: STAGE.PAGES,
@@ -363,16 +411,22 @@ export const syncPageConversations = createServerFn({ method: "POST" })
 
         for (const c of convs) {
           const participants = c.participants?.data ?? [];
-          // Exclude the page itself from participants
-          const others = participants.filter((p) => p.id !== page.page_id);
-          for (const p of others) {
+          // Exclude the page itself from participants; if Meta omits the other
+          // participant in the list call, resolve the conversation detail before
+          // dropping it so we don't silently return 0 contacts.
+          const others = participants.filter((p) => p.id !== page.page_id && isTrustedMessengerName(p.name));
+          const resolved = others.length > 0
+            ? others
+            : ([await resolveConversationParticipant(c.id, page.page_id, pageToken)].filter(Boolean) as Array<{ id: string; name?: string }>);
+          for (const p of resolved) {
+            if (!/^\d{5,}$/.test(String(p.id)) || !isTrustedMessengerName(p.name)) continue;
             upsertRows.push({
               user_id: userId,
               page_id: page.page_id,
               page_name: page.name,
               psid: p.id,
               conversation_id: c.id,
-              full_name: p.name ?? null,
+              full_name: cleanMessengerName(p.name),
               last_message_at: c.updated_time ?? null,
               last_message_preview: c.snippet ?? null,
               unread_count: c.unread_count ?? 0,
