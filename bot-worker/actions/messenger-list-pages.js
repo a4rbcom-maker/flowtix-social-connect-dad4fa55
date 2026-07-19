@@ -33,12 +33,14 @@ function isReservedFacebookPath(value) {
 
 async function extractPageCandidatesFromDom(page) {
   return page.evaluate(() => {
+    const AD_HREF = /\/(ads|adsmanager|ad_center|business\/(ads|adsmanager|creativehub)|latest\/ads|ad_campaign)/i;
     const seen = new Map();
     const cards = Array.from(document.querySelectorAll('a[href*="facebook.com/"], a[href^="/"]'));
     for (const a of cards) {
       const href = a.getAttribute("href") || "";
       const hover = a.getAttribute("data-hovercard") || a.getAttribute("data-hovercard-prefer-more-content-show") || "";
       const html = a.outerHTML || "";
+      const isAdHref = AD_HREF.test(href);
       const directId =
         href.match(/[?&](?:id|page_id|profile_id)=(\d{5,})/)?.[1] ||
         hover.match(/[?&](?:id|page_id|profile_id)=(\d{5,})/)?.[1] ||
@@ -47,7 +49,7 @@ async function extractPageCandidatesFromDom(page) {
         "";
 
       let slug = "";
-      if (!directId) {
+      if (!directId && !isAdHref) {
         const m1 = href.match(/facebook\.com\/([A-Za-z0-9.\-_]{3,80})(?:[/?#]|$)/);
         const m2 = !m1 ? href.match(/^\/([A-Za-z0-9.\-_]{3,80})(?:[/?#]|$)/) : null;
         slug = (m1 || m2)?.[1] || "";
@@ -62,7 +64,10 @@ async function extractPageCandidatesFromDom(page) {
       const img = a.querySelector("img") || a.closest("[role='listitem'], li, div")?.querySelector("img");
       const avatar = img?.getAttribute("src") || null;
       const key = String(idOrSlug);
-      if (!seen.has(key)) seen.set(key, { idOrSlug: key, href, name, avatar_url: avatar });
+      const entry = { idOrSlug: key, href, name, avatar_url: avatar, isAdHref };
+      // Prefer non-ad-href entries when we've seen this ID before.
+      const prev = seen.get(key);
+      if (!prev || (prev.isAdHref && !isAdHref)) seen.set(key, entry);
     }
     return Array.from(seen.values());
   });
