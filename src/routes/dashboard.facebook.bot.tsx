@@ -1041,6 +1041,7 @@ function BotAccountsPage() {
                   ? lang === "ar" ? "البروكسي مفعّل" : "Proxy is active"
                   : lang === "ar" ? "لا يوجد بروكسي مفعّل" : "No proxy is enabled",
               );
+              recordProxyTestSuccess(breakerKey);
               return;
             }
             if (jobStatus === "failed") {
