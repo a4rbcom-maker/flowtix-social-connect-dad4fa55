@@ -137,7 +137,9 @@ export function MessengerGraphPanel() {
       return null;
     },
     enabled: !!tokenJobId,
-    refetchInterval: 3000,
+    // Adaptive: poll fast at first, slow down as the job drags on.
+    refetchInterval: () => jobPollInterval(tokenJobStartedAt),
+    refetchIntervalInBackground: false,
     retry: false,
   });
 
