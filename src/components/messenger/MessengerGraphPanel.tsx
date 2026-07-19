@@ -241,7 +241,7 @@ export function MessengerGraphPanel() {
       <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
         <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
           <SelectTrigger>
-            <SelectValue placeholder="اختر حساب Facebook..." />
+            <SelectValue placeholder="① اختر حساب Facebook..." />
           </SelectTrigger>
           <SelectContent>
             {accounts.map((a: any) => (
@@ -263,7 +263,7 @@ export function MessengerGraphPanel() {
             </>
           ) : (
             <>
-              <KeyRound className="h-4 w-4 me-2" /> استخراج التوكن
+              <KeyRound className="h-4 w-4 me-2" /> ② استخراج التوكن
             </>
           )}
         </Button>
@@ -277,9 +277,10 @@ export function MessengerGraphPanel() {
           ) : (
             <RefreshCw className="h-4 w-4 me-2" />
           )}
-          جلب الصفحات
+          ③ جلب الصفحات
         </Button>
       </div>
+
 
       {/* Preflight status */}
       {selectedAccountId && (
