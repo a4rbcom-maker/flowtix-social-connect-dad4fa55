@@ -1155,7 +1155,7 @@ function BotAccountsPage() {
           backoffFactor: 1.5,
           errorBackoffFactor: 2,
           timeoutMs,
-          onTick: ({ attempt, delay, error }) => {
+          onTick: ({ attempt, delay, error }: { attempt: number; delay: number; error?: unknown }) => {
             if (error) console.warn("[test-proxy poll] error", { attempt, delay, error });
           },
         },
