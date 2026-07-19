@@ -107,9 +107,11 @@ export function MessengerGraphPanel() {
         toast.success("تم استخراج التوكن بنجاح. يمكنك الآن جلب الصفحات.");
         setTokenJobId(null);
         qc.invalidateQueries({ queryKey: ["mgraph-accounts"] });
+        qc.invalidateQueries({ queryKey: ["mgraph-precheck", selectedAccountId] });
       } else if (job?.status === "failed") {
         toast.error(`فشل استخراج التوكن: ${job.error_message ?? "خطأ غير معروف"}`);
         setTokenJobId(null);
+        qc.invalidateQueries({ queryKey: ["mgraph-precheck", selectedAccountId] });
       }
       return res;
     },
