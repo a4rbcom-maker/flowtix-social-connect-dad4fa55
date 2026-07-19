@@ -446,6 +446,19 @@ function BotAccountsPage() {
   } | null>(null);
   const [listGroupsLoading, setListGroupsLoading] = useState(false);
   const listMyGroupsFn = useServerFn(createListMyGroupsJob);
+  const createTestProxyFn = useServerFn(createTestProxyJob);
+  const getTestProxyFn = useServerFn(getTestProxyJob);
+  const [proxyTest, setProxyTest] = useState<{
+    accountId: string;
+    accountName: string;
+    jobId: string | null;
+    status: "running" | "completed" | "failed";
+    ip: string | null;
+    proxyEnabled: boolean;
+    elapsedMs: number | null;
+    error: string | null;
+  } | null>(null);
+  const [proxyTestingId, setProxyTestingId] = useState<string | null>(null);
   const [reloginFor, setReloginFor] = useState<{ id: string; name: string } | null>(null);
   const [checkpointFor, setCheckpointFor] = useState<{
     id: string;
