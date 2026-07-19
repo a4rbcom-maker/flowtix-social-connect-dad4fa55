@@ -289,7 +289,7 @@ function MessagesPage() {
       });
       setMsgs(res);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(humanizeFbError(e));
     } finally {
       setLoadingMsgs(false);
     }
