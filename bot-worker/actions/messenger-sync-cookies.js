@@ -114,83 +114,95 @@ async function collectConversations(page, maxConversations, expectedPageId) {
   const seen = new Map();
   let stableRounds = 0;
   let lastCount = 0;
-  const readVisibleItems = async () => page.evaluate((expectedPageId) => {
+  let debug = { rounds: 0, lastCandidateCount: 0, lastRawItems: [], lastUrl: "" };
+
+  // Business Suite is a SPA — after the initial redirect it may DROP the
+  // asset_id param from the visible URL even though we're still scoped to
+  // the same page. We already verified asset_id in tryOpenInbox; here we
+  // only require that we stay under /latest/inbox on business.facebook.com.
+  const readVisibleItems = async () => page.evaluate(() => {
     const current = new URL(window.location.href);
     if (!/(^|\.)business\.facebook\.com$/i.test(current.hostname) || !/\/latest\/inbox/i.test(current.pathname)) {
-      return { items: [], clickIndexes: [], scopeOk: false };
-    }
-    // Verify current URL still scoped to our page.
-    const params = new URLSearchParams(current.search);
-    const currentAsset = params.get("asset_id") || params.get("mailbox_id") || "";
-    if (currentAsset && currentAsset !== String(expectedPageId)) {
-      return { items: [], clickIndexes: [], scopeOk: false };
+      return { items: [], clickIndexes: [], scopeOk: false, rawSample: [], candidateCount: 0, url: current.href };
     }
 
-    const ignoredNameRe = /^(Inbox|Messenger|Search|Chats|All|Unread|Spam|Done|صندوق|بحث|الكل|غير مقروء|مكتمل|الرسائل)$/i;
+    const ignoredNameRe = /^(Inbox|Messenger|Search|Chats|All|Unread|Spam|Done|Followed up|Priority|Ads?|صندوق|بحث|الكل|غير مقروء|مكتمل|الرسائل|الأولوية|متابعة|إدارة|جديد|واتساب|Instagram|تعليقات|إعلان|الردود على الإعلانات|Priority|Followed|Manage|Filter)$/i;
     const cleanName = (value) => String(value || "").replace(/\s+/g, " ").trim().split("\n")[0].slice(0, 200);
-    const items = [];
-    const clickIndexes = [];
-    const candidates = Array.from(
-      document.querySelectorAll(
-        'a[href*="thread_fbid"], a[href*="selected_item_id"], a[href*="thread_id"], a[href*="participant_id"], [role="row"], [role="listitem"], [tabindex="0"]',
-      ),
-    ).filter((row) => {
-      const rect = row.getBoundingClientRect();
-      const text = cleanName(row.innerText || row.getAttribute?.("aria-label") || "");
-      return rect.width >= 160 && rect.height >= 24 && rect.bottom > 0 && rect.top < window.innerHeight && text && !ignoredNameRe.test(text);
+
+    // A conversation row in Business Suite typically has: avatar img +
+    // 2 text lines (name + preview) + a timestamp. Look for any element
+    // that contains an <img> and >=2 span/div text children.
+    const allDivs = Array.from(document.querySelectorAll('div[role="button"], div[role="row"], div[role="listitem"], li, [tabindex="0"], a'));
+    const rowNodes = allDivs.filter((el) => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 180 || rect.height < 40 || rect.height > 160) return false;
+      if (rect.bottom < 0 || rect.top > window.innerHeight + 500) return false;
+      // Must contain an image (avatar) OR at least an aria-label with a name
+      const hasImg = el.querySelector('img, svg[role="img"], [role="img"]');
+      const textLen = (el.innerText || "").trim().length;
+      if (textLen < 3 || textLen > 400) return false;
+      if (!hasImg && !el.getAttribute('aria-label')) return false;
+      // Skip nav/header/sidebar chrome
+      const firstLine = cleanName(el.innerText || el.getAttribute?.("aria-label") || "");
+      if (!firstLine || ignoredNameRe.test(firstLine)) return false;
+      return true;
     });
 
-    candidates.slice(0, 40).forEach((row, index) => {
+    // Deduplicate: keep the outermost matching ancestor per visual row
+    const rows = [];
+    const seenRects = [];
+    for (const el of rowNodes) {
+      const r = el.getBoundingClientRect();
+      const key = `${Math.round(r.top)}:${Math.round(r.left)}:${Math.round(r.width)}`;
+      if (seenRects.includes(key)) continue;
+      seenRects.push(key);
+      rows.push(el);
+    }
+
+    const items = [];
+    const clickIndexes = [];
+    const rawSample = [];
+    rows.slice(0, 60).forEach((row, index) => {
       row.setAttribute("data-flowtix-conversation-index", String(index));
       const html = row.outerHTML || "";
-      const href = row instanceof HTMLAnchorElement ? row.href : row.querySelector("a[href]")?.href || "";
-      if (href) {
-        const hrefParams = (() => { try { return new URL(href).searchParams; } catch { return null; } })();
-        const hAsset = hrefParams?.get("asset_id") || hrefParams?.get("mailbox_id") || "";
-        if (hAsset && hAsset !== String(expectedPageId)) return;
-      }
+      const href = row.tagName === 'A' ? row.href : (row.querySelector("a[href]")?.href || "");
       const psidMatch =
-        href.match(/[?&](?:selected_item_id|participant_id|user_id|profile_id|psid)=(\d{5,})/) ||
+        (href && href.match(/[?&](?:selected_item_id|participant_id|user_id|profile_id|psid|thread_id)=(\d{5,})/)) ||
         html.match(/thread_fbid[=:]"?(\d{5,})"?/) ||
-        html.match(/user_id[=:]"?(\d{5,})"?/) ||
-        html.match(/other_user_id[=:]"?(\d{5,})"?/) ||
         html.match(/participant_id[=:]"?(\d{5,})"?/) ||
-        html.match(/profile_id[=:]"?(\d{5,})"?/) ||
+        html.match(/other_user_id[=:]"?(\d{5,})"?/) ||
+        html.match(/"user":\s*\{\s*"id":\s*"(\d{10,})"/) ||
         html.match(/"id":"(\d{10,})"/);
-      const nameEl = row.querySelector(
-        'span[dir="auto"] span, span[dir="auto"], strong, [aria-label], [data-visualcompletion="ignore-dynamic"] span',
-      );
-      const name = cleanName(nameEl?.innerText || nameEl?.getAttribute?.("aria-label") || row.innerText || "");
-      if (psidMatch?.[1] && psidMatch[1] !== String(expectedPageId)) {
+      const nameEl = row.querySelector('span[dir="auto"] span, span[dir="auto"], strong, [role="heading"]');
+      const name = cleanName(nameEl?.innerText || row.getAttribute?.("aria-label") || row.innerText || "");
+      if (rawSample.length < 6) rawSample.push({ name, hasPsid: Boolean(psidMatch?.[1]), snippet: (row.innerText || "").slice(0, 80) });
+      if (psidMatch?.[1]) {
         items.push({ psid: psidMatch[1], name });
-      } else {
+      } else if (name) {
         clickIndexes.push(index);
       }
     });
-    return { items, clickIndexes, scopeOk: true };
-  }, String(expectedPageId));
+    return { items, clickIndexes, scopeOk: true, rawSample, candidateCount: rows.length, url: current.href };
+  });
 
   const clickAndReadItem = async (index) => {
-    const before = page.url();
     const clicked = await page.evaluate((index) => {
       const el = document.querySelector(`[data-flowtix-conversation-index="${index}"]`);
       if (!el) return { ok: false };
       const text = String(el.innerText || el.getAttribute?.("aria-label") || "").replace(/\s+/g, " ").trim().split("\n")[0].slice(0, 200);
       el.scrollIntoView({ block: "center", inline: "nearest" });
       el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-      el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-      el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-      el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, button: 0 }));
+      el.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
       return { ok: true, name: text };
     }, index);
     if (!clicked.ok) return null;
-    await new Promise((r) => setTimeout(r, 1200));
-    const current = page.url();
-    const parsed = await page.evaluate((expectedPageId) => {
+    await new Promise((r) => setTimeout(r, 1500));
+    // After click, Business Suite pushes a psid-carrying URL for the selected thread.
+    const parsed = await page.evaluate(() => {
       const current = new URL(window.location.href);
       const params = current.searchParams;
-      const asset = params.get("asset_id") || params.get("mailbox_id") || "";
-      if (asset && asset !== String(expectedPageId)) return { scopeOk: false };
       const psid =
         params.get("selected_item_id") ||
         params.get("participant_id") ||
@@ -198,10 +210,13 @@ async function collectConversations(page, maxConversations, expectedPageId) {
         params.get("user_id") ||
         params.get("profile_id") ||
         "";
-      return { scopeOk: true, psid: /^\d{5,}$/.test(psid) ? psid : "" };
-    }, String(expectedPageId));
-    if (!parsed.scopeOk) return { scopeOk: false };
-    if (current !== before && !current.includes("latest/inbox")) return { scopeOk: false };
+      // Also try to read psid from the currently-open thread pane in the DOM
+      let domPsid = "";
+      const bodyHtml = document.body?.innerHTML || "";
+      const m = bodyHtml.match(/"selected_item_id":"(\d{5,})"/) || bodyHtml.match(/thread_fbid[=:]"?(\d{5,})"?/);
+      if (m) domPsid = m[1];
+      return { psid: /^\d{5,}$/.test(psid) ? psid : domPsid, url: current.href };
+    });
     if (!parsed.psid || parsed.psid === String(expectedPageId)) return null;
     return { psid: parsed.psid, name: clicked.name };
   };
@@ -209,13 +224,16 @@ async function collectConversations(page, maxConversations, expectedPageId) {
   for (let i = 0; i < 200; i += 1) {
     if (Date.now() - start > 8 * 60 * 1000) break;
     const batch = await readVisibleItems();
+    debug.rounds = i + 1;
+    debug.lastCandidateCount = batch.candidateCount;
+    debug.lastRawItems = batch.rawSample;
+    debug.lastUrl = batch.url;
 
-    if (!batch.scopeOk) break; // page navigated away from our asset scope — stop.
-    for (const c of batch.items) if (!seen.has(c.psid)) seen.set(c.psid, c);
-    for (const index of batch.clickIndexes.slice(0, 12)) {
+    if (!batch.scopeOk) break;
+    for (const c of batch.items) if (c.psid && !seen.has(c.psid)) seen.set(c.psid, c);
+    for (const index of batch.clickIndexes.slice(0, 15)) {
       if (seen.size >= maxConversations) break;
       const clicked = await clickAndReadItem(index);
-      if (clicked && clicked.scopeOk === false) return Array.from(seen.values()).slice(0, maxConversations);
       if (clicked?.psid && !seen.has(clicked.psid)) seen.set(clicked.psid, clicked);
     }
     if (seen.size >= maxConversations) break;
@@ -244,7 +262,7 @@ async function collectConversations(page, maxConversations, expectedPageId) {
     });
     await new Promise((r) => setTimeout(r, 1800));
   }
-  return Array.from(seen.values()).slice(0, maxConversations);
+  return { contacts: Array.from(seen.values()).slice(0, maxConversations), debug };
 }
 
 async function runMessengerSyncCookies({ page, job, report }) {
@@ -278,12 +296,16 @@ async function runMessengerSyncCookies({ page, job, report }) {
     return;
   }
 
-  const contacts = await collectConversations(page, maxConversations, pageId);
+  const { contacts, debug } = await collectConversations(page, maxConversations, pageId);
   if (contacts.length === 0) {
+    const sample = (debug?.lastRawItems || []).map((r) => `${r.name}${r.hasPsid ? "" : " (بدون psid)"}`).join(" | ");
     await report({
       status: "failed",
       errorMessage:
-        "فتحنا صندوق واردات الصفحة لكن لم نعثر على محادثات. تأكد أن الصفحة عليها رسائل فعلاً وأن حساب البوت له صلاحية عرضها.",
+        `فتحنا Business Suite Inbox للصفحة ${pageId} لكن لم نلتقط محادثات صالحة.` +
+        ` رصدنا ${debug?.lastCandidateCount || 0} عنصر مرشح بعد ${debug?.rounds || 0} دورة، URL: ${debug?.lastUrl || "?"}.` +
+        (sample ? ` عيّنة: ${sample}.` : "") +
+        ` (النسخة الحالية تلتقط divs مع صور رمزية بدل الروابط)`,
     });
     return;
   }
