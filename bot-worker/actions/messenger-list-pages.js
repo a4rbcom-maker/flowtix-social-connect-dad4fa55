@@ -80,7 +80,13 @@ async function resolvePageMeta(page, candidate) {
   const idOrSlug = String(candidate.idOrSlug || "").trim();
   if (!idOrSlug || isReservedFacebookPath(idOrSlug)) return null;
 
-  const target = candidate.href
+  // For numeric IDs, always resolve via facebook.com/{id} — never follow the
+  // candidate.href because that may point at ads-manager / boost CTAs which
+  // render "Choose target audience" instead of the real page name.
+  const isNumeric = /^\d{5,}$/.test(idOrSlug);
+  const target = isNumeric
+    ? `https://www.facebook.com/${idOrSlug}`
+    : candidate.href
     ? (() => {
         try { return new URL(candidate.href, "https://www.facebook.com").href; }
         catch (_) { return `https://www.facebook.com/${encodeURIComponent(idOrSlug)}`; }
