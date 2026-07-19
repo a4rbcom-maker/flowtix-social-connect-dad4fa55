@@ -902,6 +902,100 @@ function BotAccountsPage() {
     }
   };
 
+  const handleTestProxy = async (accountId: string, accountName: string) => {
+    setProxyTestingId(accountId);
+    setProxyTest({
+      accountId,
+      accountName,
+      jobId: null,
+      status: "running",
+      ip: null,
+      proxyEnabled: false,
+      elapsedMs: null,
+      error: null,
+    });
+    try {
+      const created = await createTestProxyFn({ data: { accountId } });
+      const jobId = (created as { id: string }).id;
+      setProxyTest((prev) => (prev ? { ...prev, jobId } : prev));
+      const startedAt = Date.now();
+      const timeoutMs = 90_000;
+      // Poll until terminal state or timeout.
+      // Uses setTimeout loop so the UI stays responsive.
+      const poll = async () => {
+        while (Date.now() - startedAt < timeoutMs) {
+          await new Promise((r) => setTimeout(r, 2500));
+          try {
+            const payload = (await getTestProxyFn({ data: { jobId } })) as {
+              job: { status: string; error_message: string | null };
+              result: { status: string; error: string | null; data: unknown } | null;
+            };
+            const jobStatus = payload.job.status;
+            const rd = (payload.result?.data ?? null) as
+              | { kind?: string; ok?: boolean; ip?: string | null; proxyEnabled?: boolean; elapsedMs?: number | null }
+              | null;
+            if (jobStatus === "completed") {
+              setProxyTest({
+                accountId,
+                accountName,
+                jobId,
+                status: "completed",
+                ip: rd?.ip ?? null,
+                proxyEnabled: Boolean(rd?.proxyEnabled),
+                elapsedMs: rd?.elapsedMs ?? null,
+                error: null,
+              });
+              toast.success(rd?.proxyEnabled ? `IP البروكسي: ${rd?.ip ?? "?"}` : `IP السيرفر: ${rd?.ip ?? "?"}`);
+              return;
+            }
+            if (jobStatus === "failed") {
+              setProxyTest({
+                accountId,
+                accountName,
+                jobId,
+                status: "failed",
+                ip: null,
+                proxyEnabled: Boolean(rd?.proxyEnabled),
+                elapsedMs: rd?.elapsedMs ?? null,
+                error: payload.job.error_message || payload.result?.error || "فشل الاختبار",
+              });
+              toast.error(payload.job.error_message || "فشل اختبار البروكسي");
+              return;
+            }
+          } catch (e) {
+            console.warn("[test-proxy poll] error", e);
+          }
+        }
+        setProxyTest((prev) =>
+          prev
+            ? { ...prev, status: "failed", error: "انتهت مهلة الانتظار — تأكد أن VPS Worker شغّال." }
+            : prev,
+        );
+        toast.error("انتهت مهلة اختبار البروكسي — تأكد من تشغيل VPS Worker.");
+      };
+      await poll();
+    } catch (e) {
+      if (isAuthErr(e)) {
+        handleAuthExpired();
+        return;
+      }
+      const msg = describeServerActionError(e, lang === "ar" ? "ar" : "en");
+      setProxyTest({
+        accountId,
+        accountName,
+        jobId: null,
+        status: "failed",
+        ip: null,
+        proxyEnabled: false,
+        elapsedMs: null,
+        error: msg,
+      });
+      toast.error(msg);
+    } finally {
+      setProxyTestingId(null);
+    }
+  };
+
   const openPrecheck = async (id: string, name: string) => {
     setPrecheck({ id, name, loading: true, result: null, error: null });
     try {
