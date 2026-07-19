@@ -651,6 +651,8 @@ export type Database = {
           created_at: string
           display_name: string
           encrypted_payload: string
+          graph_token_encrypted: string | null
+          graph_token_updated_at: string | null
           id: string
           last_check_at: string | null
           last_error: string | null
@@ -665,6 +667,8 @@ export type Database = {
           created_at?: string
           display_name: string
           encrypted_payload: string
+          graph_token_encrypted?: string | null
+          graph_token_updated_at?: string | null
           id?: string
           last_check_at?: string | null
           last_error?: string | null
@@ -679,6 +683,8 @@ export type Database = {
           created_at?: string
           display_name?: string
           encrypted_payload?: string
+          graph_token_encrypted?: string | null
+          graph_token_updated_at?: string | null
           id?: string
           last_check_at?: string | null
           last_error?: string | null
@@ -1222,6 +1228,65 @@ export type Database = {
         }
         Relationships: []
       }
+      messenger_pages: {
+        Row: {
+          access_token_encrypted: string | null
+          account_id: string | null
+          category: string | null
+          created_at: string
+          followers_count: number | null
+          id: string
+          last_synced_at: string | null
+          name: string
+          page_id: string
+          picture_url: string | null
+          source: string
+          tasks: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token_encrypted?: string | null
+          account_id?: string | null
+          category?: string | null
+          created_at?: string
+          followers_count?: number | null
+          id?: string
+          last_synced_at?: string | null
+          name: string
+          page_id: string
+          picture_url?: string | null
+          source?: string
+          tasks?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token_encrypted?: string | null
+          account_id?: string | null
+          category?: string | null
+          created_at?: string
+          followers_count?: number | null
+          id?: string
+          last_synced_at?: string | null
+          name?: string
+          page_id?: string
+          picture_url?: string | null
+          source?: string
+          tasks?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messenger_pages_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "fb_bot_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messenger_sync_jobs: {
         Row: {
           contacts_upserted: number
@@ -1278,6 +1343,62 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      messenger_sync_logs: {
+        Row: {
+          account_id: string | null
+          created_at: string
+          duration_ms: number | null
+          expected: Json | null
+          failure_reason: string | null
+          id: string
+          job_id: string | null
+          message: string | null
+          page_id: string | null
+          received: Json | null
+          stage: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          account_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          expected?: Json | null
+          failure_reason?: string | null
+          id?: string
+          job_id?: string | null
+          message?: string | null
+          page_id?: string | null
+          received?: Json | null
+          stage: string
+          status: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          expected?: Json | null
+          failure_reason?: string | null
+          id?: string
+          job_id?: string | null
+          message?: string | null
+          page_id?: string | null
+          received?: Json | null
+          stage?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messenger_sync_logs_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "fb_bot_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       notification_reads: {
         Row: {
@@ -2334,6 +2455,9 @@ export type Database = {
         | "messenger_sync_cookies"
         | "messenger_send_cookies"
         | "test_proxy"
+        | "messenger_extract_token"
+        | "messenger_graph_sync_pages"
+        | "messenger_graph_sync_conversations"
       fb_page_connection_type: "official" | "bot"
       fb_page_status: "active" | "expired" | "disconnected"
       fb_result_status: "success" | "failed" | "skipped" | "pending"
@@ -2525,6 +2649,9 @@ export const Constants = {
         "messenger_sync_cookies",
         "messenger_send_cookies",
         "test_proxy",
+        "messenger_extract_token",
+        "messenger_graph_sync_pages",
+        "messenger_graph_sync_conversations",
       ],
       fb_page_connection_type: ["official", "bot"],
       fb_page_status: ["active", "expired", "disconnected"],

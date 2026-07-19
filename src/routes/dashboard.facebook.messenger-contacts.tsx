@@ -58,6 +58,7 @@ import {
   checkMessengerPageAccess,
 } from "@/lib/messenger-contacts.functions";
 import { connectFacebook } from "@/lib/facebook.functions";
+import { MessengerGraphPanel } from "@/components/messenger/MessengerGraphPanel";
 import { supabase } from "@/integrations/supabase/client";
 
 import {
@@ -683,6 +684,11 @@ function MessengerContactsPage() {
           qc.invalidateQueries({ queryKey: ["msgr-contacts", p.pageId] });
         }}
       />
+
+      {/* Graph API pipeline (new stable path) */}
+      <MessengerGraphPanel />
+
+
 
       {/* Gate: pages exist but none selected */}
       {officialOpen && !pagesQ.isLoading && pages.length > 0 && !pageId && (
