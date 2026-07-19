@@ -239,6 +239,7 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
               status?: "completed" | "failed" | "running";
               errorMessage?: string;
               result?: BotJobResult;
+              results?: BotJobResult[];
               accountStatus?: { accountId: string; status: "active" | "invalid" | "checkpoint" | "disabled"; error?: string };
             }
           | null;
@@ -251,10 +252,19 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
           .select("status, job_type, account_id, user_id, total_items, payload")
           .eq("id", body.jobId)
           .maybeSingle();
-        if (body.result) {
-          const persisted = await persistJobResult(supabaseAdmin, {
+
+        // Accept BOTH shapes for backward compatibility with older workers:
+        //   - { result: {...} }         (legacy: one item per HTTP call)
+        //   - { results: [{...}, ...] } (batched: many items per HTTP call)
+        const batchedResults: BotJobResult[] = Array.isArray(body.results)
+          ? body.results.filter(Boolean)
+          : body.result
+            ? [body.result]
+            : [];
+        if (batchedResults.length > 0) {
+          const persisted = await persistJobResults(supabaseAdmin, {
             jobId: body.jobId,
-            result: body.result,
+            results: batchedResults,
             current,
           });
           if (!persisted.ok) {
@@ -271,6 +281,7 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
             return Response.json({ error: persisted.message }, { status: 500 });
           }
         }
+
 
         if (body.status === "failed" && /is not implemented in this worker/i.test(body.errorMessage || "")) {
           await supabaseAdmin
