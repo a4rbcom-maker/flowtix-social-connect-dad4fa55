@@ -457,6 +457,10 @@ function BotAccountsPage() {
     proxyEnabled: boolean;
     elapsedMs: number | null;
     error: string | null;
+    reasonCode: string | null;
+    reasonAr: string | null;
+    reasonEn: string | null;
+    rawError: string | null;
   } | null>(null);
   const [proxyTestingId, setProxyTestingId] = useState<string | null>(null);
   const [reloginFor, setReloginFor] = useState<{ id: string; name: string } | null>(null);
@@ -913,6 +917,10 @@ function BotAccountsPage() {
       proxyEnabled: false,
       elapsedMs: null,
       error: null,
+      reasonCode: null,
+      reasonAr: null,
+      reasonEn: null,
+      rawError: null,
     });
     try {
       const created = await createTestProxyFn({ data: { accountId } });
@@ -932,7 +940,17 @@ function BotAccountsPage() {
             };
             const jobStatus = payload.job.status;
             const rd = (payload.result?.data ?? null) as
-              | { kind?: string; ok?: boolean; ip?: string | null; proxyEnabled?: boolean; elapsedMs?: number | null }
+              | {
+                  kind?: string;
+                  ok?: boolean;
+                  ip?: string | null;
+                  proxyEnabled?: boolean;
+                  elapsedMs?: number | null;
+                  reasonCode?: string | null;
+                  reasonAr?: string | null;
+                  reasonEn?: string | null;
+                  rawError?: string | null;
+                }
               | null;
             if (jobStatus === "completed") {
               setProxyTest({
@@ -944,6 +962,10 @@ function BotAccountsPage() {
                 proxyEnabled: Boolean(rd?.proxyEnabled),
                 elapsedMs: rd?.elapsedMs ?? null,
                 error: null,
+                reasonCode: null,
+                reasonAr: null,
+                reasonEn: null,
+                rawError: null,
               });
               toast.success(rd?.proxyEnabled ? `IP البروكسي: ${rd?.ip ?? "?"}` : `IP السيرفر: ${rd?.ip ?? "?"}`);
               return;
@@ -958,8 +980,12 @@ function BotAccountsPage() {
                 proxyEnabled: Boolean(rd?.proxyEnabled),
                 elapsedMs: rd?.elapsedMs ?? null,
                 error: payload.job.error_message || payload.result?.error || "فشل الاختبار",
+                reasonCode: rd?.reasonCode ?? null,
+                reasonAr: rd?.reasonAr ?? null,
+                reasonEn: rd?.reasonEn ?? null,
+                rawError: rd?.rawError ?? null,
               });
-              toast.error(payload.job.error_message || "فشل اختبار البروكسي");
+              toast.error(rd?.reasonAr || payload.job.error_message || "فشل اختبار البروكسي");
               return;
             }
           } catch (e) {
@@ -989,6 +1015,10 @@ function BotAccountsPage() {
         proxyEnabled: false,
         elapsedMs: null,
         error: msg,
+        reasonCode: null,
+        reasonAr: null,
+        reasonEn: null,
+        rawError: null,
       });
       toast.error(msg);
     } finally {
@@ -1830,18 +1860,35 @@ function BotAccountsPage() {
                 </div>
               )}
               {proxyTest.status === "failed" && (
-                <div className="space-y-2 rounded-md border border-red-500/40 bg-red-500/10 p-3">
+                <div className="space-y-3 rounded-md border border-red-500/40 bg-red-500/10 p-3">
                   <div className="flex items-center gap-2 font-semibold text-red-700 dark:text-red-300">
                     <XCircle className="h-4 w-4" />
                     {lang === "ar" ? "الاختبار فشل" : "Test failed"}
+                    {proxyTest.reasonCode && (
+                      <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-mono text-red-700 dark:text-red-300">
+                        {proxyTest.reasonCode}
+                      </span>
+                    )}
                   </div>
-                  <p className="text-xs text-muted-foreground break-words">
-                    {proxyTest.error ?? (lang === "ar" ? "خطأ غير معروف" : "Unknown error")}
+                  <p className="text-sm font-medium text-foreground break-words leading-relaxed">
+                    {(lang === "ar" ? proxyTest.reasonAr : proxyTest.reasonEn) ??
+                      proxyTest.error ??
+                      (lang === "ar" ? "خطأ غير معروف" : "Unknown error")}
                   </p>
+                  {proxyTest.rawError && (
+                    <details className="text-[11px] text-muted-foreground">
+                      <summary className="cursor-pointer select-none">
+                        {lang === "ar" ? "تفاصيل تقنية" : "Technical details"}
+                      </summary>
+                      <pre className="mt-1 whitespace-pre-wrap break-all rounded bg-background/60 p-2 font-mono">
+                        {proxyTest.rawError}
+                      </pre>
+                    </details>
+                  )}
                   <p className="text-[11px] text-muted-foreground">
                     {lang === "ar"
-                      ? "لو الرسالة تخص timeout أو ERR_TUNNEL_CONNECTION_FAILED فبيانات البروكسي غالباً غلط. راجع host/port والـ user/pass."
-                      : "Timeout or ERR_TUNNEL_CONNECTION_FAILED usually means bad proxy credentials — double-check host/port and user/pass."}
+                      ? "نصيحة: راجع host/port وبيانات user/pass، وتأكد أن مزوّد البروكسي مسموح فيه IP الـ VPS."
+                      : "Tip: verify host/port and user/pass, and make sure the VPS IP is whitelisted at the proxy provider."}
                   </p>
                 </div>
               )}
