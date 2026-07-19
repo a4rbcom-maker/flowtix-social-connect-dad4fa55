@@ -189,19 +189,20 @@ async function fbGet(pathOrUrl, token) {
 
 async function extractGraphTokenFromSession(page, report, options = {}) {
   const inspector = options.inspector || createMetaNetworkInspector(page);
+  const perUrlTimeoutMs = options.perUrlTimeoutMs ?? 14_000;
+  const readyTimeoutMs = options.readyTimeoutMs ?? 4_000;
+  const settleMs = options.settleMs ?? 250;
   const urls = options.urls || [
     "https://business.facebook.com/latest/home",
     "https://business.facebook.com/latest/inbox/all",
-    "https://business.facebook.com/business_locations",
-    "https://www.facebook.com/pages/?category=your_pages",
   ];
 
   for (let i = 0; i < urls.length; i += 1) {
     const url = urls[i];
     await runStage(report, "token_probe", `فتح مصدر آمن للتوكن ${i + 1}/${urls.length}`, async () => {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 24_000 });
-      await waitForReactReady(page, report, "token_react_ready", 8_000).catch(() => null);
-      await sleep(900);
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: perUrlTimeoutMs });
+      await waitForReactReady(page, report, "token_react_ready", readyTimeoutMs).catch(() => null);
+      await sleep(settleMs);
       const html = await page.content().catch(() => "");
       for (const token of extractTokensFromText(html)) inspector.tokens.add(token);
       const storageDump = await page.evaluate(() => {
@@ -213,7 +214,7 @@ async function extractGraphTokenFromSession(page, report, options = {}) {
         return values.join("\n").slice(0, 1_000_000);
       }).catch(() => "");
       for (const token of extractTokensFromText(storageDump)) inspector.tokens.add(token);
-    }, { retries: 0, timeoutMs: 34_000 }).catch((error) => emitPipelineLog(report, "token_probe", "failed", "فشل فتح مصدر توكن", { url, error: shortError(error) }));
+    }, { retries: 0, timeoutMs: perUrlTimeoutMs + readyTimeoutMs + 3_000 }).catch((error) => emitPipelineLog(report, "token_probe", "failed", "فشل فتح مصدر توكن", { url, error: shortError(error) }));
 
     const token = inspector.tokenList()[0];
     if (token) {

@@ -146,7 +146,7 @@ export const precheckGraphAccount = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
 
     // Sweep any stuck running jobs first — makes precheck idempotent.
-    await supabase.rpc("fb_reap_stuck_messenger_jobs", { _user_id: userId, _max_minutes: 6 });
+    await supabase.rpc("fb_reap_stuck_messenger_jobs", { _user_id: userId, _max_minutes: 2 });
 
     const { data: acc, error } = await supabase
       .from("fb_bot_accounts")
@@ -201,7 +201,7 @@ export const enqueueTokenExtraction = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
 
     // Reap stuck jobs so a previous hang does not block the retry.
-    await supabase.rpc("fb_reap_stuck_messenger_jobs", { _user_id: userId, _max_minutes: 6 });
+    await supabase.rpc("fb_reap_stuck_messenger_jobs", { _user_id: userId, _max_minutes: 2 });
 
     const { data: account, error: accErr } = await supabase
       .from("fb_bot_accounts")

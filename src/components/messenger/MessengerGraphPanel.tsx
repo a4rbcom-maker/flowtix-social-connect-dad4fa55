@@ -61,7 +61,7 @@ export function MessengerGraphPanel() {
   const [tokenJobStartedAt, setTokenJobStartedAt] = useState<number | null>(null);
   const [sendOpen, setSendOpen] = useState(false);
   const [sendText, setSendText] = useState("");
-  const TOKEN_JOB_HARD_TIMEOUT_MS = 3 * 60 * 1000;
+  const TOKEN_JOB_HARD_TIMEOUT_MS = 70 * 1000;
 
   const listAccountsFn = useServerFn(listBotAccounts);
   const enqueueTokenFn = useServerFn(enqueueTokenExtraction);
@@ -120,7 +120,7 @@ export function MessengerGraphPanel() {
       } else if (tokenJobStartedAt && Date.now() - tokenJobStartedAt > TOKEN_JOB_HARD_TIMEOUT_MS) {
         // Client-side safety net — stops the "جاري الاستخراج…" state instead
         // of waiting indefinitely for the DB reaper or a stuck worker.
-        toast.error("انتهت المهلة الزمنية لاستخراج التوكن (3 دقائق). تحقّق من تشغيل البوت وأعد المحاولة.");
+        toast.error("الاستخراج استغرق وقتًا أطول من المتوقع. أعد المحاولة أو حدّث ربط الحساب.");
         setTokenJobId(null);
         setTokenJobStartedAt(null);
         qc.invalidateQueries({ queryKey: ["mgraph-precheck", selectedAccountId] });
@@ -134,7 +134,7 @@ export function MessengerGraphPanel() {
   const enqueueMut = useMutation({
     mutationFn: (accountId: string) => enqueueTokenFn({ data: { accountId } }),
     onSuccess: (res) => {
-      toast.info("بدأت مهمة استخراج التوكن من جلسة المتصفح…");
+      toast.info("جاري استخراج التوكن…");
       setTokenJobId(res.jobId);
       setTokenJobStartedAt(Date.now());
     },
