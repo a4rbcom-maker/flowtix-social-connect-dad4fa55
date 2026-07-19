@@ -437,7 +437,7 @@ async function assertBotAccountReadyForExtraction(
   if (!account) throw new Error("حساب فيسبوك المختار غير موجود أو غير تابع لك.");
 
   const storedError = typeof account.last_error === "string" ? account.last_error : "";
-  if (account.status === "invalid" || account.status === "checkpoint") {
+  if (account.status === "checkpoint") {
     throw new Error(
       storedError && isFacebookSessionRejectedError(storedError)
         ? "جلسة فيسبوك لهذا الحساب مرفوضة من فيسبوك. أعد ربط الحساب بكوكيز جديدة قبل استخراج الصفحات."
@@ -463,6 +463,7 @@ async function assertBotAccountReadyForExtraction(
       : null;
   if (
     rejectedSessionError &&
+    account.status !== "invalid" &&
     isFailureNewerThanAccountCheck(latestJob, account)
   ) {
     const checkedAt = (latestJob?.completed_at as string | null) ?? (latestJob?.created_at as string | null) ?? new Date().toISOString();
@@ -474,7 +475,12 @@ async function assertBotAccountReadyForExtraction(
     throw new Error("فيسبوك رفض جلسة هذا الحساب في آخر محاولة فعلية. أعد تصدير الكوكيز من نفس المتصفح ثم اربط الحساب من جديد.");
   }
 
-  if (account.auth_method !== "cookies") return;
+  if (account.auth_method !== "cookies") {
+    if (account.status === "invalid") {
+      throw new Error(storedError || "حساب فيسبوك غير جاهز لإنشاء مهام استخراج. أعد ربط الحساب أو اختر حسابًا آخر.");
+    }
+    return;
+  }
 
   try {
     const { decryptJson } = await import("@/server/crypto.server");
@@ -494,6 +500,14 @@ async function assertBotAccountReadyForExtraction(
         .eq("id", accountId)
         .eq("user_id", userId);
       throw new Error(message);
+    }
+
+    if (account.status === "invalid") {
+      await supabase
+        .from("fb_bot_accounts")
+        .update({ status: "active", last_check_at: new Date().toISOString(), last_error: null })
+        .eq("id", accountId)
+        .eq("user_id", userId);
     }
   } catch (e) {
     if (e instanceof Error) throw e;
