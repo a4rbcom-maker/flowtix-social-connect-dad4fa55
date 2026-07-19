@@ -156,10 +156,10 @@ function createMetaNetworkInspector(page) {
 
 async function waitForReactReady(page, report, stage = "react_ready", timeoutMs = 12_000) {
   await runStage(report, stage, "انتظار تحميل واجهة Business Suite", async () => {
-    await Promise.race([
-      page.waitForNetworkIdle?.({ idleTime: 900, timeout: timeoutMs }).catch(() => null) || sleep(1200),
-      sleep(timeoutMs),
-    ]);
+    const idleWait = typeof page.waitForNetworkIdle === "function"
+      ? page.waitForNetworkIdle({ idleTime: 900, timeout: timeoutMs }).catch(() => null)
+      : sleep(1200);
+    await Promise.race([idleWait, sleep(timeoutMs)]);
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const snapshot = await page.evaluate(() => {
       const body = (document.body?.innerText || "").replace(/\s+/g, " ").slice(0, 1000);

@@ -213,6 +213,8 @@ export const getBotMessengerPages = createServerFn({ method: "POST" })
     const isRealPageName = (name: string) => {
       const n = name.trim();
       if (!n || n.length < 2) return false;
+      if (/^facebook$/i.test(n)) return false;
+      if (/^\d{5,}$/.test(n)) return false;
       if (/^(ترويج|روّج|روج|إعلان|اعلان|الإعلانات?|الاعلانات?|promote|boost|ad|ads|advertise|sponsor(ed)?|create ad)$/i.test(n)) return false;
       if (/^(\d+|[٠-٩]+)\s*(رسائل?|رسالة|messages?)$/i.test(n)) return false;
       if (/لا يتوفر وصف للصورة|قد تكون صورة|profile picture/i.test(n)) return false;
