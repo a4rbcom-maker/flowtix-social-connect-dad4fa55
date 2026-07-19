@@ -283,7 +283,7 @@ async function runExtractPageAudience({ page, job, report }) {
     const beforeCount = collected.size;
     try {
       await page.goto(t.url, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      await sleep(4000);
+      await waitForContent(page, ['a[role="link"]', '[role="main"]'], 3500, 800);
       const people = await harvestFromScope(page, null, cap - collected.size, { maxScrolls: 30, idleLimit: 4 });
       for (const p of people) await emit(p, t.src);
       await emitLog({
