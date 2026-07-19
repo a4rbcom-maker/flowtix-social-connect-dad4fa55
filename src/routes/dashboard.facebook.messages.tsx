@@ -234,7 +234,7 @@ function MessagesPage() {
         data: { pageId, limit: 25, after: append ? nextCursor ?? undefined : undefined },
       });
       if (!res.ok) {
-        toast.error(res.error?.message ?? "Error");
+        toast.error(humanizeFbError(res.error?.message));
         setConvs(res);
         return;
       }
