@@ -1781,6 +1781,80 @@ function BotAccountsPage() {
         </Card>
       </div>
 
+      <Dialog open={!!proxyTest} onOpenChange={(o) => !o && setProxyTest(null)}>
+        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Globe className="h-5 w-5 text-primary" />
+              {lang === "ar" ? "اختبار البروكسي" : "Proxy test"}
+            </DialogTitle>
+          </DialogHeader>
+          {proxyTest && (
+            <div className="space-y-3 text-sm">
+              <p className="text-muted-foreground">
+                {lang === "ar" ? "الحساب:" : "Account:"} <span className="font-medium text-foreground">{proxyTest.accountName}</span>
+              </p>
+              {proxyTest.status === "running" && (
+                <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 p-3">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <span>
+                    {lang === "ar"
+                      ? "بننفّذ الاختبار على VPS — بيفتح Chromium بالبروكسي ويقرأ IP الخروج (10-30 ثانية)."
+                      : "Running on the VPS — launching Chromium via the proxy and reading the egress IP (10-30s)."}
+                  </span>
+                </div>
+              )}
+              {proxyTest.status === "completed" && (
+                <div className="space-y-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3">
+                  <div className="flex items-center gap-2 font-semibold text-emerald-700 dark:text-emerald-300">
+                    <CheckCircle2 className="h-4 w-4" />
+                    {lang === "ar" ? "الاختبار نجح" : "Test succeeded"}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {proxyTest.proxyEnabled
+                      ? lang === "ar"
+                        ? "البروكسي يعمل والبوت يتصل من خلاله. الـ IP الظاهر لفيسبوك هو:"
+                        : "Proxy is active. Facebook will see this IP:"
+                      : lang === "ar"
+                        ? "لا يوجد بروكسي مفعّل على هذا الحساب. الـ IP الظاهر لفيسبوك هو IP السيرفر نفسه:"
+                        : "No proxy set on this account — Facebook sees the raw server IP:"}
+                  </div>
+                  <div className="rounded bg-background/60 px-3 py-2 font-mono text-base text-foreground">
+                    {proxyTest.ip ?? "-"}
+                  </div>
+                  {proxyTest.elapsedMs != null && (
+                    <div className="text-[11px] text-muted-foreground">
+                      {lang === "ar" ? `الاستجابة خلال ${(proxyTest.elapsedMs / 1000).toFixed(1)}s` : `Responded in ${(proxyTest.elapsedMs / 1000).toFixed(1)}s`}
+                    </div>
+                  )}
+                </div>
+              )}
+              {proxyTest.status === "failed" && (
+                <div className="space-y-2 rounded-md border border-red-500/40 bg-red-500/10 p-3">
+                  <div className="flex items-center gap-2 font-semibold text-red-700 dark:text-red-300">
+                    <XCircle className="h-4 w-4" />
+                    {lang === "ar" ? "الاختبار فشل" : "Test failed"}
+                  </div>
+                  <p className="text-xs text-muted-foreground break-words">
+                    {proxyTest.error ?? (lang === "ar" ? "خطأ غير معروف" : "Unknown error")}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {lang === "ar"
+                      ? "لو الرسالة تخص timeout أو ERR_TUNNEL_CONNECTION_FAILED فبيانات البروكسي غالباً غلط. راجع host/port والـ user/pass."
+                      : "Timeout or ERR_TUNNEL_CONNECTION_FAILED usually means bad proxy credentials — double-check host/port and user/pass."}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setProxyTest(null)}>
+              {lang === "ar" ? "إغلاق" : "Close"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="sm:max-w-lg">
           <DialogHeader>
