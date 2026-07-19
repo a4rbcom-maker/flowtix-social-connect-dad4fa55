@@ -685,19 +685,19 @@ export const listBotAccounts = createServerFn({ method: "GET" })
           cookie_expires_at: row.cookie_expires_at,
         };
         const latestSessionFailure = latestSessionFailures.get(row.id);
-        const structuralCookieOk = (() => {
-          if (row.auth_method !== "cookies" || !row.encrypted_payload) return false;
+        let structuralCookieOk = false;
+        if (row.auth_method === "cookies" && row.encrypted_payload) {
           try {
-            const { decryptJson } = require("@/server/crypto.server") as typeof import("@/server/crypto.server");
+            const { decryptJson } = await import("@/server/crypto.server");
             const cookies = normalizeStoredCookies(decryptJson<unknown>(row.encrypted_payload));
             const { missingCritical, invalid } = validateFacebookCookies(cookies);
             const minExp = earliestRequiredExpiry(cookies);
             const expired = minExp !== null && minExp * 1000 <= Date.now();
-            return missingCritical.length === 0 && invalid.length === 0 && !expired;
+            structuralCookieOk = missingCritical.length === 0 && invalid.length === 0 && !expired;
           } catch {
-            return false;
+            structuralCookieOk = false;
           }
-        })();
+        }
         if (latestSessionFailure && !structuralCookieOk) {
           safe.status = "invalid";
           safe.last_check_at = latestSessionFailure.at ?? row.last_check_at;
