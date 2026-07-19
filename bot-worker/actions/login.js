@@ -73,6 +73,31 @@ async function verifyLoggedInSession(page, reportStatus, options = {}) {
     return false;
   }
 
+  // Messenger token extraction does not need to prove that the full Facebook
+  // UI shell rendered. On slow/proxied Business Suite loads Facebook may keep
+  // the shell blank for several seconds while the session cookies are already
+  // valid, which caused false failures like:
+  // "Could not confirm logged-in UI (no nav/profile/composer/business shell detected)".
+  // For that job we accept the presence of a live c_user cookie unless the page
+  // is explicitly showing a login/checkpoint form; the extraction step itself
+  // then opens Business Suite and fails with a token-specific reason if needed.
+  if (options.acceptCookieOnlyAfterCookieCheck) {
+    const hardAuthBlock = await page.evaluate(() => {
+      const href = window.location.href;
+      const hasLoginForm = !!document.querySelector('form[action*="login"], input[name="email"], input[name="pass"]');
+      const body = document.body?.innerText || "";
+      return /\/login(?:\/|\?|$)|checkpoint|two_factor|two_step_verification/i.test(href) ||
+        hasLoginForm ||
+        /checkpoint|two-factor|two factor|تأكيد الهوية|تحقق أمني/i.test(body);
+    }).catch(() => false);
+    if (hardAuthBlock) {
+      await reportStatus("invalid", `Facebook requested login/checkpoint on protected surface: ${url}`);
+      return false;
+    }
+    await reportStatus("active", null);
+    return true;
+  }
+
   // 4) Positive logged-in signals. Business Suite pages sometimes render a
   // different shell from facebook.com, so accept either the normal Facebook UI
   // or an authenticated Business Suite surface.
@@ -149,7 +174,7 @@ async function ensureLogin(page, account, reportStatus, options = {}) {
       if (options.preferExistingSession) {
         try {
           await page.goto(firstUrl, { waitUntil: "domcontentloaded", timeout: options.initialTimeoutMs || 45_000 });
-          await new Promise((resolve) => setTimeout(resolve, 1200));
+          await new Promise((resolve) => setTimeout(resolve, options.initialSettleMs || 1200));
           const existingOk = await verifyLoggedInSession(page, async () => {}, { verifyUrl: options.verifyUrl });
           if (existingOk) {
             await reportStatus("active", null);
@@ -163,7 +188,7 @@ async function ensureLogin(page, account, reportStatus, options = {}) {
       const cookies = buildPuppeteerCookies(sourceCookies);
       await page.setCookie(...cookies);
       try {
-        await page.goto(firstUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
+        await page.goto(firstUrl, { waitUntil: "domcontentloaded", timeout: options.initialTimeoutMs || 60_000 });
       } catch (e) {
         await reportStatus(
           "invalid",
