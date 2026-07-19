@@ -146,6 +146,7 @@ async function runMessengerListPages({ page, job, report }) {
   for (const c of directs) {
     const name = cleanPageName(c.name);
     if (!name || name.length < 2) continue;
+    if (isAdLabel(name)) continue;
     pagesMap.set(c.idOrSlug, { id: c.idOrSlug, name, avatar_url: c.avatar_url || null });
   }
   await report({ progress: 40 });
