@@ -222,9 +222,9 @@ function InsightsPage() {
     try {
       const res = await fetchInsightsFn({ data: { pageId: id } });
       setInsights(res);
-      if (!res.ok) toast.error(res.error?.message ?? "Failed to load insights");
+      if (!res.ok) toast.error(humanizeFbError(res.error?.message));
     } catch (e) {
-      toast.error(String(e));
+      toast.error(humanizeFbError(e));
     } finally {
       setLoadingInsights(false);
     }
