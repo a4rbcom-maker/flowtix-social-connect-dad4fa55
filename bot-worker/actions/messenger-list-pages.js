@@ -6,6 +6,7 @@
 
 function cleanPageName(name) {
   return String(name || "")
+    .replace(/\s*\(\+?\d+\)\s*$/u, "") // strip trailing "(+20)" count badges
     .replace(/^\s*صورة\s+ملف\s+/u, "")
     .replace(/\s+الشخصية?$/u, "")
     .replace(/^\s*Profile\s+picture\s+of\s+/iu, "")
@@ -14,13 +15,17 @@ function cleanPageName(name) {
     .trim();
 }
 
-// Ad/boost UI labels that Facebook renders next to real pages when the
-// cookies session has ads_management scope. These are NOT page names.
-const AD_LABEL_RE = /^(ترويج|روّج|روج|إعلان|اعلان|الإعلانات?|الاعلانات?|promote|boost|ad|ads|advertise|sponsor(ed)?|create ad)$/i;
+// Ad/boost/CTA UI labels Facebook renders next to real pages when the
+// cookies session has ads_management scope. These are NEVER page names.
+const AD_LABEL_RE = /^(ترويج|روّج|روج|إعلان|اعلان|الإعلانات?|الاعلانات?|اختيار\s+هدف|اختر\s+هدف|اختر\s+جمهور[كا]?|حدد\s+الجمهور|جمهور\s+مخصص|اختيار\s+الجمهور|إنشاء\s+إعلان|انشاء\s+اعلان|جلب\s+العملاء|promote|boost|ad|ads|advertise|sponsor(ed)?|create ad|choose (an )?audience|select (an )?audience|choose (a )?goal|select (a )?goal|pick (an )?audience|target audience)$/i;
 
 function isAdLabel(name) {
-  return AD_LABEL_RE.test(String(name || "").trim());
+  const bare = String(name || "").replace(/\s*\(\+?\d+\)\s*$/u, "").trim();
+  return AD_LABEL_RE.test(bare);
 }
+
+// Anchors pointing at these paths are ad-manager CTAs, not page links.
+const AD_HREF_RE = /\/(ads|adsmanager|ad_center|business\/(ads|adsmanager|creativehub)|latest\/ads|ad_campaign)/i;
 
 function isReservedFacebookPath(value) {
   return /^(help|marketplace|watch|gaming|groups|events|pages|business|ads|settings|notifications|messages|friends|bookmarks|policies|privacy|terms|login|checkpoint|reg|profile\.php)$/i.test(value);
