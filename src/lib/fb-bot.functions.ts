@@ -685,7 +685,20 @@ export const listBotAccounts = createServerFn({ method: "GET" })
           cookie_expires_at: row.cookie_expires_at,
         };
         const latestSessionFailure = latestSessionFailures.get(row.id);
-        if (latestSessionFailure) {
+        let structuralCookieOk = false;
+        if (row.auth_method === "cookies" && row.encrypted_payload) {
+          try {
+            const { decryptJson } = await import("@/server/crypto.server");
+            const cookies = normalizeStoredCookies(decryptJson<unknown>(row.encrypted_payload));
+            const { missingCritical, invalid } = validateFacebookCookies(cookies);
+            const minExp = earliestRequiredExpiry(cookies);
+            const expired = minExp !== null && minExp * 1000 <= Date.now();
+            structuralCookieOk = missingCritical.length === 0 && invalid.length === 0 && !expired;
+          } catch {
+            structuralCookieOk = false;
+          }
+        }
+        if (latestSessionFailure && !structuralCookieOk) {
           safe.status = "invalid";
           safe.last_check_at = latestSessionFailure.at ?? row.last_check_at;
           safe.last_error = latestSessionFailure.error;
@@ -1492,41 +1505,6 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
       );
     }
 
-    try {
-      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      const { data: latestJob } = await supabaseAdmin
-        .from("fb_jobs")
-        .select("status, error_message, completed_at, created_at")
-        .eq("account_id", data.id)
-        .eq("user_id", userId)
-        .in("status", ["completed", "failed"])
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      const latestError = typeof latestJob?.error_message === "string" ? latestJob.error_message : "";
-      const storedError = typeof acc?.last_error === "string" ? acc.last_error : "";
-      const rejectedSessionError = isFacebookSessionRejectedError(latestError)
-        ? latestError
-        : isFacebookSessionRejectedError(storedError)
-          ? storedError
-          : null;
-      if (rejectedSessionError && latestJob?.status === "failed" && acc?.status !== "invalid" && isFailureNewerThanAccountCheck(latestJob, acc)) {
-        const checkedAt = (latestJob?.completed_at as string | null) ?? (latestJob?.created_at as string | null) ?? new Date().toISOString();
-        await supabase
-          .from("fb_bot_accounts")
-          .update({ status: "invalid", last_check_at: checkedAt, last_error: rejectedSessionError })
-          .eq("id", data.id)
-          .eq("user_id", userId);
-        return precheckFailure(
-          "FACEBOOK_SESSION_REJECTED",
-          "فيسبوك رفض جلسة الحساب المحفوظة في آخر محاولة فعلية. الفحص المحلي للكوكيز لا يكفي هنا؛ احذف الحساب وأعد ربطه بكوكيز جديدة من نفس المتصفح.",
-          "cookies",
-        );
-      }
-    } catch (e) {
-      console.warn("[precheckBotAccount] recent session failure scan skipped:", e);
-    }
-
     // 2) Credentials accounts: cookies precheck doesn't apply.
     if (acc.auth_method !== "cookies") {
       return {
@@ -1673,40 +1651,6 @@ export const testBotAccount = createServerFn({ method: "POST" })
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!acc) throw new Error("هذا الحساب لم يعد موجودًا. حدّث الصفحة ثم أعد إضافته إن لزم.");
-
-    const { data: latestJob } = await supabaseAdmin
-      .from("fb_jobs")
-      .select("status, error_message, completed_at, created_at")
-      .eq("account_id", data.id)
-      .eq("user_id", userId)
-      .in("status", ["completed", "failed"])
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const latestError = typeof latestJob?.error_message === "string" ? latestJob.error_message : "";
-    const storedError = typeof acc.last_error === "string" ? acc.last_error : "";
-    const rejectedSessionError = isFacebookSessionRejectedError(latestError)
-      ? latestError
-      : isFacebookSessionRejectedError(storedError)
-        ? storedError
-        : null;
-    if (rejectedSessionError && latestJob?.status === "failed" && acc.status !== "invalid" && isFailureNewerThanAccountCheck(latestJob, acc)) {
-      const checkedAt = (latestJob?.completed_at as string | null) ?? (latestJob?.created_at as string | null) ?? new Date().toISOString();
-      const { data: updated, error: upErr } = await supabase
-        .from("fb_bot_accounts")
-        .update({
-          status: "invalid",
-          last_check_at: checkedAt,
-          last_error: rejectedSessionError,
-        })
-        .eq("id", data.id)
-        .eq("user_id", userId)
-        .select(BOT_ACCOUNT_SAFE_SELECT)
-        .maybeSingle();
-      if (upErr) throw new Error(upErr.message);
-      if (!updated) throw new Error("تعذّر تحديث حالة الحساب — حدّث الصفحة وأعد المحاولة");
-      return { ...updated, groups: [] as { id: string; name: string }[] };
-    }
 
     let status: "active" | "invalid" | "checkpoint" = "invalid";
     let lastError: string | null = null;
