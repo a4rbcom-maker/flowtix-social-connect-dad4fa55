@@ -175,7 +175,8 @@ async function runJob(job) {
   let browser = null;
   try {
     await emitExtractPagesWorkerLog(job, "worker_claimed", "queue", { type: job.type });
-    const proxy = parseProxy(job.account?.proxyUrl);
+    const effectiveProxyUrl = (job.type === "test_proxy" && job.payload?.proxyUrl) || job.account?.proxyUrl;
+    const proxy = parseProxy(effectiveProxyUrl);
     const launchArgs = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--lang=en-US,en"];
     if (proxy?.server) launchArgs.push(`--proxy-server=${proxy.server}`);
     browser = await timedExtractPagesWorkerStep(job, "browser_launch", () => puppeteer.launch({
@@ -200,7 +201,7 @@ async function runJob(job) {
       customUserAgent: accountUA !== DEFAULT_UA,
     });
 
-    if (job.account) {
+    if (job.account && job.type !== "test_proxy") {
       // Signal to the UI immediately that the worker picked the job up.
       await reportUpdate({ jobId: job.id, status: "running", progress: 3 });
       let loginFailureReason = "SESSION_EXPIRED: انتهت صلاحية جلسة حساب فيسبوك — أعد ربط الحساب من صفحة حسابات البوت.";
@@ -238,6 +239,7 @@ async function runJob(job) {
     else if (job.type === "messenger_list_pages") await runMessengerListPages(ctx);
     else if (job.type === "messenger_sync_cookies") await runMessengerSyncCookies(ctx);
     else if (job.type === "messenger_send_cookies") await runMessengerSendCookies(ctx);
+    else if (job.type === "test_proxy") await runTestProxy(ctx);
     else await reportUpdate({ jobId: job.id, status: "failed", errorMessage: `Unknown job type: ${job.type}` });
 
   } catch (err) {
