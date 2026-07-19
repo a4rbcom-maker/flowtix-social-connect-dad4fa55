@@ -457,6 +457,10 @@ function BotAccountsPage() {
     proxyEnabled: boolean;
     elapsedMs: number | null;
     error: string | null;
+    reasonCode: string | null;
+    reasonAr: string | null;
+    reasonEn: string | null;
+    rawError: string | null;
   } | null>(null);
   const [proxyTestingId, setProxyTestingId] = useState<string | null>(null);
   const [reloginFor, setReloginFor] = useState<{ id: string; name: string } | null>(null);
