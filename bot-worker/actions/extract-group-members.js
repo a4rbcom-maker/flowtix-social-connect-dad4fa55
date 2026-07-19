@@ -12,7 +12,9 @@ async function runExtractGroupMembers({ page, job, report }) {
 
   const url = `https://www.facebook.com/groups/${groupId}/members`;
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
-  await new Promise(r => setTimeout(r, 6000));
+  // Wait for the member list to render instead of blindly sleeping 6s.
+  await new Promise((r) => setTimeout(r, 800));
+  await page.waitForSelector('a[href*="/user/"], a[href*="profile.php"], div[role="main"]', { timeout: 4000 }).catch(() => {});
 
   // Detect login / access issues early
   const access = await page.evaluate(() => {
