@@ -49,7 +49,17 @@ import {
   recordSuccess as recordProxyTestSuccess,
   recordFailure as recordProxyTestFailure,
   describeCooldown as describeProxyCooldown,
+import {
+  canAttempt as canAttemptProxyTest,
+  recordSuccess as recordProxyTestSuccess,
+  recordFailure as recordProxyTestFailure,
+  describeCooldown as describeProxyCooldown,
 } from "@/lib/proxy-test-circuit-breaker";
+import {
+  getCachedProxyTest,
+  setCachedProxyTest,
+  invalidateProxyTest,
+} from "@/lib/proxy-test-cache";
 import {
   addBotAccount,
   listBotAccounts,
