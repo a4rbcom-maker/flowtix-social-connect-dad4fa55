@@ -1752,6 +1752,21 @@ function BotAccountsPage() {
                                 {lang === "ar" ? "إعادة تسجيل الدخول" : "Re-login"}
                               </Button>
                             )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5"
+                            disabled={proxyTestingId === a.id}
+                            onClick={() => void handleTestProxy(a.id, a.display_name)}
+                            title={lang === "ar" ? "اختبار البروكسي عبر VPS" : "Test the proxy via VPS"}
+                          >
+                            {proxyTestingId === a.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Globe className="h-3.5 w-3.5" />
+                            )}
+                            {lang === "ar" ? "اختبار البروكسي" : "Test proxy"}
+                          </Button>
                           <Button size="sm" variant="ghost" onClick={() => handleDelete(a.id)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
