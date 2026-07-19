@@ -166,15 +166,15 @@ async function harvestReactors(page, cap) {
     return false;
   }).catch(() => false);
   if (!opened) return [];
-  await sleep(2500);
+  await sleep(1200);
   // dialog element
   const scope = 'div[role="dialog"]';
   const exists = await page.$(scope);
   if (!exists) return [];
-  const people = await harvestFromScope(page, scope, cap, { maxScrolls: 40, idleLimit: 5 });
+  const people = await harvestFromScope(page, scope, cap, { maxScrolls: 25, idleLimit: 3 });
   // close dialog
   await page.keyboard.press("Escape").catch(() => {});
-  await sleep(800);
+  await sleep(400);
   return people;
 }
 
