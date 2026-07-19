@@ -51,6 +51,11 @@ import {
   describeCooldown as describeProxyCooldown,
 } from "@/lib/proxy-test-circuit-breaker";
 import {
+  getCachedProxyTest,
+  setCachedProxyTest,
+  invalidateProxyTest,
+} from "@/lib/proxy-test-cache";
+import {
   addBotAccount,
   listBotAccounts,
   deleteBotAccount,
@@ -936,6 +941,7 @@ function BotAccountsPage() {
       if (payload?.account) {
         setAccounts((prev) => prev.map((a) => (a.id === payload.account!.id ? payload.account! : a)));
       }
+      invalidateProxyTest(proxyEdit.id);
       toast.success(proxyEdit.proxyUrl.trim() ? t.proxySaved : t.proxyRemoved);
       setProxyEdit(null);
     } catch (e) {
@@ -949,7 +955,24 @@ function BotAccountsPage() {
     }
   };
 
-  const handleTestProxy = async (accountId: string, accountName: string) => {
+  const handleTestProxy = async (accountId: string, accountName: string, opts?: { force?: boolean }) => {
+    // Session cache: reuse a recent result for the same account instead of
+    // re-running the ~18s test on every click. Pass `{ force: true }` to
+    // bypass and re-run.
+    if (!opts?.force) {
+      const cached = getCachedProxyTest(accountId);
+      if (cached) {
+        setProxyTest({ ...cached, accountName });
+        toast.success(
+          cached.status === "completed" && cached.proxyEnabled
+            ? lang === "ar" ? "نتيجة محفوظة: البروكسي مفعّل" : "Cached: proxy is active"
+            : cached.status === "completed"
+              ? lang === "ar" ? "نتيجة محفوظة: لا يوجد بروكسي" : "Cached: no proxy"
+              : lang === "ar" ? "نتيجة محفوظة (فشل سابق)" : "Cached (previous failure)",
+        );
+        return;
+      }
+    }
     // Circuit Breaker: after repeated failures for this account, block new
     // attempts for a cooldown window instead of waiting on another 18s poll.
     const breakerKey = `proxy-test:${accountId}`;
@@ -1022,11 +1045,11 @@ function BotAccountsPage() {
                 }
               | null;
             if (jobStatus === "completed") {
-              setProxyTest({
+              const snapshot = {
                 accountId,
                 accountName,
                 jobId,
-                status: "completed",
+                status: "completed" as const,
                 ip: rd?.ip ?? null,
                 proxyEnabled: Boolean(rd?.proxyEnabled),
                 elapsedMs: rd?.elapsedMs ?? null,
@@ -1035,7 +1058,9 @@ function BotAccountsPage() {
                 reasonAr: null,
                 reasonEn: null,
                 rawError: null,
-              });
+              };
+              setProxyTest(snapshot);
+              setCachedProxyTest(accountId, snapshot);
               toast.success(
                 rd?.proxyEnabled
                   ? lang === "ar" ? "البروكسي مفعّل" : "Proxy is active"
@@ -1047,11 +1072,11 @@ function BotAccountsPage() {
             if (jobStatus === "failed") {
               const fallbackReasonAr = payload.job.error_message || payload.result?.error || "تعذّر تشغيل اختبار البروكسي";
               const fallbackReasonEn = payload.job.error_message || payload.result?.error || "Could not run proxy test";
-              setProxyTest({
+              const snapshot = {
                 accountId,
                 accountName,
                 jobId,
-                status: "failed",
+                status: "failed" as const,
                 ip: null,
                 proxyEnabled: Boolean(rd?.proxyEnabled),
                 elapsedMs: rd?.elapsedMs ?? null,
@@ -1060,7 +1085,9 @@ function BotAccountsPage() {
                 reasonAr: rd?.reasonAr ?? fallbackReasonAr,
                 reasonEn: rd?.reasonEn ?? fallbackReasonEn,
                 rawError: rd?.rawError ?? null,
-              });
+              };
+              setProxyTest(snapshot);
+              setCachedProxyTest(accountId, snapshot, 30_000);
               toast.error(rd?.reasonAr || payload.job.error_message || "تعذّر تشغيل اختبار البروكسي");
               recordProxyTestFailure(breakerKey, rd?.reasonAr ?? payload.job.error_message ?? null);
               return;
