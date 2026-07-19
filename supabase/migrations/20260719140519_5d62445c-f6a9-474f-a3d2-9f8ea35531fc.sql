@@ -1,0 +1,1 @@
+DROP POLICY IF EXISTS "Anyone authenticated can read ai model tiers" ON public.ai_model_tiers;
