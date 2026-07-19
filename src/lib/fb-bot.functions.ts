@@ -113,6 +113,21 @@ function isFacebookSessionRejectedError(value: unknown) {
   return typeof value === "string" && FACEBOOK_SESSION_REJECTED_RE.test(value);
 }
 
+function toTime(value: unknown) {
+  if (typeof value !== "string" || !value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function isFailureNewerThanAccountCheck(
+  job: { completed_at?: unknown; created_at?: unknown } | null | undefined,
+  account: { last_check_at?: unknown; updated_at?: unknown } | null | undefined,
+) {
+  const jobTime = Math.max(toTime(job?.completed_at), toTime(job?.created_at));
+  const accountFreshTime = Math.max(toTime(account?.last_check_at), toTime(account?.updated_at));
+  return jobTime > 0 && jobTime > accountFreshTime;
+}
+
 function normalizeProxyUrl(value: string | null | undefined) {
   const raw = String(value || "").trim();
   if (!raw) return null;
