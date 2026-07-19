@@ -369,7 +369,7 @@ function InsightsPage() {
             <div className="flex items-start gap-3">
               <AlertCircle className="mt-0.5 h-5 w-5 text-destructive" />
               <div>
-                <p className="font-medium text-destructive">{insights.error?.message}</p>
+                <p className="font-medium text-destructive">{humanizeFbError(insights.error?.message)}</p>
               </div>
             </div>
           </Card>
