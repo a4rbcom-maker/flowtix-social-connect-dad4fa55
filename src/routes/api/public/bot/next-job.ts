@@ -140,7 +140,7 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
           candidateQuery = candidateQuery.neq("job_type", "messenger_send_cookies");
         }
         if (!supportsTestProxy) {
-          candidateQuery = candidateQuery.neq("job_type", "test_proxy");
+          candidateQuery = candidateQuery.neq("job_type", "test_proxy" as never);
         }
 
         const { data: candidate, error: selErr } = await candidateQuery
