@@ -28,6 +28,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { listBotAccounts, getJob } from "@/lib/fb-bot.functions";
+import { jobPollInterval } from "@/lib/adaptive-poll";
 import {
   enqueueTokenExtraction,
   syncPagesForAccount,
@@ -137,7 +138,9 @@ export function MessengerGraphPanel() {
       return null;
     },
     enabled: !!tokenJobId,
-    refetchInterval: 3000,
+    // Adaptive: poll fast at first, slow down as the job drags on.
+    refetchInterval: () => jobPollInterval(tokenJobStartedAt),
+    refetchIntervalInBackground: false,
     retry: false,
   });
 
