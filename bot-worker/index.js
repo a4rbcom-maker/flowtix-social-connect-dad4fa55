@@ -132,8 +132,8 @@ function loginOptionsForJob(job) {
   if (job.type === "messenger_extract_token") {
     return {
       preferExistingSession: true,
-      initialUrl: "https://business.facebook.com/latest/home",
-      initialTimeoutMs: 18_000,
+      initialUrl: "https://www.facebook.com/",
+      initialTimeoutMs: 12_000,
       initialSettleMs: 300,
       acceptCookieOnlyAfterCookieCheck: true,
     };
