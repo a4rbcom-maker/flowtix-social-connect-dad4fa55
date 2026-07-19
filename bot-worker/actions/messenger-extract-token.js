@@ -8,8 +8,8 @@ const { extractGraphTokenFromSession, shortError } = require("./messenger-stable
 
 // Hard cap so a slow / broken FB response can never keep the job "running"
 // for tens of minutes.  Individual page.goto has its own tighter cap.
-const OVERALL_BUDGET_MS = 45_000;
-const PER_URL_TIMEOUT_MS = 12_000;
+const OVERALL_BUDGET_MS = 28_000;
+const PER_URL_TIMEOUT_MS = 7_000;
 
 async function runMessengerExtractToken(ctx) {
   const { page, job, report } = ctx;
@@ -21,8 +21,9 @@ async function runMessengerExtractToken(ctx) {
     const found = await Promise.race([
       extractGraphTokenFromSession(page, report, {
         perUrlTimeoutMs: PER_URL_TIMEOUT_MS,
-        readyTimeoutMs: 3_500,
+        readyTimeoutMs: 0,
         settleMs: 200,
+        skipReactReady: true,
       }),
       new Promise((_, reject) => {
         timeoutId = setTimeout(() => reject(new Error("انتهت المهلة الكلية قبل العثور على التوكن")), OVERALL_BUDGET_MS);
