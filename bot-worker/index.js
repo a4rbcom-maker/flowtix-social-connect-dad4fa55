@@ -33,6 +33,7 @@ const MAX_INT = Math.max(MIN_INT, parseInt(process.env.POLL_MAX_INTERVAL_SEC || 
 const HEADLESS = process.env.HEADLESS !== "false";
 const PROFILE_ROOT = process.env.BOT_PROFILE_DIR || path.join(__dirname, ".browser-profiles");
 const WORKER_VERSION = "bot-worker-2026-07-19-fast-proxy-test-v1";
+const MAX_PARALLEL_PROXY_TESTS = Math.max(1, parseInt(process.env.MAX_PARALLEL_PROXY_TESTS || "1", 10));
 
 const WORKER_CAPABILITIES = [
   "post_to_groups",
@@ -67,8 +68,9 @@ const http = axios.create({
   timeout: 30_000,
 });
 
-async function fetchNextJob() {
-  const { data } = await http.post("/api/public/bot/next-job", {});
+async function fetchNextJob(onlyJobType = null) {
+  const headers = onlyJobType ? { "X-Flowtix-Only-Job-Type": onlyJobType } : undefined;
+  const { data } = await http.post("/api/public/bot/next-job", {}, { headers });
   return data.job; // null when nothing
 }
 
@@ -365,13 +367,23 @@ async function runJob(job) {
 
 async function loop() {
   let interval = MIN_INT;
+  let normalJobRunning = false;
+  const activeProxyTests = new Set();
   console.log(`[worker] started — ${WORKER_VERSION} pid=${process.pid} cwd=${process.cwd()} polling ${API} every ${MIN_INT/1000}s (max ${MAX_INT/1000}s on idle)`);
   while (true) {
     try {
-      const job = await fetchNextJob();
+      const proxySlotsFull = activeProxyTests.size >= MAX_PARALLEL_PROXY_TESTS;
+      const onlyJobType = normalJobRunning ? "test_proxy" : null;
+      const job = proxySlotsFull ? null : await fetchNextJob(onlyJobType);
       if (job) {
         interval = MIN_INT;
-        await runJob(job);
+        const isProxyTest = job.type === "test_proxy";
+        if (!isProxyTest) normalJobRunning = true;
+        const p = runJob(job).finally(() => {
+          if (isProxyTest) activeProxyTests.delete(p);
+          else normalJobRunning = false;
+        });
+        if (isProxyTest) activeProxyTests.add(p);
       } else {
         // Exponential backoff when idle, capped
         interval = Math.min(MAX_INT, Math.floor(interval * 1.5));

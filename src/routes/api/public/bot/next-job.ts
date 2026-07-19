@@ -39,6 +39,10 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         const supportsMessengerSyncCookies = workerCapabilities.includes("messenger_sync_cookies");
         const supportsMessengerSendCookies = workerCapabilities.includes("messenger_send_cookies");
         const supportsTestProxy = workerCapabilities.includes("test_proxy");
+        const onlyJobType = (request.headers.get("x-flowtix-only-job-type") || "").trim();
+        if (onlyJobType && onlyJobType !== "test_proxy") {
+          return Response.json({ error: "Unsupported job type filter" }, { status: 400 });
+        }
 
         const [{ supabaseAdmin }, { decryptJson }] = await Promise.all([
           import("@/integrations/supabase/client.server"),
@@ -101,12 +105,16 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         // queue is empty. A HEAD count with `is`/`lte` filters is a single index
         // seek on `fb_jobs(status, scheduled_at)` — far cheaper than running the
         // busy-accounts SELECT and the candidate SELECT for zero payoff.
-        const { count: pendingCount } = await supabaseAdmin
+        let pendingProbe = supabaseAdmin
           .from("fb_jobs")
           .select("id", { count: "exact", head: true })
           .eq("status", "pending")
           .not("account_id", "is", null)
           .lte("scheduled_at", nowIso);
+        if (onlyJobType === "test_proxy") {
+          pendingProbe = pendingProbe.eq("job_type", "test_proxy" as never);
+        }
+        const { count: pendingCount } = await pendingProbe;
         if (!pendingCount || pendingCount === 0) {
           return Response.json({ job: null });
         }
@@ -130,6 +138,8 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
           if (proxySelErr) return Response.json({ error: proxySelErr.message }, { status: 500 });
           candidate = proxyCandidate;
         }
+
+        if (!candidate && onlyJobType === "test_proxy") return Response.json({ job: null });
 
         if (!candidate) {
           // Serial-per-account lock: never hand out a second Facebook job for an
