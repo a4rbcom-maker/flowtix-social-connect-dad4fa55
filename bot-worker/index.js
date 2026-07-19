@@ -25,14 +25,15 @@ const { ensureLogin } = require("./actions/login");
 
 const API = process.env.API_BASE_URL;
 const SECRET = process.env.BOT_WORKER_SECRET;
-// Lowered default poll interval from 15s → 6s so small/fast jobs (test_proxy,
+// Lowered default poll interval so small/fast jobs (test_proxy,
 // list_my_groups, extract_pages) start almost immediately instead of waiting
 // for a full polling window. Backoff on idle keeps DB load flat.
-const MIN_INT = Math.max(3, parseInt(process.env.POLL_INTERVAL_SEC || "6", 10)) * 1000;
-const MAX_INT = Math.max(MIN_INT, parseInt(process.env.POLL_MAX_INTERVAL_SEC || "60", 10) * 1000);
+const MIN_INT = Math.max(2, parseInt(process.env.POLL_INTERVAL_SEC || "3", 10)) * 1000;
+const MAX_INT = Math.max(MIN_INT, parseInt(process.env.POLL_MAX_INTERVAL_SEC || "10", 10) * 1000);
 const HEADLESS = process.env.HEADLESS !== "false";
 const PROFILE_ROOT = process.env.BOT_PROFILE_DIR || path.join(__dirname, ".browser-profiles");
-const WORKER_VERSION = "bot-worker-2026-07-19-fast-batch-v1";
+const WORKER_VERSION = "bot-worker-2026-07-19-fast-proxy-test-v1";
+const MAX_PARALLEL_PROXY_TESTS = Math.max(1, parseInt(process.env.MAX_PARALLEL_PROXY_TESTS || "1", 10));
 
 const WORKER_CAPABILITIES = [
   "post_to_groups",
@@ -67,8 +68,9 @@ const http = axios.create({
   timeout: 30_000,
 });
 
-async function fetchNextJob() {
-  const { data } = await http.post("/api/public/bot/next-job", {});
+async function fetchNextJob(onlyJobType = null) {
+  const headers = onlyJobType ? { "X-Flowtix-Only-Job-Type": onlyJobType } : undefined;
+  const { data } = await http.post("/api/public/bot/next-job", {}, { headers });
   return data.job; // null when nothing
 }
 
@@ -185,11 +187,12 @@ async function runJob(job) {
     const proxy = parseProxy(effectiveProxyUrl);
     const launchArgs = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--lang=en-US,en"];
     if (proxy?.server) launchArgs.push(`--proxy-server=${proxy.server}`);
+    const profileAccountId = job.type === "test_proxy" ? null : job.account?.id;
     browser = await timedExtractPagesWorkerStep(job, "browser_launch", () => puppeteer.launch({
       headless: HEADLESS,
-      userDataDir: job.account?.id ? accountProfileDir(job.account.id) : undefined,
+      userDataDir: profileAccountId ? accountProfileDir(profileAccountId) : undefined,
       args: launchArgs,
-    }), { persistentProfile: Boolean(job.account?.id), proxyEnabled: Boolean(proxy?.server) });
+    }), { persistentProfile: Boolean(profileAccountId), proxyEnabled: Boolean(proxy?.server) });
     const page = await timedExtractPagesWorkerStep(job, "browser_page", () => browser.newPage());
     if (proxy?.username) {
       await timedExtractPagesWorkerStep(job, "browser_proxy_auth", () => page.authenticate({ username: proxy.username, password: proxy.password || "" }));
@@ -364,13 +367,23 @@ async function runJob(job) {
 
 async function loop() {
   let interval = MIN_INT;
+  let normalJobRunning = false;
+  const activeProxyTests = new Set();
   console.log(`[worker] started — ${WORKER_VERSION} pid=${process.pid} cwd=${process.cwd()} polling ${API} every ${MIN_INT/1000}s (max ${MAX_INT/1000}s on idle)`);
   while (true) {
     try {
-      const job = await fetchNextJob();
+      const proxySlotsFull = activeProxyTests.size >= MAX_PARALLEL_PROXY_TESTS;
+      const onlyJobType = normalJobRunning ? "test_proxy" : null;
+      const job = proxySlotsFull ? null : await fetchNextJob(onlyJobType);
       if (job) {
         interval = MIN_INT;
-        await runJob(job);
+        const isProxyTest = job.type === "test_proxy";
+        if (!isProxyTest) normalJobRunning = true;
+        const p = runJob(job).finally(() => {
+          if (isProxyTest) activeProxyTests.delete(p);
+          else normalJobRunning = false;
+        });
+        if (isProxyTest) activeProxyTests.add(p);
       } else {
         // Exponential backoff when idle, capped
         interval = Math.min(MAX_INT, Math.floor(interval * 1.5));

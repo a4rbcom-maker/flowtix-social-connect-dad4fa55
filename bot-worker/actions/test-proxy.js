@@ -72,13 +72,12 @@ function classifyError(raw, proxyEnabled) {
 async function runTestProxy({ page, job, report }) {
   const startedAt = Date.now();
   const proxyEnabled = Boolean(job.payload?.proxyUrl || job.account?.proxyUrl);
+  const FAST_PROXY_TEST_TIMEOUT_MS = 3_000;
   const targets = [
     { url: "https://api.ipify.org?format=json", parse: (t) => { try { return JSON.parse(t).ip; } catch { return null; } } },
-    { url: "https://ipv4.icanhazip.com/", parse: (t) => (t || "").trim() },
-    { url: "https://ifconfig.co/ip", parse: (t) => (t || "").trim() },
   ];
 
-  await report({ status: "running", progress: 20 });
+  await report({ status: "running", progress: 35 });
 
   // Fail-fast: proxy problems (unreachable/auth/DNS/refused) are terminal —
   // no point in retrying against another target. Only retry on transient
@@ -91,7 +90,7 @@ async function runTestProxy({ page, job, report }) {
   let terminal = false;
   for (const target of targets) {
     try {
-      const resp = await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: 5_000 });
+      const resp = await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: FAST_PROXY_TEST_TIMEOUT_MS });
       const status = resp ? resp.status() : 0;
       lastStatus = status;
       const body = await page.evaluate(() => document.body ? document.body.innerText : "");
@@ -109,7 +108,7 @@ async function runTestProxy({ page, job, report }) {
       lastRaw = String(e && e.message ? e.message : e);
       if (TERMINAL_PATTERNS.test(lastRaw)) { terminal = true; break; }
     }
-    await report({ progress: 55 });
+    await report({ progress: terminal ? 90 : 70 });
   }
 
   const elapsedMs = Date.now() - startedAt;
