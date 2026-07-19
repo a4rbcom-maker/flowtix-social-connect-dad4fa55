@@ -104,31 +104,41 @@ export function MessengerGraphPanel() {
     queryKey: ["mgraph-token-job", tokenJobId],
     queryFn: async () => {
       if (!tokenJobId) return null;
-      const res = await getJobFn({ data: { jobId: tokenJobId } });
-      const job = res?.job;
-      if (job?.status === "completed") {
-        toast.success("تم استخراج التوكن بنجاح. يمكنك الآن جلب الصفحات.");
-        setTokenJobId(null);
-        setTokenJobStartedAt(null);
-        qc.invalidateQueries({ queryKey: ["mgraph-accounts"] });
-        qc.invalidateQueries({ queryKey: ["mgraph-precheck", selectedAccountId] });
-      } else if (job?.status === "failed") {
-        toast.error(`فشل استخراج التوكن: ${job.error_message ?? "خطأ غير معروف"}`);
-        setTokenJobId(null);
-        setTokenJobStartedAt(null);
-        qc.invalidateQueries({ queryKey: ["mgraph-precheck", selectedAccountId] });
-      } else if (tokenJobStartedAt && Date.now() - tokenJobStartedAt > TOKEN_JOB_HARD_TIMEOUT_MS) {
-        // Client-side safety net — stops the "جاري الاستخراج…" state instead
-        // of waiting indefinitely for the DB reaper or a stuck worker.
+      try {
+        // NOTE: getJob expects `{ id }`, not `{ jobId }`. Using the wrong key
+        // used to make the poll throw on every tick — leaving the UI spinning
+        // forever without ever hitting the completion / timeout branches.
+        const res = await getJobFn({ data: { id: tokenJobId } });
+        const job = res?.job;
+        if (job?.status === "completed") {
+          toast.success("تم استخراج التوكن بنجاح. يمكنك الآن جلب الصفحات.");
+          setTokenJobId(null);
+          setTokenJobStartedAt(null);
+          qc.invalidateQueries({ queryKey: ["mgraph-accounts"] });
+          qc.invalidateQueries({ queryKey: ["mgraph-precheck", selectedAccountId] });
+          return res;
+        }
+        if (job?.status === "failed") {
+          toast.error(`فشل استخراج التوكن: ${job.error_message ?? "خطأ غير معروف"}`);
+          setTokenJobId(null);
+          setTokenJobStartedAt(null);
+          qc.invalidateQueries({ queryKey: ["mgraph-precheck", selectedAccountId] });
+          return res;
+        }
+      } catch (err) {
+        console.error("token job poll error", err);
+      }
+      if (tokenJobStartedAt && Date.now() - tokenJobStartedAt > TOKEN_JOB_HARD_TIMEOUT_MS) {
         toast.error("الاستخراج استغرق وقتًا أطول من المتوقع. أعد المحاولة أو حدّث ربط الحساب.");
         setTokenJobId(null);
         setTokenJobStartedAt(null);
         qc.invalidateQueries({ queryKey: ["mgraph-precheck", selectedAccountId] });
       }
-      return res;
+      return null;
     },
     enabled: !!tokenJobId,
     refetchInterval: 3000,
+    retry: false,
   });
 
   const enqueueMut = useMutation({
