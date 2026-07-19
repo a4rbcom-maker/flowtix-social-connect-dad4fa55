@@ -38,6 +38,7 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         const supportsMessengerListPages = workerCapabilities.includes("messenger_list_pages");
         const supportsMessengerSyncCookies = workerCapabilities.includes("messenger_sync_cookies");
         const supportsMessengerSendCookies = workerCapabilities.includes("messenger_send_cookies");
+        const supportsMessengerExtractToken = workerCapabilities.includes("messenger_extract_token");
         const supportsTestProxy = workerCapabilities.includes("test_proxy");
         const onlyJobType = (request.headers.get("x-flowtix-only-job-type") || "").trim();
         if (onlyJobType && onlyJobType !== "test_proxy") {
@@ -198,6 +199,9 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
           }
           if (!supportsMessengerSendCookies) {
             candidateQuery = candidateQuery.neq("job_type", "messenger_send_cookies");
+          }
+          if (!supportsMessengerExtractToken) {
+            candidateQuery = candidateQuery.neq("job_type", "messenger_extract_token");
           }
           if (!supportsTestProxy) {
             candidateQuery = candidateQuery.neq("job_type", "test_proxy" as never);
