@@ -158,6 +158,8 @@ export function MessengerGraphPanel() {
   const accounts = accountsQ.data?.accounts ?? [];
   const pages = pagesQ.data ?? [];
   const logs = logsQ.data ?? [];
+  const precheck = precheckQ.data;
+  const canExtract = !!precheck?.canExtract;
 
   const selectedPage = pages.find((p: any) => p.id === selectedPageId);
 
@@ -194,8 +196,9 @@ export function MessengerGraphPanel() {
         </Select>
         <Button
           variant="outline"
-          disabled={!selectedAccountId || enqueueMut.isPending || !!tokenJobId}
+          disabled={!selectedAccountId || enqueueMut.isPending || !!tokenJobId || !canExtract}
           onClick={() => enqueueMut.mutate(selectedAccountId)}
+          title={!canExtract && selectedAccountId ? "الحساب غير جاهز — راجع فحص الحساب أدناه" : ""}
         >
           {tokenJobId ? (
             <>
@@ -208,8 +211,9 @@ export function MessengerGraphPanel() {
           )}
         </Button>
         <Button
-          disabled={!selectedAccountId || syncPagesMut.isPending}
+          disabled={!selectedAccountId || syncPagesMut.isPending || !precheck?.hasToken}
           onClick={() => syncPagesMut.mutate(selectedAccountId)}
+          title={!precheck?.hasToken && selectedAccountId ? "لا يوجد توكن Graph بعد — استخرج التوكن أولاً" : ""}
         >
           {syncPagesMut.isPending ? (
             <Loader2 className="h-4 w-4 me-2 animate-spin" />
@@ -219,6 +223,54 @@ export function MessengerGraphPanel() {
           جلب الصفحات
         </Button>
       </div>
+
+      {/* Preflight status */}
+      {selectedAccountId && (
+        <div
+          className={`p-3 rounded-lg border text-sm ${
+            precheckQ.isLoading
+              ? "bg-muted/40"
+              : canExtract
+              ? "bg-emerald-500/5 border-emerald-500/30"
+              : "bg-red-500/5 border-red-500/30"
+          }`}
+        >
+          <div className="flex items-center gap-2 flex-wrap">
+            {precheckQ.isLoading ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> جاري فحص جاهزية الحساب…</>
+            ) : canExtract ? (
+              <><CheckCircle2 className="h-4 w-4 text-emerald-600" /> <b>الحساب جاهز للاستخراج</b></>
+            ) : (
+              <><XCircle className="h-4 w-4 text-red-600" /> <b>الحساب غير جاهز</b></>
+            )}
+            {precheck?.hasToken && (
+              <Badge variant="outline" className="bg-emerald-500/10 border-emerald-500/40 text-emerald-700">
+                توكن Graph محفوظ{precheck.tokenUpdatedAt ? ` · ${new Date(precheck.tokenUpdatedAt).toLocaleDateString("ar-EG")}` : ""}
+              </Badge>
+            )}
+            {precheck?.expiresInDays !== null && precheck?.expiresInDays !== undefined && (
+              <Badge variant="outline" className="text-[10px]">
+                الكوكيز: {precheck.expiresInDays > 0 ? `متبقّي ${precheck.expiresInDays} يوم` : "منتهية"}
+              </Badge>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="ms-auto h-7"
+              onClick={() => qc.invalidateQueries({ queryKey: ["mgraph-precheck", selectedAccountId] })}
+            >
+              <RefreshCw className="h-3 w-3 me-1" /> إعادة الفحص
+            </Button>
+          </div>
+          {precheck && precheck.problems.length > 0 && (
+            <ul className="mt-2 space-y-1 text-xs text-red-700">
+              {precheck.problems.map((p) => (
+                <li key={p.code}>• {p.message}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Pages */}
       {selectedAccountId && (
