@@ -69,6 +69,21 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         // pattern via a SECURITY DEFINER RPC for atomicity. Fallback: two-step.
         const nowIso = new Date().toISOString();
 
+        // Proxy tests are meant to be quick diagnostics. If one worker/browser
+        // hangs, do not let that stale running test keep the same account locked
+        // and make every later proxy test look like the proxy itself failed.
+        await supabaseAdmin
+          .from("fb_jobs")
+          .update({
+            status: "failed",
+            progress: 100,
+            completed_at: nowIso,
+            error_message: "تعذّر تشغيل اختبار البروكسي حالياً. أعد تشغيل عامل البوت ثم جرّب مرة أخرى.",
+          })
+          .eq("job_type", "test_proxy" as never)
+          .eq("status", "running")
+          .lt("started_at", new Date(Date.now() - 2 * 60 * 1000).toISOString());
+
         // Step 1: select candidate (admin bypasses RLS)
         await supabaseAdmin
           .from("fb_jobs")
