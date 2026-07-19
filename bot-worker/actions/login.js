@@ -50,6 +50,14 @@ function buildPuppeteerCookies(sourceCookies) {
   return expanded;
 }
 
+async function clearFacebookSessionCookies(page) {
+  const existing = await page.cookies("https://www.facebook.com", "https://business.facebook.com").catch(() => []);
+  const facebookCookies = existing
+    .filter((c) => /(^|\.)facebook\.com$/i.test(String(c.domain || "").replace(/^\./, "")))
+    .map((c) => ({ name: c.name, domain: c.domain, path: c.path || "/" }));
+  if (facebookCookies.length > 0) await page.deleteCookie(...facebookCookies).catch(() => {});
+}
+
 async function verifyLoggedInSession(page, reportStatus, options = {}) {
   const url = page.url();
 
@@ -165,6 +173,7 @@ async function verifyLoggedInSession(page, reportStatus, options = {}) {
 
 async function ensureLogin(page, account, reportStatus, options = {}) {
   try {
+    let verifyOptions = options;
     if (account.authMethod === "cookies" && account.credentials?.cookies) {
       const sourceCookies = Array.isArray(account.credentials.cookies) ? account.credentials.cookies : [];
       const cookieNames = new Set(sourceCookies.map((c) => String(c?.name || "")));
@@ -186,8 +195,9 @@ async function ensureLogin(page, account, reportStatus, options = {}) {
       // Facebook invalidate the user's real browser session again. Overlaying
       // the latest exported cookies first keeps the bot profile aligned with the
       // account record and prevents cross-account/profile drift.
+      await clearFacebookSessionCookies(page);
       await page.setCookie(...cookies);
-      const verifyOptions = { ...options, expectedCUser };
+      verifyOptions = { ...options, expectedCUser };
       if (options.preferExistingSession) {
         try {
           await page.goto(firstUrl, { waitUntil: "domcontentloaded", timeout: options.initialTimeoutMs || 45_000 });
@@ -225,7 +235,7 @@ async function ensureLogin(page, account, reportStatus, options = {}) {
       return false;
     }
 
-    return verifyLoggedInSession(page, reportStatus, account.authMethod === "cookies" ? { ...options, expectedCUser: account.credentials?.cookies?.find?.((c) => String(c?.name || "") === "c_user")?.value || null } : options);
+    return verifyLoggedInSession(page, reportStatus, verifyOptions);
   } catch (e) {
     await reportStatus("invalid", `LOGIN_EXCEPTION: ${String(e.message || e)}`);
     return false;
