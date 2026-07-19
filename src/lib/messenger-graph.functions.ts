@@ -89,20 +89,103 @@ function classifyGraphError(err: unknown): string {
   return "UNKNOWN";
 }
 
-// ---------- 1) Enqueue token extraction (bot job) ----------
+// ---------- 1a) Preflight check on an account (fast, no bot job) ----------
+// Reports whether the account is ready for a Graph API token extraction:
+// - status must be 'active' (cookies validated)
+// - cookie_expires_at must be in the future (or null)
+// - reaps any stuck Messenger job so the UI does not hang forever.
+export const precheckGraphAccount = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ accountId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    // Sweep any stuck running jobs first — makes precheck idempotent.
+    await supabase.rpc("fb_reap_stuck_messenger_jobs", { _user_id: userId, _max_minutes: 6 });
+
+    const { data: acc, error } = await supabase
+      .from("fb_bot_accounts")
+      .select("id, status, last_error, last_check_at, cookie_expires_at, graph_token_encrypted, graph_token_updated_at")
+      .eq("id", data.accountId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!acc) throw new Error("الحساب غير موجود.");
+
+    const now = Date.now();
+    const expiresAt = acc.cookie_expires_at ? new Date(acc.cookie_expires_at).getTime() : null;
+    const expiresInDays = expiresAt ? Math.round((expiresAt - now) / 86400_000) : null;
+
+    const problems: Array<{ code: string; message: string }> = [];
+    if (acc.status !== "active") {
+      problems.push({
+        code: "ACCOUNT_NOT_ACTIVE",
+        message: `حالة الحساب: ${acc.status}. أعد ربط الكوكيز أو شغّل "فحص الكوكيز" قبل الاستخراج.`,
+      });
+    }
+    if (expiresAt && expiresAt <= now) {
+      problems.push({
+        code: "COOKIES_EXPIRED",
+        message: "الكوكيز منتهية الصلاحية. أعد ربط الحساب.",
+      });
+    }
+    if (acc.last_error && /SESSION_EXPIRED|login|checkpoint|invalid/i.test(acc.last_error)) {
+      problems.push({
+        code: "LAST_ERROR_AUTH",
+        message: `آخر خطأ: ${acc.last_error.slice(0, 160)}`,
+      });
+    }
+
+    return {
+      canExtract: problems.length === 0,
+      status: acc.status,
+      hasToken: Boolean(acc.graph_token_encrypted),
+      tokenUpdatedAt: acc.graph_token_updated_at,
+      lastCheckAt: acc.last_check_at,
+      cookieExpiresAt: acc.cookie_expires_at,
+      expiresInDays,
+      problems,
+    };
+  });
+
+// ---------- 1b) Enqueue token extraction (bot job) ----------
 export const enqueueTokenExtraction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => z.object({ accountId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+
+    // Reap stuck jobs so a previous hang does not block the retry.
+    await supabase.rpc("fb_reap_stuck_messenger_jobs", { _user_id: userId, _max_minutes: 6 });
+
     const { data: account, error: accErr } = await supabase
       .from("fb_bot_accounts")
-      .select("id, user_id, status")
+      .select("id, user_id, status, last_error, cookie_expires_at")
       .eq("id", data.accountId)
       .eq("user_id", userId)
       .maybeSingle();
     if (accErr) throw new Error(accErr.message);
     if (!account) throw new Error("الحساب غير موجود.");
+    if (account.status !== "active") {
+      throw new Error(
+        `لا يمكن استخراج التوكن — حالة الحساب: ${account.status}. شغّل "فحص الحساب" أو أعد ربط الكوكيز أولاً.`,
+      );
+    }
+    if (account.cookie_expires_at && new Date(account.cookie_expires_at).getTime() <= Date.now()) {
+      throw new Error("لا يمكن استخراج التوكن — الكوكيز منتهية الصلاحية. أعد ربط الحساب أولاً.");
+    }
+
+    // Prevent duplicate concurrent extraction jobs.
+    const { data: existing } = await supabase
+      .from("fb_jobs")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("account_id", data.accountId)
+      .eq("job_type", "messenger_extract_token")
+      .in("status", ["pending", "running"])
+      .limit(1)
+      .maybeSingle();
+    if (existing?.id) return { jobId: existing.id, reused: true as const };
 
     const { data: job, error: jobErr } = await supabase
       .from("fb_jobs")
@@ -116,7 +199,7 @@ export const enqueueTokenExtraction = createServerFn({ method: "POST" })
       .select("id")
       .single();
     if (jobErr) throw new Error(jobErr.message);
-    return { jobId: job.id };
+    return { jobId: job.id, reused: false as const };
   });
 
 // ---------- 2) Discover pages via Graph API ----------
