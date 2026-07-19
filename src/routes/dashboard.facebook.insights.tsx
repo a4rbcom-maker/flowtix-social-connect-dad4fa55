@@ -54,7 +54,7 @@ export const Route = createFileRoute("/dashboard/facebook/insights")({
     <DashboardLayout title="تحليلات الصفحة">
       <div className="mx-auto mt-12 max-w-xl rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-center">
         <p className="text-lg font-semibold text-foreground">حدث خطأ في تحميل تحليلات الصفحة</p>
-        <pre className="mt-3 max-h-40 overflow-auto rounded-md bg-muted p-3 text-left font-mono text-xs text-destructive whitespace-pre-wrap break-words">{error?.message ?? "Unknown error"}</pre>
+        <p className="mt-3 text-sm text-muted-foreground">{humanizeFbError(error?.message)}</p>
         <button onClick={reset} className="mt-4 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">إعادة المحاولة</button>
       </div>
     </DashboardLayout>
