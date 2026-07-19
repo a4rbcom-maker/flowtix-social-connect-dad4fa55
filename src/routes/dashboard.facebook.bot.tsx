@@ -1154,6 +1154,8 @@ function BotAccountsPage() {
                   reasonAr?: string | null;
                   reasonEn?: string | null;
                   rawError?: string | null;
+                  phases?: Partial<ProxyPhase>[];
+                  logs?: string[];
                 }
               | null;
             if (jobStatus === "completed") {
@@ -1170,6 +1172,11 @@ function BotAccountsPage() {
                 reasonAr: null,
                 reasonEn: null,
                 rawError: null,
+                phases: normalizeProxyPhases(rd?.phases, {
+                  ok: true,
+                  elapsedMs: rd?.elapsedMs ?? null,
+                }),
+                logs: rd?.logs ?? [],
               };
               setProxyTest(snapshot);
               setCachedProxyTest(accountId, snapshot);
@@ -1184,6 +1191,8 @@ function BotAccountsPage() {
             if (jobStatus === "failed") {
               const fallbackReasonAr = payload.job.error_message || payload.result?.error || "تعذّر تشغيل اختبار البروكسي";
               const fallbackReasonEn = payload.job.error_message || payload.result?.error || "Could not run proxy test";
+              const reasonAr = rd?.reasonAr ?? fallbackReasonAr;
+              const reasonEn = rd?.reasonEn ?? fallbackReasonEn;
               const snapshot = {
                 accountId,
                 accountName,
@@ -1194,9 +1203,17 @@ function BotAccountsPage() {
                 elapsedMs: rd?.elapsedMs ?? null,
                 error: payload.job.error_message || payload.result?.error || "فشل الاختبار",
                 reasonCode: rd?.reasonCode ?? "worker_unavailable",
-                reasonAr: rd?.reasonAr ?? fallbackReasonAr,
-                reasonEn: rd?.reasonEn ?? fallbackReasonEn,
+                reasonAr,
+                reasonEn,
                 rawError: rd?.rawError ?? null,
+                phases: normalizeProxyPhases(rd?.phases, {
+                  ok: false,
+                  elapsedMs: rd?.elapsedMs ?? null,
+                  reasonCode: rd?.reasonCode ?? null,
+                  reasonAr,
+                  reasonEn,
+                }),
+                logs: rd?.logs ?? [],
               };
               setProxyTest(snapshot);
               setCachedProxyTest(accountId, snapshot, 30_000);
