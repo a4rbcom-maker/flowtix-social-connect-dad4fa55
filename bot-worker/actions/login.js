@@ -165,6 +165,13 @@ async function verifyLoggedInSession(page, reportStatus, options = {}) {
       await reportStatus("invalid", "Facebook rejected the stored session cookies after opening the requested Facebook section. Re-export fresh cookies from the same logged-in browser, then update the bot account.");
       return false;
     }
+    if (options.expectedCUser && protectedCUser.value !== String(options.expectedCUser)) {
+      await reportStatus(
+        "invalid",
+        "Facebook opened a different account than the stored cookies while checking the protected section. Clear the bot browser profile and re-link the intended Facebook account.",
+      );
+      return false;
+    }
   }
 
   await reportStatus("active", null);
