@@ -954,7 +954,24 @@ function BotAccountsPage() {
     }
   };
 
-  const handleTestProxy = async (accountId: string, accountName: string) => {
+  const handleTestProxy = async (accountId: string, accountName: string, opts?: { force?: boolean }) => {
+    // Session cache: reuse a recent result for the same account instead of
+    // re-running the ~18s test on every click. Pass `{ force: true }` to
+    // bypass and re-run.
+    if (!opts?.force) {
+      const cached = getCachedProxyTest(accountId);
+      if (cached) {
+        setProxyTest({ ...cached, accountName });
+        toast.success(
+          cached.status === "completed" && cached.proxyEnabled
+            ? lang === "ar" ? "نتيجة محفوظة: البروكسي مفعّل" : "Cached: proxy is active"
+            : cached.status === "completed"
+              ? lang === "ar" ? "نتيجة محفوظة: لا يوجد بروكسي" : "Cached: no proxy"
+              : lang === "ar" ? "نتيجة محفوظة (فشل سابق)" : "Cached (previous failure)",
+        );
+        return;
+      }
+    }
     // Circuit Breaker: after repeated failures for this account, block new
     // attempts for a cooldown window instead of waiting on another 18s poll.
     const breakerKey = `proxy-test:${accountId}`;
