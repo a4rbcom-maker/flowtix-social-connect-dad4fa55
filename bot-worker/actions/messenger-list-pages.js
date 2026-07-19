@@ -63,14 +63,13 @@ async function extractPageCandidatesFromDom(page) {
   });
 }
 
-async function resolveNumericPageId(page, candidate) {
+// Visits the candidate's page URL and returns { id, name, avatar } from
+// og:title / document.title / og:image so we get the REAL page name instead
+// of whatever ad-button / "profile picture of …" text the sidebar rendered.
+async function resolvePageMeta(page, candidate) {
   const idOrSlug = String(candidate.idOrSlug || "").trim();
-  if (/^\d{5,}$/.test(idOrSlug)) return idOrSlug;
   if (!idOrSlug || isReservedFacebookPath(idOrSlug)) return null;
 
-  // Only try ONE URL per candidate — the direct page URL. The previous 4-URL
-  // fan-out multiplied resolution time by ~4× for every slug and was the
-  // biggest source of "why is fetching pages so slow?".
   const target = candidate.href
     ? (() => {
         try { return new URL(candidate.href, "https://www.facebook.com").href; }
@@ -81,9 +80,9 @@ async function resolveNumericPageId(page, candidate) {
   try {
     await page.goto(target, { waitUntil: "domcontentloaded", timeout: 20_000 });
     if (/\/login|checkpoint/i.test(page.url())) return null;
-    const found = await page.evaluate(() => {
+    const meta = await page.evaluate(() => {
       const html = document.documentElement.innerHTML || "";
-      const patterns = [
+      const idPatterns = [
         /"pageID"\s*:\s*"?(\d{5,})"?/,
         /"page_id"\s*:\s*"?(\d{5,})"?/,
         /"profile_id"\s*:\s*"?(\d{5,})"?/,
@@ -91,17 +90,34 @@ async function resolveNumericPageId(page, candidate) {
         /fb:\/\/page\/\?id=(\d{5,})/,
         /[?&](?:page_id|profile_id|id)=(\d{5,})/,
       ];
-      for (const re of patterns) {
+      let id = null;
+      for (const re of idPatterns) {
         const m = html.match(re);
-        if (m?.[1]) return m[1];
+        if (m?.[1]) { id = m[1]; break; }
       }
-      return null;
+      const ogTitle = document.querySelector('meta[property="og:title"]')?.getAttribute("content") || "";
+      const docTitle = (document.title || "").replace(/\s*[|\-–]\s*Facebook.*$/i, "").trim();
+      const name = (ogTitle || docTitle || "").trim();
+      const ogImg = document.querySelector('meta[property="og:image"]')?.getAttribute("content") || null;
+      return { id, name, avatar: ogImg };
     });
-    if (found && /^\d{5,}$/.test(found)) return found;
+    const numericId = /^\d{5,}$/.test(idOrSlug) ? idOrSlug : meta?.id;
+    if (!numericId) return null;
+    return { id: numericId, name: cleanPageName(meta?.name || ""), avatar: meta?.avatar || null };
   } catch (_) {
-    // give up on this candidate
+    return null;
   }
-  return null;
+}
+
+// A name is "trustworthy" only if it isn't an ad button label and isn't the
+// generic "profile picture of …" placeholder Facebook renders on avatars.
+function isTrustedName(name) {
+  const n = String(name || "").trim();
+  if (!n || n.length < 2) return false;
+  if (isAdLabel(n)) return false;
+  if (/profile\s+picture/i.test(n)) return false;
+  if (/^\s*صورة\s+ملف/u.test(n)) return false;
+  return true;
 }
 
 async function runMessengerListPages({ page, job, report }) {
@@ -143,35 +159,37 @@ async function runMessengerListPages({ page, job, report }) {
   }
 
   const pagesMap = new Map();
+  const needsResolve = [];
   for (const c of directs) {
     const name = cleanPageName(c.name);
-    if (!name || name.length < 2) continue;
-    if (isAdLabel(name)) continue;
-    pagesMap.set(c.idOrSlug, { id: c.idOrSlug, name, avatar_url: c.avatar_url || null });
+    if (isTrustedName(name)) {
+      pagesMap.set(c.idOrSlug, { id: c.idOrSlug, name, avatar_url: c.avatar_url || null });
+    } else {
+      // Direct numeric ID but the DOM name is an ad button / "profile picture
+      // of …" placeholder — visit the page URL to grab the real og:title.
+      needsResolve.push(c);
+    }
   }
-  await report({ progress: 40 });
+  await report({ progress: 30 });
 
-  // Cap slug resolution at 15 candidates to keep the job short.
-  const slugCap = 15;
-  const candidates = slugs.slice(0, slugCap);
+  // Cap navigation-based resolution so the job stays under a minute.
+  const resolveCap = 20;
+  const candidates = needsResolve.concat(slugs).slice(0, resolveCap);
   let checked = 0;
   for (const candidate of candidates) {
     checked += 1;
-    const numericId = await resolveNumericPageId(page, candidate);
-    await report({ progress: Math.min(90, 40 + Math.round((checked / Math.max(candidates.length, 1)) * 50)) });
-    if (!numericId) continue;
-    const name = cleanPageName(candidate.name);
-    if (!name || name.length < 2) continue;
-    if (isAdLabel(name)) continue;
-    if (!pagesMap.has(numericId)) {
-      pagesMap.set(numericId, { id: numericId, name, avatar_url: candidate.avatar_url || null });
+    const meta = await resolvePageMeta(page, candidate);
+    await report({ progress: Math.min(90, 30 + Math.round((checked / Math.max(candidates.length, 1)) * 60)) });
+    if (!meta?.id || !isTrustedName(meta.name)) continue;
+    if (!pagesMap.has(meta.id)) {
+      pagesMap.set(meta.id, { id: meta.id, name: meta.name, avatar_url: meta.avatar || candidate.avatar_url || null });
     }
   }
   const pages = Array.from(pagesMap.values());
 
 
   if (pages.length === 0) {
-    await report({ status: "failed", errorMessage: "لم يتم العثور على صفحات مدارة بمعرّف رقمي صالح. تأكد أن الحساب مسؤول عن الصفحة وأن صفحة Facebook نفسها تفتح بدون Checkpoint." });
+    await report({ status: "failed", errorMessage: "لم يتم العثور على صفحات مدارة باسم صالح. تأكد أن الحساب مسؤول عن الصفحة وأن صفحة Facebook تفتح بدون Checkpoint." });
     return;
   }
   let done = 0;
