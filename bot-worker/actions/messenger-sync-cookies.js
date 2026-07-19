@@ -90,7 +90,13 @@ async function tryOpenInbox(page, pageId, pageName) {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
       const currentUrl = page.url();
       if (/\/login|checkpoint/i.test(currentUrl)) continue;
-      await new Promise((r) => setTimeout(r, 5000));
+      // Wait for the inbox thread list container instead of a blind 5s sleep.
+      // Falls through after 2.5s if the surface never hydrates — the snapshot
+      // check below still rejects it, but we don't burn 5s per candidate URL.
+      try {
+        await page.waitForSelector('[role="main"] [role="grid"], [aria-label*="Inbox" i], [data-pagelet*="Inbox" i]', { timeout: 2500 });
+      } catch { /* proceed to snapshot; it decides validity */ }
+
       const snapshot = await inspectInboxSurface(page, pageId, pageName);
       lastSnapshot = snapshot;
       // STRICT: URL must still carry our asset_id after FB's own redirects.
