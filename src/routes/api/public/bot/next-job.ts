@@ -82,6 +82,20 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
           .lte("scheduled_at", nowIso)
           .is("account_id", null);
 
+        // Fast-idle probe: the vast majority of next-job polls happen when the
+        // queue is empty. A HEAD count with `is`/`lte` filters is a single index
+        // seek on `fb_jobs(status, scheduled_at)` — far cheaper than running the
+        // busy-accounts SELECT and the candidate SELECT for zero payoff.
+        const { count: pendingCount } = await supabaseAdmin
+          .from("fb_jobs")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "pending")
+          .not("account_id", "is", null)
+          .lte("scheduled_at", nowIso);
+        if (!pendingCount || pendingCount === 0) {
+          return Response.json({ job: null });
+        }
+
         // Serial-per-account lock: never hand out a second job for an account
         // that already has a running job. Two concurrent sessions for the same
         // Facebook account (even from the same worker at different phases) is
@@ -95,6 +109,7 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         const busyAccountIds = Array.from(
           new Set((busy || []).map((r) => r.account_id).filter(Boolean)),
         ) as string[];
+
 
         let candidateQuery = supabaseAdmin
           .from("fb_jobs")
