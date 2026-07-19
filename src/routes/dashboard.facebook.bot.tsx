@@ -1082,6 +1082,7 @@ function BotAccountsPage() {
             : prev,
         );
         toast.error("خدمة البوت لم تلتقط الاختبار بسرعة.");
+        recordProxyTestFailure(breakerKey, "worker_unavailable");
       };
       await poll();
     } catch (e) {
