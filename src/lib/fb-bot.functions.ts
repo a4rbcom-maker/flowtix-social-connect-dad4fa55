@@ -685,7 +685,19 @@ export const listBotAccounts = createServerFn({ method: "GET" })
           cookie_expires_at: row.cookie_expires_at,
         };
         const latestSessionFailure = latestSessionFailures.get(row.id);
-        if (latestSessionFailure) {
+        const structuralCookieOk = (() => {
+          if (row.auth_method !== "cookies" || !row.encrypted_payload) return false;
+          try {
+            const cookies = normalizeStoredCookies(row.encrypted_payload);
+            const { missingCritical, invalid } = validateFacebookCookies(cookies);
+            const minExp = earliestRequiredExpiry(cookies);
+            const expired = minExp !== null && minExp * 1000 <= Date.now();
+            return missingCritical.length === 0 && invalid.length === 0 && !expired;
+          } catch {
+            return false;
+          }
+        })();
+        if (latestSessionFailure && !structuralCookieOk) {
           safe.status = "invalid";
           safe.last_check_at = latestSessionFailure.at ?? row.last_check_at;
           safe.last_error = latestSessionFailure.error;
