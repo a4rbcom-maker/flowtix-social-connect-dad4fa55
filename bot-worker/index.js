@@ -20,6 +20,7 @@ const { runMessengerListPages } = require("./actions/messenger-list-pages");
 const { runMessengerSyncCookies } = require("./actions/messenger-sync-cookies");
 const { runMessengerSendCookies } = require("./actions/messenger-send-cookies");
 const { runTestProxy } = require("./actions/test-proxy");
+const { runMessengerExtractToken } = require("./actions/messenger-extract-token");
 const { ensureLogin } = require("./actions/login");
 
 const API = process.env.API_BASE_URL;
@@ -28,7 +29,7 @@ const MIN_INT = Math.max(5, parseInt(process.env.POLL_INTERVAL_SEC || "15", 10))
 const MAX_INT = Math.max(MIN_INT, parseInt(process.env.POLL_MAX_INTERVAL_SEC || "60", 10) * 1000);
 const HEADLESS = process.env.HEADLESS !== "false";
 const PROFILE_ROOT = process.env.BOT_PROFILE_DIR || path.join(__dirname, ".browser-profiles");
-const WORKER_VERSION = "bot-worker-2026-07-19-live-sync-progress-v3";
+const WORKER_VERSION = "bot-worker-2026-07-19-graph-api-v1";
 const WORKER_CAPABILITIES = [
   "post_to_groups",
   "extract_pages",
@@ -42,6 +43,7 @@ const WORKER_CAPABILITIES = [
   "messenger_list_pages",
   "messenger_sync_cookies",
   "messenger_send_cookies",
+  "messenger_extract_token",
   "test_proxy",
 ].join(",");
 
@@ -239,6 +241,7 @@ async function runJob(job) {
     else if (job.type === "messenger_list_pages") await runMessengerListPages(ctx);
     else if (job.type === "messenger_sync_cookies") await runMessengerSyncCookies(ctx);
     else if (job.type === "messenger_send_cookies") await runMessengerSendCookies(ctx);
+    else if (job.type === "messenger_extract_token") await runMessengerExtractToken(ctx);
     else if (job.type === "test_proxy") await runTestProxy(ctx);
     else await reportUpdate({ jobId: job.id, status: "failed", errorMessage: `Unknown job type: ${job.type}` });
 
