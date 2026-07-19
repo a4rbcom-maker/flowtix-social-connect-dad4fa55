@@ -19,6 +19,7 @@ import {
   LogIn,
   CalendarClock,
   Lock,
+  Globe,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/lib/auth";
@@ -49,6 +50,8 @@ import {
   testBotAccount,
   precheckBotAccount,
   createListMyGroupsJob,
+  createTestProxyJob,
+  getTestProxyJob,
 } from "@/lib/fb-bot.functions";
 
 // Per-route fallback: surfaces a friendly Arabic card instead of letting any
