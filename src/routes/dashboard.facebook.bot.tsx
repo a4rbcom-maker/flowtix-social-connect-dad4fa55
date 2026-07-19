@@ -761,7 +761,18 @@ function BotAccountsPage() {
         }
       }
 
-      setAccounts(sanitizeAccounts(accountsResult));
+      const loaded = sanitizeAccounts(accountsResult);
+      setAccounts(loaded);
+      // Kick off silent proxy-test prefetch for each account so the result is
+      // cached before the user opens the dialog or starts an extraction.
+      // Sequential + staggered to avoid piling jobs on the worker.
+      void (async () => {
+        for (const a of loaded) {
+          if (!a?.id) continue;
+          await prefetchProxyTestSilent(a.id);
+          await new Promise((r) => setTimeout(r, 400));
+        }
+      })();
     } catch (e) {
       if (isAuthErr(e)) {
         handleAuthExpired();
