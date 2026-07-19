@@ -25,11 +25,15 @@ const { ensureLogin } = require("./actions/login");
 
 const API = process.env.API_BASE_URL;
 const SECRET = process.env.BOT_WORKER_SECRET;
-const MIN_INT = Math.max(5, parseInt(process.env.POLL_INTERVAL_SEC || "15", 10)) * 1000;
+// Lowered default poll interval from 15s → 6s so small/fast jobs (test_proxy,
+// list_my_groups, extract_pages) start almost immediately instead of waiting
+// for a full polling window. Backoff on idle keeps DB load flat.
+const MIN_INT = Math.max(3, parseInt(process.env.POLL_INTERVAL_SEC || "6", 10)) * 1000;
 const MAX_INT = Math.max(MIN_INT, parseInt(process.env.POLL_MAX_INTERVAL_SEC || "60", 10) * 1000);
 const HEADLESS = process.env.HEADLESS !== "false";
 const PROFILE_ROOT = process.env.BOT_PROFILE_DIR || path.join(__dirname, ".browser-profiles");
-const WORKER_VERSION = "bot-worker-2026-07-19-graph-api-v2-fast-fail";
+const WORKER_VERSION = "bot-worker-2026-07-19-fast-batch-v1";
+
 const WORKER_CAPABILITIES = [
   "post_to_groups",
   "extract_pages",
