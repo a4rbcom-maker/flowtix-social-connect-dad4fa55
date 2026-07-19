@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { humanizeFbError } from "@/lib/fb-error-messages";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import {
@@ -207,7 +208,7 @@ function MessagesPage() {
         const res = await listPagesFn();
         if (cancelled) return;
         if (res.error) {
-          setPagesError(res.error.message ?? "Failed to load pages");
+          setPagesError(humanizeFbError(res.error.message));
           setPages([]);
         } else {
           const list = (res.pages ?? []) as Page[];
@@ -215,7 +216,7 @@ function MessagesPage() {
           if (list.length > 0) setPageId(list[0].id);
         }
       } catch (e) {
-        if (!cancelled) setPagesError(e instanceof Error ? e.message : String(e));
+        if (!cancelled) setPagesError(humanizeFbError(e));
       } finally {
         if (!cancelled) setLoadingPages(false);
       }
@@ -233,7 +234,7 @@ function MessagesPage() {
         data: { pageId, limit: 25, after: append ? nextCursor ?? undefined : undefined },
       });
       if (!res.ok) {
-        toast.error(res.error?.message ?? "Error");
+        toast.error(humanizeFbError(res.error?.message));
         setConvs(res);
         return;
       }
@@ -247,7 +248,7 @@ function MessagesPage() {
       }
       setNextCursor(res.nextCursor);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(humanizeFbError(e));
     } finally {
       setLoadingConvs(false);
     }
@@ -258,10 +259,10 @@ function MessagesPage() {
     setLoadingLeads(true);
     try {
       const res = await extractLeadsFn({ data: { pageId, max: 100 } });
-      if (!res.ok) toast.error(res.error?.message ?? "Error");
+      if (!res.ok) toast.error(humanizeFbError(res.error?.message));
       setLeads(res);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(humanizeFbError(e));
     } finally {
       setLoadingLeads(false);
     }
@@ -288,7 +289,7 @@ function MessagesPage() {
       });
       setMsgs(res);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(humanizeFbError(e));
     } finally {
       setLoadingMsgs(false);
     }
@@ -389,7 +390,7 @@ function MessagesPage() {
               <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-300" />
               <div className="text-sm">
                 <p className="font-medium text-amber-700 dark:text-amber-400">
-                  {convs?.error?.message ?? leads?.error?.message}
+                  {humanizeFbError(convs?.error?.message ?? leads?.error?.message)}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">{t.permWarning}</p>
               </div>
@@ -603,7 +604,7 @@ function MessagesPage() {
             </ScrollArea>
           ) : (
             <p className="p-6 text-center text-sm text-muted-foreground">
-              {msgs?.error?.message ?? t.msgsEmpty}
+              {msgs?.error?.message ? humanizeFbError(msgs.error.message) : t.msgsEmpty}
             </p>
           )}
         </DialogContent>

@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { humanizeFbError } from "@/lib/fb-error-messages";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -53,7 +54,7 @@ export const Route = createFileRoute("/dashboard/facebook/insights")({
     <DashboardLayout title="تحليلات الصفحة">
       <div className="mx-auto mt-12 max-w-xl rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-center">
         <p className="text-lg font-semibold text-foreground">حدث خطأ في تحميل تحليلات الصفحة</p>
-        <pre className="mt-3 max-h-40 overflow-auto rounded-md bg-muted p-3 text-left font-mono text-xs text-destructive whitespace-pre-wrap break-words">{error?.message ?? "Unknown error"}</pre>
+        <p className="mt-3 text-sm text-muted-foreground">{humanizeFbError(error?.message)}</p>
         <button onClick={reset} className="mt-4 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">إعادة المحاولة</button>
       </div>
     </DashboardLayout>
@@ -197,14 +198,14 @@ function InsightsPage() {
         const res = await listPagesFn();
         if (cancelled) return;
         if (res.error) {
-          setPagesError(res.error.message);
+          setPagesError(humanizeFbError(res.error.message));
         } else {
           const list = safeArray<Page>(res.pages);
           setPages(list);
           if (list.length > 0) setPageId(String(list[0].id));
         }
       } catch (e) {
-        if (!cancelled) setPagesError(String(e));
+        if (!cancelled) setPagesError(humanizeFbError(e));
       } finally {
         if (!cancelled) setLoadingPages(false);
       }
@@ -221,9 +222,9 @@ function InsightsPage() {
     try {
       const res = await fetchInsightsFn({ data: { pageId: id } });
       setInsights(res);
-      if (!res.ok) toast.error(res.error?.message ?? "Failed to load insights");
+      if (!res.ok) toast.error(humanizeFbError(res.error?.message));
     } catch (e) {
-      toast.error(String(e));
+      toast.error(humanizeFbError(e));
     } finally {
       setLoadingInsights(false);
     }
@@ -236,9 +237,9 @@ function InsightsPage() {
     try {
       const res = await fetchAudienceFn({ data: { pageId: id, postLimit: 25 } });
       setAudience(res);
-      if (!res.ok) toast.error(res.error?.message ?? "Failed to load audience");
+      if (!res.ok) toast.error(humanizeFbError(res.error?.message));
     } catch (e) {
-      toast.error(String(e));
+      toast.error(humanizeFbError(e));
     } finally {
       setLoadingAudience(false);
     }
@@ -368,7 +369,7 @@ function InsightsPage() {
             <div className="flex items-start gap-3">
               <AlertCircle className="mt-0.5 h-5 w-5 text-destructive" />
               <div>
-                <p className="font-medium text-destructive">{insights.error?.message}</p>
+                <p className="font-medium text-destructive">{humanizeFbError(insights.error?.message)}</p>
               </div>
             </div>
           </Card>
