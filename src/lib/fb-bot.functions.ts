@@ -1496,10 +1496,7 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
         : isFacebookSessionRejectedError(storedError)
           ? storedError
           : null;
-      if (
-        rejectedSessionError &&
-        ((latestJob?.status === "failed" && isFailureNewerThanAccountCheck(latestJob, acc)) || (acc?.status === "invalid" && isFacebookSessionRejectedError(storedError)))
-      ) {
+      if (rejectedSessionError && latestJob?.status === "failed" && isFailureNewerThanAccountCheck(latestJob, acc)) {
         const checkedAt = (latestJob?.completed_at as string | null) ?? (latestJob?.created_at as string | null) ?? new Date().toISOString();
         await supabase
           .from("fb_bot_accounts")
@@ -1679,10 +1676,7 @@ export const testBotAccount = createServerFn({ method: "POST" })
       : isFacebookSessionRejectedError(storedError)
         ? storedError
         : null;
-    if (
-      rejectedSessionError &&
-      ((latestJob?.status === "failed" && isFailureNewerThanAccountCheck(latestJob, acc)) || (acc.status === "invalid" && isFacebookSessionRejectedError(storedError)))
-    ) {
+    if (rejectedSessionError && latestJob?.status === "failed" && isFailureNewerThanAccountCheck(latestJob, acc)) {
       const checkedAt = (latestJob?.completed_at as string | null) ?? (latestJob?.created_at as string | null) ?? new Date().toISOString();
       const { data: updated, error: upErr } = await supabase
         .from("fb_bot_accounts")
