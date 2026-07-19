@@ -1723,6 +1723,25 @@ export const createTestProxyJob = createServerFn({ method: "POST" })
     if (!account) throw new Error("حساب فيسبوك المختار غير موجود أو غير تابع لك.");
 
     const proxyUrl = normalizeProxyUrl(data.proxyUrl ?? null);
+    const nowIso = new Date().toISOString();
+
+    // A previous proxy test can stay pending/running if the bot service was
+    // offline or the browser process hung. Cancel old diagnostics for the same
+    // account before queuing a fresh one so the UI tests the proxy now instead
+    // of waiting behind stale jobs and showing a misleading failure.
+    await supabase
+      .from("fb_jobs")
+      .update({
+        status: "failed",
+        progress: 100,
+        completed_at: nowIso,
+        error_message: "تم إلغاء اختبار بروكسي قديم وبدء اختبار جديد.",
+      } as never)
+      .eq("user_id", userId)
+      .eq("account_id", data.accountId)
+      .eq("job_type", "test_proxy" as never)
+      .in("status", ["pending", "running"] as never);
+
     const { data: row, error } = await supabase
       .from("fb_jobs")
       .insert({
@@ -1730,7 +1749,7 @@ export const createTestProxyJob = createServerFn({ method: "POST" })
         account_id: data.accountId,
         job_type: "test_proxy" as never,
         payload: { proxyUrl },
-        scheduled_at: new Date().toISOString(),
+        scheduled_at: nowIso,
         status: "pending",
       } as never)
       .select("id")
