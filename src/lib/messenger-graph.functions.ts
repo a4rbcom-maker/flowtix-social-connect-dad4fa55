@@ -12,6 +12,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { fbGet } from "@/lib/facebook.functions";
+import {
+  earliestRequiredExpiry,
+  normalizeStoredCookies,
+  validateFacebookCookies,
+} from "@/lib/fb-cookie-diagnostics";
 
 const STAGE = {
   SESSION: "session_validation",
@@ -105,6 +110,102 @@ function isFreshCookieCheckNewerThanAuthError(account: {
 }) {
   const freshAt = Math.max(toTime(account.last_check_at), toTime(account.updated_at));
   return freshAt > 0;
+}
+
+type GraphAccountGateRow = {
+  id: string;
+  user_id?: string;
+  auth_method?: string | null;
+  encrypted_payload?: string | null;
+  status: string;
+  last_error: string | null;
+  last_check_at: string | null;
+  updated_at: string | null;
+  cookie_expires_at: string | null;
+  graph_token_encrypted?: string | null;
+  graph_token_updated_at?: string | null;
+};
+
+function cookieProblemMessage(details: {
+  missingCritical: string[];
+  invalid: Array<{ name: string; reason?: string }>;
+  expired: boolean;
+}) {
+  if (details.expired) return "الكوكيز المحفوظة منتهية الصلاحية. أعد تصديرها من المتصفح الحالي.";
+  if (details.missingCritical.length > 0) {
+    return `كوكيز أساسية ناقصة: ${details.missingCritical.join(", ")}. أعد تصدير الكوكيز كاملة.`;
+  }
+  if (details.invalid.length > 0) {
+    return `كوكيز غير صالحة: ${details.invalid.map((i) => i.name).join(", ")}. أعد تصدير الكوكيز.`;
+  }
+  return "الكوكيز المحفوظة غير صالحة.";
+}
+
+async function refreshGraphAccountFromStoredCookies(
+  supabase: { from: (t: string) => any },
+  userId: string,
+  account: GraphAccountGateRow,
+): Promise<GraphAccountGateRow> {
+  if (account.auth_method !== "cookies" || !account.encrypted_payload) return account;
+
+  try {
+    const { decryptJson } = await import("@/server/crypto.server");
+    const cookies = normalizeStoredCookies(decryptJson<unknown>(account.encrypted_payload));
+    const { missingCritical, invalid } = validateFacebookCookies(cookies);
+    const minExp = earliestRequiredExpiry(cookies);
+    const expired = minExp !== null && minExp * 1000 <= Date.now();
+    const expiresAt = minExp !== null ? new Date(minExp * 1000).toISOString() : null;
+
+    if (missingCritical.length === 0 && invalid.length === 0 && !expired) {
+      const checkedAt = new Date().toISOString();
+      await supabase
+        .from("fb_bot_accounts")
+        .update({
+          status: "active",
+          last_error: null,
+          last_check_at: checkedAt,
+          cookie_expires_at: expiresAt,
+        })
+        .eq("id", account.id)
+        .eq("user_id", userId);
+      return {
+        ...account,
+        status: "active",
+        last_error: null,
+        last_check_at: checkedAt,
+        cookie_expires_at: expiresAt,
+      };
+    }
+
+    const message = cookieProblemMessage({ missingCritical, invalid, expired });
+    const checkedAt = new Date().toISOString();
+    await supabase
+      .from("fb_bot_accounts")
+      .update({
+        status: "invalid",
+        last_error: message,
+        last_check_at: checkedAt,
+        cookie_expires_at: expiresAt,
+      })
+      .eq("id", account.id)
+      .eq("user_id", userId);
+    return {
+      ...account,
+      status: "invalid",
+      last_error: message,
+      last_check_at: checkedAt,
+      cookie_expires_at: expiresAt,
+    };
+  } catch {
+    const checkedAt = new Date().toISOString();
+    const message = "تعذّر قراءة الكوكيز المحفوظة لهذا الحساب. احذف الحساب وأعد ربطه بكوكيز جديدة.";
+    await supabase
+      .from("fb_bot_accounts")
+      .update({ status: "invalid", last_error: message, last_check_at: checkedAt })
+      .eq("id", account.id)
+      .eq("user_id", userId);
+    return { ...account, status: "invalid", last_error: message, last_check_at: checkedAt };
+  }
 }
 
 function cleanMessengerName(value: unknown) {
