@@ -113,6 +113,21 @@ function isFacebookSessionRejectedError(value: unknown) {
   return typeof value === "string" && FACEBOOK_SESSION_REJECTED_RE.test(value);
 }
 
+function toTime(value: unknown) {
+  if (typeof value !== "string" || !value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function isFailureNewerThanAccountCheck(
+  job: { completed_at?: unknown; created_at?: unknown } | null | undefined,
+  account: { last_check_at?: unknown; updated_at?: unknown } | null | undefined,
+) {
+  const jobTime = Math.max(toTime(job?.completed_at), toTime(job?.created_at));
+  const accountFreshTime = Math.max(toTime(account?.last_check_at), toTime(account?.updated_at));
+  return jobTime > 0 && jobTime > accountFreshTime;
+}
+
 function normalizeProxyUrl(value: string | null | undefined) {
   const raw = String(value || "").trim();
   if (!raw) return null;
@@ -414,7 +429,7 @@ async function assertBotAccountReadyForExtraction(
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data: account, error } = await supabaseAdmin
     .from("fb_bot_accounts")
-    .select("id, user_id, auth_method, encrypted_payload, status, last_error, cookie_expires_at")
+    .select("id, user_id, auth_method, encrypted_payload, status, last_error, last_check_at, cookie_expires_at, updated_at")
     .eq("id", accountId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -422,7 +437,7 @@ async function assertBotAccountReadyForExtraction(
   if (!account) throw new Error("حساب فيسبوك المختار غير موجود أو غير تابع لك.");
 
   const storedError = typeof account.last_error === "string" ? account.last_error : "";
-  if (account.status === "invalid" || account.status === "checkpoint") {
+  if (account.status === "checkpoint") {
     throw new Error(
       storedError && isFacebookSessionRejectedError(storedError)
         ? "جلسة فيسبوك لهذا الحساب مرفوضة من فيسبوك. أعد ربط الحساب بكوكيز جديدة قبل استخراج الصفحات."
@@ -446,7 +461,11 @@ async function assertBotAccountReadyForExtraction(
     : isFacebookSessionRejectedError(storedError)
       ? storedError
       : null;
-  if (rejectedSessionError && (latestJob?.status === "failed" || isFacebookSessionRejectedError(storedError))) {
+  if (
+    rejectedSessionError &&
+    account.status !== "invalid" &&
+    isFailureNewerThanAccountCheck(latestJob, account)
+  ) {
     const checkedAt = (latestJob?.completed_at as string | null) ?? (latestJob?.created_at as string | null) ?? new Date().toISOString();
     await supabase
       .from("fb_bot_accounts")
@@ -456,7 +475,12 @@ async function assertBotAccountReadyForExtraction(
     throw new Error("فيسبوك رفض جلسة هذا الحساب في آخر محاولة فعلية. أعد تصدير الكوكيز من نفس المتصفح ثم اربط الحساب من جديد.");
   }
 
-  if (account.auth_method !== "cookies") return;
+  if (account.auth_method !== "cookies") {
+    if (account.status === "invalid") {
+      throw new Error(storedError || "حساب فيسبوك غير جاهز لإنشاء مهام استخراج. أعد ربط الحساب أو اختر حسابًا آخر.");
+    }
+    return;
+  }
 
   try {
     const { decryptJson } = await import("@/server/crypto.server");
@@ -476,6 +500,14 @@ async function assertBotAccountReadyForExtraction(
         .eq("id", accountId)
         .eq("user_id", userId);
       throw new Error(message);
+    }
+
+    if (account.status === "invalid") {
+      await supabase
+        .from("fb_bot_accounts")
+        .update({ status: "active", last_check_at: new Date().toISOString(), last_error: null })
+        .eq("id", accountId)
+        .eq("user_id", userId);
     }
   } catch (e) {
     if (e instanceof Error) throw e;
@@ -623,12 +655,14 @@ export const listBotAccounts = createServerFn({ method: "GET" })
           console.warn("[listBotAccounts] recent job scan skipped:", jobsError);
         } else {
           const seenLatestTerminal = new Set<string>();
+          const rowsById = new Map(rows.map((row) => [row.id, row]));
           for (const job of recentJobs ?? []) {
             const accountId = typeof job.account_id === "string" ? job.account_id : null;
             if (!accountId || seenLatestTerminal.has(accountId)) continue;
             seenLatestTerminal.add(accountId);
             const errorMessage = typeof job.error_message === "string" ? job.error_message : "";
-            if (job.status === "failed" && isFacebookSessionRejectedError(errorMessage)) {
+            const accountRow = rowsById.get(accountId);
+            if (job.status === "failed" && isFacebookSessionRejectedError(errorMessage) && isFailureNewerThanAccountCheck(job, accountRow)) {
               latestSessionFailures.set(accountId, {
                 error: errorMessage,
                 at: (job.completed_at as string | null) ?? (job.created_at as string | null) ?? null,
@@ -1411,12 +1445,20 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
 
     // 1) Read the account row. Never throw — translate to Arabic message.
-    let acc: { id: string; auth_method: string; encrypted_payload: string; status?: string; last_error?: string | null } | null = null;
+    let acc: {
+      id: string;
+      auth_method: string;
+      encrypted_payload: string;
+      status?: string;
+      last_error?: string | null;
+      last_check_at?: string | null;
+      updated_at?: string | null;
+    } | null = null;
     try {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { data: row, error } = await supabaseAdmin
         .from("fb_bot_accounts")
-        .select("id, auth_method, encrypted_payload, status, last_error")
+        .select("id, auth_method, encrypted_payload, status, last_error, last_check_at, updated_at")
         .eq("id", data.id)
         .eq("user_id", userId)
         .maybeSingle();
@@ -1433,7 +1475,15 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
           "هذا الحساب لم يعد موجودًا. حدِّث الصفحة ثم أعد إضافته إن لزم.",
         );
       }
-      acc = row as { id: string; auth_method: string; encrypted_payload: string; status?: string; last_error?: string | null };
+      acc = row as {
+        id: string;
+        auth_method: string;
+        encrypted_payload: string;
+        status?: string;
+        last_error?: string | null;
+        last_check_at?: string | null;
+        updated_at?: string | null;
+      };
     } catch (e) {
       console.error("[precheckBotAccount] db threw:", e);
       return precheckFailure(
@@ -1460,7 +1510,7 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
         : isFacebookSessionRejectedError(storedError)
           ? storedError
           : null;
-      if ((latestJob?.status === "failed" && rejectedSessionError) || acc?.status === "invalid" && rejectedSessionError) {
+      if (rejectedSessionError && latestJob?.status === "failed" && acc?.status !== "invalid" && isFailureNewerThanAccountCheck(latestJob, acc)) {
         const checkedAt = (latestJob?.completed_at as string | null) ?? (latestJob?.created_at as string | null) ?? new Date().toISOString();
         await supabase
           .from("fb_bot_accounts")
@@ -1617,7 +1667,7 @@ export const testBotAccount = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: acc, error } = await supabaseAdmin
       .from("fb_bot_accounts")
-      .select("id, auth_method, encrypted_payload, status, last_error")
+      .select("id, auth_method, encrypted_payload, status, last_error, last_check_at, updated_at")
       .eq("id", data.id)
       .eq("user_id", userId)
       .maybeSingle();
@@ -1640,7 +1690,7 @@ export const testBotAccount = createServerFn({ method: "POST" })
       : isFacebookSessionRejectedError(storedError)
         ? storedError
         : null;
-    if ((latestJob?.status === "failed" && rejectedSessionError) || acc.status === "invalid" && rejectedSessionError) {
+    if (rejectedSessionError && latestJob?.status === "failed" && acc.status !== "invalid" && isFailureNewerThanAccountCheck(latestJob, acc)) {
       const checkedAt = (latestJob?.completed_at as string | null) ?? (latestJob?.created_at as string | null) ?? new Date().toISOString();
       const { data: updated, error: upErr } = await supabase
         .from("fb_bot_accounts")

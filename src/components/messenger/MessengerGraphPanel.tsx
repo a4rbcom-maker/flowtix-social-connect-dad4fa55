@@ -27,7 +27,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { listBotAccounts, getJob } from "@/lib/fb-bot.functions";
+import { listBotAccounts, getJob, testBotAccount } from "@/lib/fb-bot.functions";
 import { jobPollInterval } from "@/lib/adaptive-poll";
 import {
   enqueueTokenExtraction,
@@ -73,6 +73,7 @@ export function MessengerGraphPanel() {
   const sendFn = useServerFn(sendBulkGraph);
   const getJobFn = useServerFn(getJob);
   const precheckFn = useServerFn(precheckGraphAccount);
+  const testAccountFn = useServerFn(testBotAccount);
 
   const accountsQ = useQuery({
     queryKey: ["mgraph-accounts"],
@@ -160,6 +161,20 @@ export function MessengerGraphPanel() {
       toast.success(`تم اكتشاف ${res.count} صفحة`);
       qc.invalidateQueries({ queryKey: ["mgraph-pages", selectedAccountId] });
       qc.invalidateQueries({ queryKey: ["mgraph-logs", selectedAccountId] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : String(e)),
+  });
+
+  const retestAccountMut = useMutation({
+    mutationFn: (accountId: string) => testAccountFn({ data: { id: accountId } }),
+    onSuccess: (account: any) => {
+      if (account?.status === "active") {
+        toast.success("تم فحص الكوكيز وإعادة تفعيل الحساب. جرّب استخراج التوكن الآن.");
+      } else {
+        toast.error(account?.last_error || "الحساب ما زال غير جاهز.");
+      }
+      qc.invalidateQueries({ queryKey: ["mgraph-accounts"] });
+      qc.invalidateQueries({ queryKey: ["mgraph-precheck", selectedAccountId] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : String(e)),
   });
@@ -341,9 +356,15 @@ export function MessengerGraphPanel() {
               size="sm"
               variant="ghost"
               className="ms-auto h-7"
-              onClick={() => qc.invalidateQueries({ queryKey: ["mgraph-precheck", selectedAccountId] })}
+              disabled={retestAccountMut.isPending}
+              onClick={() => retestAccountMut.mutate(selectedAccountId)}
             >
-              <RefreshCw className="h-3 w-3 me-1" /> إعادة الفحص
+              {retestAccountMut.isPending ? (
+                <Loader2 className="h-3 w-3 me-1 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3 me-1" />
+              )}
+              فحص الكوكيز الآن
             </Button>
           </div>
           {precheck && precheck.problems.length > 0 && (
