@@ -109,7 +109,7 @@ async function tryOpenInbox(page, pageId, pageName) {
   return { ok: false, snapshot: lastSnapshot, message: explicit };
 }
 
-async function collectConversations(page, maxConversations, expectedPageId) {
+async function collectConversations(page, maxConversations, expectedPageId, report) {
   const start = Date.now();
   const seen = new Map();
   let stableRounds = 0;
