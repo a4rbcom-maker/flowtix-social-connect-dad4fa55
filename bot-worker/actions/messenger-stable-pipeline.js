@@ -198,6 +198,24 @@ async function extractGraphTokenFromSession(page, report, options = {}) {
     "https://business.facebook.com/latest/inbox/all",
   ];
 
+  await runStage(report, "session_anchor", "تثبيت جلسة Facebook قبل فتح Business Suite", async () => {
+    await page.goto("https://www.facebook.com/", { waitUntil: "domcontentloaded", timeout: Math.min(perUrlTimeoutMs, 8_000) });
+    await sleep(350);
+    const cookies = await page.cookies("https://www.facebook.com", "https://business.facebook.com");
+    const cUser = cookies.find((c) => c.name === "c_user" && c.value);
+    if (!cUser) throw new Error("SESSION_EXPIRED: لا توجد c_user بعد فتح facebook.com.");
+    const blocked = await page.evaluate(() => {
+      const href = location.href;
+      const body = document.body?.innerText || "";
+      const hasLoginForm = !!document.querySelector('form[action*="login"], input[name="email"], input[name="pass"]');
+      return /\/login(?:\/|\?|$)|checkpoint|two_factor|two_step_verification/i.test(href) ||
+        hasLoginForm ||
+        /تسجيل الدخول|log in|checkpoint|تأكيد الهوية|تحقق أمني/i.test(body);
+    }).catch(() => false);
+    if (blocked) throw new Error("SESSION_EXPIRED: Facebook طلب تسجيل دخول أو تحقق عند تثبيت الجلسة.");
+    return true;
+  }, { retries: 0, timeoutMs: Math.min(perUrlTimeoutMs, 8_000) + 2_000 });
+
   for (let i = 0; i < urls.length; i += 1) {
     const url = urls[i];
     await runStage(report, "token_probe", `فتح مصدر آمن للتوكن ${i + 1}/${urls.length}`, async () => {
