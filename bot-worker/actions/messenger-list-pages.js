@@ -14,6 +14,14 @@ function cleanPageName(name) {
     .trim();
 }
 
+// Ad/boost UI labels that Facebook renders next to real pages when the
+// cookies session has ads_management scope. These are NOT page names.
+const AD_LABEL_RE = /^(ترويج|روّج|روج|إعلان|اعلان|الإعلانات?|الاعلانات?|promote|boost|ad|ads|advertise|sponsor(ed)?|create ad)$/i;
+
+function isAdLabel(name) {
+  return AD_LABEL_RE.test(String(name || "").trim());
+}
+
 function isReservedFacebookPath(value) {
   return /^(help|marketplace|watch|gaming|groups|events|pages|business|ads|settings|notifications|messages|friends|bookmarks|policies|privacy|terms|login|checkpoint|reg|profile\.php)$/i.test(value);
 }
@@ -138,6 +146,7 @@ async function runMessengerListPages({ page, job, report }) {
   for (const c of directs) {
     const name = cleanPageName(c.name);
     if (!name || name.length < 2) continue;
+    if (isAdLabel(name)) continue;
     pagesMap.set(c.idOrSlug, { id: c.idOrSlug, name, avatar_url: c.avatar_url || null });
   }
   await report({ progress: 40 });
@@ -153,6 +162,7 @@ async function runMessengerListPages({ page, job, report }) {
     if (!numericId) continue;
     const name = cleanPageName(candidate.name);
     if (!name || name.length < 2) continue;
+    if (isAdLabel(name)) continue;
     if (!pagesMap.has(numericId)) {
       pagesMap.set(numericId, { id: numericId, name, avatar_url: candidate.avatar_url || null });
     }

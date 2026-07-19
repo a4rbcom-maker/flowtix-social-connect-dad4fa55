@@ -1,0 +1,1 @@
+DELETE FROM public.fb_pages WHERE connection_type = 'bot' AND trim(page_name) ~* '^(ترويج|روّج|روج|إعلان|اعلان|الإعلانات|الاعلانات|promote|boost|ad|ads|advertise|sponsor(ed)?|create ad)$';
