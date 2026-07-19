@@ -23,7 +23,12 @@ async function runListMyGroups({ page, job, report }) {
     await report({ status: "failed", errorMessage: `Failed to open groups page: ${lastErr?.message || lastErr}` });
     return;
   }
-  await new Promise(r => setTimeout(r, 5000));
+  // Wait for the first group anchor instead of a blind 5s sleep — cuts up to
+  // 4.5s off every list-my-groups run when the DOM hydrates quickly.
+  try {
+    await page.waitForSelector('a[href*="/groups/"]', { timeout: 5000 });
+  } catch { /* fall through: the login-redirect check below handles empty pages */ }
+
 
   // Quick sanity: detect login redirect.
   const curUrl = page.url();
