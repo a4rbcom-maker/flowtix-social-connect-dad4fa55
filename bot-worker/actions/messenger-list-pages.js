@@ -14,6 +14,14 @@ function cleanPageName(name) {
     .trim();
 }
 
+// Ad/boost UI labels that Facebook renders next to real pages when the
+// cookies session has ads_management scope. These are NOT page names.
+const AD_LABEL_RE = /^(ترويج|روّج|روج|إعلان|اعلان|الإعلانات?|الاعلانات?|promote|boost|ad|ads|advertise|sponsor(ed)?|create ad)$/i;
+
+function isAdLabel(name) {
+  return AD_LABEL_RE.test(String(name || "").trim());
+}
+
 function isReservedFacebookPath(value) {
   return /^(help|marketplace|watch|gaming|groups|events|pages|business|ads|settings|notifications|messages|friends|bookmarks|policies|privacy|terms|login|checkpoint|reg|profile\.php)$/i.test(value);
 }
