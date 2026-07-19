@@ -489,7 +489,7 @@ export const startMessengerSync = createServerFn({ method: "POST" })
         const others = (conv.participants?.data ?? []).filter(
           (p) => String(p.id) !== String(data.pageId) && isTrustedMessengerName(p.name),
         );
-        const other = others[0] ?? await resolveConversationParticipant(conv.id, data.pageId, got.pageToken);
+        const other = others[0] ?? (await resolveConversationParticipant(conv.id, data.pageId, got.pageToken));
         if (!other?.id || !/^\d{5,}$/.test(String(other.id)) || !isTrustedMessengerName(other.name)) continue;
 
         contactsPayload.push({

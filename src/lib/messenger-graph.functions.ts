@@ -417,7 +417,7 @@ export const syncPageConversations = createServerFn({ method: "POST" })
           const others = participants.filter((p) => p.id !== page.page_id && isTrustedMessengerName(p.name));
           const resolved = others.length > 0
             ? others
-            : [await resolveConversationParticipant(c.id, page.page_id, pageToken)].filter(Boolean) as Array<{ id: string; name?: string }>;
+            : ([await resolveConversationParticipant(c.id, page.page_id, pageToken)].filter(Boolean) as Array<{ id: string; name?: string }>);
           for (const p of resolved) {
             if (!/^\d{5,}$/.test(String(p.id)) || !isTrustedMessengerName(p.name)) continue;
             upsertRows.push({
