@@ -51,20 +51,57 @@ async function persistJobResult(
     current?: { job_type?: string | null; user_id?: string | null; account_id?: string | null; payload?: unknown } | null;
   },
 ): Promise<{ ok: true } | { ok: false; message: string }> {
+  // Special-case: Graph API token extraction. The plaintext token must never
+  // land in fb_job_results — encrypt it into fb_bot_accounts and redact.
+  let resultForInsert: BotJobResult = input.result;
+  if (
+    input.current?.job_type === "messenger_extract_token" &&
+    input.result.status === "success" &&
+    input.result.target === "graph_token" &&
+    input.result.data &&
+    typeof input.result.data === "object"
+  ) {
+    const d = input.result.data as { token?: string; source?: string; extracted_at?: string; probe_url?: string };
+    const accountId = input.current.account_id;
+    if (accountId && typeof d.token === "string" && /^EAA/.test(d.token)) {
+      try {
+        const { encryptJson } = await import("@/server/crypto.server");
+        const encrypted = encryptJson(d.token);
+        const { error: tokErr } = await supabaseAdmin
+          .from("fb_bot_accounts")
+          .update({
+            graph_token_encrypted: encrypted,
+            graph_token_updated_at: new Date().toISOString(),
+          })
+          .eq("id", accountId);
+        if (tokErr) {
+          return { ok: false, message: `تعذر حفظ توكن Graph API: ${tokErr.message}` };
+        }
+        // Redact before inserting the result row.
+        resultForInsert = {
+          ...input.result,
+          data: { kind: "graph_token", account_id: accountId, source: d.source, extracted_at: d.extracted_at, probe_url: d.probe_url, token: "[REDACTED]" },
+        };
+      } catch (err) {
+        return { ok: false, message: `تعذر تشفير التوكن: ${err instanceof Error ? err.message : String(err)}` };
+      }
+    }
+  }
+
   const { error: insertError } = await supabaseAdmin.from("fb_job_results").insert([
     {
       job_id: input.jobId,
-      target: input.result.target ?? null,
-      status: input.result.status,
-      data: (input.result.data ?? null) as never,
-      error: input.result.error ?? null,
+      target: resultForInsert.target ?? null,
+      status: resultForInsert.status,
+      data: (resultForInsert.data ?? null) as never,
+      error: resultForInsert.error ?? null,
     },
   ]);
   if (insertError) {
     console.error("[bot/job-update] fb_job_results insert failed", {
       jobId: input.jobId,
-      target: input.result.target,
-      status: input.result.status,
+      target: resultForInsert.target,
+      status: resultForInsert.status,
       message: insertError.message,
     });
     return { ok: false, message: `تعذر حفظ نتيجة الاستخراج في قاعدة البيانات: ${insertError.message}` };
