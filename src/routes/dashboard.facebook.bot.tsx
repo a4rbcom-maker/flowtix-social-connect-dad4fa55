@@ -964,12 +964,13 @@ function BotAccountsPage() {
       const jobId = (created as { id: string }).id;
       setProxyTest((prev) => (prev ? { ...prev, jobId } : prev));
       const startedAt = Date.now();
-      const timeoutMs = 90_000;
-      // Poll until terminal state or timeout.
-      // Uses setTimeout loop so the UI stays responsive.
+      const timeoutMs = 45_000;
+      // Poll fast so a quick worker result surfaces immediately.
       const poll = async () => {
+        let delay = 600;
         while (Date.now() - startedAt < timeoutMs) {
-          await new Promise((r) => setTimeout(r, 2500));
+          await new Promise((r) => setTimeout(r, delay));
+          delay = Math.min(1500, delay + 150);
           try {
             const payload = (await getTestProxyFn({ data: { jobId } })) as {
               job: { status: string; error_message: string | null };
