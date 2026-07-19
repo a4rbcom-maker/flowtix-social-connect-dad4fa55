@@ -111,73 +111,95 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
           return Response.json({ job: null });
         }
 
-        // Serial-per-account lock: never hand out a second job for an account
-        // that already has a running job. Two concurrent sessions for the same
-        // Facebook account (even from the same worker at different phases) is
-        // one of the strongest signals FB uses to invalidate the user's own
-        // browser session. Enforce single-flight here at the dispatcher.
-        const { data: busy } = await supabaseAdmin
-          .from("fb_jobs")
-          .select("account_id")
-          .eq("status", "running")
-          .not("account_id", "is", null);
-        const busyAccountIds = Array.from(
-          new Set((busy || []).map((r) => r.account_id).filter(Boolean)),
-        ) as string[];
-
-
-        let candidateQuery = supabaseAdmin
-          .from("fb_jobs")
-          .select("id")
-          .eq("status", "pending")
-          .not("account_id", "is", null)
-          .lte("scheduled_at", nowIso);
-        if (busyAccountIds.length > 0) {
-          candidateQuery = candidateQuery.not(
-            "account_id",
-            "in",
-            `(${busyAccountIds.join(",")})`,
-          );
+        // Fast lane: proxy tests do not open Facebook and no longer use the
+        // account browser profile, so they can run even if another Facebook job
+        // for the same account is active. This avoids waiting behind long
+        // extraction/campaign jobs just to tell the user if the proxy works.
+        let candidate: { id: string } | null = null;
+        if (supportsTestProxy) {
+          const { data: proxyCandidate, error: proxySelErr } = await supabaseAdmin
+            .from("fb_jobs")
+            .select("id")
+            .eq("status", "pending")
+            .eq("job_type", "test_proxy" as never)
+            .not("account_id", "is", null)
+            .lte("scheduled_at", nowIso)
+            .order("scheduled_at", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          if (proxySelErr) return Response.json({ error: proxySelErr.message }, { status: 500 });
+          candidate = proxyCandidate;
         }
 
-        // Old VPS workers do not send capabilities and may mark group-member jobs as
-        // "not implemented". Never let those stale workers claim this job type.
-        if (!supportsGroupMembers) {
-          candidateQuery = candidateQuery.neq("job_type", "extract_group_members");
-        }
-        if (!supportsExtractPages) {
-          candidateQuery = candidateQuery.neq("job_type", "extract_pages");
-        }
-        if (!supportsPageAudience) {
-          candidateQuery = candidateQuery.neq("job_type", "extract_page_audience");
-        }
-        if (!supportsListMyGroups) {
-          candidateQuery = candidateQuery.neq("job_type", "list_my_groups");
-        }
-        if (!supportsDeepProfile) {
-          candidateQuery = candidateQuery.neq("job_type", "deep_profile_scrape");
-        }
-        if (!supportsMessengerDm) {
-          candidateQuery = candidateQuery.neq("job_type", "send_messenger_dm");
-        }
-        if (!supportsMessengerListPages) {
-          candidateQuery = candidateQuery.neq("job_type", "messenger_list_pages");
-        }
-        if (!supportsMessengerSyncCookies) {
-          candidateQuery = candidateQuery.neq("job_type", "messenger_sync_cookies");
-        }
-        if (!supportsMessengerSendCookies) {
-          candidateQuery = candidateQuery.neq("job_type", "messenger_send_cookies");
-        }
-        if (!supportsTestProxy) {
-          candidateQuery = candidateQuery.neq("job_type", "test_proxy" as never);
-        }
+        if (!candidate) {
+          // Serial-per-account lock: never hand out a second Facebook job for an
+          // account that already has a running job. Two concurrent Facebook
+          // sessions for the same account is one of the strongest signals FB uses
+          // to invalidate the user's own browser session.
+          const { data: busy } = await supabaseAdmin
+            .from("fb_jobs")
+            .select("account_id")
+            .eq("status", "running")
+            .neq("job_type", "test_proxy" as never)
+            .not("account_id", "is", null);
+          const busyAccountIds = Array.from(
+            new Set((busy || []).map((r) => r.account_id).filter(Boolean)),
+          ) as string[];
 
-        const { data: candidate, error: selErr } = await candidateQuery
-          .order("scheduled_at", { ascending: true })
-          .limit(1)
-          .maybeSingle();
-        if (selErr) return Response.json({ error: selErr.message }, { status: 500 });
+          let candidateQuery = supabaseAdmin
+            .from("fb_jobs")
+            .select("id")
+            .eq("status", "pending")
+            .not("account_id", "is", null)
+            .lte("scheduled_at", nowIso);
+          if (busyAccountIds.length > 0) {
+            candidateQuery = candidateQuery.not(
+              "account_id",
+              "in",
+              `(${busyAccountIds.join(",")})`,
+            );
+          }
+
+          // Old VPS workers do not send capabilities and may mark newer jobs as
+          // "not implemented". Never let stale workers claim unsupported job types.
+          if (!supportsGroupMembers) {
+            candidateQuery = candidateQuery.neq("job_type", "extract_group_members");
+          }
+          if (!supportsExtractPages) {
+            candidateQuery = candidateQuery.neq("job_type", "extract_pages");
+          }
+          if (!supportsPageAudience) {
+            candidateQuery = candidateQuery.neq("job_type", "extract_page_audience");
+          }
+          if (!supportsListMyGroups) {
+            candidateQuery = candidateQuery.neq("job_type", "list_my_groups");
+          }
+          if (!supportsDeepProfile) {
+            candidateQuery = candidateQuery.neq("job_type", "deep_profile_scrape");
+          }
+          if (!supportsMessengerDm) {
+            candidateQuery = candidateQuery.neq("job_type", "send_messenger_dm");
+          }
+          if (!supportsMessengerListPages) {
+            candidateQuery = candidateQuery.neq("job_type", "messenger_list_pages");
+          }
+          if (!supportsMessengerSyncCookies) {
+            candidateQuery = candidateQuery.neq("job_type", "messenger_sync_cookies");
+          }
+          if (!supportsMessengerSendCookies) {
+            candidateQuery = candidateQuery.neq("job_type", "messenger_send_cookies");
+          }
+          if (!supportsTestProxy) {
+            candidateQuery = candidateQuery.neq("job_type", "test_proxy" as never);
+          }
+
+          const { data: normalCandidate, error: selErr } = await candidateQuery
+            .order("scheduled_at", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          if (selErr) return Response.json({ error: selErr.message }, { status: 500 });
+          candidate = normalCandidate;
+        }
         if (!candidate) return Response.json({ job: null });
 
         // Step 2: claim by transitioning status pending→running (only succeeds if still pending)

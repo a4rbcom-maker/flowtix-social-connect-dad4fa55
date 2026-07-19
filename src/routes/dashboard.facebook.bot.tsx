@@ -964,13 +964,13 @@ function BotAccountsPage() {
       const jobId = (created as { id: string }).id;
       setProxyTest((prev) => (prev ? { ...prev, jobId } : prev));
       const startedAt = Date.now();
-      const timeoutMs = 45_000;
+      const timeoutMs = 18_000;
       // Poll fast so a quick worker result surfaces immediately.
       const poll = async () => {
-        let delay = 600;
+        let delay = 300;
         while (Date.now() - startedAt < timeoutMs) {
           await new Promise((r) => setTimeout(r, delay));
-          delay = Math.min(1500, delay + 150);
+          delay = Math.min(800, delay + 100);
           try {
             const payload = (await getTestProxyFn({ data: { jobId } })) as {
               job: { status: string; error_message: string | null };
@@ -1041,14 +1041,14 @@ function BotAccountsPage() {
             ? {
                 ...prev,
                 status: "failed",
-                error: "الاختبار لم يبدأ",
+                error: "الاختبار لم يبدأ بسرعة",
                 reasonCode: "worker_unavailable",
-                reasonAr: "الاختبار لم يبدأ. تأكد أن خدمة البوت شغّالة ثم جرّب مرة أخرى.",
-                reasonEn: "The test did not start. Make sure the bot service is running, then try again.",
+                reasonAr: "خدمة البوت لم تلتقط الاختبار بسرعة. تأكد أنها تعمل ثم جرّب مرة أخرى.",
+                reasonEn: "The bot service did not pick up the test quickly. Make sure it is running, then try again.",
               }
             : prev,
         );
-        toast.error("الاختبار لم يبدأ. تأكد أن خدمة البوت شغّالة.");
+        toast.error("خدمة البوت لم تلتقط الاختبار بسرعة.");
       };
       await poll();
     } catch (e) {

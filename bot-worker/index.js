@@ -25,14 +25,14 @@ const { ensureLogin } = require("./actions/login");
 
 const API = process.env.API_BASE_URL;
 const SECRET = process.env.BOT_WORKER_SECRET;
-// Lowered default poll interval from 15s → 6s so small/fast jobs (test_proxy,
+// Lowered default poll interval so small/fast jobs (test_proxy,
 // list_my_groups, extract_pages) start almost immediately instead of waiting
 // for a full polling window. Backoff on idle keeps DB load flat.
-const MIN_INT = Math.max(3, parseInt(process.env.POLL_INTERVAL_SEC || "6", 10)) * 1000;
-const MAX_INT = Math.max(MIN_INT, parseInt(process.env.POLL_MAX_INTERVAL_SEC || "60", 10) * 1000);
+const MIN_INT = Math.max(2, parseInt(process.env.POLL_INTERVAL_SEC || "3", 10)) * 1000;
+const MAX_INT = Math.max(MIN_INT, parseInt(process.env.POLL_MAX_INTERVAL_SEC || "10", 10) * 1000);
 const HEADLESS = process.env.HEADLESS !== "false";
 const PROFILE_ROOT = process.env.BOT_PROFILE_DIR || path.join(__dirname, ".browser-profiles");
-const WORKER_VERSION = "bot-worker-2026-07-19-fast-batch-v1";
+const WORKER_VERSION = "bot-worker-2026-07-19-fast-proxy-test-v1";
 
 const WORKER_CAPABILITIES = [
   "post_to_groups",
@@ -185,11 +185,12 @@ async function runJob(job) {
     const proxy = parseProxy(effectiveProxyUrl);
     const launchArgs = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--lang=en-US,en"];
     if (proxy?.server) launchArgs.push(`--proxy-server=${proxy.server}`);
+    const profileAccountId = job.type === "test_proxy" ? null : job.account?.id;
     browser = await timedExtractPagesWorkerStep(job, "browser_launch", () => puppeteer.launch({
       headless: HEADLESS,
-      userDataDir: job.account?.id ? accountProfileDir(job.account.id) : undefined,
+      userDataDir: profileAccountId ? accountProfileDir(profileAccountId) : undefined,
       args: launchArgs,
-    }), { persistentProfile: Boolean(job.account?.id), proxyEnabled: Boolean(proxy?.server) });
+    }), { persistentProfile: Boolean(profileAccountId), proxyEnabled: Boolean(proxy?.server) });
     const page = await timedExtractPagesWorkerStep(job, "browser_page", () => browser.newPage());
     if (proxy?.username) {
       await timedExtractPagesWorkerStep(job, "browser_proxy_auth", () => page.authenticate({ username: proxy.username, password: proxy.password || "" }));
