@@ -296,12 +296,16 @@ async function runMessengerSyncCookies({ page, job, report }) {
     return;
   }
 
-  const contacts = await collectConversations(page, maxConversations, pageId);
+  const { contacts, debug } = await collectConversations(page, maxConversations, pageId);
   if (contacts.length === 0) {
+    const sample = (debug?.lastRawItems || []).map((r) => `${r.name}${r.hasPsid ? "" : " (بدون psid)"}`).join(" | ");
     await report({
       status: "failed",
       errorMessage:
-        "فتحنا صندوق واردات الصفحة لكن لم نعثر على محادثات. تأكد أن الصفحة عليها رسائل فعلاً وأن حساب البوت له صلاحية عرضها.",
+        `فتحنا Business Suite Inbox للصفحة ${pageId} لكن لم نلتقط محادثات صالحة.` +
+        ` رصدنا ${debug?.lastCandidateCount || 0} عنصر مرشح بعد ${debug?.rounds || 0} دورة، URL: ${debug?.lastUrl || "?"}.` +
+        (sample ? ` عيّنة: ${sample}.` : "") +
+        ` (النسخة الحالية تلتقط divs مع صور رمزية بدل الروابط)`,
     });
     return;
   }
