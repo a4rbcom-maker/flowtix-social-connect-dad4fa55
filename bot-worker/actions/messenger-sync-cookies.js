@@ -314,7 +314,7 @@ async function runMessengerSyncCookies({ page, job, report }) {
     return;
   }
 
-  const { contacts, debug } = await collectConversations(page, maxConversations, pageId);
+  const { contacts, debug } = await collectConversations(page, maxConversations, pageId, report);
   if (contacts.length === 0) {
     const sample = (debug?.lastRawItems || []).map((r) => `${r.name}${r.hasPsid ? "" : " (بدون psid)"}`).join(" | ");
     await report({
