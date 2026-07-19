@@ -917,6 +917,10 @@ function BotAccountsPage() {
       proxyEnabled: false,
       elapsedMs: null,
       error: null,
+      reasonCode: null,
+      reasonAr: null,
+      reasonEn: null,
+      rawError: null,
     });
     try {
       const created = await createTestProxyFn({ data: { accountId } });
