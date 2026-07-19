@@ -107,6 +107,7 @@ async function runTestProxy({ page, job, report }) {
       }
     } catch (e) {
       lastRaw = String(e && e.message ? e.message : e);
+      if (TERMINAL_PATTERNS.test(lastRaw)) { terminal = true; break; }
     }
     await report({ progress: 55 });
   }
