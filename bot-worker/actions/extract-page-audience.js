@@ -308,7 +308,7 @@ async function runExtractPageAudience({ page, job, report }) {
   if (doEngagers && collected.size < cap) {
     try {
       await page.goto(`https://www.facebook.com/${pageId}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      await sleep(4000);
+      await waitForContent(page, ['a[href*="/posts/"]', 'a[href*="story_fbid"]', '[role="feed"]'], 3500, 800);
 
       const wantPosts = Math.min(Math.max(5, Number(maxPosts) || 20), 40);
       const postUrls = await collectRecentPostUrls(page, pageId, wantPosts);
