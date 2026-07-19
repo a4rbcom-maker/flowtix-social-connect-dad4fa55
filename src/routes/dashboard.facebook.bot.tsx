@@ -1827,68 +1827,33 @@ function BotAccountsPage() {
               {proxyTest.status === "running" && (
                 <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 p-3">
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                  <span>
-                    {lang === "ar"
-                      ? "بننفّذ الاختبار على VPS — بيفتح Chromium بالبروكسي ويقرأ IP الخروج (10-30 ثانية)."
-                      : "Running on the VPS — launching Chromium via the proxy and reading the egress IP (10-30s)."}
-                  </span>
+                  <span>{lang === "ar" ? "جاري الفحص…" : "Checking…"}</span>
                 </div>
               )}
               {proxyTest.status === "completed" && (
                 <div className="space-y-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3">
                   <div className="flex items-center gap-2 font-semibold text-emerald-700 dark:text-emerald-300">
                     <CheckCircle2 className="h-4 w-4" />
-                    {lang === "ar" ? "الاختبار نجح" : "Test succeeded"}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
                     {proxyTest.proxyEnabled
-                      ? lang === "ar"
-                        ? "البروكسي يعمل والبوت يتصل من خلاله. الـ IP الظاهر لفيسبوك هو:"
-                        : "Proxy is active. Facebook will see this IP:"
-                      : lang === "ar"
-                        ? "لا يوجد بروكسي مفعّل على هذا الحساب. الـ IP الظاهر لفيسبوك هو IP السيرفر نفسه:"
-                        : "No proxy set on this account — Facebook sees the raw server IP:"}
+                      ? lang === "ar" ? "البروكسي مفعّل ويعمل بنجاح" : "Proxy is active and working"
+                      : lang === "ar" ? "لا يوجد بروكسي مفعّل على هذا الحساب" : "No proxy is enabled for this account"}
                   </div>
-                  <div className="rounded bg-background/60 px-3 py-2 font-mono text-base text-foreground">
-                    {proxyTest.ip ?? "-"}
-                  </div>
-                  {proxyTest.elapsedMs != null && (
-                    <div className="text-[11px] text-muted-foreground">
-                      {lang === "ar" ? `الاستجابة خلال ${(proxyTest.elapsedMs / 1000).toFixed(1)}s` : `Responded in ${(proxyTest.elapsedMs / 1000).toFixed(1)}s`}
-                    </div>
-                  )}
                 </div>
               )}
               {proxyTest.status === "failed" && (
                 <div className="space-y-3 rounded-md border border-red-500/40 bg-red-500/10 p-3">
                   <div className="flex items-center gap-2 font-semibold text-red-700 dark:text-red-300">
                     <XCircle className="h-4 w-4" />
-                    {lang === "ar" ? "الاختبار فشل" : "Test failed"}
-                    {proxyTest.reasonCode && (
-                      <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-mono text-red-700 dark:text-red-300">
-                        {proxyTest.reasonCode}
-                      </span>
-                    )}
+                    {lang === "ar" ? "البروكسي لا يعمل" : "Proxy is not working"}
                   </div>
                   <p className="text-sm font-medium text-foreground break-words leading-relaxed">
                     {(lang === "ar" ? proxyTest.reasonAr : proxyTest.reasonEn) ??
-                      proxyTest.error ??
-                      (lang === "ar" ? "خطأ غير معروف" : "Unknown error")}
+                      (lang === "ar" ? "تعذّر الاتصال بالبروكسي" : "Could not connect to the proxy")}
                   </p>
-                  {proxyTest.rawError && (
-                    <details className="text-[11px] text-muted-foreground">
-                      <summary className="cursor-pointer select-none">
-                        {lang === "ar" ? "تفاصيل تقنية" : "Technical details"}
-                      </summary>
-                      <pre className="mt-1 whitespace-pre-wrap break-all rounded bg-background/60 p-2 font-mono">
-                        {proxyTest.rawError}
-                      </pre>
-                    </details>
-                  )}
                   <p className="text-[11px] text-muted-foreground">
                     {lang === "ar"
-                      ? "نصيحة: راجع host/port وبيانات user/pass، وتأكد أن مزوّد البروكسي مسموح فيه IP الـ VPS."
-                      : "Tip: verify host/port and user/pass, and make sure the VPS IP is whitelisted at the proxy provider."}
+                      ? "راجع بيانات البروكسي (host / port / user / pass) وحاول مرة أخرى."
+                      : "Check the proxy details (host / port / user / pass) and try again."}
                   </p>
                 </div>
               )}
