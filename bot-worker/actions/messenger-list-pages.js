@@ -63,14 +63,13 @@ async function extractPageCandidatesFromDom(page) {
   });
 }
 
-async function resolveNumericPageId(page, candidate) {
+// Visits the candidate's page URL and returns { id, name, avatar } from
+// og:title / document.title / og:image so we get the REAL page name instead
+// of whatever ad-button / "profile picture of …" text the sidebar rendered.
+async function resolvePageMeta(page, candidate) {
   const idOrSlug = String(candidate.idOrSlug || "").trim();
-  if (/^\d{5,}$/.test(idOrSlug)) return idOrSlug;
   if (!idOrSlug || isReservedFacebookPath(idOrSlug)) return null;
 
-  // Only try ONE URL per candidate — the direct page URL. The previous 4-URL
-  // fan-out multiplied resolution time by ~4× for every slug and was the
-  // biggest source of "why is fetching pages so slow?".
   const target = candidate.href
     ? (() => {
         try { return new URL(candidate.href, "https://www.facebook.com").href; }
@@ -81,9 +80,9 @@ async function resolveNumericPageId(page, candidate) {
   try {
     await page.goto(target, { waitUntil: "domcontentloaded", timeout: 20_000 });
     if (/\/login|checkpoint/i.test(page.url())) return null;
-    const found = await page.evaluate(() => {
+    const meta = await page.evaluate(() => {
       const html = document.documentElement.innerHTML || "";
-      const patterns = [
+      const idPatterns = [
         /"pageID"\s*:\s*"?(\d{5,})"?/,
         /"page_id"\s*:\s*"?(\d{5,})"?/,
         /"profile_id"\s*:\s*"?(\d{5,})"?/,
@@ -91,17 +90,34 @@ async function resolveNumericPageId(page, candidate) {
         /fb:\/\/page\/\?id=(\d{5,})/,
         /[?&](?:page_id|profile_id|id)=(\d{5,})/,
       ];
-      for (const re of patterns) {
+      let id = null;
+      for (const re of idPatterns) {
         const m = html.match(re);
-        if (m?.[1]) return m[1];
+        if (m?.[1]) { id = m[1]; break; }
       }
-      return null;
+      const ogTitle = document.querySelector('meta[property="og:title"]')?.getAttribute("content") || "";
+      const docTitle = (document.title || "").replace(/\s*[|\-–]\s*Facebook.*$/i, "").trim();
+      const name = (ogTitle || docTitle || "").trim();
+      const ogImg = document.querySelector('meta[property="og:image"]')?.getAttribute("content") || null;
+      return { id, name, avatar: ogImg };
     });
-    if (found && /^\d{5,}$/.test(found)) return found;
+    const numericId = /^\d{5,}$/.test(idOrSlug) ? idOrSlug : meta?.id;
+    if (!numericId) return null;
+    return { id: numericId, name: cleanPageName(meta?.name || ""), avatar: meta?.avatar || null };
   } catch (_) {
-    // give up on this candidate
+    return null;
   }
-  return null;
+}
+
+// A name is "trustworthy" only if it isn't an ad button label and isn't the
+// generic "profile picture of …" placeholder Facebook renders on avatars.
+function isTrustedName(name) {
+  const n = String(name || "").trim();
+  if (!n || n.length < 2) return false;
+  if (isAdLabel(n)) return false;
+  if (/profile\s+picture/i.test(n)) return false;
+  if (/^\s*صورة\s+ملف/u.test(n)) return false;
+  return true;
 }
 
 async function runMessengerListPages({ page, job, report }) {
