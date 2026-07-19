@@ -54,6 +54,9 @@ import {
   getCachedProxyTest,
   setCachedProxyTest,
   invalidateProxyTest,
+  normalizeProxyPhases,
+  phaseLabel,
+  type ProxyPhase,
 } from "@/lib/proxy-test-cache";
 import {
   addBotAccount,
@@ -475,6 +478,8 @@ function BotAccountsPage() {
     reasonAr: string | null;
     reasonEn: string | null;
     rawError: string | null;
+    phases?: import("@/lib/proxy-test-cache").ProxyPhase[];
+    logs?: string[];
   } | null>(null);
   const [proxyTestingId, setProxyTestingId] = useState<string | null>(null);
   const [proxyEdit, setProxyEdit] = useState<{ id: string; name: string; proxyUrl: string } | null>(null);
@@ -995,6 +1000,8 @@ function BotAccountsPage() {
             reasonAr?: string | null;
             reasonEn?: string | null;
             rawError?: string | null;
+            phases?: Partial<ProxyPhase>[];
+            logs?: string[];
           } | null;
           if (payload.job.status === "completed") {
             setCachedProxyTest(accountId, {
@@ -1010,6 +1017,11 @@ function BotAccountsPage() {
               reasonAr: null,
               reasonEn: null,
               rawError: null,
+              phases: normalizeProxyPhases(rd?.phases, {
+                ok: true,
+                elapsedMs: rd?.elapsedMs ?? null,
+              }),
+              logs: rd?.logs ?? [],
             });
             recordProxyTestSuccess(breakerKey);
             return;
@@ -1032,6 +1044,14 @@ function BotAccountsPage() {
                 reasonAr,
                 reasonEn,
                 rawError: rd?.rawError ?? null,
+                phases: normalizeProxyPhases(rd?.phases, {
+                  ok: false,
+                  elapsedMs: rd?.elapsedMs ?? null,
+                  reasonCode: rd?.reasonCode ?? null,
+                  reasonAr,
+                  reasonEn,
+                }),
+                logs: rd?.logs ?? [],
               },
               30_000,
             );
@@ -1134,6 +1154,8 @@ function BotAccountsPage() {
                   reasonAr?: string | null;
                   reasonEn?: string | null;
                   rawError?: string | null;
+                  phases?: Partial<ProxyPhase>[];
+                  logs?: string[];
                 }
               | null;
             if (jobStatus === "completed") {
@@ -1150,6 +1172,11 @@ function BotAccountsPage() {
                 reasonAr: null,
                 reasonEn: null,
                 rawError: null,
+                phases: normalizeProxyPhases(rd?.phases, {
+                  ok: true,
+                  elapsedMs: rd?.elapsedMs ?? null,
+                }),
+                logs: rd?.logs ?? [],
               };
               setProxyTest(snapshot);
               setCachedProxyTest(accountId, snapshot);
@@ -1164,6 +1191,8 @@ function BotAccountsPage() {
             if (jobStatus === "failed") {
               const fallbackReasonAr = payload.job.error_message || payload.result?.error || "تعذّر تشغيل اختبار البروكسي";
               const fallbackReasonEn = payload.job.error_message || payload.result?.error || "Could not run proxy test";
+              const reasonAr = rd?.reasonAr ?? fallbackReasonAr;
+              const reasonEn = rd?.reasonEn ?? fallbackReasonEn;
               const snapshot = {
                 accountId,
                 accountName,
@@ -1174,9 +1203,17 @@ function BotAccountsPage() {
                 elapsedMs: rd?.elapsedMs ?? null,
                 error: payload.job.error_message || payload.result?.error || "فشل الاختبار",
                 reasonCode: rd?.reasonCode ?? "worker_unavailable",
-                reasonAr: rd?.reasonAr ?? fallbackReasonAr,
-                reasonEn: rd?.reasonEn ?? fallbackReasonEn,
+                reasonAr,
+                reasonEn,
                 rawError: rd?.rawError ?? null,
+                phases: normalizeProxyPhases(rd?.phases, {
+                  ok: false,
+                  elapsedMs: rd?.elapsedMs ?? null,
+                  reasonCode: rd?.reasonCode ?? null,
+                  reasonAr,
+                  reasonEn,
+                }),
+                logs: rd?.logs ?? [],
               };
               setProxyTest(snapshot);
               setCachedProxyTest(accountId, snapshot, 30_000);
@@ -2073,6 +2110,79 @@ function BotAccountsPage() {
                       : lang === "ar" ? "راجع بيانات البروكسي وحاول مرة أخرى." : "Check the proxy details and try again."}
                   </p>
                 </div>
+              )}
+
+              {/* Per-step timing (DNS → Connect → SSL → Response) */}
+              {proxyTest.status !== "running" && proxyTest.phases && proxyTest.phases.length > 0 && (
+                <div className="space-y-2 rounded-md border border-border bg-muted/20 p-3">
+                  <div className="text-xs font-semibold text-muted-foreground">
+                    {lang === "ar" ? "مراحل الاختبار" : "Test phases"}
+                  </div>
+                  <ul className="space-y-1.5">
+                    {proxyTest.phases.map((p) => {
+                      const isOk = p.status === "ok";
+                      const isFail = p.status === "fail";
+                      const isSkipped = p.status === "skipped";
+                      const icon = isOk ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                      ) : isFail ? (
+                        <XCircle className="h-3.5 w-3.5 text-red-600" />
+                      ) : (
+                        <span className="inline-block h-3.5 w-3.5 rounded-full border border-muted-foreground/40" />
+                      );
+                      const stateLabel = isOk
+                        ? lang === "ar" ? "نجح" : "OK"
+                        : isFail
+                          ? lang === "ar" ? "فشل" : "Failed"
+                          : isSkipped
+                            ? lang === "ar" ? "لم يُنفَّذ" : "Skipped"
+                            : lang === "ar" ? "قيد التنفيذ" : "Running";
+                      return (
+                        <li key={p.name} className="flex items-start justify-between gap-3 text-[12px]">
+                          <div className="flex items-center gap-2">
+                            {icon}
+                            <span className={isSkipped ? "text-muted-foreground" : "font-medium"}>
+                              {phaseLabel(p.name, lang === "ar" ? "ar" : "en")}
+                            </span>
+                            {isFail && (lang === "ar" ? p.reasonAr : p.reasonEn) && (
+                              <span className="text-[11px] text-red-600/90 break-words">
+                                — {(lang === "ar" ? p.reasonAr : p.reasonEn)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                            {typeof p.ms === "number" ? `${p.ms} ms` : stateLabel}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {typeof proxyTest.elapsedMs === "number" && (
+                    <div className="border-t border-border/60 pt-1.5 text-[11px] text-muted-foreground">
+                      {lang === "ar" ? "الإجمالي:" : "Total:"}{" "}
+                      <span className="font-medium text-foreground tabular-nums">{proxyTest.elapsedMs} ms</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Raw logs from the worker for troubleshooting */}
+              {proxyTest.status !== "running" && proxyTest.logs && proxyTest.logs.length > 0 && (
+                <details className="rounded-md border border-border bg-background">
+                  <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground">
+                    {lang === "ar" ? `السجلات (${proxyTest.logs.length})` : `Logs (${proxyTest.logs.length})`}
+                  </summary>
+                  <div
+                    dir="ltr"
+                    className="max-h-56 overflow-auto border-t border-border bg-muted/30 px-3 py-2 font-mono text-[11px] leading-relaxed"
+                  >
+                    {proxyTest.logs.map((line, i) => (
+                      <div key={i} className="whitespace-pre-wrap break-words text-muted-foreground">
+                        {line}
+                      </div>
+                    ))}
+                  </div>
+                </details>
               )}
             </div>
           )}
