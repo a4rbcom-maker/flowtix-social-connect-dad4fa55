@@ -713,8 +713,8 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
             <h1 className="text-base font-semibold text-foreground md:text-lg truncate">{title}</h1>
           </div>
           <div className="flex items-center gap-2">
-            <WaStatusPill lang={lang} />
             <AnnouncementsBell />
+
             <NotificationsBell />
             <button onClick={() => setLang(lang === "ar" ? "en" : "ar")} className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent">
               {lang === "ar" ? "EN" : "عربي"}
