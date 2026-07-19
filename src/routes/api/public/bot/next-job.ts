@@ -78,7 +78,7 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
             status: "failed",
             progress: 100,
             completed_at: nowIso,
-            error_message: "تعذّر تشغيل اختبار البروكسي حالياً. أعد تشغيل عامل البوت ثم جرّب مرة أخرى.",
+            error_message: "خدمة البوت غير جاهزة حالياً. أعد تشغيلها ثم جرّب مرة أخرى.",
           })
           .eq("job_type", "test_proxy" as never)
           .eq("status", "running")
