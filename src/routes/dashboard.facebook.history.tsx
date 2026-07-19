@@ -324,11 +324,10 @@ function JobsHistoryPage() {
       const { id: newId } = await call(retryJob, { id: j.id });
       toast.success(lang === "ar" ? "تم إعادة تشغيل المهمة" : "Task restarted");
       // Refresh list so the new pending row appears at the top.
-      const rows = await call(listJobs, {});
+      const rows = await call(listJobs);
       setJobs(rows as JobRow[]);
-      // Optionally focus the new row (best-effort — silent on failure).
       const created = (rows as JobRow[]).find((r) => r.id === newId);
-      if (created) void openJob(created);
+      if (created) void openDetails(created);
     } catch (e) { toast.error(String(e)); }
     finally { setPausingId(null); }
   };
