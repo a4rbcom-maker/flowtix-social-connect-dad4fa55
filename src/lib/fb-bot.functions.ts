@@ -688,7 +688,8 @@ export const listBotAccounts = createServerFn({ method: "GET" })
         const structuralCookieOk = (() => {
           if (row.auth_method !== "cookies" || !row.encrypted_payload) return false;
           try {
-            const cookies = normalizeStoredCookies(row.encrypted_payload);
+            const { decryptJson } = require("@/server/crypto.server") as typeof import("@/server/crypto.server");
+            const cookies = normalizeStoredCookies(decryptJson<unknown>(row.encrypted_payload));
             const { missingCritical, invalid } = validateFacebookCookies(cookies);
             const minExp = earliestRequiredExpiry(cookies);
             const expired = minExp !== null && minExp * 1000 <= Date.now();
