@@ -267,14 +267,16 @@ export const precheckGraphAccount = createServerFn({ method: "POST" })
     // Sweep any stuck running jobs first — makes precheck idempotent.
     await supabase.rpc("fb_reap_stuck_messenger_jobs", { _user_id: userId, _max_minutes: 2 });
 
-    const { data: acc, error } = await supabase
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: rawAcc, error } = await supabaseAdmin
       .from("fb_bot_accounts")
-      .select("id, status, last_error, last_check_at, updated_at, cookie_expires_at, graph_token_encrypted, graph_token_updated_at")
+      .select("id, user_id, auth_method, encrypted_payload, status, last_error, last_check_at, updated_at, cookie_expires_at, graph_token_encrypted, graph_token_updated_at")
       .eq("id", data.accountId)
       .eq("user_id", userId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    if (!acc) throw new Error("الحساب غير موجود.");
+    if (!rawAcc) throw new Error("الحساب غير موجود.");
+    const acc = await refreshGraphAccountFromStoredCookies(supabase, userId, rawAcc as GraphAccountGateRow);
 
     const now = Date.now();
     const expiresAt = acc.cookie_expires_at ? new Date(acc.cookie_expires_at).getTime() : null;
@@ -334,14 +336,16 @@ export const enqueueTokenExtraction = createServerFn({ method: "POST" })
     // Reap stuck jobs so a previous hang does not block the retry.
     await supabase.rpc("fb_reap_stuck_messenger_jobs", { _user_id: userId, _max_minutes: 2 });
 
-    const { data: account, error: accErr } = await supabase
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: rawAccount, error: accErr } = await supabaseAdmin
       .from("fb_bot_accounts")
-      .select("id, user_id, status, last_error, last_check_at, updated_at, cookie_expires_at")
+      .select("id, user_id, auth_method, encrypted_payload, status, last_error, last_check_at, updated_at, cookie_expires_at")
       .eq("id", data.accountId)
       .eq("user_id", userId)
       .maybeSingle();
     if (accErr) throw new Error(accErr.message);
-    if (!account) throw new Error("الحساب غير موجود.");
+    if (!rawAccount) throw new Error("الحساب غير موجود.");
+    const account = await refreshGraphAccountFromStoredCookies(supabase, userId, rawAccount as GraphAccountGateRow);
     const expiresAt = account.cookie_expires_at ? new Date(account.cookie_expires_at).getTime() : null;
     const cookieStillValid = !expiresAt || expiresAt > Date.now();
     const staleAuthError = isAuthFailureText(account.last_error) && isFreshCookieCheckNewerThanAuthError(account);
