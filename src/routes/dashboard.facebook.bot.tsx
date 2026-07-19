@@ -1062,6 +1062,7 @@ function BotAccountsPage() {
                 rawError: rd?.rawError ?? null,
               });
               toast.error(rd?.reasonAr || payload.job.error_message || "تعذّر تشغيل اختبار البروكسي");
+              recordProxyTestFailure(breakerKey, rd?.reasonAr ?? payload.job.error_message ?? null);
               return;
             }
           } catch (e) {
