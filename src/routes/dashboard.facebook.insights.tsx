@@ -198,14 +198,14 @@ function InsightsPage() {
         const res = await listPagesFn();
         if (cancelled) return;
         if (res.error) {
-          setPagesError(res.error.message);
+          setPagesError(humanizeFbError(res.error.message));
         } else {
           const list = safeArray<Page>(res.pages);
           setPages(list);
           if (list.length > 0) setPageId(String(list[0].id));
         }
       } catch (e) {
-        if (!cancelled) setPagesError(String(e));
+        if (!cancelled) setPagesError(humanizeFbError(e));
       } finally {
         if (!cancelled) setLoadingPages(false);
       }
