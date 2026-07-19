@@ -390,7 +390,7 @@ function MessagesPage() {
               <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-300" />
               <div className="text-sm">
                 <p className="font-medium text-amber-700 dark:text-amber-400">
-                  {convs?.error?.message ?? leads?.error?.message}
+                  {humanizeFbError(convs?.error?.message ?? leads?.error?.message)}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">{t.permWarning}</p>
               </div>
