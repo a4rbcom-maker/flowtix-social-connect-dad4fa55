@@ -32,7 +32,7 @@ const MIN_INT = Math.max(2, parseInt(process.env.POLL_INTERVAL_SEC || "3", 10)) 
 const MAX_INT = Math.max(MIN_INT, parseInt(process.env.POLL_MAX_INTERVAL_SEC || "10", 10) * 1000);
 const HEADLESS = process.env.HEADLESS !== "false";
 const PROFILE_ROOT = process.env.BOT_PROFILE_DIR || path.join(__dirname, ".browser-profiles");
-const WORKER_VERSION = "bot-worker-2026-07-19-fast-proxy-test-v1";
+const WORKER_VERSION = "bot-worker-2026-07-19-fast-token-extract-v2";
 const MAX_PARALLEL_PROXY_TESTS = Math.max(1, parseInt(process.env.MAX_PARALLEL_PROXY_TESTS || "1", 10));
 
 const WORKER_CAPABILITIES = [
@@ -129,6 +129,15 @@ function parseProxy(proxyUrl) {
 }
 
 function loginOptionsForJob(job) {
+  if (job.type === "messenger_extract_token") {
+    return {
+      preferExistingSession: true,
+      initialUrl: "https://business.facebook.com/latest/home",
+      initialTimeoutMs: 18_000,
+      initialSettleMs: 300,
+      acceptCookieOnlyAfterCookieCheck: true,
+    };
+  }
   // Verify the base facebook.com session only. We deliberately do NOT set a
   // verifyUrl pointing at business.facebook.com/latest/* for Messenger jobs:
   // Business Suite has its own shell/loading behaviour and a slow render was
