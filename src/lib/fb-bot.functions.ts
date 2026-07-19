@@ -1431,7 +1431,15 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
 
     // 1) Read the account row. Never throw — translate to Arabic message.
-    let acc: { id: string; auth_method: string; encrypted_payload: string; status?: string; last_error?: string | null } | null = null;
+    let acc: {
+      id: string;
+      auth_method: string;
+      encrypted_payload: string;
+      status?: string;
+      last_error?: string | null;
+      last_check_at?: string | null;
+      updated_at?: string | null;
+    } | null = null;
     try {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { data: row, error } = await supabaseAdmin
@@ -1453,7 +1461,15 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
           "هذا الحساب لم يعد موجودًا. حدِّث الصفحة ثم أعد إضافته إن لزم.",
         );
       }
-      acc = row as { id: string; auth_method: string; encrypted_payload: string; status?: string; last_error?: string | null };
+      acc = row as {
+        id: string;
+        auth_method: string;
+        encrypted_payload: string;
+        status?: string;
+        last_error?: string | null;
+        last_check_at?: string | null;
+        updated_at?: string | null;
+      };
     } catch (e) {
       console.error("[precheckBotAccount] db threw:", e);
       return precheckFailure(
