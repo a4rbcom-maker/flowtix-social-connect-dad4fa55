@@ -237,9 +237,9 @@ function InsightsPage() {
     try {
       const res = await fetchAudienceFn({ data: { pageId: id, postLimit: 25 } });
       setAudience(res);
-      if (!res.ok) toast.error(res.error?.message ?? "Failed to load audience");
+      if (!res.ok) toast.error(humanizeFbError(res.error?.message));
     } catch (e) {
-      toast.error(String(e));
+      toast.error(humanizeFbError(e));
     } finally {
       setLoadingAudience(false);
     }
