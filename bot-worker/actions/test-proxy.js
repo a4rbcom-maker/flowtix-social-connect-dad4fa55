@@ -74,18 +74,24 @@ async function runTestProxy({ page, job, report }) {
   const proxyEnabled = Boolean(job.payload?.proxyUrl || job.account?.proxyUrl);
   const targets = [
     { url: "https://api.ipify.org?format=json", parse: (t) => { try { return JSON.parse(t).ip; } catch { return null; } } },
-    { url: "https://ifconfig.co/ip", parse: (t) => (t || "").trim() },
     { url: "https://ipv4.icanhazip.com/", parse: (t) => (t || "").trim() },
+    { url: "https://ifconfig.co/ip", parse: (t) => (t || "").trim() },
   ];
 
   await report({ status: "running", progress: 20 });
 
+  // Fail-fast: proxy problems (unreachable/auth/DNS/refused) are terminal —
+  // no point in retrying against another target. Only retry on transient
+  // timeouts / empty responses.
+  const TERMINAL_PATTERNS = /err_proxy_connection_failed|err_tunnel_connection_failed|err_proxy_auth|407|proxy authentication|err_name_not_resolved|getaddrinfo|enotfound|err_connection_refused|econnrefused|err_cert|ssl|certificate/i;
+
   let ip = null;
   let lastRaw = null;
   let lastStatus = null;
+  let terminal = false;
   for (const target of targets) {
     try {
-      const resp = await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: 25_000 });
+      const resp = await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: 8_000 });
       const status = resp ? resp.status() : 0;
       lastStatus = status;
       const body = await page.evaluate(() => document.body ? document.body.innerText : "");
@@ -101,6 +107,7 @@ async function runTestProxy({ page, job, report }) {
       }
     } catch (e) {
       lastRaw = String(e && e.message ? e.message : e);
+      if (TERMINAL_PATTERNS.test(lastRaw)) { terminal = true; break; }
     }
     await report({ progress: 55 });
   }
