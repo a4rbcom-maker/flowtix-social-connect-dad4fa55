@@ -896,12 +896,15 @@ export type Database = {
           error_message: string | null
           id: string
           job_type: Database["public"]["Enums"]["fb_job_type"]
+          last_heartbeat_at: string | null
+          last_progress_at: string | null
           payload: Json
           processed_items: number
           progress: number
           scheduled_at: string
           started_at: string | null
           status: Database["public"]["Enums"]["fb_job_status"]
+          stuck_reason: string | null
           total_items: number
           updated_at: string
           user_id: string
@@ -914,12 +917,15 @@ export type Database = {
           error_message?: string | null
           id?: string
           job_type: Database["public"]["Enums"]["fb_job_type"]
+          last_heartbeat_at?: string | null
+          last_progress_at?: string | null
           payload?: Json
           processed_items?: number
           progress?: number
           scheduled_at?: string
           started_at?: string | null
           status?: Database["public"]["Enums"]["fb_job_status"]
+          stuck_reason?: string | null
           total_items?: number
           updated_at?: string
           user_id: string
@@ -932,12 +938,15 @@ export type Database = {
           error_message?: string | null
           id?: string
           job_type?: Database["public"]["Enums"]["fb_job_type"]
+          last_heartbeat_at?: string | null
+          last_progress_at?: string | null
           payload?: Json
           processed_items?: number
           progress?: number
           scheduled_at?: string
           started_at?: string | null
           status?: Database["public"]["Enums"]["fb_job_status"]
+          stuck_reason?: string | null
           total_items?: number
           updated_at?: string
           user_id?: string
@@ -2360,6 +2369,14 @@ export type Database = {
         Args: { _hits: number; _lookups: number; _user_id: string }
         Returns: undefined
       }
+      fb_job_heartbeat: { Args: { _job_id: string }; Returns: undefined }
+      fb_job_timeout: {
+        Args: { _type: Database["public"]["Enums"]["fb_job_type"] }
+        Returns: {
+          pickup_secs: number
+          progress_secs: number
+        }[]
+      }
       fb_people_fuzzy_name: {
         Args: { min_sim?: number; q: string }
         Returns: {
@@ -2387,6 +2404,14 @@ export type Database = {
       fb_reap_stuck_messenger_jobs: {
         Args: { _max_minutes?: number; _user_id: string }
         Returns: number
+      }
+      fb_retry_job: { Args: { _job_id: string }; Returns: string }
+      fb_watchdog_sweep: {
+        Args: { _max_batch?: number }
+        Returns: {
+          reaped_pending: number
+          reaped_running: number
+        }[]
       }
       has_role: {
         Args: {
