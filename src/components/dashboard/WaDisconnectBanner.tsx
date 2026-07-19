@@ -11,21 +11,19 @@ interface Props {
 }
 
 export function WaDisconnectBanner({ lang }: Props) {
-  const { disconnectedCount, lastReason } = useWaDisconnectAlerts(lang);
+  const { disconnectedCount } = useWaDisconnectAlerts(lang);
   if (disconnectedCount <= 0) return null;
 
   const isAr = lang === "ar";
   const title = isAr
-    ? disconnectedCount === 1
-      ? "جلسة واتساب غير متصلة"
-      : `${disconnectedCount} جلسات واتساب غير متصلة`
+    ? "جلسة واتساب مفصولة"
     : disconnectedCount === 1
       ? "WhatsApp session disconnected"
       : `${disconnectedCount} WhatsApp sessions disconnected`;
   const hint = isAr
-    ? "أعد الاقتران الآن قبل تشغيل أي حملة جماعية — الرسائل ستفشل بدون جلسة نشطة."
-    : "Reconnect now before running any bulk campaign — messages will fail without an active session.";
-  const cta = isAr ? "فتح صفحة الحسابات" : "Open accounts";
+    ? "برجاء إعادة ربط الجلسة."
+    : "Reconnect now before running any bulk campaign.";
+  const cta = isAr ? "إعادة الربط" : "Open accounts";
 
   return (
     <div
@@ -40,13 +38,9 @@ export function WaDisconnectBanner({ lang }: Props) {
         <div className="min-w-0">
           <p className="text-sm font-semibold text-destructive">{title}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
-          {lastReason ? (
-            <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground/80" dir="ltr">
-              {lastReason}
-            </p>
-          ) : null}
         </div>
       </div>
+
       <Link
         to="/dashboard/whatsapp/accounts"
         className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg bg-destructive px-3 text-xs font-semibold text-destructive-foreground shadow-sm transition hover:opacity-90"
