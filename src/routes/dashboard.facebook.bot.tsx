@@ -761,7 +761,18 @@ function BotAccountsPage() {
         }
       }
 
-      setAccounts(sanitizeAccounts(accountsResult));
+      const loaded = sanitizeAccounts(accountsResult);
+      setAccounts(loaded);
+      // Kick off silent proxy-test prefetch for each account so the result is
+      // cached before the user opens the dialog or starts an extraction.
+      // Sequential + staggered to avoid piling jobs on the worker.
+      void (async () => {
+        for (const a of loaded) {
+          if (!a?.id) continue;
+          await prefetchProxyTestSilent(a.id);
+          await new Promise((r) => setTimeout(r, 400));
+        }
+      })();
     } catch (e) {
       if (isAuthErr(e)) {
         handleAuthExpired();
@@ -952,6 +963,87 @@ function BotAccountsPage() {
       toast.error(describeServerActionError(e, lang === "ar" ? "ar" : "en"));
     } finally {
       setSavingProxy(false);
+    }
+  };
+
+  // Silent background prefetch: warms the proxy-test cache so the result is
+  // ready before the user opens the dialog or starts an extraction. No toasts,
+  // no dialog state — only writes to the shared session cache.
+  const prefetchProxyTestSilent = async (accountId: string) => {
+    if (getCachedProxyTest(accountId)) return;
+    const breakerKey = `proxy-test:${accountId}`;
+    if (!canAttemptProxyTest(breakerKey).allow) return;
+    try {
+      const created = await createTestProxyFn({ data: { accountId } });
+      const jobId = (created as { id: string }).id;
+      const startedAt = Date.now();
+      const timeoutMs = 18_000;
+      let delay = 400;
+      while (Date.now() - startedAt < timeoutMs) {
+        await new Promise((r) => setTimeout(r, delay));
+        delay = Math.min(900, delay + 120);
+        try {
+          const payload = (await getTestProxyFn({ data: { jobId } })) as {
+            job: { status: string; error_message: string | null };
+            result: { status: string; error: string | null; data: unknown } | null;
+          };
+          const rd = (payload.result?.data ?? null) as {
+            ip?: string | null;
+            proxyEnabled?: boolean;
+            elapsedMs?: number | null;
+            reasonCode?: string | null;
+            reasonAr?: string | null;
+            reasonEn?: string | null;
+            rawError?: string | null;
+          } | null;
+          if (payload.job.status === "completed") {
+            setCachedProxyTest(accountId, {
+              accountId,
+              accountName: "",
+              jobId,
+              status: "completed",
+              ip: rd?.ip ?? null,
+              proxyEnabled: Boolean(rd?.proxyEnabled),
+              elapsedMs: rd?.elapsedMs ?? null,
+              error: null,
+              reasonCode: null,
+              reasonAr: null,
+              reasonEn: null,
+              rawError: null,
+            });
+            recordProxyTestSuccess(breakerKey);
+            return;
+          }
+          if (payload.job.status === "failed") {
+            const reasonAr = rd?.reasonAr ?? payload.job.error_message ?? "تعذّر تشغيل اختبار البروكسي";
+            const reasonEn = rd?.reasonEn ?? payload.job.error_message ?? "Could not run proxy test";
+            setCachedProxyTest(
+              accountId,
+              {
+                accountId,
+                accountName: "",
+                jobId,
+                status: "failed",
+                ip: null,
+                proxyEnabled: Boolean(rd?.proxyEnabled),
+                elapsedMs: rd?.elapsedMs ?? null,
+                error: payload.job.error_message || "فشل الاختبار",
+                reasonCode: rd?.reasonCode ?? "worker_unavailable",
+                reasonAr,
+                reasonEn,
+                rawError: rd?.rawError ?? null,
+              },
+              30_000,
+            );
+            recordProxyTestFailure(breakerKey, reasonAr);
+            return;
+          }
+        } catch {
+          // ignore transient poll errors in background prefetch
+        }
+      }
+    } catch {
+      // silent — the user can still trigger a manual test
     }
   };
 
