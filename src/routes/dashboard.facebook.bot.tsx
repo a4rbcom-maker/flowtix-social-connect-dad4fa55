@@ -54,6 +54,9 @@ import {
   getCachedProxyTest,
   setCachedProxyTest,
   invalidateProxyTest,
+  normalizeProxyPhases,
+  phaseLabel,
+  type ProxyPhase,
 } from "@/lib/proxy-test-cache";
 import {
   addBotAccount,
