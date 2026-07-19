@@ -91,7 +91,7 @@ async function runTestProxy({ page, job, report }) {
   let terminal = false;
   for (const target of targets) {
     try {
-      const resp = await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: 8_000 });
+      const resp = await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: 5_000 });
       const status = resp ? resp.status() : 0;
       lastStatus = status;
       const body = await page.evaluate(() => document.body ? document.body.innerText : "");
