@@ -940,7 +940,17 @@ function BotAccountsPage() {
             };
             const jobStatus = payload.job.status;
             const rd = (payload.result?.data ?? null) as
-              | { kind?: string; ok?: boolean; ip?: string | null; proxyEnabled?: boolean; elapsedMs?: number | null }
+              | {
+                  kind?: string;
+                  ok?: boolean;
+                  ip?: string | null;
+                  proxyEnabled?: boolean;
+                  elapsedMs?: number | null;
+                  reasonCode?: string | null;
+                  reasonAr?: string | null;
+                  reasonEn?: string | null;
+                  rawError?: string | null;
+                }
               | null;
             if (jobStatus === "completed") {
               setProxyTest({
@@ -952,6 +962,10 @@ function BotAccountsPage() {
                 proxyEnabled: Boolean(rd?.proxyEnabled),
                 elapsedMs: rd?.elapsedMs ?? null,
                 error: null,
+                reasonCode: null,
+                reasonAr: null,
+                reasonEn: null,
+                rawError: null,
               });
               toast.success(rd?.proxyEnabled ? `IP البروكسي: ${rd?.ip ?? "?"}` : `IP السيرفر: ${rd?.ip ?? "?"}`);
               return;
@@ -966,8 +980,12 @@ function BotAccountsPage() {
                 proxyEnabled: Boolean(rd?.proxyEnabled),
                 elapsedMs: rd?.elapsedMs ?? null,
                 error: payload.job.error_message || payload.result?.error || "فشل الاختبار",
+                reasonCode: rd?.reasonCode ?? null,
+                reasonAr: rd?.reasonAr ?? null,
+                reasonEn: rd?.reasonEn ?? null,
+                rawError: rd?.rawError ?? null,
               });
-              toast.error(payload.job.error_message || "فشل اختبار البروكسي");
+              toast.error(rd?.reasonAr || payload.job.error_message || "فشل اختبار البروكسي");
               return;
             }
           } catch (e) {
