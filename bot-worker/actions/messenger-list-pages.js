@@ -178,18 +178,21 @@ async function runMessengerListPages({ page, job, report }) {
   const needsResolve = [];
   for (const c of directs) {
     const name = cleanPageName(c.name);
-    if (isTrustedName(name)) {
+    // Trust the DOM name ONLY when: (a) it isn't an ad label, (b) the anchor
+    // wasn't an ads-manager CTA, and (c) it doesn't carry a "(+NN)" badge.
+    const rawHasBadge = /\(\+?\d+\)/.test(String(c.name || ""));
+    if (isTrustedName(name) && !c.isAdHref && !rawHasBadge) {
       pagesMap.set(c.idOrSlug, { id: c.idOrSlug, name, avatar_url: c.avatar_url || null });
     } else {
-      // Direct numeric ID but the DOM name is an ad button / "profile picture
-      // of …" placeholder — visit the page URL to grab the real og:title.
+      // Direct numeric ID but the DOM name is an ad CTA / badge / placeholder
+      // — visit facebook.com/{id} to grab the real og:title.
       needsResolve.push(c);
     }
   }
   await report({ progress: 30 });
 
-  // Cap navigation-based resolution so the job stays under a minute.
-  const resolveCap = 20;
+  // Cap navigation-based resolution so the job stays under ~2 minutes.
+  const resolveCap = 60;
   const candidates = needsResolve.concat(slugs).slice(0, resolveCap);
   let checked = 0;
   for (const candidate of candidates) {
