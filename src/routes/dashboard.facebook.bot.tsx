@@ -1000,6 +1000,8 @@ function BotAccountsPage() {
             reasonAr?: string | null;
             reasonEn?: string | null;
             rawError?: string | null;
+            phases?: Partial<ProxyPhase>[];
+            logs?: string[];
           } | null;
           if (payload.job.status === "completed") {
             setCachedProxyTest(accountId, {
@@ -1015,6 +1017,11 @@ function BotAccountsPage() {
               reasonAr: null,
               reasonEn: null,
               rawError: null,
+              phases: normalizeProxyPhases(rd?.phases, {
+                ok: true,
+                elapsedMs: rd?.elapsedMs ?? null,
+              }),
+              logs: rd?.logs ?? [],
             });
             recordProxyTestSuccess(breakerKey);
             return;
@@ -1037,6 +1044,14 @@ function BotAccountsPage() {
                 reasonAr,
                 reasonEn,
                 rawError: rd?.rawError ?? null,
+                phases: normalizeProxyPhases(rd?.phases, {
+                  ok: false,
+                  elapsedMs: rd?.elapsedMs ?? null,
+                  reasonCode: rd?.reasonCode ?? null,
+                  reasonAr,
+                  reasonEn,
+                }),
+                logs: rd?.logs ?? [],
               },
               30_000,
             );
