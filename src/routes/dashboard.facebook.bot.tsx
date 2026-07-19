@@ -44,6 +44,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { isAppAuthError, isExternalServiceSessionError } from "@/lib/reauth-classifier";
+import { adaptivePoll } from "@/lib/adaptive-poll";
 import {
   canAttempt as canAttemptProxyTest,
   recordSuccess as recordProxyTestSuccess,
