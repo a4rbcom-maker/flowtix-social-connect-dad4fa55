@@ -102,20 +102,28 @@ function classifyFbError(
   });
 }
 
-export async function fbGet(path: string, token: string) {
+export async function fbGet(path: string, token: string, opts?: { timeoutMs?: number }) {
   const url = `${GRAPH_API}${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(token)}`;
+  const timeoutMs = opts?.timeoutMs ?? 25_000;
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), timeoutMs);
   let res: Response;
   try {
-    res = await fetch(url);
+    res = await fetch(url, { signal: ctrl.signal });
   } catch (e) {
+    const aborted = (e as { name?: string })?.name === "AbortError";
     throw new FacebookApiError({
-      message: e instanceof Error ? e.message : "Network error contacting Facebook",
+      message: aborted
+        ? `انتهت مهلة الاتصال بـ Facebook (${Math.round(timeoutMs / 1000)} ثانية). حاول مرة أخرى.`
+        : e instanceof Error ? e.message : "Network error contacting Facebook",
       code: null,
       subcode: null,
       type: "network",
       missingPermission: null,
       httpStatus: 0,
     });
+  } finally {
+    clearTimeout(to);
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
