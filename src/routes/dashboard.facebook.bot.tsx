@@ -950,6 +950,31 @@ function BotAccountsPage() {
   };
 
   const handleTestProxy = async (accountId: string, accountName: string) => {
+    // Circuit Breaker: after repeated failures for this account, block new
+    // attempts for a cooldown window instead of waiting on another 18s poll.
+    const breakerKey = `proxy-test:${accountId}`;
+    const decision = canAttemptProxyTest(breakerKey);
+    if (!decision.allow) {
+      const wait = describeProxyCooldown(decision.retryAfterMs, lang === "ar" ? "ar" : "en");
+      const reasonAr = `تم إيقاف اختبار البروكسي مؤقتًا بعد ${decision.status.failures} محاولات فاشلة متتالية. جرّب مرة أخرى بعد ${wait}.`;
+      const reasonEn = `Proxy test paused after ${decision.status.failures} consecutive failures. Try again in ${wait}.`;
+      setProxyTest({
+        accountId,
+        accountName,
+        jobId: null,
+        status: "failed",
+        ip: null,
+        proxyEnabled: false,
+        elapsedMs: null,
+        error: lang === "ar" ? reasonAr : reasonEn,
+        reasonCode: "circuit_open",
+        reasonAr,
+        reasonEn,
+        rawError: decision.status.lastReason ?? null,
+      });
+      toast.error(lang === "ar" ? reasonAr : reasonEn);
+      return;
+    }
     setProxyTestingId(accountId);
     setProxyTest({
       accountId,
