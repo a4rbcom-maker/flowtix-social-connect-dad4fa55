@@ -331,7 +331,7 @@ async function runExtractPageAudience({ page, job, report }) {
         let commentersAdded = 0;
         try {
           await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
-          await sleep(3500);
+          await waitForContent(page, ['[role="article"]', 'div[aria-label*="Comment"]', 'div[aria-label*="تعليق"]'], 3000, 700);
 
           if (collected.size < cap) {
             const reactors = await harvestReactors(page, cap - collected.size);
