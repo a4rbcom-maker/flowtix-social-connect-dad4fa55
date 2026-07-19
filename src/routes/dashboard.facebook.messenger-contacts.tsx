@@ -672,6 +672,51 @@ function MessengerContactsPage() {
         </div>
       </header>
 
+      {/* Path chooser — clarifies the two independent extraction paths */}
+      <Card className="border-primary/30 bg-primary/5 p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-sm font-semibold">
+            {lang === "ar" ? "عندك مسارين مستقلين — اختر واحد فقط" : "Two independent paths — pick one"}
+          </span>
+        </div>
+        <div className="grid gap-3 text-xs text-muted-foreground md:grid-cols-2">
+          <div className="rounded-lg border border-primary/40 bg-background p-3">
+            <div className="mb-1 flex items-center gap-2">
+              <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
+                {lang === "ar" ? "موصى به" : "Recommended"}
+              </span>
+              <span className="font-semibold text-foreground">
+                {lang === "ar" ? "مسار Graph API الرسمي ⚡" : "Official Graph API ⚡"}
+              </span>
+            </div>
+            <p>
+              {lang === "ar"
+                ? "أسرع وأكثر استقرارًا. ابدأ من هنا دائمًا. يحتاج توكن Meta بصلاحية pages_messaging."
+                : "Fastest and most stable. Start here. Requires a Meta token with pages_messaging."}
+            </p>
+          </div>
+          <div className="rounded-lg border border-amber-500/40 bg-background p-3">
+            <div className="mb-1 flex items-center gap-2">
+              <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                {lang === "ar" ? "بديل احتياطي" : "Fallback"}
+              </span>
+              <span className="font-semibold text-foreground">
+                {lang === "ar" ? "مسار Cookies 🍪" : "Cookies path 🍪"}
+              </span>
+            </div>
+            <p>
+              {lang === "ar"
+                ? "استخدمه فقط لو المسار الرسمي غير متاح. يعمل عبر جلسة متصفح ومعرّض لانتهاء الجلسة."
+                : "Use only if the official path is unavailable. Works via a browser session and may expire."}
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      {/* Path 1: Graph API pipeline (recommended, stable) */}
+      <MessengerGraphPanel />
+
+      {/* Path 2: Cookies fallback */}
       <CookiesModePanel
         lang={lang}
         onImportedContacts={(p) => {
@@ -685,8 +730,6 @@ function MessengerContactsPage() {
         }}
       />
 
-      {/* Graph API pipeline (new stable path) */}
-      <MessengerGraphPanel />
 
 
 
