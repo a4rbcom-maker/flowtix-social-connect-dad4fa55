@@ -475,6 +475,8 @@ function BotAccountsPage() {
     reasonAr: string | null;
     reasonEn: string | null;
     rawError: string | null;
+    phases?: import("@/lib/proxy-test-cache").ProxyPhase[];
+    logs?: string[];
   } | null>(null);
   const [proxyTestingId, setProxyTestingId] = useState<string | null>(null);
   const [proxyEdit, setProxyEdit] = useState<{ id: string; name: string; proxyUrl: string } | null>(null);
