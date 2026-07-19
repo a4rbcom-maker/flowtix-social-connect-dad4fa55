@@ -17,6 +17,18 @@
 function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Smart-wait: race a real content signal against a max ceiling. Cuts the "blind
+// 4s sleep after goto" pattern — pages that render in 800ms don't waste 3.2s.
+async function waitForContent(page, selectors, maxMs = 3500, minMs = 700) {
+  const start = Date.now();
+  await sleep(minMs);
+  const remaining = Math.max(0, maxMs - (Date.now() - start));
+  if (remaining <= 0) return;
+  const sel = Array.isArray(selectors) ? selectors.join(",") : selectors;
+  await page.waitForSelector(sel, { timeout: remaining }).catch(() => {});
+}
+
+
 const FB_SYSTEM_SLUGS = new Set([
   "pages","groups","events","watch","marketplace","profile.php","stories","reel","reels",
   "business","help","policies","terms","privacy","ads","adsmanager","careers","about",
@@ -69,7 +81,9 @@ function parseProfileHref(href) {
 
 // ---------- generic scroller that harvests profile links inside a scope ----------
 async function harvestFromScope(page, scopeSelector, cap, opts = {}) {
-  const { maxScrolls = 60, idleLimit = 4 } = opts;
+  // Tightened defaults: FB renders new batches in <1s; long waits just burn time
+  // without collecting anything new. We compensate by exiting early on idle.
+  const { maxScrolls = 30, idleLimit = 2 } = opts;
   const found = new Map();
   let idle = 0;
   for (let i = 0; i < maxScrolls && found.size < cap && idle < idleLimit; i++) {
@@ -111,15 +125,17 @@ async function harvestFromScope(page, scopeSelector, cap, opts = {}) {
       if (el) el.scrollTop = el.scrollHeight;
       else window.scrollBy(0, 1800);
     }, scopeSelector);
-    await sleep(rand(1500, 2800));
+    // Shorter jitter — enough for lazy-loaded batches, half of the old 1.5-2.8s.
+    await sleep(rand(700, 1300));
   }
   return Array.from(found.values());
 }
 
+
 // ---------- collect recent post permalinks from the page timeline ----------
 async function collectRecentPostUrls(page, pageId, wantPosts) {
   const urls = new Set();
-  for (let i = 0; i < 25 && urls.size < wantPosts; i++) {
+  for (let i = 0; i < 12 && urls.size < wantPosts; i++) {
     const batch = await page.evaluate(() => {
       const out = [];
       const links = Array.from(document.querySelectorAll('a[href*="/posts/"], a[href*="/videos/"], a[href*="permalink"], a[href*="story_fbid"]'));
@@ -131,6 +147,7 @@ async function collectRecentPostUrls(page, pageId, wantPosts) {
       }
       return out;
     });
+    const before = urls.size;
     for (const h of batch) {
       const full = h.startsWith("http") ? h.split("?")[0] : `https://www.facebook.com${h.split("?")[0]}`;
       // filter same-page id references + drop translation/like href variants
@@ -138,8 +155,10 @@ async function collectRecentPostUrls(page, pageId, wantPosts) {
       urls.add(full);
       if (urls.size >= wantPosts) break;
     }
+    // Early-exit: 2 consecutive scrolls without new posts → timeline exhausted.
+    if (urls.size === before && i >= 2) break;
     await page.evaluate(() => window.scrollBy(0, 2400));
-    await sleep(rand(1800, 3000));
+    await sleep(rand(900, 1500));
   }
   return Array.from(urls).slice(0, wantPosts);
 }
@@ -159,22 +178,23 @@ async function harvestReactors(page, cap) {
     return false;
   }).catch(() => false);
   if (!opened) return [];
-  await sleep(2500);
+  await sleep(1200);
   // dialog element
   const scope = 'div[role="dialog"]';
   const exists = await page.$(scope);
   if (!exists) return [];
-  const people = await harvestFromScope(page, scope, cap, { maxScrolls: 40, idleLimit: 5 });
+  const people = await harvestFromScope(page, scope, cap, { maxScrolls: 25, idleLimit: 3 });
   // close dialog
   await page.keyboard.press("Escape").catch(() => {});
-  await sleep(800);
+  await sleep(400);
   return people;
 }
 
 // ---------- commenters (expand all comments then scrape article) ----------
 async function harvestCommenters(page, cap) {
   // expand nested & "view more comments" repeatedly
-  for (let i = 0; i < 40; i++) {
+  let noClickStreak = 0;
+  for (let i = 0; i < 18; i++) {
     const clicked = await page.evaluate(() => {
       const btns = Array.from(document.querySelectorAll('[role="button"], span'));
       const target = btns.find((b) => /view more comments|view previous comments|view \d+ replies|more replies|عرض المزيد من التعليقات|عرض تعليقات سابقة|عرض \d+ رد|عرض ردود أخرى/i.test(b.textContent || ""));
@@ -183,10 +203,13 @@ async function harvestCommenters(page, cap) {
     });
     if (!clicked) {
       await page.evaluate(() => window.scrollBy(0, 1400));
+      noClickStreak++;
+    } else {
+      noClickStreak = 0;
     }
-    await sleep(rand(1200, 2200));
-    // early-exit when we've likely exhausted
-    if (!clicked && i > 8) break;
+    await sleep(rand(700, 1300));
+    // exit sooner: 3 consecutive no-click iterations = comments exhausted
+    if (noClickStreak >= 3) break;
   }
   // scrape whole document — commenter links live inside article blocks
   return harvestFromScope(page, null, cap, { maxScrolls: 3, idleLimit: 2 });
@@ -260,7 +283,7 @@ async function runExtractPageAudience({ page, job, report }) {
     const beforeCount = collected.size;
     try {
       await page.goto(t.url, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      await sleep(4000);
+      await waitForContent(page, ['a[role="link"]', '[role="main"]'], 3500, 800);
       const people = await harvestFromScope(page, null, cap - collected.size, { maxScrolls: 30, idleLimit: 4 });
       for (const p of people) await emit(p, t.src);
       await emitLog({
@@ -285,7 +308,7 @@ async function runExtractPageAudience({ page, job, report }) {
   if (doEngagers && collected.size < cap) {
     try {
       await page.goto(`https://www.facebook.com/${pageId}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      await sleep(4000);
+      await waitForContent(page, ['a[href*="/posts/"]', 'a[href*="story_fbid"]', '[role="feed"]'], 3500, 800);
 
       const wantPosts = Math.min(Math.max(5, Number(maxPosts) || 20), 40);
       const postUrls = await collectRecentPostUrls(page, pageId, wantPosts);
@@ -308,7 +331,7 @@ async function runExtractPageAudience({ page, job, report }) {
         let commentersAdded = 0;
         try {
           await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
-          await sleep(3500);
+          await waitForContent(page, ['[role="article"]', 'div[aria-label*="Comment"]', 'div[aria-label*="تعليق"]'], 3000, 700);
 
           if (collected.size < cap) {
             const reactors = await harvestReactors(page, cap - collected.size);

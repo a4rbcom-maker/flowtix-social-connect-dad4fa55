@@ -1,22 +1,32 @@
 async function runExtractCommenters({ page, job, report }) {
   const { postUrl } = job.payload;
   await page.goto(postUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
-  await new Promise(r => setTimeout(r, 5000));
+  // Wait for the article shell, not a blind 5s. Falls through on timeout so
+  // slow pages don't stall forever.
+  await new Promise((r) => setTimeout(r, 600));
+  await page.waitForSelector('div[role="article"]', { timeout: 3000 }).catch(() => {});
 
-  // Click "View more comments" repeatedly + scroll
-  for (let i = 0; i < 30; i++) {
+  // Click "View more comments" repeatedly + scroll. Tightened: exit as soon as
+  // 3 iterations in a row find nothing new to click AND nothing new to scroll to.
+  let noClickStreak = 0;
+  for (let i = 0; i < 18; i++) {
     const clicked = await page.evaluate(() => {
       const btns = Array.from(document.querySelectorAll('[role="button"]'));
       const target = btns.find((b) => /more comments|previous comments|عرض المزيد|التعليقات السابقة/i.test(b.textContent || ""));
       if (target) { target.click(); return true; }
       return false;
     });
-    await new Promise(r => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, clicked ? 900 : 500));
     if (!clicked) {
       await page.evaluate(() => window.scrollBy(0, 1500));
-      await new Promise(r => setTimeout(r, 1500));
+      await new Promise((r) => setTimeout(r, 700));
+      noClickStreak++;
+      if (noClickStreak >= 3) break;
+    } else {
+      noClickStreak = 0;
     }
   }
+
 
   const commenters = await page.evaluate(() => {
     const out = new Map();
