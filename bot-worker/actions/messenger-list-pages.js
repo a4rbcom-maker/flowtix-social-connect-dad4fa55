@@ -159,35 +159,37 @@ async function runMessengerListPages({ page, job, report }) {
   }
 
   const pagesMap = new Map();
+  const needsResolve = [];
   for (const c of directs) {
     const name = cleanPageName(c.name);
-    if (!name || name.length < 2) continue;
-    if (isAdLabel(name)) continue;
-    pagesMap.set(c.idOrSlug, { id: c.idOrSlug, name, avatar_url: c.avatar_url || null });
+    if (isTrustedName(name)) {
+      pagesMap.set(c.idOrSlug, { id: c.idOrSlug, name, avatar_url: c.avatar_url || null });
+    } else {
+      // Direct numeric ID but the DOM name is an ad button / "profile picture
+      // of …" placeholder — visit the page URL to grab the real og:title.
+      needsResolve.push(c);
+    }
   }
-  await report({ progress: 40 });
+  await report({ progress: 30 });
 
-  // Cap slug resolution at 15 candidates to keep the job short.
-  const slugCap = 15;
-  const candidates = slugs.slice(0, slugCap);
+  // Cap navigation-based resolution so the job stays under a minute.
+  const resolveCap = 20;
+  const candidates = needsResolve.concat(slugs).slice(0, resolveCap);
   let checked = 0;
   for (const candidate of candidates) {
     checked += 1;
-    const numericId = await resolveNumericPageId(page, candidate);
-    await report({ progress: Math.min(90, 40 + Math.round((checked / Math.max(candidates.length, 1)) * 50)) });
-    if (!numericId) continue;
-    const name = cleanPageName(candidate.name);
-    if (!name || name.length < 2) continue;
-    if (isAdLabel(name)) continue;
-    if (!pagesMap.has(numericId)) {
-      pagesMap.set(numericId, { id: numericId, name, avatar_url: candidate.avatar_url || null });
+    const meta = await resolvePageMeta(page, candidate);
+    await report({ progress: Math.min(90, 30 + Math.round((checked / Math.max(candidates.length, 1)) * 60)) });
+    if (!meta?.id || !isTrustedName(meta.name)) continue;
+    if (!pagesMap.has(meta.id)) {
+      pagesMap.set(meta.id, { id: meta.id, name: meta.name, avatar_url: meta.avatar || candidate.avatar_url || null });
     }
   }
   const pages = Array.from(pagesMap.values());
 
 
   if (pages.length === 0) {
-    await report({ status: "failed", errorMessage: "لم يتم العثور على صفحات مدارة بمعرّف رقمي صالح. تأكد أن الحساب مسؤول عن الصفحة وأن صفحة Facebook نفسها تفتح بدون Checkpoint." });
+    await report({ status: "failed", errorMessage: "لم يتم العثور على صفحات مدارة باسم صالح. تأكد أن الحساب مسؤول عن الصفحة وأن صفحة Facebook تفتح بدون Checkpoint." });
     return;
   }
   let done = 0;
