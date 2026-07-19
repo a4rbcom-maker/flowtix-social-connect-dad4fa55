@@ -2384,6 +2384,10 @@ export type Database = {
         }[]
       }
       fb_people_post_index: { Args: never; Returns: Json }
+      fb_reap_stuck_messenger_jobs: {
+        Args: { _max_minutes?: number; _user_id: string }
+        Returns: number
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
