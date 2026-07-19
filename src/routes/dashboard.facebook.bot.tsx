@@ -20,6 +20,7 @@ import {
   CalendarClock,
   Lock,
   Globe,
+  Pencil,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/lib/auth";
@@ -52,6 +53,7 @@ import {
   createListMyGroupsJob,
   createTestProxyJob,
   getTestProxyJob,
+  updateBotAccountProxy,
 } from "@/lib/fb-bot.functions";
 
 // Per-route fallback: surfaces a friendly Arabic card instead of letting any
@@ -421,6 +423,7 @@ function BotAccountsPage() {
   const listAccountsFn = useServerFn(listBotAccounts);
   const addAccountFn = useServerFn(addBotAccount);
   const deleteAccountFn = useServerFn(deleteBotAccount);
+  const updateProxyFn = useServerFn(updateBotAccountProxy);
   const precheckFn = useServerFn(precheckBotAccount);
   const testAccountFn = useServerFn(testBotAccount);
   const navigate = useNavigate();
@@ -463,6 +466,8 @@ function BotAccountsPage() {
     rawError: string | null;
   } | null>(null);
   const [proxyTestingId, setProxyTestingId] = useState<string | null>(null);
+  const [proxyEdit, setProxyEdit] = useState<{ id: string; name: string; proxyUrl: string } | null>(null);
+  const [savingProxy, setSavingProxy] = useState(false);
   const [reloginFor, setReloginFor] = useState<{ id: string; name: string } | null>(null);
   const [checkpointFor, setCheckpointFor] = useState<{
     id: string;
@@ -499,6 +504,11 @@ function BotAccountsPage() {
           proxyLabel: "Proxy ثابت اختياري",
           proxyPh: "مثال: http://user:pass@host:port",
           proxyHelp: "استخدمه لو فيسبوك يرفض اختلاف مكان السيرفر عن متصفحك؛ يفضّل IP ثابت وقريب من بلد الحساب.",
+          editProxy: "تعديل البروكسي",
+          editProxyTitle: "تعديل بروكسي الحساب",
+          proxyEditHint: "ضع البروكسي الجديد هنا، أو اترك الحقل فارغًا لحذف البروكسي من الحساب.",
+          proxySaved: "تم حفظ البروكسي",
+          proxyRemoved: "تم حذف البروكسي",
           saveCookies: "حفظ حساب Cookies",
           cookiesRequired: "الصق Cookies JSON أولاً",
           none: "لا توجد حسابات بعد",
@@ -575,6 +585,11 @@ function BotAccountsPage() {
           proxyLabel: "Optional fixed proxy",
           proxyPh: "Example: http://user:pass@host:port",
           proxyHelp: "Use this when Facebook rejects server/location changes; prefer a stable IP near the account country.",
+          editProxy: "Edit proxy",
+          editProxyTitle: "Edit account proxy",
+          proxyEditHint: "Enter the new proxy here, or leave it empty to remove the proxy from this account.",
+          proxySaved: "Proxy saved",
+          proxyRemoved: "Proxy removed",
           saveCookies: "Save Cookies account",
           cookiesRequired: "Paste the Cookies JSON first",
           none: "No accounts yet",
@@ -906,6 +921,28 @@ function BotAccountsPage() {
     }
   };
 
+  const handleUpdateProxy = async () => {
+    if (!proxyEdit) return;
+    setSavingProxy(true);
+    try {
+      const raw = await updateProxyFn({ data: { id: proxyEdit.id, proxyUrl: proxyEdit.proxyUrl || null } });
+      const payload = unwrapServerPayload(raw) as { account?: Account; proxyEnabled?: boolean } | null;
+      if (payload?.account) {
+        setAccounts((prev) => prev.map((a) => (a.id === payload.account!.id ? payload.account! : a)));
+      }
+      toast.success(proxyEdit.proxyUrl.trim() ? t.proxySaved : t.proxyRemoved);
+      setProxyEdit(null);
+    } catch (e) {
+      if (isAuthErr(e)) {
+        handleAuthExpired();
+        return;
+      }
+      toast.error(describeServerActionError(e, lang === "ar" ? "ar" : "en"));
+    } finally {
+      setSavingProxy(false);
+    }
+  };
+
   const handleTestProxy = async (accountId: string, accountName: string) => {
     setProxyTestingId(accountId);
     setProxyTest({
@@ -967,7 +1004,11 @@ function BotAccountsPage() {
                 reasonEn: null,
                 rawError: null,
               });
-              toast.success(rd?.proxyEnabled ? `IP البروكسي: ${rd?.ip ?? "?"}` : `IP السيرفر: ${rd?.ip ?? "?"}`);
+              toast.success(
+                rd?.proxyEnabled
+                  ? lang === "ar" ? "البروكسي مفعّل" : "Proxy is active"
+                  : lang === "ar" ? "لا يوجد بروكسي مفعّل" : "No proxy is enabled",
+              );
               return;
             }
             if (jobStatus === "failed") {
@@ -1727,6 +1768,16 @@ function BotAccountsPage() {
                             size="sm"
                             variant="outline"
                             className="gap-1.5"
+                            onClick={() => setProxyEdit({ id: a.id, name: a.display_name, proxyUrl: "" })}
+                            title={t.editProxy}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            {t.editProxy}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5"
                             disabled={testingId === a.id}
                             onClick={() => openPrecheck(a.id, a.display_name)}
                           >
@@ -1860,8 +1911,56 @@ function BotAccountsPage() {
             </div>
           )}
           <DialogFooter>
+            {proxyTest && (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setProxyEdit({ id: proxyTest.accountId, name: proxyTest.accountName, proxyUrl: "" });
+                  setProxyTest(null);
+                }}
+              >
+                {t.editProxy}
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setProxyTest(null)}>
               {lang === "ar" ? "إغلاق" : "Close"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!proxyEdit} onOpenChange={(o) => !o && setProxyEdit(null)}>
+        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Globe className="h-5 w-5 text-primary" />
+              {t.editProxyTitle}
+            </DialogTitle>
+          </DialogHeader>
+          {proxyEdit && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                {lang === "ar" ? "الحساب:" : "Account:"} <span className="font-medium text-foreground">{proxyEdit.name}</span>
+              </p>
+              <div className="space-y-2">
+                <Label>{t.proxyLabel}</Label>
+                <Input
+                  dir="ltr"
+                  placeholder={t.proxyPh}
+                  value={proxyEdit.proxyUrl}
+                  onChange={(e) => setProxyEdit({ ...proxyEdit, proxyUrl: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">{t.proxyEditHint}</p>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setProxyEdit(null)} disabled={savingProxy}>
+              {t.cancel}
+            </Button>
+            <Button onClick={handleUpdateProxy} disabled={savingProxy} className="gap-2">
+              {savingProxy && <Loader2 className="h-4 w-4 animate-spin" />}
+              {t.save}
             </Button>
           </DialogFooter>
         </DialogContent>
