@@ -19,6 +19,7 @@ import {
   LogIn,
   CalendarClock,
   Lock,
+  Globe,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/lib/auth";
@@ -49,6 +50,8 @@ import {
   testBotAccount,
   precheckBotAccount,
   createListMyGroupsJob,
+  createTestProxyJob,
+  getTestProxyJob,
 } from "@/lib/fb-bot.functions";
 
 // Per-route fallback: surfaces a friendly Arabic card instead of letting any
@@ -443,6 +446,19 @@ function BotAccountsPage() {
   } | null>(null);
   const [listGroupsLoading, setListGroupsLoading] = useState(false);
   const listMyGroupsFn = useServerFn(createListMyGroupsJob);
+  const createTestProxyFn = useServerFn(createTestProxyJob);
+  const getTestProxyFn = useServerFn(getTestProxyJob);
+  const [proxyTest, setProxyTest] = useState<{
+    accountId: string;
+    accountName: string;
+    jobId: string | null;
+    status: "running" | "completed" | "failed";
+    ip: string | null;
+    proxyEnabled: boolean;
+    elapsedMs: number | null;
+    error: string | null;
+  } | null>(null);
+  const [proxyTestingId, setProxyTestingId] = useState<string | null>(null);
   const [reloginFor, setReloginFor] = useState<{ id: string; name: string } | null>(null);
   const [checkpointFor, setCheckpointFor] = useState<{
     id: string;
@@ -883,6 +899,100 @@ function BotAccountsPage() {
         return;
       }
       toast.error(describeServerActionError(e, lang === "ar" ? "ar" : "en"));
+    }
+  };
+
+  const handleTestProxy = async (accountId: string, accountName: string) => {
+    setProxyTestingId(accountId);
+    setProxyTest({
+      accountId,
+      accountName,
+      jobId: null,
+      status: "running",
+      ip: null,
+      proxyEnabled: false,
+      elapsedMs: null,
+      error: null,
+    });
+    try {
+      const created = await createTestProxyFn({ data: { accountId } });
+      const jobId = (created as { id: string }).id;
+      setProxyTest((prev) => (prev ? { ...prev, jobId } : prev));
+      const startedAt = Date.now();
+      const timeoutMs = 90_000;
+      // Poll until terminal state or timeout.
+      // Uses setTimeout loop so the UI stays responsive.
+      const poll = async () => {
+        while (Date.now() - startedAt < timeoutMs) {
+          await new Promise((r) => setTimeout(r, 2500));
+          try {
+            const payload = (await getTestProxyFn({ data: { jobId } })) as {
+              job: { status: string; error_message: string | null };
+              result: { status: string; error: string | null; data: unknown } | null;
+            };
+            const jobStatus = payload.job.status;
+            const rd = (payload.result?.data ?? null) as
+              | { kind?: string; ok?: boolean; ip?: string | null; proxyEnabled?: boolean; elapsedMs?: number | null }
+              | null;
+            if (jobStatus === "completed") {
+              setProxyTest({
+                accountId,
+                accountName,
+                jobId,
+                status: "completed",
+                ip: rd?.ip ?? null,
+                proxyEnabled: Boolean(rd?.proxyEnabled),
+                elapsedMs: rd?.elapsedMs ?? null,
+                error: null,
+              });
+              toast.success(rd?.proxyEnabled ? `IP البروكسي: ${rd?.ip ?? "?"}` : `IP السيرفر: ${rd?.ip ?? "?"}`);
+              return;
+            }
+            if (jobStatus === "failed") {
+              setProxyTest({
+                accountId,
+                accountName,
+                jobId,
+                status: "failed",
+                ip: null,
+                proxyEnabled: Boolean(rd?.proxyEnabled),
+                elapsedMs: rd?.elapsedMs ?? null,
+                error: payload.job.error_message || payload.result?.error || "فشل الاختبار",
+              });
+              toast.error(payload.job.error_message || "فشل اختبار البروكسي");
+              return;
+            }
+          } catch (e) {
+            console.warn("[test-proxy poll] error", e);
+          }
+        }
+        setProxyTest((prev) =>
+          prev
+            ? { ...prev, status: "failed", error: "انتهت مهلة الانتظار — تأكد أن VPS Worker شغّال." }
+            : prev,
+        );
+        toast.error("انتهت مهلة اختبار البروكسي — تأكد من تشغيل VPS Worker.");
+      };
+      await poll();
+    } catch (e) {
+      if (isAuthErr(e)) {
+        handleAuthExpired();
+        return;
+      }
+      const msg = describeServerActionError(e, lang === "ar" ? "ar" : "en");
+      setProxyTest({
+        accountId,
+        accountName,
+        jobId: null,
+        status: "failed",
+        ip: null,
+        proxyEnabled: false,
+        elapsedMs: null,
+        error: msg,
+      });
+      toast.error(msg);
+    } finally {
+      setProxyTestingId(null);
     }
   };
 
@@ -1642,6 +1752,21 @@ function BotAccountsPage() {
                                 {lang === "ar" ? "إعادة تسجيل الدخول" : "Re-login"}
                               </Button>
                             )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5"
+                            disabled={proxyTestingId === a.id}
+                            onClick={() => void handleTestProxy(a.id, a.display_name)}
+                            title={lang === "ar" ? "اختبار البروكسي عبر VPS" : "Test the proxy via VPS"}
+                          >
+                            {proxyTestingId === a.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Globe className="h-3.5 w-3.5" />
+                            )}
+                            {lang === "ar" ? "اختبار البروكسي" : "Test proxy"}
+                          </Button>
                           <Button size="sm" variant="ghost" onClick={() => handleDelete(a.id)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
@@ -1655,6 +1780,80 @@ function BotAccountsPage() {
           )}
         </Card>
       </div>
+
+      <Dialog open={!!proxyTest} onOpenChange={(o) => !o && setProxyTest(null)}>
+        <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Globe className="h-5 w-5 text-primary" />
+              {lang === "ar" ? "اختبار البروكسي" : "Proxy test"}
+            </DialogTitle>
+          </DialogHeader>
+          {proxyTest && (
+            <div className="space-y-3 text-sm">
+              <p className="text-muted-foreground">
+                {lang === "ar" ? "الحساب:" : "Account:"} <span className="font-medium text-foreground">{proxyTest.accountName}</span>
+              </p>
+              {proxyTest.status === "running" && (
+                <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 p-3">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <span>
+                    {lang === "ar"
+                      ? "بننفّذ الاختبار على VPS — بيفتح Chromium بالبروكسي ويقرأ IP الخروج (10-30 ثانية)."
+                      : "Running on the VPS — launching Chromium via the proxy and reading the egress IP (10-30s)."}
+                  </span>
+                </div>
+              )}
+              {proxyTest.status === "completed" && (
+                <div className="space-y-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3">
+                  <div className="flex items-center gap-2 font-semibold text-emerald-700 dark:text-emerald-300">
+                    <CheckCircle2 className="h-4 w-4" />
+                    {lang === "ar" ? "الاختبار نجح" : "Test succeeded"}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {proxyTest.proxyEnabled
+                      ? lang === "ar"
+                        ? "البروكسي يعمل والبوت يتصل من خلاله. الـ IP الظاهر لفيسبوك هو:"
+                        : "Proxy is active. Facebook will see this IP:"
+                      : lang === "ar"
+                        ? "لا يوجد بروكسي مفعّل على هذا الحساب. الـ IP الظاهر لفيسبوك هو IP السيرفر نفسه:"
+                        : "No proxy set on this account — Facebook sees the raw server IP:"}
+                  </div>
+                  <div className="rounded bg-background/60 px-3 py-2 font-mono text-base text-foreground">
+                    {proxyTest.ip ?? "-"}
+                  </div>
+                  {proxyTest.elapsedMs != null && (
+                    <div className="text-[11px] text-muted-foreground">
+                      {lang === "ar" ? `الاستجابة خلال ${(proxyTest.elapsedMs / 1000).toFixed(1)}s` : `Responded in ${(proxyTest.elapsedMs / 1000).toFixed(1)}s`}
+                    </div>
+                  )}
+                </div>
+              )}
+              {proxyTest.status === "failed" && (
+                <div className="space-y-2 rounded-md border border-red-500/40 bg-red-500/10 p-3">
+                  <div className="flex items-center gap-2 font-semibold text-red-700 dark:text-red-300">
+                    <XCircle className="h-4 w-4" />
+                    {lang === "ar" ? "الاختبار فشل" : "Test failed"}
+                  </div>
+                  <p className="text-xs text-muted-foreground break-words">
+                    {proxyTest.error ?? (lang === "ar" ? "خطأ غير معروف" : "Unknown error")}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {lang === "ar"
+                      ? "لو الرسالة تخص timeout أو ERR_TUNNEL_CONNECTION_FAILED فبيانات البروكسي غالباً غلط. راجع host/port والـ user/pass."
+                      : "Timeout or ERR_TUNNEL_CONNECTION_FAILED usually means bad proxy credentials — double-check host/port and user/pass."}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setProxyTest(null)}>
+              {lang === "ar" ? "إغلاق" : "Close"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent dir={lang === "ar" ? "rtl" : "ltr"} className="sm:max-w-lg">

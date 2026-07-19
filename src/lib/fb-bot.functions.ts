@@ -1656,3 +1656,75 @@ export const testBotAccount = createServerFn({ method: "POST" })
     if (!updated) throw new Error("تعذّر تحديث حالة الحساب — حدّث الصفحة وأعد المحاولة");
     return { ...updated, groups: [] as { id: string; name: string }[] };
   });
+
+// ---------- createTestProxyJob ----------
+// Queues a lightweight diagnostic job on the VPS worker: it launches Chromium
+// with the given proxy (falling back to the account's saved proxy when not
+// overridden) and hits a public IP echo endpoint, so the UI can display the
+// egress IP without any terminal / curl step.
+export const createTestProxyJob = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        accountId: z.string().uuid(),
+        proxyUrl: z.string().trim().max(1000).optional().nullable(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    // Ownership check only — allow testing even when the account is invalid
+    // (users often want to fix the proxy before re-linking cookies).
+    const { data: account, error: accountErr } = await supabase
+      .from("fb_bot_accounts")
+      .select("id")
+      .eq("id", data.accountId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (accountErr) throw new Error(accountErr.message);
+    if (!account) throw new Error("حساب فيسبوك المختار غير موجود أو غير تابع لك.");
+
+    const proxyUrl = normalizeProxyUrl(data.proxyUrl ?? null);
+    const { data: row, error } = await supabase
+      .from("fb_jobs")
+      .insert({
+        user_id: userId,
+        account_id: data.accountId,
+        job_type: "test_proxy" as never,
+        payload: { proxyUrl },
+        scheduled_at: new Date().toISOString(),
+        status: "pending",
+      } as never)
+      .select("id")
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!row) throw new Error("تم إنشاء مهمة اختبار البروكسي لكن تعذّر قراءة رقمها.");
+    return row;
+  });
+
+// ---------- getTestProxyJob ----------
+// Small helper the UI polls to render the "Test proxy" result. Returns the
+// job row plus the single result the worker wrote (IP + elapsed time).
+export const getTestProxyJob = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ jobId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: job, error } = await supabase
+      .from("fb_jobs")
+      .select("id, status, progress, error_message, created_at, completed_at, account_id")
+      .eq("id", data.jobId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!job) throw new Error("مهمة اختبار البروكسي غير موجودة.");
+    const { data: results } = await supabase
+      .from("fb_job_results")
+      .select("target, status, data, error, created_at")
+      .eq("job_id", data.jobId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const result = (results && results[0]) || null;
+    return { job, result };
+  });

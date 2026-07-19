@@ -19,6 +19,7 @@ const { runSendMessengerDm } = require("./actions/send-messenger-dm");
 const { runMessengerListPages } = require("./actions/messenger-list-pages");
 const { runMessengerSyncCookies } = require("./actions/messenger-sync-cookies");
 const { runMessengerSendCookies } = require("./actions/messenger-send-cookies");
+const { runTestProxy } = require("./actions/test-proxy");
 const { ensureLogin } = require("./actions/login");
 
 const API = process.env.API_BASE_URL;
@@ -27,7 +28,7 @@ const MIN_INT = Math.max(5, parseInt(process.env.POLL_INTERVAL_SEC || "15", 10))
 const MAX_INT = Math.max(MIN_INT, parseInt(process.env.POLL_MAX_INTERVAL_SEC || "60", 10) * 1000);
 const HEADLESS = process.env.HEADLESS !== "false";
 const PROFILE_ROOT = process.env.BOT_PROFILE_DIR || path.join(__dirname, ".browser-profiles");
-const WORKER_VERSION = "bot-worker-2026-07-19-business-inbox-div-rows-v2";
+const WORKER_VERSION = "bot-worker-2026-07-19-proxy-tester-v1";
 const WORKER_CAPABILITIES = [
   "post_to_groups",
   "extract_pages",
@@ -41,6 +42,7 @@ const WORKER_CAPABILITIES = [
   "messenger_list_pages",
   "messenger_sync_cookies",
   "messenger_send_cookies",
+  "test_proxy",
 ].join(",");
 
 if (!API || !SECRET) {
@@ -173,7 +175,8 @@ async function runJob(job) {
   let browser = null;
   try {
     await emitExtractPagesWorkerLog(job, "worker_claimed", "queue", { type: job.type });
-    const proxy = parseProxy(job.account?.proxyUrl);
+    const effectiveProxyUrl = (job.type === "test_proxy" && job.payload?.proxyUrl) || job.account?.proxyUrl;
+    const proxy = parseProxy(effectiveProxyUrl);
     const launchArgs = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--lang=en-US,en"];
     if (proxy?.server) launchArgs.push(`--proxy-server=${proxy.server}`);
     browser = await timedExtractPagesWorkerStep(job, "browser_launch", () => puppeteer.launch({
@@ -198,7 +201,7 @@ async function runJob(job) {
       customUserAgent: accountUA !== DEFAULT_UA,
     });
 
-    if (job.account) {
+    if (job.account && job.type !== "test_proxy") {
       // Signal to the UI immediately that the worker picked the job up.
       await reportUpdate({ jobId: job.id, status: "running", progress: 3 });
       let loginFailureReason = "SESSION_EXPIRED: انتهت صلاحية جلسة حساب فيسبوك — أعد ربط الحساب من صفحة حسابات البوت.";
@@ -236,6 +239,7 @@ async function runJob(job) {
     else if (job.type === "messenger_list_pages") await runMessengerListPages(ctx);
     else if (job.type === "messenger_sync_cookies") await runMessengerSyncCookies(ctx);
     else if (job.type === "messenger_send_cookies") await runMessengerSendCookies(ctx);
+    else if (job.type === "test_proxy") await runTestProxy(ctx);
     else await reportUpdate({ jobId: job.id, status: "failed", errorMessage: `Unknown job type: ${job.type}` });
 
   } catch (err) {
