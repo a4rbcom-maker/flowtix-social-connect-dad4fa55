@@ -6,6 +6,7 @@
 
 function cleanPageName(name) {
   return String(name || "")
+    .replace(/\s*\(\+?\d+\)\s*$/u, "") // strip trailing "(+20)" count badges
     .replace(/^\s*صورة\s+ملف\s+/u, "")
     .replace(/\s+الشخصية?$/u, "")
     .replace(/^\s*Profile\s+picture\s+of\s+/iu, "")
@@ -14,13 +15,17 @@ function cleanPageName(name) {
     .trim();
 }
 
-// Ad/boost UI labels that Facebook renders next to real pages when the
-// cookies session has ads_management scope. These are NOT page names.
-const AD_LABEL_RE = /^(ترويج|روّج|روج|إعلان|اعلان|الإعلانات?|الاعلانات?|promote|boost|ad|ads|advertise|sponsor(ed)?|create ad)$/i;
+// Ad/boost/CTA UI labels Facebook renders next to real pages when the
+// cookies session has ads_management scope. These are NEVER page names.
+const AD_LABEL_RE = /^(ترويج|روّج|روج|إعلان|اعلان|الإعلانات?|الاعلانات?|اختيار\s+هدف|اختر\s+هدف|اختر\s+جمهور[كا]?|حدد\s+الجمهور|جمهور\s+مخصص|اختيار\s+الجمهور|إنشاء\s+إعلان|انشاء\s+اعلان|جلب\s+العملاء|promote|boost|ad|ads|advertise|sponsor(ed)?|create ad|choose (an )?audience|select (an )?audience|choose (a )?goal|select (a )?goal|pick (an )?audience|target audience)$/i;
 
 function isAdLabel(name) {
-  return AD_LABEL_RE.test(String(name || "").trim());
+  const bare = String(name || "").replace(/\s*\(\+?\d+\)\s*$/u, "").trim();
+  return AD_LABEL_RE.test(bare);
 }
+
+// Anchors pointing at these paths are ad-manager CTAs, not page links.
+const AD_HREF_RE = /\/(ads|adsmanager|ad_center|business\/(ads|adsmanager|creativehub)|latest\/ads|ad_campaign)/i;
 
 function isReservedFacebookPath(value) {
   return /^(help|marketplace|watch|gaming|groups|events|pages|business|ads|settings|notifications|messages|friends|bookmarks|policies|privacy|terms|login|checkpoint|reg|profile\.php)$/i.test(value);
@@ -28,12 +33,14 @@ function isReservedFacebookPath(value) {
 
 async function extractPageCandidatesFromDom(page) {
   return page.evaluate(() => {
+    const AD_HREF = /\/(ads|adsmanager|ad_center|business\/(ads|adsmanager|creativehub)|latest\/ads|ad_campaign)/i;
     const seen = new Map();
     const cards = Array.from(document.querySelectorAll('a[href*="facebook.com/"], a[href^="/"]'));
     for (const a of cards) {
       const href = a.getAttribute("href") || "";
       const hover = a.getAttribute("data-hovercard") || a.getAttribute("data-hovercard-prefer-more-content-show") || "";
       const html = a.outerHTML || "";
+      const isAdHref = AD_HREF.test(href);
       const directId =
         href.match(/[?&](?:id|page_id|profile_id)=(\d{5,})/)?.[1] ||
         hover.match(/[?&](?:id|page_id|profile_id)=(\d{5,})/)?.[1] ||
@@ -42,7 +49,7 @@ async function extractPageCandidatesFromDom(page) {
         "";
 
       let slug = "";
-      if (!directId) {
+      if (!directId && !isAdHref) {
         const m1 = href.match(/facebook\.com\/([A-Za-z0-9.\-_]{3,80})(?:[/?#]|$)/);
         const m2 = !m1 ? href.match(/^\/([A-Za-z0-9.\-_]{3,80})(?:[/?#]|$)/) : null;
         slug = (m1 || m2)?.[1] || "";
@@ -57,7 +64,10 @@ async function extractPageCandidatesFromDom(page) {
       const img = a.querySelector("img") || a.closest("[role='listitem'], li, div")?.querySelector("img");
       const avatar = img?.getAttribute("src") || null;
       const key = String(idOrSlug);
-      if (!seen.has(key)) seen.set(key, { idOrSlug: key, href, name, avatar_url: avatar });
+      const entry = { idOrSlug: key, href, name, avatar_url: avatar, isAdHref };
+      // Prefer non-ad-href entries when we've seen this ID before.
+      const prev = seen.get(key);
+      if (!prev || (prev.isAdHref && !isAdHref)) seen.set(key, entry);
     }
     return Array.from(seen.values());
   });
@@ -70,7 +80,13 @@ async function resolvePageMeta(page, candidate) {
   const idOrSlug = String(candidate.idOrSlug || "").trim();
   if (!idOrSlug || isReservedFacebookPath(idOrSlug)) return null;
 
-  const target = candidate.href
+  // For numeric IDs, always resolve via facebook.com/{id} — never follow the
+  // candidate.href because that may point at ads-manager / boost CTAs which
+  // render "Choose target audience" instead of the real page name.
+  const isNumeric = /^\d{5,}$/.test(idOrSlug);
+  const target = isNumeric
+    ? `https://www.facebook.com/${idOrSlug}`
+    : candidate.href
     ? (() => {
         try { return new URL(candidate.href, "https://www.facebook.com").href; }
         catch (_) { return `https://www.facebook.com/${encodeURIComponent(idOrSlug)}`; }
@@ -162,18 +178,21 @@ async function runMessengerListPages({ page, job, report }) {
   const needsResolve = [];
   for (const c of directs) {
     const name = cleanPageName(c.name);
-    if (isTrustedName(name)) {
+    // Trust the DOM name ONLY when: (a) it isn't an ad label, (b) the anchor
+    // wasn't an ads-manager CTA, and (c) it doesn't carry a "(+NN)" badge.
+    const rawHasBadge = /\(\+?\d+\)/.test(String(c.name || ""));
+    if (isTrustedName(name) && !c.isAdHref && !rawHasBadge) {
       pagesMap.set(c.idOrSlug, { id: c.idOrSlug, name, avatar_url: c.avatar_url || null });
     } else {
-      // Direct numeric ID but the DOM name is an ad button / "profile picture
-      // of …" placeholder — visit the page URL to grab the real og:title.
+      // Direct numeric ID but the DOM name is an ad CTA / badge / placeholder
+      // — visit facebook.com/{id} to grab the real og:title.
       needsResolve.push(c);
     }
   }
   await report({ progress: 30 });
 
-  // Cap navigation-based resolution so the job stays under a minute.
-  const resolveCap = 20;
+  // Cap navigation-based resolution so the job stays under ~2 minutes.
+  const resolveCap = 60;
   const candidates = needsResolve.concat(slugs).slice(0, resolveCap);
   let checked = 0;
   for (const candidate of candidates) {
