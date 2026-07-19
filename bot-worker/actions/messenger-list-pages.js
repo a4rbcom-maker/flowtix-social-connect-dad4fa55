@@ -162,6 +162,7 @@ async function runMessengerListPages({ page, job, report }) {
     if (!numericId) continue;
     const name = cleanPageName(candidate.name);
     if (!name || name.length < 2) continue;
+    if (isAdLabel(name)) continue;
     if (!pagesMap.has(numericId)) {
       pagesMap.set(numericId, { id: numericId, name, avatar_url: candidate.avatar_url || null });
     }
