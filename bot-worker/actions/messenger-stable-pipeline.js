@@ -192,6 +192,7 @@ async function extractGraphTokenFromSession(page, report, options = {}) {
   const perUrlTimeoutMs = options.perUrlTimeoutMs ?? 14_000;
   const readyTimeoutMs = options.readyTimeoutMs ?? 4_000;
   const settleMs = options.settleMs ?? 250;
+  const skipReactReady = options.skipReactReady === true;
   const urls = options.urls || [
     "https://business.facebook.com/latest/home",
     "https://business.facebook.com/latest/inbox/all",
@@ -201,8 +202,17 @@ async function extractGraphTokenFromSession(page, report, options = {}) {
     const url = urls[i];
     await runStage(report, "token_probe", `فتح مصدر آمن للتوكن ${i + 1}/${urls.length}`, async () => {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: perUrlTimeoutMs });
-      await waitForReactReady(page, report, "token_react_ready", readyTimeoutMs).catch(() => null);
+      if (!skipReactReady) await waitForReactReady(page, report, "token_react_ready", readyTimeoutMs).catch(() => null);
       await sleep(settleMs);
+      const blocked = await page.evaluate(() => {
+        const href = location.href;
+        const body = document.body?.innerText || "";
+        const hasLoginForm = !!document.querySelector('form[action*="login"], input[name="email"], input[name="pass"]');
+        return /\/login(?:\/|\?|$)|checkpoint|two_factor|two_step_verification/i.test(href) ||
+          hasLoginForm ||
+          /تسجيل الدخول|log in|checkpoint|تأكيد الهوية|تحقق أمني/i.test(body);
+      }).catch(() => false);
+      if (blocked) throw new Error("SESSION_EXPIRED: Facebook طلب تسجيل دخول أو تحقق أثناء فتح Business Suite.");
       const html = await page.content().catch(() => "");
       for (const token of extractTokensFromText(html)) inspector.tokens.add(token);
       const storageDump = await page.evaluate(() => {
@@ -214,7 +224,7 @@ async function extractGraphTokenFromSession(page, report, options = {}) {
         return values.join("\n").slice(0, 1_000_000);
       }).catch(() => "");
       for (const token of extractTokensFromText(storageDump)) inspector.tokens.add(token);
-    }, { retries: 0, timeoutMs: perUrlTimeoutMs + readyTimeoutMs + 3_000 }).catch((error) => emitPipelineLog(report, "token_probe", "failed", "فشل فتح مصدر توكن", { url, error: shortError(error) }));
+    }, { retries: 0, timeoutMs: perUrlTimeoutMs + (skipReactReady ? 0 : readyTimeoutMs) + 3_000 }).catch((error) => emitPipelineLog(report, "token_probe", "failed", "فشل فتح مصدر توكن", { url, error: shortError(error) }));
 
     const token = inspector.tokenList()[0];
     if (token) {
