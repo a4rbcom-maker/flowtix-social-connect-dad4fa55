@@ -225,7 +225,7 @@ async function ensureLogin(page, account, reportStatus, options = {}) {
       return false;
     }
 
-    return verifyLoggedInSession(page, reportStatus, options);
+    return verifyLoggedInSession(page, reportStatus, account.authMethod === "cookies" ? { ...options, expectedCUser: account.credentials?.cookies?.find?.((c) => String(c?.name || "") === "c_user")?.value || null } : options);
   } catch (e) {
     await reportStatus("invalid", `LOGIN_EXCEPTION: ${String(e.message || e)}`);
     return false;
