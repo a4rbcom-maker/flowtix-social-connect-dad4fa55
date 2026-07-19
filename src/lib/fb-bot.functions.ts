@@ -38,6 +38,10 @@ const credentialsSchema = z.object({
 });
 const addAccountSchema = z.union([cookiesSchema, credentialsSchema]);
 type AddAccountInput = z.infer<typeof addAccountSchema>;
+const updateProxySchema = z.object({
+  id: z.string().uuid(),
+  proxyUrl: z.string().trim().max(1000).optional().nullable(),
+});
 
 // Cookie parsing/validation lives in fb-cookie-diagnostics so the UI and tests
 // use the same rules as the server save path.
@@ -721,6 +725,39 @@ export const deleteBotAccount = createServerFn({ method: "POST" })
     const { error } = await supabase.from("fb_bot_accounts").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+// ---------- updateBotAccountProxy ----------
+export const updateBotAccountProxy = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => updateProxySchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { decryptJson, encryptJson } = await import("@/server/crypto.server");
+
+    const { data: account, error } = await supabaseAdmin
+      .from("fb_bot_accounts")
+      .select("id, user_id, encrypted_payload")
+      .eq("id", data.id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!account) throw new Error("حساب فيسبوك المختار غير موجود أو غير تابع لك.");
+
+    const payload = decryptJson<Record<string, unknown>>(account.encrypted_payload);
+    const proxyUrl = normalizeProxyUrl(data.proxyUrl ?? null);
+    const encrypted = encryptJson({ ...payload, proxyUrl });
+    const { data: updated, error: updateError } = await supabase
+      .from("fb_bot_accounts")
+      .update({ encrypted_payload: encrypted, last_check_at: null, last_error: null })
+      .eq("id", data.id)
+      .eq("user_id", userId)
+      .select(BOT_ACCOUNT_SAFE_SELECT)
+      .maybeSingle();
+    if (updateError) throw new Error(updateError.message);
+    if (!updated) throw new Error("تعذّر حفظ البروكسي. حدّث الصفحة وأعد المحاولة.");
+    return { ok: true, account: updated, proxyEnabled: Boolean(proxyUrl) };
   });
 
 // ---------- createPostJob ----------
