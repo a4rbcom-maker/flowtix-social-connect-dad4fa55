@@ -1131,100 +1131,112 @@ function BotAccountsPage() {
       setProxyTest((prev) => (prev ? { ...prev, jobId } : prev));
       const startedAt = Date.now();
       const timeoutMs = 18_000;
-      // Poll fast so a quick worker result surfaces immediately.
-      const poll = async () => {
-        let delay = 300;
-        while (Date.now() - startedAt < timeoutMs) {
-          await new Promise((r) => setTimeout(r, delay));
-          delay = Math.min(800, delay + 100);
-          try {
-            const payload = (await getTestProxyFn({ data: { jobId } })) as {
-              job: { status: string; error_message: string | null };
-              result: { status: string; error: string | null; data: unknown } | null;
-            };
-            const jobStatus = payload.job.status;
-            const rd = (payload.result?.data ?? null) as
-              | {
-                  kind?: string;
-                  ok?: boolean;
-                  ip?: string | null;
-                  proxyEnabled?: boolean;
-                  elapsedMs?: number | null;
-                  reasonCode?: string | null;
-                  reasonAr?: string | null;
-                  reasonEn?: string | null;
-                  rawError?: string | null;
-                  phases?: Partial<ProxyPhase>[];
-                  logs?: string[];
-                }
-              | null;
-            if (jobStatus === "completed") {
-              const snapshot = {
-                accountId,
-                accountName,
-                jobId,
-                status: "completed" as const,
-                ip: rd?.ip ?? null,
-                proxyEnabled: Boolean(rd?.proxyEnabled),
-                elapsedMs: rd?.elapsedMs ?? null,
-                error: null,
-                reasonCode: null,
-                reasonAr: null,
-                reasonEn: null,
-                rawError: null,
-                phases: normalizeProxyPhases(rd?.phases, {
-                  ok: true,
-                  elapsedMs: rd?.elapsedMs ?? null,
-                }),
-                logs: rd?.logs ?? [],
-              };
-              setProxyTest(snapshot);
-              setCachedProxyTest(accountId, snapshot);
-              toast.success(
-                rd?.proxyEnabled
-                  ? lang === "ar" ? "البروكسي مفعّل" : "Proxy is active"
-                  : lang === "ar" ? "لا يوجد بروكسي مفعّل" : "No proxy is enabled",
-              );
-              recordProxyTestSuccess(breakerKey);
-              return;
-            }
-            if (jobStatus === "failed") {
-              const fallbackReasonAr = payload.job.error_message || payload.result?.error || "تعذّر تشغيل اختبار البروكسي";
-              const fallbackReasonEn = payload.job.error_message || payload.result?.error || "Could not run proxy test";
-              const reasonAr = rd?.reasonAr ?? fallbackReasonAr;
-              const reasonEn = rd?.reasonEn ?? fallbackReasonEn;
-              const snapshot = {
-                accountId,
-                accountName,
-                jobId,
-                status: "failed" as const,
-                ip: null,
-                proxyEnabled: Boolean(rd?.proxyEnabled),
-                elapsedMs: rd?.elapsedMs ?? null,
-                error: payload.job.error_message || payload.result?.error || "فشل الاختبار",
-                reasonCode: rd?.reasonCode ?? "worker_unavailable",
-                reasonAr,
-                reasonEn,
-                rawError: rd?.rawError ?? null,
-                phases: normalizeProxyPhases(rd?.phases, {
-                  ok: false,
-                  elapsedMs: rd?.elapsedMs ?? null,
-                  reasonCode: rd?.reasonCode ?? null,
-                  reasonAr,
-                  reasonEn,
-                }),
-                logs: rd?.logs ?? [],
-              };
-              setProxyTest(snapshot);
-              setCachedProxyTest(accountId, snapshot, 30_000);
-              toast.error(rd?.reasonAr || payload.job.error_message || "تعذّر تشغيل اختبار البروكسي");
-              recordProxyTestFailure(breakerKey, rd?.reasonAr ?? payload.job.error_message ?? null);
-              return;
-            }
-          } catch (e) {
-            console.warn("[test-proxy poll] error", e);
+      type ProbePayload = {
+        job: { status: string; error_message: string | null };
+        result: { status: string; error: string | null; data: unknown } | null;
+      };
+      let lastStatus: string | null = null;
+      const outcome = await adaptivePoll<ProbePayload>(
+        async () => {
+          const payload = (await getTestProxyFn({ data: { jobId } })) as ProbePayload;
+          const jobStatus = payload.job.status;
+          if (jobStatus === "completed" || jobStatus === "failed") {
+            return { done: true, value: payload };
           }
+          const progressed = jobStatus !== lastStatus;
+          lastStatus = jobStatus;
+          return { done: false, progressed };
+        },
+        {
+          initialDelayMs: 250,
+          minDelayMs: 300,
+          maxDelayMs: 1500,
+          backoffFactor: 1.5,
+          errorBackoffFactor: 2,
+          timeoutMs,
+          onTick: ({ attempt, delay, error }) => {
+            if (error) console.warn("[test-proxy poll] error", { attempt, delay, error });
+          },
+        },
+      );
+      if (outcome.status === "done") {
+        const payload = outcome.value;
+        const rd = (payload.result?.data ?? null) as
+          | {
+              kind?: string;
+              ok?: boolean;
+              ip?: string | null;
+              proxyEnabled?: boolean;
+              elapsedMs?: number | null;
+              reasonCode?: string | null;
+              reasonAr?: string | null;
+              reasonEn?: string | null;
+              rawError?: string | null;
+              phases?: Partial<ProxyPhase>[];
+              logs?: string[];
+            }
+          | null;
+        if (payload.job.status === "completed") {
+          const snapshot = {
+            accountId,
+            accountName,
+            jobId,
+            status: "completed" as const,
+            ip: rd?.ip ?? null,
+            proxyEnabled: Boolean(rd?.proxyEnabled),
+            elapsedMs: rd?.elapsedMs ?? (Date.now() - startedAt),
+            error: null,
+            reasonCode: null,
+            reasonAr: null,
+            reasonEn: null,
+            rawError: null,
+            phases: normalizeProxyPhases(rd?.phases, {
+              ok: true,
+              elapsedMs: rd?.elapsedMs ?? null,
+            }),
+            logs: rd?.logs ?? [],
+          };
+          setProxyTest(snapshot);
+          setCachedProxyTest(accountId, snapshot);
+          toast.success(
+            rd?.proxyEnabled
+              ? lang === "ar" ? "البروكسي مفعّل" : "Proxy is active"
+              : lang === "ar" ? "لا يوجد بروكسي مفعّل" : "No proxy is enabled",
+          );
+          recordProxyTestSuccess(breakerKey);
+        } else {
+          const fallbackReasonAr = payload.job.error_message || payload.result?.error || "تعذّر تشغيل اختبار البروكسي";
+          const fallbackReasonEn = payload.job.error_message || payload.result?.error || "Could not run proxy test";
+          const reasonAr = rd?.reasonAr ?? fallbackReasonAr;
+          const reasonEn = rd?.reasonEn ?? fallbackReasonEn;
+          const snapshot = {
+            accountId,
+            accountName,
+            jobId,
+            status: "failed" as const,
+            ip: null,
+            proxyEnabled: Boolean(rd?.proxyEnabled),
+            elapsedMs: rd?.elapsedMs ?? null,
+            error: payload.job.error_message || payload.result?.error || "فشل الاختبار",
+            reasonCode: rd?.reasonCode ?? "worker_unavailable",
+            reasonAr,
+            reasonEn,
+            rawError: rd?.rawError ?? null,
+            phases: normalizeProxyPhases(rd?.phases, {
+              ok: false,
+              elapsedMs: rd?.elapsedMs ?? null,
+              reasonCode: rd?.reasonCode ?? null,
+              reasonAr,
+              reasonEn,
+            }),
+            logs: rd?.logs ?? [],
+          };
+          setProxyTest(snapshot);
+          setCachedProxyTest(accountId, snapshot, 30_000);
+          toast.error(rd?.reasonAr || payload.job.error_message || "تعذّر تشغيل اختبار البروكسي");
+          recordProxyTestFailure(breakerKey, rd?.reasonAr ?? payload.job.error_message ?? null);
         }
+      } else {
         setProxyTest((prev) =>
           prev
             ? {
@@ -1239,8 +1251,7 @@ function BotAccountsPage() {
         );
         toast.error("خدمة البوت لم تلتقط الاختبار بسرعة.");
         recordProxyTestFailure(breakerKey, "worker_unavailable");
-      };
-      await poll();
+      }
     } catch (e) {
       if (isAuthErr(e)) {
         handleAuthExpired();
