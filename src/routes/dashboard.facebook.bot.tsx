@@ -1012,6 +1012,8 @@ function BotAccountsPage() {
               return;
             }
             if (jobStatus === "failed") {
+              const fallbackReasonAr = payload.job.error_message || payload.result?.error || "تعذّر تشغيل اختبار البروكسي";
+              const fallbackReasonEn = payload.job.error_message || payload.result?.error || "Could not run proxy test";
               setProxyTest({
                 accountId,
                 accountName,
@@ -1021,12 +1023,12 @@ function BotAccountsPage() {
                 proxyEnabled: Boolean(rd?.proxyEnabled),
                 elapsedMs: rd?.elapsedMs ?? null,
                 error: payload.job.error_message || payload.result?.error || "فشل الاختبار",
-                reasonCode: rd?.reasonCode ?? null,
-                reasonAr: rd?.reasonAr ?? null,
-                reasonEn: rd?.reasonEn ?? null,
+                reasonCode: rd?.reasonCode ?? "worker_unavailable",
+                reasonAr: rd?.reasonAr ?? fallbackReasonAr,
+                reasonEn: rd?.reasonEn ?? fallbackReasonEn,
                 rawError: rd?.rawError ?? null,
               });
-              toast.error(rd?.reasonAr || payload.job.error_message || "فشل اختبار البروكسي");
+              toast.error(rd?.reasonAr || payload.job.error_message || "تعذّر تشغيل اختبار البروكسي");
               return;
             }
           } catch (e) {
@@ -1035,10 +1037,17 @@ function BotAccountsPage() {
         }
         setProxyTest((prev) =>
           prev
-            ? { ...prev, status: "failed", error: "انتهت مهلة الانتظار — تأكد أن VPS Worker شغّال." }
+            ? {
+                ...prev,
+                status: "failed",
+                error: "الاختبار لم يبدأ",
+                reasonCode: "worker_unavailable",
+                reasonAr: "الاختبار لم يبدأ. تأكد أن خدمة البوت شغّالة ثم جرّب مرة أخرى.",
+                reasonEn: "The test did not start. Make sure the bot service is running, then try again.",
+              }
             : prev,
         );
-        toast.error("انتهت مهلة اختبار البروكسي — تأكد من تشغيل VPS Worker.");
+        toast.error("الاختبار لم يبدأ. تأكد أن خدمة البوت شغّالة.");
       };
       await poll();
     } catch (e) {
@@ -1895,16 +1904,18 @@ function BotAccountsPage() {
                 <div className="space-y-3 rounded-md border border-red-500/40 bg-red-500/10 p-3">
                   <div className="flex items-center gap-2 font-semibold text-red-700 dark:text-red-300">
                     <XCircle className="h-4 w-4" />
-                    {lang === "ar" ? "البروكسي لا يعمل" : "Proxy is not working"}
+                    {proxyTest.reasonCode === "worker_unavailable"
+                      ? lang === "ar" ? "تعذّر تشغيل الاختبار" : "Could not start the test"
+                      : lang === "ar" ? "البروكسي لا يعمل" : "Proxy is not working"}
                   </div>
                   <p className="text-sm font-medium text-foreground break-words leading-relaxed">
                     {(lang === "ar" ? proxyTest.reasonAr : proxyTest.reasonEn) ??
                       (lang === "ar" ? "تعذّر الاتصال بالبروكسي" : "Could not connect to the proxy")}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    {lang === "ar"
-                      ? "راجع بيانات البروكسي (host / port / user / pass) وحاول مرة أخرى."
-                      : "Check the proxy details (host / port / user / pass) and try again."}
+                    {proxyTest.reasonCode === "worker_unavailable"
+                      ? lang === "ar" ? "هذه مشكلة تشغيل في خدمة البوت، وليست حكماً على البروكسي نفسه." : "This is a bot service issue, not a proxy verdict."
+                      : lang === "ar" ? "راجع بيانات البروكسي وحاول مرة أخرى." : "Check the proxy details and try again."}
                   </p>
                 </div>
               )}
