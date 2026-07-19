@@ -43,80 +43,74 @@ type BotJobResult = {
   error?: string;
 };
 
-async function persistJobResult(
+async function persistJobResults(
   supabaseAdmin: { from: (table: string) => any },
   input: {
     jobId: string;
-    result: BotJobResult;
+    results: BotJobResult[];
     current?: { job_type?: string | null; user_id?: string | null; account_id?: string | null; payload?: unknown } | null;
   },
 ): Promise<{ ok: true } | { ok: false; message: string }> {
-  // Special-case: Graph API token extraction. The plaintext token must never
-  // land in fb_job_results — encrypt it into fb_bot_accounts and redact.
-  let resultForInsert: BotJobResult = input.result;
-  if (
-    input.current?.job_type === "messenger_extract_token" &&
-    input.result.status === "success" &&
-    input.result.target === "graph_token" &&
-    input.result.data &&
-    typeof input.result.data === "object"
-  ) {
-    const d = input.result.data as { token?: string; source?: string; extracted_at?: string; probe_url?: string };
-    const accountId = input.current.account_id;
-    if (accountId && typeof d.token === "string" && /^EAA/.test(d.token)) {
-      try {
-        const { encryptJson } = await import("@/server/crypto.server");
-        const encrypted = encryptJson(d.token);
-        const { error: tokErr } = await supabaseAdmin
-          .from("fb_bot_accounts")
-          .update({
-            graph_token_encrypted: encrypted,
-            graph_token_updated_at: new Date().toISOString(),
-          })
-          .eq("id", accountId);
-        if (tokErr) {
-          return { ok: false, message: `تعذر حفظ توكن Graph API: ${tokErr.message}` };
+  if (!input.results || input.results.length === 0) return { ok: true };
+
+  const rowsToInsert: Array<{ job_id: string; target: string | null; status: string; data: unknown; error: string | null }> = [];
+  const pageUpserts: Array<Record<string, unknown>> = [];
+  const contactUpserts: Array<Record<string, unknown>> = [];
+
+  for (const originalResult of input.results) {
+    let result: BotJobResult = originalResult;
+
+    // Special-case: Graph API token extraction. Plaintext token must never land
+    // in fb_job_results — encrypt into fb_bot_accounts and redact the row.
+    if (
+      input.current?.job_type === "messenger_extract_token" &&
+      result.status === "success" &&
+      result.target === "graph_token" &&
+      result.data &&
+      typeof result.data === "object"
+    ) {
+      const d = result.data as { token?: string; source?: string; extracted_at?: string; probe_url?: string };
+      const accountId = input.current.account_id;
+      if (accountId && typeof d.token === "string" && /^EAA/.test(d.token)) {
+        try {
+          const { encryptJson } = await import("@/server/crypto.server");
+          const encrypted = encryptJson(d.token);
+          const { error: tokErr } = await supabaseAdmin
+            .from("fb_bot_accounts")
+            .update({
+              graph_token_encrypted: encrypted,
+              graph_token_updated_at: new Date().toISOString(),
+            })
+            .eq("id", accountId);
+          if (tokErr) return { ok: false, message: `تعذر حفظ توكن Graph API: ${tokErr.message}` };
+          result = {
+            ...result,
+            data: { kind: "graph_token", account_id: accountId, source: d.source, extracted_at: d.extracted_at, probe_url: d.probe_url, token: "[REDACTED]" },
+          };
+        } catch (err) {
+          return { ok: false, message: `تعذر تشفير التوكن: ${err instanceof Error ? err.message : String(err)}` };
         }
-        // Redact before inserting the result row.
-        resultForInsert = {
-          ...input.result,
-          data: { kind: "graph_token", account_id: accountId, source: d.source, extracted_at: d.extracted_at, probe_url: d.probe_url, token: "[REDACTED]" },
-        };
-      } catch (err) {
-        return { ok: false, message: `تعذر تشفير التوكن: ${err instanceof Error ? err.message : String(err)}` };
       }
     }
-  }
 
-  const { error: insertError } = await supabaseAdmin.from("fb_job_results").insert([
-    {
+    rowsToInsert.push({
       job_id: input.jobId,
-      target: resultForInsert.target ?? null,
-      status: resultForInsert.status,
-      data: (resultForInsert.data ?? null) as never,
-      error: resultForInsert.error ?? null,
-    },
-  ]);
-  if (insertError) {
-    console.error("[bot/job-update] fb_job_results insert failed", {
-      jobId: input.jobId,
-      target: resultForInsert.target,
-      status: resultForInsert.status,
-      message: insertError.message,
+      target: result.target ?? null,
+      status: result.status,
+      data: (result.data ?? null) as unknown,
+      error: result.error ?? null,
     });
-    return { ok: false, message: `تعذر حفظ نتيجة الاستخراج في قاعدة البيانات: ${insertError.message}` };
-  }
 
-  if (
-    input.current?.job_type === "extract_pages" &&
-    input.current.user_id &&
-    input.current.account_id &&
-    input.result.status === "success"
-  ) {
-    const extractedPage = normalizeExtractedPage(input.result);
-    if (extractedPage) {
-      const { error: upsertError } = await supabaseAdmin.from("fb_pages").upsert(
-        {
+    // Side effect: managed FB page discovered by extract_pages
+    if (
+      input.current?.job_type === "extract_pages" &&
+      input.current.user_id &&
+      input.current.account_id &&
+      result.status === "success"
+    ) {
+      const extractedPage = normalizeExtractedPage(result);
+      if (extractedPage) {
+        pageUpserts.push({
           user_id: input.current.user_id,
           page_id: extractedPage.page_id,
           page_name: extractedPage.page_name,
@@ -125,45 +119,34 @@ async function persistJobResult(
           bot_account_id: input.current.account_id,
           status: "active",
           last_error: null,
-        } as never,
-        { onConflict: "user_id,page_id", ignoreDuplicates: false },
-      );
-      if (upsertError) {
-        console.error("[bot/job-update] fb_pages upsert failed", {
-          jobId: input.jobId,
-          pageId: extractedPage.page_id,
-          message: upsertError.message,
         });
-        return { ok: false, message: `تم اكتشاف الصفحة لكن تعذر حفظها: ${upsertError.message}` };
       }
     }
-  }
 
-  // Persist Messenger contacts discovered via cookies sync.
-  if (
-    input.current?.job_type === "messenger_sync_cookies" &&
-    input.current.user_id &&
-    input.result.status === "success"
-  ) {
-    const d = (input.result.data ?? {}) as {
-      kind?: string;
-      psid?: string;
-      full_name?: string | null;
-      page_id?: string;
-      page_name?: string | null;
-    };
-    if (d.kind === "messenger_contact" && d.psid && d.page_id) {
-      const payload = input.current.payload && typeof input.current.payload === "object" ? input.current.payload as { pageId?: string } : {};
-      const expectedPageId = String(payload.pageId ?? "").trim();
-      const reportedPageId = String(d.page_id).trim();
-      if (!/^\d{5,}$/.test(reportedPageId) || (expectedPageId && reportedPageId !== expectedPageId)) {
-        return {
-          ok: false,
-          message: "تم رفض نتائج Messenger لأنها لا تطابق معرّف الصفحة المختارة؛ لن نحفظ بيانات قد تكون من Inbox شخصي أو صفحة أخرى.",
-        };
-      }
-      const { error: upErr } = await supabaseAdmin.from("messenger_contacts").upsert(
-        {
+    // Side effect: messenger contact discovered via cookies sync (strict page-id match)
+    if (
+      input.current?.job_type === "messenger_sync_cookies" &&
+      input.current.user_id &&
+      result.status === "success"
+    ) {
+      const d = (result.data ?? {}) as {
+        kind?: string;
+        psid?: string;
+        full_name?: string | null;
+        page_id?: string;
+        page_name?: string | null;
+      };
+      if (d.kind === "messenger_contact" && d.psid && d.page_id) {
+        const payload = input.current.payload && typeof input.current.payload === "object" ? input.current.payload as { pageId?: string } : {};
+        const expectedPageId = String(payload.pageId ?? "").trim();
+        const reportedPageId = String(d.page_id).trim();
+        if (!/^\d{5,}$/.test(reportedPageId) || (expectedPageId && reportedPageId !== expectedPageId)) {
+          return {
+            ok: false,
+            message: "تم رفض نتائج Messenger لأنها لا تطابق معرّف الصفحة المختارة؛ لن نحفظ بيانات قد تكون من Inbox شخصي أو صفحة أخرى.",
+          };
+        }
+        contactUpserts.push({
           user_id: input.current.user_id,
           page_id: reportedPageId,
           page_name: d.page_name ?? null,
@@ -171,17 +154,50 @@ async function persistJobResult(
           full_name: d.full_name ?? null,
           source: "cookies_bot",
           metadata: { source: "cookies_bot", imported_at: new Date().toISOString(), worker_job_id: input.jobId },
-        } as never,
-        { onConflict: "user_id,page_id,psid", ignoreDuplicates: false },
-      );
-      if (upErr) {
-        console.error("[bot/job-update] messenger_contacts upsert failed", upErr.message);
+        });
       }
+    }
+  }
+
+  // ONE batch insert for every result row (was: N sequential inserts).
+  if (rowsToInsert.length > 0) {
+    const { error: insertError } = await supabaseAdmin.from("fb_job_results").insert(rowsToInsert as never);
+    if (insertError) {
+      console.error("[bot/job-update] fb_job_results batch insert failed", {
+        jobId: input.jobId,
+        count: rowsToInsert.length,
+        message: insertError.message,
+      });
+      return { ok: false, message: `تعذر حفظ نتائج الاستخراج في قاعدة البيانات: ${insertError.message}` };
+    }
+  }
+
+  if (pageUpserts.length > 0) {
+    const { error: upsertError } = await supabaseAdmin
+      .from("fb_pages")
+      .upsert(pageUpserts as never, { onConflict: "user_id,page_id", ignoreDuplicates: false });
+    if (upsertError) {
+      console.error("[bot/job-update] fb_pages batch upsert failed", {
+        jobId: input.jobId,
+        count: pageUpserts.length,
+        message: upsertError.message,
+      });
+      return { ok: false, message: `تم اكتشاف الصفحات لكن تعذر حفظ بعضها: ${upsertError.message}` };
+    }
+  }
+
+  if (contactUpserts.length > 0) {
+    const { error: upErr } = await supabaseAdmin
+      .from("messenger_contacts")
+      .upsert(contactUpserts as never, { onConflict: "user_id,page_id,psid", ignoreDuplicates: false });
+    if (upErr) {
+      console.error("[bot/job-update] messenger_contacts batch upsert failed", upErr.message);
     }
   }
 
   return { ok: true };
 }
+
 
 export const Route = createFileRoute("/api/public/bot/job-update")({
   server: {
@@ -223,6 +239,7 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
               status?: "completed" | "failed" | "running";
               errorMessage?: string;
               result?: BotJobResult;
+              results?: BotJobResult[];
               accountStatus?: { accountId: string; status: "active" | "invalid" | "checkpoint" | "disabled"; error?: string };
             }
           | null;
@@ -235,10 +252,19 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
           .select("status, job_type, account_id, user_id, total_items, payload")
           .eq("id", body.jobId)
           .maybeSingle();
-        if (body.result) {
-          const persisted = await persistJobResult(supabaseAdmin, {
+
+        // Accept BOTH shapes for backward compatibility with older workers:
+        //   - { result: {...} }         (legacy: one item per HTTP call)
+        //   - { results: [{...}, ...] } (batched: many items per HTTP call)
+        const batchedResults: BotJobResult[] = Array.isArray(body.results)
+          ? body.results.filter(Boolean)
+          : body.result
+            ? [body.result]
+            : [];
+        if (batchedResults.length > 0) {
+          const persisted = await persistJobResults(supabaseAdmin, {
             jobId: body.jobId,
-            result: body.result,
+            results: batchedResults,
             current,
           });
           if (!persisted.ok) {
@@ -255,6 +281,7 @@ export const Route = createFileRoute("/api/public/bot/job-update")({
             return Response.json({ error: persisted.message }, { status: 500 });
           }
         }
+
 
         if (body.status === "failed" && /is not implemented in this worker/i.test(body.errorMessage || "")) {
           await supabaseAdmin

@@ -237,20 +237,38 @@ function JobsHistoryPage() {
     return () => { supabase.removeChannel(ch); };
   }, [user]);
 
-  // Poll results while the selected job is still running/pending so counters + rows update live.
+  // Live results while the selected job is still running/pending. Two channels:
+  //  1) Supabase Realtime → new fb_job_results rows arrive within ~200ms of insert.
+  //     This is what makes the counters "tick" smoothly during extraction.
+  //  2) Polling fallback every 8s (was 3s) → catches missed inserts and updates
+  //     progress/status on the parent fb_jobs row (not covered by the realtime
+  //     subscription below). Interval widened because realtime handles most updates.
   useEffect(() => {
     if (!selected) return;
     if (selected.status !== "running" && selected.status !== "pending") return;
     let cancelled = false;
-    const tick = async () => {
+    const refresh = async () => {
       try {
         const { results: rs } = await call(getJob, { id: selected.id });
         if (!cancelled) setResults(rs as JobResult[]);
       } catch { /* ignore transient */ }
     };
-    const iv = setInterval(tick, 3000);
-    return () => { cancelled = true; clearInterval(iv); };
+    const iv = setInterval(refresh, 8000);
+    const channel = supabase
+      .channel(`fb_job_results:${selected.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "fb_job_results", filter: `job_id=eq.${selected.id}` },
+        () => { void refresh(); },
+      )
+      .subscribe();
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+      supabase.removeChannel(channel);
+    };
   }, [selected?.id, selected?.status, call]);
+
 
   const openDetails = async (j: JobRow) => {
     setSelected(j);

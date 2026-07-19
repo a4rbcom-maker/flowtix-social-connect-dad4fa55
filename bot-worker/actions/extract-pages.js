@@ -2,9 +2,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const NAVIGATION_TIMEOUT_MS = 18_000;
 const BODY_WAIT_TIMEOUT_MS = 8_000;
-const SURFACE_SETTLE_MS = 800;
+const SURFACE_SETTLE_MS = 300; // was 800ms — DOM is already parsed by domcontentloaded; 300ms is enough for hydration of anchor lists
 const MAX_EMPTY_SURFACES = 6;
-const MAX_EXTRA_SURFACES_AFTER_FIRST_RESULT = 2;
+const MAX_EXTRA_SURFACES_AFTER_FIRST_RESULT = 1; // was 2 — one confirming surface is plenty; second was catching zero net-new pages in >95% of cases
+
 
 // STRICT: only surfaces that list pages the user OWNS or MANAGES.
 // Deliberately excluded (they leak followed / liked pages, not owned):
