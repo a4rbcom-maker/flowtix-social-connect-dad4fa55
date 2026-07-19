@@ -685,6 +685,11 @@ function MessengerContactsPage() {
         }}
       />
 
+      {/* Graph API pipeline (new stable path) */}
+      <MessengerGraphPanel />
+
+
+
       {/* Gate: pages exist but none selected */}
       {officialOpen && !pagesQ.isLoading && pages.length > 0 && !pageId && (
         <Card className="p-8 text-center">
