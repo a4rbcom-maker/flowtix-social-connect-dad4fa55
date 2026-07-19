@@ -604,7 +604,7 @@ function MessagesPage() {
             </ScrollArea>
           ) : (
             <p className="p-6 text-center text-sm text-muted-foreground">
-              {msgs?.error?.message ?? t.msgsEmpty}
+              {msgs?.error?.message ? humanizeFbError(msgs.error.message) : t.msgsEmpty}
             </p>
           )}
         </DialogContent>
