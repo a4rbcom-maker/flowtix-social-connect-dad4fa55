@@ -259,10 +259,10 @@ function MessagesPage() {
     setLoadingLeads(true);
     try {
       const res = await extractLeadsFn({ data: { pageId, max: 100 } });
-      if (!res.ok) toast.error(res.error?.message ?? "Error");
+      if (!res.ok) toast.error(humanizeFbError(res.error?.message));
       setLeads(res);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(humanizeFbError(e));
     } finally {
       setLoadingLeads(false);
     }
