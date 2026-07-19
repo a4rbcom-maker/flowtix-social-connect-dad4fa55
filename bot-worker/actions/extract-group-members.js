@@ -114,7 +114,7 @@ async function runExtractGroupMembers({ page, job, report }) {
     if (newCount === 0) emptyScrolls++; else emptyScrolls = 0;
 
     await page.evaluate(() => window.scrollBy(0, 2000));
-    await new Promise(r => setTimeout(r, rand(2200, 4500)));
+    await new Promise((r) => setTimeout(r, rand(1000, 1800)));
 
     await report({
       progress: Math.min(99, Math.round((seen.size / cap) * 100)),
