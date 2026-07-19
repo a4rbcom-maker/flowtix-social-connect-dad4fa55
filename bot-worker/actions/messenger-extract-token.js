@@ -37,20 +37,38 @@ async function scanForAccessToken(page) {
   return null;
 }
 
+// Hard cap so a slow / broken FB response can never keep the job "running"
+// for tens of minutes.  Individual page.goto has its own tighter cap.
+const OVERALL_BUDGET_MS = 90_000;
+const PER_URL_TIMEOUT_MS = 22_000;
+
 async function runMessengerExtractToken(ctx) {
   const { page, job, report } = ctx;
   const accountId = job?.account?.id || null;
 
   await report({ status: "running", progress: 10 });
+  const deadline = Date.now() + OVERALL_BUDGET_MS;
 
   let lastErr = null;
   for (let i = 0; i < CANDIDATE_URLS.length; i += 1) {
+    if (Date.now() > deadline) {
+      lastErr = new Error("انتهت المهلة الكلية قبل العثور على التوكن");
+      break;
+    }
     const url = CANDIDATE_URLS[i];
     try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 });
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: PER_URL_TIMEOUT_MS });
       await report({ progress: 20 + i * 20 });
-      // Small wait so JS-injected tokens land in the DOM.
-      await new Promise((r) => setTimeout(r, 1500));
+      // Short wait so JS-injected tokens land in the DOM.
+      await new Promise((r) => setTimeout(r, 800));
+
+      // If FB bounced us to login/checkpoint, no point in scanning further URLs.
+      const current = page.url() || "";
+      if (/\/login|checkpoint|two_factor|recover/i.test(current)) {
+        lastErr = new Error("SESSION_EXPIRED: تم إعادة التوجيه إلى صفحة تسجيل الدخول");
+        break;
+      }
+
       const found = await scanForAccessToken(page);
       if (found?.token) {
         await report({
@@ -78,11 +96,16 @@ async function runMessengerExtractToken(ctx) {
     }
   }
 
+  const raw = String(lastErr?.message || lastErr || "").slice(0, 240);
+  let human = "لم نتمكن من استخراج توكن Graph API من جلسة الحساب.";
+  if (/SESSION_EXPIRED|login|checkpoint/i.test(raw)) {
+    human = "الجلسة منتهية — Facebook طلب إعادة تسجيل دخول. حدّث الكوكيز أولاً ثم أعد المحاولة.";
+  } else if (/timeout|Timeout|TimeoutError/i.test(raw)) {
+    human = "استغرق تحميل Business Suite وقتاً أطول من المسموح. تحقق من البروكسي واستقرار الاتصال ثم أعد المحاولة.";
+  }
   await report({
     status: "failed",
-    errorMessage:
-      "لم نتمكن من استخراج توكن Graph API من جلسة الحساب. تأكد أن الحساب يفتح business.facebook.com بدون طلب تحقق أمان أو إعادة تسجيل دخول." +
-      (lastErr ? ` (${String(lastErr?.message || lastErr).slice(0, 200)})` : ""),
+    errorMessage: raw ? `${human} (${raw})` : human,
   });
 }
 
