@@ -641,12 +641,14 @@ export const listBotAccounts = createServerFn({ method: "GET" })
           console.warn("[listBotAccounts] recent job scan skipped:", jobsError);
         } else {
           const seenLatestTerminal = new Set<string>();
+          const rowsById = new Map(rows.map((row) => [row.id, row]));
           for (const job of recentJobs ?? []) {
             const accountId = typeof job.account_id === "string" ? job.account_id : null;
             if (!accountId || seenLatestTerminal.has(accountId)) continue;
             seenLatestTerminal.add(accountId);
             const errorMessage = typeof job.error_message === "string" ? job.error_message : "";
-            if (job.status === "failed" && isFacebookSessionRejectedError(errorMessage)) {
+            const accountRow = rowsById.get(accountId);
+            if (job.status === "failed" && isFacebookSessionRejectedError(errorMessage) && isFailureNewerThanAccountCheck(job, accountRow)) {
               latestSessionFailures.set(accountId, {
                 error: errorMessage,
                 at: (job.completed_at as string | null) ?? (job.created_at as string | null) ?? null,
@@ -1434,7 +1436,7 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { data: row, error } = await supabaseAdmin
         .from("fb_bot_accounts")
-        .select("id, auth_method, encrypted_payload, status, last_error")
+        .select("id, auth_method, encrypted_payload, status, last_error, last_check_at, updated_at")
         .eq("id", data.id)
         .eq("user_id", userId)
         .maybeSingle();
@@ -1478,7 +1480,10 @@ export const precheckBotAccount = createServerFn({ method: "POST" })
         : isFacebookSessionRejectedError(storedError)
           ? storedError
           : null;
-      if ((latestJob?.status === "failed" && rejectedSessionError) || acc?.status === "invalid" && rejectedSessionError) {
+      if (
+        rejectedSessionError &&
+        ((latestJob?.status === "failed" && isFailureNewerThanAccountCheck(latestJob, acc)) || (acc?.status === "invalid" && isFacebookSessionRejectedError(storedError)))
+      ) {
         const checkedAt = (latestJob?.completed_at as string | null) ?? (latestJob?.created_at as string | null) ?? new Date().toISOString();
         await supabase
           .from("fb_bot_accounts")
@@ -1635,7 +1640,7 @@ export const testBotAccount = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: acc, error } = await supabaseAdmin
       .from("fb_bot_accounts")
-      .select("id, auth_method, encrypted_payload, status, last_error")
+      .select("id, auth_method, encrypted_payload, status, last_error, last_check_at, updated_at")
       .eq("id", data.id)
       .eq("user_id", userId)
       .maybeSingle();
@@ -1658,7 +1663,10 @@ export const testBotAccount = createServerFn({ method: "POST" })
       : isFacebookSessionRejectedError(storedError)
         ? storedError
         : null;
-    if ((latestJob?.status === "failed" && rejectedSessionError) || acc.status === "invalid" && rejectedSessionError) {
+    if (
+      rejectedSessionError &&
+      ((latestJob?.status === "failed" && isFailureNewerThanAccountCheck(latestJob, acc)) || (acc.status === "invalid" && isFacebookSessionRejectedError(storedError)))
+    ) {
       const checkedAt = (latestJob?.completed_at as string | null) ?? (latestJob?.created_at as string | null) ?? new Date().toISOString();
       const { data: updated, error: upErr } = await supabase
         .from("fb_bot_accounts")
