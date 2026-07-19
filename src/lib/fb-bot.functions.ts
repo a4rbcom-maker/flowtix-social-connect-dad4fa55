@@ -463,7 +463,7 @@ async function assertBotAccountReadyForExtraction(
       : null;
   if (
     rejectedSessionError &&
-    (isFailureNewerThanAccountCheck(latestJob, account) || (isFacebookSessionRejectedError(storedError) && account.status === "invalid"))
+    isFailureNewerThanAccountCheck(latestJob, account)
   ) {
     const checkedAt = (latestJob?.completed_at as string | null) ?? (latestJob?.created_at as string | null) ?? new Date().toISOString();
     await supabase
