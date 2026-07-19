@@ -210,6 +210,14 @@ export const getBotMessengerPages = createServerFn({ method: "POST" })
         .replace(/'s\s+profile\s+picture$/iu, "")
         .replace(/\s+/g, " ")
         .trim();
+    const isRealPageName = (name: string) => {
+      const n = name.trim();
+      if (!n || n.length < 2) return false;
+      if (/^(ترويج|روّج|روج|إعلان|اعلان|الإعلانات?|الاعلانات?|promote|boost|ad|ads|advertise|sponsor(ed)?|create ad)$/i.test(n)) return false;
+      if (/^(\d+|[٠-٩]+)\s*(رسائل?|رسالة|messages?)$/i.test(n)) return false;
+      if (/لا يتوفر وصف للصورة|قد تكون صورة|profile picture/i.test(n)) return false;
+      return true;
+    };
 
     const pages = (results ?? [])
       .map((r) => {
@@ -217,7 +225,7 @@ export const getBotMessengerPages = createServerFn({ method: "POST" })
         const id = String(d.id ?? r.target ?? "").trim();
         const name = cleanPageName(String(d.name ?? ""));
         const avatar = String(d.avatar_url ?? d.avatarUrl ?? "").trim() || null;
-        return id && name ? { pageId: id, pageName: name, avatarUrl: avatar } : null;
+        return id && isRealPageName(name) ? { pageId: id, pageName: name, avatarUrl: avatar } : null;
       })
       .filter((p): p is { pageId: string; pageName: string; avatarUrl: string | null } => !!p && /^\d{5,}$/.test(p.pageId));
 

@@ -114,59 +114,110 @@ async function collectConversations(page, maxConversations, expectedPageId) {
   const seen = new Map();
   let stableRounds = 0;
   let lastCount = 0;
+  const readVisibleItems = async () => page.evaluate((expectedPageId) => {
+    const current = new URL(window.location.href);
+    if (!/(^|\.)business\.facebook\.com$/i.test(current.hostname) || !/\/latest\/inbox/i.test(current.pathname)) {
+      return { items: [], clickIndexes: [], scopeOk: false };
+    }
+    // Verify current URL still scoped to our page.
+    const params = new URLSearchParams(current.search);
+    const currentAsset = params.get("asset_id") || params.get("mailbox_id") || "";
+    if (currentAsset && currentAsset !== String(expectedPageId)) {
+      return { items: [], clickIndexes: [], scopeOk: false };
+    }
+
+    const ignoredNameRe = /^(Inbox|Messenger|Search|Chats|All|Unread|Spam|Done|صندوق|بحث|الكل|غير مقروء|مكتمل|الرسائل)$/i;
+    const cleanName = (value) => String(value || "").replace(/\s+/g, " ").trim().split("\n")[0].slice(0, 200);
+    const items = [];
+    const clickIndexes = [];
+    const candidates = Array.from(
+      document.querySelectorAll(
+        'a[href*="thread_fbid"], a[href*="selected_item_id"], a[href*="thread_id"], a[href*="participant_id"], [role="row"], [role="listitem"], [tabindex="0"]',
+      ),
+    ).filter((row) => {
+      const rect = row.getBoundingClientRect();
+      const text = cleanName(row.innerText || row.getAttribute?.("aria-label") || "");
+      return rect.width >= 160 && rect.height >= 24 && rect.bottom > 0 && rect.top < window.innerHeight && text && !ignoredNameRe.test(text);
+    });
+
+    candidates.slice(0, 40).forEach((row, index) => {
+      row.setAttribute("data-flowtix-conversation-index", String(index));
+      const html = row.outerHTML || "";
+      const href = row instanceof HTMLAnchorElement ? row.href : row.querySelector("a[href]")?.href || "";
+      if (href) {
+        const hrefParams = (() => { try { return new URL(href).searchParams; } catch { return null; } })();
+        const hAsset = hrefParams?.get("asset_id") || hrefParams?.get("mailbox_id") || "";
+        if (hAsset && hAsset !== String(expectedPageId)) return;
+      }
+      const psidMatch =
+        href.match(/[?&](?:selected_item_id|participant_id|user_id|profile_id|psid)=(\d{5,})/) ||
+        html.match(/thread_fbid[=:]"?(\d{5,})"?/) ||
+        html.match(/user_id[=:]"?(\d{5,})"?/) ||
+        html.match(/other_user_id[=:]"?(\d{5,})"?/) ||
+        html.match(/participant_id[=:]"?(\d{5,})"?/) ||
+        html.match(/profile_id[=:]"?(\d{5,})"?/) ||
+        html.match(/"id":"(\d{10,})"/);
+      const nameEl = row.querySelector(
+        'span[dir="auto"] span, span[dir="auto"], strong, [aria-label], [data-visualcompletion="ignore-dynamic"] span',
+      );
+      const name = cleanName(nameEl?.innerText || nameEl?.getAttribute?.("aria-label") || row.innerText || "");
+      if (psidMatch?.[1] && psidMatch[1] !== String(expectedPageId)) {
+        items.push({ psid: psidMatch[1], name });
+      } else {
+        clickIndexes.push(index);
+      }
+    });
+    return { items, clickIndexes, scopeOk: true };
+  }, String(expectedPageId));
+
+  const clickAndReadItem = async (index) => {
+    const before = page.url();
+    const clicked = await page.evaluate((index) => {
+      const el = document.querySelector(`[data-flowtix-conversation-index="${index}"]`);
+      if (!el) return { ok: false };
+      const text = String(el.innerText || el.getAttribute?.("aria-label") || "").replace(/\s+/g, " ").trim().split("\n")[0].slice(0, 200);
+      el.scrollIntoView({ block: "center", inline: "nearest" });
+      el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      return { ok: true, name: text };
+    }, index);
+    if (!clicked.ok) return null;
+    await new Promise((r) => setTimeout(r, 1200));
+    const current = page.url();
+    const parsed = await page.evaluate((expectedPageId) => {
+      const current = new URL(window.location.href);
+      const params = current.searchParams;
+      const asset = params.get("asset_id") || params.get("mailbox_id") || "";
+      if (asset && asset !== String(expectedPageId)) return { scopeOk: false };
+      const psid =
+        params.get("selected_item_id") ||
+        params.get("participant_id") ||
+        params.get("thread_id") ||
+        params.get("user_id") ||
+        params.get("profile_id") ||
+        "";
+      return { scopeOk: true, psid: /^\d{5,}$/.test(psid) ? psid : "" };
+    }, String(expectedPageId));
+    if (!parsed.scopeOk) return { scopeOk: false };
+    if (current !== before && !current.includes("latest/inbox")) return { scopeOk: false };
+    if (!parsed.psid || parsed.psid === String(expectedPageId)) return null;
+    return { psid: parsed.psid, name: clicked.name };
+  };
+
   for (let i = 0; i < 200; i += 1) {
     if (Date.now() - start > 8 * 60 * 1000) break;
-    const batch = await page.evaluate((expectedPageId) => {
-      const current = new URL(window.location.href);
-      if (!/(^|\.)business\.facebook\.com$/i.test(current.hostname) || !/\/latest\/inbox/i.test(current.pathname)) {
-        return { items: [], scopeOk: false };
-      }
-      // Verify current URL still scoped to our page.
-      const params = new URLSearchParams(current.search);
-      const currentAsset = params.get("asset_id") || params.get("mailbox_id") || "";
-      if (currentAsset && currentAsset !== String(expectedPageId)) {
-        return { items: [], scopeOk: false };
-      }
-      const items = [];
-      const rows = Array.from(
-        document.querySelectorAll(
-          '[role="row"], [role="listitem"], a[href*="thread_fbid"], a[href*="selected_item_id"], a[href*="thread_id"]',
-        ),
-      );
-      for (const row of rows) {
-        const html = row.outerHTML || "";
-        const href = row instanceof HTMLAnchorElement ? row.href : row.querySelector("a[href]")?.href || "";
-        // STRICT: thread anchor must reference our page via asset_id/mailbox_id.
-        if (href) {
-          const hrefParams = (() => { try { return new URL(href).searchParams; } catch { return null; } })();
-          const hAsset = hrefParams?.get("asset_id") || hrefParams?.get("mailbox_id") || "";
-          if (hAsset && hAsset !== String(expectedPageId)) continue;
-          // If href has no asset scoping at all, require the DOM ancestor URL scope (already checked above).
-        }
-        const psidMatch =
-          href.match(/[?&](?:selected_item_id|participant_id|user_id|profile_id|psid)=(\d{5,})/) ||
-          html.match(/thread_fbid[=:]"?(\d{5,})"?/) ||
-          html.match(/user_id[=:]"?(\d{5,})"?/) ||
-          html.match(/other_user_id[=:]"?(\d{5,})"?/) ||
-          html.match(/participant_id[=:]"?(\d{5,})"?/) ||
-          html.match(/profile_id[=:]"?(\d{5,})"?/) ||
-          html.match(/"id":"(\d{10,})"/);
-        if (!psidMatch) continue;
-        const psid = psidMatch[1];
-        // Never accept the page id itself as a contact psid.
-        if (psid === String(expectedPageId)) continue;
-        const nameEl = row.querySelector(
-          'span[dir="auto"] span, span[dir="auto"], strong, [aria-label], [data-visualcompletion="ignore-dynamic"] span',
-        );
-        const name = (nameEl?.innerText || nameEl?.getAttribute?.("aria-label") || row.innerText || "").trim().split("\n")[0];
-        if (!psid || /^(Inbox|Messenger|Search|Chats|All|Unread|Spam|Done|صندوق|بحث|الكل|غير مقروء)$/i.test(name)) continue;
-        items.push({ psid, name: name.slice(0, 200) });
-      }
-      return { items, scopeOk: true };
-    }, String(expectedPageId));
+    const batch = await readVisibleItems();
 
     if (!batch.scopeOk) break; // page navigated away from our asset scope — stop.
     for (const c of batch.items) if (!seen.has(c.psid)) seen.set(c.psid, c);
+    for (const index of batch.clickIndexes.slice(0, 12)) {
+      if (seen.size >= maxConversations) break;
+      const clicked = await clickAndReadItem(index);
+      if (clicked && clicked.scopeOk === false) return Array.from(seen.values()).slice(0, maxConversations);
+      if (clicked?.psid && !seen.has(clicked.psid)) seen.set(clicked.psid, clicked);
+    }
     if (seen.size >= maxConversations) break;
 
     if (seen.size === lastCount) {
