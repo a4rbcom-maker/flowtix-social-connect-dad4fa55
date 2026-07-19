@@ -208,7 +208,7 @@ function MessagesPage() {
         const res = await listPagesFn();
         if (cancelled) return;
         if (res.error) {
-          setPagesError(res.error.message ?? "Failed to load pages");
+          setPagesError(humanizeFbError(res.error.message));
           setPages([]);
         } else {
           const list = (res.pages ?? []) as Page[];
@@ -216,7 +216,7 @@ function MessagesPage() {
           if (list.length > 0) setPageId(list[0].id);
         }
       } catch (e) {
-        if (!cancelled) setPagesError(e instanceof Error ? e.message : String(e));
+        if (!cancelled) setPagesError(humanizeFbError(e));
       } finally {
         if (!cancelled) setLoadingPages(false);
       }
