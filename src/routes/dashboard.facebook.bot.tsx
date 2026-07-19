@@ -45,6 +45,12 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { isAppAuthError, isExternalServiceSessionError } from "@/lib/reauth-classifier";
 import {
+  canAttempt as canAttemptProxyTest,
+  recordSuccess as recordProxyTestSuccess,
+  recordFailure as recordProxyTestFailure,
+  describeCooldown as describeProxyCooldown,
+} from "@/lib/proxy-test-circuit-breaker";
+import {
   addBotAccount,
   listBotAccounts,
   deleteBotAccount,
