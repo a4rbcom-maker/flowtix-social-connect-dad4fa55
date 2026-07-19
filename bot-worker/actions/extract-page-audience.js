@@ -123,7 +123,7 @@ async function harvestFromScope(page, scopeSelector, cap, opts = {}) {
 // ---------- collect recent post permalinks from the page timeline ----------
 async function collectRecentPostUrls(page, pageId, wantPosts) {
   const urls = new Set();
-  for (let i = 0; i < 25 && urls.size < wantPosts; i++) {
+  for (let i = 0; i < 12 && urls.size < wantPosts; i++) {
     const batch = await page.evaluate(() => {
       const out = [];
       const links = Array.from(document.querySelectorAll('a[href*="/posts/"], a[href*="/videos/"], a[href*="permalink"], a[href*="story_fbid"]'));
@@ -135,6 +135,7 @@ async function collectRecentPostUrls(page, pageId, wantPosts) {
       }
       return out;
     });
+    const before = urls.size;
     for (const h of batch) {
       const full = h.startsWith("http") ? h.split("?")[0] : `https://www.facebook.com${h.split("?")[0]}`;
       // filter same-page id references + drop translation/like href variants
@@ -142,8 +143,10 @@ async function collectRecentPostUrls(page, pageId, wantPosts) {
       urls.add(full);
       if (urls.size >= wantPosts) break;
     }
+    // Early-exit: 2 consecutive scrolls without new posts → timeline exhausted.
+    if (urls.size === before && i >= 2) break;
     await page.evaluate(() => window.scrollBy(0, 2400));
-    await sleep(rand(1800, 3000));
+    await sleep(rand(900, 1500));
   }
   return Array.from(urls).slice(0, wantPosts);
 }
