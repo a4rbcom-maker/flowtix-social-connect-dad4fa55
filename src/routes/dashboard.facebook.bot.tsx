@@ -1106,6 +1106,7 @@ function BotAccountsPage() {
         rawError: null,
       });
       toast.error(msg);
+      recordProxyTestFailure(breakerKey, msg);
     } finally {
       setProxyTestingId(null);
     }
