@@ -181,7 +181,8 @@ async function harvestReactors(page, cap) {
 // ---------- commenters (expand all comments then scrape article) ----------
 async function harvestCommenters(page, cap) {
   // expand nested & "view more comments" repeatedly
-  for (let i = 0; i < 40; i++) {
+  let noClickStreak = 0;
+  for (let i = 0; i < 18; i++) {
     const clicked = await page.evaluate(() => {
       const btns = Array.from(document.querySelectorAll('[role="button"], span'));
       const target = btns.find((b) => /view more comments|view previous comments|view \d+ replies|more replies|عرض المزيد من التعليقات|عرض تعليقات سابقة|عرض \d+ رد|عرض ردود أخرى/i.test(b.textContent || ""));
@@ -190,10 +191,13 @@ async function harvestCommenters(page, cap) {
     });
     if (!clicked) {
       await page.evaluate(() => window.scrollBy(0, 1400));
+      noClickStreak++;
+    } else {
+      noClickStreak = 0;
     }
-    await sleep(rand(1200, 2200));
-    // early-exit when we've likely exhausted
-    if (!clicked && i > 8) break;
+    await sleep(rand(700, 1300));
+    // exit sooner: 3 consecutive no-click iterations = comments exhausted
+    if (noClickStreak >= 3) break;
   }
   // scrape whole document — commenter links live inside article blocks
   return harvestFromScope(page, null, cap, { maxScrolls: 3, idleLimit: 2 });
