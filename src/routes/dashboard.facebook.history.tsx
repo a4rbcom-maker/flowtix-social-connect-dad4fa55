@@ -871,7 +871,27 @@ function JobsHistoryPage() {
                 </div>
               </div>
             )}
-            {selected?.status === "failed" && !isSessionExpired(selected) && selected.error_message && (
+            {selected?.status === "failed" && selected.stuck_reason && (
+              <div className="mb-3 flex flex-wrap items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div className="flex-1 space-y-1">
+                  <p className="font-medium text-amber-900 dark:text-amber-200">
+                    {selected.stuck_reason === "no_worker_pickup"
+                      ? (lang === "ar" ? "لم يلتقط البوت هذه المهمة" : "The bot didn't pick up this task")
+                      : (lang === "ar" ? "توقفت المهمة عن التقدّم وتم إنهاؤها تلقائياً" : "Task stopped making progress and was auto-terminated")}
+                  </p>
+                  <p className="text-amber-800/90 dark:text-amber-300/90 text-xs">
+                    {selected.stuck_reason === "no_worker_pickup"
+                      ? (lang === "ar" ? "تحقّق من أن خدمة البوت تعمل ثم أعد التشغيل." : "Make sure the bot service is running, then retry.")
+                      : (lang === "ar" ? "لم نستقبل أي نبضة نشاط خلال المهلة المحددة." : "No heartbeat or progress was received within the allowed window.")}
+                  </p>
+                </div>
+                <Button size="sm" variant="secondary" disabled={pausingId === selected.id} onClick={() => selected && handleRetry(selected)}>
+                  {lang === "ar" ? "إعادة التشغيل" : "Retry"}
+                </Button>
+              </div>
+            )}
+            {selected?.status === "failed" && !isSessionExpired(selected) && !selected.stuck_reason && selected.error_message && (
               <div className="mb-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
                 {isMessenger
                   ? messengerFriendlyReason(selected.error_message, "failed", lang).title
