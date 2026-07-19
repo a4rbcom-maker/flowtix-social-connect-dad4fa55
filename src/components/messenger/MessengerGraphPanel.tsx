@@ -69,10 +69,18 @@ export function MessengerGraphPanel() {
   const listLogsFn = useServerFn(listSyncLogs);
   const sendFn = useServerFn(sendBulkGraph);
   const getJobFn = useServerFn(getJob);
+  const precheckFn = useServerFn(precheckGraphAccount);
 
   const accountsQ = useQuery({
     queryKey: ["mgraph-accounts"],
     queryFn: () => listAccountsFn(),
+  });
+
+  const precheckQ = useQuery({
+    queryKey: ["mgraph-precheck", selectedAccountId],
+    queryFn: () => precheckFn({ data: { accountId: selectedAccountId } }),
+    enabled: !!selectedAccountId,
+    refetchInterval: tokenJobId ? 5000 : false,
   });
 
   const pagesQ = useQuery({
