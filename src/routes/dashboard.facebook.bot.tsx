@@ -45,6 +45,12 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { isAppAuthError, isExternalServiceSessionError } from "@/lib/reauth-classifier";
 import {
+  canAttempt as canAttemptProxyTest,
+  recordSuccess as recordProxyTestSuccess,
+  recordFailure as recordProxyTestFailure,
+  describeCooldown as describeProxyCooldown,
+} from "@/lib/proxy-test-circuit-breaker";
+import {
   addBotAccount,
   listBotAccounts,
   deleteBotAccount,
@@ -944,6 +950,31 @@ function BotAccountsPage() {
   };
 
   const handleTestProxy = async (accountId: string, accountName: string) => {
+    // Circuit Breaker: after repeated failures for this account, block new
+    // attempts for a cooldown window instead of waiting on another 18s poll.
+    const breakerKey = `proxy-test:${accountId}`;
+    const decision = canAttemptProxyTest(breakerKey);
+    if (!decision.allow) {
+      const wait = describeProxyCooldown(decision.retryAfterMs, lang === "ar" ? "ar" : "en");
+      const reasonAr = `تم إيقاف اختبار البروكسي مؤقتًا بعد ${decision.status.failures} محاولات فاشلة متتالية. جرّب مرة أخرى بعد ${wait}.`;
+      const reasonEn = `Proxy test paused after ${decision.status.failures} consecutive failures. Try again in ${wait}.`;
+      setProxyTest({
+        accountId,
+        accountName,
+        jobId: null,
+        status: "failed",
+        ip: null,
+        proxyEnabled: false,
+        elapsedMs: null,
+        error: lang === "ar" ? reasonAr : reasonEn,
+        reasonCode: "circuit_open",
+        reasonAr,
+        reasonEn,
+        rawError: decision.status.lastReason ?? null,
+      });
+      toast.error(lang === "ar" ? reasonAr : reasonEn);
+      return;
+    }
     setProxyTestingId(accountId);
     setProxyTest({
       accountId,
@@ -1010,6 +1041,7 @@ function BotAccountsPage() {
                   ? lang === "ar" ? "البروكسي مفعّل" : "Proxy is active"
                   : lang === "ar" ? "لا يوجد بروكسي مفعّل" : "No proxy is enabled",
               );
+              recordProxyTestSuccess(breakerKey);
               return;
             }
             if (jobStatus === "failed") {
@@ -1030,6 +1062,7 @@ function BotAccountsPage() {
                 rawError: rd?.rawError ?? null,
               });
               toast.error(rd?.reasonAr || payload.job.error_message || "تعذّر تشغيل اختبار البروكسي");
+              recordProxyTestFailure(breakerKey, rd?.reasonAr ?? payload.job.error_message ?? null);
               return;
             }
           } catch (e) {
@@ -1049,6 +1082,7 @@ function BotAccountsPage() {
             : prev,
         );
         toast.error("خدمة البوت لم تلتقط الاختبار بسرعة.");
+        recordProxyTestFailure(breakerKey, "worker_unavailable");
       };
       await poll();
     } catch (e) {
@@ -1072,6 +1106,7 @@ function BotAccountsPage() {
         rawError: null,
       });
       toast.error(msg);
+      recordProxyTestFailure(breakerKey, msg);
     } finally {
       setProxyTestingId(null);
     }
