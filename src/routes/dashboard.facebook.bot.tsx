@@ -1044,11 +1044,11 @@ function BotAccountsPage() {
                 }
               | null;
             if (jobStatus === "completed") {
-              setProxyTest({
+              const snapshot = {
                 accountId,
                 accountName,
                 jobId,
-                status: "completed",
+                status: "completed" as const,
                 ip: rd?.ip ?? null,
                 proxyEnabled: Boolean(rd?.proxyEnabled),
                 elapsedMs: rd?.elapsedMs ?? null,
@@ -1057,7 +1057,9 @@ function BotAccountsPage() {
                 reasonAr: null,
                 reasonEn: null,
                 rawError: null,
-              });
+              };
+              setProxyTest(snapshot);
+              setCachedProxyTest(accountId, snapshot);
               toast.success(
                 rd?.proxyEnabled
                   ? lang === "ar" ? "البروكسي مفعّل" : "Proxy is active"
