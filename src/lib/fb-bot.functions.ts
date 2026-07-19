@@ -1204,12 +1204,27 @@ export const listJobs = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("fb_jobs")
       .select(
-        "id, job_type, status, progress, total_items, processed_items, created_at, started_at, completed_at, error_message, account_id",
+        "id, job_type, status, progress, total_items, processed_items, created_at, started_at, completed_at, error_message, account_id, stuck_reason, last_progress_at, last_heartbeat_at",
       )
       .order("created_at", { ascending: false })
       .limit(100);
     if (error) throw new Error(error.message);
     return data ?? [];
+  });
+
+// ---------- retryJob ----------
+// Clones a stuck/failed/cancelled job into a fresh pending row via the
+// SECURITY INVOKER `fb_retry_job` SQL function. RLS enforces ownership so
+// users can only retry their own jobs.
+export const retryJob = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { data: newId, error } = await supabase.rpc("fb_retry_job", { _job_id: data.id });
+    if (error) throw new Error(error.message);
+    if (!newId) throw new Error("لا يمكن إعادة تشغيل هذه المهمة في حالتها الحالية.");
+    return { id: newId as string };
   });
 
 // ---------- getJob (with results) ----------

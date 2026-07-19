@@ -18,7 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { useFacebookApi } from "@/features/facebook/api";
-import { listJobs, getJob, cancelJob, pauseJob, resumeJob, createSendMessengerDmJob, listBotAccounts } from "@/lib/fb-bot.functions";
+import { listJobs, getJob, cancelJob, pauseJob, resumeJob, retryJob, createSendMessengerDmJob, listBotAccounts } from "@/lib/fb-bot.functions";
 import { loadEgyptData, extractEgyptPhone, detectLocation } from "@/lib/egypt-enrich";
 import { filterCommenters, highlightSegments } from "@/lib/comment-search";
 
@@ -43,6 +43,9 @@ type JobRow = {
   completed_at: string | null;
   error_message: string | null;
   account_id: string | null;
+  stuck_reason?: string | null;
+  last_progress_at?: string | null;
+  last_heartbeat_at?: string | null;
 };
 
 type JobResult = { id: string; target: string | null; status: "success" | "failed" | "skipped"; data: unknown; error: string | null; created_at: string };
@@ -311,6 +314,20 @@ function JobsHistoryPage() {
       await call(resumeJob, { id: j.id });
       setJobs((prev) => prev.map((x) => (x.id === j.id ? { ...x, status: "pending", error_message: null } : x)));
       toast.success(t.resumeDone);
+    } catch (e) { toast.error(String(e)); }
+    finally { setPausingId(null); }
+  };
+
+  const handleRetry = async (j: JobRow) => {
+    setPausingId(j.id);
+    try {
+      const { id: newId } = await call(retryJob, { id: j.id });
+      toast.success(lang === "ar" ? "تم إعادة تشغيل المهمة" : "Task restarted");
+      // Refresh list so the new pending row appears at the top.
+      const rows = await call(listJobs);
+      setJobs(rows as JobRow[]);
+      const created = (rows as JobRow[]).find((r) => r.id === newId);
+      if (created) void openDetails(created);
     } catch (e) { toast.error(String(e)); }
     finally { setPausingId(null); }
   };
@@ -854,7 +871,27 @@ function JobsHistoryPage() {
                 </div>
               </div>
             )}
-            {selected?.status === "failed" && !isSessionExpired(selected) && selected.error_message && (
+            {selected?.status === "failed" && selected.stuck_reason && (
+              <div className="mb-3 flex flex-wrap items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div className="flex-1 space-y-1">
+                  <p className="font-medium text-amber-900 dark:text-amber-200">
+                    {selected.stuck_reason === "no_worker_pickup"
+                      ? (lang === "ar" ? "لم يلتقط البوت هذه المهمة" : "The bot didn't pick up this task")
+                      : (lang === "ar" ? "توقفت المهمة عن التقدّم وتم إنهاؤها تلقائياً" : "Task stopped making progress and was auto-terminated")}
+                  </p>
+                  <p className="text-amber-800/90 dark:text-amber-300/90 text-xs">
+                    {selected.stuck_reason === "no_worker_pickup"
+                      ? (lang === "ar" ? "تحقّق من أن خدمة البوت تعمل ثم أعد التشغيل." : "Make sure the bot service is running, then retry.")
+                      : (lang === "ar" ? "لم نستقبل أي نبضة نشاط خلال المهلة المحددة." : "No heartbeat or progress was received within the allowed window.")}
+                  </p>
+                </div>
+                <Button size="sm" variant="secondary" disabled={pausingId === selected.id} onClick={() => selected && handleRetry(selected)}>
+                  {lang === "ar" ? "إعادة التشغيل" : "Retry"}
+                </Button>
+              </div>
+            )}
+            {selected?.status === "failed" && !isSessionExpired(selected) && !selected.stuck_reason && selected.error_message && (
               <div className="mb-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
                 {isMessenger
                   ? messengerFriendlyReason(selected.error_message, "failed", lang).title
