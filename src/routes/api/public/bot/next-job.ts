@@ -38,6 +38,7 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         const supportsMessengerListPages = workerCapabilities.includes("messenger_list_pages");
         const supportsMessengerSyncCookies = workerCapabilities.includes("messenger_sync_cookies");
         const supportsMessengerSendCookies = workerCapabilities.includes("messenger_send_cookies");
+        const supportsTestProxy = workerCapabilities.includes("test_proxy");
 
         const [{ supabaseAdmin }, { decryptJson }] = await Promise.all([
           import("@/integrations/supabase/client.server"),
@@ -137,6 +138,9 @@ export const Route = createFileRoute("/api/public/bot/next-job")({
         }
         if (!supportsMessengerSendCookies) {
           candidateQuery = candidateQuery.neq("job_type", "messenger_send_cookies");
+        }
+        if (!supportsTestProxy) {
+          candidateQuery = candidateQuery.neq("job_type", "test_proxy");
         }
 
         const { data: candidate, error: selErr } = await candidateQuery
