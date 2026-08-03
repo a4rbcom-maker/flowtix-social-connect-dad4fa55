@@ -10,17 +10,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ====== FRONTEND: Build + Deploy ======
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - run: npm ci
-
-      - name: Build
+      - name: Build Frontend
         run: npm run build
 
-      - name: Deploy via rsync
+      - name: Deploy Frontend
         uses: burnett01/rsync-deployments@7.0.1
         with:
           switches: -avzr --delete
@@ -30,3 +29,90 @@ jobs:
           remote_port: ${{ secrets.SSH_PORT }}
           remote_user: ${{ secrets.SERVER_USER }}
           remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      # ====== BACKEND: Build + Deploy + Restart ======
+      - name: Build Backend
+        run: |
+          cd extraction-service
+          npm ci
+          npm run build
+
+      - name: Deploy Backend
+        uses: burnett01/rsync-deployments@7.0.1
+        with:
+          switches: -avzr --delete --exclude=node_modules
+          path: extraction-service/
+          remote_path: /www/wwwroot/flowtixtools.com/extraction-service
+          remote_host: ${{ secrets.SERVER_IP }}
+          remote_port: ${{ secrets.SSH_PORT }}
+          remote_user: ${{ secrets.SERVER_USER }}
+          remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Install dependencies & restart backend on server
+        uses: burnett01/rsync-deployments@7.0.1
+        with:
+          switches: -avzr --delete --exclude=node_modules
+          path: extraction-service/
+          remote_path: /www/wwwroot/flowtixtools.com/extraction-service
+          remote_host: ${{ secrets.SERVER_IP }}
+          remote_port: ${{ secrets.SSH_PORT }}
+          remote_user: ${{ secrets.SERVER_USER }}
+          remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Setup & Restart Backend Service
+        uses: appleboy/ssh-action@v1.3.1
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /www/wwwroot/flowtixtools.com/extraction-service
+            npm ci --omit=dev
+
+            # Create .env if not exists
+            if [ ! -f .env ]; then
+              cat > .env << 'EOF'
+SUPABASE_URL=https://ukjrizflmkutadsrcmut.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_rptw3rPZ4xpbfYavBA5snA_KFXa9MdP
+PORT=3100
+API_KEY=flowtix-extraction-2026
+NODE_ENV=production
+BROWSER_POOL_SIZE=2
+MAX_CONTEXTS_PER_BROWSER=2
+HEADLESS=true
+MAX_CONCURRENT_JOBS=2
+JOB_TIMEOUT_MS=300000
+ENRICHMENT_DB_PATH=D:/egypt_data
+ENRICHMENT_ENABLED=true
+EOF
+            fi
+
+            # Install Playwright browsers
+            npx playwright install chromium --with-deps
+
+            # Create systemd service
+            cat > /etc/systemd/system/flowtix-extraction.service << 'SERVICE'
+[Unit]
+Description=FlowTix Extraction Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/www/wwwroot/flowtixtools.com/extraction-service
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PORT=3100
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+            systemctl daemon-reload
+            systemctl enable flowtix-extraction.service
+            systemctl restart flowtix-extraction.service
+            echo "Backend service status:"
+            systemctl status flowtix-extraction.service --no-pager | head -5
