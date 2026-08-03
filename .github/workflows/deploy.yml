@@ -18,7 +18,7 @@ jobs:
           VITE_SUPABASE_URL: ${{  secrets.VITE_SUPABASE_URL  }}
           VITE_SUPABASE_ANON_KEY: ${{  secrets.VITE_SUPABASE_ANON_KEY  }}
 
-      - uses: easingthemes/ssh-deploy@v5
+      - uses: easingthemes/ssh-deploy@v4.1.8
         with:
           SSH_PRIVATE_KEY: ${{  secrets.SSH_KEY  }}
           ARGS: "-avz --delete"
