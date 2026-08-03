@@ -1,28 +1,43 @@
-﻿name: Deploy
+﻿name: Build & Deploy
 
 on:
   push:
     branches: [master]
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - run: npm ci && npm run build
         env:
-          VITE_SUPABASE_URL: ${{  secrets.VITE_SUPABASE_URL  }}
-          VITE_SUPABASE_ANON_KEY: ${{  secrets.VITE_SUPABASE_ANON_KEY  }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+  deploy:
+    if: ${{ secrets.VPS_HOST != '' }}
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: npm ci && npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       - uses: easingthemes/ssh-deploy@v4.1.8
         with:
-          SSH_PRIVATE_KEY: ${{  secrets.SSH_KEY  }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
           ARGS: "-avz --delete"
           SOURCE: "dist/"
-          REMOTE_HOST: ${{  secrets.VPS_HOST  }}
-          REMOTE_USER: ${{  secrets.VPS_USER  }}
+          REMOTE_HOST: ${{ secrets.VPS_HOST }}
+          REMOTE_USER: ${{ secrets.VPS_USER }}
           TARGET: "/var/www/flowtix"
