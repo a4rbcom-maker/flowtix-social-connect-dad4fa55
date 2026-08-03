@@ -21,7 +21,7 @@ jobs:
       - name: Deploy to Server
         uses: burnett01/rsync-deployments@7.0.1
         with:
-          switches: -avzr --delete
+          switches: -avzr
           path: dist/
           remote_path: /www/wwwroot/flowtixtools.com
           remote_host: ${{ secrets.SERVER_IP }}
