@@ -1,42 +1,40 @@
-﻿name: Build & Deploy
+﻿name: Deploy to Server
 
 on:
   push:
-    branches: [master]
+    branches: [main]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - run: npm ci && npm run build
-        env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-
   deploy:
-    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: 20
+          cache: npm
 
-      - run: npm ci && npm run build
+      - run: npm ci
+
+      - name: Build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: npm run build
 
-      - uses: easingthemes/ssh-deploy@v4.1.8
+      - name: Verify build outputs
+        run: |
+          test -f dist/index.html || (echo "Missing dist/index.html" && exit 1)
+          test -f dist/version.json || (echo '{"commit":"${{ github.sha }}","branch":"${{ github.ref_name }}"}' > dist/version.json)
+
+      - name: Deploy via rsync
+        uses: burnett01/rsync-deployments@7.0.1
         with:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
-          ARGS: "-avz --delete"
-          SOURCE: "dist/"
-          REMOTE_HOST: ${{ secrets.VPS_HOST }}
-          REMOTE_USER: ${{ secrets.VPS_USER }}
-          TARGET: "/var/www/flowtix"
+          switches: -avzr --delete
+          path: dist/
+          remote_path: ${{ secrets.REMOTE_PATH }}
+          remote_host: ${{ secrets.SERVER_IP }}
+          remote_port: ${{ secrets.SSH_PORT }}
+          remote_user: ${{ secrets.SERVER_USER }}
+          remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
