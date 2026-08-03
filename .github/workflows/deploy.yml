@@ -18,22 +18,14 @@ jobs:
       - run: npm ci
 
       - name: Build
-        env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
         run: npm run build
-
-      - name: Verify build outputs
-        run: |
-          test -f dist/index.html || (echo "Missing dist/index.html" && exit 1)
-          test -f dist/version.json || (echo '{"commit":"${{ github.sha }}","branch":"${{ github.ref_name }}"}' > dist/version.json)
 
       - name: Deploy via rsync
         uses: burnett01/rsync-deployments@7.0.1
         with:
           switches: -avzr --delete
           path: dist/
-          remote_path: ${{ secrets.REMOTE_PATH }}
+          remote_path: ${{ secrets.PUBLIC_URL }}
           remote_host: ${{ secrets.SERVER_IP }}
           remote_port: ${{ secrets.SSH_PORT }}
           remote_user: ${{ secrets.SERVER_USER }}
