@@ -25,7 +25,7 @@ jobs:
         with:
           switches: -avzr --delete
           path: dist/
-          remote_path: ${{ secrets.PUBLIC_URL }}
+          remote_path: /www/wwwroot/flowtixtools.com
           remote_host: ${{ secrets.SERVER_IP }}
           remote_port: ${{ secrets.SSH_PORT }}
           remote_user: ${{ secrets.SERVER_USER }}
