@@ -19,7 +19,6 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
   deploy:
-    if: ${{ secrets.VPS_HOST != '' }}
     needs: build
     runs-on: ubuntu-latest
     steps:
