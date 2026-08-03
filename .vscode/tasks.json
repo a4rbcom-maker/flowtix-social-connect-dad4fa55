@@ -1,0 +1,13 @@
+﻿{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "🚀 Deploy (Push + Build)",
+      "type": "shell",
+      "command": "git add -A; [string]$msg = Read-Host 'Commit message (or Enter for auto)'; if (-not $msg) { $msg = 'update: ' + (Get-Date -Format 'yyyy-MM-dd HH:mm') }; git commit -m $msg; git push",
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "always" },
+      "problemMatcher": []
+    }
+  ]
+}

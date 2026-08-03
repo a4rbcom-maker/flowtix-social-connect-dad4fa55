@@ -1,0 +1,45 @@
+{
+  "name": "flowtix-tools",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "FlowTix Tools — AI-powered SaaS platform for Facebook data extraction, automation and analytics.",
+  "author": "Khaled Abdelrahman <topone1.com@gmail.com> (https://flowtix.app)",
+  "contributors": [
+    "Khaled Abdelrahman <topone1.com@gmail.com> (https://flowtix.app)"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit",
+    "lint": "eslint . --ext .ts,.tsx"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "@tanstack/react-query": "^5.59.0",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "i18next": "^23.15.1",
+    "i18next-browser-languagedetector": "^8.0.0",
+    "lucide-react": "^0.453.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-helmet-async": "^3.0.0",
+    "react-i18next": "^15.0.2",
+    "react-router-dom": "^7.0.0",
+    "tailwind-merge": "^2.5.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.7.5",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "eslint": "^9.12.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.0"
+  }
+}

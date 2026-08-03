@@ -1,0 +1,94 @@
+export type ExtractionType =
+  | "groups"
+  | "pages"
+  | "post_comments"
+  | "post_reactions"
+  | "messenger_contacts";
+
+export type AuthState = "authenticated" | "needs_login" | "restricted" | "unknown";
+
+export type JobStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "paused"
+  | "canceled";
+
+export interface ExtractRequest {
+  session_id: string;
+  type: ExtractionType;
+  source_url: string;
+  job_name?: string;
+  max_results?: number;
+  skip_duplicates?: boolean;
+  cursor?: string;
+  job_id?: string;
+}
+
+export interface ExtractionProgress {
+  job_id: string;
+  status: JobStatus;
+  result_count: number;
+  progress: number;
+  cursor?: string;
+  error?: string;
+  error_code?: string;
+}
+
+export interface SessionCheckResult {
+  session_id: string;
+  status: string;
+  auth_state: AuthState;
+  message: string;
+  fb_user_id?: string;
+}
+
+export interface ExtractedMember {
+  fb_id: string;
+  name: string;
+  profile_url: string;
+  avatar_url?: string;
+  type: string;
+  comment_text?: string;
+  comment_id?: string;
+}
+
+export interface CookieEntry {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  expires?: number;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: "Strict" | "Lax" | "None";
+}
+
+export interface JobContext {
+  jobId: string;
+  workspaceId: string;
+  sessionId: string;
+  type: ExtractionType;
+  sourceUrl: string;
+  maxResults: number;
+  skipDuplicates: boolean;
+  cursor?: string;
+}
+
+export interface HealthStatus {
+  status: "ok" | "shutting_down";
+  version: string;
+  uptime: number;
+  browsers: { total: number; active: number };
+  contexts: { active: number };
+  queue: { pending: number; size: number };
+  memory: NodeJS.MemoryUsage;
+}
+
+export interface ProxyConfig {
+  /** proxy URL: http://user:pass@host:port or socks5://host:port */
+  url: string;
+  /** optional friendly name for logging (e.g. "IPRoyal-res-1") */
+  label?: string;
+}

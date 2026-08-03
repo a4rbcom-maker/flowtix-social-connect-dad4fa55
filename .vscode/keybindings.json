@@ -1,0 +1,6 @@
+﻿[
+  {
+    "key": "ctrl+shift+d",
+    "command": "workbench.action.tasks.build"
+  }
+]

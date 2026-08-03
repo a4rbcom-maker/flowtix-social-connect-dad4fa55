@@ -1,0 +1,274 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-29T00:00:00Z",
+  "title": "Design System: FlowTix Tools",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Brand Violet",
+        "canonical": "#6d5efc",
+        "tonalRamp": [
+          "#2a1f8c",
+          "#3e30c4",
+          "#5447e6",
+          "#6d5efc",
+          "#8b7dff",
+          "#a89aff",
+          "#cdbfff",
+          "#f0edff"
+        ]
+      },
+      "primary-soft": {
+        "role": "primary-variant",
+        "displayName": "Brand Violet Soft",
+        "canonical": "#8b7dff",
+        "tonalRamp": ["#5447e6", "#6d5efc", "#8b7dff", "#a89aff", "#cdbfff"]
+      },
+      "primary-strong": {
+        "role": "primary-variant",
+        "displayName": "Brand Violet Deep",
+        "canonical": "#5447e6",
+        "tonalRamp": ["#2a1f8c", "#3e30c4", "#5447e6", "#6d5efc"]
+      },
+      "secondary": {
+        "role": "accent",
+        "displayName": "Accent Cyan",
+        "canonical": "#22d3ee",
+        "tonalRamp": [
+          "#0e7490",
+          "#0891b2",
+          "#22d3ee",
+          "#67e8f9",
+          "#a5f3fc",
+          "#cffafe"
+        ]
+      },
+      "success": {
+        "role": "status",
+        "displayName": "Success Green",
+        "canonical": "#10b981",
+        "tonalRamp": ["#065f46", "#059669", "#10b981", "#34d399", "#6ee7b7"]
+      },
+      "warning": {
+        "role": "status",
+        "displayName": "Warning Amber",
+        "canonical": "#f59e0b",
+        "tonalRamp": ["#92400e", "#d97706", "#f59e0b", "#fbbf24", "#fde68a"]
+      },
+      "error": {
+        "role": "status",
+        "displayName": "Error Rose",
+        "canonical": "#f43f5e",
+        "tonalRamp": ["#9f1239", "#e11d48", "#f43f5e", "#fb7185", "#fecdd3"]
+      },
+      "info": {
+        "role": "status",
+        "displayName": "Info Sky",
+        "canonical": "#38bdf8",
+        "tonalRamp": ["#0369a1", "#0ea5e9", "#38bdf8", "#7dd3fc", "#bae6fd"]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Card Surface",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#f7f7fb", "#f3f3f8", "#eaeaef", "#ffffff"]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Hairline Border",
+        "canonical": "#e6e6ee",
+        "tonalRamp": ["#e6e6ee", "#d4d4df", "#8a8a9c"]
+      },
+      "fg": {
+        "role": "neutral",
+        "displayName": "Body Ink",
+        "canonical": "#0b0b14",
+        "tonalRamp": ["#0b0b14", "#4b4b5e", "#8a8a9c", "#a1a1b5", "#f4f4f7"]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Hero section titles and the largest single headline per page. Inter for Latin, Cairo for Arabic."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "All long-form text, paragraphs, descriptions. Maximum line length 65–75ch where space allows."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Button text, badges, form labels, table headers. Slight tracking (0.01em), semibold."
+      },
+      "arabic": {
+        "displayName": "Arabic Display",
+        "purpose": "Used when the entire surface is Arabic-dominant; otherwise Inter handles Arabic fallbacks via Cairo."
+      }
+    },
+    "shadows": [
+      {
+        "name": "ambient-xs",
+        "value": "0 1px 2px rgba(0, 0, 0, 0.05)",
+        "purpose": "Hairline border-replacement shadow for subtle raised elements."
+      },
+      {
+        "name": "ambient-sm",
+        "value": "0 2px 6px rgba(0, 0, 0, 0.06)",
+        "purpose": "Default card at rest."
+      },
+      {
+        "name": "ambient-md",
+        "value": "0 6px 18px rgba(0, 0, 0, 0.08)",
+        "purpose": "Elevated card or hovered state."
+      },
+      {
+        "name": "ambient-lg",
+        "value": "0 14px 40px rgba(0, 0, 0, 0.1)",
+        "purpose": "Modal, dropdown, strongly hovered card."
+      },
+      {
+        "name": "ambient-xl",
+        "value": "0 28px 70px rgba(0, 0, 0, 0.12)",
+        "purpose": "Top-of-stack modal or focused popover."
+      },
+      {
+        "name": "brand-glow",
+        "value": "0 0 0 1px rgba(109, 94, 252, 0.12), 0 8px 30px rgba(109, 94, 252, 0.18)",
+        "purpose": "Hover glow on brand-related interactive elements (CTA, focused tab). Violet, soft, focused."
+      },
+      {
+        "name": "brand-glow-dark",
+        "value": "0 0 0 1px rgba(109, 94, 252, 0.18), 0 12px 40px rgba(109, 94, 252, 0.28)",
+        "purpose": "Dark-theme brand glow for interactive elements."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out-expo",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Default easing for entrances and large state transitions. Confident, decelerative."
+      },
+      {
+        "name": "ease-in-out",
+        "value": "cubic-bezier(0.65, 0, 0.35, 1)",
+        "purpose": "Default easing for symmetric state transitions (toggle, expand)."
+      },
+      {
+        "name": "duration-fast",
+        "value": "150ms",
+        "purpose": "Hover state changes, focus rings."
+      },
+      {
+        "name": "duration-base",
+        "value": "300ms",
+        "purpose": "Default state transitions, button hover, card lift."
+      },
+      {
+        "name": "duration-slow",
+        "value": "600ms",
+        "purpose": "Page entrance animations, modal reveal."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px", "purpose": "Small tablets and large phones" },
+      { "name": "md", "value": "768px", "purpose": "Tablets" },
+      { "name": "lg", "value": "1024px", "purpose": "Small desktop, sidebar reveal threshold" },
+      { "name": "xl", "value": "1280px", "purpose": "Standard desktop" },
+      { "name": "2xl", "value": "1536px", "purpose": "Wide desktop" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The default action on any surface. Violet-to-cyan gradient with brand glow shadow.",
+      "html": "<button class=\"ds-btn-primary\">Continue</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; height: 2.75rem; padding: 0 1.25rem; border-radius: 0.75rem; font-size: 0.875rem; font-weight: 600; color: #ffffff; background: linear-gradient(120deg, #5447e6, #6d5efc 55%, #22d3ee); border: none; box-shadow: 0 8px 24px -8px rgba(109, 94, 252, 0.6); transition: box-shadow 300ms var(--ease-out-expo), transform 300ms var(--ease-out-expo); cursor: pointer; } .ds-btn-primary:hover { box-shadow: 0 12px 32px -8px rgba(109, 94, 252, 0.75); } .ds-btn-primary:active { transform: scale(0.98); } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.5; pointer-events: none; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "The non-primary but still important action. Neutral surface, strong border.",
+      "html": "<button class=\"ds-btn-secondary\">Cancel</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; height: 2.75rem; padding: 0 1.25rem; border-radius: 0.75rem; font-size: 0.875rem; font-weight: 600; color: #0b0b14; background: #f3f3f8; border: 1px solid #d4d4df; transition: background 200ms, border-color 200ms; cursor: pointer; } .ds-btn-secondary:hover { background: #eaeaef; border-color: #d4d4df; } .ds-btn-secondary:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card-default",
+      "description": "Calm content container. Flat at rest, lifts on hover.",
+      "html": "<div class=\"ds-card\">CONTENT</div>",
+      "css": ".ds-card { position: relative; border-radius: 1rem; background: #ffffff; border: 1px solid #e6e6ee; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06); padding: 1.5rem; transition: transform 200ms var(--ease-out-expo), box-shadow 200ms var(--ease-out-expo), border-color 200ms var(--ease-out-expo); } .ds-card:hover { transform: translateY(-2px); box-shadow: 0 14px 40px rgba(0, 0, 0, 0.1); border-color: #d4d4df; }"
+    },
+    {
+      "name": "Badge",
+      "kind": "chip",
+      "refersTo": "badge-default",
+      "description": "Full-round pill for status and tags.",
+      "html": "<span class=\"ds-badge\">Running</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.25rem 0.625rem; border-radius: 9999px; background: color-mix(in oklab, #f3f3f8 70%, transparent); color: #0b0b14; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.01em; white-space: nowrap; }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "badge-default",
+      "description": "Color-coded badge for extraction/job status. Uses color-mix on the status color.",
+      "html": "<span class=\"ds-badge ds-badge--success\"><span class=\"ds-badge-dot\"></span>Completed</span>",
+      "css": ".ds-badge-dot { width: 6px; height: 6px; border-radius: 9999px; background: currentColor; flex-shrink: 0; } .ds-badge--success { background: color-mix(in oklab, #10b981 14%, transparent); color: #10b981; } .ds-badge--warning { background: color-mix(in oklab, #f59e0b 14%, transparent); color: #f59e0b; } .ds-badge--error { background: color-mix(in oklab, #f43f5e 14%, transparent); color: #f43f5e; } .ds-badge--primary { background: color-mix(in oklab, #6d5efc 14%, transparent); color: #6d5efc; }"
+    },
+    {
+      "name": "Input",
+      "kind": "input",
+      "refersTo": "card-default",
+      "description": "Quiet input that defers to content. Soft focus ring.",
+      "html": "<input class=\"ds-input\" placeholder=\"Search\" />",
+      "css": ".ds-input { width: 100%; height: 2.75rem; padding: 0 0.875rem; border-radius: 0.75rem; background: #ffffff; border: 1px solid #e6e6ee; color: #0b0b14; font-size: 0.875rem; transition: border-color 150ms, box-shadow 150ms; outline: none; } .ds-input::placeholder { color: #8a8a9c; } .ds-input:hover { border-color: #d4d4df; } .ds-input:focus { border-color: #6d5efc; box-shadow: 0 0 0 3px rgba(109, 94, 252, 0.12); } .ds-input:disabled { color: #8a8a9c; cursor: not-allowed; }"
+    },
+    {
+      "name": "Sidebar Nav Item",
+      "kind": "nav",
+      "refersTo": "button-ghost",
+      "description": "Quiet navigation item that activates to a violet bar + violet text.",
+      "html": "<a class=\"ds-nav-item ds-nav-item--active\"><span class=\"ds-nav-item-icon\"></span>Dashboard</a>",
+      "css": ".ds-nav-item { display: flex; align-items: center; gap: 0.625rem; padding: 0.625rem 0.875rem; border-radius: 0.5rem; color: #4b4b5e; font-size: 0.875rem; font-weight: 500; text-decoration: none; transition: background 150ms, color 150ms; } .ds-nav-item:hover { background: #15151f; color: #f4f4f7; } .ds-nav-item--active { background: color-mix(in oklab, #6d5efc 12%, transparent); color: #8b7dff; position: relative; } .ds-nav-item--active::before { content: \"\"; position: absolute; left: -1rem; top: 0.25rem; bottom: 0.25rem; width: 3px; border-radius: 0 3px 3px 0; background: #6d5efc; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Operating Console",
+    "overview": "FlowTix is a working surface, not a showcase. Users open it to do work — connect a Facebook page, extract a list of contacts, launch a WhatsApp campaign — and then close it. The design earns trust by being calm, fast, and ruthlessly clear. It does not flirt, does not decorate, and does not perform expertise. Color and motion appear only where they carry information: a status badge that turns green when a job completes, a soft gradient on the primary button so the user knows which action is theirs, a subtle radial glow on a hero card so the page entry point feels intentional.\n\nThe interface is Arabic-first and right-to-left by default. Inter handles Latin text; Cairo handles Arabic. Both share the same typographic system and the same color tokens, so the surface reads identically regardless of locale. The interface was built first in Arabic; English is a faithful mirror, not the source.\n\nDensity is comfortable, not compact. The platform handles multi-step workflows that can take minutes — the screen never has to fight the user for space. Surfaces are flat at rest; depth arrives only as a response to state (hover, focus, running). Shadows are cool and short. Gradients are reserved for the primary action and for the hero gradient — never for decoration.",
+    "keyCharacteristics": [
+      "Calm authority — color and motion are rationed, never wallpaper.",
+      "Bilingual identity — Arabic and Latin share a single typographic system.",
+      "Status-forward — extraction progress, broadcast results, and connection health are the most visible things on the screen at all times.",
+      "Workflow-shaped — cards, modals, and toasts are sized to the operation, not to the chrome.",
+      "Quiet at rest — no idle animations, no parallax, no gradient borders on inactive elements."
+    ],
+    "rules": [
+      { "name": "The One Voice Rule", "body": "The brand violet appears on ≤10% of any given screen. Its rarity is the point. If the dashboard feels \"purple,\" the design has lost.", "section": "colors" },
+      { "name": "The Status Carve-Out", "body": "Green, amber, rose, and sky are reserved exclusively for status. Never decorate a hero with success green, never highlight a CTA with error rose.", "section": "colors" },
+      { "name": "The Neutral-First Rule", "body": "Every surface is built from neutrals first. Brand and status accents are applied last and only where they earn attention.", "section": "colors" },
+      { "name": "The Display Discipline", "body": "Display type appears at most once per viewport. If the dashboard has two display-sized headings, the design is loud.", "section": "typography" },
+      { "name": "The Label Tracking Rule", "body": "Every label uses letter-spacing: 0.01em and font-weight: 600. Lighter weights at small sizes feel apologetic.", "section": "typography" },
+      { "name": "The Bilingual Mirror Rule", "body": "Arabic and English share the same type scale, weights, and letter-spacing. The only difference is the font family.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat at rest. Shadows appear only as a response to state.", "section": "elevation" },
+      { "name": "The Glow Carve-Out", "body": "The brand glow is the only shadow that may carry color. Every other shadow is neutral.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use the brand gradient only on primary actions and the hero card radial glow. Nowhere else.",
+      "Do give every status indicator a real label. \"running\", \"completed\", \"failed\", \"queued\", \"disconnected\" — not just a color.",
+      "Do make errors self-explanatory. Every error message must answer \"what stopped, why, and what now?\" in one or two lines of plain language.",
+      "Do give every long-running operation a visible progress signal and a clearly logged stop reason.",
+      "Do treat Arabic as the source language. English is a faithful mirror. Never translate a label that was written only in English."
+    ],
+    "donts": [
+      "Don't use shadow on a static element that has no state. Flat surfaces stay flat.",
+      "Don't use status colors (green/amber/rose/sky) as decoration. They are status only.",
+      "Don't add new colors. The palette is closed. Reach for typography or spacing first when something needs emphasis.",
+      "Don't use emoji in production UI. The interface is professional, not chat-like.",
+      "Don't make the interface react on hover with motion the user can't predict. State changes are visible; surprise animations are not.",
+      "Don't ship a feature without a failure state, an empty state, and a stop-reason log entry."
+    ]
+  }
+}

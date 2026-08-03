@@ -1,0 +1,334 @@
+import type { Page } from "playwright";
+import { logger } from "../logger.js";
+import { GraphQLInterceptor, parseGraphQLResponse, type GraphQLUser, type CapturedRequest } from "./graphql-interceptor.js";
+
+const log = logger;
+
+export interface EngagerResult {
+  reactors: GraphQLUser[];
+  commenters: GraphQLUser[];
+}
+
+export interface ExtractOptions {
+  maxReactions?: number;
+  maxCommenters?: number;
+  maxCursorPages?: number;
+  scrollDialogSeconds?: number;
+}
+
+const DEFAULT_OPTS: Required<ExtractOptions> = {
+  maxReactions: 1000,
+  maxCommenters: 500,
+  maxCursorPages: 40,
+  scrollDialogSeconds: 8,
+};
+
+/**
+ * Extracts engagers (reactors + commenters) from a Facebook post
+ * using GraphQL network interception and cursor-based pagination.
+ *
+ * Strategy:
+ * 1. Navigate to the post permalink
+ * 2. Set up GraphQL interceptor to capture requests/responses
+ * 3. Click the reactions count → triggers a GraphQL request
+ * 4. Capture that request's doc_id + variables
+ * 5. Parse the response for users + end_cursor
+ * 6. Replay the request with new cursors until exhausted
+ * 7. Do the same for comments
+ */
+export async function extractEngagers(page: Page, permalink: string, options: ExtractOptions = {}): Promise<EngagerResult> {
+  const opts = { ...DEFAULT_OPTS, ...options };
+
+  const reactorsMap = new Map<string, GraphQLUser>();
+  const commentersMap = new Map<string, GraphQLUser>();
+
+  const interceptor = new GraphQLInterceptor();
+
+  // Step 1: Navigate to post
+  try {
+    await page.goto(permalink, { waitUntil: "domcontentloaded", timeout: 10000 });
+    await page.waitForTimeout(1500);
+  } catch {
+    log.debug("EngagerExtractor", `failed to open: ${permalink.substring(0, 60)}`);
+    return { reactors: [], commenters: [] };
+  }
+
+  // Step 2: Attach interceptor BEFORE clicking anything
+  interceptor.attach(page);
+
+  try {
+    // Step 3: Extract reactors via GraphQL
+    await extractReactorsViaGraphQL(page, interceptor, reactorsMap, opts);
+
+    // Step 4: Navigate back to the post (reactions dialog may have changed context)
+    // and extract commenters via GraphQL
+    if (commentersMap.size < opts.maxCommenters) {
+      await page.goto(permalink, { waitUntil: "domcontentloaded", timeout: 15000 }).catch(() => {});
+      await page.waitForTimeout(2000);
+      await extractCommentersViaGraphQL(page, interceptor, commentersMap, opts);
+    }
+  } finally {
+    interceptor.detach(page);
+  }
+
+  return {
+    reactors: Array.from(reactorsMap.values()),
+    commenters: Array.from(commentersMap.values()),
+  };
+}
+
+async function extractReactorsViaGraphQL(
+  page: Page,
+  interceptor: GraphQLInterceptor,
+  usersMap: Map<string, GraphQLUser>,
+  opts: Required<ExtractOptions>,
+): Promise<void> {
+  // Click the reactions count to trigger GraphQL
+  const clicked = await clickReactionsButton(page);
+  if (!clicked) {
+    log.debug("EngagerExtractor", "no reactions button found");
+    return;
+  }
+
+  await page.waitForTimeout(2000);
+
+  // Try clicking "All" tab (All reactions)
+  try {
+    await page.evaluate(() => {
+      const tabs = document.querySelectorAll('[role="tab"], [role="menuitemradio"]');
+      for (const t of tabs) {
+        const text = (t.textContent || "").trim();
+        if (text === "All" || text.includes("الكل")) { (t as HTMLElement).click(); return; }
+      }
+    });
+    await page.waitForTimeout(1500);
+  } catch { /* skip */ }
+
+  // Parse all intercepted responses so far
+  const interceptedTexts = interceptor.drainInterceptedTexts();
+  for (const text of interceptedTexts) {
+    const parsed = parseGraphQLResponse(text);
+    for (const u of parsed.users) {
+      if (!usersMap.has(u.id)) usersMap.set(u.id, u);
+    }
+  }
+
+  // Find the captured reactions request for cursor replay
+  const captured = interceptor.findCapturedRequest("reaction") ||
+                   interceptor.findCapturedRequest("reactor") ||
+                   interceptor.findCapturedRequest("feedback") ||
+                   interceptor.findCapturedRequest();
+
+  // Cursor replay fails (Facebook error 1357004 - auth tokens required)
+  // So we rely ENTIRELY on dialog scrolling to trigger Facebook's own pagination
+  // Facebook's JS handles all auth headers when it loads more reactors via scroll
+
+  // Scroll dialog aggressively to trigger Facebook's own GraphQL pagination
+  if (usersMap.size < opts.maxReactions) {
+    await scrollDialogForMore(page, interceptor, usersMap, opts.scrollDialogSeconds);
+  }
+
+  if (usersMap.size > 0) {
+    log.info("EngagerExtractor", `reactors: ${usersMap.size} (via scroll-triggered pagination)`);
+  }
+
+  // Close dialog
+  try { await page.keyboard.press("Escape"); await page.waitForTimeout(300); } catch { /* ok */ }
+}
+
+async function extractCommentersViaGraphQL(
+  page: Page,
+  interceptor: GraphQLInterceptor,
+  usersMap: Map<string, GraphQLUser>,
+  opts: Required<ExtractOptions>,
+): Promise<void> {
+  // Click "view more comments" to trigger GraphQL
+  for (let i = 0; i < 3; i++) {
+    const clicked = await page.evaluate(() => {
+      const els = document.querySelectorAll('[role="button"], a[role="link"], span, div[role="button"]');
+      for (const el of els) {
+        const t = (el as HTMLElement).textContent?.trim() || "";
+        if (t.includes("more comments") || t.includes("عرض") || t.includes("تعليق") ||
+            t.includes("comments") || t.match(/^\d+\s*(more|تعليق|رد)/i)) {
+          (el as HTMLElement).click();
+          return true;
+        }
+      }
+      return false;
+    }).catch(() => false);
+    if (!clicked) break;
+    await page.waitForTimeout(800);
+  }
+
+  // Parse intercepted comment responses
+  const interceptedTexts = interceptor.drainInterceptedTexts();
+  for (const text of interceptedTexts) {
+    const parsed = parseGraphQLResponse(text);
+    for (const u of parsed.users) {
+      if (!usersMap.has(u.id)) usersMap.set(u.id, u);
+    }
+  }
+
+  // Scroll comments section to trigger Facebook's own GraphQL pagination
+  const startTime = Date.now();
+  let noProgress = 0;
+  while (Date.now() - startTime < 7000 && usersMap.size < opts.maxCommenters) {
+    const before = usersMap.size;
+
+    // Parse new intercepted responses
+    const texts = interceptor.drainInterceptedTexts();
+    for (const text of texts) {
+      const parsed = parseGraphQLResponse(text);
+      for (const u of parsed.users) {
+        if (!usersMap.has(u.id)) usersMap.set(u.id, u);
+      }
+    }
+
+    if (usersMap.size === before) {
+      noProgress++;
+      if (noProgress >= 12) break;
+    } else {
+      noProgress = 0;
+    }
+
+    // Scroll comment containers
+    await page.evaluate(() => {
+      const containers = [
+        document.querySelector('[role="feed"]'),
+        document.querySelector('[aria-label*="comment"]'),
+        document.querySelector('[aria-label*="تعليق"]'),
+        document.querySelector('[role="main"]'),
+      ];
+      const c = containers.find(x => x) as HTMLElement | null;
+      if (c) {
+        const el = c;
+        el.scrollTop = el.scrollTop + el.clientHeight * 0.8;
+        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50) {
+          el.scrollTop = el.scrollHeight;
+        }
+      } else {
+        window.scrollBy(0, 600);
+      }
+    });
+    await page.waitForTimeout(300);
+
+    // Try clicking "more replies" inline as we scroll
+    if (noProgress === 3) {
+      await page.evaluate(() => {
+        const els = document.querySelectorAll('[role="button"], span, div[role="button"]');
+        for (const el of els) {
+          const t = (el as HTMLElement).textContent?.trim() || "";
+          if (t.includes("more replies") || t.includes("عرض") || t.includes("رد") || t.match(/^view \d+/i)) {
+            (el as HTMLElement).click();
+            return;
+          }
+        }
+      }).catch(() => {});
+    }
+  }
+
+  if (usersMap.size > 0) {
+    log.info("EngagerExtractor", `commenters: ${usersMap.size} (via scroll-triggered pagination)`);
+  }
+}
+
+async function clickReactionsButton(page: Page): Promise<boolean> {
+  // Strategy 0: Scroll the article into view first
+  await page.evaluate(() => {
+    const article = document.querySelector('[role="article"]') || document.querySelector('[data-pagelet]');
+    if (article) (article as HTMLElement).scrollIntoView({ block: "center" });
+  });
+  await page.waitForTimeout(500);
+
+  return await page.evaluate(() => {
+    // Strategy 1: aria-label with reaction keyword (most reliable)
+    const labeled = document.querySelectorAll('[aria-label]');
+    for (const el of labeled) {
+      const aria = (el.getAttribute("aria-label") || "").toLowerCase();
+      if ((aria.includes("reaction") || aria.includes("تفاعل") || aria.includes("إعجاب") || aria.includes("أعجب") || aria.includes("like")) && aria.match(/\d/)) {
+        (el as HTMLElement).click(); return true;
+      }
+    }
+    // Strategy 2: Click on any element containing reaction count bar
+    const reactionBars = document.querySelectorAll('[data-visualcompletion], [class*="reaction"], [class*="LikeBar"]');
+    for (const bar of reactionBars) {
+      const parent = bar.closest('a, [role="button"], [role="link"]');
+      if (parent) { (parent as HTMLElement).click(); return true; }
+    }
+    // Strategy 3: Links to reaction profiles
+    const reactionLinks = document.querySelectorAll('a[href*="ufi/reaction"], a[href*="reaction/profile"]');
+    for (const link of reactionLinks) { (link as HTMLElement).click(); return true; }
+    // Strategy 4: Element with number near emoji/icon
+    const buttons = document.querySelectorAll('div[role="button"], span[role="button"], a[role="link"]');
+    for (const b of buttons) {
+      const text = (b as HTMLElement).textContent?.trim() || "";
+      if (text.match(/^[\d,.KkMم]+$/) && (b.querySelector('svg, img, i') || (b as HTMLElement).style.cssText.includes('emoji'))) {
+        (b as HTMLElement).click(); return true;
+      }
+    }
+    // Strategy 5: Click on the "Like/React" footer area (bottom of post)
+    const footer = document.querySelector('[role="article"] > div:last-child') || document.querySelector('[data-pagelet] > div:last-child');
+    if (footer) {
+      const clickable = footer.querySelectorAll('a, [role="button"], span');
+      for (const c of clickable) {
+        const t = (c as HTMLElement).textContent?.trim() || "";
+        if (t.match(/^\d/) || t.includes("تعليق") || t.includes("comment") || t.includes("مشاركة") || t.includes("share")) {
+          (c as HTMLElement).click(); return true;
+        }
+      }
+    }
+    return false;
+  }).catch(() => false);
+}
+
+async function scrollDialogForMore(
+  page: Page,
+  interceptor: GraphQLInterceptor,
+  usersMap: Map<string, GraphQLUser>,
+  maxSeconds: number,
+): Promise<void> {
+  const startTime = Date.now();
+  let noProgress = 0;
+  let lastReported = 0;
+
+  while (Date.now() - startTime < maxSeconds * 1000) {
+    const before = usersMap.size;
+
+    // Parse any new intercepted responses
+    const texts = interceptor.drainInterceptedTexts();
+    for (const text of texts) {
+      const parsed = parseGraphQLResponse(text);
+      for (const u of parsed.users) {
+        if (!usersMap.has(u.id)) usersMap.set(u.id, u);
+      }
+    }
+
+    if (usersMap.size === before) {
+      noProgress++;
+      if (noProgress >= 15) break;
+    } else {
+      noProgress = 0;
+      if (usersMap.size - lastReported >= 20) {
+        lastReported = usersMap.size;
+      }
+    }
+
+    // Scroll dialog (multiple small scrolls to trigger lazy loading)
+    await page.evaluate(() => {
+      const dlg = document.querySelector('[role="dialog"] [role="list"]') ||
+                  document.querySelector('[role="dialog"] div[style*="overflow"]') ||
+                  document.querySelector('[role="dialog"]');
+      if (dlg) {
+        const el = dlg as HTMLElement;
+        // Scroll in steps to trigger lazy loading
+        const current = el.scrollTop;
+        el.scrollTop = current + el.clientHeight * 0.8;
+        // If at bottom, jump to absolute bottom
+        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50) {
+          el.scrollTop = el.scrollHeight;
+        }
+      }
+    });
+    await page.waitForTimeout(250);
+  }
+}

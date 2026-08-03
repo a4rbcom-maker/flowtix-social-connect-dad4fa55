@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.vite/
+*.log
+.env
+.env.local
+extraction-service/.env
+extraction-service/node_modules/
+extraction-service/dist/
+extraction-service/*.log
+extraction-service/checkpoints/*.json
+logs/
+.DS_Store
+*.tsbuildinfo

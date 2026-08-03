@@ -1,0 +1,11 @@
+[2026-07-30T22:40:25.077Z] [INFO] [Server] FlowTix Extraction Service v1.0.0 starting on port 3100
+[2026-07-30T22:40:25.078Z] [INFO] [Server] env: development | headless: true | pool: 1 | concurrency: 1
+[2026-07-30T22:40:25.614Z] [INFO] [BrowserPool] initializing 1 browser(s)
+[2026-07-30T22:40:25.871Z] [INFO] [BrowserPool] browser #1 launched
+[2026-07-30T22:40:25.873Z] [INFO] [Server] browser pool initialized — service ready
+[2026-07-30T22:40:25.988Z] [INFO] [WAManager] booted — resumed 0 sessions
+[2026-07-30T22:40:25.989Z] [INFO] [Server] WhatsApp manager booted
+[2026-07-30T22:40:35.241Z] [INFO] [Debug] navigating to https://www.facebook.com/elhesbahnews/followers/ {}
+[2026-07-30T22:40:35.611Z] [INFO] [Supabase] session loaded: test4 (status: connected) {"sessionId":"cfc278cd-4faa-424f-8cd5-c22047f82676","cookieCount":11}
+[2026-07-30T22:40:35.784Z] [DEBUG] [ContextManager] context created cfc278cd-4faa-424f-8cd5-c22047f82676_1785451235612_pi04c {"cookieCount":11,"activeContexts":1}
+[2026-07-30T22:40:55.397Z] [DEBUG] [ContextManager] context released cfc278cd-4faa-424f-8cd5-c22047f82676_1785451235612_pi04c {"activeContexts":0}

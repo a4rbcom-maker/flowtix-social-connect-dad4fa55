@@ -1,0 +1,4 @@
+-- ============================================================
+-- TASK 13: WhatsApp Settings (Quick Replies + Webhooks + Business Hours)
+-- ============================================================
+-- (See applied migration for full SQL)
