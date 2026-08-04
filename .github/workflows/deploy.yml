@@ -22,7 +22,10 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: rm -rf /www/wwwroot/flowtixtools.com/* /www/wwwroot/flowtixtools.com/.* 2>/dev/null; true
+          script: |
+            chmod 777 /www/wwwroot/flowtixtools.com/.user.ini 2>/dev/null; true
+            rm -rf /www/wwwroot/flowtixtools.com/*
+            rm -rf /www/wwwroot/flowtixtools.com/.[!.]* 2>/dev/null; true
       - name: Deploy to Server
         uses: burnett01/rsync-deployments@7.0.1
         with:
