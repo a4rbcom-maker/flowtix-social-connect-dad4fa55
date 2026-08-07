@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/authProvider";
 
 const CONVS_KEY = "wa-conversations";
 const MSGS_KEY = "wa-messages";
+const NOTES_KEY = "wa-notes";
 
 export function useWaConversations(filters?: Parameters<typeof waInboxRepository.listConversations>[1]) {
   const { session: authSession } = useAuth();
@@ -21,7 +22,7 @@ export function useWaConversations(filters?: Parameters<typeof waInboxRepository
   useEffect(() => {
     if (!ws) return;
     const ch = supabase.channel(`wa-conv-${ws}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "wa_conversations", filter: `user_id=eq.${ws}` },
+      .on("postgres_changes", { event: "*", schema: "public", table: "wa_conversations", filter: `workspace_id=eq.${ws}` },
         () => qc.invalidateQueries({ queryKey: [CONVS_KEY] }))
       .subscribe();
     return () => { supabase.removeChannel(ch); };
@@ -42,7 +43,7 @@ export function useWaMessages(conversationId: string | undefined) {
   useEffect(() => {
     if (!conversationId) return;
     const ch = supabase.channel(`wa-msg-${conversationId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "wa_messages", filter: `conversation_id=eq.${conversationId}` },
+      .on("postgres_changes", { event: "*", schema: "public", table: "wa_messages", filter: `conversation_id=eq.${conversationId}` },
         () => qc.invalidateQueries({ queryKey: [MSGS_KEY, conversationId] }))
       .subscribe();
     return () => { supabase.removeChannel(ch); };
@@ -51,10 +52,20 @@ export function useWaMessages(conversationId: string | undefined) {
   return q;
 }
 
+export function useWaNotes(conversationId: string | null | undefined) {
+  const q = useQuery({
+    queryKey: [NOTES_KEY, conversationId],
+    queryFn: () => waInboxRepository.getNotes(conversationId!),
+    enabled: !!conversationId,
+  });
+  return q;
+}
+
 export function useWaInboxMutations() {
   const qc = useQueryClient();
   const invConvs = () => qc.invalidateQueries({ queryKey: [CONVS_KEY] });
   const invMsgs = (id: string) => qc.invalidateQueries({ queryKey: [MSGS_KEY, id] });
+  const invNotes = (id: string) => qc.invalidateQueries({ queryKey: [NOTES_KEY, id] });
 
   const send = useMutation({
     mutationFn: (i: Parameters<typeof waInboxRepository.sendMessage>[0]) => waInboxRepository.sendMessage(i),
@@ -66,7 +77,10 @@ export function useWaInboxMutations() {
   const spam = useMutation({ mutationFn: ({ id, v }: { id: string; v: boolean }) => waInboxRepository.markSpam(id, v), onSuccess: invConvs });
   const assign = useMutation({ mutationFn: ({ id, userId }: { id: string; userId: string | null }) => waInboxRepository.assign(id, userId), onSuccess: invConvs });
   const setStatus = useMutation({ mutationFn: ({ id, status }: { id: string; status: string }) => waInboxRepository.setStatus(id, status), onSuccess: invConvs });
-  const addNote = useMutation({ mutationFn: (i: { conversationId: string; workspaceId: string; userId: string; body: string }) => waInboxRepository.addNote(i.conversationId, i.workspaceId, i.userId, i.body), onSuccess: () => {} });
+  const addNote = useMutation({
+    mutationFn: (i: { conversationId: string; workspaceId: string; userId: string; body: string }) => waInboxRepository.addNote(i.conversationId, i.workspaceId, i.userId, i.body),
+    onSuccess: (_d, v) => { invNotes(v.conversationId); },
+  });
 
   return { send, markRead, star, archive, spam, assign, setStatus, addNote };
 }
