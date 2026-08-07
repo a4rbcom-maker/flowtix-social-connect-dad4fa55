@@ -27,7 +27,6 @@ export function LandingPage() {
   return (
     <div className="min-h-screen bg-[var(--color-bg)]">
       <Helmet>
-        <html lang="ar" dir="rtl" />
         <title>{SEO.title}</title>
         <meta name="description" content={SEO.description} />
         <meta name="keywords" content={SEO.keywords} />

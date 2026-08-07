@@ -10,6 +10,7 @@ import { ToastContainer } from "@/components/ui/toast";
 import "@/i18n";
 import "@/index.css";
 import { AppRouter } from "@/routes";
+import { LanguageSync } from "@/components/shared/LanguageSync";
 
 // Force RTL direction BEFORE React renders, so Tailwind RTL utilities
 // are active from the first paint. This prevents the "Arabic content
@@ -26,6 +27,7 @@ createRoot(document.getElementById("root")!).render(
         <ThemeProvider>
           <QueryClientProvider client={queryClient}>
             <AuthProvider>
+              <LanguageSync />
               <AppRouter />
               <ToastContainer />
             </AuthProvider>
