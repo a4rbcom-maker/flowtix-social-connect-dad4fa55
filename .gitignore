@@ -4,11 +4,14 @@ dist/
 *.log
 .env
 .env.local
+.env.production
 extraction-service/.env
+extraction-service/.env.production
 extraction-service/node_modules/
 extraction-service/dist/
 extraction-service/*.log
 extraction-service/checkpoints/*.json
 logs/
+.playwright-mcp/
 .DS_Store
 *.tsbuildinfo

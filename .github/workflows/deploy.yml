@@ -5,7 +5,8 @@ on:
     branches: [main]
 
 jobs:
-  deploy:
+  deploy-frontend:
+    name: Build & Deploy Frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +32,7 @@ jobs:
             chmod 777 /www/wwwroot/flowtixtools.com/.user.ini 2>/dev/null; true
             rm -rf /www/wwwroot/flowtixtools.com/*
             rm -rf /www/wwwroot/flowtixtools.com/.[!.]* 2>/dev/null; true
-      - name: Deploy to Server
+      - name: Deploy Frontend to Server
         uses: burnett01/rsync-deployments@7.0.1
         with:
           switches: -avzr
@@ -41,3 +42,94 @@ jobs:
           remote_port: ${{ secrets.SSH_PORT }}
           remote_user: ${{ secrets.SERVER_USER }}
           remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+  deploy-extraction:
+    name: Build & Deploy Extraction Service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build Extraction Service
+        workdir: extraction-service
+        run: |
+          npm ci
+          npm run build
+
+      - name: Prepare deployment bundle
+        run: |
+          mkdir -p bundle
+          cp -r extraction-service/dist bundle/
+          cp extraction-service/package.json bundle/
+          cp extraction-service/package-lock.json bundle/ 2>/dev/null || true
+          cp extraction-service/ecosystem.config.cjs bundle/
+          cp extraction-service/deploy-vps.sh bundle/
+
+      - name: Upload extraction service to server
+        uses: burnett01/rsync-deployments@7.0.1
+        with:
+          switches: -avzr --delete
+          path: bundle/
+          remote_path: /www/wwwroot/api.flowtixtools.com
+          remote_host: ${{ secrets.SERVER_IP }}
+          remote_port: ${{ secrets.SSH_PORT }}
+          remote_user: ${{ secrets.SERVER_USER }}
+          remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Ensure .env exists and install dependencies on server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /www/wwwroot/api.flowtixtools.com
+
+            # Create .env if it doesn't exist (first deploy only)
+            if [ ! -f ".env" ]; then
+              cat > .env << 'ENVEOF'
+            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+            PORT=3100
+            API_KEY=${{ secrets.VITE_EXTRACTION_API_KEY }}
+            NODE_ENV=production
+            ALLOWED_ORIGINS=https://flowtixtools.com,https://www.flowtixtools.com
+            BROWSER_POOL_SIZE=1
+            MAX_CONTEXTS_PER_BROWSER=3
+            HEADLESS=true
+            MAX_CONCURRENT_JOBS=1
+            JOB_TIMEOUT_MS=1800000
+            MAX_RETRIES=3
+            RETRY_DELAY_MS=2000
+            FB_BASE_URL=https://m.facebook.com
+            FB_NAV_TIMEOUT_MS=30000
+            LOG_LEVEL=info
+            ENRICHMENT_DB_PATH=/www/wwwroot/api.flowtixtools.com/data/enrichment.db
+            ENVEOF
+              echo "Created .env"
+            fi
+
+            mkdir -p logs data
+
+            # Install production dependencies
+            npm install --omit=dev
+
+            # Install Playwright Chromium
+            npx playwright install chromium
+
+            # Restart PM2
+            if command -v pm2 &> /dev/null; then
+              pm2 delete flowtix-extraction 2>/dev/null || true
+              pm2 start ecosystem.config.cjs
+              pm2 save
+              echo "PM2 process started"
+            else
+              npm install -g pm2
+              pm2 start ecosystem.config.cjs
+              pm2 save
+              pm2 startup 2>/dev/null || true
+              echo "PM2 installed and process started"
+            fi
