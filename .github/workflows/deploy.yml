@@ -53,7 +53,7 @@ jobs:
           node-version: 20
 
       - name: Build Extraction Service
-        workdir: extraction-service
+        working-directory: extraction-service
         run: |
           npm ci
           npm run build
