@@ -2,8 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 import * as XLSX from "xlsx";
 import { supabaseService } from "../services/supabase.js";
+import { igSupabaseService } from "../services/ig-supabase.js";
 import { enrichmentService } from "../services/enrichment-service.js";
 import { contextManager } from "../services/context-manager.js";
+import { igContextManager } from "../services/ig-context-manager.js";
 import { jobQueue } from "../services/job-queue.js";
 import { createExtractor } from "../extractors/index.js";
 import { detectAuthState, authStateToMessage, authStateToErrorCode } from "../extractors/base.js";
@@ -18,7 +20,18 @@ const router = Router();
 const extractSchema = z.object({
   session_id: z.string().optional(),
   session_ids: z.array(z.string()).optional(),
-  type: z.enum(["groups", "pages", "post_comments", "post_reactions", "messenger_contacts"]),
+  type: z.enum([
+    "groups",
+    "pages",
+    "post_comments",
+    "post_reactions",
+    "messenger_contacts",
+    "ig_followers",
+    "ig_following",
+    "ig_post_commenters",
+    "ig_hashtag_posts",
+    "ig_profile_info",
+  ]),
   source_url: z.string().min(1),
   job_name: z.string().optional(),
   max_results: z.number().int().min(1).max(100000).default(100000),
@@ -28,6 +41,10 @@ const extractSchema = z.object({
 }).refine(data => data.session_id || (data.session_ids && data.session_ids.length > 0), {
   message: "Either session_id or session_ids must be provided",
 });
+
+function isIgType(type: string): boolean {
+  return type.startsWith("ig_");
+}
 
 async function autoStartNextQueuedJob(userId: string): Promise<void> {
   const qJob = await supabaseService.getOldestQueuedJob(userId);
@@ -81,11 +98,18 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
   };
 
   // Create contexts for all sessions
+  const isIg = isIgType(job.type as string);
   const sessionPages: Array<{ sessionId: string; page: import("playwright").Page; contextId: string }> = [];
   for (const sid of sessionIds) {
-    const { cookies, proxy } = await supabaseService.getSessionAndCookies(sid);
-    const created = await contextManager.createContext(sid, cookies, proxy);
-    sessionPages.push({ sessionId: sid, page: created.page, contextId: created.contextId });
+    if (isIg) {
+      const { cookies, proxy } = await igSupabaseService.getIgSessionAndCookies(sid);
+      const created = await igContextManager.createContext(sid, cookies, proxy);
+      sessionPages.push({ sessionId: sid, page: created.page, contextId: created.contextId });
+    } else {
+      const { cookies, proxy } = await supabaseService.getSessionAndCookies(sid);
+      const created = await contextManager.createContext(sid, cookies, proxy);
+      sessionPages.push({ sessionId: sid, page: created.page, contextId: created.contextId });
+    }
   }
 
   const page = sessionPages[0].page;
@@ -106,7 +130,7 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
       try {
         log.info("Extract", `job ${jobId} started`, { sessionIds });
 
-        if (!ctx.cursor) {
+        if (!ctx.cursor && !isIg) {
           log.info("Extract", `pre-flight auth check`);
           await page.goto("https://www.facebook.com/", {
             waitUntil: "domcontentloaded",

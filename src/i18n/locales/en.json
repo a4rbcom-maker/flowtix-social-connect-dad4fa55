@@ -959,6 +959,40 @@
       "notFound": "Session not found"
     }
   },
+  "ig_sessions": {
+    "title": "Instagram Sessions",
+    "subtitle": "Manage your Instagram sessions from one place",
+    "import": "Import Session",
+    "searchPlaceholder": "Search Instagram sessions...",
+    "stats": {
+      "connected": "Connected",
+      "disconnected": "Disconnected",
+      "total": "Total Sessions"
+    },
+    "status": {
+      "connected": "Connected",
+      "disconnected": "Disconnected",
+      "needs_login": "Needs Login"
+    },
+    "check": "Check",
+    "testing": "Checking...",
+    "importDone": "Session imported successfully",
+    "checkDone": "Check passed — session is connected",
+    "deleteDone": "Session deleted",
+    "deleteConfirm": "Confirm Deletion",
+    "deleteQuestion": "Are you sure you want to delete \"{{name}}\"?",
+    "empty": {
+      "title": "No Instagram sessions",
+      "description": "Import an Instagram session to start extracting data."
+    },
+    "importName": "Session Name",
+    "importNamePlaceholder": "e.g. My IG Session 1",
+    "importCookies": "Paste Instagram cookies",
+    "importCookiesPlaceholder": "Paste cookies from your browser (Cookie-Editor JSON)...",
+    "importAction": "Import",
+    "cookiesValid": "Cookies valid — all required values present",
+    "cookiesPartial": "Cookies incomplete — some critical values missing"
+  },
   "wizard": {
     "steps": {
       "name": "Name",
@@ -1410,6 +1444,8 @@
     "fbPosts": "Post Data",
     "fbMessenger": "Messenger Contacts",
     "fbSessions": "Sessions",
+    "instagram": "Instagram",
+    "igSessions": "Sessions",
     "tasks": "Tasks",
     "tasksActive": "Active Tasks",
     "tasksScheduled": "Scheduled Tasks",

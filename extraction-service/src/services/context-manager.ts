@@ -134,7 +134,7 @@ class ContextManager {
   }
 }
 
-function parseProxyUrl(proxyUrl: string): { server: string; username?: string; password?: string } | null {
+export function parseProxyUrl(proxyUrl: string): { server: string; username?: string; password?: string } | null {
   try {
     // supports: http://user:pass@host:port, socks5://host:port, http://host:port
     const m = proxyUrl.match(/^(https?|socks[45]):\/\/(?:([^:@]+):([^@]+)@)?([^:]+)(?::(\d+))?$/);

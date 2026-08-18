@@ -20,6 +20,7 @@ import {
   Receipt,
   Shield,
   Plug,
+  Camera,
   type LucideIcon,
 } from "lucide-react";
 
@@ -64,6 +65,14 @@ export const dashboardNav: NavSection[] = [
           { key: "fb-extract-members", labelKey: "nav.fbExtractMembers", icon: Users, to: "/dashboard/facebook/extract-members" },
           { key: "fb-messenger-contacts", labelKey: "nav.fbMessengerContacts", icon: MessagesSquare, to: "/dashboard/facebook/messenger-contacts" },
           { key: "fb-groups", labelKey: "nav.fbGroups", icon: Group, to: "/dashboard/facebook/groups" },
+        ],
+      },
+      {
+        key: "instagram",
+        labelKey: "nav.instagram",
+        icon: Camera,
+        items: [
+          { key: "ig-sessions", labelKey: "nav.igSessions", icon: Plug, to: "/dashboard/instagram/sessions" },
         ],
       },
       {

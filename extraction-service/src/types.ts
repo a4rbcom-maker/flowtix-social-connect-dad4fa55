@@ -3,7 +3,12 @@ export type ExtractionType =
   | "pages"
   | "post_comments"
   | "post_reactions"
-  | "messenger_contacts";
+  | "messenger_contacts"
+  | "ig_followers"
+  | "ig_following"
+  | "ig_post_commenters"
+  | "ig_hashtag_posts"
+  | "ig_profile_info";
 
 export type AuthState = "authenticated" | "needs_login" | "restricted" | "unknown";
 
@@ -52,6 +57,11 @@ export interface ExtractedMember {
   type: string;
   comment_text?: string;
   comment_id?: string;
+  username?: string;
+  full_name?: string;
+  bio_email?: string;
+  bio_phone?: string;
+  comments_count?: number;
 }
 
 export interface CookieEntry {

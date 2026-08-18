@@ -594,7 +594,7 @@ export abstract class BaseExtractor {
     return status === "canceled";
   }
 
-  protected async processBatch(members: ExtractedMember[], typeOverride: string): Promise<number> {
+  protected async processBatch(members: ExtractedMember[], typeOverride: string, platform: string = "facebook"): Promise<number> {
     let results = members.map((m) => ({ ...m, type: typeOverride }));
     if (this.ctx.skipDuplicates) {
       const existing = await supabaseService.getExistingIds(this.ctx.workspaceId, results.map((m) => m.fb_id));
@@ -602,7 +602,7 @@ export abstract class BaseExtractor {
     }
     if (results.length === 0) return 0;
     try {
-      await supabaseService.storeResults(this.ctx.jobId, this.ctx.workspaceId, results);
+      await supabaseService.storeResults(this.ctx.jobId, this.ctx.workspaceId, results, platform);
       await supabaseService.incrementJobResultCount(this.ctx.jobId, results.length);
       return results.length;
     } catch (err) {

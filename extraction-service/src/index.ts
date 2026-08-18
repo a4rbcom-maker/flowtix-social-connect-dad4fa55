@@ -8,6 +8,7 @@ import { jobQueue } from "./services/job-queue.js";
 import { supabaseService } from "./services/supabase.js";
 import healthRouter, { setShuttingDown } from "./routes/health.js";
 import extractRouter from "./routes/extract.js";
+import igSessionsRouter from "./routes/ig-sessions.js";
 import sessionCheckRouter from "./routes/session-check.js";
 import listPagesRouter from "./routes/list-pages.js";
 import listGroupsRouter from "./routes/list-groups.js";
@@ -47,6 +48,7 @@ app.use((req, _res, next) => {
 
 app.use("/", healthRouter);
 app.use("/", extractRouter);
+app.use("/", igSessionsRouter);
 app.use("/", sessionCheckRouter);
 app.use("/", listPagesRouter);
 app.use("/", listGroupsRouter);

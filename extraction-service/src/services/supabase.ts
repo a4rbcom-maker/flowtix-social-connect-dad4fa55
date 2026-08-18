@@ -52,7 +52,7 @@ function mapSameSite(v: string | undefined): "Strict" | "Lax" | "None" | undefin
   return undefined;
 }
 
-function parseCookiesToPlaywright(raw: string): CookieEntry[] {
+export function parseCookiesToPlaywright(raw: string, defaultDomain = ".facebook.com"): CookieEntry[] {
   const trimmed = raw.trim();
   if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
     try {
@@ -64,7 +64,7 @@ function parseCookiesToPlaywright(raw: string): CookieEntry[] {
           cookies.push({
             name: String(item.name),
             value: String(item.value),
-            domain: item.domain || ".facebook.com",
+            domain: item.domain || defaultDomain,
             path: item.path || "/",
             expires: item.expirationDate ? Number(item.expirationDate) : undefined,
             httpOnly: !!item.httpOnly,
@@ -85,7 +85,7 @@ function parseCookiesToPlaywright(raw: string): CookieEntry[] {
         cookies.push({
           name: parts[5].trim(),
           value: parts[6].trim(),
-          domain: parts[0] || ".facebook.com",
+          domain: parts[0] || defaultDomain,
           path: parts[2] || "/",
           secure: parts[3] === "TRUE",
         });
@@ -102,7 +102,7 @@ function parseCookiesToPlaywright(raw: string): CookieEntry[] {
         cookies.push({
           name: part.trim().substring(0, eq).trim(),
           value: part.trim().substring(eq + 1).trim(),
-          domain: ".facebook.com",
+          domain: defaultDomain,
           path: "/",
         });
       }
@@ -263,19 +263,25 @@ export const supabaseService = {
     return allData;
   },
 
-  async storeResults(jobId: string, workspaceId: string, results: ExtractedMember[]): Promise<void> {
+  async storeResults(jobId: string, workspaceId: string, results: ExtractedMember[], platform: string = "facebook"): Promise<void> {
     if (results.length === 0) return;
     const rows = results.map((r) => ({
       job_id: jobId,
       workspace_id: workspaceId,
+      platform,
       fb_id: r.fb_id,
       fb_type: r.type,
       data: {
         name: r.name,
         profile_url: r.profile_url,
         avatar_url: r.avatar_url,
+        ...(r.username ? { username: r.username } : {}),
+        ...(r.full_name ? { full_name: r.full_name } : {}),
         ...(r.comment_text ? { comment_text: r.comment_text } : {}),
         ...(r.comment_id ? { comment_id: r.comment_id } : {}),
+        ...(r.comments_count ? { comments_count: r.comments_count } : {}),
+        ...(r.bio_email ? { bio_email: r.bio_email } : {}),
+        ...(r.bio_phone ? { bio_phone: r.bio_phone } : {}),
       },
       metadata: {},
     }));

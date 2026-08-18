@@ -960,6 +960,40 @@
       "notFound": "الجلسة غير موجودة"
     }
   },
+  "ig_sessions": {
+    "title": "جلسات إنستجرام",
+    "subtitle": "أدر جلسات إنستجرام من مكان واحد",
+    "import": "استيراد جلسة",
+    "searchPlaceholder": "ابحث في جلسات إنستجرام...",
+    "stats": {
+      "connected": "جلسات متصلة",
+      "disconnected": "جلسات غير متصلة",
+      "total": "إجمالي الجلسات"
+    },
+    "status": {
+      "connected": "متصل",
+      "disconnected": "غير متصل",
+      "needs_login": "يتطلب تسجيل دخول"
+    },
+    "check": "فحص",
+    "testing": "جارٍ الفحص...",
+    "importDone": "تم استيراد الجلسة بنجاح",
+    "checkDone": "الفحص ناجح — الجلسة متصلة",
+    "deleteDone": "تم حذف الجلسة",
+    "deleteConfirm": "تأكيد الحذف",
+    "deleteQuestion": "هل أنت متأكد من حذف الجلسة \"{{name}}\"?",
+    "empty": {
+      "title": "لا توجد جلسات إنستجرام",
+      "description": "استورد جلسة إنستجرام جديدة للبدء في استخراج البيانات."
+    },
+    "importName": "اسم الجلسة",
+    "importNamePlaceholder": "مثال: جلسة إنستجرام 1",
+    "importCookies": "لصق كوكيز إنستجرام",
+    "importCookiesPlaceholder": "الصق الكوكيز من متصفحك (Cookie-Editor JSON)...",
+    "importAction": "استيراد",
+    "cookiesValid": "الكوكيز صالحة — كل القيم المطلوبة موجودة",
+    "cookiesPartial": "الكوكيز ناقصة — بعض القيم الحاسمة مفقودة"
+  },
   "wizard": {
     "steps": {
       "name": "الاسم",
@@ -1409,6 +1443,8 @@
     "fbPosts": "بيانات المنشورات",
     "fbMessenger": "جهات ماسنجر",
     "fbSessions": "الجلسات",
+    "instagram": "إنستجرام",
+    "igSessions": "الجلسات",
     "tasks": "المهام",
     "tasksActive": "المهام الحالية",
     "tasksScheduled": "المهام المجدولة",
