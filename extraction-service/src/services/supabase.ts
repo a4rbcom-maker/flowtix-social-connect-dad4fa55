@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import WebSocket from "ws";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { ExtractionError, ErrorCodes } from "../errors.js";
@@ -8,6 +9,7 @@ const log = logger;
 
 const sb = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
+  realtime: { transport: WebSocket as unknown as typeof globalThis.WebSocket },
 });
 
 export { sb as supabaseClient };
