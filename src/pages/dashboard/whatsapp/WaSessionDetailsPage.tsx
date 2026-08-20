@@ -38,26 +38,26 @@ export function WaSessionDetailsPage() {
     <div className="space-y-6">
       <PageHeader title={session.name || "—"} icon={Phone} />
       <div className="flex flex-wrap items-center gap-3">
-        <Badge variant={sBadge} className="text-sm px-3 py-1">{t(`wa.sessions.status.${status}`)}</Badge>
+        <Badge variant={sBadge} className="text-sm px-3 py-1">{t(`sessions.status.${status}`)}</Badge>
         <Badge variant="outline" className="text-sm">{session.provider_type === "cloud_api" ? "API" : "QR"}</Badge>
         {session.phone_number && <span className="text-sm text-[var(--color-fg-muted)]">{session.phone_number}</span>}
         {session.push_name && <span className="text-sm text-[var(--color-fg-muted)]">({session.push_name})</span>}
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {status === "connected" && <Button size="sm" variant="outline" onClick={() => mutations.disconnect.mutate({ id: session.id }, { onSuccess: () => toast({ type: "success", title: t("wa.sessions.actions.disconnectDone") }) })}>{t("wa.sessions.actions.disconnect")}</Button>}
-        {status === "paused" && <Button size="sm" variant="outline" onClick={() => mutations.resume.mutate(session.id, { onSuccess: () => toast({ type: "success", title: t("wa.sessions.actions.resumeDone") }) })}>{t("wa.sessions.actions.resume")}</Button>}
-        {status === "connected" && <Button size="sm" variant="outline" onClick={() => mutations.pause.mutate(session.id, { onSuccess: () => toast({ type: "success", title: t("wa.sessions.actions.pauseDone") }) })}>{t("wa.sessions.actions.pause")}</Button>}
-        {(status === "disconnected" || status === "expired") && <Button size="sm" variant="outline" onClick={() => navigate(`/dashboard/whatsapp/connect?id=${session.id}`)}>{t("wa.sessions.actions.connectQR")}</Button>}
+        {status === "connected" && <Button size="sm" variant="outline" onClick={() => mutations.disconnect.mutate({ id: session.id }, { onSuccess: () => toast({ type: "success", title: t("sessions.actions.disconnectDone") }) })}>{t("sessions.actions.disconnect")}</Button>}
+        {status === "paused" && <Button size="sm" variant="outline" onClick={() => mutations.resume.mutate(session.id, { onSuccess: () => toast({ type: "success", title: t("sessions.actions.resumeDone") }) })}>{t("sessions.actions.resume")}</Button>}
+        {status === "connected" && <Button size="sm" variant="outline" onClick={() => mutations.pause.mutate(session.id, { onSuccess: () => toast({ type: "success", title: t("sessions.actions.pauseDone") }) })}>{t("sessions.actions.pause")}</Button>}
+        {(status === "disconnected" || status === "expired") && <Button size="sm" variant="outline" onClick={() => navigate(`/dashboard/whatsapp/connect?id=${session.id}`)}>{t("sessions.actions.connectQR")}</Button>}
         <Button size="sm" variant="ghost" onClick={() => mutations.refresh.mutate(session.id)}><Loader2 className={cn("size-3.5", mutations.refresh.isPending && "animate-spin")} /></Button>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-[var(--color-border)]">
-        {([["overview", Activity, "overview"], ["activity", History, "activity"], ["events", FileText, "events"], ["logs", FileText, "logs"]] as const).map(([key, Icon, label]) => (
+        {([["overview", Activity], ["activity", History], ["events", FileText], ["logs", FileText]] as const).map(([key, Icon]) => (
           <button key={key} onClick={() => setTab(key)} className={cn("flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-[1px] transition-colors",
             tab === key ? "border-[var(--color-primary)] text-[var(--color-primary)]" : "border-transparent text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]")}>
-            <Icon className="size-4" />{label}
+            <Icon className="size-4" />{t(`sessions.tabs.${key}`)}
           </button>
         ))}
       </div>
@@ -65,12 +65,12 @@ export function WaSessionDetailsPage() {
       {tab === "overview" && (
         <Card>
           <CardContent className="p-6 grid gap-3 text-sm">
-            <div className="flex justify-between"><span className="text-[var(--color-fg-muted)]">{t("wa.sessions.fields.phone")}:</span><span>{session.phone_number || "—"}</span></div>
-            <div className="flex justify-between"><span className="text-[var(--color-fg-muted)]">{t("wa.sessions.fields.pushName")}:</span><span>{session.push_name || "—"}</span></div>
-            <div className="flex justify-between"><span className="text-[var(--color-fg-muted)]">{t("wa.sessions.fields.provider")}:</span><span>{session.provider_type}</span></div>
-            <div className="flex justify-between"><span className="text-[var(--color-fg-muted)]">{t("wa.sessions.fields.created")}:</span><span>{session.created_at ? new Date(session.created_at).toLocaleString() : "—"}</span></div>
-            <div className="flex justify-between"><span className="text-[var(--color-fg-muted)]">{t("wa.sessions.fields.lastActivity")}:</span><span>{session.last_activity ? new Date(session.last_activity).toLocaleString() : "—"}</span></div>
-            <div className="flex justify-between"><span className="text-[var(--color-fg-muted)]">{t("wa.sessions.fields.lastConnection")}:</span><span>{session.last_connected ? new Date(session.last_connected).toLocaleString() : "—"}</span></div>
+            <div className="flex justify-between"><span className="text-[var(--color-fg-muted)]">{t("sessions.fields.phone")}:</span><span>{session.phone_number || "—"}</span></div>
+            <div className="flex justify-between"><span className="text-[var(--color-fg-muted)]">{t("sessions.fields.pushName")}:</span><span>{session.push_name || "—"}</span></div>
+            <div className="flex justify-between"><span className="text-[var(--color-fg-muted)]">{t("sessions.fields.provider")}:</span><span>{session.provider_type}</span></div>
+            <div className="flex justify-between"><span className="text-[var(--color-fg-muted)]">{t("sessions.fields.created")}:</span><span>{session.created_at ? new Date(session.created_at).toLocaleString() : "—"}</span></div>
+            <div className="flex justify-between"><span className="text-[var(--color-fg-muted)]">{t("sessions.fields.lastActivity")}:</span><span>{session.last_activity ? new Date(session.last_activity).toLocaleString() : "—"}</span></div>
+            <div className="flex justify-between"><span className="text-[var(--color-fg-muted)]">{t("sessions.fields.lastConnection")}:</span><span>{session.last_connected ? new Date(session.last_connected).toLocaleString() : "—"}</span></div>
           </CardContent>
         </Card>
       )}

@@ -842,13 +842,24 @@
     "status": {
       "connected": "متصل",
       "connecting": "جارٍ الاتصال",
+      "qr_ready": "QR جاهز",
+      "authenticating": "جارٍ التحقق",
       "disconnected": "غير متصل",
       "expired": "منتهي",
       "error": "خطأ",
       "paused": "متوقف",
       "reconnecting": "جارٍ إعادة الاتصال"
     },
+    "tabs": {
+      "overview": "نظرة عامة",
+      "activity": "النشاط",
+      "events": "الأحداث",
+      "logs": "السجلات"
+    },
     "fields": {
+      "phone": "رقم الهاتف",
+      "pushName": "اسم الظهور",
+      "provider": "المزوّد",
       "browser": "المتصفح",
       "workspace": "مساحة العمل",
       "created": "تاريخ الإنشاء",
@@ -866,6 +877,7 @@
       "view": "عرض",
       "rename": "إعادة تسمية",
       "reconnect": "إعادة الاتصال",
+      "connectQR": "اتصال بـ QR",
       "refresh": "تحديث",
       "pause": "إيقاف مؤقت",
       "resume": "استئناف",

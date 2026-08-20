@@ -841,13 +841,24 @@
     "status": {
       "connected": "Connected",
       "connecting": "Connecting",
+      "qr_ready": "QR Ready",
+      "authenticating": "Authenticating",
       "disconnected": "Disconnected",
       "expired": "Expired",
       "error": "Error",
       "paused": "Paused",
       "reconnecting": "Reconnecting"
     },
+    "tabs": {
+      "overview": "Overview",
+      "activity": "Activity",
+      "events": "Events",
+      "logs": "Logs"
+    },
     "fields": {
+      "phone": "Phone",
+      "pushName": "Push Name",
+      "provider": "Provider",
       "browser": "Browser",
       "workspace": "Workspace",
       "created": "Created",
@@ -865,6 +876,7 @@
       "view": "View",
       "rename": "Rename",
       "reconnect": "Reconnect",
+      "connectQR": "Connect with QR",
       "refresh": "Refresh",
       "pause": "Pause",
       "resume": "Resume",
