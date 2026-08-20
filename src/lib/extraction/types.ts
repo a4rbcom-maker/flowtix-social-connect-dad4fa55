@@ -2,7 +2,7 @@ import type { Database } from "@/types/database.types";
 
 export type ExtractionJob = Database["public"]["Tables"]["extraction_jobs"]["Row"];
 export type ExtractionJobInsert = Database["public"]["Tables"]["extraction_jobs"]["Insert"];
-export type ExtractionResult = Database["public"]["Tables"]["extraction_results"]["Row"];
+export type ExtractionResult = Database["public"]["Tables"]["extraction_results"]["Row"] & { platform?: string | null };
 export type Export = Database["public"]["Tables"]["exports"]["Row"];
 
 export type ExtractionType =
@@ -17,6 +17,8 @@ export type ExtractionType =
   | "ig_profile_info";
 export type JobStatus = Database["public"]["Enums"]["job_status"];
 export type ExportFormat = Database["public"]["Enums"]["export_format"];
+
+export type PlatformFilter = "all" | "facebook" | "instagram";
 
 export type MemberSourceType = "group-members" | "page-followers" | "post-comments" | "post-reactions" | "messenger-contacts" | "ig-followers" | "ig-following";
 

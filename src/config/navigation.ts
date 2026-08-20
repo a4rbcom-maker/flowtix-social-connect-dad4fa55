@@ -104,6 +104,12 @@ export const dashboardNav: NavSection[] = [
         icon: ListChecks,
         to: "/dashboard/tasks",
       },
+      {
+        key: "results",
+        labelKey: "nav.results",
+        icon: FileText,
+        to: "/dashboard/results",
+      },
     ],
   },
   {

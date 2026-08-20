@@ -187,6 +187,126 @@ function searchInDb(db: Database.Database, fbIds: string[], tableName: string = 
   return map;
 }
 
+interface IgCandidate {
+  phone9: string | null;
+  email: string | null;
+  fullName: string | null;
+}
+
+interface IgSearchHit {
+  phone: Map<string, EnrichmentRow>;
+  email: Map<string, EnrichmentRow>;
+  fullName: Map<string, EnrichmentRow>;
+}
+
+/** تطبيع رقم مصري إلى آخر 9 أرقام (إزالة +20/0020/0/مسافات/شرطات) */
+function normalizeEgyptPhone(phone: string): string {
+  let p = phone.replace(/\D/g, "");
+  if (p.startsWith("0020")) p = p.slice(4);
+  else if (p.startsWith("20")) p = p.slice(2);
+  else if (p.startsWith("0")) p = p.slice(1);
+  return p;
+}
+
+/** بحث نتائج IG في قاعدة SQLite: هاتف/بريد (confirmed) ثم اسم كامل (probable) */
+function searchIgInDb(db: Database.Database, tableName: string, candidates: IgCandidate[]): IgSearchHit {
+  const hits: IgSearchHit = {
+    phone: new Map(),
+    email: new Map(),
+    fullName: new Map(),
+  };
+  let columns: string[] = [];
+  try {
+    const cols = db.prepare(`PRAGMA table_info('${tableName}')`).all() as { name: string }[];
+    columns = cols.map((c) => c.name);
+  } catch {
+    return hits;
+  }
+
+  const phones = Array.from(new Set(candidates.map((c) => c.phone9).filter((v): v is string => !!v)));
+  if (phones.length > 0 && columns.includes("Phone")) {
+    const SQLITE_PARAM_LIMIT = 400;
+    for (let i = 0; i < phones.length; i += SQLITE_PARAM_LIMIT) {
+      const chunk = phones.slice(i, i + SQLITE_PARAM_LIMIT);
+      const stmt = db.prepare(`SELECT * FROM ${tableName} WHERE Phone LIKE ?`);
+      for (const p of chunk) {
+        try {
+          const rows = stmt.all(`%${p}`) as Record<string, unknown>[];
+          for (const row of rows) {
+            const r = mapRow(row);
+            const norm = normalizeEgyptPhone(r.Phone || "");
+            const key = norm.length >= 9 ? norm.slice(-9) : norm;
+            if (!hits.phone.has(key)) hits.phone.set(key, r);
+          }
+        } catch {
+          /* per-id errors are tolerated */
+        }
+      }
+    }
+  }
+
+  const emails = Array.from(new Set(candidates.map((c) => c.email).filter((v): v is string => !!v)));
+  if (emails.length > 0 && columns.includes("email")) {
+    const SQLITE_PARAM_LIMIT = 400;
+    for (let i = 0; i < emails.length; i += SQLITE_PARAM_LIMIT) {
+      const chunk = emails.slice(i, i + SQLITE_PARAM_LIMIT);
+      const placeholders = chunk.map(() => "?").join(",");
+      try {
+        const rows = db.prepare(`SELECT * FROM ${tableName} WHERE LOWER(email) IN (${placeholders})`).all(...chunk.map((e) => e.toLowerCase())) as Record<string, unknown>[];
+        for (const row of rows) {
+          const r = mapRow(row);
+          const key = (r.email || "").toLowerCase();
+          if (!hits.email.has(key)) hits.email.set(key, r);
+        }
+      } catch {
+        /* tolerate */
+      }
+    }
+  }
+
+  const names = Array.from(new Set(candidates.map((c) => c.fullName).filter((v): v is string => !!v)));
+  if (names.length > 0 && columns.includes("first_name") && columns.includes("last_name")) {
+    const SQLITE_PARAM_LIMIT = 400;
+    for (let i = 0; i < names.length; i += SQLITE_PARAM_LIMIT) {
+      const chunk = names.slice(i, i + SQLITE_PARAM_LIMIT);
+      const clauses = chunk.map(() => `LOWER(first_name || ' ' || last_name) = LOWER(?)`).join(" OR ");
+      try {
+        const rows = db.prepare(`SELECT * FROM ${tableName} WHERE ${clauses}`).all(...chunk) as Record<string, unknown>[];
+        for (const row of rows) {
+          const r = mapRow(row);
+          const key = `${r.first_name || ""} ${r.last_name || ""}`.trim().toLowerCase();
+          if (!hits.fullName.has(key)) hits.fullName.set(key, r);
+        }
+      } catch {
+        /* tolerate */
+      }
+    }
+  }
+
+  return hits;
+}
+
+function enrichmentRowToPayload(row: EnrichmentRow & { source_db?: string }): Record<string, unknown> {
+  return {
+    phone: row.Phone || null,
+    first_name: row.first_name || null,
+    last_name: row.last_name || null,
+    email: row.email || null,
+    birthday: row.birthday || null,
+    birthdayYear: row.birthdayYear || null,
+    gender: row.gender || null,
+    hometown: row.hometown || null,
+    location: row.location || null,
+    country: row.country || null,
+    work: row.work || null,
+    education: row.education || null,
+    relationship: row.relationship || null,
+    religion: row.religion || null,
+    about_me: row.about_me || null,
+    source_db: row.source_db,
+  };
+}
+
 export const enrichmentService = {
   async enrichJobResults(jobId: string): Promise<void> {
     if (!config.enrichmentEnabled) {
@@ -203,6 +323,13 @@ export const enrichmentService = {
     const results = await supabaseService.getJobResultsForEnrichment(jobId);
     if (!results || results.length === 0) {
       log.info("Enrichment", `no results with fb_id for job ${jobId}`);
+      return;
+    }
+
+    const job = await supabaseService.getJob(jobId).catch(() => null);
+    const jobType = (job as any)?.type || "";
+    if (typeof jobType === "string" && jobType.startsWith("ig_")) {
+      await this.enrichIgJobResults(jobId, results, databases);
       return;
     }
 
@@ -310,5 +437,122 @@ export const enrichmentService = {
     });
 
     log.info("Enrichment", `done: ${enriched}/${allFbIds.length} enriched (${coveragePercent}%)`, { sources });
+  },
+
+  /** إثراء نتائج إنستجرام: bio (هاتف/بريد) → confirmed، وإلا الاسم الكامل → probable */
+  async enrichIgJobResults(
+    jobId: string,
+    results: { id: string; fb_id: string; data: Record<string, unknown> }[],
+    databases: { name: string; path: string }[]
+  ): Promise<void> {
+    log.info("Enrichment", `=== IG ENRICHMENT STARTED === job=${jobId} resultCount=${results.length}`);
+
+    try {
+      const currentProgress = await supabaseService.getJob(jobId).then((j: any) => j.progress || {}).catch(() => ({}));
+      await supabaseService.storeProgress(jobId, {
+        ...currentProgress,
+        phase: "enriching",
+        last_update: new Date().toISOString(),
+      });
+    } catch (err) {
+      log.debug("Enrichment", `storeProgress(enriching) failed: ${String(err)}`);
+    }
+
+    const candidates: IgCandidate[] = results.map((r) => {
+      const d = r.data || {};
+      const bioPhone = typeof d.bio_phone === "string" ? d.bio_phone : null;
+      const bioEmail = typeof d.bio_email === "string" ? d.bio_email.trim() : null;
+      const fullName = typeof d.full_name === "string" ? d.full_name.trim() : null;
+      const phone9 = bioPhone ? normalizeEgyptPhone(bioPhone).slice(-9) : null;
+      return { phone9: phone9 && phone9.length >= 9 ? phone9 : null, email: bioEmail || null, fullName: fullName || null };
+    });
+
+    const hasAnyBio = candidates.some((c) => c.phone9 || c.email);
+    const hasAnyName = candidates.some((c) => c.fullName);
+    if (!hasAnyBio && !hasAnyName) {
+      log.info("Enrichment", `IG job ${jobId}: no bio contact or full_name present to match — skipping`);
+      return;
+    }
+
+    const matches = new Map<number, { row: EnrichmentRow; method: "bio_phone" | "bio_email" | "full_name"; sourceDb: string }>();
+    const sources: Record<string, number> = {};
+
+    for (const dbInfo of databases) {
+      let db: Database.Database | null = null;
+      try {
+        db = new Database(dbInfo.path, { readonly: true });
+        if (!checkDbHealthy(db, dbInfo.name)) {
+          log.warn("Enrichment", `${dbInfo.name}.db is corrupt — IG search may be incomplete`);
+        }
+        const hits = searchIgInDb(db, "data", candidates);
+        for (let i = 0; i < candidates.length; i++) {
+          if (matches.has(i)) continue;
+          const c = candidates[i];
+          let hit: EnrichmentRow | undefined;
+          let method: "bio_phone" | "bio_email" | "full_name" | undefined;
+          if (c.phone9) {
+            hit = hits.phone.get(c.phone9);
+            if (hit) method = "bio_phone";
+          }
+          if (!hit && c.email) {
+            hit = hits.email.get(c.email.toLowerCase());
+            if (hit) method = "bio_email";
+          }
+          if (!hit && c.fullName) {
+            hit = hits.fullName.get(c.fullName.toLowerCase());
+            if (hit) method = "full_name";
+          }
+          if (hit && method) {
+            const row = { ...hit, source_db: dbInfo.name };
+            matches.set(i, { row, method, sourceDb: dbInfo.name });
+          }
+        }
+      } catch (err) {
+        log.error("Enrichment", `IG error searching ${dbInfo.name}.db: ${String(err)}`);
+      } finally {
+        if (db) db.close();
+      }
+      const countFromThisDb = Array.from(matches.values()).filter((m) => m.sourceDb === dbInfo.name).length;
+      if (countFromThisDb > 0) sources[dbInfo.name] = countFromThisDb;
+    }
+
+    const updates: { id: string; metadata: Record<string, unknown> }[] = [];
+    for (let i = 0; i < results.length; i++) {
+      const m = matches.get(i);
+      if (!m) continue;
+      updates.push({
+        id: results[i].id,
+        metadata: {
+          platform: "instagram",
+          enrichment: enrichmentRowToPayload(m.row),
+          match_confidence: m.method === "full_name" ? "probable" : "confirmed",
+          match_method: m.method,
+        },
+      });
+    }
+
+    if (updates.length > 0) {
+      await supabaseService.updateResultMetadataBatch(jobId, updates);
+      log.info("Enrichment", `IG updated ${updates.length} results with enrichment metadata`);
+    }
+
+    const stats: EnrichmentStats = {
+      total: results.length,
+      enriched: updates.length,
+      not_found: results.length - updates.length,
+      coverage_percent: results.length > 0 ? Math.round((updates.length / results.length) * 100) : 0,
+      sources,
+    };
+
+    await supabaseService.updateJob(jobId, {
+      progress: await supabaseService.getJob(jobId).then((j: any) => ({
+        ...(j.progress || {}),
+        phase: "completed",
+        enrichment: stats,
+        last_update: new Date().toISOString(),
+      })).catch(() => ({ phase: "completed", enrichment: stats })),
+    });
+
+    log.info("Enrichment", `IG done: ${updates.length}/${results.length} enriched (${stats.coverage_percent}%)`, { sources });
   },
 };

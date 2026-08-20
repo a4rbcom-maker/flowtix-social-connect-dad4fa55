@@ -1064,6 +1064,33 @@
     "exportFailed": "فشل التصدير",
     "cancelDone": "تم إلغاء المهمة"
   },
+  "results": {
+    "title": "النتائج",
+    "subtitle": "جميع النتائج المستخرجة من فيسبوك وإنستجرام",
+    "filter": {
+      "all": "الكل",
+      "facebook": "فيسبوك",
+      "instagram": "إنستجرام"
+    },
+    "col": {
+      "name": "الاسم",
+      "platform": "المنصة",
+      "phone": "الهاتف",
+      "email": "البريد الإلكتروني",
+      "confidence": "الثقة"
+    },
+    "platform": {
+      "facebook": "فيسبوك",
+      "instagram": "إنستجرام"
+    },
+    "confidence": {
+      "confirmed": "مؤكد",
+      "probable": "محتمل"
+    },
+    "empty": "لا توجد نتائج مطابقة",
+    "showing": "عرض",
+    "of": "من"
+  },
   "wizard": {
     "steps": {
       "name": "الاسم",
@@ -1517,6 +1544,7 @@
     "igSessions": "الجلسات",
     "igExtract": "استخراج البيانات",
     "tasks": "المهام",
+    "results": "النتائج",
     "tasksActive": "المهام الحالية",
     "tasksScheduled": "المهام المجدولة",
     "tasksHistory": "سجل المهام",

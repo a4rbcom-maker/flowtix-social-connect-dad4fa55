@@ -6,6 +6,7 @@ import {
   type ExtractionProgress,
   type ExportResult,
   type ExportFormat,
+  type PlatformFilter,
   SOURCE_TO_DB_TYPE,
 } from "./types";
 
@@ -48,6 +49,22 @@ export const extractionRepository = {
     const [resultQuery, countQuery] = await Promise.all([
       supabase.from("extraction_results").select("*").eq("job_id", jobId).range(from, to),
       supabase.from("extraction_results").select("id", { count: "exact", head: true }).eq("job_id", jobId),
+    ]);
+    if (resultQuery.error) throw resultQuery.error;
+    return { data: resultQuery.data, count: countQuery.count ?? 0 };
+  },
+
+  async getAllResults(platform: PlatformFilter = "all", page = 0, pageSize = 50): Promise<{ data: ExtractionResult[]; count: number }> {
+    const from = page * pageSize;
+    const to = from + pageSize - 1;
+    const withPlatform = platform !== "all";
+    const [resultQuery, countQuery] = await Promise.all([
+      withPlatform
+        ? supabase.from("extraction_results").select("*").eq("platform", platform).range(from, to)
+        : supabase.from("extraction_results").select("*").range(from, to),
+      withPlatform
+        ? supabase.from("extraction_results").select("id", { count: "exact", head: true }).eq("platform", platform)
+        : supabase.from("extraction_results").select("id", { count: "exact", head: true }),
     ]);
     if (resultQuery.error) throw resultQuery.error;
     return { data: resultQuery.data, count: countQuery.count ?? 0 };

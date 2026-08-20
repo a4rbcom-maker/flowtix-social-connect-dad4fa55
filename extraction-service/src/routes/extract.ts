@@ -372,6 +372,11 @@ router.post("/export", async (req, res) => {
           name: r.data?.name || "",
           profile_url: r.data?.profile_url || "",
           avatar_url: r.data?.avatar_url || "",
+          platform: r.metadata?.platform || r.platform || "facebook",
+          bio_phone: r.data?.bio_phone || "",
+          bio_email: r.data?.bio_email || "",
+          match_confidence: r.metadata?.match_confidence || "",
+          match_method: r.metadata?.match_method || "",
           phone: enrichment.phone || "",
           first_name: enrichment.first_name || "",
           last_name: enrichment.last_name || "",
@@ -394,16 +399,20 @@ router.post("/export", async (req, res) => {
 
     if (format === "csv") {
       const enrichmentFields = ["phone", "first_name", "last_name", "email", "birthday", "birthdayYear", "gender", "hometown", "location", "country", "work", "education", "relationship", "religion", "about_me"];
-      const header = `\uFEFFمعرف فيسبوك,الاسم,رابط الحساب,رقم الجوال,الاسم الأول,الاسم الأخير,البريد الإلكتروني,تاريخ الميلاد,سنة الميلاد,الجنس,المدينة الأصلية,الموقع,البلد,العمل,التعليم,الحالة الاجتماعية,الدين,نبذة`;
+      const header = `\uFEFFمعرف,الاسم,رابط الحساب,المنصة,الثقة,هاتف الحساب,بريد الحساب,رقم الجوال,الاسم الأول,الاسم الأخير,البريد الإلكتروني,تاريخ الميلاد,سنة الميلاد,الجنس,المدينة الأصلية,الموقع,البلد,العمل,التعليم,الحالة الاجتماعية,الدين,نبذة`;
       const rows = results.map((r: any) => {
         const name = (r.data?.name || "").replace(/"/g, '""');
         const profile = (r.data?.profile_url || "").replace(/"/g, '""');
         const enrichment = r.metadata?.enrichment || {};
+        const platform = (r.metadata?.platform || r.platform || "facebook").replace(/"/g, '""');
+        const confidence = (r.metadata?.match_confidence || "").replace(/"/g, '""');
+        const bioPhone = (r.data?.bio_phone || "").replace(/"/g, '""');
+        const bioEmail = (r.data?.bio_email || "").replace(/"/g, '""');
         const enrichmentValues = enrichmentFields.map((f) => {
           const v = enrichment[f] || "";
           return `"${String(v).replace(/"/g, '""')}"`;
         }).join(",");
-        return `"${r.fb_id}","${name}","${profile}",${enrichmentValues}`;
+        return `"${r.fb_id}","${name}","${profile}","${platform}","${confidence}","${bioPhone}","${bioEmail}",${enrichmentValues}`;
       }).join("\n");
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename=flowtix-export-${job_id}.csv`);
@@ -412,13 +421,17 @@ router.post("/export", async (req, res) => {
 
     if (format === "xlsx") {
       const enrichmentFields = ["phone", "first_name", "last_name", "email", "birthday", "birthdayYear", "gender", "hometown", "location", "country", "work", "education", "relationship", "religion", "about_me"];
-      const headers = ["FB ID", "الاسم", "رابط الحساب", "رقم الجوال", "الاسم الأول", "الاسم الأخير", "البريد الإلكتروني", "تاريخ الميلاد", "سنة الميلاد", "الجنس", "المدينة الأصلية", "الموقع", "البلد", "العمل", "التعليم", "الحالة الاجتماعية", "الدين", "نبذة"];
+      const headers = ["ID", "الاسم", "رابط الحساب", "المنصة", "الثقة", "هاتف الحساب", "بريد الحساب", "رقم الجوال", "الاسم الأول", "الاسم الأخير", "البريد الإلكتروني", "تاريخ الميلاد", "سنة الميلاد", "الجنس", "المدينة الأصلية", "الموقع", "البلد", "العمل", "التعليم", "الحالة الاجتماعية", "الدين", "نبذة"];
       const rows = results.map((r: any) => {
         const enrichment = r.metadata?.enrichment || {};
         return [
           r.fb_id || "",
           r.data?.name || "",
           r.data?.profile_url || "",
+          r.metadata?.platform || r.platform || "facebook",
+          r.metadata?.match_confidence || "",
+          r.data?.bio_phone || "",
+          r.data?.bio_email || "",
           enrichment.phone || "",
           enrichment.first_name || "",
           enrichment.last_name || "",

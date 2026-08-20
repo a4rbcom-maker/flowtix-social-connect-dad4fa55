@@ -33,6 +33,7 @@ const HelpCenterPage = lazy(() => import("@/pages/dashboard/HelpCenterPage").the
 const ContactSupportPage = lazy(() => import("@/pages/dashboard/ContactSupportPage").then((m) => ({ default: m.ContactSupportPage })));
 const ExtractMembersPage = lazy(() => import("@/pages/dashboard/extraction/ExtractMembersPage").then((m) => ({ default: m.ExtractMembersPage })));
 const ExtractIgPage = lazy(() => import("@/pages/dashboard/extraction/ExtractIgPage").then((m) => ({ default: m.ExtractIgPage })));
+const ResultsPage = lazy(() => import("@/pages/dashboard/extraction/ResultsPage").then((m) => ({ default: m.ResultsPage })));
 const ExtractContactsPage = lazy(() => import("@/pages/dashboard/extraction/ExtractContactsPage").then((m) => ({ default: m.ExtractContactsPage })));
 const MessengerBroadcastPage = lazy(() => import("@/pages/dashboard/messenger/MessengerBroadcastPage").then((m) => ({ default: m.MessengerBroadcastPage })));
 const GroupsPage = lazy(() => import("@/pages/dashboard/groups/GroupsPage").then((m) => ({ default: m.GroupsPage })));
@@ -104,6 +105,7 @@ export const router = createBrowserRouter([
         { path: "facebook/sessions/error/:type", element: withSuspense(<SessionErrorPageWrapper />) },
         { path: "instagram/sessions", element: withSuspense(<IgSessionsPage />) },
         { path: "instagram/extract", element: withSuspense(<ExtractIgPage />) },
+        { path: "results", element: withSuspense(<ResultsPage />) },
         { path: "whatsapp", element: withSuspense(<WaSessionsPage />) },
         { path: "whatsapp/sessions", element: withSuspense(<WaSessionsPage />) },
         { path: "whatsapp/connect", element: withSuspense(<WaConnectNumberPage />) },

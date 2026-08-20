@@ -1063,6 +1063,33 @@
     "exportFailed": "Export failed",
     "cancelDone": "Job canceled"
   },
+  "results": {
+    "title": "Results",
+    "subtitle": "All extracted results from Facebook and Instagram",
+    "filter": {
+      "all": "All",
+      "facebook": "Facebook",
+      "instagram": "Instagram"
+    },
+    "col": {
+      "name": "Name",
+      "platform": "Platform",
+      "phone": "Phone",
+      "email": "Email",
+      "confidence": "Confidence"
+    },
+    "platform": {
+      "facebook": "Facebook",
+      "instagram": "Instagram"
+    },
+    "confidence": {
+      "confirmed": "Confirmed",
+      "probable": "Probable"
+    },
+    "empty": "No matching results",
+    "showing": "Showing",
+    "of": "of"
+  },
   "wizard": {
     "steps": {
       "name": "Name",
@@ -1518,6 +1545,7 @@
     "igSessions": "Sessions",
     "igExtract": "Data Extraction",
     "tasks": "Tasks",
+    "results": "Results",
     "tasksActive": "Active Tasks",
     "tasksScheduled": "Scheduled Tasks",
     "tasksHistory": "Task History",

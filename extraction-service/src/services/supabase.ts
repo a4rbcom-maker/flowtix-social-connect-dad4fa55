@@ -250,7 +250,7 @@ export const supabaseService = {
     while (true) {
       const { data, error } = await sb
         .from("extraction_results")
-        .select("fb_id, data, metadata")
+        .select("fb_id, data, metadata, platform")
         .eq("job_id", jobId)
         .order("created_at", { ascending: true })
         .range(offset, offset + PAGE_SIZE - 1);
@@ -300,14 +300,14 @@ export const supabaseService = {
     return new Set(data.map((r: { fb_id: string }) => r.fb_id));
   },
 
-  async getJobResultsForEnrichment(jobId: string): Promise<{ id: string; fb_id: string; data: Record<string, unknown> }[]> {
+  async getJobResultsForEnrichment(jobId: string): Promise<{ id: string; fb_id: string; data: Record<string, unknown>; platform?: string }[]> {
     const PAGE_SIZE = 1000;
-    const allData: { id: string; fb_id: string; data: Record<string, unknown> }[] = [];
+    const allData: { id: string; fb_id: string; data: Record<string, unknown>; platform?: string }[] = [];
     let offset = 0;
     while (true) {
       const { data, error } = await sb
         .from("extraction_results")
-        .select("id, fb_id, data")
+        .select("id, fb_id, data, platform")
         .eq("job_id", jobId)
         .not("fb_id", "is", null)
         .order("created_at", { ascending: true })
