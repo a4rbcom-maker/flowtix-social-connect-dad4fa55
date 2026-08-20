@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { Smile, Paperclip, X, Image as ImageIcon, FileVideo, FileAudio, File, SendHorizontal, Loader2 } from "lucide-react";
+import { Smile, Paperclip, X, Image as ImageIcon, FileVideo, FileAudio, File as FileIcon, SendHorizontal, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import EmojiPicker, { Theme } from "emoji-picker-react";
 import { cn } from "@/lib/utils";
@@ -114,7 +114,7 @@ export function Composer({ onSend, disabled, draftText, onDraftChange }: Compose
           {attachment.type === "image" && <ImageIcon className="size-5 text-[var(--color-primary)] shrink-0" />}
           {attachment.type === "video" && <FileVideo className="size-5 text-[var(--color-primary)] shrink-0" />}
           {attachment.type === "audio" && <FileAudio className="size-5 text-[var(--color-primary)] shrink-0" />}
-          {attachment.type === "document" && <File className="size-5 text-[var(--color-primary)] shrink-0" />}
+          {attachment.type === "document" && <FileIcon className="size-5 text-[var(--color-primary)] shrink-0" />}
           <span className="text-xs truncate flex-1">
             {attachment.file instanceof File ? (attachment.file as File).name : t("wa.inbox.composer.recording")}
           </span>
@@ -153,7 +153,7 @@ export function Composer({ onSend, disabled, draftText, onDraftChange }: Compose
                   { label: t("wa.inbox.composer.image"), icon: ImageIcon, accept: "image/*" },
                   { label: t("wa.inbox.composer.video"), icon: FileVideo, accept: "video/*" },
                   { label: t("wa.inbox.composer.audio"), icon: FileAudio, accept: "audio/*" },
-                  { label: t("wa.inbox.composer.document"), icon: File, accept: ".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" },
+                  { label: t("wa.inbox.composer.document"), icon: FileIcon, accept: ".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" },
                 ].map((opt) => (
                   <button
                     key={opt.label}
