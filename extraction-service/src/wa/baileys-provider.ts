@@ -113,7 +113,7 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
         const dataUrl = await qrcode.toDataURL(qr);
         qrCache.set(sessionId, dataUrl);
         onQR(dataUrl);
-        await transitionStatus(sessionId, "qr_ready", "QR generated");
+        if (!sock.user) await transitionStatus(sessionId, "qr_ready", "QR generated");
       }
       if (connection === "open") {
         qrCache.delete(sessionId);
