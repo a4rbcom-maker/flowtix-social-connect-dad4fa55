@@ -5,28 +5,60 @@ import { waManager } from "./wa-manager.js";
 import { mediaService } from "./media.js";
 import { logger } from "../logger.js";
 import { ExtractionError, ErrorCodes } from "../errors.js";
+import { supabaseClient } from "../services/supabase.js";
 
 const log = logger;
 const router = Router();
+const sessionAccessSchema = z.object({ session_id: z.string().min(1), workspace_id: z.string().uuid() });
+const workspaceQuerySchema = z.object({ workspace_id: z.string().uuid() });
+
+async function assertSessionWorkspace(sessionId: string, workspaceId: string): Promise<boolean> {
+  const { data, error } = await supabaseClient
+    .from("wa_sessions")
+    .select("id")
+    .eq("id", sessionId)
+    .eq("workspace_id", workspaceId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) throw error;
+  return !!data;
+}
 
 router.post("/wa/start", async (req, res) => {
-  const schema = z.object({ session_id: z.string().min(1), workspace_id: z.string().uuid().optional() });
-  const parsed = schema.safeParse(req.body);
+  const parsed = sessionAccessSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: { code: ErrorCodes.INVALID_INPUT, message: parsed.error.issues.map(i => i.message).join(", ") } });
   try {
+    if (!await assertSessionWorkspace(parsed.data.session_id, parsed.data.workspace_id)) {
+      return res.status(404).json({ error: { code: "SESSION_NOT_FOUND", message: "WhatsApp session not found" } });
+    }
     await waManager.requestQR(parsed.data.session_id, parsed.data.workspace_id);
     res.json({ session_id: parsed.data.session_id, status: "starting" });
   } catch (e) { log.error("WARoute", `start: ${String(e)}`); res.status(500).json({ error: { code: "UNKNOWN_ERROR", message: String(e) } }); }
 });
 
 router.get("/wa/:sessionId/qr", async (req, res) => {
+  const parsed = workspaceQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: { code: ErrorCodes.INVALID_INPUT, message: parsed.error.issues.map(i => i.message).join(", ") } });
+  try {
+    if (!await assertSessionWorkspace(req.params.sessionId, parsed.data.workspace_id)) {
+      return res.status(404).json({ error: { code: "SESSION_NOT_FOUND", message: "WhatsApp session not found" } });
+    }
+  } catch (e) { log.error("WARoute", `qr auth: ${String(e)}`); return res.status(500).json({ error: { code: "UNKNOWN_ERROR", message: "Internal server error" } }); }
   const qr = waManager.getQR(req.params.sessionId);
   if (!qr) return res.status(404).json({ error: { code: "QR_NOT_READY", message: "QR not generated yet" } });
   res.json({ session_id: req.params.sessionId, qr });
 });
 
 router.get("/wa/:sessionId/status", async (req, res) => {
-  const { data } = await import("../services/supabase.js").then(m => m.supabaseClient.from("wa_sessions").select("status, push_name, phone_number").eq("id", req.params.sessionId).is("deleted_at", null).single());
+  const parsed = workspaceQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: { code: ErrorCodes.INVALID_INPUT, message: parsed.error.issues.map(i => i.message).join(", ") } });
+  const { data } = await supabaseClient
+    .from("wa_sessions")
+    .select("status, push_name, phone_number")
+    .eq("id", req.params.sessionId)
+    .eq("workspace_id", parsed.data.workspace_id)
+    .is("deleted_at", null)
+    .maybeSingle();
   res.json({ session_id: req.params.sessionId, status: data?.status ?? "disconnected", push_name: data?.push_name, phone: data?.phone_number });
 });
 
@@ -57,7 +89,6 @@ router.post("/wa/media/upload", upload.single("file"), async (req, res) => {
 
 // Campaign control routes
 import { startCampaignWorker, stopCampaignWorker } from "./campaign-worker.js";
-import { supabaseClient } from "../services/supabase.js";
 
 router.post("/wa/campaigns/:id/start", async (req, res) => {
   try {

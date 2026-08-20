@@ -34,6 +34,8 @@ export function WaConnectNumberPage() {
     if (!response.ok) throw new Error("Failed to start WhatsApp session");
   }
 
+  const workspaceQuery = () => (workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : "");
+
   // Start WA session, poll QR, then poll status until the phone is linked.
   useEffect(() => {
     if (!sessionId || !workspaceId) return;
@@ -42,7 +44,7 @@ export function WaConnectNumberPage() {
 
     async function pollStatusAndQr() {
       try {
-        const statusRes = await fetch(`${apiUrl}/wa/${sessionId}/status`, { headers: { "X-API-Key": apiKey } });
+        const statusRes = await fetch(`${apiUrl}/wa/${sessionId}/status${workspaceQuery()}`, { headers: { "X-API-Key": apiKey } });
         if (statusRes.ok) {
           const statusData = await statusRes.json();
           if (statusData.status === "connected") {
@@ -55,7 +57,7 @@ export function WaConnectNumberPage() {
           }
         }
 
-        const qrRes = await fetch(`${apiUrl}/wa/${sessionId}/qr`, { headers: { "X-API-Key": apiKey } });
+        const qrRes = await fetch(`${apiUrl}/wa/${sessionId}/qr${workspaceQuery()}`, { headers: { "X-API-Key": apiKey } });
         if (qrRes.ok && mounted) {
           const { qr } = await qrRes.json();
           setQrDataUrl(qr);

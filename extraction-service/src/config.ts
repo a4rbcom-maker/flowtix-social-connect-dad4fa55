@@ -62,6 +62,8 @@ export const config = {
   enrichmentEnabled: envBool("ENRICHMENT_ENABLED", true),
   enrichmentBatchSize: envInt("ENRICHMENT_BATCH_SIZE", 500),
 
+  waAuthDir: env("WA_AUTH_DIR", "./data/wa-auth"),
+
   userAgent:
     "Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36",
 

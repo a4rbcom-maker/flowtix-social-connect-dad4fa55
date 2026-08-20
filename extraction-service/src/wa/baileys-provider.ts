@@ -1,13 +1,20 @@
 import makeWASocket, { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } from "@whiskeysockets/baileys";
 import type { Boom } from "@hapi/boom";
+import fs from "node:fs/promises";
+import path from "node:path";
 import qrcode from "qrcode";
 import { logger } from "../logger.js";
 import { supabaseClient } from "../services/supabase.js";
+import { config } from "../config.js";
 import type { IncomingWaMessage, SendPayload, WhatsAppProvider } from "./types.js";
 
 const log = logger;
 const sockets = new Map<string, ReturnType<typeof makeWASocket>>();
 const qrCache = new Map<string, string>();
+
+function authPathFor(sessionId: string): string {
+  return path.resolve(config.waAuthDir, sessionId);
+}
 
 function toIncoming(m: any, sessionId: string, workspaceId: string): IncomingWaMessage | null {
   try {
@@ -68,7 +75,8 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
   async start(sessionId, onQR, onReady, onMessage, onClose) {
     if (sockets.has(sessionId)) return;
 
-    const authPath = `./.wa-auth/${sessionId}`;
+    const authPath = authPathFor(sessionId);
+    await fs.mkdir(authPath, { recursive: true, mode: 0o700 });
     const { state, saveCreds } = await useMultiFileAuthState(authPath);
     const { version } = await fetchLatestBaileysVersion();
 
@@ -108,7 +116,7 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
           setTimeout(() => baileysProvider.start(sessionId, onQR, onReady, onMessage, onClose), 5000);
         } else {
           try { await supabaseClient.rpc("transition_wa_session_status", { p_session_id: sessionId, p_new_status: "disconnected", p_reason: "logged out", p_metadata: {} } as never); } catch {}
-          await supabaseClient.storage.from("wa-auth-state").remove([`${sessionId}/state.json`]).catch(() => {});
+          await fs.rm(authPathFor(sessionId), { recursive: true, force: true }).catch(() => {});
         }
       }
     });
