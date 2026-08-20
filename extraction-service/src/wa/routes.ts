@@ -14,7 +14,7 @@ router.post("/wa/start", async (req, res) => {
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: { code: ErrorCodes.INVALID_INPUT, message: parsed.error.issues.map(i => i.message).join(", ") } });
   try {
-    await waManager.requestQR(parsed.data.session_id);
+    await waManager.requestQR(parsed.data.session_id, parsed.data.workspace_id);
     res.json({ session_id: parsed.data.session_id, status: "starting" });
   } catch (e) { log.error("WARoute", `start: ${String(e)}`); res.status(500).json({ error: { code: "UNKNOWN_ERROR", message: String(e) } }); }
 });

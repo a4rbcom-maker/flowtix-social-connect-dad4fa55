@@ -58,7 +58,8 @@ function toIncoming(m: any, sessionId: string, workspaceId: string): IncomingWaM
 
 async function persistSessionInDB(sessionId: string, jid: string, pushName?: string) {
   try {
-    await supabaseClient.from("wa_sessions").update({ phone_number_jid: jid, push_name: pushName ?? null, last_connected: new Date().toISOString() }).eq("id", sessionId);
+    const phoneNumber = jid.split("@")[0]?.split(":")[0] ?? null;
+    await supabaseClient.from("wa_sessions").update({ phone_number_jid: jid, phone_number: phoneNumber, push_name: pushName ?? null, last_connected: new Date().toISOString() }).eq("id", sessionId);
     await supabaseClient.rpc("transition_wa_session_status", { p_session_id: sessionId, p_new_status: "connected", p_reason: "Authenticated via QR", p_metadata: {} } as never);
   } catch (e) { log.error("Baileys", `db persist failed: ${String(e)}`); }
 }

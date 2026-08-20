@@ -7,43 +7,76 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useWaSession, useWaSessionMutations } from "@/hooks/useWaSessions";
+import { useAuth } from "@/lib/authProvider";
 
 export function WaConnectNumberPage() {
   const { t } = useTranslation();
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const sessionId = params.get("id");
-  const { data: session, isLoading } = useWaSession(sessionId ?? undefined);
+  const { session: authSession } = useAuth();
+  const { data: session, isLoading, refetch } = useWaSession(sessionId ?? undefined);
   const mutations = useWaSessionMutations();
 
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const apiUrl = import.meta.env.VITE_EXTRACTION_API_URL || "http://localhost:3100";
   const apiKey = import.meta.env.VITE_EXTRACTION_API_KEY || "local-dev-key-change-in-production";
 
-  // Start WA session and poll QR
+  const workspaceId = session?.workspace_id ?? authSession?.user?.id ?? null;
+
+  async function startQrSession() {
+    if (!sessionId || !workspaceId) return;
+    const response = await fetch(`${apiUrl}/wa/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+      body: JSON.stringify({ session_id: sessionId, workspace_id: workspaceId }),
+    });
+    if (!response.ok) throw new Error("Failed to start WhatsApp session");
+  }
+
+  // Start WA session, poll QR, then poll status until the phone is linked.
   useEffect(() => {
-    if (!sessionId) return;
-    let interval: any;
+    if (!sessionId || !workspaceId) return;
+    let interval: ReturnType<typeof setInterval> | undefined;
     let mounted = true;
+
+    async function pollStatusAndQr() {
+      try {
+        const statusRes = await fetch(`${apiUrl}/wa/${sessionId}/status`, { headers: { "X-API-Key": apiKey } });
+        if (statusRes.ok) {
+          const statusData = await statusRes.json();
+          if (statusData.status === "connected") {
+            await refetch();
+            if (mounted) {
+              setQrDataUrl(null);
+              window.setTimeout(() => navigate(`/dashboard/whatsapp/sessions/${sessionId}`), 900);
+            }
+            return;
+          }
+        }
+
+        const qrRes = await fetch(`${apiUrl}/wa/${sessionId}/qr`, { headers: { "X-API-Key": apiKey } });
+        if (qrRes.ok && mounted) {
+          const { qr } = await qrRes.json();
+          setQrDataUrl(qr);
+        }
+      } catch (err) {
+        console.warn("WhatsApp QR polling failed", err);
+      }
+    }
 
     (async () => {
       try {
-        await fetch(`${apiUrl}/wa/start`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
-          body: JSON.stringify({ session_id: sessionId }),
-        });
-      } catch {}
-      interval = setInterval(async () => {
-        try {
-          const r = await fetch(`${apiUrl}/wa/${sessionId}/qr`, { headers: { "X-API-Key": apiKey } });
-          if (r.ok && mounted) { const { qr } = await r.json(); setQrDataUrl(qr); }
-        } catch {}
-      }, 3000);
+        await startQrSession();
+        await pollStatusAndQr();
+      } catch (err) {
+        console.warn("WhatsApp session start failed", err);
+      }
+      interval = setInterval(pollStatusAndQr, 3000);
     })();
 
     return () => { mounted = false; if (interval) clearInterval(interval); };
-  }, [sessionId]);
+  }, [sessionId, workspaceId]);
 
   if (!sessionId) return <div className="p-6 text-center text-[var(--color-fg-muted)]">{t("wa.connect.noSession")}</div>;
   if (isLoading || !session) return <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-[var(--color-primary)]" /></div>;
@@ -90,7 +123,14 @@ export function WaConnectNumberPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="warning"><Loader2 className="size-3 animate-spin" />{t(`wa.sessions.status.${session.status}`)}</Badge>
-                  <Button variant="ghost" size="sm" onClick={() => mutations.requestQR.mutate(session.id)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      mutations.requestQR.mutate(session.id);
+                      startQrSession().catch((err) => console.warn("WhatsApp QR refresh failed", err));
+                    }}
+                  >
                     <RefreshCw className="size-3.5" /> {t("wa.connect.refreshQR")}
                   </Button>
                 </div>

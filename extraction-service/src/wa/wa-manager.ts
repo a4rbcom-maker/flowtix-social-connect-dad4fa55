@@ -64,9 +64,19 @@ export const waManager = {
     );
   },
 
-  async requestQR(sessionId: string) {
+  async requestQR(sessionId: string, workspaceId?: string) {
     if (!baileysProvider.isAuthenticated(sessionId)) {
-      await this.start(sessionId, "");
+      let resolvedWorkspaceId = workspaceId;
+      if (!resolvedWorkspaceId) {
+        const { data } = await supabaseClient
+          .from("wa_sessions")
+          .select("workspace_id")
+          .eq("id", sessionId)
+          .is("deleted_at", null)
+          .single();
+        resolvedWorkspaceId = data?.workspace_id ?? "";
+      }
+      await this.start(sessionId, resolvedWorkspaceId ?? "");
     }
   },
 

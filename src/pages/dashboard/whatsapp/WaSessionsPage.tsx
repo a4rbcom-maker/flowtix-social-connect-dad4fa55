@@ -186,9 +186,15 @@ export function WaSessionsPage() {
                   <QrCode className="size-8 text-[var(--color-primary)] shrink-0 mt-1" />
                   <div><p className="font-semibold">{t("wa.sessions.add.providerBaileys")}</p><p className="text-xs text-[var(--color-fg-muted)]">{t("wa.sessions.add.providerBaileysDesc")}</p></div>
                 </button>
-                <button onClick={() => setProvider("cloud_api")} className={cn("flex items-start gap-3 p-4 rounded-xl border-2 text-start transition-colors", provider === "cloud_api" ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5" : "border-[var(--color-border)] hover:bg-[var(--color-surface-2)]")}>
+                <button disabled className="flex cursor-not-allowed items-start gap-3 rounded-xl border-2 border-[var(--color-border)] p-4 text-start opacity-55">
                   <Globe className="size-8 text-[var(--color-primary)] shrink-0 mt-1" />
-                  <div><p className="font-semibold">{t("wa.sessions.add.providerCloudApi")}</p><p className="text-xs text-[var(--color-fg-muted)]">{t("wa.sessions.add.providerCloudApiDesc")}</p></div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold">{t("wa.sessions.add.providerCloudApi")}</p>
+                      <Badge variant="outline" className="text-[10px]">{t("wa.sessions.add.comingSoon")}</Badge>
+                    </div>
+                    <p className="text-xs text-[var(--color-fg-muted)]">{t("wa.sessions.add.providerCloudApiDesc")}</p>
+                  </div>
                 </button>
               </div>
             </div>
