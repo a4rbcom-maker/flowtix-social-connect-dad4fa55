@@ -102,6 +102,7 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
       printQRInTerminal: false,
       browser: ["FlowTix", "Chrome", "1.0.0"],
       generateHighQualityLinkPreview: true,
+      syncFullHistory: true,
     });
     sockets.set(sessionId, sock);
 

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useWaSession, useWaSessionMutations } from "@/hooks/useWaSessions";
 import { useAuth } from "@/lib/authProvider";
+import { toast } from "@/components/ui/toast";
 
 export function WaConnectNumberPage() {
   const { t } = useTranslation();
@@ -51,7 +52,8 @@ export function WaConnectNumberPage() {
             await refetch();
             if (mounted) {
               setQrDataUrl(null);
-              window.setTimeout(() => navigate(`/dashboard/whatsapp/sessions/${sessionId}`), 900);
+              toast({ type: "success", title: t("wa.connect.connected"), description: `${statusData.push_name ?? ""} ${statusData.phone ?? ""}`.trim() });
+              window.setTimeout(() => navigate(`/dashboard/whatsapp/sessions/${sessionId}`), 1500);
             }
             return;
           }

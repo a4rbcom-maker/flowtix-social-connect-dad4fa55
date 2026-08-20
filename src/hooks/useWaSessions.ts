@@ -21,6 +21,7 @@ export function useWaSessions(filters?: { status?: WaSessionStatus }) {
     queryKey: [SESSIONS_KEY, userId, filters],
     queryFn: () => (userId ? waSessionsRepository.list(userId, filters) : Promise.resolve([] as WaSession[])),
     enabled: !!userId,
+    refetchInterval: 5000,
   });
 }
 
@@ -29,6 +30,7 @@ export function useWaSession(id: string | undefined) {
     queryKey: [SESSION_KEY, id],
     queryFn: () => waSessionsRepository.getById(id!),
     enabled: !!id,
+    refetchInterval: 5000,
   });
 }
 
