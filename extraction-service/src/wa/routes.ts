@@ -80,8 +80,9 @@ router.post("/wa/media/upload", upload.single("file"), async (req, res) => {
     const file = req.file;
     if (!file) return res.status(400).json({ error: { code: ErrorCodes.INVALID_INPUT, message: "No file provided" } });
     const sessionId = req.body.session_id || "upload";
+    const workspaceId = req.body.workspace_id || "general";
     const ext = file.originalname.split(".").pop() || "bin";
-    const key = `${sessionId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const key = `${workspaceId}/${sessionId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     const { supabaseClient } = await import("../services/supabase.js");
     await supabaseClient.storage.from("wa-media").upload(key, file.buffer, { upsert: true, contentType: file.mimetype });
     const signedUrl = await mediaService.signedUrl(key);

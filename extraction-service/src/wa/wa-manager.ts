@@ -18,7 +18,7 @@ async function handleMessage(m: IncomingWaMessage) {
       p_push_name: m.pushName ?? "", p_type: m.type, p_body: m.text ?? "",
       p_wa_message_id: m.messageId, p_has_media: m.hasMedia,
       p_media_mime: m.mediaMimeType ?? null, p_timestamp: m.timestamp,
-      p_is_history: m.isHistory ?? false,
+      p_is_history: m.isHistory ?? false, p_media_key: m.mediaKey ?? null,
     } as never);
     if (error) log.error("WAHandle", `persist failed: ${error.message}`);
   } catch (e) { log.error("WAHandle", `persist failed: ${String(e)}`); }
@@ -62,7 +62,7 @@ export const waManager = {
   },
 
   async start(sessionId: string, workspaceId: string) {
-    await baileysProvider.start(sessionId,
+    await baileysProvider.start(sessionId, workspaceId,
       (_qr) => {},
       async ({ jid, pushName }) => { log.info("WAManager", `connected ${sessionId} → ${jid}`); },
       (m) => { m.workspaceId = workspaceId; handleMessage(m); },

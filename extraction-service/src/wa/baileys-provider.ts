@@ -1,4 +1,4 @@
-import makeWASocket, { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } from "@whiskeysockets/baileys";
+import makeWASocket, { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, downloadMediaMessage } from "@whiskeysockets/baileys";
 import type { Boom } from "@hapi/boom";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -7,6 +7,7 @@ import { logger } from "../logger.js";
 import { supabaseClient } from "../services/supabase.js";
 import { config } from "../config.js";
 import type { IncomingWaMessage, SendPayload, WhatsAppProvider } from "./types.js";
+import { mediaService } from "./media.js";
 
 const log = logger;
 const sockets = new Map<string, ReturnType<typeof makeWASocket>>();
@@ -88,7 +89,7 @@ async function persistSessionInDB(sessionId: string, jid: string, pushName?: str
 }
 
 export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): string | undefined } = {
-  async start(sessionId, onQR, onReady, onMessage, onClose) {
+  async start(sessionId, workspaceId, onQR, onReady, onMessage, onClose) {
     if (sockets.has(sessionId)) return;
 
     const authPath = authPathFor(sessionId);
@@ -130,7 +131,7 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
         onClose(`closed (${code ?? "unknown"})`);
         if (shouldReconnect) {
           await transitionStatus(sessionId, "reconnecting", `disconnect ${code}`);
-          setTimeout(() => baileysProvider.start(sessionId, onQR, onReady, onMessage, onClose), 5000);
+          setTimeout(() => baileysProvider.start(sessionId, workspaceId, onQR, onReady, onMessage, onClose), 5000);
         } else {
           await transitionStatus(sessionId, "disconnected", "logged out");
           await fs.rm(authPathFor(sessionId), { recursive: true, force: true }).catch(() => {});
@@ -158,6 +159,16 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
         const incoming = toIncoming(m, sessionId, "");
         if (incoming) {
           incoming.remoteJid = await resolveLidJid(incoming.remoteJid);
+          if (incoming.hasMedia) {
+            try {
+              const mime = incoming.mediaMimeType || "application/octet-stream";
+              const key = await mediaService.downloadAndStore(workspaceId, sessionId, incoming.messageId, async () => {
+                const buf = await downloadMediaMessage(m, "buffer", {});
+                return Buffer.from(buf);
+              }, mime);
+              if (key) incoming.mediaKey = key;
+            } catch (e) { log.warn("Baileys", `media download failed: ${String(e)}`); }
+          }
           onMessage(incoming);
           log.info("Baileys", `inbound: ${incoming.remoteJid} → "${incoming.text ?? "[media]"}"`);
         }

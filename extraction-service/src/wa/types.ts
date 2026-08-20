@@ -15,6 +15,7 @@ export interface IncomingWaMessage {
   quotedMessageId?: string;
   timestamp: number;
   isHistory?: boolean;
+  mediaKey?: string;
 }
 
 export interface SendPayload {
@@ -35,7 +36,7 @@ export interface ProviderSession {
 }
 
 export interface WhatsAppProvider {
-  start(sessionId: string, onQR: (qr: string) => void, onReady: (info: { jid: string; pushName?: string }) => void, onMessage: (msg: IncomingWaMessage) => void, onClose: (reason: string) => void): Promise<void>;
+  start(sessionId: string, workspaceId: string, onQR: (qr: string) => void, onReady: (info: { jid: string; pushName?: string }) => void, onMessage: (msg: IncomingWaMessage) => void, onClose: (reason: string) => void): Promise<void>;
   isAuthenticated(sessionId: string): boolean;
   send(sessionId: string, to: string, payload: SendPayload): Promise<{ messageId: string }>;
   markRead(sessionId: string, jid: string, messageId: string): Promise<void>;
