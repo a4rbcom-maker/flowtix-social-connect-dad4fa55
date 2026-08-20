@@ -139,6 +139,16 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
 
     const isIgnorableJid = (jid: string) => jid === "status@broadcast" || jid.endsWith("@broadcast") || jid.endsWith("@newsletter");
 
+    // WhatsApp "hide phone number" users message via anonymous LID jids — resolve to real phone when mapping is known
+    const resolveLidJid = async (jid: string): Promise<string> => {
+      if (!jid.endsWith("@lid")) return jid;
+      try {
+        const pn = await (sock as any).signalRepository?.lidMapping?.getPNForLID?.(jid);
+        if (pn) return pn;
+      } catch {}
+      return jid;
+    };
+
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
       if (type !== "notify") return;
       for (const m of messages) {
@@ -146,6 +156,7 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
         if (isIgnorableJid(m.key?.remoteJid ?? "")) continue;
         const incoming = toIncoming(m, sessionId, "");
         if (incoming) {
+          incoming.remoteJid = await resolveLidJid(incoming.remoteJid);
           onMessage(incoming);
           log.info("Baileys", `inbound: ${incoming.remoteJid} → "${incoming.text ?? "[media]"}"`);
         }
@@ -160,7 +171,7 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
         if (m.key?.fromMe) continue;
         if (isIgnorableJid(m.key?.remoteJid ?? "")) continue;
         const incoming = toIncoming(m, sessionId, "");
-        if (incoming) { onMessage({ ...incoming, isHistory: true }); imported++; }
+        if (incoming) { incoming.remoteJid = await resolveLidJid(incoming.remoteJid); onMessage({ ...incoming, isHistory: true }); imported++; }
       }
       log.info("Baileys", `history sync: ${imported}/${capped.length} messages imported`);
     });
