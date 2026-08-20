@@ -51,7 +51,7 @@ export function WaInboxPage() {
 
     if (input.attachment) {
       const file = input.attachment.file as File;
-      const uploaded = await waInboxRepository.uploadMedia(file);
+      const uploaded = await waInboxRepository.uploadMedia(file, activeConv.workspace_id ?? undefined);
       mediaUrl = uploaded.url;
       mimeType = uploaded.mimeType;
       fileName = uploaded.fileName;

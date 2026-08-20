@@ -1,7 +1,8 @@
 import { Copy, Reply, RotateCw, Download, Check, CheckCheck } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
 import {
   formatTime,
   messageHasMedia,
@@ -10,6 +11,29 @@ import {
   guessMediaType,
 } from "@/lib/inbox-helpers";
 import type { WaMessage } from "@/types/wa-inbox.types";
+
+const URL_RE = /(https?:\/\/[^\s<>"')\]]+|www\.[^\s<>"')\]]+)/gi;
+
+function LinkifiedText({ text, outbound }: { text: string; outbound: boolean }) {
+  const parts = text.split(URL_RE);
+  return (
+    <p className="whitespace-pre-wrap break-words leading-relaxed">
+      {parts.map((part, i) => {
+        if (!part) return null;
+        if (/^(https?:\/\/|www\.)/i.test(part)) {
+          const href = part.startsWith("www.") ? `https://${part}` : part;
+          return (
+            <a key={i} href={href} target="_blank" rel="noopener noreferrer"
+              className={cn("underline underline-offset-2", outbound ? "text-white" : "text-[var(--color-primary)]")}>
+              {part}
+            </a>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </p>
+  );
+}
 
 interface MessageBubbleProps {
   message: WaMessage;
@@ -30,9 +54,21 @@ export function MessageBubble({
   const { t } = useTranslation();
   const isOut = message.direction === "outbound";
   const hasMedia = messageHasMedia(message);
-  const mediaUrl = getMediaUrl(message);
+  const fallbackUrl = getMediaUrl(message);
+  const [mediaUrl, setMediaUrl] = useState<string | undefined>(fallbackUrl);
   const mediaType = guessMediaType(message);
   const fileName = getMediaFileName(message);
+
+  useEffect(() => {
+    if (!fallbackUrl && (message as { media_storage_key?: string | null }).media_storage_key) {
+      let alive = true;
+      supabase.storage.from("wa-media")
+        .createSignedUrl((message as { media_storage_key: string }).media_storage_key, 3600)
+        .then(({ data }) => { if (alive && data?.signedUrl) setMediaUrl(data.signedUrl); })
+        .catch(() => {});
+      return () => { alive = false; };
+    }
+  }, [fallbackUrl, message]);
 
   const handleCopy = () => {
     if (message.body) {
@@ -82,7 +118,7 @@ export function MessageBubble({
             </div>
           )}
 
-          {message.body && <p className="whitespace-pre-wrap break-words leading-relaxed">{message.body}</p>}
+          {message.body && <LinkifiedText text={message.body} outbound={isOut} />}
 
           <div className={cn("flex items-center gap-1 mt-0.5", isOut ? "text-white/50 justify-end" : "text-[var(--color-fg-muted)]")}>
             <span className="text-[10px]">{formatTime(message.created_at)}</span>

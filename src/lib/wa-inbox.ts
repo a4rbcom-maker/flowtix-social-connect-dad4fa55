@@ -56,9 +56,10 @@ export const waInboxRepository = {
     }).eq("id", input.conversationId);
   },
 
-  async uploadMedia(file: File): Promise<{ key: string; url: string; mimeType: string; fileName: string; size: number }> {
+  async uploadMedia(file: File, workspaceId?: string): Promise<{ key: string; url: string; mimeType: string; fileName: string; size: number }> {
     const formData = new FormData();
     formData.append("file", file);
+    if (workspaceId) formData.append("workspace_id", workspaceId);
     const res = await fetch(`${apiUrl}/wa/media/upload`, {
       method: "POST", headers: { "X-API-Key": apiKey }, body: formData,
     });

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { waInboxRepository } from "@/lib/wa-inbox";
 import { useAuth } from "@/lib/authProvider";
+import { playMessageSound } from "@/lib/notify";
 
 const CONVS_KEY = "wa-conversations";
 const MSGS_KEY = "wa-messages";
@@ -23,7 +24,11 @@ export function useWaConversations(filters?: Parameters<typeof waInboxRepository
     if (!ws) return;
     const ch = supabase.channel(`wa-conv-${ws}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "wa_conversations", filter: `workspace_id=eq.${ws}` },
-        () => qc.invalidateQueries({ queryKey: [CONVS_KEY] }))
+        (payload) => {
+          qc.invalidateQueries({ queryKey: [CONVS_KEY] });
+          const p = payload as { eventType: string; new?: { unread_count?: number }; old?: { unread_count?: number } };
+          if (p.eventType === "UPDATE" && (p.new?.unread_count ?? 0) > (p.old?.unread_count ?? 0)) playMessageSound();
+        })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [ws, qc]);
@@ -44,7 +49,11 @@ export function useWaMessages(conversationId: string | undefined) {
     if (!conversationId) return;
     const ch = supabase.channel(`wa-msg-${conversationId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "wa_messages", filter: `conversation_id=eq.${conversationId}` },
-        () => qc.invalidateQueries({ queryKey: [MSGS_KEY, conversationId] }))
+        (payload) => {
+          qc.invalidateQueries({ queryKey: [MSGS_KEY, conversationId] });
+          const p = payload as { eventType: string; new?: { direction?: string } };
+          if (p.eventType === "INSERT" && p.new?.direction === "inbound") playMessageSound();
+        })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [conversationId, qc]);
