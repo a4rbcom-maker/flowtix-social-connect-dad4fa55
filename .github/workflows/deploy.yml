@@ -112,6 +112,18 @@ jobs:
               echo "Created .env"
             fi
 
+            # Backfill empty required values on existing .env files (preserve manual overrides)
+            if [ -f ".env" ]; then
+              if ! grep -qE '^SUPABASE_URL=.+' .env; then
+                sed -i 's|^SUPABASE_URL=.*|SUPABASE_URL=${{ secrets.SUPABASE_URL }}|' .env
+                echo "Backfilled SUPABASE_URL"
+              fi
+              if ! grep -qE '^SUPABASE_SERVICE_ROLE_KEY=.+' .env; then
+                sed -i 's|^SUPABASE_SERVICE_ROLE_KEY=.*|SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}|' .env
+                echo "Backfilled SUPABASE_SERVICE_ROLE_KEY"
+              fi
+            fi
+
             mkdir -p logs data
 
             # Install production dependencies
