@@ -6,6 +6,7 @@ import { PageFollowersExtractor } from "./page-followers.js";
 import { PostCommentsExtractor } from "./post-comments.js";
 import { PostReactionsExtractor } from "./post-reactions.js";
 import { MessengerContactsExtractor } from "./messenger-contacts.js";
+import { IgFollowersExtractor } from "./ig-followers.js";
 
 export function createExtractor(
   type: ExtractionType,
@@ -24,6 +25,9 @@ export function createExtractor(
       return new PostReactionsExtractor(page, ctx, secondaryPages);
     case "messenger_contacts":
       return new MessengerContactsExtractor(page, ctx, secondaryPages);
+    case "ig_followers":
+    case "ig_following":
+      return new IgFollowersExtractor(page, ctx, secondaryPages);
     default:
       throw new Error(`Unsupported extraction type: ${type}`);
   }

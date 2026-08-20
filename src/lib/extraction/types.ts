@@ -5,11 +5,20 @@ export type ExtractionJobInsert = Database["public"]["Tables"]["extraction_jobs"
 export type ExtractionResult = Database["public"]["Tables"]["extraction_results"]["Row"];
 export type Export = Database["public"]["Tables"]["exports"]["Row"];
 
-export type ExtractionType = Database["public"]["Enums"]["extraction_type"] | "post_comments" | "post_reactions" | "messenger_contacts";
+export type ExtractionType =
+  | Database["public"]["Enums"]["extraction_type"]
+  | "post_comments"
+  | "post_reactions"
+  | "messenger_contacts"
+  | "ig_followers"
+  | "ig_following"
+  | "ig_post_commenters"
+  | "ig_hashtag_posts"
+  | "ig_profile_info";
 export type JobStatus = Database["public"]["Enums"]["job_status"];
 export type ExportFormat = Database["public"]["Enums"]["export_format"];
 
-export type MemberSourceType = "group-members" | "page-followers" | "post-comments" | "post-reactions" | "messenger-contacts";
+export type MemberSourceType = "group-members" | "page-followers" | "post-comments" | "post-reactions" | "messenger-contacts" | "ig-followers" | "ig-following";
 
 export const SOURCE_TO_DB_TYPE: Record<MemberSourceType, ExtractionType> = {
   "group-members": "groups",
@@ -17,6 +26,8 @@ export const SOURCE_TO_DB_TYPE: Record<MemberSourceType, ExtractionType> = {
   "post-comments": "post_comments",
   "post-reactions": "post_reactions",
   "messenger-contacts": "messenger_contacts",
+  "ig-followers": "ig_followers",
+  "ig-following": "ig_following",
 };
 
 export const DB_TO_SOURCE_TYPE: Record<string, MemberSourceType> = {
@@ -25,6 +36,8 @@ export const DB_TO_SOURCE_TYPE: Record<string, MemberSourceType> = {
   post_comments: "post-comments",
   post_reactions: "post-reactions",
   messenger_contacts: "messenger-contacts",
+  ig_followers: "ig-followers",
+  ig_following: "ig-following",
 };
 
 export interface StartExtractionInput {

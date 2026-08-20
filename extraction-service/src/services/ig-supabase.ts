@@ -38,6 +38,35 @@ function resolveProxyForIgSession(sessionId: string): ProxyConfig | null {
 }
 
 export const igSupabaseService = {
+  /** اشتقاق workspace_id لمستخدم IG من fb_sessions ثم extraction_jobs (ig_sessions لا يحوي workspace_id) */
+  async resolveIgWorkspaceId(userId: string): Promise<string> {
+    const { data: fbSession } = await sb
+      .from("fb_sessions")
+      .select("workspace_id")
+      .eq("user_id", userId)
+      .is("deleted_at", null)
+      .not("workspace_id", "is", null)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (fbSession?.workspace_id) return fbSession.workspace_id;
+
+    const { data: job } = await sb
+      .from("extraction_jobs")
+      .select("workspace_id")
+      .eq("user_id", userId)
+      .not("workspace_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (job?.workspace_id) return job.workspace_id;
+
+    throw new ExtractionError(
+      ErrorCodes.EXTRACTION_FAILED,
+      "لا يمكن تحديد مساحة عمل المستخدم. أضف جلسة فيسبوك واحدة على الأقل ثم حاول مجدداً."
+    );
+  },
+
   async getIgSessionAndCookies(sessionId: string): Promise<{
     session: IgSessionRow;
     cookies: CookieEntry[];

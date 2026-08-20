@@ -73,6 +73,7 @@ export const dashboardNav: NavSection[] = [
         icon: Camera,
         items: [
           { key: "ig-sessions", labelKey: "nav.igSessions", icon: Plug, to: "/dashboard/instagram/sessions" },
+          { key: "ig-extract", labelKey: "nav.igExtract", icon: Users, to: "/dashboard/instagram/extract" },
         ],
       },
       {

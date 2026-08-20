@@ -55,7 +55,7 @@ export abstract class IgBaseExtractor extends BaseExtractor {
     if (!switched) {
       await supabaseService.updateJob(this.ctx.jobId, {
         status: "paused",
-        error: "جميع جلسات إنستجرام محظورة أو منتهية — يمكن الاستئناف بجلسة أخرى.",
+        error: "تم حظر جميع جلسات إنستجرام — أضف جلسة إضافية (حساب آخر) ثم استأنف المهمة لزيادة نسبة الاستخراج.",
       });
       log.warn("IgBase", `no more IG sessions — job ${this.ctx.jobId} paused`);
     }

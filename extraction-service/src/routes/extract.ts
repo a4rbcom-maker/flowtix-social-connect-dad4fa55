@@ -97,7 +97,6 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
     cursor: jobConfig.cursor as string | undefined,
   };
 
-  // Create contexts for all sessions
   const isIg = isIgType(job.type as string);
   const sessionPages: Array<{ sessionId: string; page: import("playwright").Page; contextId: string }> = [];
   for (const sid of sessionIds) {
@@ -111,15 +110,19 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
       sessionPages.push({ sessionId: sid, page: created.page, contextId: created.contextId });
     }
   }
+  const releasePages = async () => {
+    for (const sp of sessionPages) {
+      if (isIg) await igContextManager.releaseContext(sp.contextId);
+      else await contextManager.releaseContext(sp.contextId);
+    }
+  };
 
   const page = sessionPages[0].page;
 
   const currentStatus = await supabaseService.getJobStatus(jobId);
   if (currentStatus === "canceled") {
     log.info("Extract", `job ${jobId} was canceled before start, skipping`);
-    for (const sp of sessionPages) {
-      await contextManager.releaseContext(sp.contextId);
-    }
+    await releasePages();
     return;
   }
 
@@ -213,16 +216,12 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
         log.error("Extract", `error: ${code}`, { message });
         await supabaseService.failJob(jobId, message);
       } finally {
-        for (const sp of sessionPages) {
-          await contextManager.releaseContext(sp.contextId);
-        }
+        await releasePages();
         await autoStartNextQueuedJob(userId);
       }
     },
     async () => {
-      for (const sp of sessionPages) {
-        await contextManager.releaseContext(sp.contextId);
-      }
+      await releasePages();
       await supabaseService.failJob(jobId, "Extraction failed after retries");
       await autoStartNextQueuedJob(userId);
     },
@@ -260,16 +259,34 @@ router.post("/extract", async (req, res) => {
     }
 
     // Validate all sessions exist and are connected
+    const isIg = isIgType(body.type);
     const primarySessionId = allSessionIds[0];
-    const { session } = await supabaseService.getSessionAndCookies(primarySessionId);
+    let sessionUserId: string;
+    let sessionWorkspaceId: string;
 
-    // Verify secondary sessions
-    for (let i = 1; i < allSessionIds.length; i++) {
-      const { session: s } = await supabaseService.getSessionAndCookies(allSessionIds[i]);
-      if (s.workspace_id !== session.workspace_id) {
-        return res.status(400).json({
-          error: { code: ErrorCodes.INVALID_INPUT, message: `All sessions must belong to the same workspace` },
-        });
+    if (isIg) {
+      const igPrimary = await igSupabaseService.getIgSessionAndCookies(primarySessionId);
+      sessionUserId = igPrimary.session.user_id;
+      for (let i = 1; i < allSessionIds.length; i++) {
+        const { session: s } = await igSupabaseService.getIgSessionAndCookies(allSessionIds[i]);
+        if (s.user_id !== sessionUserId) {
+          return res.status(400).json({
+            error: { code: ErrorCodes.INVALID_INPUT, message: `All sessions must belong to the same user` },
+          });
+        }
+      }
+      sessionWorkspaceId = await igSupabaseService.resolveIgWorkspaceId(sessionUserId);
+    } else {
+      const { session } = await supabaseService.getSessionAndCookies(primarySessionId);
+      sessionUserId = session.user_id;
+      sessionWorkspaceId = session.workspace_id;
+      for (let i = 1; i < allSessionIds.length; i++) {
+        const { session: s } = await supabaseService.getSessionAndCookies(allSessionIds[i]);
+        if (s.workspace_id !== sessionWorkspaceId) {
+          return res.status(400).json({
+            error: { code: ErrorCodes.INVALID_INPUT, message: `All sessions must belong to the same workspace` },
+          });
+        }
       }
     }
 
@@ -283,7 +300,7 @@ router.post("/extract", async (req, res) => {
     // For new jobs, only block if there's an actively RUNNING job.
     // Paused jobs are stopped and should not prevent starting a new extraction.
     const checkStatuses = currentJobId ? ["running"] : ["running"];
-    const activeCheck = await supabaseService.hasActiveJob(session.user_id, currentJobId || undefined, checkStatuses);
+    const activeCheck = await supabaseService.hasActiveJob(sessionUserId, currentJobId || undefined, checkStatuses);
 
     if (activeCheck.active) {
       const statusMsg = activeCheck.jobStatus === "paused" ? "متوقفة مؤقتاً" : "قيد التشغيل";
@@ -297,8 +314,8 @@ router.post("/extract", async (req, res) => {
 
     if (!currentJobId) {
       const job = await supabaseService.createJob({
-        workspaceId: session.workspace_id,
-        userId: session.user_id,
+        workspaceId: sessionWorkspaceId,
+        userId: sessionUserId,
         type: body.type as ExtractionType,
         source: body.source_url,
         name: body.job_name || `Extract ${body.type}`,
@@ -310,7 +327,7 @@ router.post("/extract", async (req, res) => {
       log.info("Extract", `resuming job: ${currentJobId}`);
     }
 
-    runExtractionJob(currentJobId, allSessionIds, session.user_id)
+    runExtractionJob(currentJobId, allSessionIds, sessionUserId)
       .catch((err) => log.error("Extract", `background runExtractionJob error: ${String(err)}`));
 
     return res.status(200).json({
