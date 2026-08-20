@@ -12,13 +12,14 @@ let booted = false;
 async function handleMessage(m: IncomingWaMessage) {
   const phone = m.remoteJid.split("@")[0];
   try {
-    await supabaseClient.rpc("upsert_wa_inbound", {
+    const { error } = await supabaseClient.rpc("upsert_wa_inbound", {
       p_workspace_id: m.workspaceId || "00000000-0000-0000-0000-000000000000",
       p_wa_session_id: m.sessionId, p_phone: phone, p_jid: m.remoteJid,
-      p_push_name: m.pushName ?? null, p_type: m.type, p_body: m.text ?? null,
+      p_push_name: m.pushName ?? "", p_type: m.type, p_body: m.text ?? "",
       p_wa_message_id: m.messageId, p_has_media: m.hasMedia,
       p_media_mime: m.mediaMimeType ?? null, p_timestamp: m.timestamp,
     } as never);
+    if (error) log.error("WAHandle", `persist failed: ${error.message}`);
   } catch (e) { log.error("WAHandle", `persist failed: ${String(e)}`); }
 
   // Check for workflow continuation (ask_question awaiting_reply)
@@ -81,6 +82,8 @@ export const waManager = {
   },
 
   getQR(sessionId: string) { return baileysProvider.getQR(sessionId); },
+
+  isConnected(sessionId: string) { return baileysProvider.isAuthenticated(sessionId); },
 
   async send(sessionId: string, to: string, payload: any) { return baileysProvider.send(sessionId, to, payload); },
 

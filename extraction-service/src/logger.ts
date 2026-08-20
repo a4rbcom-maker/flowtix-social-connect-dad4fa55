@@ -3,9 +3,10 @@ import { appendFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+export type LogLevel = "debug" | "info" | "warn" | "error" | "trace";
 
 const LEVELS: Record<LogLevel, number> = {
+  trace: -1,
   debug: 0,
   info: 1,
   warn: 2,
@@ -35,12 +36,16 @@ function format(level: LogLevel, module: string, msg: string, extra?: unknown): 
 
 function emit(level: LogLevel, module: string, msg: string, extra?: unknown): void {
   const line = format(level, module, msg, extra);
-  const fn = level === "error" ? console.error : level === "warn" ? console.warn : level === "info" ? console.info : console.debug;
+  const fn = level === "error" ? console.error : level === "warn" ? console.warn : level === "info" ? console.info : level === "trace" ? console.trace : console.debug;
   fn(line);
   try { appendFileSync(LOG_FILE, line + "\n", "utf-8"); } catch {}
 }
 
 export const logger = {
+  level: currentLevel,
+  trace(module: string, msg: string, extra?: unknown): void {
+    if (currentLevel <= LEVELS.trace) emit("trace", module, msg, extra);
+  },
   debug(module: string, msg: string, extra?: unknown): void {
     if (currentLevel <= LEVELS.debug) emit("debug", module, msg, extra);
   },

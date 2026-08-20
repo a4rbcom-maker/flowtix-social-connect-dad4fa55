@@ -59,7 +59,9 @@ router.get("/wa/:sessionId/status", async (req, res) => {
     .eq("workspace_id", parsed.data.workspace_id)
     .is("deleted_at", null)
     .maybeSingle();
-  res.json({ session_id: req.params.sessionId, status: data?.status ?? "disconnected", push_name: data?.push_name, phone: data?.phone_number });
+  const dbStatus = data?.status ?? "disconnected";
+  const status = dbStatus !== "connected" && waManager.isConnected(req.params.sessionId) ? "connected" : dbStatus;
+  res.json({ session_id: req.params.sessionId, status, push_name: data?.push_name, phone: data?.phone_number });
 });
 
 const sendSchema = z.object({ session_id: z.string().min(1), to: z.string().min(1), payload: z.object({ type: z.string(), text: z.string().optional(), mediaUrl: z.string().optional(), caption: z.string().optional(), mimeType: z.string().optional(), fileName: z.string().optional() }) });

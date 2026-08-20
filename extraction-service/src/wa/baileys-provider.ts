@@ -63,11 +63,27 @@ function toIncoming(m: any, sessionId: string, workspaceId: string): IncomingWaM
   } catch { return null; }
 }
 
+async function transitionStatus(sessionId: string, newStatus: string, reason: string): Promise<boolean> {
+  const { data, error } = await supabaseClient.rpc("transition_wa_session_status", { p_session_id: sessionId, p_new_status: newStatus, p_reason: reason, p_metadata: {} } as never);
+  if (error) { log.error("Baileys", `status transition to ${newStatus} failed: ${error.message}`); return false; }
+  const result = data as { success?: boolean; message?: string } | null;
+  if (result && result.success === false) { log.warn("Baileys", `status transition to ${newStatus} rejected: ${result.message ?? "unknown reason"}`); return false; }
+  return true;
+}
+
 async function persistSessionInDB(sessionId: string, jid: string, pushName?: string) {
   try {
     const phoneNumber = jid.split("@")[0]?.split(":")[0] ?? null;
-    await supabaseClient.from("wa_sessions").update({ phone_number_jid: jid, phone_number: phoneNumber, push_name: pushName ?? null, last_connected: new Date().toISOString() }).eq("id", sessionId);
-    await supabaseClient.rpc("transition_wa_session_status", { p_session_id: sessionId, p_new_status: "connected", p_reason: "Authenticated via QR", p_metadata: {} } as never);
+    const { error: updErr } = await supabaseClient.from("wa_sessions").update({ phone_number_jid: jid, phone_number: phoneNumber, push_name: pushName ?? null, last_connected: new Date().toISOString() }).eq("id", sessionId);
+    if (updErr) log.error("Baileys", `session info update failed: ${updErr.message}`);
+
+    if (await transitionStatus(sessionId, "connected", "Authenticated via QR")) return;
+    await transitionStatus(sessionId, "connecting", "Linking after QR scan");
+    if (await transitionStatus(sessionId, "connected", "Authenticated via QR")) return;
+
+    const { error: fbErr } = await supabaseClient.from("wa_sessions").update({ status: "connected" }).eq("id", sessionId);
+    if (fbErr) log.error("Baileys", `connected fallback update failed: ${fbErr.message}`);
+    else log.warn("Baileys", `session ${sessionId}: status set to connected via direct update`);
   } catch (e) { log.error("Baileys", `db persist failed: ${String(e)}`); }
 }
 
@@ -96,7 +112,7 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
         const dataUrl = await qrcode.toDataURL(qr);
         qrCache.set(sessionId, dataUrl);
         onQR(dataUrl);
-        try { await supabaseClient.rpc("transition_wa_session_status", { p_session_id: sessionId, p_new_status: "qr_ready", p_reason: "QR generated", p_metadata: {} } as never); } catch {}
+        await transitionStatus(sessionId, "qr_ready", "QR generated");
       }
       if (connection === "open") {
         qrCache.delete(sessionId);
@@ -112,10 +128,10 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
         qrCache.delete(sessionId);
         onClose(`closed (${code ?? "unknown"})`);
         if (shouldReconnect) {
-          try { await supabaseClient.rpc("transition_wa_session_status", { p_session_id: sessionId, p_new_status: "reconnecting", p_reason: `disconnect ${code}`, p_metadata: {} } as never); } catch {}
+          await transitionStatus(sessionId, "reconnecting", `disconnect ${code}`);
           setTimeout(() => baileysProvider.start(sessionId, onQR, onReady, onMessage, onClose), 5000);
         } else {
-          try { await supabaseClient.rpc("transition_wa_session_status", { p_session_id: sessionId, p_new_status: "disconnected", p_reason: "logged out", p_metadata: {} } as never); } catch {}
+          await transitionStatus(sessionId, "disconnected", "logged out");
           await fs.rm(authPathFor(sessionId), { recursive: true, force: true }).catch(() => {});
         }
       }
