@@ -137,15 +137,32 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
       }
     });
 
+    const isIgnorableJid = (jid: string) => jid === "status@broadcast" || jid.endsWith("@broadcast") || jid.endsWith("@newsletter");
+
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
       if (type !== "notify") return;
       for (const m of messages) {
+        if (m.key?.fromMe) continue;
+        if (isIgnorableJid(m.key?.remoteJid ?? "")) continue;
         const incoming = toIncoming(m, sessionId, "");
         if (incoming) {
           onMessage(incoming);
           log.info("Baileys", `inbound: ${incoming.remoteJid} → "${incoming.text ?? "[media]"}"`);
         }
       }
+    });
+
+    sock.ev.on("messaging-history.set", async ({ messages, isLatest }) => {
+      if (!isLatest) return;
+      const capped = messages.slice(-1000);
+      let imported = 0;
+      for (const m of capped) {
+        if (m.key?.fromMe) continue;
+        if (isIgnorableJid(m.key?.remoteJid ?? "")) continue;
+        const incoming = toIncoming(m, sessionId, "");
+        if (incoming) { onMessage({ ...incoming, isHistory: true }); imported++; }
+      }
+      log.info("Baileys", `history sync: ${imported}/${capped.length} messages imported`);
     });
   },
 

@@ -18,9 +18,12 @@ async function handleMessage(m: IncomingWaMessage) {
       p_push_name: m.pushName ?? "", p_type: m.type, p_body: m.text ?? "",
       p_wa_message_id: m.messageId, p_has_media: m.hasMedia,
       p_media_mime: m.mediaMimeType ?? null, p_timestamp: m.timestamp,
+      p_is_history: m.isHistory ?? false,
     } as never);
     if (error) log.error("WAHandle", `persist failed: ${error.message}`);
   } catch (e) { log.error("WAHandle", `persist failed: ${String(e)}`); }
+
+  if (m.isHistory) return;
 
   // Check for workflow continuation (ask_question awaiting_reply)
   const continued = await workflowEngine.continueFromReply(m);

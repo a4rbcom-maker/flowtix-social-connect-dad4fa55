@@ -14,6 +14,7 @@ export interface IncomingWaMessage {
   mediaUrl?: string;
   quotedMessageId?: string;
   timestamp: number;
+  isHistory?: boolean;
 }
 
 export interface SendPayload {
