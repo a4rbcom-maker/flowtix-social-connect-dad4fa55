@@ -208,7 +208,13 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
   async stop(sessionId) {
     const sock = sockets.get(sessionId);
     if (sock) {
-      try { sock.end(new Error("service shutdown")); } catch {}
+      try {
+        sock.ev.removeAllListeners("connection.update");
+        sock.ev.removeAllListeners("creds.update");
+        sock.ev.removeAllListeners("messages.upsert");
+        sock.ev.removeAllListeners("messaging-history.set");
+        sock.end(new Error("service shutdown"));
+      } catch {}
       sockets.delete(sessionId); qrCache.delete(sessionId);
     }
   },

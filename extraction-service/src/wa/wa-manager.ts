@@ -50,7 +50,9 @@ export const waManager = {
   async boot() {
     if (booted) return; booted = true;
     const { data } = await supabaseClient.from("wa_sessions")
-      .select("id, workspace_id, name, provider_type").eq("status", "connected").is("deleted_at", null);
+      .select("id, workspace_id, name, provider_type")
+      .in("status", ["connected", "reconnecting", "qr_ready"])
+      .is("deleted_at", null);
     for (const s of data ?? []) {
       if (s.provider_type === "baileys") {
         this.start(s.id, s.workspace_id).catch((e) => log.error("WAManager", `boot start failed ${s.id}: ${String(e)}`));
