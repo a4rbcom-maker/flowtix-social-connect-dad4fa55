@@ -157,6 +157,7 @@ export function TasksPage() {
     const accent = getTypeAccent(job.type);
     const TypeIcon = getTypeIcon(job.type);
     const isActive = job.status === "running" || job.status === "queued";
+    const isEnriching = job.progress?.phase === "enriching";
     const createdAt = job.created_at ? formatRelativeTime(new Date(job.created_at)) : "";
 
     return (
@@ -264,6 +265,14 @@ export function TasksPage() {
           </div>
         )}
 
+        {/* Enrichment in progress: download data would be incomplete until it settles */}
+        {isEnriching && (
+          <div className="ms-0 sm:ms-14 mt-2 flex items-center gap-2 rounded-lg border border-[var(--color-primary)]/20 bg-[color-mix(in_oklab,var(--color-primary)_5%,transparent)] p-2.5 text-xs text-[var(--color-primary)]">
+            <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
+            <span>{t("pages.tasks.enriching")}</span>
+          </div>
+        )}
+
         {/* Action footer */}
         <div className="ms-0 sm:ms-14 mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--color-border)] pt-3">
           {isActive && !job.isPublish && (
@@ -284,13 +293,13 @@ export function TasksPage() {
           )}
           {(job.status === "completed" || ((job.status === "canceled" || job.status === "failed") && job.result_count > 0)) && !job.isPublish && (
             <>
-              <Button variant="outline" size="sm" onClick={() => handleExport(job.id, "csv")} disabled={exportMutation.isPending}>
+              <Button variant="outline" size="sm" onClick={() => handleExport(job.id, "csv")} disabled={exportMutation.isPending || isEnriching} title={isEnriching ? t("pages.tasks.enriching") : undefined}>
                 {exportingJob === job.id ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}CSV
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handleExport(job.id, "xlsx")} disabled={exportMutation.isPending}>
+              <Button variant="outline" size="sm" onClick={() => handleExport(job.id, "xlsx")} disabled={exportMutation.isPending || isEnriching} title={isEnriching ? t("pages.tasks.enriching") : undefined}>
                 <Download className="size-3.5" />Excel
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handleExport(job.id, "json")} disabled={exportMutation.isPending}>
+              <Button variant="outline" size="sm" onClick={() => handleExport(job.id, "json")} disabled={exportMutation.isPending || isEnriching} title={isEnriching ? t("pages.tasks.enriching") : undefined}>
                 <Download className="size-3.5" />JSON
               </Button>
               <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard/facebook/extract-members")}>

@@ -26,6 +26,75 @@ export function resolveUserAgent(profileAgent?: string | null): string {
   return agent && agent.length >= 20 ? agent : DEFAULT_UA;
 }
 
+// ===== Per-session device fingerprint =====
+// Every context must look like ONE stable, real device — identical
+// fingerprints across sessions (or a desktop viewport under a mobile UA)
+// are strong automation signals that make Facebook force-log the account.
+
+/** Deterministic 32-bit seed from the session id — same session always gets
+ *  the same device identity across runs, like a real persistent device. */
+function sessionSeed(sessionId: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < sessionId.length; i++) {
+    h ^= sessionId.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Tiny deterministic PRNG (mulberry32) — stable sequence per session. */
+function seededRandom(seed: number): () => number {
+  let a = seed;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const DESKTOP_VIEWPORTS: Array<{ width: number; height: number }> = [
+  { width: 1366, height: 768 },
+  { width: 1440, height: 900 },
+  { width: 1536, height: 864 },
+  { width: 1600, height: 900 },
+  { width: 1920, height: 1080 },
+];
+
+const MOBILE_VIEWPORTS: Array<{ width: number; height: number }> = [
+  { width: 360, height: 800 },
+  { width: 390, height: 844 },
+  { width: 412, height: 915 },
+  { width: 414, height: 896 },
+];
+
+export const isMobileUserAgent = (ua: string): boolean => /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+
+export interface SessionFingerprint {
+  viewport: { width: number; height: number };
+  isMobile: boolean;
+  deviceScaleFactor: number;
+  latitude: number;
+  longitude: number;
+}
+
+/** Stable per-session device identity: viewport matched to the session's own
+ *  UA class (mobile UA ⇒ mobile screen), plus a fixed Cairo-area geo jitter. */
+export function buildSessionFingerprint(sessionId: string, ua: string): SessionFingerprint {
+  const rnd = seededRandom(sessionSeed(sessionId));
+  const mobile = isMobileUserAgent(ua);
+  const pool = mobile ? MOBILE_VIEWPORTS : DESKTOP_VIEWPORTS;
+  const viewport = pool[Math.floor(rnd() * pool.length) % pool.length];
+  return {
+    viewport,
+    isMobile: mobile,
+    deviceScaleFactor: mobile ? 2 + Math.floor(rnd() * 2) : 1,
+    latitude: 30.0444 + (rnd() - 0.5) * 0.2,
+    longitude: 31.2357 + (rnd() - 0.5) * 0.2,
+  };
+}
+
 /** Convert Playwright context cookies to the persisted CookieEntry shape (JSON round-trip safe). */
 export function toCookieEntries(playwrightCookies: Array<{ name: string; value: string; domain: string; path: string; expires: number; httpOnly: boolean; secure: boolean; sameSite?: string }>): CookieEntry[] {
   return playwrightCookies
@@ -86,15 +155,18 @@ class ContextManager {
       const hasCUser = cookies.some(c => c.name === "c_user");
       const hasXs = cookies.some(c => c.name === "xs");
       const ua = resolveUserAgent(userAgent);
-      log.info("ContextManager", `session ${sessionId.slice(0, 8)}: cookies injected = ${cookies.length} cookies (c_user=${hasCUser}, xs=${hasXs}, essential=${essentialCookies.length})${proxy ? `, proxy=${proxy.label || proxy.url.split('@').pop() || 'yes'}` : ''}, ua=${ua.substring(0, 40)}...`);
+      const fp = buildSessionFingerprint(sessionId, ua);
+      log.info("ContextManager", `session ${sessionId.slice(0, 8)}: cookies injected = ${cookies.length} cookies (c_user=${hasCUser}, xs=${hasXs}, essential=${essentialCookies.length})${proxy ? `, proxy=${proxy.label || proxy.url.split('@').pop() || 'yes'}` : ''}, ua=${ua.substring(0, 40)}..., fingerprint=${fp.isMobile ? "mobile" : "desktop"} ${fp.viewport.width}x${fp.viewport.height}`);
 
       const contextOpts: any = {
         userAgent: ua,
-        viewport: { width: 1366, height: 768 },
+        viewport: fp.viewport,
+        deviceScaleFactor: fp.deviceScaleFactor,
+        isMobile: fp.isMobile,
         locale: "ar-EG",
         timezoneId: "Africa/Cairo",
         permissions: ["geolocation"],
-        geolocation: { latitude: 30.0444, longitude: 31.2357 },
+        geolocation: { latitude: fp.latitude, longitude: fp.longitude },
         serviceWorkers: "block",
         extraHTTPHeaders: {
           "Accept-Language": "ar-AR,ar;q=0.9,en-US;q=0.8,en;q=0.7",

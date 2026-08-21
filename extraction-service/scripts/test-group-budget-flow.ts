@@ -227,7 +227,7 @@ async function main(): Promise<void> {
     feedUrl: `${baseUrl}/groups/12345`,
     pages: after.pages,
     targetCount: TOTAL,
-    maxDurationMs: 40_000,
+    maxDurationMs: 150_000, // humanized pacing (1.2-3s/post + 15-30s rests) needs more wall time
     maxPosts: POSTS,
     extractEngagers: async (_page: Page, permalink: string) => {
       const postId = parseInt(permalink.split("/").pop() || "0", 10) - 700000;

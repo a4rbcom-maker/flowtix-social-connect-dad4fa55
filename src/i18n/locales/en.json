@@ -2012,6 +2012,7 @@
   "coverageLabel": "Coverage",
   "coverageUnknown": "Coverage unknown",
   "enriched": "Enriched",
+  "enriching": "Enriching extracted data with phones & extra info — download unlocks automatically when done",
   "phase_navigating": "Opening",
   "phase_scrolling": "Scrolling",
   "phase_xhr_replay": "Parallel fetch",

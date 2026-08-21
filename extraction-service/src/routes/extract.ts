@@ -184,6 +184,10 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
 
       const page = sessionPages[0].page;
 
+      if (sessionPages.length >= 2 && !config.proxyUrl) {
+        log.warn("Extract", `job ${jobId}: ${sessionPages.length} sessions running WITHOUT proxy from the same server IP — Facebook correlates accounts sharing one IP+fingerprint and force-logs them out. Configure PROXY_URL or per-session FB_PROXY_SESSION_UUID_* to isolate accounts.`);
+      }
+
       // Set by the job watchdog once it force-stops a hung extraction —
       // afterwards completion/error writes are suppressed (status is already
       // paused + enriched by the watchdog itself).

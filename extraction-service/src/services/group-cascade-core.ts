@@ -197,11 +197,14 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
 
       postsDone++;
       opts.onProgress?.({ totalSeen: extracted, postsDone, postsKnown: queuedPosts.size, activeWorkers: opts.pages.length });
-      if (postsDone % 20 === 0) {
+      if (postsDone % 15 === 0) {
         log.info("GroupCascade", `posts ${postsDone}/${queuedPosts.size} → +${extracted} users so far`);
-        await sleep(5000);
+        // Human-like rest: bursts of ~15 posts then a 15-30s pause — the old
+        // 5s-every-20-posts cadence tripped Facebook's automation heuristics
+        // and got accounts force-logged-out.
+        await sleep(15000 + rand(0, 15000));
       }
-      await sleep(300 + rand(0, 500));
+      await sleep(1200 + rand(0, 1800));
     }
   };
 
