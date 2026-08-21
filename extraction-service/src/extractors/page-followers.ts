@@ -24,7 +24,10 @@ export class PageFollowersExtractor extends BaseExtractor {
 
   async extract(): Promise<{ extracted: number; nextCursor?: string; done: boolean; authState: AuthState }> {
     const pid = parsePageId(this.ctx.sourceUrl);
-    if (!pid) throw new ExtractionError(ErrorCodes.INVALID_INPUT, "Invalid page URL");
+    if (!pid) throw new ExtractionError(
+      ErrorCodes.INVALID_INPUT,
+      `رابط الصفحة غير صالح: [${this.ctx.sourceUrl}]. الصيغة المتوقعة: https://www.facebook.com/اسم-الصفحة أو https://www.facebook.com/profile.php?id=123456789 — إذا كان الرابط جروباً فاستخدم نوع "استخراج أعضاء الجروب" بدلاً منه.`,
+    );
 
     log.info("PageFollowers", `========================================`);
     log.info("PageFollowers", `STREAMING v3 — parallel + fast discovery`);

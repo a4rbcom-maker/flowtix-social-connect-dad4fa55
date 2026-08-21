@@ -148,14 +148,52 @@ export function extractNextPageURL(html: string): string | null {
   return null;
 }
 
+const FB_URL_PREFIX = /(?:https?:\/\/)?(?:www\.|m\.|web\.|mbasic\.)?(?:facebook|fb)\.com\//i;
+
+const GROUP_RESERVED_SLUGS = new Set(["feed", "discover", "joins", "create", "browse"]);
+
 export function parseGroupId(url: string): string | null {
-  const m = url.match(/facebook\.com\/groups\/([^/?]+)/i);
-  return m ? m[1] : null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  const m = trimmed.match(/(?:facebook|fb)\.com\/groups\/([^/?#]+)/i);
+  if (m) {
+    const slug = decodeURIComponent(m[1]);
+    if (slug && !GROUP_RESERVED_SLUGS.has(slug.toLowerCase())) return slug;
+    return null;
+  }
+
+  // bare numeric group id (e.g. "1250771769518384")
+  if (/^\d{5,25}$/.test(trimmed)) return trimmed;
+
+  return null;
 }
 
 export function parsePageId(url: string): string | null {
-  const m = url.match(/facebook\.com\/(?:pages\/[^/]+\/)?([a-zA-Z0-9.]{3,})(?:\/|$|\?)/i);
-  return m ? m[1] : null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  // never treat group URLs as pages
+  if (/\/groups\//i.test(trimmed)) return null;
+
+  const profileMatch = trimmed.match(/profile\.php\?id=(\d{5,25})/i);
+  if (profileMatch) return profileMatch[1];
+
+  const pagesMatch = trimmed.match(/\/pages\/[^/]+\/(\d{5,25})/i);
+  if (pagesMatch) return pagesMatch[1];
+
+  const vanityMatch = trimmed.match(FB_URL_PREFIX.source + /([a-zA-Z0-9.]{3,60})(?:[/?#]|$)/i.source);
+  if (vanityMatch) {
+    const slug = vanityMatch[1];
+    if (slug.toLowerCase() === "profile.php" || slug.toLowerCase() === "groups") return null;
+    if (NAV_KEYWORDS.has(slug.toLowerCase())) return null;
+    if (/^\d{5,25}$/.test(slug)) return slug;
+    return slug;
+  }
+
+  if (/^\d{5,25}$/.test(trimmed)) return trimmed;
+
+  return null;
 }
 
 export function parsePostId(url: string): string | null {

@@ -45,7 +45,32 @@ const sourceOptions: SourceOption[] = [
 
 function isValidFacebookUrl(url: string): boolean {
   if (!url) return false;
-  return /^https?:\/\/(www\.)?(facebook\.com|fb\.com|m\.facebook\.com)\/.+/i.test(url);
+  return /^https?:\/\/(www\.|m\.|web\.)?(facebook\.com|fb\.com|fb\.me)\/.+/i.test(url) || /^\d{5,25}$/.test(url.trim());
+}
+
+/** Type-aware URL validation: returns the i18n error key or null when valid. */
+function getSourceUrlErrorKey(type: MemberSourceType, url: string): string | null {
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  if (!isValidFacebookUrl(trimmed)) return "extract.invalidUrl";
+  switch (type) {
+    case "group-members":
+      return /(?:facebook|fb)\.com\/groups\/[^/?#]+/i.test(trimmed) || /^\d{5,25}$/.test(trimmed)
+        ? null
+        : "extract.invalidUrlGroup";
+    case "page-followers":
+      if (/\/groups\//i.test(trimmed)) return "extract.invalidUrlPage";
+      return null;
+    case "post-comments":
+    case "post-reactions":
+      return /\/(posts|permalink|share\/[pv]|reel|videos|watch|photo)\b/i.test(trimmed) ||
+        /story_fbid=/i.test(trimmed) ||
+        /\/groups\/[^/]+\/(posts|permalink)\//i.test(trimmed)
+        ? null
+        : "extract.invalidUrlPost";
+    default:
+      return null;
+  }
 }
 
 type Phase = "setup" | "running" | "completed" | "failed";
@@ -85,7 +110,8 @@ export function ExtractMembersPage() {
     }
   }, [jobs]);
 
-  const canStart = selectedSessionId && targetUrl && isValidFacebookUrl(targetUrl);
+  const urlErrorKey = targetUrl ? getSourceUrlErrorKey(sourceType, targetUrl) : null;
+  const canStart = selectedSessionId && targetUrl && !urlErrorKey;
   const selectedSource = sourceOptions.find((s) => s.key === sourceType)!;
 
   useEffect(() => {
@@ -300,15 +326,15 @@ export function ExtractMembersPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <InputIcon icon={Globe} placeholder={t(selectedSource.urlPlaceholderKey)} value={targetUrl}
-              onChange={(e) => setTargetUrl(e.target.value)} error={!!(targetUrl && !isValidFacebookUrl(targetUrl))} />
+              onChange={(e) => setTargetUrl(e.target.value)} error={!!urlErrorKey} />
             {sourceType === "page-followers" && (
               <div className="flex items-center gap-2 mt-2">
                 <input id="isAdmin" type="checkbox" checked={isPageAdmin} onChange={(e) => setIsPageAdmin(e.target.checked)} />
                 <label htmlFor="isAdmin" className="text-sm">{t("extract.ui.isAdmin")}</label>
               </div>
             )}
-            {targetUrl && !isValidFacebookUrl(targetUrl) && (
-              <p className="text-xs text-[var(--color-error)]">{t("extract.invalidUrl")}</p>
+            {urlErrorKey && (
+              <p className="text-xs text-[var(--color-error)]">{t(urlErrorKey)}</p>
             )}
             <div className="flex gap-3">
               <InputIcon icon={Pencil} placeholder={t("extract.jobNamePlaceholder")} value={jobName}

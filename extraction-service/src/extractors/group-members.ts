@@ -27,7 +27,10 @@ export class GroupMembersExtractor extends BaseExtractor {
 
   async extract(): Promise<{ extracted: number; nextCursor?: string; done: boolean; authState: AuthState }> {
     const gid = parseGroupId(this.ctx.sourceUrl);
-    if (!gid) throw new ExtractionError(ErrorCodes.INVALID_INPUT, "Invalid group URL");
+    if (!gid) throw new ExtractionError(
+      ErrorCodes.INVALID_INPUT,
+      `رابط الجروب غير صالح: [${this.ctx.sourceUrl}]. الصيغة المتوقعة: https://www.facebook.com/groups/123456789 أو https://www.facebook.com/groups/اسم-الجروب — إذا كان الرابط صفحة أو بروفايل شخصي فاستخدم نوع "استخراج متابعي الصفحة" بدلاً منه.`,
+    );
 
     const membersUrl = this.ctx.cursor || `https://www.facebook.com/groups/${gid}/members`;
     log.info("GroupMembers", `starting`, { jobId: this.ctx.jobId, url: membersUrl, sessions: this.totalSessions });
