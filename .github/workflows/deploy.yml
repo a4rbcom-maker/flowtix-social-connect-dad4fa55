@@ -101,7 +101,7 @@ jobs:
             MAX_CONTEXTS_PER_BROWSER=3
             HEADLESS=true
             MAX_CONCURRENT_JOBS=1
-            JOB_TIMEOUT_MS=1800000
+            JOB_TIMEOUT_MS=2700000
             MAX_RETRIES=3
             RETRY_DELAY_MS=2000
             FB_BASE_URL=https://m.facebook.com
@@ -132,15 +132,16 @@ jobs:
                 echo "$1=$2" >> .env
               fi
             }
-            set_env_var JOB_TIMEOUT_MS 1800000
+            set_env_var JOB_TIMEOUT_MS 2700000
             set_env_var MAX_CONTEXTS_PER_BROWSER 8
             set_env_var MAX_SESSIONS_PER_JOB 5
             set_env_var MAX_QUEUED_JOBS_PER_USER 3
             set_env_var BLOCK_RESOURCES true
+            set_env_var GROUP_CASCADE_MAX_POSTS 1000
             set_env_var ENRICHMENT_DB_PATH /www/wwwroot/api.flowtixtools.com/data/enrichment
             mkdir -p data/enrichment
             ls -la data/enrichment 2>/dev/null || true
-              echo "Enforced extraction settings (JOB_TIMEOUT_MS=1800000, MAX_CONTEXTS_PER_BROWSER=8, MAX_SESSIONS_PER_JOB=5, MAX_QUEUED_JOBS_PER_USER=3, BLOCK_RESOURCES=true)"
+              echo "Enforced extraction settings (JOB_TIMEOUT_MS=2700000, MAX_CONTEXTS_PER_BROWSER=8, MAX_SESSIONS_PER_JOB=5, MAX_QUEUED_JOBS_PER_USER=3, BLOCK_RESOURCES=true, GROUP_CASCADE_MAX_POSTS=1000)"
 
             mkdir -p logs data
 
