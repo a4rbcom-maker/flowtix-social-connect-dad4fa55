@@ -1,18 +1,32 @@
-import { BaseExtractor, parsePostId, parseFollowersCount, extractUsersFromLinks, detectAuthState, authStateToMessage, authStateToErrorCode } from "./base.js";
+import { BaseExtractor, parsePostId, parseFollowersCount, detectAuthState, authStateToMessage, authStateToErrorCode } from "./base.js";
 import { ExtractionError, ErrorCodes } from "../errors.js";
 import { logger } from "../logger.js";
 import { supabaseService } from "../services/supabase.js";
+import type { Page, Response } from "playwright";
 import type { AuthState, ExtractedMember } from "../types.js";
 
 const log = logger;
 
 type CommentStopReason = "session_rate_limited" | "no_secondary_session" | "source_exhausted" | "max_results_reached";
 
-interface RawComment {
-  href: string;
+interface InterceptedComment {
+  fb_id: string;
   name: string;
+  profile_url: string;
   comment_text: string;
   comment_id?: string;
+}
+
+const JUNK_SLUGS = new Set([
+  "latest", "onthisday", "watch", "gaming", "play", "notes", "sports", "weather",
+  "crisisresponse", "fundraisers", "occasions", "movies", "restaurants", "blood",
+  "community", "offers", "promotions", "marketplace", "bookmarks", "feed",
+  "findfriends", "friends", "story.php", "photo", "photo.php", "video", "video.php",
+  "reel", "reels", "posts", "permalink.php", "watchparty", "groups", "events",
+]);
+
+function isJunkSlug(slug: string): boolean {
+  return JUNK_SLUGS.has(slug.toLowerCase());
 }
 
 export class PostCommentsExtractor extends BaseExtractor {
@@ -56,159 +70,85 @@ export class PostCommentsExtractor extends BaseExtractor {
     }
     await this.storeExtractionProgress(0, "scrolling", 0);
 
-    while (!done && !this.shouldStop && total < this.ctx.maxResults) {
-      if (await this.checkCanceled()) return { extracted: total, done: true, authState };
-
-      await this.page.evaluate(() => {
-        const all = document.querySelectorAll<HTMLElement>('[role="button"], a, span, div');
-        const keywords = ['view more comments', 'عرض المزيد من التعليقات', 'more comments',
-          'view more replies', 'عرض المزيد من الردود', 'more replies', 'عرض المزيد', 'view more',
-          'see more', 'previous comments', 'التعليقات السابقة', 'view previous comments',
-          'عرض التعليقات السابقة', 'الردود', 'replies'];
-        for (const el of all) {
-          const t = (el.innerText || el.getAttribute('aria-label') || '').trim().toLowerCase();
-          if (!t || t.length > 80) continue;
-          for (const kw of keywords) { if (t.includes(kw)) { el.click(); break; } }
+    // GraphQL interception: comment nodes carry the real author id + body text.
+    const intercepted: InterceptedComment[] = [];
+    const onResponse = async (resp: Response): Promise<void> => {
+      const respUrl = resp.url();
+      if (!respUrl.includes("graphql") || resp.status() !== 200) return;
+      try {
+        const text = await resp.text();
+        for (const c of parseCommentsFromGraphQL(text)) {
+          if (!intercepted.some((i) => i.fb_id === c.fb_id && i.comment_id === c.comment_id)) {
+            intercepted.push(c);
+          }
         }
-      });
-      await this.page.waitForTimeout(1500);
+      } catch { /* response body unavailable */ }
+    };
+    this.page.on("response", onResponse);
 
-      const rawComments: RawComment[] = await this.page.evaluate(() => {
-        const items: { href: string; name: string; comment_text: string; comment_id?: string }[] = [];
-        const seenHrefs = new Set<string>();
+    try {
+      while (!done && !this.shouldStop && total < this.ctx.maxResults) {
+        if (await this.checkCanceled()) return { extracted: total, done: true, authState };
 
-        const tryExtract = (article: Element) => {
-          const userLink = article.querySelector('a[href*="facebook.com/"]') as HTMLAnchorElement | null
-            || article.querySelector('a[href*="/user/"]') as HTMLAnchorElement | null;
-          if (!userLink) return;
-          const href = userLink.getAttribute('href') || '';
-          if (!href || href.includes('/help/') || href.includes('/settings/')) return;
-          const name = (userLink.innerText || '').trim();
-          if (!name || name.length < 2 || name.length > 80) return;
+        await this.clickMoreCommentsButtons();
+        await this.page.waitForTimeout(1200);
 
-          if (seenHrefs.has(href)) return;
+        const batch = this.drainIntercepted(intercepted, seen);
 
-          const textSpans = article.querySelectorAll('span[dir="auto"], div[dir="auto"], [data-ad-comet-preview]');
-          let commentText = '';
-          for (const span of textSpans) {
-            const t = ((span as HTMLElement).innerText || '').trim();
-            if (!t || t.length < 3 || t === name) continue;
-            if (/^\d+\s*(like|react|reply|comment|share|like|react)/i.test(t)) continue;
-            if (/^(like|react|reply|share|أعجبني|ردّ|رد|مشاركة|إعجاب)/i.test(t)) continue;
-            if (t.length > 3000) continue;
-            commentText = t;
+        log.info("PostComments", `+[${batch.length}] scroll#${scrollAttempts} total=${total} seen=${seen.size} interceptedPending=${intercepted.length}`);
+
+        if (batch.length > 0) {
+          total += await this.processBatch(batch, "commenter");
+          consecutiveEmpty = 0;
+          if (scrollAttempts > 0 && scrollAttempts % this.batchSizeForRest === 0) await this.restDelay();
+          if (scrollAttempts % 10 === 9) {
+            await this.storeExtractionProgress(total, "scrolling", scrollAttempts + 1);
+          }
+        } else {
+          // DOM fallback (only comment articles — never page-wide link sweeping)
+          const domBatch = await this.extractCommentsFromDom(seen);
+          if (domBatch.length > 0) {
+            total += await this.processBatch(domBatch, "commenter");
+            consecutiveEmpty = 0;
+            log.info("PostComments", `+[${domBatch.length}] (DOM) total=${total}`);
+          } else {
+            consecutiveEmpty++;
+          }
+
+          if (consecutiveEmpty === 3) {
+            const switched = await this.switchToNextSession();
+            if (switched) {
+              log.info("PostComments", `switched session after 3 empty scrolls, reloading post (session #${this.activeSessionIndex + 1}/${this.totalSessions})`);
+              consecutiveEmpty = 0;
+              scrollAttempts = 0;
+              try {
+                await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+                await this.page.waitForTimeout(3000);
+                await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+                await this.page.waitForTimeout(2000);
+              } catch (err) {
+                throw new ExtractionError(ErrorCodes.NETWORK_ERROR, `Navigation error after session switch: ${String(err)}`);
+              }
+              await this.storeExtractionProgress(total, "scrolling", 0);
+              continue;
+            } else {
+              this.lastStopReason = this.totalSessions > 1 ? "session_rate_limited" : "no_secondary_session";
+            }
+          }
+
+          if (consecutiveEmpty >= 15) {
+            if (this.lastStopReason === null) this.lastStopReason = "source_exhausted";
+            done = true;
             break;
           }
-
-          const commentIdAttr = (article as HTMLElement).getAttribute('data-comment-id')
-            || (article.closest('[data-comment-id]') as HTMLElement)?.getAttribute('data-comment-id')
-            || undefined;
-
-          seenHrefs.add(href);
-          items.push({
-            href,
-            name,
-            comment_text: commentText,
-            comment_id: commentIdAttr || undefined,
-          });
-        };
-
-        const articles = document.querySelectorAll('[role="article"]');
-        if (articles.length > 0) {
-          articles.forEach(tryExtract);
         }
 
-        if (items.length === 0) {
-          const links = document.querySelectorAll('a[href]');
-          for (const link of links) {
-            const href = link.getAttribute('href') || '';
-            const text = ((link as HTMLElement).innerText || '').trim();
-            if (href && text.length >= 2 && text.length <= 80) {
-              if (!seenHrefs.has(href)) {
-                seenHrefs.add(href);
-                items.push({ href, name: text, comment_text: '' });
-              }
-            }
-          }
-        }
-
-        return items;
-      });
-
-      const users = extractUsersFromLinks(
-        rawComments.map(c => ({ href: c.href, text: c.name })),
-        { relaxed: true },
-      );
-
-      const commentByText = new Map<string, string>();
-      const commentIdByText = new Map<string, string | undefined>();
-      for (const c of rawComments) {
-        if (c.comment_text) {
-          commentByText.set(c.name, c.comment_text);
-          if (c.comment_id) commentIdByText.set(c.name, c.comment_id);
-        }
+        scrollAttempts++;
+        await this.scrollFeed(this.page);
+        await this.delay();
       }
-
-      let newCount = 0;
-      const batch: ExtractedMember[] = [];
-      for (const u of users) {
-        if (!seen.has(u.fb_id)) {
-          seen.add(u.fb_id);
-          const commentText = commentByText.get(u.name) || '';
-          const commentId = commentIdByText.get(u.name);
-          batch.push({
-            ...u,
-            type: "commenter",
-            ...(commentText ? { comment_text: commentText } : {}),
-            ...(commentId ? { comment_id: commentId } : {}),
-          });
-          newCount++;
-        }
-      }
-
-      log.info("PostComments", `+[${newCount}] scroll#${scrollAttempts} total=${total} seen=${seen.size} raw=${rawComments.length} withText=${commentByText.size}`);
-
-      if (batch.length > 0) {
-        total += await this.processBatch(batch, "commenter");
-        consecutiveEmpty = 0;
-        if (scrollAttempts > 0 && scrollAttempts % this.batchSizeForRest === 0) await this.restDelay();
-        if (scrollAttempts % 10 === 9) {
-          await this.storeExtractionProgress(total, "scrolling", scrollAttempts + 1);
-        }
-      } else {
-        consecutiveEmpty++;
-
-        if (consecutiveEmpty === 3) {
-          const switched = await this.switchToNextSession();
-          if (switched) {
-            log.info("PostComments", `switched session after 3 empty scrolls, reloading post (session #${this.activeSessionIndex + 1}/${this.totalSessions})`);
-            consecutiveEmpty = 0;
-            scrollAttempts = 0;
-            try {
-              await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-              await this.page.waitForTimeout(3000);
-              await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-              await this.page.waitForTimeout(2000);
-            } catch (err) {
-              throw new ExtractionError(ErrorCodes.NETWORK_ERROR, `Navigation error after session switch: ${String(err)}`);
-            }
-            await this.storeExtractionProgress(total, "scrolling", 0);
-            continue;
-          } else {
-            this.lastStopReason = this.totalSessions > 1 ? "session_rate_limited" : "no_secondary_session";
-          }
-        }
-
-        if (consecutiveEmpty >= 15) {
-          if (this.lastStopReason === null) this.lastStopReason = "source_exhausted";
-          done = true;
-          break;
-        }
-      }
-
-      scrollAttempts++;
-      await this.scrollFeed(this.page);
-      await this.delay();
+    } finally {
+      this.page.off("response", onResponse);
     }
 
     this.finalizeStopReason(total);
@@ -217,6 +157,121 @@ export class PostCommentsExtractor extends BaseExtractor {
 
     if (total === 0) done = true;
     return { extracted: total, nextCursor: done ? undefined : url, done, authState };
+  }
+
+  private drainIntercepted(intercepted: InterceptedComment[], seen: Set<string>): ExtractedMember[] {
+    const batch: ExtractedMember[] = [];
+    while (intercepted.length > 0) {
+      const c = intercepted.shift()!;
+      if (seen.has(c.fb_id)) continue;
+      seen.add(c.fb_id);
+      batch.push({
+        fb_id: c.fb_id,
+        name: c.name,
+        profile_url: c.profile_url,
+        type: "commenter",
+        comment_text: c.comment_text,
+        ...(c.comment_id ? { comment_id: c.comment_id } : {}),
+      });
+    }
+    return batch;
+  }
+
+  private async clickMoreCommentsButtons(): Promise<void> {
+    await this.page.evaluate(() => {
+      const all = document.querySelectorAll<HTMLElement>('[role="button"], a, span, div');
+      const keywords = ['view more comments', 'عرض المزيد من التعليقات', 'more comments',
+        'view more replies', 'عرض المزيد من الردود', 'more replies', 'عرض المزيد', 'view more',
+        'see more', 'previous comments', 'التعليقات السابقة', 'view previous comments',
+        'عرض التعليقات السابقة', 'الردود', 'replies'];
+      for (const el of all) {
+        const t = (el.innerText || el.getAttribute('aria-label') || '').trim().toLowerCase();
+        if (!t || t.length > 80) continue;
+        for (const kw of keywords) { if (t.includes(kw)) { el.click(); break; } }
+      }
+    }).catch(() => {});
+  }
+
+  /** DOM fallback: only real comment articles with author links (relative or absolute). */
+  private async extractCommentsFromDom(seen: Set<string>): Promise<ExtractedMember[]> {
+    const raw: { href: string; name: string; comment_text: string; comment_id?: string }[] = await this.page.evaluate(() => {
+      const items: { href: string; name: string; comment_text: string; comment_id?: string }[] = [];
+      const seenHrefs = new Set<string>();
+
+      const articles = document.querySelectorAll('[role="article"]');
+      articles.forEach((article) => {
+        // author link: profile.php?id=…, /user/…, or a relative/absolute profile href
+        const candidates = Array.from(article.querySelectorAll('a[href]')) as HTMLAnchorElement[];
+        const userLink = candidates.find((a) => {
+          const href = a.getAttribute('href') || '';
+          return /profile\.php\?id=\d+/.test(href) || /\/user\/\d+/.test(href);
+        }) || candidates.find((a) => {
+          const href = a.getAttribute('href') || '';
+          if (href.includes('/help/') || href.includes('/settings/')) return false;
+          // relative profile link like /username?comment_id=…
+          const m = href.match(/^\/([a-zA-Z0-9.]{3,60})(?:[/?#]|$)/);
+          if (!m) return false;
+          const slug = m[1].toLowerCase();
+          if (['help', 'settings', 'login', 'watch', 'reel', 'videos', 'photos', 'groups', 'events', 'marketplace', 'photo.php', 'story.php', 'permalink.php', 'posts'].includes(slug)) return false;
+          return true;
+        });
+        if (!userLink) return;
+
+        const href = userLink.getAttribute('href') || '';
+        const name = (userLink.innerText || '').trim();
+        if (!name || name.length < 2 || name.length > 80) return;
+        if (seenHrefs.has(href)) return;
+
+        const textSpans = article.querySelectorAll('span[dir="auto"], div[dir="auto"], [data-ad-comet-preview]');
+        let commentText = '';
+        for (const span of textSpans) {
+          const t = ((span as HTMLElement).innerText || '').trim();
+          if (!t || t.length < 3 || t === name) continue;
+          if (/^\d+\s*(like|react|reply|comment|share)/i.test(t)) continue;
+          if (/^(like|react|reply|share|أعجبني|ردّ|رد|مشاركة|إعجاب)/i.test(t)) continue;
+          if (t.length > 3000) continue;
+          commentText = t;
+          break;
+        }
+
+        const commentIdAttr = (article as HTMLElement).getAttribute('data-comment-id')
+          || (article.closest('[data-comment-id]') as HTMLElement | null)?.getAttribute('data-comment-id')
+          || undefined;
+
+        seenHrefs.add(href);
+        items.push({ href, name, comment_text: commentText, comment_id: commentIdAttr || undefined });
+      });
+
+      return items;
+    }).catch(() => []);
+
+    const batch: ExtractedMember[] = [];
+    for (const c of raw) {
+      const idMatch = c.href.match(/profile\.php\?id=(\d{5,25})/) || c.href.match(/\/user\/(\d{5,25})/);
+      let fbId: string | null = null;
+      let profileUrl: string;
+      if (idMatch) {
+        fbId = idMatch[1];
+        profileUrl = `https://www.facebook.com/profile.php?id=${fbId}`;
+      } else {
+        const abs = c.href.startsWith("http") ? c.href : `https://www.facebook.com${c.href}`;
+        const vanity = abs.match(/facebook\.com\/([a-zA-Z0-9.]{3,60})(?:[/?#]|$)/i);
+        if (!vanity || isJunkSlug(vanity[1])) continue;
+        fbId = vanity[1];
+        profileUrl = `https://www.facebook.com/${fbId}`;
+      }
+      if (!fbId || seen.has(fbId)) continue;
+      seen.add(fbId);
+      batch.push({
+        fb_id: fbId,
+        name: c.name,
+        profile_url: profileUrl,
+        type: "commenter",
+        ...(c.comment_text ? { comment_text: c.comment_text } : {}),
+        ...(c.comment_id ? { comment_id: c.comment_id } : {}),
+      });
+    }
+    return batch;
   }
 
   private computeCoverage(discovered: number): number | null {
@@ -281,5 +336,61 @@ export class PostCommentsExtractor extends BaseExtractor {
     }
 
     this.lastStopReason = "source_exhausted";
+  }
+}
+
+/**
+ * Parse comment nodes out of a Facebook GraphQL response text.
+ * A comment node carries the comment body plus a nested author —
+ * the AUTHOR id is the user id (node.id is the comment's own id).
+ */
+function parseCommentsFromGraphQL(text: string): InterceptedComment[] {
+  const out: InterceptedComment[] = [];
+  const seen = new Set<string>();
+  let jsonText = text;
+  const forIdx = text.indexOf("for (;;);");
+  if (forIdx >= 0) jsonText = text.substring(forIdx + 9).trim();
+  try {
+    walkForComments(JSON.parse(jsonText), out, seen, 8);
+  } catch { /* not JSON */ }
+  return out;
+}
+
+function walkForComments(obj: any, out: InterceptedComment[], seen: Set<string>, depth: number): void {
+  if (!obj || depth < 0) return;
+  if (Array.isArray(obj)) { for (const item of obj) walkForComments(item, out, seen, depth - 1); return; }
+  if (typeof obj !== "object") return;
+
+  const actor = obj.actor || obj.author || obj.commenter;
+  const body = obj.body?.text ?? obj.body?.text?.text ?? obj.text ?? obj.message?.text ?? obj.comment_text;
+
+  if (
+    actor?.id && /^\d{5,25}$/.test(String(actor.id)) &&
+    typeof actor.name === "string" && actor.name.trim().length >= 2 &&
+    typeof body === "string" && body.trim().length > 0
+  ) {
+    const fbId = String(actor.id);
+    const commentId = typeof obj.id === "string" ? obj.id : undefined;
+    const dedupKey = `${fbId}:${commentId ?? ""}`;
+    if (!seen.has(dedupKey)) {
+      seen.add(dedupKey);
+      const url = typeof actor.url === "string" && actor.url.includes("facebook.com")
+        ? (actor.url.startsWith("http") ? actor.url : `https://www.facebook.com${actor.url}`)
+        : `https://www.facebook.com/profile.php?id=${fbId}`;
+      out.push({
+        fb_id: fbId,
+        name: actor.name.trim().substring(0, 200),
+        profile_url: url,
+        comment_text: body.substring(0, 2000),
+        comment_id: commentId,
+      });
+      return;
+    }
+  }
+
+  for (const key of Object.keys(obj)) {
+    if (typeof obj[key] === "object" && obj[key] !== null) {
+      walkForComments(obj[key], out, seen, depth - 1);
+    }
   }
 }

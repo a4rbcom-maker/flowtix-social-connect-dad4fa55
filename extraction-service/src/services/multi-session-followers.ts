@@ -1,4 +1,4 @@
-import type { Page } from "playwright";
+import type { Page, Response } from "playwright";
 import { logger } from "../logger.js";
 import { humanScrollFollowers } from "./human-scroll-followers.js";
 
@@ -55,8 +55,9 @@ export async function multiSessionScrollFollowers(
   log.info("MultiSession", `========================================`);
 
   // Setup GraphQL interception on EACH page
+  const detachInterception: Array<() => void> = [];
   for (const { sessionId, page } of pages) {
-    setupPageInterception(page, sharedInterceptedUsers, sessionId);
+    detachInterception.push(setupPageInterception(page, sharedInterceptedUsers, sessionId));
   }
 
   // Initial navigation on all pages (parallel) to load followers page
@@ -107,6 +108,8 @@ export async function multiSessionScrollFollowers(
   // Wait for all to finish (or stop early via target/cancel)
   const perSession = await Promise.all(perSessionPromises);
 
+  for (const detach of detachInterception) detach();
+
   const totalDurationMs = Date.now() - startTime;
   const finalCount = sharedInterceptedUsers.length;
 
@@ -152,13 +155,14 @@ async function getFollowersUrl(page: Page): Promise<string> {
 
 /**
  * Setup GraphQL response interception on a page → pushes to shared array (dedup).
+ * Returns a detach function that removes the listener.
  */
 function setupPageInterception(
   page: Page,
   sharedUsers: { fb_id: string; name: string; profile_url: string }[],
   _sessionId: string
-): void {
-  page.on("response", async (resp) => {
+): () => void {
+  const handler = async (resp: Response) => {
     if (!resp.url().includes("graphql") || resp.status() !== 200) return;
     try {
       const text = await resp.text();
@@ -171,7 +175,9 @@ function setupPageInterception(
     } catch {
       /* skip */
     }
-  });
+  };
+  page.on("response", handler);
+  return () => page.off("response", handler);
 }
 
 function parseUsersFromGraphQL(text: string): Array<{ fb_id: string; name: string; profile_url: string }> {

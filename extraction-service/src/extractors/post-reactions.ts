@@ -1,12 +1,32 @@
-import { BaseExtractor, parsePostId, parseFollowersCount, extractUsersFromLinks, detectAuthState, authStateToMessage, authStateToErrorCode } from "./base.js";
+import { BaseExtractor, parsePostId, parseFollowersCount, detectAuthState, authStateToMessage, authStateToErrorCode } from "./base.js";
 import { ExtractionError, ErrorCodes } from "../errors.js";
 import { logger } from "../logger.js";
 import { supabaseService } from "../services/supabase.js";
+import { parseGraphQLResponse } from "../services/graphql-interceptor.js";
+import type { Page, Response } from "playwright";
 import type { AuthState, ExtractedMember } from "../types.js";
 
 const log = logger;
 
 type ReactionStopReason = "session_rate_limited" | "no_secondary_session" | "source_exhausted" | "max_results_reached";
+
+interface InterceptedReactor {
+  fb_id: string;
+  name: string;
+  profile_url: string;
+}
+
+const JUNK_SLUGS = new Set([
+  "latest", "onthisday", "watch", "gaming", "play", "notes", "sports", "weather",
+  "crisisresponse", "fundraisers", "occasions", "movies", "restaurants", "blood",
+  "community", "offers", "promotions", "marketplace", "bookmarks", "feed",
+  "findfriends", "friends", "story.php", "photo", "photo.php", "video", "video.php",
+  "reel", "reels", "posts", "permalink.php", "watchparty", "groups", "events",
+]);
+
+function isJunkSlug(slug: string): boolean {
+  return JUNK_SLUGS.has(slug.toLowerCase());
+}
 
 export class PostReactionsExtractor extends BaseExtractor {
   private totalReactionsCount: number | null = null;
@@ -42,101 +62,135 @@ export class PostReactionsExtractor extends BaseExtractor {
     authState = detectAuthState(html, finalUrl);
     if (authState !== "authenticated") throw new ExtractionError(authStateToErrorCode(authState), authStateToMessage(authState));
 
+    // GraphQL interception: only while the reactions dialog is open, only
+    // responses mentioning reactions — keeps comment-thread users out.
+    let dialogActive = false;
+    const intercepted: InterceptedReactor[] = [];
+    const onResponse = async (resp: Response): Promise<void> => {
+      if (!dialogActive) return;
+      const respUrl = resp.url();
+      if (!respUrl.includes("graphql") || resp.status() !== 200) return;
+      try {
+        const text = await resp.text();
+        if (!text.toLowerCase().includes("reaction")) return;
+        for (const u of parseGraphQLResponse(text).users) {
+          if (!u.id || seen.has(u.id)) continue;
+          if (intercepted.some((i) => i.fb_id === u.id)) continue;
+          intercepted.push({ fb_id: u.id, name: u.name, profile_url: u.url });
+        }
+      } catch { /* response body unavailable */ }
+    };
+    this.page.on("response", onResponse);
+
     let dialogOpened = false;
     let scrollBox: { x: number; y: number; width: number; height: number } | null = null;
 
-    ({ dialogOpened, scrollBox } = await this.tryOpenReactionsDialog());
+    try {
+      ({ dialogOpened, scrollBox } = await this.tryOpenReactionsDialog());
+      dialogActive = dialogOpened;
 
-    const countHtml = await this.page.content().catch(() => "");
-    if (countHtml) {
-      const countResult = parseFollowersCount(countHtml);
-      if (countResult.count !== null && countResult.count > 0 && countResult.count < 10_000_000) {
-        this.totalReactionsCount = countResult.count;
-        this.totalReactionsSource = countResult.source;
-        log.info("PostReactions", `total reactions: ${countResult.count} (source=${countResult.source})`);
-        await this.persistReactionsCount(countResult.count, countResult.source);
-      } else {
-        log.info("PostReactions", `total reactions: unknown`);
-      }
-    }
-    await this.storeExtractionProgress(0, "scrolling", 0);
-
-    while (!done && !this.shouldStop && total < this.ctx.maxResults) {
-      if (await this.checkCanceled()) return { extracted: total, done: true, authState };
-
-      const rawLinks = await this.page.evaluate(() => {
-        const dialog = document.querySelector('[role="dialog"]') || document.querySelector('[aria-modal="true"]');
-        const root = dialog || document;
-        const links = root.querySelectorAll('a[href]');
-        return Array.from(links).map(link => ({
-          href: link.getAttribute('href') || '',
-          text: (link as HTMLElement).innerText?.trim() || '',
-        }));
-      });
-
-      const users = extractUsersFromLinks(rawLinks, { relaxed: true });
-      let newCount = 0;
-      const batch: ExtractedMember[] = [];
-      for (const u of users) {
-        if (!seen.has(u.fb_id)) {
-          seen.add(u.fb_id);
-          batch.push({ ...u, type: "reacter" });
-          newCount++;
+      const countHtml = await this.page.content().catch(() => "");
+      if (countHtml) {
+        const countResult = parseFollowersCount(countHtml);
+        if (countResult.count !== null && countResult.count > 0 && countResult.count < 10_000_000) {
+          this.totalReactionsCount = countResult.count;
+          this.totalReactionsSource = countResult.source;
+          log.info("PostReactions", `total reactions: ${countResult.count} (source=${countResult.source})`);
+          await this.persistReactionsCount(countResult.count, countResult.source);
+        } else {
+          log.info("PostReactions", `total reactions: unknown`);
         }
       }
+      await this.storeExtractionProgress(0, "scrolling", 0);
 
-      log.info("PostReactions", `+[${newCount}] scroll#${scrollAttempts} total=${total} seen=${seen.size} raw=${rawLinks.length}`);
+      while (!done && !this.shouldStop && total < this.ctx.maxResults) {
+        if (await this.checkCanceled()) return { extracted: total, done: true, authState };
 
-      if (batch.length > 0) {
-        total += await this.processBatch(batch, "reacter");
-        consecutiveEmpty = 0;
-        if (scrollAttempts > 0 && scrollAttempts % this.batchSizeForRest === 0) await this.restDelay();
-        if (scrollAttempts % 10 === 9) {
-          await this.storeExtractionProgress(total, "scrolling", scrollAttempts + 1);
+        // Drain intercepted GraphQL reactors
+        let batch: ExtractedMember[] = [];
+        while (intercepted.length > 0) {
+          const r = intercepted.shift()!;
+          if (seen.has(r.fb_id)) continue;
+          seen.add(r.fb_id);
+          batch.push({ fb_id: r.fb_id, name: r.name, profile_url: r.profile_url, type: "reacter" });
         }
-      } else {
-        consecutiveEmpty++;
 
-        if (consecutiveEmpty === 3) {
-          const switched = await this.switchToNextSession();
-          if (switched) {
-            log.info("PostReactions", `switched session after 3 empty scrolls, reloading post and reopening dialog (session #${this.activeSessionIndex + 1}/${this.totalSessions})`);
-            consecutiveEmpty = 0;
-            scrollAttempts = 0;
-            try {
-              await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-              await this.page.waitForTimeout(3000);
-              await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-              await this.page.waitForTimeout(2000);
-              ({ dialogOpened, scrollBox } = await this.tryOpenReactionsDialog());
-            } catch (err) {
-              throw new ExtractionError(ErrorCodes.NETWORK_ERROR, `Navigation error after session switch: ${String(err)}`);
+        // DOM fallback — ONLY from inside the reactions dialog, never the page
+        if (batch.length === 0 && dialogActive) {
+          batch = await this.extractReactorsFromDialogDom(seen);
+        }
+
+        log.info("PostReactions", `+[${batch.length}] scroll#${scrollAttempts} total=${total} seen=${seen.size}`);
+
+        if (batch.length > 0) {
+          total += await this.processBatch(batch, "reacter");
+          consecutiveEmpty = 0;
+          if (scrollAttempts > 0 && scrollAttempts % this.batchSizeForRest === 0) await this.restDelay();
+          if (scrollAttempts % 10 === 9) {
+            await this.storeExtractionProgress(total, "scrolling", scrollAttempts + 1);
+          }
+        } else {
+          consecutiveEmpty++;
+
+          if (consecutiveEmpty === 3) {
+            const switched = await this.switchToNextSession();
+            if (switched) {
+              log.info("PostReactions", `switched session after 3 empty scrolls, reloading post and reopening dialog (session #${this.activeSessionIndex + 1}/${this.totalSessions})`);
+              consecutiveEmpty = 0;
+              scrollAttempts = 0;
+              try {
+                await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+                await this.page.waitForTimeout(3000);
+                await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+                await this.page.waitForTimeout(2000);
+                this.page.off("response", onResponse);
+                this.page.on("response", onResponse);
+                ({ dialogOpened, scrollBox } = await this.tryOpenReactionsDialog());
+                dialogActive = dialogOpened;
+              } catch (err) {
+                throw new ExtractionError(ErrorCodes.NETWORK_ERROR, `Navigation error after session switch: ${String(err)}`);
+              }
+              await this.storeExtractionProgress(total, "scrolling", 0);
+              continue;
+            } else {
+              this.lastStopReason = this.totalSessions > 1 ? "session_rate_limited" : "no_secondary_session";
             }
-            await this.storeExtractionProgress(total, "scrolling", 0);
-            continue;
-          } else {
-            this.lastStopReason = this.totalSessions > 1 ? "session_rate_limited" : "no_secondary_session";
+          }
+
+          if (consecutiveEmpty >= 15) {
+            if (this.lastStopReason === null) this.lastStopReason = "source_exhausted";
+            done = true;
+            break;
           }
         }
 
-        if (consecutiveEmpty >= 15) {
-          if (this.lastStopReason === null) this.lastStopReason = "source_exhausted";
-          done = true;
-          break;
+        scrollAttempts++;
+        if (dialogOpened && scrollBox) {
+          const cx = scrollBox.x + scrollBox.width / 2;
+          const cy = scrollBox.y + scrollBox.height / 2;
+          await this.page.mouse.move(cx, cy);
+          for (let s = 0; s < 3; s++) { await this.page.mouse.wheel(0, 300); await this.page.waitForTimeout(400); }
+          await this.page.waitForTimeout(800);
+          // Re-sync: Facebook sometimes closes the dialog mid-scroll
+          dialogActive = await this.page.evaluate(() =>
+            !!document.querySelector('[role="dialog"]') || !!document.querySelector('[aria-modal="true"]'),
+          ).catch(() => false);
+          if (!dialogActive) {
+            log.info("PostReactions", `dialog closed mid-scroll — reopening`);
+            ({ dialogOpened, scrollBox } = await this.tryOpenReactionsDialog());
+            dialogActive = dialogOpened;
+            if (!dialogActive) {
+              // give up reopening this cycle; empty rounds will escalate properly
+              await this.page.waitForTimeout(1500);
+            }
+          }
+        } else {
+          await this.scrollFeed(this.page);
         }
+        await this.delay();
       }
-
-      scrollAttempts++;
-      if (dialogOpened && scrollBox) {
-        const cx = scrollBox.x + scrollBox.width / 2;
-        const cy = scrollBox.y + scrollBox.height / 2;
-        await this.page.mouse.move(cx, cy);
-        for (let s = 0; s < 3; s++) { await this.page.mouse.wheel(0, 300); await this.page.waitForTimeout(400); }
-        await this.page.waitForTimeout(800);
-      } else {
-        await this.scrollFeed(this.page);
-      }
-      await this.delay();
+    } finally {
+      this.page.off("response", onResponse);
     }
 
     this.finalizeStopReason(total);
@@ -145,6 +199,42 @@ export class PostReactionsExtractor extends BaseExtractor {
 
     if (total === 0) done = true;
     return { extracted: total, nextCursor: done ? undefined : url, done, authState };
+  }
+
+  /** DOM fallback: extract user links strictly from the reactions dialog. */
+  private async extractReactorsFromDialogDom(seen: Set<string>): Promise<ExtractedMember[]> {
+    const rawLinks = await this.page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"]') || document.querySelector('[aria-modal="true"]');
+      if (!dialog) return [] as { href: string; text: string }[];
+      const links = dialog.querySelectorAll('a[href]');
+      return Array.from(links).map((link) => ({
+        href: link.getAttribute("href") || "",
+        text: ((link as HTMLElement).innerText || "").trim(),
+      }));
+    }).catch(() => [] as { href: string; text: string }[]);
+
+    const batch: ExtractedMember[] = [];
+    for (const link of rawLinks) {
+      if (!link.text || link.text.length < 2 || link.text.length > 100) continue;
+
+      const idMatch = link.href.match(/profile\.php\?id=(\d{5,25})/) || link.href.match(/\/user\/(\d{5,25})/);
+      let fbId: string;
+      let profileUrl: string;
+      if (idMatch) {
+        fbId = idMatch[1];
+        profileUrl = `https://www.facebook.com/profile.php?id=${fbId}`;
+      } else {
+        const abs = link.href.startsWith("http") ? link.href : `https://www.facebook.com${link.href}`;
+        const vanity = abs.match(/facebook\.com\/([a-zA-Z0-9.]{3,60})(?:[/?#]|$)/i);
+        if (!vanity || isJunkSlug(vanity[1])) continue;
+        fbId = vanity[1];
+        profileUrl = `https://www.facebook.com/${fbId}`;
+      }
+      if (seen.has(fbId)) continue;
+      seen.add(fbId);
+      batch.push({ fb_id: fbId, name: link.text.substring(0, 200), profile_url: profileUrl, type: "reacter" });
+    }
+    return batch;
   }
 
   private computeCoverage(discovered: number): number | null {

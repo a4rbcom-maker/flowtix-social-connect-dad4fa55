@@ -13,6 +13,7 @@ interface ActiveContext {
   context: BrowserContext;
   browser: Browser;
   sessionId: string;
+  cookieSyncTimer?: NodeJS.Timeout;
 }
 
 const DEFAULT_UA =
@@ -90,7 +91,7 @@ class ContextManager {
       const contextOpts: any = {
         userAgent: ua,
         viewport: { width: 1366, height: 768 },
-        locale: "ar-AR",
+        locale: "ar-EG",
         timezoneId: "Africa/Cairo",
         permissions: ["geolocation"],
         geolocation: { latitude: 30.0444, longitude: 31.2357 },
@@ -154,12 +155,29 @@ class ContextManager {
             `Session ${sessionId.slice(0, 8)} is NOT logged in (guest). Cookies expired or invalid. Please re-import cookies.`
           );
         }
+
+        // Facebook rotates the `xs` token on the very first navigation —
+        // capture it immediately so a crash right after creation cannot
+        // leave the stored session stale.
+        await this.persistRotatedCookies(sessionId, context);
       } catch (err) {
         if (err instanceof ExtractionError) throw err;
         log.warn("ContextManager", `session ${sessionId.slice(0, 8)}: verification failed (continuing): ${String(err).substring(0, 100)}`);
       }
 
-      this.active.set(contextId, { context, browser, sessionId });
+      const entry: ActiveContext = { context, browser, sessionId };
+
+      // Periodic cookie sync: during long extractions Facebook rotates auth
+      // tokens several times. Persisting only at release loses them on crash
+      // or restart — and injecting a stale `xs` next run makes Facebook
+      // invalidate the whole session (forced logout).
+      const syncTimer = setInterval(() => {
+        void this.persistRotatedCookies(sessionId, context);
+      }, config.cookieSyncIntervalMs);
+      syncTimer.unref?.();
+      entry.cookieSyncTimer = syncTimer;
+
+      this.active.set(contextId, entry);
       log.debug("ContextManager", `context created ${contextId}`, {
         cookieCount: cookies.length,
         activeContexts: this.active.size,
@@ -176,6 +194,8 @@ class ContextManager {
     const entry = this.active.get(contextId);
     if (!entry) return;
     this.active.delete(contextId);
+
+    if (entry.cookieSyncTimer) clearInterval(entry.cookieSyncTimer);
 
     // Capture rotated cookies BEFORE closing — Facebook refreshes the `xs`
     // token during browsing; dropping it invalidates the stored session.
@@ -214,6 +234,18 @@ class ContextManager {
     const contextIds = Array.from(this.active.keys());
     for (const id of contextIds) {
       await this.releaseContext(id);
+    }
+  }
+
+  /** Read live cookies from a context and persist them when they still carry
+   *  the auth tokens. Safe to call repeatedly — never downgrades a session. */
+  private async persistRotatedCookies(sessionId: string, context: BrowserContext): Promise<void> {
+    try {
+      const rotated = toCookieEntries(await context.cookies());
+      if (rotated.length === 0 || !shouldPersistSessionCookies(rotated)) return;
+      await supabaseService.updateSessionCookies(sessionId, rotated);
+    } catch {
+      /* context closed / browser gone — release path does the final read */
     }
   }
 

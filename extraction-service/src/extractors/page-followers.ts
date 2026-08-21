@@ -4,16 +4,25 @@ import { logger } from "../logger.js";
 import { supabaseService } from "../services/supabase.js";
 import { GraphQLInterceptor } from "../services/graphql-interceptor.js";
 import { extractEngagers } from "../services/engager-extractor-v2.js";
+import { multiSessionScrollFollowers } from "../services/multi-session-followers.js";
 import type { AuthState, ExtractedMember } from "../types.js";
 import type { Page } from "playwright";
 
 const log = logger;
 
-type StopReason = "max_results_reached" | "posts_exhausted" | "canceled" | "completed";
+type StopReason = "max_results_reached" | "canceled" | "completed";
 
 interface PostInfo {
   postId: string;
   permalink: string;
+}
+
+const AUTO_GEN = /^(Adventurous|Playful|Shiny|Brave|Clever|Happy|Jolly|Mysterious|Silly|Friendly)\w+\d+/i;
+function validName(name: string): boolean {
+  if (!name || name.length < 3) return false;
+  if (AUTO_GEN.test(name)) return false;
+  if (/^User\d{3,}$/i.test(name)) return false;
+  return true;
 }
 
 export class PageFollowersExtractor extends BaseExtractor {
@@ -30,7 +39,7 @@ export class PageFollowersExtractor extends BaseExtractor {
     );
 
     log.info("PageFollowers", `========================================`);
-    log.info("PageFollowers", `STREAMING v3 — parallel + fast discovery`);
+    log.info("PageFollowers", `TWO-PHASE v4 — followers list + posts cascade`);
     log.info("PageFollowers", `jobId=${this.ctx.jobId} page=${pid} max=${this.ctx.maxResults} sessions=${1 + this.secondarySessionPages.length}`);
     log.info("PageFollowers", `========================================`);
 
@@ -64,16 +73,159 @@ export class PageFollowersExtractor extends BaseExtractor {
       } catch { /* skip */ }
     }
 
-    // ====== STREAMING: discover + extract in parallel ======
+    const coverageTarget = this.totalFollowersCount
+      ? Math.max(1, Math.round(this.totalFollowersCount * 0.85))
+      : this.ctx.maxResults;
+    const targetCount = Math.min(this.ctx.maxResults, coverageTarget);
+
+    const seenIds = new Set<string>();
+    const startTime = Date.now();
+    let total = 0;
+
+    // ====== Phase 1: followers list — extract what Facebook allows ======
+    if (this.timeRemainingSec > 150) {
+      const phase1Budget = Math.min(
+        Math.max(180_000, Math.floor(this.timeRemainingMs * 0.55)),
+        Math.max(60_000, this.timeRemainingMs - 120_000),
+      );
+      const phase1 = await this.runFollowersListPhase(pid, allPages, seenIds, targetCount, phase1Budget);
+      total += phase1.persisted;
+    }
+
+    // ====== Phase 2: posts cascade — when the followers list topped out ======
+    let posts = { extracted: 0, postsDone: 0, discovered: 0 };
+    if (
+      seenIds.size < targetCount &&
+      this.timeRemainingSec > 120 &&
+      !(await this.checkCanceled())
+    ) {
+      log.info("PageFollowers", `followers list capped at ${seenIds.size}/${targetCount} — starting posts cascade phase`);
+      posts = await this.runPostsCascadePhase(pid, allPages, seenIds, targetCount);
+      total += posts.extracted;
+    }
+
+    // Final flush
+    if (!this.lastStopReason) {
+      this.lastStopReason = seenIds.size >= targetCount ? "max_results_reached" : "completed";
+    }
+
+    const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(0);
+    const rate = Number(elapsedSec) > 0 ? (total / (Number(elapsedSec) / 60)).toFixed(1) : "0";
+    log.info("PageFollowers", `========================================`);
+    log.info("PageFollowers", `DONE: ${total} users (list+posts) from ${posts.postsDone}/${posts.discovered} posts in ${elapsedSec}s (${rate} users/min)`);
+    log.info("PageFollowers", `stop reason: ${this.lastStopReason}`);
+    log.info("PageFollowers", `========================================`);
+    await this.storeProgress("completed", posts.discovered, posts.postsDone, total, this.lastStopReason);
+
+    return { extracted: total, done: true, authState };
+  }
+
+  /**
+   * Phase 1: scroll the /followers/ tab with every session in parallel
+   * (GraphQL interception + human-like scrolling). Stops naturally when
+   * Facebook caps pagination (idle detection + wake-up attempts), returning
+   * whatever it managed to extract.
+   */
+  private async runFollowersListPhase(
+    pid: string,
+    allPages: Array<{ sessionId: string; page: Page }>,
+    seenIds: Set<string>,
+    targetCount: number,
+    budgetMs: number,
+  ): Promise<{ persisted: number; stoppedReason: string }> {
+    log.info("PageFollowers", `=== Phase 1: followers list (direct) ===`);
+    log.info("PageFollowers", `sessions=${allPages.length} target=${targetCount} budget=${Math.round(budgetMs / 60000)}min`);
+
+    // multiSessionScrollFollowers derives the /followers/ URL from each page's
+    // current URL — point every session at the target page first.
+    await Promise.all(allPages.map(async ({ sessionId, page }) => {
+      try {
+        await page.goto(`https://www.facebook.com/${pid}`, { waitUntil: "domcontentloaded", timeout: 30000 });
+        await page.waitForTimeout(1500 + Math.random() * 1500);
+      } catch (err) {
+        log.warn("PageFollowers", `session ${sessionId.slice(0, 8)}: nav failed — ${String(err).substring(0, 80)}`);
+      }
+    }));
+
+    const shared: Array<{ fb_id: string; name: string; profile_url: string }> = [];
+    let flushedUpTo = 0;
+    let persisted = 0;
+    let flushing = false;
+    let lastFlushTs = 0;
+
+    // Incremental save: flush only the not-yet-persisted slice of `shared`
+    // (the array itself must keep growing — its length drives progress/target).
+    const flushNew = async (): Promise<void> => {
+      if (flushing || flushedUpTo >= shared.length) return;
+      flushing = true;
+      const batch = shared.slice(flushedUpTo);
+      flushedUpTo = shared.length;
+      const members: ExtractedMember[] = [];
+      for (const u of batch) {
+        if (!validName(u.name) || seenIds.has(u.fb_id)) continue;
+        seenIds.add(u.fb_id);
+        members.push({ fb_id: u.fb_id, name: u.name.trim().substring(0, 200), profile_url: u.profile_url, type: "follower" });
+      }
+      if (members.length > 0) {
+        persisted += await this.processBatch(members, "follower");
+      }
+      flushing = false;
+    };
+
+    const result = await multiSessionScrollFollowers(allPages, shared, {
+      maxDurationMs: budgetMs,
+      targetCount,
+      onProgress: (totalSeen) => {
+        const now = Date.now();
+        if (now - lastFlushTs > 4000) {
+          lastFlushTs = now;
+          void flushNew().catch(() => {});
+          void this.storeProgress("scrolling", totalSeen, 0, persisted);
+        }
+      },
+      shouldStop: () => this.periodicCancelCheck(),
+    });
+
+    await flushNew().catch(() => {});
+    await this.storeProgress("scrolling", result.totalSeen, 0, persisted);
+
+    log.info("PageFollowers", `Phase 1 finished: seen=${result.totalSeen} persisted=${persisted} (reason=${result.stoppedReason})`);
+    for (const s of result.perSession) {
+      log.info("PageFollowers", `  session ${s.sessionId.slice(0, 8)}: ${s.extracted} users (${s.rounds} rounds, ${s.stoppedReason})`);
+    }
+    return { persisted, stoppedReason: result.stoppedReason };
+  }
+
+  /**
+   * Phase 2: discover posts on the page feed (DOM links + GraphQL post ids)
+   * while one worker per session extracts reactors + commenters from each
+   * post, merged into the same deduplicated set started by Phase 1.
+   */
+  private async runPostsCascadePhase(
+    pid: string,
+    allPages: Array<{ sessionId: string; page: Page }>,
+    seenIds: Set<string>,
+    targetCount: number,
+  ): Promise<{ extracted: number; postsDone: number; discovered: number }> {
+    log.info("PageFollowers", `=== Phase 2: posts cascade ===`);
+    log.info("PageFollowers", `sessions=${allPages.length} remaining target=${targetCount - seenIds.size}`);
+
+    // The main page hosted the followers list during Phase 1 — return it to
+    // the page feed so discovery can scroll it.
+    try {
+      await this.page.goto(`https://www.facebook.com/${pid}`, { waitUntil: "domcontentloaded", timeout: 30000 });
+      await this.page.waitForTimeout(2500);
+    } catch (err) {
+      throw new ExtractionError(ErrorCodes.NETWORK_ERROR, `Navigation error: ${String(err)}`);
+    }
+
     const discoveredPosts: PostInfo[] = [];
     const seenPostIds = new Set<string>();
-    const allUsers = new Map<string, ExtractedMember>();
+    const phaseUsers = new Map<string, ExtractedMember>();
     const processedPostIds = new Set<string>();
     let postsDone = 0;
     let discoveryDone = false;
     const startTime = Date.now();
-
-    // Shared queue index for workers
     let nextPostIdx = 0;
 
     // Producer: scroll feed and discover posts (runs on main page)
@@ -99,7 +251,7 @@ export class PageFollowersExtractor extends BaseExtractor {
           // Log discovery progress
           if (discoveredPosts.length % 10 === 0) {
             log.info("PageFollowers", `discovery: ${discoveredPosts.length} posts found (round ${round + 1}/${MAX_SCROLLS})`);
-            await this.storeProgress("discovering", discoveredPosts.length, postsDone, allUsers.size);
+            await this.storeProgress("discovering", discoveredPosts.length, postsDone, seenIds.size);
           }
         }
       }
@@ -138,7 +290,8 @@ export class PageFollowersExtractor extends BaseExtractor {
 
       while (true) {
         // Check if we should stop
-        if (allUsers.size >= this.ctx.maxResults) return;
+        if (seenIds.size >= targetCount) return;
+        if (this.timeRemainingSec <= 60) return;
         if (await this.periodicCancelCheck()) { this.lastStopReason = "canceled"; return; }
 
         // Get next post atomically
@@ -166,14 +319,16 @@ export class PageFollowersExtractor extends BaseExtractor {
 
           let newCount = 0;
           for (const u of result.reactors) {
-            if (!allUsers.has(u.id)) {
-              allUsers.set(u.id, { fb_id: u.id, name: u.name, profile_url: u.url, type: "follower" });
+            if (!seenIds.has(u.id)) {
+              seenIds.add(u.id);
+              phaseUsers.set(u.id, { fb_id: u.id, name: u.name, profile_url: u.url, type: "follower" });
               newCount++;
             }
           }
           for (const u of result.commenters) {
-            if (!allUsers.has(u.id)) {
-              allUsers.set(u.id, { fb_id: u.id, name: u.name, profile_url: u.url, type: "follower" });
+            if (!seenIds.has(u.id)) {
+              seenIds.add(u.id);
+              phaseUsers.set(u.id, { fb_id: u.id, name: u.name, profile_url: u.url, type: "follower" });
               newCount++;
             }
           }
@@ -182,18 +337,18 @@ export class PageFollowersExtractor extends BaseExtractor {
 
           if (newCount > 0) {
             const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
-            const rate = Number(elapsed) > 0 ? (allUsers.size / (Number(elapsed) / 60)).toFixed(1) : "0";
-            log.info("PageFollowers", `[S${sessionIdx + 1}] [${postsDone}/${discoveredPosts.length}] +${newCount} → total ${allUsers.size} (${rate} users/min)`);
+            const rate = Number(elapsed) > 0 ? (seenIds.size / (Number(elapsed) / 60)).toFixed(1) : "0";
+            log.info("PageFollowers", `[S${sessionIdx + 1}] [${postsDone}/${discoveredPosts.length}] +${newCount} → total ${seenIds.size} (${rate} users/min)`);
           } else if (postsDone % 15 === 0) {
-            log.info("PageFollowers", `[S${sessionIdx + 1}] [${postsDone}/${discoveredPosts.length}] +0 → total ${allUsers.size}`);
+            log.info("PageFollowers", `[S${sessionIdx + 1}] [${postsDone}/${discoveredPosts.length}] +0 → total ${seenIds.size}`);
           }
 
           // Flush every 3 posts
-          if (postsDone % 3 === 0 || allUsers.size >= 300) {
-            await this.flushResults(allUsers).catch(() => {});
+          if (postsDone % 3 === 0 || phaseUsers.size >= 300) {
+            await this.flushResults(phaseUsers).catch(() => {});
           }
           if (postsDone % 3 === 0) {
-            await this.storeProgress("extracting", discoveredPosts.length, postsDone, allUsers.size);
+            await this.storeProgress("extracting", discoveredPosts.length, postsDone, seenIds.size);
           }
 
           // Small jitter
@@ -211,21 +366,11 @@ export class PageFollowersExtractor extends BaseExtractor {
     await Promise.all([discoveryPromise, ...workerPromises]);
 
     // Final flush
-    await this.flushResults(allUsers).catch(() => {});
+    await this.flushResults(phaseUsers).catch(() => {});
 
-    if (!this.lastStopReason) {
-      this.lastStopReason = allUsers.size >= this.ctx.maxResults ? "max_results_reached" : "completed";
-    }
+    log.info("PageFollowers", `Phase 2 finished: +${phaseUsers.size} users from ${postsDone}/${discoveredPosts.length} posts`);
 
-    const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(0);
-    const rate = Number(elapsedSec) > 0 ? (allUsers.size / (Number(elapsedSec) / 60)).toFixed(1) : "0";
-    log.info("PageFollowers", `========================================`);
-    log.info("PageFollowers", `DONE: ${allUsers.size} users from ${postsDone} posts in ${elapsedSec}s (${rate} users/min)`);
-    log.info("PageFollowers", `stop reason: ${this.lastStopReason}`);
-    log.info("PageFollowers", `========================================`);
-    await this.storeProgress("completed", discoveredPosts.length, postsDone, allUsers.size, this.lastStopReason);
-
-    return { extracted: allUsers.size, done: true, authState: "authenticated" };
+    return { extracted: phaseUsers.size, postsDone, discovered: discoveredPosts.length };
   }
 
   private async collectPostLinksFromDOM(page: Page): Promise<PostInfo[]> {

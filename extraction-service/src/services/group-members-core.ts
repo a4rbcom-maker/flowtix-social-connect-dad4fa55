@@ -18,6 +18,14 @@ export interface MultiSessionGroupOptions {
   scrollDelayMs?: number;
   maxIdleRounds?: number;
   maxWakeUpAttempts?: number;
+  /** Global stall detection: stop ALL sessions when the shared deduplicated
+   *  list grows by less than stallMinGrowth users within stallWindowMs.
+   *  Facebook caps the browsable members list (~1-2K in large groups); once
+   *  capped, per-session idle detection is too lenient (sessions keep stealing
+   *  first-discovery from each other) and scrolling only wastes time that the
+   *  feed-cascade phase needs. */
+  stallWindowMs?: number;
+  stallMinGrowth?: number;
   onNewUsers?: (users: GroupMemberUser[]) => Promise<void> | void;
   onProgress?: (totalSeen: number, activeSessions: number, round: number) => void;
   shouldStop?: () => Promise<boolean>;
@@ -27,7 +35,16 @@ export interface MultiSessionGroupResult {
   totalSeen: number;
   perSession: Array<{ sessionId: string; extracted: number; rounds: number; stoppedReason: string }>;
   totalDurationMs: number;
-  stoppedReason: "target_reached" | "all_idle" | "max_duration" | "canceled";
+  stoppedReason: "target_reached" | "all_idle" | "max_duration" | "canceled" | "stagnated";
+}
+
+/** Members-list phase budget: capped so the feed-cascade phase (the only way
+ *  past Facebook's members-list cap) is guaranteed a meaningful share of the
+ *  job budget. Reserves ~45% of the remaining time (min 60s) for cascade. */
+export function membersPhaseBudgetMs(remainingMs: number): number {
+  const usable = Math.max(60_000, remainingMs - 60_000);
+  const cascadeReserve = Math.max(60_000, Math.round(remainingMs * 0.45));
+  return Math.min(usable, Math.max(60_000, remainingMs - cascadeReserve));
 }
 
 interface SessionState {
@@ -63,10 +80,28 @@ export async function multiSessionGroupMembers(
   const scrollDelayMs = opts.scrollDelayMs ?? 600;
   const maxIdleRounds = opts.maxIdleRounds ?? 15;
   const maxWakeUpAttempts = opts.maxWakeUpAttempts ?? 3;
+  const stallWindowMs = opts.stallWindowMs ?? 90_000;
+  const stallMinGrowth = opts.stallMinGrowth ?? 10;
   const startTime = Date.now();
 
   log.info("GroupCore", "=== parallel multi-session group members ===");
-  log.info("GroupCore", `sessions=${pages.length} target=${targetCount} maxDuration=${Math.round(maxDurationMs / 60000)}min`);
+  log.info("GroupCore", `sessions=${pages.length} target=${targetCount} maxDuration=${Math.round(maxDurationMs / 60000)}min stallWindow=${Math.round(stallWindowMs / 1000)}s/${stallMinGrowth}`);
+
+  let stallWindowStart = startTime;
+  let stallWindowStartCount = sharedUsers.length;
+  let stagnated = false;
+
+  const stalled = (): boolean => {
+    if (stagnated) return true;
+    if (Date.now() - stallWindowStart < stallWindowMs) return false;
+    const growth = sharedUsers.length - stallWindowStartCount;
+    stallWindowStart = Date.now();
+    stallWindowStartCount = sharedUsers.length;
+    if (growth >= stallMinGrowth) return false;
+    stagnated = true;
+    log.info("GroupCore", `global stall: +${growth} users in ${Math.round(stallWindowMs / 1000)}s across ${states.length} sessions — members list exhausted (Facebook browsable cap)`);
+    return true;
+  };
 
   const states: SessionState[] = pages.map((p) => ({
     sessionId: p.sessionId,
@@ -138,6 +173,10 @@ export async function multiSessionGroupMembers(
         s.stoppedReason = "target_reached";
         break;
       }
+      if (stalled()) {
+        s.stoppedReason = "stagnated";
+        break;
+      }
 
       s.rounds++;
 
@@ -195,6 +234,7 @@ export async function multiSessionGroupMembers(
   let stoppedReason: MultiSessionGroupResult["stoppedReason"];
   if (opts.shouldStop && (await opts.shouldStop())) stoppedReason = "canceled";
   else if (finalCount >= targetCount) stoppedReason = "target_reached";
+  else if (stagnated) stoppedReason = "stagnated";
   else if (Date.now() - startTime > maxDurationMs) stoppedReason = "max_duration";
   else stoppedReason = "all_idle";
 

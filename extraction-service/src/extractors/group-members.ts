@@ -1,8 +1,11 @@
 import { BaseExtractor, parseGroupId, parseFollowersCount, detectAuthState, authStateToMessage, authStateToErrorCode } from "./base.js";
 import { ExtractionError, ErrorCodes } from "../errors.js";
 import { logger } from "../logger.js";
+import { config } from "../config.js";
 import { supabaseService } from "../services/supabase.js";
-import { multiSessionGroupMembers, type GroupMemberUser } from "../services/group-members-core.js";
+import { multiSessionGroupMembers, membersPhaseBudgetMs, type GroupMemberUser } from "../services/group-members-core.js";
+import { runGroupCascade } from "../services/group-cascade-core.js";
+import { extractEngagers } from "../services/engager-extractor-v2.js";
 import type { AuthState, ExtractedMember } from "../types.js";
 
 const log = logger;
@@ -71,9 +74,12 @@ export class GroupMembersExtractor extends BaseExtractor {
       ? Math.max(1, Math.round(this.totalMembersCount * 0.85))
       : this.ctx.maxResults;
     const targetCount = Math.min(this.ctx.maxResults, coverageTarget);
-    const budgetMs = Math.max(60_000, this.timeRemainingMs - 60_000);
+    // Split the budget: the members list is capped by Facebook (~1-2K in large
+    // groups) — cap its phase too so the feed cascade (engagers/commenters,
+    // the only way past the cap) is guaranteed a real share of the job time.
+    const budgetMs = membersPhaseBudgetMs(this.timeRemainingMs);
 
-    log.info("GroupMembers", `parallel extraction: ${allPages.length} session(s), target=${targetCount} (coverage 85% cap: ${this.ctx.maxResults})`);
+    log.info("GroupMembers", `parallel extraction: ${allPages.length} session(s), target=${targetCount}, members budget=${Math.round(budgetMs / 1000)}s + cascade reserve (coverage 85% cap: ${this.ctx.maxResults})`);
 
     const result = await multiSessionGroupMembers(allPages, membersUrl, shared, seen, {
       targetCount,
@@ -93,11 +99,78 @@ export class GroupMembersExtractor extends BaseExtractor {
       shouldStop: () => this.throttledCanceled(),
     });
 
-    this.lastStopReason = this.mapStopReason(result.stoppedReason, total);
+    // Facebook caps the browsable members list (~1-2K in large groups) far
+    // below real membership. Everyone who posted/commented/reacted in the
+    // group is a member too — cascade the group feed for engagers when the
+    // members list topped out below the coverage target.
+    let cascade = null as Awaited<ReturnType<typeof runGroupCascade>> | null;
+    if (
+      config.groupCascadeEnabled &&
+      result.stoppedReason !== "canceled" &&
+      total < targetCount &&
+      this.timeRemainingSec > 120
+    ) {
+      log.info("GroupMembers", `members list capped at ${total}/${targetCount} — starting feed cascade phase`);
+      await this.storeExtractionProgress(total, "scrolling", shared.length);
+
+      cascade = await runGroupCascade({
+        feedUrl: `https://www.facebook.com/groups/${gid}`,
+        pages: allPages,
+        targetCount: targetCount - total,
+        maxDurationMs: Math.max(60_000, this.timeRemainingMs - 45_000),
+        maxPosts: config.groupCascadeMaxPosts,
+        extractEngagers: (page, permalink) =>
+          extractEngagers(page, permalink, {
+            maxReactions: 1000,
+            maxCommenters: 500,
+            scrollDialogSeconds: 8,
+          }),
+        onNewUsers: async (users) => {
+          const batch: ExtractedMember[] = [];
+          for (const u of users) {
+            if (validName(u.name)) batch.push({ ...u, type: "member" });
+          }
+          if (batch.length > 0) {
+            const persisted = await this.processBatch(batch, "member");
+            total += persisted;
+            return persisted;
+          }
+          return 0;
+        },
+        onProgress: (info) => {
+          void this.storeCascadeProgress(total, info.postsDone, info.postsKnown);
+        },
+        shouldStop: () => this.throttledCanceled(),
+      });
+    }
+
+    this.lastStopReason = this.mapStopReason(cascade?.stoppedReason ?? result.stoppedReason, total);
     await this.storeExtractionProgress(total, "completed", 0, this.lastStopReason);
-    log.info("GroupMembers", `extraction finished: total=${total}, coverage=${this.computeCoverage(total)}%, stopReason=${this.lastStopReason ?? "null"}`);
+    log.info("GroupMembers", `extraction finished: total=${total}, coverage=${this.computeCoverage(total)}%, stopReason=${this.lastStopReason ?? "null"}${cascade ? `, cascadePosts=${cascade.postsProcessed}/${cascade.postsDiscovered} (+${cascade.extracted})` : ""}`);
 
     return { extracted: total, done: true, authState };
+  }
+
+  private async storeCascadeProgress(total: number, postsDone: number, postsKnown: number): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastProgressTs < 10_000) return;
+    this.lastProgressTs = now;
+
+    const coverage = this.computeCoverage(total);
+    const progress: Record<string, unknown> = {
+      discovered: total,
+      processed: total,
+      phase: "scrolling",
+      posts_done: postsDone,
+      posts_total: postsKnown,
+      coverage_rate: coverage,
+      last_update: new Date().toISOString(),
+    };
+    try {
+      await supabaseService.storeProgress(this.ctx.jobId, progress);
+    } catch (err) {
+      log.debug("GroupMembers", `storeProgress failed: ${String(err)}`);
+    }
   }
 
   private computeCoverage(discovered: number): number | null {
@@ -117,7 +190,9 @@ export class GroupMembersExtractor extends BaseExtractor {
   private mapStopReason(coreReason: string, total: number): GroupStopReason | null {
     if (coreReason === "canceled") return null;
     if (coreReason === "target_reached" || total >= this.ctx.maxResults) return "max_results_reached";
-    if (this.totalSessions > 1) return "session_rate_limited";
+    if (coreReason === "max_duration") return "session_rate_limited";
+    // stagnated / all_idle / posts_exhausted: Facebook capped the browsable
+    // source — accurate reason regardless of session count.
     return "source_exhausted";
   }
 

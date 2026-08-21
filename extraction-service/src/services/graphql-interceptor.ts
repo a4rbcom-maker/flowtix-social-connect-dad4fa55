@@ -278,8 +278,12 @@ function walkForConnections(obj: any, users: GraphQLUser[], seen: Set<string>, d
 function extractUserFromNode(node: any): GraphQLUser | null {
   if (!node || typeof node !== "object") return null;
 
-  // Try multiple paths for user ID
-  const id = String(node.id || node.uid || node.fbid || node.user_id || node.pk || "").trim();
+  // Try multiple paths for user ID — author/actor first: for comment nodes
+  // node.id is the COMMENT's own id, while the user id is nested in author.
+  const id = String(
+    node.author?.id || node.actor?.id ||
+    node.id || node.uid || node.fbid || node.user_id || node.pk || "",
+  ).trim();
   if (!id || !/^\d{5,25}$/.test(id)) return null;
 
   // Try multiple paths for name

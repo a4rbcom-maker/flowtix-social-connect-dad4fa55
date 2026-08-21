@@ -138,7 +138,7 @@ specs/                        # Feature specifications (speckit)
 - **Check cancellation** — تحقق من `checkCanceled()` في كل دورة استخراج
 - **Rate limiting** — 600ms بين كل scroll، 10s راحة كل 8 دورات
 - **Job status transitions** — تحقق من الحالة الحالية قبل كتابة حالة جديدة (منع race conditions)
-- **Timeout** — `JOB_TIMEOUT_MS=600000` (10 دقائق لكل مهمة)
+- **Timeout** — `JOB_TIMEOUT_MS=1800000` (30 دقيقة لكل مهمة — الوقت مقسوم: قائمة الأعضاء محدودة بكشف الركود + مرحلة cascade للمنشورات)
 
 ### Job Status Values
 `queued` → `running` → `completed` | `failed` | `canceled` | `paused`

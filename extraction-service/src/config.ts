@@ -78,6 +78,15 @@ export const config = {
 
   /** Max jobs a user may keep waiting in queue behind their running job */
   maxQueuedJobsPerUser: envInt("MAX_QUEUED_JOBS_PER_USER", 3),
+
+  /** Group feed cascade: extract reactors/commenters from group posts when the
+   *  members list is capped below the coverage target (Facebook hard limit). */
+  groupCascadeEnabled: envBool("GROUP_CASCADE_ENABLED", true),
+  groupCascadeMaxPosts: envInt("GROUP_CASCADE_MAX_POSTS", 400),
+
+  /** How often live contexts persist Facebook-rotated cookies back to the
+   *  stored profile. Keeps `xs` fresh even if the process dies mid-extraction. */
+  cookieSyncIntervalMs: envInt("COOKIE_SYNC_INTERVAL_MS", 60000),
 } as const;
 
 export type Config = typeof config;

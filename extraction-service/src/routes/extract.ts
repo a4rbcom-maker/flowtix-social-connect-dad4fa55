@@ -204,8 +204,12 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
             const message = authStateToMessage(authState);
             log.warn("Extract", `auth check FAILED: ${code}`, { authState, finalUrl });
 
-            // Update session status so dashboard doesn't show stale "connected" state
-            await supabaseService.updateSessionStatus(primarySessionId, "disconnected", message).catch(() => {});
+            // Only a definitive logged-out state may disconnect the session —
+            // transient states ("unknown" = temporary FB error page) must not
+            // kill a healthy session.
+            if (authState === "needs_login") {
+              await supabaseService.updateSessionStatus(primarySessionId, "disconnected", message).catch(() => {});
+            }
 
             await supabaseService.failJob(jobId, message);
             return;
