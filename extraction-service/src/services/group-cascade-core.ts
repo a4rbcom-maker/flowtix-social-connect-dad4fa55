@@ -25,6 +25,10 @@ export interface GroupCascadeOptions {
   targetCount: number;
   maxDurationMs: number;
   maxPosts?: number;
+  /** Hard cap on the feed-discovery phase. Worker 0 shares the discovery
+   *  page and sits idle until it finishes — without a cap, deep feeds can
+   *  monopolize it for many minutes while the other workers chew the queue. */
+  maxDiscoveryMs?: number;
   extractEngagers: ExtractEngagersFn;
   onNewUsers: (users: CascadeUser[]) => Promise<number>;
   onProgress?: (info: { totalSeen: number; postsDone: number; postsKnown: number; activeWorkers: number }) => void;
@@ -49,9 +53,10 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
   const maxPosts = opts.maxPosts ?? 400;
   const startTime = Date.now();
   const deadline = startTime + opts.maxDurationMs;
+  const discoveryDeadline = startTime + Math.min(opts.maxDiscoveryMs ?? 300_000, opts.maxDurationMs);
 
   log.info("GroupCascade", "=== feed cascade starting ===");
-  log.info("GroupCascade", `sessions=${opts.pages.length} target=+${opts.targetCount} maxPosts=${maxPosts} budget=${Math.round(opts.maxDurationMs / 60000)}min`);
+  log.info("GroupCascade", `sessions=${opts.pages.length} target=+${opts.targetCount} maxPosts=${maxPosts} budget=${Math.round(opts.maxDurationMs / 60000)}min discoveryCap=${Math.round((discoveryDeadline - startTime) / 1000)}s`);
 
   const seenIds = new Set<string>();
   const postQueue: string[] = [];
@@ -104,7 +109,7 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
     while (
       queuedPosts.size < maxPosts &&
       stagnantRounds < 12 &&
-      Date.now() < deadline &&
+      Date.now() < discoveryDeadline &&
       extracted < opts.targetCount
     ) {
       if (opts.shouldStop) {
@@ -144,6 +149,9 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
       }
     }
     discoveryDone = true;
+    if (queuedPosts.size < maxPosts && stagnantRounds < 12 && Date.now() >= discoveryDeadline) {
+      discoveryStopped = "discovery_cap";
+    }
     log.info("GroupCascade", `discovery done: ${queuedPosts.size} posts (reason=${discoveryStopped}, stagnant=${stagnantRounds})`);
   })();
 

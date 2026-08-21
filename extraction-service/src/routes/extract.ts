@@ -184,6 +184,11 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
 
       const page = sessionPages[0].page;
 
+      // Set by the job watchdog once it force-stops a hung extraction —
+      // afterwards completion/error writes are suppressed (status is already
+      // paused + enriched by the watchdog itself).
+      let watchdogFired = false;
+
       try {
         await supabaseService.updateJob(jobId, { status: "running", error: null, started_at: new Date().toISOString() });
         log.info("Extract", `job ${jobId} started`, { sessionIds: usedSessionIds });
@@ -223,10 +228,45 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
         }));
         const extractor = createExtractor(job.type as ExtractionType, page, ctx, secondaryPages);
         const startMs = Date.now();
-        const result = await extractor.extract();
+
+        // Job-level watchdog: the extractor self-limits via internal time
+        // budgets, but a single hung browser call (e.g. page.evaluate on an
+        // unresponsive page) bypasses every loop check and freezes the job
+        // in "running" forever. After timeout + margin: mark paused, enrich
+        // whatever was saved, force-release contexts — the pending Playwright
+        // calls reject, extract() settles, and the queue moves on.
+        let fireWatchdog: () => void = () => {};
+        const watchdogPromise = new Promise<never>((_, reject) => {
+          fireWatchdog = () => reject(new ExtractionError(ErrorCodes.TIMEOUT, "extraction watchdog"));
+        });
+        const watchdogMs = config.jobTimeoutMs + 180_000;
+        const watchdog = setTimeout(() => {
+          if (watchdogFired) return;
+          watchdogFired = true;
+          log.error("Extract", `job ${jobId}: WATCHDOG fired after ${Math.round(watchdogMs / 1000)}s — extraction hung, force-stopping`);
+          void (async () => {
+            await supabaseService.updateJob(jobId, {
+              status: "paused",
+              error: "توقّف قسري: تجاوزت المهمة المهلة الزمنية دون إكمال (تجمد محتمل في المتصفح)",
+            }).catch(() => {});
+            try {
+              const fresh = await supabaseService.getJob(jobId);
+              if ((fresh.result_count || 0) > 0) {
+                await setEnrichingPhase(jobId);
+                await enrichmentService.enrichJobResults(jobId).catch((err) => log.error("Extract", `watchdog enrichment failed: ${String(err)}`));
+              }
+            } catch { /* best effort */ }
+            await releasePages().catch(() => {});
+          })();
+        }, watchdogMs);
+
+        const result = await Promise.race([extractor.extract(), watchdogPromise]);
+        clearTimeout(watchdog);
         const durationMs = Date.now() - startMs;
 
-        if (result.done) {
+        if (watchdogFired) {
+          log.info("Extract", `job ${jobId}: settled after watchdog — completion already handled`, { durationMs });
+        } else if (result.done) {
           const currentStatus = await supabaseService.getJobStatus(jobId);
           if (currentStatus === "canceled") {
             log.info("Extract", `job ${jobId} stopped by user`, { extracted: result.extracted, durationMs });
@@ -273,7 +313,11 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
         const code = err instanceof ExtractionError ? err.code : ErrorCodes.UNKNOWN_ERROR;
         const message = err instanceof Error ? err.message : String(err);
         log.error("Extract", `error: ${code}`, { message });
-        await supabaseService.failJob(jobId, message);
+        if (!watchdogFired) {
+          await supabaseService.failJob(jobId, message);
+        } else {
+          log.info("Extract", `job ${jobId}: settled with error after watchdog — status already paused`, { message: message.substring(0, 120) });
+        }
       } finally {
         await releasePages();
         await autoStartNextQueuedJob(userId);

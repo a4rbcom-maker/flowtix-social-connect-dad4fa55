@@ -60,11 +60,17 @@ export async function extractEngagers(page: Page, permalink: string, options: Ex
     // Step 3: Extract reactors via GraphQL
     await extractReactorsViaGraphQL(page, interceptor, reactorsMap, opts);
 
-    // Step 4: Navigate back to the post (reactions dialog may have changed context)
-    // and extract commenters via GraphQL
+    // Step 4: Commenters — the post page is usually still open after the
+    // reactions dialog closes (Escape). Re-navigate only when the context
+    // actually changed; skipping the reload saves ~5s per post (~25%).
     if (commentersMap.size < opts.maxCommenters) {
-      await page.goto(permalink, { waitUntil: "domcontentloaded", timeout: 15000 }).catch(() => {});
-      await page.waitForTimeout(2000);
+      if (samePostUrl(page.url(), permalink)) {
+        await page.keyboard.press("Escape").catch(() => {});
+        await page.waitForTimeout(500);
+      } else {
+        await page.goto(permalink, { waitUntil: "domcontentloaded", timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(2000);
+      }
       await extractCommentersViaGraphQL(page, interceptor, commentersMap, opts);
     }
   } finally {
@@ -75,6 +81,17 @@ export async function extractEngagers(page: Page, permalink: string, options: Ex
     reactors: Array.from(reactorsMap.values()),
     commenters: Array.from(commentersMap.values()),
   };
+}
+
+/** True when the browser is still on the same facebook post path. */
+function samePostUrl(current: string, permalink: string): boolean {
+  try {
+    const a = new URL(current);
+    const b = new URL(permalink);
+    return a.hostname.includes("facebook.com") && a.pathname === b.pathname;
+  } catch {
+    return false;
+  }
 }
 
 async function extractReactorsViaGraphQL(
