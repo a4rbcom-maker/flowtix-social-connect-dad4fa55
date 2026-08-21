@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import { supabaseService } from "../services/supabase.js";
 import { igSupabaseService } from "../services/ig-supabase.js";
 import { enrichmentService } from "../services/enrichment-service.js";
+import { scanDatabases } from "../services/enrichment-service.js";
 import { contextManager } from "../services/context-manager.js";
 import { igContextManager } from "../services/ig-context-manager.js";
 import { jobQueue } from "../services/job-queue.js";
@@ -594,6 +595,16 @@ router.post("/broadcast", async (req, res) => {
 
 const enrichSchema = z.object({
   job_id: z.string().min(1),
+});
+
+router.get("/enrichment/status", (_req, res) => {
+  const databases = scanDatabases();
+  res.json({
+    enabled: config.enrichmentEnabled,
+    db_path: config.enrichmentDbPath,
+    databases: databases.map((d) => ({ name: d.name, size_mb: Math.round(d.sizeBytes / 1024 / 1024) })),
+    ready: config.enrichmentEnabled && databases.length > 0,
+  });
 });
 
 router.post("/enrich", async (req, res) => {

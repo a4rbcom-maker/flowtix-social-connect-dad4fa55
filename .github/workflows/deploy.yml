@@ -107,7 +107,7 @@ jobs:
             FB_BASE_URL=https://m.facebook.com
             FB_NAV_TIMEOUT_MS=30000
             LOG_LEVEL=info
-            ENRICHMENT_DB_PATH=/www/wwwroot/api.flowtixtools.com/data/enrichment.db
+            ENRICHMENT_DB_PATH=/www/wwwroot/api.flowtixtools.com/data/enrichment
             ENVEOF
               echo "Created .env"
             fi
@@ -137,6 +137,9 @@ jobs:
             set_env_var MAX_SESSIONS_PER_JOB 5
             set_env_var MAX_QUEUED_JOBS_PER_USER 3
             set_env_var BLOCK_RESOURCES true
+            set_env_var ENRICHMENT_DB_PATH /www/wwwroot/api.flowtixtools.com/data/enrichment
+            mkdir -p data/enrichment
+            ls -la data/enrichment 2>/dev/null || true
             echo "Enforced extraction settings (JOB_TIMEOUT_MS=600000, MAX_CONTEXTS_PER_BROWSER=8, MAX_SESSIONS_PER_JOB=5, MAX_QUEUED_JOBS_PER_USER=3, BLOCK_RESOURCES=true)"
 
             mkdir -p logs data

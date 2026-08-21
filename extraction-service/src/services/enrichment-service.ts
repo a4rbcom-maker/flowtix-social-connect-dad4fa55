@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { readdirSync } from "fs";
+import { readdirSync, statSync, existsSync } from "fs";
 import { join } from "path";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
@@ -61,14 +61,38 @@ function cleanFbId(fbId: string): string {
   return cleaned;
 }
 
-function scanDatabases(): { name: string; path: string }[] {
+/** Accepts either a directory containing .db files or a direct path to one .db file. */
+export function scanDatabases(): { name: string; path: string; sizeBytes: number }[] {
+  const root = config.enrichmentDbPath;
   try {
-    const files = readdirSync(config.enrichmentDbPath);
-    return files
-      .filter((f) => f.endsWith(".db"))
-      .map((f) => ({ name: f.replace(/\.db$/i, ""), path: join(config.enrichmentDbPath, f) }));
-  } catch {
-    log.warn("Enrichment", `cannot read db path: ${config.enrichmentDbPath}`);
+    if (!root || !existsSync(root)) {
+      log.error("Enrichment", `enrichment db path does not exist: [${root}] — enrichment will be SKIPPED. Upload .db files there (see GET /enrichment/status).`);
+      return [];
+    }
+    const stat = statSync(root);
+    if (stat.isFile()) {
+      if (!root.toLowerCase().endsWith(".db")) {
+        log.error("Enrichment", `enrichment db path is a file but not a .db: [${root}]`);
+        return [];
+      }
+      return [{ name: root.replace(/\.db$/i, "").split(/[\\/]/).pop() || "db", path: root, sizeBytes: stat.size }];
+    }
+    const files = readdirSync(root);
+    const dbs = files
+      .filter((f) => f.toLowerCase().endsWith(".db"))
+      .map((f) => {
+        const full = join(root, f);
+        return { name: f.replace(/\.db$/i, ""), path: full, sizeBytes: statSync(full).isFile() ? statSync(full).size : 0 };
+      })
+      .filter((d) => d.sizeBytes > 0);
+    if (dbs.length === 0) {
+      log.error("Enrichment", `no .db files found in [${root}] — enrichment will be SKIPPED. Upload .db files there (see GET /enrichment/status).`);
+    } else {
+      log.info("Enrichment", `found ${dbs.length} enrichment db(s): ${dbs.map((d) => `${d.name}.db (${(d.sizeBytes / 1024 / 1024).toFixed(1)}MB)`).join(", ")}`);
+    }
+    return dbs;
+  } catch (err) {
+    log.error("Enrichment", `cannot read db path [${root}]: ${String(err)}`);
     return [];
   }
 }
@@ -309,15 +333,32 @@ function enrichmentRowToPayload(row: EnrichmentRow & { source_db?: string }): Re
 }
 
 export const enrichmentService = {
+  /** Record an enrichment skip/failure into job progress so it is visible in the dashboard. */
+  async recordEnrichmentSkip(jobId: string, reason: string, detail: Record<string, unknown> = {}): Promise<void> {
+    try {
+      const job = await supabaseService.getJob(jobId);
+      const current = (job?.progress || {}) as Record<string, unknown>;
+      await supabaseService.storeProgress(jobId, {
+        ...current,
+        enrichment: { error: reason, enriched: 0, ...detail },
+        last_update: new Date().toISOString(),
+      });
+    } catch {
+      /* best effort */
+    }
+  },
+
   async enrichJobResults(jobId: string): Promise<void> {
     if (!config.enrichmentEnabled) {
-      log.info("Enrichment", "disabled via ENRICHMENT_ENABLED=false");
+      log.warn("Enrichment", "disabled via ENRICHMENT_ENABLED=false");
+      await this.recordEnrichmentSkip(jobId, "ENRICHMENT_DISABLED");
       return;
     }
 
     const databases = scanDatabases();
     if (databases.length === 0) {
-      log.info("Enrichment", `no .db files found in ${config.enrichmentDbPath}`);
+      log.error("Enrichment", `job ${jobId.slice(0, 8)}: enrichment SKIPPED — no database at [${config.enrichmentDbPath}]`);
+      await this.recordEnrichmentSkip(jobId, "ENRICHMENT_DB_MISSING", { db_path: config.enrichmentDbPath });
       return;
     }
 
