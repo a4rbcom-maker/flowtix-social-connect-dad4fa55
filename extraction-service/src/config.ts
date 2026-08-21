@@ -69,6 +69,15 @@ export const config = {
 
   /** Global proxy URL (applies to all sessions if no per-session proxy) */
   proxyUrl: env("PROXY_URL", ""),
+
+  /** Abort image/media/font requests inside extraction contexts (major RAM/bandwidth savings) */
+  blockResources: envBool("BLOCK_RESOURCES", true),
+
+  /** Upper bound of parallel sessions a single extraction job may use */
+  maxSessionsPerJob: envInt("MAX_SESSIONS_PER_JOB", 5),
+
+  /** Max jobs a user may keep waiting in queue behind their running job */
+  maxQueuedJobsPerUser: envInt("MAX_QUEUED_JOBS_PER_USER", 3),
 } as const;
 
 export type Config = typeof config;

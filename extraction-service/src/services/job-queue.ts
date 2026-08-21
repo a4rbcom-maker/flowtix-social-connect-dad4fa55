@@ -18,10 +18,11 @@ class PQueueAdapter implements IJobQueue {
   private queue: PQueue;
 
   constructor() {
+    // No p-queue timeout: a queue-level timeout would trigger a retry while
+    // the timed-out task is still running in the background (double run).
+    // Per-job runtime is bounded by BaseExtractor.maxExecutionMs instead.
     this.queue = new PQueue({
       concurrency: config.maxConcurrentJobs,
-      timeout: config.jobTimeoutMs,
-      throwOnTimeout: true,
     });
   }
 

@@ -390,6 +390,25 @@ export const supabaseService = {
     return data[0] as { id: string; config: Record<string, unknown> | null };
   },
 
+  async countQueuedJobs(userId: string): Promise<number> {
+    const { count } = await sb
+      .from("extraction_jobs")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("status", "queued");
+    return count ?? 0;
+  },
+
+  async getQueuedJobUserIds(): Promise<string[]> {
+    const { data } = await sb
+      .from("extraction_jobs")
+      .select("user_id")
+      .eq("status", "queued")
+      .order("created_at", { ascending: true });
+    if (!data) return [];
+    return Array.from(new Set(data.map((r: { user_id: string }) => r.user_id)));
+  },
+
   async pauseAllRunningJobs(reason: string): Promise<void> {
     const { error } = await sb
       .from("extraction_jobs")

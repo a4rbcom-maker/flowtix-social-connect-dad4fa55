@@ -37,6 +37,7 @@ class ContextManager {
       timezoneId: "Africa/Cairo",
       permissions: ["geolocation"],
       geolocation: { latitude: 30.0444, longitude: 31.2357 },
+      serviceWorkers: "block",
       extraHTTPHeaders: {
         "Accept-Language": "ar-AR,ar;q=0.9,en-US;q=0.8,en;q=0.7",
       },
@@ -67,6 +68,11 @@ class ContextManager {
     }));
 
     await context.addCookies(playwrightCookies);
+
+    if (config.blockResources) {
+      await applyResourceBlocking(context);
+      log.info("ContextManager", `session ${sessionId.slice(0, 8)}: resource blocking ON (images/media/fonts)`);
+    }
 
     const page = await context.newPage();
     page.setDefaultTimeout(config.fbNavTimeoutMs);
@@ -132,6 +138,16 @@ class ContextManager {
   getActiveCount(): number {
     return this.active.size;
   }
+}
+
+export async function applyResourceBlocking(context: BrowserContext): Promise<void> {
+  await context.route("**/*", (route) => {
+    const type = route.request().resourceType();
+    if (type === "image" || type === "media" || type === "font") {
+      return route.abort();
+    }
+    return route.continue();
+  });
 }
 
 export function parseProxyUrl(proxyUrl: string): { server: string; username?: string; password?: string } | null {

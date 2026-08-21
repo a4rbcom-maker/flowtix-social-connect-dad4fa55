@@ -17,6 +17,7 @@ import waRouter from "./wa/routes.js";
 import aiRouter from "./ai/routes.js";
 import debugPageRouter from "./routes/debug-page.js";
 import { waManager } from "./wa/wa-manager.js";
+import { resumeQueuedJobs } from "./routes/extract.js";
 
 dotenv.config();
 const log = logger;
@@ -82,6 +83,7 @@ const server = app.listen(config.port, async () => {
     log.info("Server", "browser pool initialized — service ready");
     await waManager.boot();
     log.info("Server", "WhatsApp manager booted");
+    await resumeQueuedJobs();
 
     const address = server.address();
     log.info("Server", `server address: ${JSON.stringify(address)}`);

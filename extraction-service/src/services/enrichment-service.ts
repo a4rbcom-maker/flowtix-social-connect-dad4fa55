@@ -109,7 +109,8 @@ function mapRow(row: Record<string, unknown>): EnrichmentRow {
   };
 }
 
-function searchInDb(db: Database.Database, fbIds: string[], tableName: string = "data"): Map<string, EnrichmentRow> {
+/** Batch FBID lookup against a SQLite enrichment table (exported for testing). */
+export function searchInDb(db: Database.Database, fbIds: string[], tableName: string = "data"): Map<string, EnrichmentRow> {
   const map = new Map<string, EnrichmentRow>();
   if (fbIds.length === 0) return map;
 

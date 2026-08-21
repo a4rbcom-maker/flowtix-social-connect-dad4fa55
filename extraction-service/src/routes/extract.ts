@@ -67,6 +67,20 @@ async function autoStartNextQueuedJob(userId: string): Promise<void> {
   }
 }
 
+/** Kick off the oldest queued job for every user that has one (used on boot). */
+async function resumeQueuedJobs(): Promise<void> {
+  try {
+    const userIds = await supabaseService.getQueuedJobUserIds();
+    if (userIds.length === 0) return;
+    log.info("Extract", `boot: resuming queued jobs for ${userIds.length} user(s)`);
+    for (const userId of userIds) {
+      await autoStartNextQueuedJob(userId);
+    }
+  } catch (err) {
+    log.error("Extract", `resumeQueuedJobs failed: ${String(err)}`);
+  }
+}
+
 async function setEnrichingPhase(jobId: string): Promise<void> {
   try {
     const job = await supabaseService.getJob(jobId);
@@ -98,40 +112,53 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
   };
 
   const isIg = isIgType(job.type as string);
-  const sessionPages: Array<{ sessionId: string; page: import("playwright").Page; contextId: string }> = [];
-  for (const sid of sessionIds) {
-    if (isIg) {
-      const { cookies, proxy } = await igSupabaseService.getIgSessionAndCookies(sid);
-      const created = await igContextManager.createContext(sid, cookies, proxy);
-      sessionPages.push({ sessionId: sid, page: created.page, contextId: created.contextId });
-    } else {
-      const { cookies, proxy } = await supabaseService.getSessionAndCookies(sid);
-      const created = await contextManager.createContext(sid, cookies, proxy);
-      sessionPages.push({ sessionId: sid, page: created.page, contextId: created.contextId });
-    }
+  const poolCapacity = config.browserPoolSize * config.maxContextsPerBrowser;
+  const sessionCap = Math.min(poolCapacity, config.maxSessionsPerJob);
+  let usedSessionIds = sessionIds;
+  if (sessionIds.length > sessionCap) {
+    usedSessionIds = sessionIds.slice(0, sessionCap);
+    log.warn("Extract", `job ${jobId}: ${sessionIds.length} sessions requested, using first ${sessionCap} (pool=${poolCapacity}, per-job cap=${config.maxSessionsPerJob})`);
   }
-  const releasePages = async () => {
-    for (const sp of sessionPages) {
-      if (isIg) await igContextManager.releaseContext(sp.contextId);
-      else await contextManager.releaseContext(sp.contextId);
-    }
-  };
-
-  const page = sessionPages[0].page;
-
-  const currentStatus = await supabaseService.getJobStatus(jobId);
-  if (currentStatus === "canceled") {
-    log.info("Extract", `job ${jobId} was canceled before start, skipping`);
-    await releasePages();
-    return;
-  }
-
-  await supabaseService.updateJob(jobId, { status: "running", error: null, started_at: new Date().toISOString() });
 
   jobQueue.enqueue(
     async () => {
+      const currentStatus = await supabaseService.getJobStatus(jobId);
+      if (currentStatus === "canceled" || currentStatus === "completed" || currentStatus === "failed") {
+        log.info("Extract", `job ${jobId} is ${currentStatus ?? "missing"} before start, skipping (no duplicate run)`);
+        await autoStartNextQueuedJob(userId);
+        return;
+      }
+
+      const sessionPages: Array<{ sessionId: string; page: import("playwright").Page; contextId: string }> = [];
+      const releasePages = async () => {
+        for (const sp of sessionPages) {
+          if (isIg) await igContextManager.releaseContext(sp.contextId);
+          else await contextManager.releaseContext(sp.contextId);
+        }
+      };
+
       try {
-        log.info("Extract", `job ${jobId} started`, { sessionIds });
+        for (const sid of usedSessionIds) {
+          if (isIg) {
+            const { cookies, proxy } = await igSupabaseService.getIgSessionAndCookies(sid);
+            const created = await igContextManager.createContext(sid, cookies, proxy);
+            sessionPages.push({ sessionId: sid, page: created.page, contextId: created.contextId });
+          } else {
+            const { cookies, proxy } = await supabaseService.getSessionAndCookies(sid);
+            const created = await contextManager.createContext(sid, cookies, proxy);
+            sessionPages.push({ sessionId: sid, page: created.page, contextId: created.contextId });
+          }
+        }
+      } catch (err) {
+        await releasePages();
+        throw err;
+      }
+
+      const page = sessionPages[0].page;
+
+      try {
+        await supabaseService.updateJob(jobId, { status: "running", error: null, started_at: new Date().toISOString() });
+        log.info("Extract", `job ${jobId} started`, { sessionIds: usedSessionIds });
 
         if (!ctx.cursor && !isIg) {
           log.info("Extract", `pre-flight auth check`);
@@ -221,15 +248,13 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
       }
     },
     async () => {
-      await releasePages();
       await supabaseService.failJob(jobId, "Extraction failed after retries");
       await autoStartNextQueuedJob(userId);
     },
   );
 }
 
-router.post("/extract", async (req, res) => {
-  try {
+router.post("/extract", async (req, res) => {  try {
     const parsed = extractSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({
@@ -297,19 +322,47 @@ router.post("/extract", async (req, res) => {
     });
 
     let currentJobId = body.job_id;
-    // For new jobs, only block if there's an actively RUNNING job.
-    // Paused jobs are stopped and should not prevent starting a new extraction.
-    const checkStatuses = currentJobId ? ["running"] : ["running"];
-    const activeCheck = await supabaseService.hasActiveJob(sessionUserId, currentJobId || undefined, checkStatuses);
+    // One active job per user: if a job is running/queued, new submissions are
+    // queued (bounded) and auto-started when the current one finishes.
+    const activeCheck = await supabaseService.hasActiveJob(sessionUserId, currentJobId || undefined, ["running", "queued"]);
 
     if (activeCheck.active) {
-      const statusMsg = activeCheck.jobStatus === "paused" ? "متوقفة مؤقتاً" : "قيد التشغيل";
-      return res.status(409).json({
-        error: {
-          code: ErrorCodes.JOB_ALREADY_ACTIVE,
-          message: `لديك مهمة استخراج ${statusMsg} بالفعل (${activeCheck.jobName}). يرجى الانتظار حتى تكتمل أو إلغاؤها قبل استئناف مهمة أخرى.`,
-        },
-      });
+      if (activeCheck.jobStatus === "queued") {
+        return res.status(409).json({
+          error: {
+            code: ErrorCodes.JOB_ALREADY_ACTIVE,
+            message: `لديك مهمة في قائمة الانتظار بالفعل (${activeCheck.jobName}). ستبدأ تلقائياً بعد انتهاء المهمة الحالية.`,
+          },
+        });
+      }
+
+      const queuedCount = await supabaseService.countQueuedJobs(sessionUserId);
+      if (queuedCount >= config.maxQueuedJobsPerUser) {
+        return res.status(409).json({
+          error: {
+            code: ErrorCodes.JOB_ALREADY_ACTIVE,
+            message: `لديك مهمة قيد التشغيل (${activeCheck.jobName}) و${queuedCount} مهام في الانتظار (الحد الأقصى ${config.maxQueuedJobsPerUser}). يرجى الانتظار أو إلغاء إحداها.`,
+          },
+        });
+      }
+
+      if (!currentJobId) {
+        const job = await supabaseService.createJob({
+          workspaceId: sessionWorkspaceId,
+          userId: sessionUserId,
+          type: body.type as ExtractionType,
+          source: body.source_url,
+          name: body.job_name || `Extract ${body.type}`,
+          config: { max_results: body.max_results, skip_duplicates: body.skip_duplicates, session_ids: allSessionIds },
+          status: "queued",
+        });
+        log.info("Extract", `job queued: ${job.id} (running job: ${activeCheck.jobName})`);
+        return res.status(200).json({ job_id: job.id, status: "queued", result_count: 0, progress: 0 });
+      }
+
+      await supabaseService.updateJob(currentJobId, { status: "queued", error: null });
+      log.info("Extract", `resume deferred — job ${currentJobId} queued behind running job ${activeCheck.jobId}`);
+      return res.status(200).json({ job_id: currentJobId, status: "queued", result_count: 0, progress: 0 });
     }
 
     if (!currentJobId) {
@@ -534,4 +587,5 @@ router.post("/enrich", async (req, res) => {
   }
 });
 
+export { resumeQueuedJobs };
 export default router;

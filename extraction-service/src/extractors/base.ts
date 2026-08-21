@@ -417,7 +417,9 @@ export abstract class BaseExtractor {
   protected activeSessionIndex = 0;
   protected pagesFetched = 0;
   protected startTime: number;
-  protected maxExecutionMs = 1_700_000;
+  /** Extraction budget = job timeout minus a safety margin for context setup,
+   *  pre-flight auth and post-extraction enrichment. */
+  protected maxExecutionMs = Math.max(60_000, config.jobTimeoutMs - 120_000);
   protected requestDelayMs = 600;
   protected batchSizeForRest = 8;
   protected restDelayMs = 10_000;
