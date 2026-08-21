@@ -83,6 +83,17 @@ export function useForceStopJob() {
   });
 }
 
+export function useDeleteExtraction() {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (jobId) => extractionRepository.deleteJob(jobId),
+    onSuccess: (_data, jobId) => {
+      queryClient.removeQueries({ queryKey: [JOB_KEY, jobId] });
+      queryClient.invalidateQueries({ queryKey: [JOBS_KEY] });
+    },
+  });
+}
+
 export function useExportResults() {
   return useMutation<ExportResult, Error, { jobId: string; format: ExportFormat }>({
     mutationFn: ({ jobId, format }) => extractionRepository.exportResults(jobId, format),

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, Link } from "react-router-dom";
-import { ListChecks, Activity, CheckCircle2, Loader2, PauseCircle, Clock, AlertTriangle, Square, Download, Zap, ArrowRight, Send, MoreVertical, Search, Users, Globe, ThumbsUp, MessageSquare, Database } from "lucide-react";
+import { ListChecks, Activity, CheckCircle2, Loader2, PauseCircle, Clock, AlertTriangle, Square, Download, Zap, ArrowRight, Send, MoreVertical, Search, Users, Globe, ThumbsUp, MessageSquare, Database, Trash2 } from "lucide-react";
 import { PageHeader, StatCard } from "@/components/ui/page";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ import { Dialog, DialogHeader, DialogTitle, DialogClose, DialogBody, DialogFoote
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
-import { useExtractionJobs, useCancelExtraction, useForceStopJob, useExportResults } from "@/hooks/useExtractionJobs";
+import { useExtractionJobs, useCancelExtraction, useForceStopJob, useExportResults, useDeleteExtraction } from "@/hooks/useExtractionJobs";
 import type { ExportFormat } from "@/lib/extraction/types";
 
 interface FlatJob {
@@ -80,11 +80,13 @@ export function TasksPage() {
   const cancelMutation = useCancelExtraction();
   const forceStopMutation = useForceStopJob();
   const exportMutation = useExportResults();
+  const deleteMutation = useDeleteExtraction();
 
   const [publishJobs, setPublishJobs] = useState<FlatJob[]>([]);
   const [filter, setFilter] = useState<Status>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<FlatJob | null>(null);
   const [exportingJob, setExportingJob] = useState<string | null>(null);
 
   useEffect(() => {
@@ -147,6 +149,18 @@ export function TasksPage() {
     exportMutation.mutate({ jobId, format }, {
       onSuccess: () => { setExportingJob(null); toast({ type: "success", title: t("extract.exportStarted") }); },
       onError: (err) => { setExportingJob(null); toast({ type: "error", title: t("extract.exportFailed"), description: err.message }); },
+    });
+  }
+
+  function handleDelete(jobId: string) {
+    deleteMutation.mutate(jobId, {
+      onSuccess: () => {
+        setDeleteTarget(null);
+        toast({ type: "success", title: t("pages.tasks.deleted") });
+      },
+      onError: (err) => {
+        toast({ type: "error", title: t("common.error"), description: err.message });
+      },
     });
   }
 
@@ -315,6 +329,12 @@ export function TasksPage() {
           {job.status === "failed" && (
             <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard/facebook/extract-members")}>
               <Zap className="size-3.5" />{t("pages.tasks.retry")}
+            </Button>
+          )}
+          {!isActive && !job.isPublish && (
+            <Button variant="ghost" size="sm" onClick={() => setDeleteTarget(job)} disabled={deleteMutation.isPending} className="text-[var(--color-fg-muted)] hover:text-[var(--color-error)] ms-auto">
+              {deleteMutation.isPending && deleteMutation.variables === job.id ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+              {t("pages.tasks.delete")}
             </Button>
           )}
         </div>
@@ -492,6 +512,30 @@ export function TasksPage() {
           <Button variant="warning" disabled={cancelMutation.isPending} onClick={() => cancelTarget && handleStop(cancelTarget)}>
             {cancelMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Square className="size-4" />}
             {t("pages.tasks.stop")}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* ─── Delete Job Dialog (permanent — job + results) ─── */}
+      <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Trash2 className="size-4 text-[var(--color-error)]" />
+            {t("pages.tasks.deleteConfirmTitle")}
+          </DialogTitle>
+          <DialogClose onClose={() => setDeleteTarget(null)} />
+        </DialogHeader>
+        <DialogBody>
+          <div className="flex flex-col items-center gap-4 py-2 text-center">
+            <p className="text-sm font-medium text-[var(--color-fg)]">{deleteTarget?.name || deleteTarget?.type}</p>
+            <p className="text-sm text-[var(--color-fg-muted)]">{t("pages.tasks.deleteConfirmBody", { count: deleteTarget?.result_count ?? 0 })}</p>
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setDeleteTarget(null)}>{t("common.cancel")}</Button>
+          <Button variant="danger" disabled={deleteMutation.isPending} onClick={() => deleteTarget && handleDelete(deleteTarget.id)}>
+            {deleteMutation.isPending && deleteMutation.variables === deleteTarget?.id ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+            {t("pages.tasks.delete")}
           </Button>
         </DialogFooter>
       </Dialog>

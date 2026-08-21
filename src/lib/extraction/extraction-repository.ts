@@ -86,6 +86,13 @@ export const extractionRepository = {
     if (error) throw error;
   },
 
+  /** Permanent delete — removes the job and ALL its results from the database
+   *  (atomic RPC with server-side ownership check; no undo). */
+  async deleteJob(jobId: string): Promise<void> {
+    const { error } = await supabase.rpc("delete_extraction_job", { p_job_id: jobId });
+    if (error) throw error;
+  },
+
   async startExtraction(input: StartExtractionInput): Promise<ExtractionProgress> {
     const dbType = SOURCE_TO_DB_TYPE[input.type];
     const sessionIds = input.session_ids && input.session_ids.length > 0
