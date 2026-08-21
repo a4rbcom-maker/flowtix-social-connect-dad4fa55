@@ -32,7 +32,7 @@ app.use((req, res, next) => {
   } else if (config.isDev) {
     res.header("Access-Control-Allow-Origin", "*");
   }
-  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   res.header("Access-Control-Allow-Headers", "Content-Type, X-API-Key");
   if (req.method === "OPTIONS") return res.sendStatus(200);
   next();
