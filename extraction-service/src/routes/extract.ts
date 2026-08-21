@@ -137,8 +137,13 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
         }
       };
 
-      try {
-        for (const sid of usedSessionIds) {
+      // Per-session resilience: a dead/busy session is skipped (and marked
+      // disconnected when expired) instead of failing the whole job — the
+      // extraction continues with the remaining healthy sessions.
+      const SKIPPABLE_CODES = new Set([ErrorCodes.SESSION_EXPIRED, ErrorCodes.SESSION_NOT_CONNECTED, ErrorCodes.NO_COOKIES, ErrorCodes.SESSION_IN_USE]);
+      let lastSessionError: unknown = null;
+      for (const sid of usedSessionIds) {
+        try {
           if (isIg) {
             const { cookies, proxy, userAgent } = await igSupabaseService.getIgSessionAndCookies(sid);
             const created = await igContextManager.createContext(sid, cookies, proxy, userAgent);
@@ -148,10 +153,32 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
             const created = await contextManager.createContext(sid, cookies, proxy, userAgent);
             sessionPages.push({ sessionId: sid, page: created.page, contextId: created.contextId });
           }
+        } catch (err) {
+          const code = err instanceof ExtractionError ? err.code : null;
+          const message = err instanceof Error ? err.message : String(err);
+          if (code && (SKIPPABLE_CODES as Set<string>).has(code)) {
+            lastSessionError = err;
+            log.warn("Extract", `job ${jobId}: skipping session ${sid.slice(0, 8)} (${code}) — ${message.substring(0, 120)}`);
+            if (code === ErrorCodes.SESSION_EXPIRED || code === ErrorCodes.SESSION_NOT_CONNECTED) {
+              if (isIg) await igSupabaseService.updateIgSessionStatus(sid, "disconnected", message).catch(() => {});
+              else await supabaseService.updateSessionStatus(sid, "disconnected", message).catch(() => {});
+            }
+            continue;
+          }
+          await releasePages();
+          throw err;
         }
-      } catch (err) {
-        await releasePages();
-        throw err;
+      }
+
+      if (sessionPages.length === 0) {
+        const message = lastSessionError instanceof Error ? lastSessionError.message : "No usable sessions";
+        throw new ExtractionError(
+          lastSessionError instanceof ExtractionError ? lastSessionError.code : ErrorCodes.EXTRACTION_FAILED,
+          `جميع الجلسات المحددة غير صالحة. آخر خطأ: ${message}`,
+        );
+      }
+      if (sessionPages.length < usedSessionIds.length) {
+        log.warn("Extract", `job ${jobId}: continuing with ${sessionPages.length}/${usedSessionIds.length} sessions (others skipped)`);
       }
 
       const page = sessionPages[0].page;
@@ -247,8 +274,9 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
         await autoStartNextQueuedJob(userId);
       }
     },
-    async () => {
-      await supabaseService.failJob(jobId, "Extraction failed after retries");
+    async (err?: unknown) => {
+      const detail = err instanceof Error ? err.message : err ? String(err) : "";
+      await supabaseService.failJob(jobId, detail ? `فشل الاستخراج: ${detail}` : "Extraction failed after retries");
       await autoStartNextQueuedJob(userId);
     },
   );

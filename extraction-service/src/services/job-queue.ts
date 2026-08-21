@@ -58,7 +58,7 @@ class JobQueueManager {
     this.impl = new PQueueAdapter();
   }
 
-  async enqueue(task: () => Promise<void>, retryable: () => Promise<void>): Promise<void> {
+  async enqueue(task: () => Promise<void>, retryable: (err?: unknown) => Promise<void>): Promise<void> {
     await this.impl.add(async () => {
       let lastError: unknown;
       for (let attempt = 1; attempt <= config.maxRetries + 1; attempt++) {
@@ -69,10 +69,10 @@ class JobQueueManager {
           lastError = err;
           const code = err instanceof ExtractionError ? err.code : ErrorCodes.UNKNOWN_ERROR;
           if (!isRetryable(code) || attempt === config.maxRetries + 1) {
-            // Invoke the failure handler (failJob) before surfacing the error,
-            // otherwise the job row stays "running" forever.
+            // Invoke the failure handler (failJob) with the ORIGINAL error so
+            // the job row shows the real cause, not a generic message.
             try {
-              await retryable();
+              await retryable(lastError);
             } catch (retryErr) {
               log.error("JobQueue", `failure handler errored: ${String(retryErr)}`);
             }
