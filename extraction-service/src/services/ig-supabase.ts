@@ -72,6 +72,7 @@ export const igSupabaseService = {
     cookies: CookieEntry[];
     cookieString: string;
     proxy: ProxyConfig | null;
+    userAgent: string | null;
   }> {
     const { data: session, error: sErr } = await sb
       .from("ig_sessions")
@@ -118,7 +119,33 @@ export const igSupabaseService = {
       log.info("IgSupabase", `IG session ${session.id.slice(0, 8)}: proxy resolved (${proxy.label || proxy.url.split("@").pop()})`);
     }
 
-    return { session, cookies, cookieString: toCookieString(cookies), proxy };
+    return { session, cookies, cookieString: toCookieString(cookies), proxy, userAgent: profile.user_agent ?? null };
+  },
+
+  /** Persist cookies rotated by Instagram during a browsing session back to the profile row. */
+  async updateIgSessionCookies(sessionId: string, cookies: CookieEntry[]): Promise<void> {
+    if (cookies.length === 0) return;
+    const payload = JSON.stringify(
+      cookies.map((c) => ({
+        name: c.name,
+        value: c.value,
+        domain: c.domain || ".instagram.com",
+        path: c.path || "/",
+        expirationDate: c.expires,
+        httpOnly: c.httpOnly ?? false,
+        secure: c.secure ?? true,
+        sameSite: c.sameSite,
+      })),
+    );
+    const { error } = await sb
+      .from("ig_browser_profiles")
+      .update({ cookies_enc: payload })
+      .eq("session_id", sessionId);
+    if (error) {
+      log.warn("IgSupabase", `updateIgSessionCookies failed for ${sessionId.slice(0, 8)}: ${error.message}`);
+    } else {
+      log.info("IgSupabase", `IG session ${sessionId.slice(0, 8)}: rotated cookies persisted (${cookies.length} cookies)`);
+    }
   },
 
   async updateIgSessionStatus(sessionId: string, newStatus: string, reason?: string): Promise<void> {

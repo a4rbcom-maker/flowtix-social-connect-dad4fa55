@@ -131,6 +131,7 @@ export const supabaseService = {
     cookies: CookieEntry[];
     cookieString: string;
     proxy: ProxyConfig | null;
+    userAgent: string | null;
   }> {
     const { data: session, error: sErr } = await sb
       .from("fb_sessions")
@@ -173,7 +174,34 @@ export const supabaseService = {
       log.info("Supabase", `session ${session.id.slice(0, 8)}: proxy resolved (${proxy.label || proxy.url.split('@').pop()})`);
     }
 
-    return { session, cookies, cookieString: toCookieString(cookies), proxy };
+    return { session, cookies, cookieString: toCookieString(cookies), proxy, userAgent: profile.user_agent ?? null };
+  },
+
+  /** Persist cookies rotated by Facebook during a browsing session back to the profile row.
+   *  Without this the stored `xs` token goes stale and Facebook invalidates the whole session. */
+  async updateSessionCookies(sessionId: string, cookies: CookieEntry[]): Promise<void> {
+    if (cookies.length === 0) return;
+    const payload = JSON.stringify(
+      cookies.map((c) => ({
+        name: c.name,
+        value: c.value,
+        domain: c.domain,
+        path: c.path,
+        expirationDate: c.expires,
+        httpOnly: c.httpOnly ?? false,
+        secure: c.secure ?? true,
+        sameSite: c.sameSite,
+      })),
+    );
+    const { error } = await sb
+      .from("fb_browser_profiles")
+      .update({ cookies_enc: payload })
+      .eq("session_id", sessionId);
+    if (error) {
+      log.warn("Supabase", `updateSessionCookies failed for ${sessionId.slice(0, 8)}: ${error.message}`);
+    } else {
+      log.info("Supabase", `session ${sessionId.slice(0, 8)}: rotated cookies persisted (${cookies.length} cookies)`);
+    }
   },
 
   async createJob(params: {

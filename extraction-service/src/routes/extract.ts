@@ -140,12 +140,12 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
       try {
         for (const sid of usedSessionIds) {
           if (isIg) {
-            const { cookies, proxy } = await igSupabaseService.getIgSessionAndCookies(sid);
-            const created = await igContextManager.createContext(sid, cookies, proxy);
+            const { cookies, proxy, userAgent } = await igSupabaseService.getIgSessionAndCookies(sid);
+            const created = await igContextManager.createContext(sid, cookies, proxy, userAgent);
             sessionPages.push({ sessionId: sid, page: created.page, contextId: created.contextId });
           } else {
-            const { cookies, proxy } = await supabaseService.getSessionAndCookies(sid);
-            const created = await contextManager.createContext(sid, cookies, proxy);
+            const { cookies, proxy, userAgent } = await supabaseService.getSessionAndCookies(sid);
+            const created = await contextManager.createContext(sid, cookies, proxy, userAgent);
             sessionPages.push({ sessionId: sid, page: created.page, contextId: created.contextId });
           }
         }

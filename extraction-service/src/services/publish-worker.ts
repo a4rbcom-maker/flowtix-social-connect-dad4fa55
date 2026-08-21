@@ -32,8 +32,8 @@ async function runPublishWorker(jobId: string, sessionId: string) {
 
   log.info("PublishWorker", `starting ${jobId}: ${groups.length} groups, batch=${BATCH_SIZE}, pause=${BATCH_PAUSE}s, from idx ${startIdx}`);
 
-  const { cookies, proxy } = await supabaseService.getSessionAndCookies(sessionId);
-  const { page, contextId } = await contextManager.createContext(sessionId, cookies, proxy);
+  const { cookies, proxy, userAgent } = await supabaseService.getSessionAndCookies(sessionId);
+  const { page, contextId } = await contextManager.createContext(sessionId, cookies, proxy, userAgent);
 
   try {
     await sb.from("publish_jobs").update({ status: "running", started_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", jobId);

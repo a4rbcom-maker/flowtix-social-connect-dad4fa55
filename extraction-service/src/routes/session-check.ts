@@ -27,9 +27,9 @@ router.post("/session-check", async (req, res) => {
     const { session_id } = parsed.data;
     log.info("SessionCheck", `checking session ${session_id}`);
 
-    const { session, cookies } = await supabaseService.getSessionAndCookies(session_id);
+    const { session, cookies, userAgent } = await supabaseService.getSessionAndCookies(session_id);
 
-    const { page, contextId } = await contextManager.createContext(session_id, cookies);
+    const { page, contextId } = await contextManager.createContext(session_id, cookies, undefined, userAgent);
     try {
       await page.goto("https://www.facebook.com/", {
         waitUntil: "domcontentloaded",
