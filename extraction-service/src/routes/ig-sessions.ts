@@ -161,8 +161,8 @@ router.post("/ig/session-check", async (req, res) => {
     }
 
     const { session_id } = parsed.data;
-    const { cookies } = await igSupabaseService.getIgSessionAndCookies(session_id);
-    const { page, contextId } = await igContextManager.createContext(session_id, cookies);
+    const { cookies, userAgent } = await igSupabaseService.getIgSessionAndCookies(session_id);
+    const { page, contextId } = await igContextManager.createContext(session_id, cookies, undefined, userAgent);
 
     try {
       await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 30000 });
