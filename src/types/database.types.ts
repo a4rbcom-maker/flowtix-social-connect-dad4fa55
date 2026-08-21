@@ -2724,12 +2724,6 @@ export type Database = {
     }
     Functions: {
       _current_workspace_id: { Args: never; Returns: string }
-      delete_extraction_job: {
-        Args: {
-          p_job_id: string
-        }
-        Returns: undefined
-      }
       admin_ai_cost_trend: {
         Args: { p_days?: number }
         Returns: {

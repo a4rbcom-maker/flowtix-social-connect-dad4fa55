@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, Link } from "react-router-dom";
-import { ListChecks, Activity, CheckCircle2, Loader2, PauseCircle, Clock, AlertTriangle, Square, Download, Zap, ArrowRight, Send, MoreVertical, Search, Users, Globe, ThumbsUp, MessageSquare, Database, Trash2 } from "lucide-react";
+import { ListChecks, Activity, CheckCircle2, Loader2, PauseCircle, Clock, AlertTriangle, Square, Download, Zap, ArrowRight, Send, Search, Users, Globe, ThumbsUp, MessageSquare, Database, Trash2 } from "lucide-react";
 import { PageHeader, StatCard } from "@/components/ui/page";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -229,9 +229,6 @@ export function TasksPage() {
               {!cfg.animate && <StatusIcon className="size-3" aria-hidden />}
               {t(`pages.tasks.status.${job.status}` as any)}
             </Badge>
-            <button className="hidden sm:inline-flex rounded-md p-1.5 text-[var(--color-fg-subtle)] opacity-0 transition-opacity hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)] group-hover:opacity-100" aria-label={t("pages.tasks.moreActions")}>
-              <MoreVertical className="size-4" />
-            </button>
           </div>
         </div>
 

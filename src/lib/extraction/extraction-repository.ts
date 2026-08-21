@@ -86,11 +86,14 @@ export const extractionRepository = {
     if (error) throw error;
   },
 
-  /** Permanent delete — removes the job and ALL its results from the database
-   *  (atomic RPC with server-side ownership check; no undo). */
+  /** Permanent delete — removes the job and ALL its results via the
+   *  extraction service (service-role; works on any backend, no undo). */
   async deleteJob(jobId: string): Promise<void> {
-    const { error } = await supabase.rpc("delete_extraction_job", { p_job_id: jobId });
-    if (error) throw error;
+    const res = await fetch(`${EXTRACTION_API_URL}/extract/${jobId}`, {
+      method: "DELETE",
+      headers: { "X-API-Key": EXTRACTION_API_KEY },
+    });
+    if (!res.ok) throw new Error(await readFetchError(res));
   },
 
   async startExtraction(input: StartExtractionInput): Promise<ExtractionProgress> {

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import * as XLSX from "xlsx";
-import { supabaseService } from "../services/supabase.js";
+import { supabaseService, supabaseClient } from "../services/supabase.js";
 import { igSupabaseService } from "../services/ig-supabase.js";
 import { enrichmentService } from "../services/enrichment-service.js";
 import { scanDatabases } from "../services/enrichment-service.js";
@@ -675,6 +675,36 @@ router.post("/enrich", async (req, res) => {
     const message = err instanceof Error ? err.message : String(err);
     log.error("Enrich", `error: ${message}`);
     res.status(500).json({ error: { code: "ENRICH_FAILED", message } });
+  }
+});
+
+// Permanent job deletion (job + all its results). Uses the service-role
+// client, so it works on any backend regardless of RLS DELETE policies —
+// no database function/migration required.
+router.delete("/extract/:jobId", async (req, res) => {
+  const jobId = String(req.params.jobId || "");
+  if (!/^[0-9a-f-]{36}$/i.test(jobId)) {
+    return res.status(400).json({ error: { code: ErrorCodes.INVALID_INPUT, message: "Invalid job id" } });
+  }
+
+  try {
+    const status = await supabaseService.getJobStatus(jobId);
+    if (status === "running" || status === "queued") {
+      return res.status(409).json({ error: { code: "JOB_ACTIVE", message: "لا يمكن حذف مهمة قيد التشغيل — أوقفها أولاً" } });
+    }
+
+    const { error: resultsError } = await supabaseClient.from("extraction_results").delete().eq("job_id", jobId);
+    if (resultsError) throw resultsError;
+
+    const { error: jobError } = await supabaseClient.from("extraction_jobs").delete().eq("id", jobId);
+    if (jobError) throw jobError;
+
+    log.info("Extract", `job ${jobId.slice(0, 8)} deleted permanently (results + job row)`);
+    return res.status(200).json({ status: "ok", deleted: jobId });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.error("Extract", `delete failed for ${jobId.slice(0, 8)}: ${message}`);
+    return res.status(500).json({ error: { code: "DELETE_FAILED", message } });
   }
 });
 
