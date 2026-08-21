@@ -1,8 +1,9 @@
+require("dotenv").config();
 const { chromium } = require("playwright");
 const { createClient } = require("@supabase/supabase-js");
 
 (async () => {
-  const sb = createClient("https://ukjrizflmkutadsrcmut.supabase.co", "sb_secret_rptw3rPZ4xpbfYavBA5snA_KFXa9MdP", { auth: { persistSession: false } });
+  const sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
   const { data } = await sb.from("fb_browser_profiles").select("cookies_enc, user_agent").eq("session_id", "7d87c0da-ea16-4b45-91b4-7f1b21b36272").single();
   const cookies = JSON.parse(data.cookies_enc).map(c => ({ name: c.name, value: c.value, domain: c.domain || ".facebook.com", path: c.path || "/" }));
 

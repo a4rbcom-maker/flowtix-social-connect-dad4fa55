@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { chromium } from "playwright";
 import * as fs from "fs";
 
@@ -6,8 +7,8 @@ async function debug() {
   
   const { createClient } = await import("@supabase/supabase-js");
   const sb = createClient(
-    "https://ukjrizflmkutadsrcmut.supabase.co",
-    "sb_secret_rptw3rPZ4xpbfYavBA5snA_KFXa9MdP"
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
   const { data: profile } = await sb
@@ -55,7 +56,7 @@ async function debug() {
   console.log(`URL: ${page.url()}`);
   
   if (page.url().includes("login") || page.url().includes("checkpoint")) {
-    console.log("❌ SESSION EXPIRED");
+    console.log("â‌Œ SESSION EXPIRED");
     await browser.close(); return;
   }
 
