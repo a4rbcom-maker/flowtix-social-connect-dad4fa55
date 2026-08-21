@@ -69,6 +69,13 @@ class JobQueueManager {
           lastError = err;
           const code = err instanceof ExtractionError ? err.code : ErrorCodes.UNKNOWN_ERROR;
           if (!isRetryable(code) || attempt === config.maxRetries + 1) {
+            // Invoke the failure handler (failJob) before surfacing the error,
+            // otherwise the job row stays "running" forever.
+            try {
+              await retryable();
+            } catch (retryErr) {
+              log.error("JobQueue", `failure handler errored: ${String(retryErr)}`);
+            }
             throw err;
           }
           const delayMs = config.retryDelayMs * attempt;

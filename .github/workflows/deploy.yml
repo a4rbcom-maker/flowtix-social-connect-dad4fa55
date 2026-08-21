@@ -124,6 +124,21 @@ jobs:
               fi
             fi
 
+            # Enforce critical extraction settings on every deploy (idempotent set-or-append)
+            set_env_var() {
+              if grep -qE "^$1=" .env; then
+                sed -i "s|^$1=.*|$1=$2|" .env
+              else
+                echo "$1=$2" >> .env
+              fi
+            }
+            set_env_var JOB_TIMEOUT_MS 600000
+            set_env_var MAX_CONTEXTS_PER_BROWSER 8
+            set_env_var MAX_SESSIONS_PER_JOB 5
+            set_env_var MAX_QUEUED_JOBS_PER_USER 3
+            set_env_var BLOCK_RESOURCES true
+            echo "Enforced extraction settings (JOB_TIMEOUT_MS=600000, MAX_CONTEXTS_PER_BROWSER=8, MAX_SESSIONS_PER_JOB=5, MAX_QUEUED_JOBS_PER_USER=3, BLOCK_RESOURCES=true)"
+
             mkdir -p logs data
 
             # Install production dependencies
