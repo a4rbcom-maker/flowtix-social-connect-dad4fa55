@@ -1,7 +1,8 @@
-import { BaseExtractor, parseGroupId, parseFollowersCount, extractUsersFromLinks, detectAuthState, authStateToMessage, authStateToErrorCode } from "./base.js";
+import { BaseExtractor, parseGroupId, parseFollowersCount, detectAuthState, authStateToMessage, authStateToErrorCode } from "./base.js";
 import { ExtractionError, ErrorCodes } from "../errors.js";
 import { logger } from "../logger.js";
 import { supabaseService } from "../services/supabase.js";
+import { multiSessionGroupMembers, type GroupMemberUser } from "../services/group-members-core.js";
 import type { AuthState, ExtractedMember } from "../types.js";
 
 const log = logger;
@@ -21,24 +22,19 @@ export class GroupMembersExtractor extends BaseExtractor {
   private totalMembersSource: string = "unknown";
   private lastStopReason: GroupStopReason | null = null;
   private lastProgressTs = 0;
+  private canceledCached = false;
   private lastCancelCheckTs = 0;
-  private cancelCheckIntervalMs = 5000;
 
   async extract(): Promise<{ extracted: number; nextCursor?: string; done: boolean; authState: AuthState }> {
     const gid = parseGroupId(this.ctx.sourceUrl);
     if (!gid) throw new ExtractionError(ErrorCodes.INVALID_INPUT, "Invalid group URL");
 
-    let total = 0, done = false, consecutiveEmpty = 0;
-    let authState: AuthState = "unknown";
-    const seen = new Set<string>();
-    let scrollAttempts = 0;
-
-    const url = this.ctx.cursor || `https://www.facebook.com/groups/${gid}/members`;
-    log.info("GroupMembers", `starting`, { jobId: this.ctx.jobId, url });
+    const membersUrl = this.ctx.cursor || `https://www.facebook.com/groups/${gid}/members`;
+    log.info("GroupMembers", `starting`, { jobId: this.ctx.jobId, url: membersUrl, sessions: this.totalSessions });
     await this.storeExtractionProgress(0, "navigating", 0);
 
     try {
-      await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+      await this.page.goto(membersUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
       await this.page.waitForTimeout(2000);
       await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
       await this.page.waitForTimeout(1000);
@@ -47,7 +43,7 @@ export class GroupMembersExtractor extends BaseExtractor {
     }
 
     const html = await this.page.content();
-    authState = detectAuthState(html, this.page.url());
+    const authState = detectAuthState(html, this.page.url());
     if (authState !== "authenticated") throw new ExtractionError(authStateToErrorCode(authState), authStateToMessage(authState));
 
     const countResult = parseFollowersCount(html);
@@ -59,83 +55,46 @@ export class GroupMembersExtractor extends BaseExtractor {
     }
     await this.storeExtractionProgress(0, "scrolling", 0);
 
-    while (!done && !this.shouldStop && total < this.ctx.maxResults) {
-      if (this.shouldCheckCancel()) {
-        if (await this.checkCanceled()) return { extracted: total, done: true, authState };
-      }
+    const allPages = [
+      { sessionId: this.ctx.sessionId, page: this.page },
+      ...this.secondarySessionPages,
+    ];
 
-      const rawLinks = await this.page.evaluate(() => {
-        const links = document.querySelectorAll('a[href]');
-        return Array.from(links).map(link => ({
-          href: link.getAttribute('href') || '',
-          text: (link as HTMLElement).innerText?.trim() || '',
-        }));
-      });
+    const seen = new Set<string>();
+    const shared: GroupMemberUser[] = [];
+    let total = 0;
 
-      const users = extractUsersFromLinks(rawLinks);
-      let newCount = 0;
-      const batch: ExtractedMember[] = [];
-      for (const u of users) {
-        if (!seen.has(u.fb_id)) {
-          seen.add(u.fb_id);
-          if (validName(u.name)) {
-            batch.push({ ...u, type: "member" });
-            newCount++;
-          }
+    const coverageTarget = this.totalMembersCount
+      ? Math.max(1, Math.round(this.totalMembersCount * 0.85))
+      : this.ctx.maxResults;
+    const targetCount = Math.min(this.ctx.maxResults, coverageTarget);
+    const budgetMs = Math.max(60_000, this.timeRemainingMs - 60_000);
+
+    log.info("GroupMembers", `parallel extraction: ${allPages.length} session(s), target=${targetCount} (coverage 85% cap: ${this.ctx.maxResults})`);
+
+    const result = await multiSessionGroupMembers(allPages, membersUrl, shared, seen, {
+      targetCount,
+      maxDurationMs: budgetMs,
+      onNewUsers: async (users) => {
+        const batch: ExtractedMember[] = [];
+        for (const u of users) {
+          if (validName(u.name)) batch.push({ ...u, type: "member" });
         }
-      }
-
-      log.info("GroupMembers", `+[${newCount}] scroll#${scrollAttempts} total=${total} seen=${seen.size} raw=${rawLinks.length}`);
-
-      if (batch.length > 0) {
-        total += await this.processBatch(batch, "member");
-        consecutiveEmpty = 0;
-        this.backoffScrolls = 0;
-        if (scrollAttempts > 0 && scrollAttempts % 15 === 0) await this.restDelay();
-        if (scrollAttempts % 30 === 29) {
-          await this.storeExtractionProgress(total, "scrolling", scrollAttempts + 1);
+        if (batch.length > 0) {
+          total += await this.processBatch(batch, "member");
         }
-      } else {
-        consecutiveEmpty++;
+      },
+      onProgress: (totalSeen) => {
+        void this.storeExtractionProgress(total, "scrolling", totalSeen);
+      },
+      shouldStop: () => this.throttledCanceled(),
+    });
 
-        if (consecutiveEmpty === 5) {
-          const switched = await this.switchToNextSession();
-          if (switched) {
-            log.info("GroupMembers", `switched session after 5 empty scrolls, reloading members page (session #${this.activeSessionIndex + 1}/${this.totalSessions})`);
-            consecutiveEmpty = 0;
-            scrollAttempts = 0;
-            try {
-              await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-              await this.page.waitForTimeout(2000);
-              await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-              await this.page.waitForTimeout(1000);
-            } catch (err) {
-              throw new ExtractionError(ErrorCodes.NETWORK_ERROR, `Navigation error after session switch: ${String(err)}`);
-            }
-            await this.storeExtractionProgress(total, "scrolling", 0);
-            continue;
-          } else {
-            this.lastStopReason = this.totalSessions > 1 ? "session_rate_limited" : "no_secondary_session";
-          }
-        }
-
-        if (consecutiveEmpty >= 12) {
-          if (this.lastStopReason === null) this.lastStopReason = "source_exhausted";
-          done = true;
-          break;
-        }
-      }
-
-      scrollAttempts++;
-      await this.scrollFeed(this.page);
-    }
-
-    this.finalizeStopReason(total);
+    this.lastStopReason = this.mapStopReason(result.stoppedReason, total);
     await this.storeExtractionProgress(total, "completed", 0, this.lastStopReason);
     log.info("GroupMembers", `extraction finished: total=${total}, coverage=${this.computeCoverage(total)}%, stopReason=${this.lastStopReason ?? "null"}`);
 
-    if (total === 0) done = true;
-    return { extracted: total, nextCursor: done ? undefined : url, done, authState };
+    return { extracted: total, done: true, authState };
   }
 
   private computeCoverage(discovered: number): number | null {
@@ -143,17 +102,20 @@ export class GroupMembersExtractor extends BaseExtractor {
     return Math.round((discovered / this.totalMembersCount) * 1000) / 10;
   }
 
-  private shouldCheckCancel(): boolean {
+  private async throttledCanceled(): Promise<boolean> {
     const now = Date.now();
-    if (now - this.lastCancelCheckTs >= this.cancelCheckIntervalMs) {
+    if (now - this.lastCancelCheckTs >= 5000) {
       this.lastCancelCheckTs = now;
-      return true;
+      this.canceledCached = await this.checkCanceled();
     }
-    return false;
+    return this.canceledCached;
   }
 
-  protected async restDelay(): Promise<void> {
-    return new Promise((r) => setTimeout(r, 8000));
+  private mapStopReason(coreReason: string, total: number): GroupStopReason | null {
+    if (coreReason === "canceled") return null;
+    if (coreReason === "target_reached" || total >= this.ctx.maxResults) return "max_results_reached";
+    if (this.totalSessions > 1) return "session_rate_limited";
+    return "source_exhausted";
   }
 
   private async persistMembersCount(count: number, source: string): Promise<void> {
@@ -196,22 +158,5 @@ export class GroupMembersExtractor extends BaseExtractor {
     } catch (err) {
       log.debug("GroupMembers", `storeProgress failed: ${String(err)}`);
     }
-  }
-
-  private finalizeStopReason(total: number): void {
-    if (this.lastStopReason !== null) return;
-
-    if (total >= this.ctx.maxResults) {
-      this.lastStopReason = "max_results_reached";
-      return;
-    }
-
-    const coverage = this.computeCoverage(total);
-    if (coverage === null || coverage >= 85) {
-      this.lastStopReason = null;
-      return;
-    }
-
-    this.lastStopReason = "source_exhausted";
   }
 }
