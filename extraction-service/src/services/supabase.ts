@@ -3,7 +3,8 @@ import WebSocket from "ws";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { ExtractionError, ErrorCodes } from "../errors.js";
-import type { CookieEntry, ExtractedMember, ExtractionType, JobStatus, ProxyConfig } from "../types.js";
+import type { CookieEntry, ExtractedMember, ExtractionType, JobStatus, ProxyConfig, StoredStorageState, StorageStateOrigin } from "../types.js";
+import { shouldPersistSessionCookies } from "../types.js";
 
 const log = logger;
 
@@ -24,6 +25,7 @@ interface SessionRow {
 
 interface ProfileRow {
   cookies_enc: string | null;
+  storage_state_enc: StoredStorageState | string | null;
   user_agent: string | null;
 }
 
@@ -117,6 +119,61 @@ function toCookieString(cookies: CookieEntry[]): string {
   return cookies.map((c) => `${c.name}=${c.value}`).join("; ");
 }
 
+/** Validate + normalize a persisted storage state (jsonb object or legacy JSON
+ *  string). Returns null when missing/malformed so callers fall back to the
+ *  cookies-only path. */
+export function parseStorageState(raw: StoredStorageState | string | null | undefined): StoredStorageState | null {
+  if (!raw) return null;
+  let value: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value !== "object" || value === null) return null;
+  const obj = value as Record<string, unknown>;
+  if (!Array.isArray(obj.cookies) || !Array.isArray(obj.origins)) return null;
+
+  const cookies: CookieEntry[] = [];
+  for (const item of obj.cookies) {
+    if (item && typeof item === "object" && typeof (item as Record<string, unknown>).name === "string" && typeof (item as Record<string, unknown>).value === "string") {
+      const c = item as Record<string, unknown>;
+      cookies.push({
+        name: String(c.name),
+        value: String(c.value),
+        domain: typeof c.domain === "string" && c.domain ? c.domain : ".facebook.com",
+        path: typeof c.path === "string" && c.path ? c.path : "/",
+        expires: typeof c.expires === "number" && c.expires > 0 ? c.expires : undefined,
+        httpOnly: !!c.httpOnly,
+        secure: c.secure !== false,
+        sameSite: mapSameSite(typeof c.sameSite === "string" ? c.sameSite : undefined),
+      });
+    }
+  }
+  if (cookies.length === 0 || !shouldPersistSessionCookies(cookies)) return null;
+
+  const origins: StorageStateOrigin[] = [];
+  for (const originItem of obj.origins) {
+    if (!originItem || typeof originItem !== "object") continue;
+    const o = originItem as Record<string, unknown>;
+    if (typeof o.origin !== "string" || !Array.isArray(o.localStorage)) continue;
+    const entries: Array<{ name: string; value: string }> = [];
+    for (const entry of o.localStorage) {
+      if (entry && typeof entry === "object") {
+        const e = entry as Record<string, unknown>;
+        if (typeof e.name === "string" && typeof e.value === "string" && e.name && e.value) {
+          entries.push({ name: e.name, value: e.value });
+        }
+      }
+    }
+    if (entries.length > 0) origins.push({ origin: o.origin, localStorage: entries });
+  }
+
+  return { cookies, origins };
+}
+
 function chunk<T>(arr: T[], size: number): T[][] {
   const result: T[][] = [];
   for (let i = 0; i < arr.length; i += size) {
@@ -130,6 +187,7 @@ export const supabaseService = {
     session: SessionRow;
     cookies: CookieEntry[];
     cookieString: string;
+    storageState: StoredStorageState | null;
     proxy: ProxyConfig | null;
     userAgent: string | null;
   }> {
@@ -150,7 +208,7 @@ export const supabaseService = {
 
     const { data: profile, error: pErr } = await sb
       .from("fb_browser_profiles")
-      .select("cookies_enc, user_agent")
+      .select("cookies_enc, storage_state_enc, user_agent")
       .eq("session_id", sessionId)
       .single();
 
@@ -163,9 +221,13 @@ export const supabaseService = {
       throw new ExtractionError(ErrorCodes.NO_COOKIES, "Cookies could not be parsed");
     }
 
+    const storageState = parseStorageState(profile.storage_state_enc);
+
     log.info("Supabase", `session loaded: ${session.name} (status: ${session.status})`, {
       sessionId: session.id,
       cookieCount: cookies.length,
+      hasStorageState: !!storageState,
+      localStorageOrigins: storageState?.origins.length ?? 0,
     });
 
     // Resolve proxy: check session config → env.FB_PROXY_{ID} → global PROXY_URL
@@ -174,15 +236,17 @@ export const supabaseService = {
       log.info("Supabase", `session ${session.id.slice(0, 8)}: proxy resolved (${proxy.label || proxy.url.split('@').pop()})`);
     }
 
-    return { session, cookies, cookieString: toCookieString(cookies), proxy, userAgent: profile.user_agent ?? null };
+    return { session, cookies, cookieString: toCookieString(cookies), storageState, proxy, userAgent: profile.user_agent ?? null };
   },
 
-  /** Persist cookies rotated by Facebook during a browsing session back to the profile row.
-   *  Without this the stored `xs` token goes stale and Facebook invalidates the whole session. */
-  async updateSessionCookies(sessionId: string, cookies: CookieEntry[]): Promise<void> {
-    if (cookies.length === 0) return;
-    const payload = JSON.stringify(
-      cookies.map((c) => ({
+  /** Persist the full browser identity captured from a live context:
+   *  rotated cookies into the legacy `cookies_enc` format (frontend compat)
+   *  and the complete storage state (cookies + localStorage) into
+   *  `storage_state_enc`. Never called with a logged-out cookie set. */
+  async persistSessionIdentity(sessionId: string, state: StoredStorageState): Promise<void> {
+    if (state.cookies.length === 0) return;
+    const legacyCookiesPayload = JSON.stringify(
+      state.cookies.map((c) => ({
         name: c.name,
         value: c.value,
         domain: c.domain,
@@ -195,12 +259,12 @@ export const supabaseService = {
     );
     const { error } = await sb
       .from("fb_browser_profiles")
-      .update({ cookies_enc: payload })
+      .update({ cookies_enc: legacyCookiesPayload, storage_state_enc: state })
       .eq("session_id", sessionId);
     if (error) {
-      log.warn("Supabase", `updateSessionCookies failed for ${sessionId.slice(0, 8)}: ${error.message}`);
+      log.warn("Supabase", `persistSessionIdentity failed for ${sessionId.slice(0, 8)}: ${error.message}`);
     } else {
-      log.info("Supabase", `session ${sessionId.slice(0, 8)}: rotated cookies persisted (${cookies.length} cookies)`);
+      log.info("Supabase", `session ${sessionId.slice(0, 8)}: identity persisted (${state.cookies.length} cookies, ${state.origins.length} localStorage origins)`);
     }
   },
 

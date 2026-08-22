@@ -75,6 +75,25 @@ export interface CookieEntry {
   sameSite?: "Strict" | "Lax" | "None";
 }
 
+export interface StorageStateOrigin {
+  origin: string;
+  localStorage: Array<{ name: string; value: string }>;
+}
+
+/** Playwright-compatible storage state persisted per session so every run
+ *  restores the SAME browser identity (cookies + localStorage). */
+export interface StoredStorageState {
+  cookies: CookieEntry[];
+  origins: StorageStateOrigin[];
+}
+
+/** Never overwrite a working profile with a state that lacks the auth tokens —
+ *  that would be saving a logged-OUT state over a logged-IN one. */
+export function shouldPersistSessionCookies(cookies: CookieEntry[], essentialNames: string[] = ["c_user", "xs"]): boolean {
+  const names = new Set(cookies.map((c) => c.name));
+  return essentialNames.every((n) => names.has(n));
+}
+
 export interface JobContext {
   jobId: string;
   workspaceId: string;

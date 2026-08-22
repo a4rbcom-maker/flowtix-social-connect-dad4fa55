@@ -61,6 +61,9 @@ export const config = {
   enrichmentDbPath: env("ENRICHMENT_DB_PATH", "../Egypt DB/egypt db"),
   enrichmentEnabled: envBool("ENRICHMENT_ENABLED", true),
   enrichmentBatchSize: envInt("ENRICHMENT_BATCH_SIZE", 500),
+  /** Hard ceiling for post-extraction enrichment — a stuck scan must never
+   *  freeze the job in "running"; completion proceeds without new matches. */
+  enrichmentTimeoutMs: envInt("ENRICHMENT_TIMEOUT_MS", 600000),
 
   waAuthDir: env("WA_AUTH_DIR", "./data/wa-auth"),
 
@@ -72,6 +75,11 @@ export const config = {
 
   /** Abort image/media/font requests inside extraction contexts (major RAM/bandwidth savings) */
   blockResources: envBool("BLOCK_RESOURCES", true),
+
+  /** Block service workers inside extraction contexts. Real browsers run
+   *  Facebook's service worker — blocking it is a detection signal, so this
+   *  defaults to OFF. Enable only on memory-constrained machines. */
+  blockServiceWorkers: envBool("BLOCK_SERVICE_WORKERS", false),
 
   /** Upper bound of parallel sessions a single extraction job may use */
   maxSessionsPerJob: envInt("MAX_SESSIONS_PER_JOB", 5),

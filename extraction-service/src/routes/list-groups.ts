@@ -31,8 +31,8 @@ router.post("/list-groups", async (req, res) => {
     const { session_id } = parsed.data;
     log.info("ListGroups", `listing groups`);
 
-    const { cookies, userAgent } = await supabaseService.getSessionAndCookies(session_id);
-    const { page, contextId } = await contextManager.createContext(session_id, cookies, undefined, userAgent);
+    const { cookies, userAgent, storageState } = await supabaseService.getSessionAndCookies(session_id);
+    const { page, contextId } = await contextManager.createContext(session_id, cookies, undefined, userAgent, storageState);
 
     try {
       // Use the user ID directly to navigate to their groups

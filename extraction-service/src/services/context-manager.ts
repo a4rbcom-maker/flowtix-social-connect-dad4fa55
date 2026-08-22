@@ -4,7 +4,10 @@ import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { ExtractionError, ErrorCodes } from "../errors.js";
 import { supabaseService } from "./supabase.js";
-import type { CookieEntry, ProxyConfig } from "../types.js";
+import type { CookieEntry, ProxyConfig, StoredStorageState } from "../types.js";
+import { shouldPersistSessionCookies } from "../types.js";
+
+export { shouldPersistSessionCookies };
 import { detectAuthState } from "../extractors/base.js";
 
 const log = logger;
@@ -17,7 +20,10 @@ interface ActiveContext {
 }
 
 const DEFAULT_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+
+const LOCALE = "ar-EG";
+const ACCEPT_LANGUAGE = `${LOCALE},ar;q=0.9,en-US;q=0.8,en;q=0.7`;
 
 /** Prefer the user agent captured when the session was imported — a different
  *  UA makes every extraction look like a login from an unknown device. */
@@ -111,11 +117,22 @@ export function toCookieEntries(playwrightCookies: Array<{ name: string; value: 
     }));
 }
 
-/** Never overwrite a working profile with a cookie set that lacks the auth tokens —
- *  that would be saving a logged-OUT state over a logged-IN one. */
-export function shouldPersistSessionCookies(cookies: CookieEntry[], essentialNames: string[] = ["c_user", "xs"]): boolean {
-  const names = new Set(cookies.map((c) => c.name));
-  return essentialNames.every((n) => names.has(n));
+/** Capture the FULL browser identity from a live context — cookies plus
+ *  localStorage origins (Facebook stores its stable device/browser id there).
+ *  Returns null when the context is already gone. */
+async function captureStorageState(context: BrowserContext): Promise<StoredStorageState | null> {
+  try {
+    const raw = await context.storageState();
+    return {
+      cookies: toCookieEntries(raw.cookies),
+      origins: (raw.origins ?? []).map((o) => ({
+        origin: o.origin,
+        localStorage: (o.localStorage ?? []).filter((e) => e.name && e.value),
+      })),
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** In-process per-session usage lock: Facebook invalidates sessions it sees
@@ -135,7 +152,7 @@ export function releaseSessionLock(platformKey: string): void {
 class ContextManager {
   private active: Map<string, ActiveContext> = new Map();
 
-  async createContext(sessionId: string, cookies: CookieEntry[], proxy?: ProxyConfig | null, userAgent?: string | null): Promise<{ context: BrowserContext; page: import("playwright").Page; contextId: string }> {
+  async createContext(sessionId: string, cookies: CookieEntry[], proxy?: ProxyConfig | null, userAgent?: string | null, storageState?: StoredStorageState | null): Promise<{ context: BrowserContext; page: import("playwright").Page; contextId: string }> {
     const lockKey = `fb:${sessionId}`;
     if (!acquireSessionLock(lockKey)) {
       throw new ExtractionError(
@@ -163,15 +180,41 @@ class ContextManager {
         viewport: fp.viewport,
         deviceScaleFactor: fp.deviceScaleFactor,
         isMobile: fp.isMobile,
-        locale: "ar-EG",
+        locale: LOCALE,
         timezoneId: "Africa/Cairo",
         permissions: ["geolocation"],
         geolocation: { latitude: fp.latitude, longitude: fp.longitude },
-        serviceWorkers: "block",
         extraHTTPHeaders: {
-          "Accept-Language": "ar-AR,ar;q=0.9,en-US;q=0.8,en;q=0.7",
+          "Accept-Language": ACCEPT_LANGUAGE,
         },
       };
+
+      // Restore the persisted browser identity (cookies + localStorage) so
+      // Facebook sees the SAME device as previous runs — replaying cookies
+      // into a fresh browser every time reads as token theft and triggers a
+      // forced logout.
+      if (storageState && shouldPersistSessionCookies(storageState.cookies)) {
+        contextOpts.storageState = {
+          cookies: storageState.cookies.map((c) => ({
+            name: c.name,
+            value: c.value,
+            domain: c.domain || ".facebook.com",
+            path: c.path || "/",
+            expires: c.expires,
+            httpOnly: c.httpOnly,
+            secure: c.secure,
+            sameSite: c.sameSite as "Strict" | "Lax" | "None" | undefined,
+          })),
+          origins: storageState.origins,
+        };
+        log.info("ContextManager", `session ${sessionId.slice(0, 8)}: restoring full identity (cookies=${storageState.cookies.length}, localStorageOrigins=${storageState.origins.length})`);
+      } else {
+        log.warn("ContextManager", `session ${sessionId.slice(0, 8)}: no stored identity — first run will build it from imported cookies`);
+      }
+
+      if (config.blockServiceWorkers) {
+        contextOpts.serviceWorkers = "block";
+      }
 
       // Proxy support: parse proxy URL into Playwright format
       if (proxy && proxy.url) {
@@ -182,22 +225,25 @@ class ContextManager {
         } else {
           log.warn("ContextManager", `session ${sessionId.slice(0, 8)}: invalid proxy URL, ignoring — ${proxy.url}`);
         }
+      } else if (!proxy) {
+        log.warn("ContextManager", `session ${sessionId.slice(0, 8)}: NO proxy — server IP differs from the account's usual location; this is the #1 cause of security checkpoints and forced logout`);
       }
 
       const context = await browser.newContext(contextOpts);
 
-      const playwrightCookies = cookies.map((c) => ({
-        name: c.name,
-        value: c.value,
-        domain: c.domain || ".facebook.com",
-        path: c.path || "/",
-        expires: c.expires,
-        httpOnly: c.httpOnly,
-        secure: c.secure,
-        sameSite: c.sameSite as "Strict" | "Lax" | "None" | undefined,
-      }));
-
-      await context.addCookies(playwrightCookies);
+      if (!contextOpts.storageState) {
+        const playwrightCookies = cookies.map((c) => ({
+          name: c.name,
+          value: c.value,
+          domain: c.domain || ".facebook.com",
+          path: c.path || "/",
+          expires: c.expires,
+          httpOnly: c.httpOnly,
+          secure: c.secure,
+          sameSite: c.sameSite as "Strict" | "Lax" | "None" | undefined,
+        }));
+        await context.addCookies(playwrightCookies);
+      }
 
       if (config.blockResources) {
         await applyResourceBlocking(context);
@@ -229,8 +275,8 @@ class ContextManager {
         }
 
         // Facebook rotates the `xs` token on the very first navigation —
-        // capture it immediately so a crash right after creation cannot
-        // leave the stored session stale.
+        // capture the full identity (cookies + localStorage) immediately so a
+        // crash right after creation cannot leave the stored session stale.
         await this.persistRotatedCookies(sessionId, context);
       } catch (err) {
         if (err instanceof ExtractionError) throw err;
@@ -239,10 +285,10 @@ class ContextManager {
 
       const entry: ActiveContext = { context, browser, sessionId };
 
-      // Periodic cookie sync: during long extractions Facebook rotates auth
-      // tokens several times. Persisting only at release loses them on crash
-      // or restart — and injecting a stale `xs` next run makes Facebook
-      // invalidate the whole session (forced logout).
+      // Periodic identity sync: during long extractions Facebook rotates auth
+      // tokens several times and mutates localStorage. Persisting only at
+      // release loses them on crash or restart — and injecting a stale `xs`
+      // next run makes Facebook invalidate the whole session (forced logout).
       const syncTimer = setInterval(() => {
         void this.persistRotatedCookies(sessionId, context);
       }, config.cookieSyncIntervalMs);
@@ -269,14 +315,9 @@ class ContextManager {
 
     if (entry.cookieSyncTimer) clearInterval(entry.cookieSyncTimer);
 
-    // Capture rotated cookies BEFORE closing — Facebook refreshes the `xs`
+    // Capture the full identity BEFORE closing — Facebook refreshes the `xs`
     // token during browsing; dropping it invalidates the stored session.
-    let rotated: CookieEntry[] = [];
-    try {
-      rotated = toCookieEntries(await entry.context.cookies());
-    } catch (err) {
-      log.warn("ContextManager", `error reading cookies from ${contextId}: ${String(err)}`);
-    }
+    const finalState = await captureStorageState(entry.context);
 
     try {
       await entry.context.close();
@@ -287,14 +328,14 @@ class ContextManager {
     browserPool.release(entry.browser);
     releaseSessionLock(`fb:${entry.sessionId}`);
 
-    if (rotated.length > 0 && shouldPersistSessionCookies(rotated)) {
+    if (finalState && shouldPersistSessionCookies(finalState.cookies)) {
       try {
-        await supabaseService.updateSessionCookies(entry.sessionId, rotated);
+        await supabaseService.persistSessionIdentity(entry.sessionId, finalState);
       } catch (err) {
-        log.warn("ContextManager", `persisting rotated cookies failed for ${entry.sessionId.slice(0, 8)}: ${String(err)}`);
+        log.warn("ContextManager", `persisting identity failed for ${entry.sessionId.slice(0, 8)}: ${String(err)}`);
       }
-    } else if (rotated.length > 0) {
-      log.warn("ContextManager", `session ${entry.sessionId.slice(0, 8)}: rotated cookies lack auth tokens — keeping previous stored cookies`);
+    } else if (finalState) {
+      log.warn("ContextManager", `session ${entry.sessionId.slice(0, 8)}: captured state lacks auth tokens — keeping previous stored identity`);
     }
 
     log.debug("ContextManager", `context released ${contextId}`, {
@@ -309,16 +350,12 @@ class ContextManager {
     }
   }
 
-  /** Read live cookies from a context and persist them when they still carry
+  /** Read live identity from a context and persist it when it still carries
    *  the auth tokens. Safe to call repeatedly — never downgrades a session. */
   private async persistRotatedCookies(sessionId: string, context: BrowserContext): Promise<void> {
-    try {
-      const rotated = toCookieEntries(await context.cookies());
-      if (rotated.length === 0 || !shouldPersistSessionCookies(rotated)) return;
-      await supabaseService.updateSessionCookies(sessionId, rotated);
-    } catch {
-      /* context closed / browser gone — release path does the final read */
-    }
+    const state = await captureStorageState(context);
+    if (!state || !shouldPersistSessionCookies(state.cookies)) return;
+    await supabaseService.persistSessionIdentity(sessionId, state);
   }
 
   getActiveCount(): number {

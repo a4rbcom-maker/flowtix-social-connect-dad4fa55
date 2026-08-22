@@ -23,8 +23,8 @@ router.post("/debug-page", async (req, res) => {
     const { session_id, url, click_reactions } = parsed.data;
     log.info("Debug", `navigating to ${url}`, { click_reactions });
 
-    const { cookies, userAgent } = await supabaseService.getSessionAndCookies(session_id);
-    const { page, contextId } = await contextManager.createContext(session_id, cookies, undefined, userAgent);
+    const { cookies, userAgent, storageState } = await supabaseService.getSessionAndCookies(session_id);
+    const { page, contextId } = await contextManager.createContext(session_id, cookies, undefined, userAgent, storageState);
 
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
