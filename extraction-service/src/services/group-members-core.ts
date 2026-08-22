@@ -26,6 +26,13 @@ export interface MultiSessionGroupOptions {
    *  feed-cascade phase needs. */
   stallWindowMs?: number;
   stallMinGrowth?: number;
+  /** Low-yield cutoff: when the shared list grows by less than
+   *  lowYieldMinGrowth users within lowYieldWindowMs, the members list is a
+   *  waste of session time (the feed cascade yields far more per minute) —
+   *  stop the phase early instead of scrolling at a trickle for the full
+   *  budget. */
+  lowYieldWindowMs?: number;
+  lowYieldMinGrowth?: number;
   onNewUsers?: (users: GroupMemberUser[]) => Promise<void> | void;
   onProgress?: (totalSeen: number, activeSessions: number, round: number) => void;
   shouldStop?: () => Promise<boolean>;
@@ -35,16 +42,23 @@ export interface MultiSessionGroupResult {
   totalSeen: number;
   perSession: Array<{ sessionId: string; extracted: number; rounds: number; stoppedReason: string }>;
   totalDurationMs: number;
-  stoppedReason: "target_reached" | "all_idle" | "max_duration" | "canceled" | "stagnated";
+  stoppedReason: "target_reached" | "all_idle" | "max_duration" | "canceled" | "stagnated" | "low_yield";
 }
 
+/** Hard ceiling for the members-list phase: the browsable list tops out
+ *  within the first couple of minutes even in huge groups (Facebook cap), so
+ *  giving it more than a few minutes just starves the feed cascade — the
+ *  only source that scales past the cap. */
+export const MEMBERS_PHASE_MAX_MS = 8 * 60_000;
+
 /** Members-list phase budget: capped so the feed-cascade phase (the only way
- *  past Facebook's members-list cap) is guaranteed a meaningful share of the
- *  job budget. Reserves ~45% of the remaining time (min 60s) for cascade. */
+ *  past Facebook's members-list cap) is guaranteed the lion's share of the
+ *  job budget. Reserves ~65% of the remaining time (min 60s) for cascade. */
 export function membersPhaseBudgetMs(remainingMs: number): number {
   const usable = Math.max(60_000, remainingMs - 60_000);
-  const cascadeReserve = Math.max(60_000, Math.round(remainingMs * 0.45));
-  return Math.min(usable, Math.max(60_000, remainingMs - cascadeReserve));
+  const cascadeReserve = Math.max(60_000, Math.round(remainingMs * 0.65));
+  const capped = Math.min(usable, Math.max(60_000, remainingMs - cascadeReserve), MEMBERS_PHASE_MAX_MS);
+  return Math.max(60_000, capped);
 }
 
 interface SessionState {
@@ -82,14 +96,19 @@ export async function multiSessionGroupMembers(
   const maxWakeUpAttempts = opts.maxWakeUpAttempts ?? 3;
   const stallWindowMs = opts.stallWindowMs ?? 60_000;
   const stallMinGrowth = opts.stallMinGrowth ?? 15;
+  const lowYieldWindowMs = opts.lowYieldWindowMs ?? 120_000;
+  const lowYieldMinGrowth = opts.lowYieldMinGrowth ?? 40;
   const startTime = Date.now();
 
   log.info("GroupCore", "=== parallel multi-session group members ===");
-  log.info("GroupCore", `sessions=${pages.length} target=${targetCount} maxDuration=${Math.round(maxDurationMs / 60000)}min stallWindow=${Math.round(stallWindowMs / 1000)}s/${stallMinGrowth}`);
+  log.info("GroupCore", `sessions=${pages.length} target=${targetCount} maxDuration=${Math.round(maxDurationMs / 60000)}min stallWindow=${Math.round(stallWindowMs / 1000)}s/${stallMinGrowth} lowYield=${Math.round(lowYieldWindowMs / 1000)}s/${lowYieldMinGrowth}`);
 
   let stallWindowStart = startTime;
   let stallWindowStartCount = sharedUsers.length;
   let stagnated = false;
+  let lowYieldStart = startTime;
+  let lowYieldStartCount = sharedUsers.length;
+  let lowYield = false;
 
   const stalled = (): boolean => {
     if (stagnated) return true;
@@ -100,6 +119,18 @@ export async function multiSessionGroupMembers(
     if (growth >= stallMinGrowth) return false;
     stagnated = true;
     log.info("GroupCore", `global stall: +${growth} users in ${Math.round(stallWindowMs / 1000)}s across ${states.length} sessions — members list exhausted (Facebook browsable cap)`);
+    return true;
+  };
+
+  const hitLowYield = (): boolean => {
+    if (lowYield) return true;
+    if (Date.now() - lowYieldStart < lowYieldWindowMs) return false;
+    const growth = sharedUsers.length - lowYieldStartCount;
+    lowYieldStart = Date.now();
+    lowYieldStartCount = sharedUsers.length;
+    if (growth >= lowYieldMinGrowth) return false;
+    lowYield = true;
+    log.info("GroupCore", `low-yield cutoff: +${growth} users in ${Math.round(lowYieldWindowMs / 1000)}s — switching remaining budget to the feed cascade`);
     return true;
   };
 
@@ -177,6 +208,10 @@ export async function multiSessionGroupMembers(
         s.stoppedReason = "stagnated";
         break;
       }
+      if (hitLowYield()) {
+        s.stoppedReason = "low_yield";
+        break;
+      }
 
       s.rounds++;
 
@@ -235,6 +270,7 @@ export async function multiSessionGroupMembers(
   if (opts.shouldStop && (await opts.shouldStop())) stoppedReason = "canceled";
   else if (finalCount >= targetCount) stoppedReason = "target_reached";
   else if (stagnated) stoppedReason = "stagnated";
+  else if (lowYield) stoppedReason = "low_yield";
   else if (Date.now() - startTime > maxDurationMs) stoppedReason = "max_duration";
   else stoppedReason = "all_idle";
 

@@ -20,19 +20,45 @@ export interface CascadeEngagersResult {
 
 export type ExtractEngagersFn = (page: Page, permalink: string) => Promise<CascadeEngagersResult>;
 
+export interface CascadeWorkerPage {
+  sessionId: string;
+  page: Page;
+}
+
 export interface GroupCascadeOptions {
   feedUrl: string;
-  pages: Array<{ sessionId: string; page: Page }>;
+  /** Dedicated page scrolling the group feed for post permalinks. Kept
+   *  separate from worker pages so the workers start consuming the post
+   *  queue IMMEDIATELY instead of idling through the discovery phase. */
+  discoveryPage: CascadeWorkerPage;
+  /** Worker pages that start consuming the post queue right away. */
+  pages: CascadeWorkerPage[];
+  /** Pages that join the worker pool later (e.g. the members-list page once
+   *  its phase ends). Resolving to [] simply adds nothing. */
+  latePages?: Promise<CascadeWorkerPage[]>;
   targetCount: number;
   maxDurationMs: number;
   maxPosts?: number;
-  /** Hard cap on the feed-discovery phase. Worker 0 shares the discovery
-   *  page and sits idle until it finishes — without a cap, deep feeds can
-   *  monopolize it for many minutes while the other workers chew the queue. */
+  /** Hard cap on the feed-discovery phase (the discovery page joins the
+   *  worker pool as soon as discovery finishes). */
   maxDiscoveryMs?: number;
+  /** Stop EVERYTHING when no new user has been extracted for this long —
+   *  the group's active core is saturated and further posts are pure waste
+   *  (measured jobs spent their final 15+ minutes extracting 0 new users). */
+  saturationMs?: number;
+  /** Users already discovered by earlier phases (members list) — the cascade
+   *  starts fully saturated against them: no reprocessing, and the
+   *  saturation signal stays honest across phases. */
+  seenIds?: Set<string>;
   extractEngagers: ExtractEngagersFn;
   onNewUsers: (users: CascadeUser[]) => Promise<number>;
-  onProgress?: (info: { totalSeen: number; postsDone: number; postsKnown: number; activeWorkers: number }) => void;
+  onProgress?: (info: {
+    extracted: number;
+    postsDone: number;
+    postsKnown: number;
+    activeWorkers: number;
+    ratePerMin: number;
+  }) => void;
   shouldStop?: () => Promise<boolean>;
 }
 
@@ -40,34 +66,80 @@ export interface GroupCascadeResult {
   extracted: number;
   postsDiscovered: number;
   postsProcessed: number;
-  stoppedReason: "target_reached" | "posts_exhausted" | "max_duration" | "canceled";
+  stoppedReason: "target_reached" | "posts_exhausted" | "max_duration" | "canceled" | "saturated";
 }
 
 /**
  * Group feed cascade: after the members list is exhausted (Facebook caps it),
  * everyone who posted / commented / reacted in the group is still a member —
- * and reachable. Discovery scrolls the group feed collecting post permalinks
- * (DOM links + GraphQL post ids) while one worker per session extracts
- * reactors + commenters from each post, merged into one deduplicated set.
+ * and reachable. A dedicated discovery page scrolls the group feed collecting
+ * post permalinks (DOM links + GraphQL post actors/commenters harvested for
+ * free) while every other session processes the shared post queue in
+ * parallel from the very first permalink. Extra pages (e.g. the members-list
+ * session) join the worker pool dynamically via `latePages`.
  */
 export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupCascadeResult> {
   const maxPosts = opts.maxPosts ?? 400;
+  const saturationMs = opts.saturationMs ?? 240_000;
   const startTime = Date.now();
   const deadline = startTime + opts.maxDurationMs;
   const discoveryDeadline = startTime + Math.min(opts.maxDiscoveryMs ?? 300_000, opts.maxDurationMs);
 
   log.info("GroupCascade", "=== feed cascade starting ===");
-  log.info("GroupCascade", `sessions=${opts.pages.length} target=+${opts.targetCount} maxPosts=${maxPosts} budget=${Math.round(opts.maxDurationMs / 60000)}min discoveryCap=${Math.round((discoveryDeadline - startTime) / 1000)}s`);
+  log.info(
+    "GroupCascade",
+    `discovery=1 immediateWorkers=${opts.pages.length}${opts.latePages ? " latePages=yes" : ""} target=+${opts.targetCount} maxPosts=${maxPosts} budget=${Math.round(opts.maxDurationMs / 60000)}min saturation=${Math.round(saturationMs / 1000)}s`,
+  );
 
-  const seenIds = new Set<string>();
+  const seenIds = opts.seenIds ?? new Set<string>();
   const postQueue: string[] = [];
   const queuedPosts = new Set<string>();
   let discoveryDone = false;
+  let lateSettled = !opts.latePages;
+  let canceled = false;
+  let saturated = false;
   let postsDone = 0;
   let failures = 0;
   let extracted = 0;
   let nextIdx = 0;
   let lastCancelCheck = 0;
+  let lastNewUserAt = Date.now();
+  let rateWindowStart = Date.now();
+  let rateWindowStartCount = 0;
+  let finished = false;
+
+  const canceledNow = async (): Promise<boolean> => {
+    if (!opts.shouldStop) return false;
+    const now = Date.now();
+    if (now - lastCancelCheck <= 5000) return canceled;
+    lastCancelCheck = now;
+    canceled = canceled || (await opts.shouldStop().catch(() => false));
+    return canceled;
+  };
+
+  const checkSaturated = (): boolean => {
+    if (saturated) return true;
+    if (Date.now() - lastNewUserAt >= saturationMs) {
+      saturated = true;
+      log.info(
+        "GroupCascade",
+        `saturation breaker: 0 new users in ${Math.round((Date.now() - lastNewUserAt) / 1000)}s — group active core exhausted, stopping all workers`,
+      );
+    }
+    return saturated;
+  };
+
+  const ratePerMin = (): number => {
+    const now = Date.now();
+    const elapsedMs = now - rateWindowStart;
+    if (elapsedMs >= 60_000) {
+      const rate = Math.round(((extracted - rateWindowStartCount) / elapsedMs) * 60_000);
+      rateWindowStart = now;
+      rateWindowStartCount = extracted;
+      return rate;
+    }
+    return elapsedMs > 5_000 ? Math.round(((extracted - rateWindowStartCount) / elapsedMs) * 60_000) : 0;
+  };
 
   const addUsers = (users: Array<{ id: string; name: string; url: string }>): CascadeUser[] => {
     const fresh: CascadeUser[] = [];
@@ -81,6 +153,7 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
         profile_url: u.url && u.url.includes("facebook.com") ? u.url : `https://www.facebook.com/profile.php?id=${u.id}`,
       });
     }
+    if (fresh.length > 0) lastNewUserAt = Date.now();
     return fresh;
   };
 
@@ -90,14 +163,93 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
     postQueue.push(permalink);
   };
 
+  // ---- Dynamic worker pool -------------------------------------------------
+  const activeWorkerSessions = new Set<string>();
+  let pendingWorkers = 0;
+  let resolveWorkersIdle: () => void = () => {};
+  const workersIdle = new Promise<void>((res) => {
+    resolveWorkersIdle = res;
+  });
+
+  const spawnWorker = (wp: CascadeWorkerPage): void => {
+    if (finished || canceled || activeWorkerSessions.has(wp.sessionId)) return;
+    activeWorkerSessions.add(wp.sessionId);
+    pendingWorkers++;
+    void worker(wp).finally(() => {
+      pendingWorkers--;
+      if (pendingWorkers === 0) resolveWorkersIdle();
+    });
+  };
+
+  const worker = async (wp: CascadeWorkerPage): Promise<void> => {
+    let consecutiveErrors = 0;
+    let workerCancelCheck = 0;
+
+    while (true) {
+      if (extracted >= opts.targetCount) return;
+      if (Date.now() >= deadline) return;
+      if (checkSaturated()) return;
+      if (canceled) return;
+
+      const now = Date.now();
+      if (now - workerCancelCheck > 5000) {
+        workerCancelCheck = now;
+        if (await canceledNow()) return;
+      }
+
+      const idx = nextIdx;
+      nextIdx++;
+      if (idx >= postQueue.length) {
+        if (discoveryDone && lateSettled) return;
+        nextIdx = idx;
+        await sleep(600);
+        continue;
+      }
+
+      const permalink = postQueue[idx];
+      try {
+        const res = await opts.extractEngagers(wp.page, permalink);
+        consecutiveErrors = 0;
+        const fresh = [...addUsers(res.reactors), ...addUsers(res.commenters)];
+        if (fresh.length > 0) {
+          const persisted = await opts.onNewUsers(fresh);
+          extracted += persisted;
+        }
+      } catch (err) {
+        failures++;
+        consecutiveErrors++;
+        log.debug("GroupCascade", `post failed (${permalink.substring(0, 70)}): ${String(err).substring(0, 80)}`);
+        if (consecutiveErrors >= 8) {
+          log.warn("GroupCascade", `worker ${wp.sessionId.slice(0, 8)} stopping after 8 consecutive errors`);
+          return;
+        }
+        await sleep(3000);
+      }
+
+      postsDone++;
+      opts.onProgress?.({
+        extracted,
+        postsDone,
+        postsKnown: queuedPosts.size,
+        activeWorkers: activeWorkerSessions.size,
+        ratePerMin: ratePerMin(),
+      });
+      if (postsDone % 15 === 0) {
+        log.info("GroupCascade", `posts ${postsDone}/${queuedPosts.size} → +${extracted} users so far (${failures} failed, ${activeWorkerSessions.size} workers)`);
+        // Human-like rest: bursts of ~15 posts then a 15-30s pause — the old
+        // 5s-every-20-posts cadence tripped Facebook's automation heuristics
+        // and got accounts force-logged-out.
+        await sleep(15000 + rand(0, 15000));
+      }
+      await sleep(1200 + rand(0, 1800));
+    }
+  };
+
+  // ---- Discovery producer --------------------------------------------------
   let discoveryStopped = "done";
 
-  // Discovery producer: scroll the group feed collecting post permalinks.
-  // While scrolling, Facebook streams GroupFeed GraphQL responses containing
-  // post actors + top commenters — harvest them for free instead of idling
-  // through the discovery phase (was a fully dead ~5min window on slow VPSes).
   const discovery = (async () => {
-    const page = opts.pages[0].page;
+    const page = opts.discoveryPage.page;
     const harvested: CascadeUser[] = [];
 
     const harvestHandler = async (resp: Response): Promise<void> => {
@@ -142,17 +294,12 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
       queuedPosts.size < maxPosts &&
       stagnantRounds < 12 &&
       Date.now() < discoveryDeadline &&
-      extracted < opts.targetCount
+      extracted < opts.targetCount &&
+      !checkSaturated()
     ) {
-      if (opts.shouldStop) {
-        const now = Date.now();
-        if (now - lastCancelCheck > 5000) {
-          lastCancelCheck = now;
-          if (await opts.shouldStop()) {
-            discoveryStopped = "canceled";
-            break;
-          }
-        }
+      if (await canceledNow()) {
+        discoveryStopped = "canceled";
+        break;
       }
 
       try {
@@ -175,7 +322,13 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
         lastCount = queuedPosts.size;
 
         await flushHarvest();
-        opts.onProgress?.({ totalSeen: extracted, postsDone, postsKnown: queuedPosts.size, activeWorkers: opts.pages.length });
+        opts.onProgress?.({
+          extracted,
+          postsDone,
+          postsKnown: queuedPosts.size,
+          activeWorkers: activeWorkerSessions.size,
+          ratePerMin: ratePerMin(),
+        });
 
         await page.evaluate(() => window.scrollBy(0, 900));
         await sleep(900 + rand(0, 600));
@@ -192,65 +345,47 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
     log.info("GroupCascade", `discovery done: ${queuedPosts.size} posts, +${extracted} users harvested from feed (reason=${discoveryStopped}, stagnant=${stagnantRounds})`);
   })();
 
-  // Workers: one per session page, processing the shared post queue.
-  const worker = async (workerPage: { sessionId: string; page: Page }, isFirst: boolean): Promise<void> => {
-    if (isFirst) {
-      // worker 0 shares the discovery page — wait until discovery finishes
-      while (!discoveryDone) await sleep(500);
-    }
-    let consecutiveErrors = 0;
+  // Start the immediate workers right away — the post queue fills as
+  // discovery scrolls; no idle waiting for the discovery phase to finish.
+  for (const p of opts.pages) spawnWorker(p);
 
-    while (true) {
-      if (extracted >= opts.targetCount) return;
-      if (Date.now() >= deadline) return;
+  // When discovery finishes, its page becomes one more worker.
+  void discovery.then(() => spawnWorker(opts.discoveryPage));
 
-      const idx = nextIdx;
-      nextIdx++;
-      if (idx >= postQueue.length) {
-        if (discoveryDone) return;
-        nextIdx = idx;
-        await sleep(600);
-        continue;
-      }
+  // Late pages (members-list session) join the pool as soon as they resolve.
+  if (opts.latePages) {
+    void opts.latePages.then(
+      (pages) => {
+        lateSettled = true;
+        for (const p of pages ?? []) spawnWorker(p);
+      },
+      () => {
+        lateSettled = true;
+      },
+    );
+  }
 
-      const permalink = postQueue[idx];
-      try {
-        const res = await opts.extractEngagers(workerPage.page, permalink);
-        consecutiveErrors = 0;
-        const fresh = [...addUsers(res.reactors), ...addUsers(res.commenters)];
-        if (fresh.length > 0) {
-          const persisted = await opts.onNewUsers(fresh);
-          extracted += persisted;
-        }
-      } catch (err) {
-        failures++;
-        consecutiveErrors++;
-        log.debug("GroupCascade", `post failed (${permalink.substring(0, 70)}): ${String(err).substring(0, 80)}`);
-        if (consecutiveErrors >= 8) {
-          log.warn("GroupCascade", `worker ${workerPage.sessionId.slice(0, 8)} stopping after 8 consecutive errors`);
-          return;
-        }
-        await sleep(3000);
-      }
+  await discovery;
+  if (opts.latePages) {
+    // Never wait past the deadline for a late page that never arrives.
+    const waitMs = Math.max(0, deadline - Date.now() + 2_000);
+    await Promise.race([
+      opts.latePages.catch(() => undefined),
+      new Promise<void>((res) => {
+        const t = setTimeout(res, waitMs);
+        t.unref?.();
+      }),
+    ]);
+  }
 
-      postsDone++;
-      opts.onProgress?.({ totalSeen: extracted, postsDone, postsKnown: queuedPosts.size, activeWorkers: opts.pages.length });
-      if (postsDone % 15 === 0) {
-        log.info("GroupCascade", `posts ${postsDone}/${queuedPosts.size} → +${extracted} users so far (${failures} failed)`);
-        // Human-like rest: bursts of ~15 posts then a 15-30s pause — the old
-        // 5s-every-20-posts cadence tripped Facebook's automation heuristics
-        // and got accounts force-logged-out.
-        await sleep(15000 + rand(0, 15000));
-      }
-      await sleep(1200 + rand(0, 1800));
-    }
-  };
-
-  await Promise.all([discovery, ...opts.pages.map((p, i) => worker(p, i === 0))]);
+  if (pendingWorkers === 0) resolveWorkersIdle();
+  await workersIdle;
+  finished = true;
 
   let stoppedReason: GroupCascadeResult["stoppedReason"];
-  if (opts.shouldStop && (await opts.shouldStop().catch(() => false))) stoppedReason = "canceled";
+  if (canceled) stoppedReason = "canceled";
   else if (extracted >= opts.targetCount) stoppedReason = "target_reached";
+  else if (saturated) stoppedReason = "saturated";
   else if (Date.now() >= deadline) stoppedReason = "max_duration";
   else stoppedReason = "posts_exhausted";
 

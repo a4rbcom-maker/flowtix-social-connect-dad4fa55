@@ -102,4 +102,9 @@ export interface ExtractionJobProgress {
   posts_done?: number;
   posts_total?: number;
   last_update?: string;
+  source?: "members_list" | "feed_cascade";
+  rate_per_min?: number;
+  active_sessions?: number;
+  next_phase?: string;
+  errors_count?: number;
 }

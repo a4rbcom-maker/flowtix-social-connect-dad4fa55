@@ -3,8 +3,8 @@ import { ExtractionError, ErrorCodes } from "../errors.js";
 import { logger } from "../logger.js";
 import { config } from "../config.js";
 import { supabaseService } from "../services/supabase.js";
-import { multiSessionGroupMembers, membersPhaseBudgetMs, type GroupMemberUser } from "../services/group-members-core.js";
-import { runGroupCascade } from "../services/group-cascade-core.js";
+import { multiSessionGroupMembers, membersPhaseBudgetMs, type GroupMemberUser, type MultiSessionGroupResult } from "../services/group-members-core.js";
+import { runGroupCascade, type GroupCascadeResult, type CascadeWorkerPage } from "../services/group-cascade-core.js";
 import { extractEngagers } from "../services/engager-extractor-v2.js";
 import type { AuthState, ExtractedMember } from "../types.js";
 
@@ -24,7 +24,6 @@ export class GroupMembersExtractor extends BaseExtractor {
   private totalMembersCount: number | null = null;
   private totalMembersSource: string = "unknown";
   private lastStopReason: GroupStopReason | null = null;
-  private lastProgressTs = 0;
   private canceledCached = false;
   private lastCancelCheckTs = 0;
 
@@ -37,7 +36,19 @@ export class GroupMembersExtractor extends BaseExtractor {
 
     const membersUrl = this.ctx.cursor || `https://www.facebook.com/groups/${gid}/members`;
     log.info("GroupMembers", `starting`, { jobId: this.ctx.jobId, url: membersUrl, sessions: this.totalSessions });
-    await this.storeExtractionProgress(0, "navigating", 0);
+    await supabaseService
+      .storeProgress(this.ctx.jobId, {
+        discovered: 0,
+        processed: 0,
+        phase: "navigating",
+        source: "members_list",
+        next_phase: "feed_cascade",
+        rate_per_min: 0,
+        active_sessions: this.totalSessions,
+        coverage_rate: null,
+        last_update: new Date().toISOString(),
+      })
+      .catch((err) => log.debug("GroupMembers", `storeProgress failed: ${String(err)}`));
 
     try {
       await this.page.goto(membersUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
@@ -59,9 +70,8 @@ export class GroupMembersExtractor extends BaseExtractor {
     if (countResult.count !== null) {
       await this.persistMembersCount(countResult.count, countResult.source);
     }
-    await this.storeExtractionProgress(0, "scrolling", 0);
 
-    const allPages = [
+    const allPages: CascadeWorkerPage[] = [
       { sessionId: this.ctx.sessionId, page: this.page },
       ...this.secondarySessionPages,
     ];
@@ -69,108 +79,207 @@ export class GroupMembersExtractor extends BaseExtractor {
     const seen = new Set<string>();
     const shared: GroupMemberUser[] = [];
     let total = 0;
+    let errorsCount = 0;
+
+    const progress = {
+      rateWindowStart: Date.now(),
+      rateWindowStartTotal: 0,
+      lastStoreTs: 0,
+    };
+
+    const storeRich = (extra: {
+      discovered: number;
+      phase: "navigating" | "scrolling" | "completed";
+      source: "members_list" | "feed_cascade";
+      phaseCycle?: number;
+      nextPhase?: string;
+      activeSessions?: number;
+      postsDone?: number;
+      postsKnown?: number;
+      stopReason?: GroupStopReason | null;
+      immediate?: boolean;
+    }): Promise<void> => {
+      const now = Date.now();
+      if (!extra.immediate && extra.phase !== "navigating" && extra.phase !== "completed" && now - progress.lastStoreTs < 5_000) {
+        return Promise.resolve();
+      }
+      progress.lastStoreTs = now;
+
+      const elapsed = now - progress.rateWindowStart;
+      if (elapsed >= 60_000) {
+        progress.rateWindowStart = now;
+        progress.rateWindowStartTotal = extra.discovered;
+      }
+      const ratePerMin = elapsed > 5_000 ? Math.round(((extra.discovered - progress.rateWindowStartTotal) / elapsed) * 60_000) : 0;
+
+      const p: Record<string, unknown> = {
+        discovered: extra.discovered,
+        processed: extra.discovered,
+        phase: extra.phase,
+        source: extra.source,
+        rate_per_min: ratePerMin,
+        active_sessions: extra.activeSessions ?? allPages.length,
+        next_phase: extra.nextPhase ?? "none",
+        errors_count: errorsCount,
+        coverage_rate: this.computeCoverage(extra.discovered),
+        last_update: new Date().toISOString(),
+      };
+      if (extra.phaseCycle !== undefined) p.phase_cycle = extra.phaseCycle;
+      if (extra.postsDone !== undefined) p.posts_done = extra.postsDone;
+      if (extra.postsKnown !== undefined) p.posts_total = extra.postsKnown;
+      if (extra.stopReason !== undefined) p.stop_reason = extra.stopReason;
+
+      return supabaseService
+        .storeProgress(this.ctx.jobId, p)
+        .catch((err) => log.debug("GroupMembers", `storeProgress failed: ${String(err)}`));
+    };
+
+    const persistUsers = async (users: GroupMemberUser[]): Promise<number> => {
+      const batch: ExtractedMember[] = [];
+      for (const u of users) {
+        if (validName(u.name)) batch.push({ ...u, type: "member" });
+      }
+      if (batch.length === 0) return 0;
+      const persisted = await this.processBatch(batch, "member");
+      total += persisted;
+      return persisted;
+    };
 
     const coverageTarget = this.totalMembersCount
       ? Math.max(1, Math.round(this.totalMembersCount * 0.85))
       : this.ctx.maxResults;
     const targetCount = Math.min(this.ctx.maxResults, coverageTarget);
-    // Split the budget: the members list is capped by Facebook (~1-2K in large
-    // groups) — cap its phase too so the feed cascade (engagers/commenters,
-    // the only way past the cap) is guaranteed a real share of the job time.
     const budgetMs = membersPhaseBudgetMs(this.timeRemainingMs);
 
-    log.info("GroupMembers", `parallel extraction: ${allPages.length} session(s), target=${targetCount}, members budget=${Math.round(budgetMs / 1000)}s + cascade reserve (coverage 85% cap: ${this.ctx.maxResults})`);
+    log.info("GroupMembers", `target=${targetCount}, members budget=${Math.round(budgetMs / 1000)}s (hard cap), cascade=${config.groupCascadeEnabled ? "on" : "off"}`);
 
-    const result = await multiSessionGroupMembers(allPages, membersUrl, shared, seen, {
+    const membersOpts = {
       targetCount,
       maxDurationMs: budgetMs,
-      onNewUsers: async (users) => {
-        const batch: ExtractedMember[] = [];
-        for (const u of users) {
-          if (validName(u.name)) batch.push({ ...u, type: "member" });
-        }
-        if (batch.length > 0) {
-          total += await this.processBatch(batch, "member");
-        }
+      onNewUsers: async (users: GroupMemberUser[]): Promise<void> => {
+        await persistUsers(users);
       },
-      onProgress: (totalSeen) => {
-        void this.storeExtractionProgress(total, "scrolling", totalSeen);
+      onProgress: (totalSeen: number) => {
+        void storeRich({ discovered: total, phase: "scrolling", source: "members_list", phaseCycle: totalSeen, nextPhase: "feed_cascade" });
       },
       shouldStop: () => this.throttledCanceled(),
-    });
+    };
 
-    // Facebook caps the browsable members list (~1-2K in large groups) far
-    // below real membership. Everyone who posted/commented/reacted in the
-    // group is a member too — cascade the group feed for engagers when the
-    // members list topped out below the coverage target.
-    let cascade = null as Awaited<ReturnType<typeof runGroupCascade>> | null;
-    if (
+    let membersResult: MultiSessionGroupResult | null = null;
+    let cascade: GroupCascadeResult | null = null;
+    const overlap =
       config.groupCascadeEnabled &&
-      result.stoppedReason !== "canceled" &&
-      total < targetCount &&
-      this.timeRemainingSec > 120
-    ) {
-      log.info("GroupMembers", `members list capped at ${total}/${targetCount} — starting feed cascade phase`);
-      await this.storeExtractionProgress(total, "scrolling", shared.length);
+      allPages.length >= 2 &&
+      this.timeRemainingSec > 180;
+
+    if (overlap) {
+      // PHASE OVERLAP: session 0 keeps working the (Facebook-capped) members
+      // list while every other session starts the feed cascade IMMEDIATELY —
+      // no dead window between phases, and the members page joins the
+      // cascade worker pool the moment its phase ends.
+      log.info("GroupMembers", `overlap mode: 1 session on members list, ${allPages.length - 1} session(s) on feed cascade immediately`);
+
+      let resolveMembersPage: (pages: CascadeWorkerPage[]) => void = () => {};
+      const latePages = new Promise<CascadeWorkerPage[]>((res) => {
+        resolveMembersPage = res;
+      });
+
+      const membersPromise = multiSessionGroupMembers([allPages[0]], membersUrl, shared, seen, membersOpts)
+        .then((r) => {
+          resolveMembersPage([allPages[0]]);
+          return r;
+        })
+        .catch((err) => {
+          errorsCount++;
+          log.warn("GroupMembers", `members phase failed (cascade continues): ${String(err).substring(0, 120)}`);
+          resolveMembersPage([allPages[0]]);
+          return null;
+        });
 
       cascade = await runGroupCascade({
         feedUrl: `https://www.facebook.com/groups/${gid}`,
-        pages: allPages,
-        targetCount: targetCount - total,
+        discoveryPage: allPages[1],
+        pages: allPages.slice(2),
+        latePages,
+        seenIds: seen,
+        targetCount: Math.max(50, targetCount - total),
         maxDurationMs: Math.max(60_000, this.timeRemainingMs - 45_000),
         maxPosts: config.groupCascadeMaxPosts,
+        maxDiscoveryMs: allPages.length >= 3 ? 300_000 : 120_000,
         extractEngagers: (page, permalink) =>
           extractEngagers(page, permalink, {
             maxReactions: 1000,
             maxCommenters: 500,
             scrollDialogSeconds: 8,
           }),
-        onNewUsers: async (users) => {
-          const batch: ExtractedMember[] = [];
-          for (const u of users) {
-            if (validName(u.name)) batch.push({ ...u, type: "member" });
-          }
-          if (batch.length > 0) {
-            const persisted = await this.processBatch(batch, "member");
-            total += persisted;
-            return persisted;
-          }
-          return 0;
-        },
+        onNewUsers: persistUsers,
         onProgress: (info) => {
-          void this.storeCascadeProgress(total, info.postsDone, info.postsKnown);
+          void storeRich({
+            discovered: total,
+            phase: "scrolling",
+            source: "feed_cascade",
+            postsDone: info.postsDone,
+            postsKnown: info.postsKnown,
+            activeSessions: info.activeWorkers,
+            nextPhase: "none",
+          });
         },
         shouldStop: () => this.throttledCanceled(),
       });
+
+      membersResult = await membersPromise;
+    } else {
+      // Sequential fallback: single session, cascade disabled, or too little
+      // time left to overlap. All pages work the members list in parallel,
+      // then all of them move to the cascade (workers start immediately).
+      log.info("GroupMembers", `sequential mode: ${allPages.length} session(s) on members list first`);
+      membersResult = await multiSessionGroupMembers(allPages, membersUrl, shared, seen, membersOpts);
+
+      if (
+        config.groupCascadeEnabled &&
+        membersResult.stoppedReason !== "canceled" &&
+        total < targetCount &&
+        this.timeRemainingSec > 120
+      ) {
+        log.info("GroupMembers", `members list done at ${total}/${targetCount} (${membersResult.stoppedReason}) — starting feed cascade phase`);
+        cascade = await runGroupCascade({
+          feedUrl: `https://www.facebook.com/groups/${gid}`,
+          discoveryPage: allPages[0],
+          pages: allPages.slice(1),
+          seenIds: seen,
+          targetCount: Math.max(50, targetCount - total),
+          maxDurationMs: Math.max(60_000, this.timeRemainingMs - 45_000),
+          maxPosts: config.groupCascadeMaxPosts,
+          maxDiscoveryMs: allPages.length >= 2 ? 300_000 : 120_000,
+          extractEngagers: (page, permalink) =>
+            extractEngagers(page, permalink, {
+              maxReactions: 1000,
+              maxCommenters: 500,
+              scrollDialogSeconds: 8,
+            }),
+          onNewUsers: persistUsers,
+          onProgress: (info) => {
+            void storeRich({
+              discovered: total,
+              phase: "scrolling",
+              source: "feed_cascade",
+              postsDone: info.postsDone,
+              postsKnown: info.postsKnown,
+              activeSessions: info.activeWorkers,
+              nextPhase: "none",
+            });
+          },
+          shouldStop: () => this.throttledCanceled(),
+        });
+      }
     }
 
-    this.lastStopReason = this.mapStopReason(cascade?.stoppedReason ?? result.stoppedReason, total);
-    await this.storeExtractionProgress(total, "completed", 0, this.lastStopReason);
-    log.info("GroupMembers", `extraction finished: total=${total}, coverage=${this.computeCoverage(total)}%, stopReason=${this.lastStopReason ?? "null"}${cascade ? `, cascadePosts=${cascade.postsProcessed}/${cascade.postsDiscovered} (+${cascade.extracted})` : ""}`);
+    const coreReason = cascade?.stoppedReason ?? membersResult?.stoppedReason ?? "";
+    this.lastStopReason = this.mapStopReason(coreReason, total);
+    await storeRich({ discovered: total, phase: "completed", source: cascade ? "feed_cascade" : "members_list", stopReason: this.lastStopReason, immediate: true });
+    log.info("GroupMembers", `extraction finished: total=${total}, coverage=${this.computeCoverage(total)}%, stopReason=${this.lastStopReason ?? "null"}${cascade ? `, cascadePosts=${cascade.postsProcessed}/${cascade.postsDiscovered} (+${cascade.extracted})` : ""}${membersResult ? `, membersReason=${membersResult.stoppedReason}` : ""}`);
 
     return { extracted: total, done: true, authState };
-  }
-
-  private async storeCascadeProgress(total: number, postsDone: number, postsKnown: number): Promise<void> {
-    const now = Date.now();
-    if (now - this.lastProgressTs < 10_000) return;
-    this.lastProgressTs = now;
-
-    const coverage = this.computeCoverage(total);
-    const progress: Record<string, unknown> = {
-      discovered: total,
-      processed: total,
-      phase: "scrolling",
-      posts_done: postsDone,
-      posts_total: postsKnown,
-      coverage_rate: coverage,
-      last_update: new Date().toISOString(),
-    };
-    try {
-      await supabaseService.storeProgress(this.ctx.jobId, progress);
-    } catch (err) {
-      log.debug("GroupMembers", `storeProgress failed: ${String(err)}`);
-    }
   }
 
   private computeCoverage(discovered: number): number | null {
@@ -191,8 +300,9 @@ export class GroupMembersExtractor extends BaseExtractor {
     if (coreReason === "canceled") return null;
     if (coreReason === "target_reached" || total >= this.ctx.maxResults) return "max_results_reached";
     if (coreReason === "max_duration") return "session_rate_limited";
-    // stagnated / all_idle / posts_exhausted: Facebook capped the browsable
-    // source — accurate reason regardless of session count.
+    // stagnated / low_yield / all_idle / saturated / posts_exhausted:
+    // Facebook capped the browsable source — accurate reason regardless of
+    // session count.
     return "source_exhausted";
   }
 
@@ -205,36 +315,6 @@ export class GroupMembersExtractor extends BaseExtractor {
       });
     } catch (err) {
       log.warn("GroupMembers", `persistMembersCount failed: ${String(err)}`);
-    }
-  }
-
-  private async storeExtractionProgress(
-    discovered: number,
-    phase: "navigating" | "scrolling" | "completed",
-    phaseCycle: number,
-    stopReason?: GroupStopReason | null,
-  ): Promise<void> {
-    const now = Date.now();
-    if (phase !== "navigating" && phase !== "completed" && now - this.lastProgressTs < 10_000) {
-      return;
-    }
-    this.lastProgressTs = now;
-
-    const coverage = this.computeCoverage(discovered);
-    const progress: Record<string, unknown> = {
-      discovered,
-      processed: discovered,
-      phase,
-      phase_cycle: phaseCycle,
-      coverage_rate: coverage,
-      last_update: new Date().toISOString(),
-    };
-    if (stopReason !== undefined) progress.stop_reason = stopReason;
-
-    try {
-      await supabaseService.storeProgress(this.ctx.jobId, progress);
-    } catch (err) {
-      log.debug("GroupMembers", `storeProgress failed: ${String(err)}`);
     }
   }
 }
