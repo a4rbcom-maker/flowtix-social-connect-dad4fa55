@@ -59,13 +59,15 @@ async function autoStartNextQueuedJob(userId: string): Promise<void> {
     return;
   }
   log.info("Extract", `auto-starting queued job ${qJob.id} for user ${userId}`);
-  try {
-    await runExtractionJob(qJob.id, sessionIds, userId);
-  } catch (err) {
+  // Fire-and-forget: awaiting the next job here would nest it inside the
+  // PREVIOUS task's queue slot — with concurrency 1 that deadlocks the whole
+  // queue (previous slot waits for the next job; the next job waits for the
+  // slot) and every later submission freezes in "queued" forever.
+  void runExtractionJob(qJob.id, sessionIds, userId).catch(async (err) => {
     log.error("Extract", `auto-start failed for job ${qJob.id}: ${String(err)}`);
-    await supabaseService.failJob(qJob.id, String(err));
+    await supabaseService.failJob(qJob.id, String(err)).catch(() => {});
     await autoStartNextQueuedJob(userId);
-  }
+  });
 }
 
 /** Kick off the oldest queued job for every user that has one (used on boot). */
@@ -97,6 +99,28 @@ async function setEnrichingPhase(jobId: string): Promise<void> {
   }
 }
 
+/** Bounded enrichment — runs OUTSIDE the job watchdog, so a stuck enrichment
+ *  scan would otherwise freeze the job in "running" forever. On timeout the
+ *  job still completes; matching can be re-run manually via POST /enrich. */
+async function runEnrichmentSafely(jobId: string): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      enrichmentService.enrichJobResults(jobId),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`enrichment timed out after ${Math.round(config.enrichmentTimeoutMs / 1000)}s`)),
+          config.enrichmentTimeoutMs,
+        );
+      }),
+    ]);
+  } catch (err) {
+    log.warn("Extract", `job ${jobId}: enrichment incomplete: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function runExtractionJob(jobId: string, sessionIds: string[], userId: string): Promise<void> {
   const primarySessionId = sessionIds[0];
   const job = await supabaseService.getJob(jobId);
@@ -121,12 +145,12 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
     log.warn("Extract", `job ${jobId}: ${sessionIds.length} sessions requested, using first ${sessionCap} (pool=${poolCapacity}, per-job cap=${config.maxSessionsPerJob})`);
   }
 
-  jobQueue.enqueue(
-    async () => {
+  try {
+    await jobQueue.enqueue(
+      async () => {
       const currentStatus = await supabaseService.getJobStatus(jobId);
       if (currentStatus === "canceled" || currentStatus === "completed" || currentStatus === "failed") {
         log.info("Extract", `job ${jobId} is ${currentStatus ?? "missing"} before start, skipping (no duplicate run)`);
-        await autoStartNextQueuedJob(userId);
         return;
       }
 
@@ -150,8 +174,8 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
             const created = await igContextManager.createContext(sid, cookies, proxy, userAgent);
             sessionPages.push({ sessionId: sid, page: created.page, contextId: created.contextId });
           } else {
-            const { cookies, proxy, userAgent } = await supabaseService.getSessionAndCookies(sid);
-            const created = await contextManager.createContext(sid, cookies, proxy, userAgent);
+            const { cookies, proxy, userAgent, storageState } = await supabaseService.getSessionAndCookies(sid);
+            const created = await contextManager.createContext(sid, cookies, proxy, userAgent, storageState);
             sessionPages.push({ sessionId: sid, page: created.page, contextId: created.contextId });
           }
         } catch (err) {
@@ -257,7 +281,7 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
               const fresh = await supabaseService.getJob(jobId);
               if ((fresh.result_count || 0) > 0) {
                 await setEnrichingPhase(jobId);
-                await enrichmentService.enrichJobResults(jobId).catch((err) => log.error("Extract", `watchdog enrichment failed: ${String(err)}`));
+                await runEnrichmentSafely(jobId);
               }
             } catch { /* best effort */ }
             await releasePages().catch(() => {});
@@ -276,14 +300,14 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
             log.info("Extract", `job ${jobId} stopped by user`, { extracted: result.extracted, durationMs });
             if (result.extracted > 0) {
               await setEnrichingPhase(jobId);
-              await enrichmentService.enrichJobResults(jobId).catch((err) => log.error("Extract", `enrichment failed: ${String(err)}`));
+              await runEnrichmentSafely(jobId);
             }
             await supabaseService.updateJob(jobId, { status: "completed", completed_at: new Date().toISOString() });
           } else {
             log.info("Extract", `job ${jobId} extraction done, starting enrichment`, { extracted: result.extracted, durationMs });
             if (result.extracted > 0) {
               await setEnrichingPhase(jobId);
-              await enrichmentService.enrichJobResults(jobId).catch((err) => log.error("Extract", `enrichment failed: ${String(err)}`));
+              await runEnrichmentSafely(jobId);
             }
             await supabaseService.updateJob(jobId, {
               status: "completed",
@@ -299,13 +323,13 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
           log.info("Extract", `job ${jobId} paused`, { extracted: result.extracted, durationMs, cursor: result.nextCursor });
           if (result.extracted > 0) {
             await setEnrichingPhase(jobId);
-            await enrichmentService.enrichJobResults(jobId).catch((err) => log.error("Extract", `enrichment failed: ${String(err)}`));
+            await runEnrichmentSafely(jobId);
           }
         } else {
           log.info("Extract", `job ${jobId} extraction done (no more pages), starting enrichment`, { extracted: result.extracted, durationMs });
           if (result.extracted > 0) {
             await setEnrichingPhase(jobId);
-            await enrichmentService.enrichJobResults(jobId).catch((err) => log.error("Extract", `enrichment failed: ${String(err)}`));
+            await runEnrichmentSafely(jobId);
           }
           await supabaseService.updateJob(jobId, {
             status: "completed",
@@ -324,15 +348,18 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
         }
       } finally {
         await releasePages();
-        await autoStartNextQueuedJob(userId);
       }
     },
     async (err?: unknown) => {
       const detail = err instanceof Error ? err.message : err ? String(err) : "";
       await supabaseService.failJob(jobId, detail ? `فشل الاستخراج: ${detail}` : "Extraction failed after retries");
-      await autoStartNextQueuedJob(userId);
     },
   );
+  } finally {
+    // Single auto-start point: fires exactly once per settled task (success,
+    // failure, skip, or early throw) — AFTER the queue slot is released.
+    await autoStartNextQueuedJob(userId);
+  }
 }
 
 router.post("/extract", async (req, res) => {  try {
