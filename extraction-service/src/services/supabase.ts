@@ -206,22 +206,34 @@ export const supabaseService = {
       throw new ExtractionError(ErrorCodes.SESSION_NOT_CONNECTED, `الجلسة غير متصلة (الحالة: ${session.status}). يرجى إعادة توصيل الجلسة أولاً.`);
     }
 
-    const { data: profile, error: pErr } = await sb
+    let profileRes = await sb
       .from("fb_browser_profiles")
       .select("cookies_enc, storage_state_enc, user_agent")
       .eq("session_id", sessionId)
       .single();
 
-    if (pErr || !profile?.cookies_enc) {
+    // Migration 2026082210 not applied yet — degrade to cookies-only mode so
+    // extraction keeps working until the column exists.
+    if (profileRes.error && profileRes.error.message.includes("storage_state_enc")) {
+      log.warn("Supabase", `storage_state_enc column missing (migration 2026082210 pending) — cookies-only mode`);
+      profileRes = await sb
+        .from("fb_browser_profiles")
+        .select("cookies_enc, user_agent")
+        .eq("session_id", sessionId)
+        .single();
+    }
+
+    const profileData = profileRes.data as ProfileRow | null;
+    if (profileRes.error || !profileData?.cookies_enc) {
       throw new ExtractionError(ErrorCodes.NO_COOKIES, "No cookies found for session");
     }
 
-    const cookies = parseCookiesToPlaywright(profile.cookies_enc);
+    const cookies = parseCookiesToPlaywright(profileData.cookies_enc);
     if (cookies.length === 0) {
       throw new ExtractionError(ErrorCodes.NO_COOKIES, "Cookies could not be parsed");
     }
 
-    const storageState = parseStorageState(profile.storage_state_enc);
+    const storageState = parseStorageState(profileData.storage_state_enc ?? null);
 
     log.info("Supabase", `session loaded: ${session.name} (status: ${session.status})`, {
       sessionId: session.id,
@@ -236,7 +248,7 @@ export const supabaseService = {
       log.info("Supabase", `session ${session.id.slice(0, 8)}: proxy resolved (${proxy.label || proxy.url.split('@').pop()})`);
     }
 
-    return { session, cookies, cookieString: toCookieString(cookies), storageState, proxy, userAgent: profile.user_agent ?? null };
+    return { session, cookies, cookieString: toCookieString(cookies), storageState, proxy, userAgent: profileData.user_agent ?? null };
   },
 
   /** Persist the full browser identity captured from a live context:
@@ -257,10 +269,17 @@ export const supabaseService = {
         sameSite: c.sameSite,
       })),
     );
-    const { error } = await sb
+    let { error } = await sb
       .from("fb_browser_profiles")
       .update({ cookies_enc: legacyCookiesPayload, storage_state_enc: state })
       .eq("session_id", sessionId);
+    if (error && error.message.includes("storage_state_enc")) {
+      // Migration pending — still persist rotated cookies via the legacy column.
+      ({ error } = await sb
+        .from("fb_browser_profiles")
+        .update({ cookies_enc: legacyCookiesPayload })
+        .eq("session_id", sessionId));
+    }
     if (error) {
       log.warn("Supabase", `persistSessionIdentity failed for ${sessionId.slice(0, 8)}: ${error.message}`);
     } else {
