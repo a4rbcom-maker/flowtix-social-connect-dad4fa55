@@ -44,6 +44,8 @@ interface EnrichmentResult {
   religion: string | null;
   about_me: string | null;
   source_db: string;
+  match_confidence?: "probable";
+  match_method?: "full_name";
 }
 
 interface EnrichmentStats {
@@ -52,6 +54,8 @@ interface EnrichmentStats {
   not_found: number;
   coverage_percent: number;
   sources: Record<string, number>;
+  name_matched?: number;
+  new_format_ids?: number;
 }
 
 function cleanFbId(fbId: string): string {
@@ -59,6 +63,38 @@ function cleanFbId(fbId: string): string {
   if (cleaned.startsWith("msg_")) cleaned = cleaned.slice(4);
   cleaned = cleaned.replace(/^\uFEFF/, "");
   return cleaned;
+}
+
+function normalizeFullName(a: unknown, b?: unknown): string {
+  return `${a ?? ""} ${b ?? ""}`.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Name fallback for FB jobs: the leaked DB predates Facebook's 615... ID
+ *  format, so members holding new-format accounts can never match by FBID.
+ *  One streaming pass over the DB finds target names that appear EXACTLY
+ *  once (unique full name) — ambiguous/common names are skipped because a
+ *  wrong-person phone number is worse than no match. */
+function searchByUniqueFullName(
+  db: Database.Database,
+  targetNames: Set<string>,
+): Map<string, EnrichmentRow> {
+  const unique = new Map<string, EnrichmentRow>();
+  const ambiguous = new Set<string>();
+  const stmt = db.prepare(
+    "SELECT FBID, Phone, first_name, last_name, email, birthday, birthdayYear, gender, locale, hometown, location, country, work, education, relationship, religion, about_me FROM data",
+  );
+  for (const row of (stmt as unknown as { iterate(): Iterable<Record<string, unknown>> }).iterate()) {
+    const full = normalizeFullName(row.first_name, row.last_name);
+    if (!full || (!targetNames.has(full) && !unique.has(full) && !ambiguous.has(full))) continue;
+    if (!unique.has(full)) {
+      if (ambiguous.has(full) || !targetNames.has(full)) continue;
+      unique.set(full, mapRow(row));
+    } else {
+      unique.delete(full);
+      ambiguous.add(full);
+    }
+  }
+  return unique;
 }
 
 /** Accepts either a directory containing .db files or a direct path to one .db file. */
@@ -389,6 +425,10 @@ export const enrichmentService = {
     }
 
     const allFbIds = results.map((r: { fb_id: string }) => cleanFbId(r.fb_id)).filter(Boolean);
+    const newFormatIds = allFbIds.filter((id) => /^615\d+/.test(id)).length;
+    if (newFormatIds > 0) {
+      log.info("Enrichment", `${newFormatIds}/${allFbIds.length} results hold new-format 615* FBIDs — these postdate the leaked DB and can only match by unique full name`);
+    }
     log.info("Enrichment", `sample FBIDs: ${allFbIds.slice(0, 5).join(', ')}`);
     const enrichedMap = new Map<string, EnrichmentResult>();
     const sources: Record<string, number> = {};
@@ -443,6 +483,62 @@ export const enrichmentService = {
       if (countFromThisDb > 0) sources[dbInfo.name] = countFromThisDb;
     }
 
+    // ---- Name fallback (probable matches) --------------------------------
+    // Runs only for results the FBID pass could not enrich. Unique full-name
+    // rows in the DB are matched and explicitly flagged probable so the UI
+    // can separate confirmed identity from name-based inference.
+    let nameMatched = 0;
+    const unmatchedByName = new Map<string, string>();
+    for (const r of results) {
+      const cleanId = cleanFbId(r.fb_id);
+      if (enrichedMap.has(cleanId)) continue;
+      const name = typeof r.data?.name === "string" ? r.data.name.trim().toLowerCase().replace(/\s+/g, " ") : "";
+      if (name && !unmatchedByName.has(name)) unmatchedByName.set(name, cleanId);
+    }
+
+    if (unmatchedByName.size > 0) {
+      for (const dbInfo of databases) {
+        if (unmatchedByName.size === 0) break;
+        let db: Database.Database | null = null;
+        try {
+          db = new Database(dbInfo.path, { readonly: true });
+          const t0 = Date.now();
+          const uniqueNames = searchByUniqueFullName(db, new Set(unmatchedByName.keys()));
+          for (const [name, row] of uniqueNames) {
+            const fbId = unmatchedByName.get(name);
+            if (!fbId || enrichedMap.has(fbId)) continue;
+            enrichedMap.set(fbId, {
+              phone: row.Phone || null,
+              first_name: row.first_name || null,
+              last_name: row.last_name || null,
+              email: row.email || null,
+              birthday: row.birthday || null,
+              birthdayYear: row.birthdayYear || null,
+              gender: row.gender || null,
+              hometown: row.hometown || null,
+              location: row.location || null,
+              country: row.country || null,
+              work: row.work || null,
+              education: row.education || null,
+              relationship: row.relationship || null,
+              religion: row.religion || null,
+              about_me: row.about_me || null,
+              source_db: dbInfo.name,
+              match_confidence: "probable",
+              match_method: "full_name",
+            });
+            unmatchedByName.delete(name);
+            nameMatched++;
+          }
+          log.info("Enrichment", `name fallback in ${dbInfo.name}.db: +${uniqueNames.size} unique-name matches (${((Date.now() - t0) / 1000).toFixed(0)}s scan)`);
+        } catch (err) {
+          log.error("Enrichment", `name fallback error in ${dbInfo.name}.db: ${String(err)}`);
+        } finally {
+          if (db) db.close();
+        }
+      }
+    }
+
     const enriched = enrichedMap.size;
     const notFound = allFbIds.length - enriched;
     const coveragePercent = allFbIds.length > 0 ? Math.round((enriched / allFbIds.length) * 100) : 0;
@@ -452,7 +548,12 @@ export const enrichmentService = {
       const cleanId = cleanFbId(r.fb_id);
       const enrichment = enrichedMap.get(cleanId);
       if (enrichment) {
-        updates.push({ id: r.id, metadata: { enrichment } });
+        const metadata: Record<string, unknown> = { enrichment };
+        if (enrichment.match_confidence) {
+          metadata.match_confidence = enrichment.match_confidence;
+          metadata.match_method = enrichment.match_method;
+        }
+        updates.push({ id: r.id, metadata });
       }
     }
 
@@ -467,6 +568,8 @@ export const enrichmentService = {
       not_found: notFound,
       coverage_percent: coveragePercent,
       sources,
+      name_matched: nameMatched,
+      new_format_ids: newFormatIds,
     };
 
     await supabaseService.updateJob(jobId, {
@@ -478,7 +581,7 @@ export const enrichmentService = {
       })).catch(() => ({ phase: "completed", enrichment: stats })),
     });
 
-    log.info("Enrichment", `done: ${enriched}/${allFbIds.length} enriched (${coveragePercent}%)`, { sources });
+    log.info("Enrichment", `done: ${enriched}/${allFbIds.length} enriched (${coveragePercent}%, name-matched ${nameMatched}, new-format ${newFormatIds})`, { sources });
   },
 
   /** إثراء نتائج إنستجرام: bio (هاتف/بريد) → confirmed، وإلا الاسم الكامل → probable */
