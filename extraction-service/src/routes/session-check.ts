@@ -29,7 +29,26 @@ router.post("/session-check", async (req, res) => {
 
     const { session, cookies, userAgent, storageState } = await supabaseService.getSessionAndCookies(session_id);
 
-    const { page, contextId } = await contextManager.createContext(session_id, cookies, undefined, userAgent, storageState);
+    // createContext verifies the session against Facebook and throws
+    // SESSION_EXPIRED for guest cookies. Surface that as a clean
+    // "disconnected" verdict (and persist it) instead of a 500 — otherwise
+    // dead sessions keep showing "connected" in the dashboard forever.
+    let page: import("playwright").Page;
+    let contextId: string;
+    try {
+      ({ page, contextId } = await contextManager.createContext(session_id, cookies, undefined, userAgent, storageState));
+    } catch (err) {
+      if (err instanceof ExtractionError && (err.code === ErrorCodes.SESSION_EXPIRED || err.code === ErrorCodes.AUTH_FAILED)) {
+        await supabaseService.updateSessionStatus(session_id, "disconnected", err.message).catch(() => {});
+        return res.json({
+          session_id,
+          status: "disconnected",
+          auth_state: "needs_login" as AuthState,
+          message: err.message,
+        });
+      }
+      throw err;
+    }
     try {
       await page.goto("https://www.facebook.com/", {
         waitUntil: "domcontentloaded",

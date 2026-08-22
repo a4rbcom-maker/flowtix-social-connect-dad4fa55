@@ -5,7 +5,6 @@ import { config } from "../config.js";
 import { supabaseService } from "../services/supabase.js";
 import { multiSessionGroupMembers, membersPhaseBudgetMs, type GroupMemberUser, type MultiSessionGroupResult } from "../services/group-members-core.js";
 import { runGroupCascade, type GroupCascadeResult, type CascadeWorkerPage } from "../services/group-cascade-core.js";
-import { runMbasicGroupMembers, type MbasicMembersResult } from "../services/group-members-mbasic.js";
 import { extractEngagers } from "../services/engager-extractor-v2.js";
 import type { AuthState, ExtractedMember } from "../types.js";
 
@@ -91,7 +90,7 @@ export class GroupMembersExtractor extends BaseExtractor {
     const storeRich = (extra: {
       discovered: number;
       phase: "navigating" | "scrolling" | "completed";
-      source: "members_list" | "feed_cascade" | "members_mbasic";
+      source: "members_list" | "feed_cascade";
       phaseCycle?: number;
       nextPhase?: string;
       activeSessions?: number;
@@ -168,23 +167,6 @@ export class GroupMembersExtractor extends BaseExtractor {
 
     let membersResult: MultiSessionGroupResult | null = null;
     let cascade: GroupCascadeResult | null = null;
-    let mbasic: MbasicMembersResult | null = null;
-
-    const runMbasicPhase = async (): Promise<MbasicMembersResult | null> => {
-      if (total >= targetCount || this.timeRemainingSec < 180) return null;
-      log.info("GroupMembers", `modern sources drying — starting deep mbasic member pagination`);
-      await storeRich({ discovered: total, phase: "scrolling", source: "members_mbasic", nextPhase: "feed_cascade", activeSessions: allPages.length });
-      return runMbasicGroupMembers(allPages[0].page, gid, seen, {
-        maxDurationMs: Math.max(60_000, this.timeRemainingMs - 90_000),
-        onNewUsers: async (users) => {
-          await persistUsers(users);
-        },
-        onProgress: (totalSeen, pagesDone) => {
-          void storeRich({ discovered: total, phase: "scrolling", source: "members_mbasic", phaseCycle: pagesDone, nextPhase: "none" });
-        },
-        shouldStop: () => this.throttledCanceled(),
-      });
-    };
 
     const overlap =
       config.groupCascadeEnabled &&
@@ -203,17 +185,17 @@ export class GroupMembersExtractor extends BaseExtractor {
         resolveMembersPage = res;
       });
 
-      const membersPromise = (async () => {
-        const modern = await multiSessionGroupMembers([allPages[0]], membersUrl, shared, seen, membersOpts);
-        mbasic = await runMbasicPhase();
-        resolveMembersPage([allPages[0]]);
-        return modern;
-      })().catch((err) => {
-        errorsCount++;
-        log.warn("GroupMembers", `members phase failed (cascade continues): ${String(err).substring(0, 120)}`);
-        resolveMembersPage([allPages[0]]);
-        return null;
-      });
+      const membersPromise = multiSessionGroupMembers([allPages[0]], membersUrl, shared, seen, membersOpts)
+        .then((r) => {
+          resolveMembersPage([allPages[0]]);
+          return r;
+        })
+        .catch((err) => {
+          errorsCount++;
+          log.warn("GroupMembers", `members phase failed (cascade continues): ${String(err).substring(0, 120)}`);
+          resolveMembersPage([allPages[0]]);
+          return null;
+        });
 
       cascade = await runGroupCascade({
         feedUrl: `https://www.facebook.com/groups/${gid}`,
@@ -258,15 +240,6 @@ export class GroupMembersExtractor extends BaseExtractor {
         config.groupCascadeEnabled &&
         membersResult.stoppedReason !== "canceled" &&
         total < targetCount &&
-        this.timeRemainingSec > 180
-      ) {
-        mbasic = await runMbasicPhase();
-      }
-
-      if (
-        config.groupCascadeEnabled &&
-        (membersResult.stoppedReason !== "canceled") &&
-        total < targetCount &&
         this.timeRemainingSec > 120
       ) {
         log.info("GroupMembers", `members list done at ${total}/${targetCount} (${membersResult.stoppedReason}) — starting feed cascade phase`);
@@ -305,7 +278,7 @@ export class GroupMembersExtractor extends BaseExtractor {
     const coreReason = cascade?.stoppedReason ?? membersResult?.stoppedReason ?? "";
     this.lastStopReason = this.mapStopReason(coreReason, total);
     await storeRich({ discovered: total, phase: "completed", source: cascade ? "feed_cascade" : "members_list", stopReason: this.lastStopReason, immediate: true });
-    log.info("GroupMembers", `extraction finished: total=${total}, coverage=${this.computeCoverage(total)}%, stopReason=${this.lastStopReason ?? "null"}${cascade ? `, cascadePosts=${cascade.postsProcessed}/${cascade.postsDiscovered} (+${cascade.extracted})` : ""}${mbasic ? `, mbasic=${mbasic.extracted}/${mbasic.pagesFetched}p (${mbasic.stoppedReason})` : ""}${membersResult ? `, membersReason=${membersResult.stoppedReason}` : ""}`);
+    log.info("GroupMembers", `extraction finished: total=${total}, coverage=${this.computeCoverage(total)}%, stopReason=${this.lastStopReason ?? "null"}${cascade ? `, cascadePosts=${cascade.postsProcessed}/${cascade.postsDiscovered} (+${cascade.extracted})` : ""}${membersResult ? `, membersReason=${membersResult.stoppedReason}` : ""}`);
 
     return { extracted: total, done: true, authState };
   }

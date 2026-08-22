@@ -287,12 +287,18 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
 
   /** Re-scroll the group feed on the claiming worker's own page when the
    *  post queue drains but time/budget remain — post production is
-   *  continuous, never one-shot. */
+   *  continuous, never one-shot. Each pass rotates to a different feed
+   *  surface (ranked → chronological) so re-scrolls actually surface NEW
+   *  posts instead of re-reading the same ranked set. */
+  const FEED_VARIANTS = ["", "?sorting_setting=CHRONOLOGICAL"];
+  let rediscoverVariant = 0;
   const runRediscovery = async (page: Page): Promise<void> => {
-    log.info("GroupCascade", `post queue drained — re-scrolling group feed for more posts (have ${queuedPosts.size}/${maxPosts})`);
+    const variant = FEED_VARIANTS[rediscoverVariant % FEED_VARIANTS.length];
+    rediscoverVariant++;
+    log.info("GroupCascade", `post queue drained — re-scrolling group feed${variant ? " (chronological)" : ""} for more posts (have ${queuedPosts.size}/${maxPosts})`);
     const { detach, flush } = attachHarvest(page);
     try {
-      await page.goto(opts.feedUrl, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
+      await page.goto(opts.feedUrl + variant, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
       await page.waitForTimeout(2000 + rand(0, 1000));
       await scrollRounds(page, "rediscovery", flush);
       await flush();
