@@ -99,5 +99,7 @@ export interface ExtractionJobProgress {
   phase_cycle?: number;
   coverage_rate?: number | null;
   stop_reason?: StopReason | null;
+  posts_done?: number;
+  posts_total?: number;
   last_update?: string;
 }

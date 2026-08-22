@@ -80,8 +80,8 @@ export async function multiSessionGroupMembers(
   const scrollDelayMs = opts.scrollDelayMs ?? 600;
   const maxIdleRounds = opts.maxIdleRounds ?? 15;
   const maxWakeUpAttempts = opts.maxWakeUpAttempts ?? 3;
-  const stallWindowMs = opts.stallWindowMs ?? 90_000;
-  const stallMinGrowth = opts.stallMinGrowth ?? 10;
+  const stallWindowMs = opts.stallWindowMs ?? 60_000;
+  const stallMinGrowth = opts.stallMinGrowth ?? 15;
   const startTime = Date.now();
 
   log.info("GroupCore", "=== parallel multi-session group members ===");
@@ -266,7 +266,7 @@ function attachInterception(
     if (!url.includes("graphql") || resp.status() !== 200) return;
     try {
       const text = await resp.text();
-      for (const u of parseUsersFromGraphQL(text)) addShared(s, u);
+      for (const u of parseGroupUsersFromGraphQL(text)) addShared(s, u);
     } catch {
       /* response body unavailable */
     }
@@ -359,7 +359,10 @@ async function wakeUp(page: Page): Promise<void> {
   }
 }
 
-function parseUsersFromGraphQL(text: string): GroupMemberUser[] {
+/** Parse a raw Facebook GraphQL response body (with optional `for (;;);`
+ *  prefix) into a deduplicated user list. Shared by the members phase and the
+ *  cascade feed harvester. */
+export function parseGroupUsersFromGraphQL(text: string): GroupMemberUser[] {
   const users: GroupMemberUser[] = [];
   let jsonText = text;
   const forIdx = text.indexOf("for (;;);");

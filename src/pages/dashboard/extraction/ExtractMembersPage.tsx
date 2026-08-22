@@ -411,6 +411,13 @@ export function ExtractMembersPage() {
               )}
             </div>
 
+            {typeof jobAny?.progress?.posts_done === "number" && (
+              <p className="flex items-center gap-2 text-xs text-[var(--color-fg-muted)]">
+                <MessageSquare className="size-3.5" />
+                {t("extract.running.cascadePosts")}: {jobAny.progress.posts_done} / {jobAny.progress.posts_total ?? "…"}
+              </p>
+            )}
+
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <StatBox icon={Users} label={t("extract.running.extracted")} value={discovered.toLocaleString()} />
               <StatBox icon={Activity} label={t("extract.status")} value={t(`extract.jobStatus.${activeJob?.status ?? "running"}`)} />

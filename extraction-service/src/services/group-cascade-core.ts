@@ -1,5 +1,6 @@
-import type { Page } from "playwright";
+import type { Page, Response } from "playwright";
 import { logger } from "../logger.js";
+import { parseGroupUsersFromGraphQL } from "./group-members-core.js";
 
 const log = logger;
 
@@ -92,8 +93,38 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
   let discoveryStopped = "done";
 
   // Discovery producer: scroll the group feed collecting post permalinks.
+  // While scrolling, Facebook streams GroupFeed GraphQL responses containing
+  // post actors + top commenters — harvest them for free instead of idling
+  // through the discovery phase (was a fully dead ~5min window on slow VPSes).
   const discovery = (async () => {
     const page = opts.pages[0].page;
+    const harvested: CascadeUser[] = [];
+
+    const harvestHandler = async (resp: Response): Promise<void> => {
+      const url = resp.url();
+      if (!url.includes("graphql") || resp.status() !== 200) return;
+      try {
+        const text = await resp.text();
+        for (const u of parseGroupUsersFromGraphQL(text)) {
+          const fresh = addUsers([{ id: u.fb_id, name: u.name, url: u.profile_url }]);
+          if (fresh.length > 0) harvested.push(...fresh);
+        }
+      } catch {
+        /* response body unavailable */
+      }
+    };
+
+    const flushHarvest = async (): Promise<void> => {
+      if (harvested.length === 0) return;
+      const batch = harvested.splice(0, harvested.length);
+      try {
+        const persisted = await opts.onNewUsers(batch);
+        extracted += persisted;
+      } catch (err) {
+        log.debug("GroupCascade", `harvest persist failed: ${String(err).substring(0, 80)}`);
+      }
+    };
+
     try {
       await page.goto(opts.feedUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
       await page.waitForTimeout(2000 + rand(0, 1500));
@@ -102,6 +133,7 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
       discoveryDone = true;
       return;
     }
+    page.on("response", harvestHandler);
 
     let lastCount = -1;
     let stagnantRounds = 0;
@@ -142,17 +174,22 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
         else stagnantRounds = 0;
         lastCount = queuedPosts.size;
 
+        await flushHarvest();
+        opts.onProgress?.({ totalSeen: extracted, postsDone, postsKnown: queuedPosts.size, activeWorkers: opts.pages.length });
+
         await page.evaluate(() => window.scrollBy(0, 900));
         await sleep(900 + rand(0, 600));
       } catch {
         break;
       }
     }
+    await flushHarvest();
+    page.off("response", harvestHandler);
     discoveryDone = true;
     if (queuedPosts.size < maxPosts && stagnantRounds < 12 && Date.now() >= discoveryDeadline) {
       discoveryStopped = "discovery_cap";
     }
-    log.info("GroupCascade", `discovery done: ${queuedPosts.size} posts (reason=${discoveryStopped}, stagnant=${stagnantRounds})`);
+    log.info("GroupCascade", `discovery done: ${queuedPosts.size} posts, +${extracted} users harvested from feed (reason=${discoveryStopped}, stagnant=${stagnantRounds})`);
   })();
 
   // Workers: one per session page, processing the shared post queue.
@@ -189,16 +226,17 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
         failures++;
         consecutiveErrors++;
         log.debug("GroupCascade", `post failed (${permalink.substring(0, 70)}): ${String(err).substring(0, 80)}`);
-        if (consecutiveErrors >= 5) {
-          log.warn("GroupCascade", `worker ${workerPage.sessionId.slice(0, 8)} stopping after 5 consecutive errors`);
+        if (consecutiveErrors >= 8) {
+          log.warn("GroupCascade", `worker ${workerPage.sessionId.slice(0, 8)} stopping after 8 consecutive errors`);
           return;
         }
+        await sleep(3000);
       }
 
       postsDone++;
       opts.onProgress?.({ totalSeen: extracted, postsDone, postsKnown: queuedPosts.size, activeWorkers: opts.pages.length });
       if (postsDone % 15 === 0) {
-        log.info("GroupCascade", `posts ${postsDone}/${queuedPosts.size} → +${extracted} users so far`);
+        log.info("GroupCascade", `posts ${postsDone}/${queuedPosts.size} → +${extracted} users so far (${failures} failed)`);
         // Human-like rest: bursts of ~15 posts then a 15-30s pause — the old
         // 5s-every-20-posts cadence tripped Facebook's automation heuristics
         // and got accounts force-logged-out.
@@ -216,7 +254,7 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
   else if (Date.now() >= deadline) stoppedReason = "max_duration";
   else stoppedReason = "posts_exhausted";
 
-  log.info("GroupCascade", `=== cascade finished: +${extracted} users from ${postsDone}/${queuedPosts.size} posts (${failures} failed) reason=${stoppedReason} ===`);
+  log.info("GroupCascade", `=== cascade finished: +${extracted} users from ${postsDone}/${queuedPosts.size} posts (${failures} failed, avg ${postsDone > 0 ? Math.round((Date.now() - startTime) / postsDone / 1000) : 0}s/post) reason=${stoppedReason} ===`);
 
   return {
     extracted,

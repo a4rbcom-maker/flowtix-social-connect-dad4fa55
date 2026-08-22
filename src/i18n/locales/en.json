@@ -1050,6 +1050,7 @@
       "paused": "Paused",
       "members": "accounts",
       "extracted": "Extracted",
+      "cascadePosts": "Extracting members from group post reactions",
       "cancel": "Cancel"
     },
     "failed": {
