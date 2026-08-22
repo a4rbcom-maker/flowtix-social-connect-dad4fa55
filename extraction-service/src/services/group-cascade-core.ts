@@ -39,8 +39,8 @@ export interface GroupCascadeOptions {
   targetCount: number;
   maxDurationMs: number;
   maxPosts?: number;
-  /** Hard cap on the feed-discovery phase (the discovery page joins the
-   *  worker pool as soon as discovery finishes). */
+  /** Hard cap on the INITIAL feed-discovery phase (the discovery page joins
+   *  the worker pool as soon as discovery finishes). */
   maxDiscoveryMs?: number;
   /** Stop EVERYTHING when no new user has been extracted for this long —
    *  the group's active core is saturated and further posts are pure waste
@@ -69,14 +69,26 @@ export interface GroupCascadeResult {
   stoppedReason: "target_reached" | "posts_exhausted" | "max_duration" | "canceled" | "saturated";
 }
 
+/** Scroll session limits for feed discovery. Facebook's feed lazy-loads
+ *  slowly (even more with resource blocking), so a "no new links" streak
+ *  must be tolerated for a long while before the feed is considered
+ *  genuinely bottomed out — one-shot discovery with a short fuse was
+ *  capping real groups at 30-60 posts out of the allowed maxPosts. */
+const DISCOVERY_STAGNANT_ROUNDS = 25;
+/** Cooldown between rediscovery sessions so a fully exhausted feed does not
+ *  get re-navigated in a hot loop. */
+const REDISCOVER_COOLDOWN_MS = 30_000;
+
 /**
  * Group feed cascade: after the members list is exhausted (Facebook caps it),
  * everyone who posted / commented / reacted in the group is still a member —
  * and reachable. A dedicated discovery page scrolls the group feed collecting
- * post permalinks (DOM links + GraphQL post actors/commenters harvested for
- * free) while every other session processes the shared post queue in
- * parallel from the very first permalink. Extra pages (e.g. the members-list
- * session) join the worker pool dynamically via `latePages`.
+ * post permalinks (DOM links + post ids parsed straight from the streamed
+ * GroupFeed GraphQL responses) while every other session processes the shared
+ * post queue in parallel from the very first permalink. When the queue drains
+ * and time/budget remain, a worker re-scrolls the feed (rediscovery) — post
+ * production is continuous, never one-shot. Extra pages (e.g. the
+ * members-list session) join the worker pool dynamically via `latePages`.
  */
 export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupCascadeResult> {
   const maxPosts = opts.maxPosts ?? 400;
@@ -84,6 +96,7 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
   const startTime = Date.now();
   const deadline = startTime + opts.maxDurationMs;
   const discoveryDeadline = startTime + Math.min(opts.maxDiscoveryMs ?? 300_000, opts.maxDurationMs);
+  const gid = opts.feedUrl.match(/groups\/([^/?#]+)/)?.[1] ?? "";
 
   log.info("GroupCascade", "=== feed cascade starting ===");
   log.info(
@@ -107,6 +120,8 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
   let rateWindowStart = Date.now();
   let rateWindowStartCount = 0;
   let finished = false;
+  let rediscovering = false;
+  let nextRediscoverAt = 0;
 
   const canceledNow = async (): Promise<boolean> => {
     if (!opts.shouldStop) return false;
@@ -163,6 +178,129 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
     postQueue.push(permalink);
   };
 
+  // ---- Feed harvest & scroll ----------------------------------------------
+  // GroupFeed GraphQL responses streamed while scrolling carry post actors,
+  // top commenters AND post ids far beyond the viewport — harvest users and
+  // permalinks from them, not just from DOM links.
+  const attachHarvest = (page: Page): { detach: () => void; flush: () => Promise<void> } => {
+    const harvested: CascadeUser[] = [];
+
+    const handler = async (resp: Response): Promise<void> => {
+      const url = resp.url();
+      if (!url.includes("graphql") || resp.status() !== 200) return;
+      try {
+        const text = await resp.text();
+        for (const u of parseGroupUsersFromGraphQL(text)) {
+          const fresh = addUsers([{ id: u.fb_id, name: u.name, url: u.profile_url }]);
+          if (fresh.length > 0) harvested.push(...fresh);
+        }
+        if (gid && text.includes(gid)) {
+          for (const m of text.matchAll(/pfbid([A-Za-z0-9_-]{8,})/g)) {
+            queuePost(`https://www.facebook.com/groups/${gid}/posts/pfbid${m[1]}`);
+          }
+          for (const m of text.matchAll(/"post_id":"(\d{10,})"/g)) {
+            queuePost(`https://www.facebook.com/groups/${gid}/posts/${m[1]}`);
+          }
+        }
+      } catch {
+        /* response body unavailable */
+      }
+    };
+
+    const flush = async (): Promise<void> => {
+      if (harvested.length === 0) return;
+      const batch = harvested.splice(0, harvested.length);
+      try {
+        const persisted = await opts.onNewUsers(batch);
+        extracted += persisted;
+      } catch (err) {
+        log.debug("GroupCascade", `harvest persist failed: ${String(err).substring(0, 80)}`);
+      }
+    };
+
+    page.on("response", handler);
+    return { detach: () => page.off("response", handler), flush };
+  };
+
+  /** Scroll a feed page collecting permalinks + harvested users. Stops on
+   *  cancel/saturation/deadline/maxPosts, a long stagnant streak, or once
+   *  the workers have a meaningful backlog (producer backpressure). */
+  const scrollRounds = async (
+    page: Page,
+    label: "discovery" | "rediscovery",
+    flush: () => Promise<void>,
+  ): Promise<void> => {
+    let stagnantRounds = 0;
+    let lastCount = -1;
+
+    for (let round = 0; round < 400; round++) {
+      if (await canceledNow()) return;
+      if (checkSaturated()) return;
+      if (queuedPosts.size >= maxPosts || Date.now() >= deadline) return;
+      if (label === "discovery" && Date.now() >= discoveryDeadline) return;
+      if (postQueue.length - nextIdx >= 10) return;
+
+      try {
+        const links = await page.evaluate(() =>
+          Array.from(document.querySelectorAll('a[href*="/posts/"], a[href*="permalink"], a[href*="story_fbid"]')).map(
+            (a) => a.getAttribute("href") || "",
+          ),
+        );
+        let added = 0;
+        for (const href of links) {
+          const permalink = normalizePermalink(href, opts.feedUrl);
+          if (permalink) {
+            const before = queuedPosts.size;
+            queuePost(permalink);
+            if (queuedPosts.size > before) added++;
+          }
+        }
+        if (added === 0 && queuedPosts.size === lastCount) stagnantRounds++;
+        else stagnantRounds = 0;
+        lastCount = queuedPosts.size;
+
+        await flush();
+        opts.onProgress?.({
+          extracted,
+          postsDone,
+          postsKnown: queuedPosts.size,
+          activeWorkers: activeWorkerSessions.size,
+          ratePerMin: ratePerMin(),
+        });
+
+        await page.evaluate(() => window.scrollBy(0, 1500));
+        if (round % 6 === 5) await page.keyboard?.press("End").catch(() => {});
+        await sleep(900 + rand(0, 600));
+        if (stagnantRounds >= DISCOVERY_STAGNANT_ROUNDS) return;
+      } catch {
+        return;
+      }
+    }
+  };
+
+  const canRediscover = (): boolean =>
+    queuedPosts.size < maxPosts &&
+    extracted < opts.targetCount &&
+    Date.now() < deadline - 30_000 &&
+    !saturated &&
+    !canceled;
+
+  /** Re-scroll the group feed on the claiming worker's own page when the
+   *  post queue drains but time/budget remain — post production is
+   *  continuous, never one-shot. */
+  const runRediscovery = async (page: Page): Promise<void> => {
+    log.info("GroupCascade", `post queue drained — re-scrolling group feed for more posts (have ${queuedPosts.size}/${maxPosts})`);
+    const { detach, flush } = attachHarvest(page);
+    try {
+      await page.goto(opts.feedUrl, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
+      await page.waitForTimeout(2000 + rand(0, 1000));
+      await scrollRounds(page, "rediscovery", flush);
+      await flush();
+    } finally {
+      detach();
+    }
+  };
+
   // ---- Dynamic worker pool -------------------------------------------------
   const activeWorkerSessions = new Set<string>();
   let pendingWorkers = 0;
@@ -200,8 +338,20 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
       const idx = nextIdx;
       nextIdx++;
       if (idx >= postQueue.length) {
-        if (discoveryDone && lateSettled) return;
         nextIdx = idx;
+        if (discoveryDone && lateSettled) {
+          if (!canRediscover()) return;
+          if (!rediscovering && Date.now() >= nextRediscoverAt) {
+            rediscovering = true;
+            try {
+              await runRediscovery(wp.page);
+            } finally {
+              rediscovering = false;
+              nextRediscoverAt = Date.now() + REDISCOVER_COOLDOWN_MS;
+            }
+            continue;
+          }
+        }
         await sleep(600);
         continue;
       }
@@ -246,103 +396,24 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
   };
 
   // ---- Discovery producer --------------------------------------------------
-  let discoveryStopped = "done";
-
   const discovery = (async () => {
     const page = opts.discoveryPage.page;
-    const harvested: CascadeUser[] = [];
-
-    const harvestHandler = async (resp: Response): Promise<void> => {
-      const url = resp.url();
-      if (!url.includes("graphql") || resp.status() !== 200) return;
-      try {
-        const text = await resp.text();
-        for (const u of parseGroupUsersFromGraphQL(text)) {
-          const fresh = addUsers([{ id: u.fb_id, name: u.name, url: u.profile_url }]);
-          if (fresh.length > 0) harvested.push(...fresh);
-        }
-      } catch {
-        /* response body unavailable */
-      }
-    };
-
-    const flushHarvest = async (): Promise<void> => {
-      if (harvested.length === 0) return;
-      const batch = harvested.splice(0, harvested.length);
-      try {
-        const persisted = await opts.onNewUsers(batch);
-        extracted += persisted;
-      } catch (err) {
-        log.debug("GroupCascade", `harvest persist failed: ${String(err).substring(0, 80)}`);
-      }
-    };
-
+    const { detach, flush } = attachHarvest(page);
     try {
       await page.goto(opts.feedUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
       await page.waitForTimeout(2000 + rand(0, 1500));
     } catch (err) {
       log.warn("GroupCascade", `feed nav failed — ${String(err).substring(0, 100)}`);
+      detach();
       discoveryDone = true;
       return;
     }
-    page.on("response", harvestHandler);
-
-    let lastCount = -1;
-    let stagnantRounds = 0;
-
-    while (
-      queuedPosts.size < maxPosts &&
-      stagnantRounds < 12 &&
-      Date.now() < discoveryDeadline &&
-      extracted < opts.targetCount &&
-      !checkSaturated()
-    ) {
-      if (await canceledNow()) {
-        discoveryStopped = "canceled";
-        break;
-      }
-
-      try {
-        const links = await page.evaluate(() =>
-          Array.from(document.querySelectorAll('a[href*="/posts/"], a[href*="permalink"], a[href*="story_fbid"]')).map(
-            (a) => a.getAttribute("href") || "",
-          ),
-        );
-        let added = 0;
-        for (const href of links) {
-          const permalink = normalizePermalink(href, opts.feedUrl);
-          if (permalink) {
-            const before = queuedPosts.size;
-            queuePost(permalink);
-            if (queuedPosts.size > before) added++;
-          }
-        }
-        if (added === 0 && queuedPosts.size === lastCount) stagnantRounds++;
-        else stagnantRounds = 0;
-        lastCount = queuedPosts.size;
-
-        await flushHarvest();
-        opts.onProgress?.({
-          extracted,
-          postsDone,
-          postsKnown: queuedPosts.size,
-          activeWorkers: activeWorkerSessions.size,
-          ratePerMin: ratePerMin(),
-        });
-
-        await page.evaluate(() => window.scrollBy(0, 900));
-        await sleep(900 + rand(0, 600));
-      } catch {
-        break;
-      }
-    }
-    await flushHarvest();
-    page.off("response", harvestHandler);
+    await scrollRounds(page, "discovery", flush);
+    await flush();
+    detach();
     discoveryDone = true;
-    if (queuedPosts.size < maxPosts && stagnantRounds < 12 && Date.now() >= discoveryDeadline) {
-      discoveryStopped = "discovery_cap";
-    }
-    log.info("GroupCascade", `discovery done: ${queuedPosts.size} posts, +${extracted} users harvested from feed (reason=${discoveryStopped}, stagnant=${stagnantRounds})`);
+    const reason = queuedPosts.size < maxPosts && Date.now() >= discoveryDeadline ? "discovery_cap" : "done";
+    log.info("GroupCascade", `initial discovery done: ${queuedPosts.size} posts, +${extracted} users harvested from feed (reason=${reason})`);
   })();
 
   // Start the immediate workers right away — the post queue fills as
