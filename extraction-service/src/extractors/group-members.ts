@@ -3,7 +3,7 @@ import { ExtractionError, ErrorCodes } from "../errors.js";
 import { logger } from "../logger.js";
 import { config } from "../config.js";
 import { supabaseService } from "../services/supabase.js";
-import { multiSessionGroupMembers, membersPhaseBudgetMs, type GroupMemberUser, type MultiSessionGroupResult } from "../services/group-members-core.js";
+import { multiSessionGroupMembers, membersPhaseBudgetMs, searchShardGroupMembers, type GroupMemberUser, type MultiSessionGroupResult, type SearchShardResult } from "../services/group-members-core.js";
 import { runGroupCascade, type GroupCascadeResult, type CascadeWorkerPage } from "../services/group-cascade-core.js";
 import { extractEngagers } from "../services/engager-extractor-v2.js";
 import type { AuthState, ExtractedMember } from "../types.js";
@@ -90,7 +90,7 @@ export class GroupMembersExtractor extends BaseExtractor {
     const storeRich = (extra: {
       discovered: number;
       phase: "navigating" | "scrolling" | "completed";
-      source: "members_list" | "feed_cascade";
+      source: "members_list" | "feed_cascade" | "members_search";
       phaseCycle?: number;
       nextPhase?: string;
       activeSessions?: number;
@@ -167,6 +167,23 @@ export class GroupMembersExtractor extends BaseExtractor {
 
     let membersResult: MultiSessionGroupResult | null = null;
     let cascade: GroupCascadeResult | null = null;
+    let shards: SearchShardResult | null = null;
+
+    const runShardPhase = async (): Promise<SearchShardResult | null> => {
+      if (total >= targetCount || this.timeRemainingSec < 150) return null;
+      log.info("GroupMembers", `members list capped at ${total}/${targetCount} — starting letter-shard search phase`);
+      await storeRich({ discovered: total, phase: "scrolling", source: "members_search", nextPhase: "feed_cascade", activeSessions: allPages.length });
+      return searchShardGroupMembers(allPages[0].page, gid, shared, seen, {
+        maxDurationMs: Math.min(15 * 60_000, Math.max(60_000, this.timeRemainingMs - 90_000)),
+        onNewUsers: async (users) => {
+          await persistUsers(users);
+        },
+        onProgress: (shard, done, totalSeen) => {
+          void storeRich({ discovered: total, phase: "scrolling", source: "members_search", phaseCycle: done, nextPhase: "none" });
+        },
+        shouldStop: () => this.throttledCanceled(),
+      });
+    };
 
     const overlap =
       config.groupCascadeEnabled &&
@@ -185,12 +202,12 @@ export class GroupMembersExtractor extends BaseExtractor {
         resolveMembersPage = res;
       });
 
-      const membersPromise = multiSessionGroupMembers([allPages[0]], membersUrl, shared, seen, membersOpts)
-        .then((r) => {
-          resolveMembersPage([allPages[0]]);
-          return r;
-        })
-        .catch((err) => {
+      const membersPromise = (async () => {
+        const modern = await multiSessionGroupMembers([allPages[0]], membersUrl, shared, seen, membersOpts);
+        shards = await runShardPhase();
+        resolveMembersPage([allPages[0]]);
+        return modern;
+      })().catch((err) => {
           errorsCount++;
           log.warn("GroupMembers", `members phase failed (cascade continues): ${String(err).substring(0, 120)}`);
           resolveMembersPage([allPages[0]]);
@@ -236,6 +253,10 @@ export class GroupMembersExtractor extends BaseExtractor {
       log.info("GroupMembers", `sequential mode: ${allPages.length} session(s) on members list first`);
       membersResult = await multiSessionGroupMembers(allPages, membersUrl, shared, seen, membersOpts);
 
+      if (membersResult.stoppedReason !== "canceled" && total < targetCount && this.timeRemainingSec > 150) {
+        shards = await runShardPhase();
+      }
+
       if (
         config.groupCascadeEnabled &&
         membersResult.stoppedReason !== "canceled" &&
@@ -278,7 +299,7 @@ export class GroupMembersExtractor extends BaseExtractor {
     const coreReason = cascade?.stoppedReason ?? membersResult?.stoppedReason ?? "";
     this.lastStopReason = this.mapStopReason(coreReason, total);
     await storeRich({ discovered: total, phase: "completed", source: cascade ? "feed_cascade" : "members_list", stopReason: this.lastStopReason, immediate: true });
-    log.info("GroupMembers", `extraction finished: total=${total}, coverage=${this.computeCoverage(total)}%, stopReason=${this.lastStopReason ?? "null"}${cascade ? `, cascadePosts=${cascade.postsProcessed}/${cascade.postsDiscovered} (+${cascade.extracted})` : ""}${membersResult ? `, membersReason=${membersResult.stoppedReason}` : ""}`);
+    log.info("GroupMembers", `extraction finished: total=${total}, coverage=${this.computeCoverage(total)}%, stopReason=${this.lastStopReason ?? "null"}${cascade ? `, cascadePosts=${cascade.postsProcessed}/${cascade.postsDiscovered} (+${cascade.extracted})` : ""}${shards ? `, shards=${shards.extracted}/${shards.shardsDone} (${shards.stoppedReason})` : ""}${membersResult ? `, membersReason=${membersResult.stoppedReason}` : ""}`);
 
     return { extracted: total, done: true, authState };
   }

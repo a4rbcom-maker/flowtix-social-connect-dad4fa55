@@ -102,7 +102,7 @@ export interface ExtractionJobProgress {
   posts_done?: number;
   posts_total?: number;
   last_update?: string;
-  source?: "members_list" | "feed_cascade" | "members_mbasic";
+  source?: "members_list" | "feed_cascade" | "members_search";
   rate_per_min?: number;
   active_sessions?: number;
   next_phase?: string;

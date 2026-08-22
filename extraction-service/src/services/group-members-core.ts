@@ -293,6 +293,175 @@ export async function multiSessionGroupMembers(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Members-search sharding: the members-page search box accepts a name prefix
+// and each prefix gets its OWN pagination window — sharding the roster by
+// letter multiplies coverage far past the single-list Facebook cap.
+// ---------------------------------------------------------------------------
+
+const LATIN_SHARDS = "abcdefghijklmnopqrstuvwxyz".split("");
+const ARABIC_SHARDS = ["ا", "ب", "ت", "ث", "ج", "ح", "خ", "د", "ذ", "ر", "ز", "س", "ش", "ص", "ض", "ط", "ظ", "ع", "غ", "ف", "ق", "ك", "ل", "م", "ن", "ه", "و", "ي"];
+
+export function buildSearchShards(): string[] {
+  return [...ARABIC_SHARDS, ...LATIN_SHARDS];
+}
+
+export interface SearchShardOptions {
+  maxDurationMs?: number;
+  perShardRounds?: number;
+  shards?: string[];
+  onNewUsers?: (users: GroupMemberUser[]) => Promise<void> | void;
+  onProgress?: (shard: string, shardsDone: number, totalSeen: number) => void;
+  shouldStop?: () => Promise<boolean>;
+}
+
+export interface SearchShardResult {
+  extracted: number;
+  shardsDone: number;
+  stoppedReason: "done" | "max_duration" | "canceled";
+}
+
+export async function searchShardGroupMembers(
+  page: Page,
+  gid: string,
+  sharedUsers: GroupMemberUser[],
+  seenIds: Set<string>,
+  opts: SearchShardOptions = {},
+): Promise<SearchShardResult> {
+  const maxDurationMs = opts.maxDurationMs ?? 15 * 60_000;
+  const perShardRounds = opts.perShardRounds ?? 12;
+  const shards = opts.shards ?? buildSearchShards();
+  const startTime = Date.now();
+
+  const state: SessionState = {
+    sessionId: "search-shard",
+    page,
+    ownCount: 0,
+    pending: [],
+    rounds: 0,
+    idleCount: 0,
+    wakeUpAttempts: 0,
+    done: false,
+    stoppedReason: "",
+    lastLongBreakRound: 0,
+    nextLongBreakAt: 999,
+    detach: null,
+  };
+
+  const addShared = (s: SessionState, user: GroupMemberUser): void => {
+    if (seenIds.has(user.fb_id)) return;
+    seenIds.add(user.fb_id);
+    sharedUsers.push(user);
+    s.ownCount++;
+    s.pending.push(user);
+  };
+
+  const flushPending = async (): Promise<void> => {
+    if (state.pending.length === 0) return;
+    const batch = state.pending;
+    state.pending = [];
+    if (!opts.onNewUsers) return;
+    try {
+      await opts.onNewUsers(batch);
+    } catch (err) {
+      log.warn("GroupCore", `search shard: onNewUsers failed: ${String(err).substring(0, 100)}`);
+    }
+  };
+
+  attachInterception(state, addShared);
+
+  const shardsDone: string[] = [];
+  let searchBoxWorked = false;
+  let searchBoxAttempted = false;
+
+  const runShardOnPage = async (shard: string): Promise<number> => {
+    const before = seenIds.size;
+    try {
+      await page.goto(`https://www.facebook.com/groups/${gid}/members/?q=${encodeURIComponent(shard)}`, {
+        waitUntil: "domcontentloaded",
+        timeout: 20000,
+      });
+      await page.waitForTimeout(1500 + rand(0, 1000));
+    } catch {
+      return 0;
+    }
+
+    // URL param unsupported (page just shows the full list) → type into the
+    // members search box instead.
+    if (!searchBoxWorked) {
+      const typed = await page
+        .evaluate((q: string) => {
+          const inputs = Array.from(document.querySelectorAll('input[type="text"], input[type="search"]')) as HTMLInputElement[];
+          const box = inputs.find(
+            (i) =>
+              (i.getAttribute("aria-label") || "").toLowerCase().includes("search") ||
+              (i.getAttribute("aria-label") || "").includes("بحث") ||
+              (i.placeholder || "").toLowerCase().includes("search") ||
+              (i.placeholder || "").includes("بحث"),
+          );
+          if (!box) return false;
+          box.focus();
+          box.value = q;
+          box.dispatchEvent(new Event("input", { bubbles: true }));
+          return true;
+        }, shard)
+        .catch(() => false);
+      if (typed) {
+        searchBoxAttempted = true;
+        await page.keyboard.press("Enter").catch(() => {});
+        await page.waitForTimeout(2000 + rand(0, 1000));
+      }
+    }
+
+    for (let r = 0; r < perShardRounds; r++) {
+      if (Date.now() - startTime > maxDurationMs) break;
+      await scrollOnce(page);
+      await sleep(500 + rand(0, 400));
+      await collectDomUsers(state, addShared);
+      await flushPending();
+      const gained = seenIds.size - before;
+      if (r >= 4 && gained === 0) break;
+      if (gained > 0 && r === perShardRounds - 1) break;
+    }
+
+    const gained = seenIds.size - before;
+    if (gained > 0) searchBoxWorked = true;
+    return gained;
+  };
+
+  log.info("GroupCore", `=== members search sharding: ${shards.length} shards, budget=${Math.round(maxDurationMs / 60000)}min ===`);
+
+  let canceled = false;
+  for (const shard of shards) {
+    if (Date.now() - startTime > maxDurationMs) break;
+    if (opts.shouldStop && (await opts.shouldStop())) {
+      canceled = true;
+      break;
+    }
+    // If neither URL param nor search box produced anything after a fair
+    // try, the group's member search is unavailable — stop wasting budget.
+    if (searchBoxAttempted && !searchBoxWorked && shardsDone.length >= 3) {
+      log.info("GroupCore", `search sharding: no shard produced users after ${shardsDone.length} shards — member search unavailable for this group`);
+      break;
+    }
+    const gained = await runShardOnPage(shard);
+    shardsDone.push(shard);
+    opts.onProgress?.(shard, shardsDone.length, sharedUsers.length);
+    if (shardsDone.length % 8 === 0) {
+      log.info("GroupCore", `search shards: ${shardsDone.length}/${shards.length} done, unique=${sharedUsers.length}`);
+      await sleep(3000 + rand(0, 3000));
+    }
+  }
+
+  await flushPending();
+  state.detach?.();
+
+  const stoppedReason: SearchShardResult["stoppedReason"] = canceled ? "canceled" : Date.now() - startTime > maxDurationMs ? "max_duration" : "done";
+  log.info("GroupCore", `search sharding finished: +${state.ownCount} users from ${shardsDone.length} shards in ${Math.round((Date.now() - startTime) / 1000)}s (${stoppedReason})`);
+
+  return { extracted: state.ownCount, shardsDone: shardsDone.length, stoppedReason };
+}
+
 function attachInterception(
   s: SessionState,
   addShared: (s: SessionState, user: GroupMemberUser) => void,
