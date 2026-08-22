@@ -33,6 +33,16 @@ export const sessionIdSchema = z
   .string()
   .uuid("صيغة معرّف الجلسة غير صالحة");
 
+export const proxyUrlSchema = z
+  .string()
+  .trim()
+  .max(500, "رابط البروكسي طويل جدًا.")
+  .refine((v) => v === "" || /^(https?|socks[45]):\/\/.+/i.test(v), {
+    message: "صيغة البروكسي غير صالحة. الأمثلة: http://user:pass@host:port أو socks5://host:port",
+  })
+  .nullable()
+  .optional();
+
 export const createSessionSchema = z.object({
   name: sessionNameSchema,
   browser: browserSchema,
@@ -40,6 +50,7 @@ export const createSessionSchema = z.object({
   fbName: z.string().max(200).nullable().optional(),
   fbUserId: z.string().max(100).nullable().optional(),
   fbAvatarUrl: z.string().url().nullable().optional(),
+  proxyUrl: proxyUrlSchema,
 });
 
 export const renameSessionSchema = z.object({

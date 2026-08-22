@@ -89,6 +89,7 @@ export function SessionsPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [sessionName, setSessionName] = useState("");
   const [cookieString, setCookieString] = useState("");
+  const [proxyUrl, setProxyUrl] = useState("");
   const [testingSessions, setTestingSessions] = useState<Set<string>>(new Set());
   const [localStatusOverrides, setLocalStatusOverrides] = useState<Record<string, FbSessionStatus>>({});
   const [confirmDelete, setConfirmDelete] = useState<{ sessionId: string; sessionName: string } | null>(null);
@@ -202,13 +203,14 @@ export function SessionsPage() {
   function handleAddSession() {
     setSessionName("");
     setCookieString("");
+    setProxyUrl("");
     setShowAddDialog(true);
   }
 
   function handleCreateSession() {
     if (!sessionName.trim() || !cookieValid) return;
     mutations.create.mutate(
-      { name: sessionName.trim(), browser: "Chrome", connectionMethod: "cookie", cookies: cookieString },
+      { name: sessionName.trim(), browser: "Chrome", connectionMethod: "cookie", cookies: cookieString, proxyUrl: proxyUrl.trim() || null },
       {
         onSuccess: (result) => {
           mutations.connect.mutate(result.session.id, {
@@ -216,6 +218,7 @@ export function SessionsPage() {
               setShowAddDialog(false);
               setSessionName("");
               setCookieString("");
+              setProxyUrl("");
               toast({ type: "success", title: t("sessions.add.success"), description: result.session.name });
             },
             onError: () => {
@@ -405,6 +408,23 @@ export function SessionsPage() {
               </div>
             </div>
           )}
+
+          {/* Step 3: Proxy (optional) */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="flex size-6 items-center justify-center rounded-full bg-gradient-brand text-xs font-bold text-white">3</span>
+              <label className="text-sm font-semibold text-[var(--color-fg)]">{t("sessions.add.proxyLabel")}</label>
+              <Badge variant="default" className="text-[0.65rem]">{t("sessions.add.proxyOptional")}</Badge>
+            </div>
+            <InputIcon
+              icon={Server}
+              dir="ltr"
+              placeholder={t("sessions.add.proxyPlaceholder")}
+              value={proxyUrl}
+              onChange={(e) => setProxyUrl(e.target.value)}
+            />
+            <p className="text-xs text-[var(--color-fg-muted)]">{t("sessions.add.proxyDesc")}</p>
+          </div>
 
           {/* Info sections side-by-side */}
           <div className="grid gap-3 sm:grid-cols-2">

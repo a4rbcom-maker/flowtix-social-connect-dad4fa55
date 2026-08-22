@@ -191,12 +191,25 @@ export const supabaseService = {
     proxy: ProxyConfig | null;
     userAgent: string | null;
   }> {
-    const { data: session, error: sErr } = await sb
+    let sessionRes = await sb
       .from("fb_sessions")
-      .select("id, name, status, workspace_id, user_id")
+      .select("id, name, status, workspace_id, user_id, proxy_url")
       .eq("id", sessionId)
       .is("deleted_at", null)
       .single();
+
+    // Migration 2026082214 not applied yet — retry without proxy_url.
+    if (sessionRes.error && sessionRes.error.message.includes("proxy_url")) {
+      log.warn("Supabase", `proxy_url column missing (migration 2026082214 pending) — env/global proxy only`);
+      sessionRes = await sb
+        .from("fb_sessions")
+        .select("id, name, status, workspace_id, user_id")
+        .eq("id", sessionId)
+        .is("deleted_at", null)
+        .single();
+    }
+
+    const { data: session, error: sErr } = sessionRes;
 
     if (sErr || !session) {
       throw new ExtractionError(ErrorCodes.SESSION_NOT_FOUND, `Session not found: ${sErr?.message ?? "unknown"}`);
@@ -242,8 +255,13 @@ export const supabaseService = {
       localStorageOrigins: storageState?.origins.length ?? 0,
     });
 
-    // Resolve proxy: check session config → env.FB_PROXY_{ID} → global PROXY_URL
-    const proxy = resolveProxyForSession(session.id);
+    // Resolve proxy: session DB (BYOP) → env.FB_PROXY_{ID} → global PROXY_URL
+    const dbProxy = typeof (session as { proxy_url?: unknown }).proxy_url === "string"
+      ? ((session as { proxy_url?: string }).proxy_url || "").trim()
+      : "";
+    const proxy = dbProxy
+      ? { url: dbProxy, label: "session-byop" }
+      : resolveProxyForSession(session.id);
     if (proxy) {
       log.info("Supabase", `session ${session.id.slice(0, 8)}: proxy resolved (${proxy.label || proxy.url.split('@').pop()})`);
     }

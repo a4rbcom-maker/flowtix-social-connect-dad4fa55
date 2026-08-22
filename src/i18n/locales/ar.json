@@ -910,6 +910,10 @@
       "title": "إضافة جلسة جديدة",
       "sessionName": "اسم الجلسة",
       "sessionNamePlaceholder": "مثال: حساب التسويق",
+      "proxyLabel": "بروكسي الجلسة",
+      "proxyOptional": "اختياري",
+      "proxyPlaceholder": "http://user:pass@host:port أو socks5://host:port",
+      "proxyDesc": "بروكسي مخصص لهذه الجلسة يحميها من الحظر ويحافظ على ثبات IP. يُستخدم لهذه الجلسة فقط ولا يُشارك مع الجلسات الأخرى.",
       "steps": {
         "name": "الاسم",
         "browser": "المتصفح",

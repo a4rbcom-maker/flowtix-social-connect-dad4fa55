@@ -909,6 +909,10 @@
       "title": "Add New Session",
       "sessionName": "Session Name",
       "sessionNamePlaceholder": "e.g. Marketing Account",
+      "proxyLabel": "Session Proxy",
+      "proxyOptional": "Optional",
+      "proxyPlaceholder": "http://user:pass@host:port or socks5://host:port",
+      "proxyDesc": "A dedicated proxy for this session protects it from bans and keeps a stable IP. Used only for this session, never shared.",
       "steps": {
         "name": "Name",
         "browser": "Browser",

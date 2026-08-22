@@ -632,6 +632,7 @@ export type Database = {
           max_failure_retries: number
           metadata: Json
           name: string
+          proxy_url: string | null
           session_health: Database["public"]["Enums"]["session_health"] | null
           session_token_expires_at: string | null
           status: Database["public"]["Enums"]["fb_session_status"]
@@ -661,6 +662,7 @@ export type Database = {
           max_failure_retries?: number
           metadata?: Json
           name: string
+          proxy_url?: string | null
           session_health?: Database["public"]["Enums"]["session_health"] | null
           session_token_expires_at?: string | null
           status?: Database["public"]["Enums"]["fb_session_status"]
@@ -690,6 +692,7 @@ export type Database = {
           max_failure_retries?: number
           metadata?: Json
           name?: string
+          proxy_url?: string | null
           session_health?: Database["public"]["Enums"]["session_health"] | null
           session_token_expires_at?: string | null
           status?: Database["public"]["Enums"]["fb_session_status"]

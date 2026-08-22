@@ -14,12 +14,14 @@ export const sessionLifecycleService = {
     connectionMethod?: string | null;
     profileName?: string;
     cookies?: string;
+    proxyUrl?: string | null;
   }): Promise<{ session: FbSession; profile: Awaited<ReturnType<typeof browserProfileService.create>> }> {
     const session = await sessionsRepository.create({
       userId: input.userId,
       name: input.name,
       browser: input.browser,
       connectionMethod: input.connectionMethod,
+      proxyUrl: input.proxyUrl,
     });
 
     const profile = await browserProfileService.create({

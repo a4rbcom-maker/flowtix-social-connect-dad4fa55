@@ -103,6 +103,7 @@ export const sessionsRepository = {
     fbName?: string | null;
     fbUserId?: string | null;
     fbAvatarUrl?: string | null;
+    proxyUrl?: string | null;
     metadata?: Record<string, unknown>;
   }): Promise<FbSession> {
     const parsed = createSessionSchema.safeParse({
@@ -112,6 +113,7 @@ export const sessionsRepository = {
       fbName: input.fbName ?? null,
       fbUserId: input.fbUserId ?? null,
       fbAvatarUrl: input.fbAvatarUrl ?? null,
+      proxyUrl: input.proxyUrl ?? "",
     });
 
     if (!parsed.success) {
@@ -145,12 +147,36 @@ export const sessionsRepository = {
         fb_user_id: parsed.data.fbUserId ?? null,
         fb_avatar_url: parsed.data.fbAvatarUrl ?? null,
         status: "disconnected",
+        proxy_url: parsed.data.proxyUrl || null,
         metadata: (input.metadata ?? {}) as never,
       })
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      // Migration 2026082214 pending — create without the proxy column
+      // instead of failing the whole import.
+      if (String(error.message).includes("proxy_url")) {
+        const retry = await supabase
+          .from("fb_sessions")
+          .insert({
+            user_id: input.userId,
+            name: parsed.data.name,
+            browser: parsed.data.browser ?? null,
+            connection_method: parsed.data.connectionMethod ?? "browser",
+            fb_name: parsed.data.fbName ?? null,
+            fb_user_id: parsed.data.fbUserId ?? null,
+            fb_avatar_url: parsed.data.fbAvatarUrl ?? null,
+            status: "disconnected",
+            metadata: (input.metadata ?? {}) as never,
+          })
+          .select()
+          .single();
+        if (retry.error) throw retry.error;
+        return retry.data;
+      }
+      throw error;
+    }
     return data;
   },
 

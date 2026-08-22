@@ -117,6 +117,7 @@ export function useSessionMutations() {
       browser?: string | null;
       connectionMethod?: string | null;
       cookies?: string;
+      proxyUrl?: string | null;
     }) => {
       if (!userId) throw new Error("Not authenticated");
       return sessionLifecycleService.createSession({
@@ -125,6 +126,7 @@ export function useSessionMutations() {
         browser: input.browser,
         connectionMethod: input.connectionMethod,
         cookies: input.cookies,
+        proxyUrl: input.proxyUrl,
       });
     },
     onSuccess: () => {
