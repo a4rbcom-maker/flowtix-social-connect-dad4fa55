@@ -6,7 +6,9 @@ import { supabaseService } from "../services/supabase.js";
 import { multiSessionGroupMembers, membersPhaseBudgetMs, searchShardGroupMembers, type GroupMemberUser, type MultiSessionGroupResult, type SearchShardResult } from "../services/group-members-core.js";
 import { runGroupCascade, type GroupCascadeResult, type CascadeWorkerPage } from "../services/group-cascade-core.js";
 import { extractEngagers } from "../services/engager-extractor-v2.js";
-import type { AuthState, ExtractedMember } from "../types.js";
+import { SourceStats, decideNextSource, type SourceKey, type SourceStopReason } from "../services/orchestrator-core.js";
+import { SessionHealthMonitor, type FailureInfo } from "../services/session-health.js";
+import type { AuthState, ExtractedMember, OrchestratorCheckpoint } from "../types.js";
 
 const log = logger;
 
@@ -76,10 +78,25 @@ export class GroupMembersExtractor extends BaseExtractor {
       ...this.secondarySessionPages,
     ];
 
+    // Adaptive orchestrator state: measured per-source productivity + session health.
+    const stats = new SourceStats();
+    const health = new SessionHealthMonitor();
+    for (const p of allPages) health.register(p.sessionId);
+    const recordSessionFailure = (sessionId: string, info: FailureInfo): void => {
+      health.recordFailure(sessionId, info);
+    };
+
+    // Resume checkpoint: skip phases already finished in a previous run.
+    const checkpoint = await this.loadCheckpoint();
+    const doneSources = new Set<SourceKey>((checkpoint?.sources_done ?? []) as SourceKey[]);
+
     const seen = new Set<string>();
     const shared: GroupMemberUser[] = [];
     let total = 0;
     let errorsCount = 0;
+    let duplicatesSkipped = 0;
+    let requestsCount = 0;
+    let nextStrategy = "none";
 
     const progress = {
       rateWindowStart: Date.now(),
@@ -118,9 +135,14 @@ export class GroupMembersExtractor extends BaseExtractor {
         phase: extra.phase,
         source: extra.source,
         rate_per_min: ratePerMin,
-        active_sessions: extra.activeSessions ?? allPages.length,
+        active_sessions: extra.activeSessions ?? allPages.filter((wp) => health.available(wp.sessionId)).length,
         next_phase: extra.nextPhase ?? "none",
         errors_count: errorsCount,
+        duplicates_skipped: duplicatesSkipped,
+        requests_count: requestsCount,
+        per_source: stats.snapshot(),
+        session_health: health.snapshot(),
+        next_strategy: nextStrategy,
         coverage_rate: this.computeCoverage(extra.discovered),
         last_update: new Date().toISOString(),
       };
@@ -140,6 +162,7 @@ export class GroupMembersExtractor extends BaseExtractor {
         if (validName(u.name)) batch.push({ ...u, type: "member" });
       }
       if (batch.length === 0) return 0;
+      duplicatesSkipped += users.length - batch.length;
       const persisted = await this.processBatch(batch, "member");
       total += persisted;
       return persisted;
@@ -157,32 +180,170 @@ export class GroupMembersExtractor extends BaseExtractor {
       targetCount,
       maxDurationMs: budgetMs,
       onNewUsers: async (users: GroupMemberUser[]): Promise<void> => {
+        stats.addUsers("members_list", users.length);
         await persistUsers(users);
       },
       onProgress: (totalSeen: number) => {
         void storeRich({ discovered: total, phase: "scrolling", source: "members_list", phaseCycle: totalSeen, nextPhase: "feed_cascade" });
       },
+      onSessionEvent: (sessionId: string, event: "nav_failed" | "auth_failed" | "idle_exhausted") => {
+        if (event === "auth_failed") {
+          recordSessionFailure(sessionId, { kind: "auth", detail: "members-list phase: login redirect" });
+        } else if (event === "nav_failed") {
+          recordSessionFailure(sessionId, { kind: "network", detail: "members-list phase: navigation failed" });
+        }
+      },
       shouldStop: () => this.throttledCanceled(),
+    };
+
+    const toSourceStopReason = (reason: string): SourceStopReason => {
+      switch (reason) {
+        case "target_reached": return "target_reached";
+        case "max_duration": return "max_duration";
+        case "canceled": return "canceled";
+        case "low_yield": return "low_yield";
+        case "saturated": return "saturated";
+        case "posts_exhausted": return "posts_exhausted";
+        default: return "stagnated"; // stagnated / all_idle / idle_exhausted / auth_failed …
+      }
+    };
+
+    const persistCheckpointAfterPhase = async (source: SourceKey): Promise<void> => {
+      doneSources.add(source);
+      const snap = stats.get(source);
+      await this.persistCheckpoint({
+        sources_done: [...doneSources],
+        seen_count: seen.size,
+        posts_done: cascade?.postsProcessed,
+        saved_at: new Date().toISOString(),
+      }).catch((err) => log.debug("GroupMembers", `checkpoint persist failed: ${String(err)}`));
+      const next = decideNextSource(stats, {
+        minRatePerMin: config.orchMinRatePerMin,
+        evalWindowMs: config.orchEvalWindowMs,
+        minPhaseMs: config.orchMinPhaseMs,
+      });
+      nextStrategy = next ?? "none";
+      log.info("GroupMembers", `phase ${source} done (${snap?.stopReason ?? "?"}, users=${snap?.users ?? 0}) — next strategy: ${nextStrategy}`);
     };
 
     let membersResult: MultiSessionGroupResult | null = null;
     let cascade: GroupCascadeResult | null = null;
     let shards: SearchShardResult | null = null;
 
+    const runMembersListPhase = async (pages: CascadeWorkerPage[]): Promise<MultiSessionGroupResult | null> => {
+      if (doneSources.has("members_list")) {
+        log.info("GroupMembers", `resume: members_list already done — skipping`);
+        return null;
+      }
+      stats.start("members_list");
+      try {
+        const result = await multiSessionGroupMembers(pages, membersUrl, shared, seen, membersOpts);
+        stats.finish("members_list", toSourceStopReason(result.stoppedReason));
+        await persistCheckpointAfterPhase("members_list");
+        return result;
+      } catch (err) {
+        errorsCount++;
+        stats.finish("members_list", "stagnated");
+        await persistCheckpointAfterPhase("members_list");
+        throw err;
+      }
+    };
+
     const runShardPhase = async (): Promise<SearchShardResult | null> => {
+      if (doneSources.has("members_search")) return null;
       if (total >= targetCount || this.timeRemainingSec < 150) return null;
       log.info("GroupMembers", `members list capped at ${total}/${targetCount} — starting letter-shard search phase`);
       await storeRich({ discovered: total, phase: "scrolling", source: "members_search", nextPhase: "feed_cascade", activeSessions: allPages.length });
-      return searchShardGroupMembers(allPages[0].page, gid, shared, seen, {
-        maxDurationMs: Math.min(15 * 60_000, Math.max(60_000, this.timeRemainingMs - 90_000)),
-        onNewUsers: async (users) => {
-          await persistUsers(users);
-        },
-        onProgress: (shard, done, totalSeen) => {
-          void storeRich({ discovered: total, phase: "scrolling", source: "members_search", phaseCycle: done, nextPhase: "none" });
-        },
-        shouldStop: () => this.throttledCanceled(),
-      });
+      stats.start("members_search");
+      try {
+        const result = await searchShardGroupMembers(allPages[0].page, gid, shared, seen, {
+          maxDurationMs: Math.min(15 * 60_000, Math.max(60_000, this.timeRemainingMs - 90_000)),
+          onNewUsers: async (users) => {
+            stats.addUsers("members_search", users.length);
+            await persistUsers(users);
+          },
+          onProgress: (shard, done, totalSeen) => {
+            requestsCount++;
+            void storeRich({ discovered: total, phase: "scrolling", source: "members_search", phaseCycle: done, nextPhase: "none" });
+          },
+          shouldStop: () => this.throttledCanceled(),
+        });
+        shards = result;
+        stats.finish("members_search", toSourceStopReason(result.stoppedReason));
+        await persistCheckpointAfterPhase("members_search");
+        return result;
+      } catch (err) {
+        errorsCount++;
+        stats.finish("members_search", "stagnated");
+        await persistCheckpointAfterPhase("members_search");
+        log.warn("GroupMembers", `shard phase failed: ${String(err).substring(0, 120)}`);
+        return null;
+      }
+    };
+
+    const runCascadePhase = async (opts: {
+      discoveryPage: CascadeWorkerPage;
+      pages: CascadeWorkerPage[];
+      latePages?: Promise<CascadeWorkerPage[]>;
+    }): Promise<GroupCascadeResult | null> => {
+      if (doneSources.has("feed_cascade")) {
+        log.info("GroupMembers", `resume: feed_cascade already done — skipping`);
+        return null;
+      }
+      if (!config.groupCascadeEnabled) return null;
+      stats.start("feed_cascade");
+      try {
+        const result = await runGroupCascade({
+          feedUrl: `https://www.facebook.com/groups/${gid}`,
+          discoveryPage: opts.discoveryPage,
+          pages: opts.pages,
+          ...(opts.latePages ? { latePages: opts.latePages } : {}),
+          seenIds: seen,
+          targetCount: Math.max(50, targetCount - total),
+          maxDurationMs: Math.max(60_000, this.timeRemainingMs - 45_000),
+          maxPosts: config.groupCascadeMaxPosts,
+          maxDiscoveryMs: allPages.length >= (opts.latePages ? 3 : 2) ? 300_000 : 120_000,
+          extractEngagers: (page, permalink) =>
+            extractEngagers(page, permalink, {
+              maxReactions: 1000,
+              maxCommenters: 500,
+              scrollDialogSeconds: 8,
+            }),
+          onNewUsers: async (users) => {
+            stats.addUsers("feed_cascade", users.length);
+            return await persistUsers(users);
+          },
+          onProgress: (info) => {
+            requestsCount++;
+            if (info.sessionHealth) {
+              for (const sh of info.sessionHealth) {
+                if (sh.state === "unavailable") {
+                  recordSessionFailure(sh.session_id, { kind: (sh.last_failure_kind as FailureInfo["kind"]) ?? "bug", detail: sh.last_failure_detail ?? "cascade worker unavailable" });
+                }
+              }
+            }
+            void storeRich({
+              discovered: total,
+              phase: "scrolling",
+              source: "feed_cascade",
+              postsDone: info.postsDone,
+              postsKnown: info.postsKnown,
+              activeSessions: info.activeWorkers,
+              nextPhase: "none",
+            });
+          },
+          shouldStop: () => this.throttledCanceled(),
+        });
+        cascade = result;
+        stats.finish("feed_cascade", toSourceStopReason(result.stoppedReason));
+        await persistCheckpointAfterPhase("feed_cascade");
+        return result;
+      } catch (err) {
+        errorsCount++;
+        stats.finish("feed_cascade", "stagnated");
+        await persistCheckpointAfterPhase("feed_cascade");
+        throw err;
+      }
     };
 
     const overlap =
@@ -202,8 +363,8 @@ export class GroupMembersExtractor extends BaseExtractor {
         resolveMembersPage = res;
       });
 
-      const membersPromise = (async () => {
-        const modern = await multiSessionGroupMembers([allPages[0]], membersUrl, shared, seen, membersOpts);
+      const membersPromise = (async (): Promise<MultiSessionGroupResult | null> => {
+        const modern = await runMembersListPhase([allPages[0]]);
         shards = await runShardPhase();
         resolveMembersPage([allPages[0]]);
         return modern;
@@ -214,35 +375,10 @@ export class GroupMembersExtractor extends BaseExtractor {
           return null;
         });
 
-      cascade = await runGroupCascade({
-        feedUrl: `https://www.facebook.com/groups/${gid}`,
+      cascade = await runCascadePhase({
         discoveryPage: allPages[1],
         pages: allPages.slice(2),
         latePages,
-        seenIds: seen,
-        targetCount: Math.max(50, targetCount - total),
-        maxDurationMs: Math.max(60_000, this.timeRemainingMs - 45_000),
-        maxPosts: config.groupCascadeMaxPosts,
-        maxDiscoveryMs: allPages.length >= 3 ? 300_000 : 120_000,
-        extractEngagers: (page, permalink) =>
-          extractEngagers(page, permalink, {
-            maxReactions: 1000,
-            maxCommenters: 500,
-            scrollDialogSeconds: 8,
-          }),
-        onNewUsers: persistUsers,
-        onProgress: (info) => {
-          void storeRich({
-            discovered: total,
-            phase: "scrolling",
-            source: "feed_cascade",
-            postsDone: info.postsDone,
-            postsKnown: info.postsKnown,
-            activeSessions: info.activeWorkers,
-            nextPhase: "none",
-          });
-        },
-        shouldStop: () => this.throttledCanceled(),
       });
 
       membersResult = await membersPromise;
@@ -251,47 +387,26 @@ export class GroupMembersExtractor extends BaseExtractor {
       // time left to overlap. All pages work the members list in parallel,
       // then all of them move to the cascade (workers start immediately).
       log.info("GroupMembers", `sequential mode: ${allPages.length} session(s) on members list first`);
-      membersResult = await multiSessionGroupMembers(allPages, membersUrl, shared, seen, membersOpts);
+      membersResult = await runMembersListPhase(allPages).catch((err) => {
+        errorsCount++;
+        log.warn("GroupMembers", `members phase failed: ${String(err).substring(0, 120)}`);
+        return null;
+      });
 
-      if (membersResult.stoppedReason !== "canceled" && total < targetCount && this.timeRemainingSec > 150) {
+      if (!doneSources.has("members_search") && total < targetCount && this.timeRemainingSec > 150 && !(await this.throttledCanceled())) {
         shards = await runShardPhase();
       }
 
       if (
-        config.groupCascadeEnabled &&
-        membersResult.stoppedReason !== "canceled" &&
+        !doneSources.has("feed_cascade") &&
         total < targetCount &&
-        this.timeRemainingSec > 120
+        this.timeRemainingSec > 120 &&
+        !(await this.throttledCanceled())
       ) {
-        log.info("GroupMembers", `members list done at ${total}/${targetCount} (${membersResult.stoppedReason}) — starting feed cascade phase`);
-        cascade = await runGroupCascade({
-          feedUrl: `https://www.facebook.com/groups/${gid}`,
+        log.info("GroupMembers", `members list done at ${total}/${targetCount} — starting feed cascade phase`);
+        await runCascadePhase({
           discoveryPage: allPages[0],
           pages: allPages.slice(1),
-          seenIds: seen,
-          targetCount: Math.max(50, targetCount - total),
-          maxDurationMs: Math.max(60_000, this.timeRemainingMs - 45_000),
-          maxPosts: config.groupCascadeMaxPosts,
-          maxDiscoveryMs: allPages.length >= 2 ? 300_000 : 120_000,
-          extractEngagers: (page, permalink) =>
-            extractEngagers(page, permalink, {
-              maxReactions: 1000,
-              maxCommenters: 500,
-              scrollDialogSeconds: 8,
-            }),
-          onNewUsers: persistUsers,
-          onProgress: (info) => {
-            void storeRich({
-              discovered: total,
-              phase: "scrolling",
-              source: "feed_cascade",
-              postsDone: info.postsDone,
-              postsKnown: info.postsKnown,
-              activeSessions: info.activeWorkers,
-              nextPhase: "none",
-            });
-          },
-          shouldStop: () => this.throttledCanceled(),
         });
       }
     }
@@ -338,5 +453,25 @@ export class GroupMembersExtractor extends BaseExtractor {
     } catch (err) {
       log.warn("GroupMembers", `persistMembersCount failed: ${String(err)}`);
     }
+  }
+
+  private async loadCheckpoint(): Promise<OrchestratorCheckpoint | null> {
+    try {
+      const job = await supabaseService.getJob(this.ctx.jobId);
+      const state = (job.config || {}) as Record<string, unknown>;
+      const cp = state.orchestrator_state as OrchestratorCheckpoint | undefined;
+      if (!cp || !Array.isArray(cp.sources_done)) return null;
+      return cp;
+    } catch {
+      return null;
+    }
+  }
+
+  private async persistCheckpoint(cp: OrchestratorCheckpoint): Promise<void> {
+    const job = await supabaseService.getJob(this.ctx.jobId);
+    const existingConfig = (job.config || {}) as Record<string, unknown>;
+    await supabaseService.updateJob(this.ctx.jobId, {
+      config: { ...existingConfig, orchestrator_state: cp },
+    });
   }
 }

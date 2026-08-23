@@ -63,7 +63,7 @@ export interface GroupCascadeOptions {
     ratePerMin: number;
     queuePending?: number;
     deadLettered?: number;
-    sessionHealth?: Array<{ session_id: string; state: string; failures: number; last_failure_kind?: string }>;
+    sessionHealth?: Array<{ session_id: string; state: string; failures: number; last_failure_kind?: string; last_failure_detail?: string }>;
   }) => void;
   shouldStop?: () => Promise<boolean>;
 }
