@@ -1055,6 +1055,16 @@
       "members": "accounts",
       "extracted": "Extracted",
       "cascadePosts": "Extracting members from group post reactions",
+      "strategySource": "Current source",
+      "strategySessions": "Active sessions",
+      "strategyRate": "users/min",
+      "strategyErrors": "Errors",
+      "strategyDuplicates": "Duplicates skipped",
+      "strategyNext": "Next strategy",
+      "source_members_list": "Members list",
+      "source_members_search": "Name search",
+      "source_feed_cascade": "Post feed",
+      "strategyNone": "—",
       "cancel": "Cancel"
     },
     "failed": {

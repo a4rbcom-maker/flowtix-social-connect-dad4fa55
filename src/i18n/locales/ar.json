@@ -1056,6 +1056,16 @@
       "members": "حساب",
       "extracted": "المستخرج",
       "cascadePosts": "استخراج الأعضاء من تفاعلات منشورات الجروب",
+      "strategySource": "المصدر الحالي",
+      "strategySessions": "الجلسات النشطة",
+      "strategyRate": "مستخدم/دقيقة",
+      "strategyErrors": "الأخطاء",
+      "strategyDuplicates": "المكرر المتجاهل",
+      "strategyNext": "الاستراتيجية التالية",
+      "source_members_list": "قائمة الأعضاء",
+      "source_members_search": "بحث الأسماء",
+      "source_feed_cascade": "تدفق المنشورات",
+      "strategyNone": "—",
       "cancel": "إلغاء"
     },
     "failed": {

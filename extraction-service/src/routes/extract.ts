@@ -123,7 +123,7 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
     sessionId: primarySessionId,
     type: job.type as ExtractionType,
     sourceUrl: job.source,
-    maxResults: (jobConfig.max_results as number) || 10000,
+    maxResults: (jobConfig.max_results as number) || 100000,
     skipDuplicates: jobConfig.skip_duplicates !== false,
     cursor: jobConfig.cursor as string | undefined,
   };
