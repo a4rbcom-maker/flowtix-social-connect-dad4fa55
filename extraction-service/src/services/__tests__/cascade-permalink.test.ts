@@ -38,3 +38,9 @@ test("non-post links are rejected", () => {
   assert.equal(normalizePermalink("/settings", G), null);
   assert.equal(normalizePermalink("", G), null);
 });
+
+test("watch links are rejected (no stable permalink shape)", () => {
+  // /watch/?v=<id> normalizes to /watch/ — not a post permalink; the video
+  // is reachable via <slug>/videos/<id> instead (harvested from GraphQL).
+  assert.equal(normalizePermalink("/watch/?v=9876543210", G), null);
+});

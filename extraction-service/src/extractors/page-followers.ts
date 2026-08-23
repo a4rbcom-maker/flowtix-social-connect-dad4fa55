@@ -3,7 +3,7 @@ import { ExtractionError, ErrorCodes } from "../errors.js";
 import { logger } from "../logger.js";
 import { config } from "../config.js";
 import { supabaseService } from "../services/supabase.js";
-import { cleanMemberName } from "../services/group-members-core.js";
+import { cleanMemberName, parseGroupUsersFromGraphQL } from "../services/group-members-core.js";
 import { runGroupCascade, type GroupCascadeResult, type CascadeWorkerPage } from "../services/group-cascade-core.js";
 import { extractEngagers } from "../services/engager-extractor-v2.js";
 import { SourceStats, decideNextSource, type SourceStopReason } from "../services/orchestrator-core.js";
@@ -447,7 +447,8 @@ export class PageFollowersExtractor extends BaseExtractor {
       const batch = pending;
       pending = [];
       try {
-        await opts.onNewUsers(batch);
+        const persistedCount = await opts.onNewUsers(batch);
+        if (typeof persistedCount === "number") persisted += persistedCount;
       } catch (err) {
         log.warn("PageFollowers", `followers flush failed: ${String(err).substring(0, 100)}`);
       }
@@ -572,7 +573,6 @@ export class PageFollowersExtractor extends BaseExtractor {
       if (!resp.url().includes("graphql") || resp.status() !== 200) return;
       try {
         const text = await resp.text();
-        const { parseGroupUsersFromGraphQL } = await import("../services/group-members-core.js");
         for (const u of parseGroupUsersFromGraphQL(text)) {
           addShared({ fb_id: u.fb_id, name: u.name, profile_url: u.profile_url });
         }

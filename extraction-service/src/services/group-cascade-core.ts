@@ -287,7 +287,7 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
 
       try {
         const links = await page.evaluate(() =>
-          Array.from(document.querySelectorAll('a[href*="/posts/"], a[href*="permalink"], a[href*="story_fbid"]')).map(
+          Array.from(document.querySelectorAll('a[href*="/posts/"], a[href*="permalink"], a[href*="story_fbid"], a[href*="/videos/"], a[href*="/reel/"], a[href*="/watch/"]')).map(
             (a) => a.getAttribute("href") || "",
           ),
         );
