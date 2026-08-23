@@ -122,13 +122,18 @@ async function setEnrichingPhase(jobId: string): Promise<void> {
   }
 }
 
-/** Re-enqueue jobs that were mid-enrichment when the service restarted —
- *  enrichment state lives in progress.phase, so a crashed run is recoverable. */
+/** Re-enqueue jobs that need enrichment on boot:
+ *  1) mid-enrichment when the service restarted (progress.phase=enriching),
+ *  2) settled jobs holding results whose enrichment never ran at all
+ *     (e.g. paused by a server shutdown mid-extraction). Enrichment is
+ *  mandatory before download, so the queue heals both cases. */
 export async function resumeEnrichmentJobs(): Promise<void> {
   try {
-    const jobIds = await supabaseService.getJobsStuckEnriching();
+    const stuck = await supabaseService.getJobsStuckEnriching();
+    const missing = await supabaseService.getJobsMissingEnrichment(20);
+    const jobIds = Array.from(new Set([...stuck, ...missing]));
     if (jobIds.length === 0) return;
-    log.info("Extract", `boot: resuming enrichment for ${jobIds.length} job(s)`);
+    log.info("Extract", `boot: resuming enrichment for ${jobIds.length} job(s) (${stuck.length} stuck + ${missing.length} never-enriched)`);
     for (const jobId of jobIds) enrichmentQueue.enqueue(jobId);
   } catch (err) {
     log.error("Extract", `resumeEnrichmentJobs failed: ${String(err)}`);
@@ -543,6 +548,23 @@ router.post("/export", async (req, res) => {
     }
 
     const { job_id, format } = parsed.data;
+
+    // Dataset readiness gate: extraction must be settled AND enrichment done.
+    // The job row is the source of truth — the UI mirrors this rule, it does
+    // not own it.
+    const job = await supabaseService.getJob(job_id);
+    if (!job) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Job not found" } });
+    }
+    const activeStatuses = new Set(["running", "queued"]);
+    if (activeStatuses.has(job.status)) {
+      return res.status(423).json({ error: { code: "DATASET_NOT_READY", message: "البيانات قيد الاستخراج — التحميل متاح بعد اكتمال الاستخراج والإثراء" } });
+    }
+    const progress = (job.progress || {}) as { phase?: string; enrichment?: unknown };
+    if (progress.phase === "enriching" || !progress.enrichment) {
+      return res.status(423).json({ error: { code: "DATASET_NOT_READY", message: "جاري إثراء البيانات — التحميل سيكون متاحاً فور اكتمال الإثراء" } });
+    }
+
     const results = await supabaseService.getJobResults(job_id);
     if (!results || results.length === 0) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "No results found" } });

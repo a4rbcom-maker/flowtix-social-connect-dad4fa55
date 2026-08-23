@@ -519,6 +519,23 @@ export const supabaseService = {
     return data.map((r: { id: string }) => r.id);
   },
 
+  /** Settled jobs holding results whose enrichment NEVER ran (e.g. paused by
+   *  a server shutdown mid-extraction, or failed before the enrich step).
+   *  Enrichment is mandatory before download, so these are re-enqueued. */
+  async getJobsMissingEnrichment(limit = 10): Promise<string[]> {
+    const { data, error } = await sb
+      .from("extraction_jobs")
+      .select("id, progress, result_count")
+      .in("status", ["completed", "paused", "canceled", "failed"])
+      .gt("result_count", 0)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error || !data) return [];
+    return data
+      .filter((r: { progress?: Record<string, unknown> | null }) => !(r.progress as { enrichment?: unknown } | null | undefined)?.enrichment)
+      .map((r: { id: string }) => r.id);
+  },
+
   async getOldestQueuedJob(userId: string): Promise<{ id: string; config: Record<string, unknown> | null } | null> {
     const { data } = await sb
       .from("extraction_jobs")

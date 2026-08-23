@@ -172,6 +172,7 @@ export function TasksPage() {
     const TypeIcon = getTypeIcon(job.type);
     const isActive = job.status === "running" || job.status === "queued";
     const isEnriching = job.progress?.phase === "enriching";
+    const datasetReady = !isActive && !isEnriching && !!job.progress?.enrichment;
     const createdAt = job.created_at ? formatRelativeTime(new Date(job.created_at)) : "";
 
     return (
@@ -304,13 +305,13 @@ export function TasksPage() {
           )}
           {(job.status === "completed" || ((job.status === "canceled" || job.status === "failed") && job.result_count > 0)) && !job.isPublish && (
             <>
-              <Button variant="outline" size="sm" onClick={() => handleExport(job.id, "csv")} disabled={exportMutation.isPending || isEnriching} title={isEnriching ? t("pages.tasks.enriching") : undefined}>
+              <Button variant="outline" size="sm" onClick={() => handleExport(job.id, "csv")} disabled={exportMutation.isPending || !datasetReady} title={!datasetReady ? t("pages.tasks.enriching") : undefined}>
                 {exportingJob === job.id ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}CSV
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handleExport(job.id, "xlsx")} disabled={exportMutation.isPending || isEnriching} title={isEnriching ? t("pages.tasks.enriching") : undefined}>
+              <Button variant="outline" size="sm" onClick={() => handleExport(job.id, "xlsx")} disabled={exportMutation.isPending || !datasetReady} title={!datasetReady ? t("pages.tasks.enriching") : undefined}>
                 <Download className="size-3.5" />Excel
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handleExport(job.id, "json")} disabled={exportMutation.isPending || isEnriching} title={isEnriching ? t("pages.tasks.enriching") : undefined}>
+              <Button variant="outline" size="sm" onClick={() => handleExport(job.id, "json")} disabled={exportMutation.isPending || !datasetReady} title={!datasetReady ? t("pages.tasks.enriching") : undefined}>
                 <Download className="size-3.5" />JSON
               </Button>
               <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard/facebook/extract-members")}>

@@ -248,4 +248,8 @@ export class ShardQueue {
   take(): string | null {
     return this.exhausted ? null : this.shards[this.cursor++];
   }
+
+  add(more: string[]): void {
+    this.shards.push(...more);
+  }
 }

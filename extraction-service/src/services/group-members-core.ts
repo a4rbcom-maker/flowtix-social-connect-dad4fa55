@@ -308,9 +308,36 @@ export async function multiSessionGroupMembers(
 
 const LATIN_SHARDS = "abcdefghijklmnopqrstuvwxyz".split("");
 const ARABIC_SHARDS = ["ا", "ب", "ت", "ث", "ج", "ح", "خ", "د", "ذ", "ر", "ز", "س", "ش", "ص", "ض", "ط", "ظ", "ع", "غ", "ف", "ق", "ك", "ل", "م", "ن", "ه", "و", "ي"];
+/** Two-letter prefixes: each prefix gets its own pagination window, so
+ *  "مح" and "محمد" stop competing for the same window. Multiplies shard
+ *  count far past the single-letter cap while staying inside Facebook's
+ *  search-box behavior. */
+const ARABIC_TWO_LETTER_SHARDS = (() => {
+  const out: string[] = [];
+  for (const a of ARABIC_SHARDS) {
+    for (const b of ARABIC_SHARDS) out.push(a + b);
+  }
+  return out;
+})();
+const LATIN_TWO_LETTER_SHARDS = (() => {
+  const out: string[] = [];
+  for (const a of LATIN_SHARDS) {
+    for (const b of LATIN_SHARDS) out.push(a + b);
+  }
+  return out;
+})();
 
 export function buildSearchShards(): string[] {
   return [...ARABIC_SHARDS, ...LATIN_SHARDS];
+}
+
+/** Deep shard set: two-letter prefixes in frequency-balanced order (Arabic
+ *  first — Egyptian groups are Arabic-heavy), used when coverage is still
+ *  far from target after the single-letter pass. */
+export function buildDeepSearchShards(): string[] {
+  // Skip single-letter shards already claimed in pass 1; two-letter prefixes
+  // only. Order: Arabic pairs first (Egyptian groups are Arabic-heavy).
+  return [...ARABIC_TWO_LETTER_SHARDS, ...LATIN_TWO_LETTER_SHARDS];
 }
 
 export interface SearchShardOptions {
@@ -510,6 +537,7 @@ export async function searchShardGroupMembers(
         log.info("GroupCore", `search shards: ${queue.claimed}/${queue.size} claimed, unique=${sharedUsers.length}`);
         await sleep(3000 + rand(0, 3000));
       }
+      opts.onProgress?.(shard, queue.claimed, sharedUsers.length);
     }
     s.done = true;
     await flushPending(s);

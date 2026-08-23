@@ -3,7 +3,7 @@ import { ExtractionError, ErrorCodes } from "../errors.js";
 import { logger } from "../logger.js";
 import { config } from "../config.js";
 import { supabaseService } from "../services/supabase.js";
-import { multiSessionGroupMembers, membersPhaseBudgetMs, searchShardGroupMembers, type GroupMemberUser, type MultiSessionGroupResult, type SearchShardResult } from "../services/group-members-core.js";
+import { multiSessionGroupMembers, membersPhaseBudgetMs, searchShardGroupMembers, buildDeepSearchShards, type GroupMemberUser, type MultiSessionGroupResult, type SearchShardResult } from "../services/group-members-core.js";
 import { runGroupCascade, type GroupCascadeResult, type CascadeWorkerPage } from "../services/group-cascade-core.js";
 import { extractEngagers } from "../services/engager-extractor-v2.js";
 import { SourceStats, decideNextSource, type SourceKey, type SourceStopReason } from "../services/orchestrator-core.js";
@@ -253,15 +253,16 @@ export class GroupMembersExtractor extends BaseExtractor {
       }
     };
 
-    const runShardPhase = async (pages: CascadeWorkerPage[]): Promise<SearchShardResult | null> => {
+    const runShardPhase = async (pages: CascadeWorkerPage[], deep = false): Promise<SearchShardResult | null> => {
       if (doneSources.has("members_search")) return null;
       if (total >= targetCount || this.timeRemainingSec < 150) return null;
-      log.info("GroupMembers", `members list capped at ${total}/${targetCount} — starting letter-shard search phase on ${pages.length} session(s)`);
+      log.info("GroupMembers", `members list capped at ${total}/${targetCount} — starting ${deep ? "deep two-letter" : "letter"}-shard search phase on ${pages.length} session(s)`);
       await storeRich({ discovered: total, phase: "scrolling", source: "members_search", nextPhase: "feed_cascade", activeSessions: pages.length });
       stats.start("members_search");
       try {
         const result = await searchShardGroupMembers(pages.map((p) => ({ sessionId: p.sessionId, page: p.page })), gid, shared, seen, {
-          maxDurationMs: Math.min(25 * 60_000, Math.max(60_000, this.timeRemainingMs - 90_000)),
+          maxDurationMs: Math.min(30 * 60_000, Math.max(60_000, this.timeRemainingMs - 120_000)),
+          shards: deep ? buildDeepSearchShards() : undefined,
           joinHook: shardJoinHook,
           onNewUsers: async (users) => {
             stats.addUsers("members_search", users.length);
@@ -375,6 +376,16 @@ export class GroupMembersExtractor extends BaseExtractor {
       const membersPromise = (async (): Promise<MultiSessionGroupResult | null> => {
         const modern = await runMembersListPhase([allPages[0]]);
         shards = await runShardPhase([allPages[0]]);
+        if (
+          shards?.stoppedReason === "done" &&
+          total < targetCount * 0.6 &&
+          this.timeRemainingSec > 240 &&
+          !(await this.throttledCanceled())
+        ) {
+          log.info("GroupMembers", `overlap: single-letter shards exhausted at ${total}/${targetCount} — deep two-letter pass`);
+          doneSources.delete("members_search");
+          shards = await runShardPhase([allPages[0]], true);
+        }
         resolveMembersPage([allPages[0]]);
         return modern;
       })().catch((err) => {
@@ -405,6 +416,20 @@ export class GroupMembersExtractor extends BaseExtractor {
 
       if (!doneSources.has("members_search") && total < targetCount && this.timeRemainingSec > 150 && !(await this.throttledCanceled())) {
         shards = await runShardPhase(allPages);
+        // Deep second pass: two-letter prefixes. Only when the single-letter
+        // shards were genuinely exhausted (not a time/cancel cut) AND the
+        // coverage target is still far away — this is the main lever past
+        // the ~15% plateau.
+        if (
+          shards?.stoppedReason === "done" &&
+          total < targetCount * 0.6 &&
+          this.timeRemainingSec > 240 &&
+          !(await this.throttledCanceled())
+        ) {
+          log.info("GroupMembers", `single-letter shards exhausted at ${total}/${targetCount} — running deep two-letter shard pass`);
+          doneSources.delete("members_search");
+          shards = await runShardPhase(allPages, true);
+        }
       }
 
       if (

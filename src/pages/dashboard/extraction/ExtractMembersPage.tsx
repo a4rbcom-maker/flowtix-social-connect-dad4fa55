@@ -116,7 +116,12 @@ export function ExtractMembersPage() {
 
   useEffect(() => {
     if (!activeJob?.id) return;
-    if (activeJob.status !== "running" && activeJob.status !== "queued" && activeJob.status !== "paused") return;
+    const settled = activeJob.status !== "running" && activeJob.status !== "queued" && activeJob.status !== "paused";
+    // Keep the live subscription while the dataset is not READY — enrichment
+    // runs AFTER the job settles, and its progress must keep reaching the UI
+    // (this is what re-enables the download buttons).
+    const enrichmentPending = settled && !(activeJob as any).progress?.enrichment;
+    if (settled && !enrichmentPending) return;
 
     const channel = extractionRepository.subscribeToJob(activeJob.id, (updatedJob) => {
       setActiveJob(updatedJob as ExtractionJob);
@@ -155,7 +160,7 @@ export function ExtractMembersPage() {
         channelRef.current = null;
       }
     };
-  }, [activeJob?.id, activeJob?.status]);
+  }, [activeJob?.id, activeJob?.status, !!(activeJob as any)?.progress?.enrichment]);
 
   useEffect(() => {
     return () => {
@@ -360,7 +365,9 @@ export function ExtractMembersPage() {
     const jobAny = activeJob as any;
     const p = (jobAny?.progress ?? {}) as Record<string, any>;
     const totalFollowers = jobAny?.config?.total_followers_count || 0;
-    const discovered = jobAny?.progress?.discovered ?? activeJob?.result_count ?? 0;
+    // The saved row count is the live truth — progress.discovered lags phases
+    // and once showed a frozen number for 16 minutes while rows kept landing.
+    const discovered = activeJob?.result_count ?? jobAny?.progress?.discovered ?? 0;
     const progress = totalFollowers > 0
       ? Math.round((discovered / totalFollowers) * 100)
       : 0;
@@ -467,6 +474,8 @@ export function ExtractMembersPage() {
   }
 
   // ─── COMPLETED PHASE ───
+  const completedJobAny = activeJob as any;
+  const completedDatasetReady = !!completedJobAny?.progress?.enrichment && !["running", "queued"].includes(activeJob?.status ?? "");
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader title={t("extract.completed.title")} description={t("extract.completed.subtitle")} icon={CheckCircle2} />
@@ -492,16 +501,22 @@ export function ExtractMembersPage() {
 
       <Card>
         <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-center pt-6">
-          <Button variant="primary" disabled={exportResults.isPending} onClick={() => handleExport("csv")}>
+          <Button variant="primary" disabled={exportResults.isPending || !completedDatasetReady} onClick={() => handleExport("csv")} title={!completedDatasetReady ? t("pages.tasks.enriching") : undefined}>
             {exportResults.isPending ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
             {t("extract.completed.downloadCsv")}
           </Button>
-          <Button variant="secondary" disabled={exportResults.isPending} onClick={() => handleExport("json")}>
+          <Button variant="secondary" disabled={exportResults.isPending || !completedDatasetReady} onClick={() => handleExport("json")} title={!completedDatasetReady ? t("pages.tasks.enriching") : undefined}>
             <Download className="size-4" />JSON
           </Button>
-          <Button variant="secondary" disabled={exportResults.isPending} onClick={() => handleExport("xlsx")}>
+          <Button variant="secondary" disabled={exportResults.isPending || !completedDatasetReady} onClick={() => handleExport("xlsx")} title={!completedDatasetReady ? t("pages.tasks.enriching") : undefined}>
             <Download className="size-4" />Excel
           </Button>
+          {!completedDatasetReady && (
+            <p className="flex items-center gap-1.5 text-xs text-[var(--color-fg-muted)]">
+              <Loader2 className="size-3.5 animate-spin" />
+              {t("pages.tasks.enriching")}
+            </p>
+          )}
           <Button variant="outline" onClick={() => { setPhase("setup"); setActiveJob(null); }}>
             <Zap className="size-4" />{t("extract.completed.newExtraction")}
           </Button>
