@@ -216,11 +216,6 @@ export function TasksPage() {
                     <span>{t("pages.tasks.results")}</span>
                   </>
                 )}
-                {job.progress?.enrichment?.enriched > 0 && (
-                  <span className="text-[var(--color-success)]">
-                    · {job.progress.enrichment.enriched} {t("pages.tasks.enriched")} ({job.progress.enrichment.coverage_percent}%)
-                  </span>
-                )}
               </div>
             </div>
           </div>
@@ -239,35 +234,6 @@ export function TasksPage() {
             <span className="line-clamp-2">{job.error}</span>
           </div>
         )}
-
-        {/* Coverage progress bar (page-followers with known total) */}
-        {(() => {
-          const total = job.config?.total_followers_count;
-          if (!total || total <= 0 || job.isPublish) return null;
-          const discovered = job.progress?.discovered ?? job.result_count ?? 0;
-          const coverage = Math.round((discovered / total) * 1000) / 10;
-          const coverageColor = coverage >= 85 ? "var(--color-success)" : coverage >= 65 ? "var(--color-warning)" : "var(--color-error)";
-          return (
-            <div className="ms-0 sm:ms-14 mt-3">
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-[var(--color-fg-muted)]">
-                  <span className="font-bold">{discovered.toLocaleString()}</span>
-                  <span className="text-[var(--color-fg-subtle)]"> / {total.toLocaleString()}</span>
-                  <span className="text-[var(--color-fg-subtle)]"> · {t("pages.tasks.coverageLabel")}</span>
-                </span>
-                <span className="font-bold" style={{ color: coverageColor }}>
-                  {coverage}%
-                </span>
-              </div>
-              <div className="h-1.5 rounded-full bg-[var(--color-surface-2)] overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{ width: `${Math.min(coverage, 100)}%`, backgroundColor: coverageColor }}
-                />
-              </div>
-            </div>
-          );
-        })()}
 
         {/* Stop reason message when coverage is below target */}
         {job.progress?.stop_reason && (job.status === "completed" || job.status === "canceled" || job.status === "paused") && (
