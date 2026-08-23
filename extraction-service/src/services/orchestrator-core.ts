@@ -152,16 +152,27 @@ export const DEFAULT_THRESHOLDS: OrchestratorThresholds = {
   minPhaseMs: 120_000,
 };
 
+/** Source order per extractor flavor. Groups keep the classic trio; pages
+ *  use followers_list → posts_cascade. */
+const SOURCE_ORDERS: Record<"groups" | "pages", readonly string[]> = {
+  groups: ["members_list", "members_search", "feed_cascade"],
+  pages: ["followers_list", "posts_cascade"],
+};
+
+export function sourceOrderFor(kind: "groups" | "pages"): readonly string[] {
+  return SOURCE_ORDERS[kind];
+}
+
 /**
  * Decide the next source to run, or null to keep going / stop.
  * - Latest finished source exhausted → next untried source.
  * - Active source unproductive (rate < minRatePerMin after minPhaseMs) → next untried source.
  * - Productive or everything tried → null.
  */
-export function decideNextSource(
-  stats: SourceStats,
-  opts: { nowMs?: number } & Partial<OrchestratorThresholds>,
-): SourceKey | null {
+export function decideNextSource<K extends string>(
+  stats: SourceStats<K>,
+  opts: { nowMs?: number; order?: readonly K[] } & Partial<OrchestratorThresholds>,
+): K | null {
   const nowMs = opts.nowMs ?? Date.now();
   const th = { ...DEFAULT_THRESHOLDS, ...opts };
 
@@ -177,7 +188,7 @@ export function decideNextSource(
     }
   }
   if (lastFinished && EXHAUSTED_REASONS.has(lastFinished.reason as SourceStopReason)) {
-    return firstUntried(tried);
+    return firstUntried(tried, opts.order);
   }
 
   // Active (unfinished) source: low productivity after the minimum phase time?
@@ -186,16 +197,17 @@ export function decideNextSource(
     const elapsed = nowMs - s.startedMs;
     if (elapsed < th.minPhaseMs || elapsed < th.evalWindowMs) continue;
     if (s.meter.ratePerMin(nowMs) < th.minRatePerMin) {
-      return firstUntried(tried);
+      return firstUntried(tried, opts.order);
     }
   }
 
   return null;
 }
 
-function firstUntried(tried: Set<string>): SourceKey | null {
-  for (const key of SOURCE_ORDER) {
-    if (!tried.has(key)) return key;
+function firstUntried<K extends string>(tried: Set<string>, order?: readonly K[]): K | null {
+  const list: readonly string[] = order ?? SOURCE_ORDER;
+  for (const key of list) {
+    if (!tried.has(key)) return key as K;
   }
   return null;
 }

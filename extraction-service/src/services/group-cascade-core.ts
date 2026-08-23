@@ -30,6 +30,19 @@ export interface CascadeWorkerPage {
 
 export interface GroupCascadeOptions {
   feedUrl: string;
+  /** Feed surface: group feed (default) or page timeline. Controls how
+   *  GraphQL post ids become permalinks (groups/<gid>/posts/<id> vs
+   *  <slug>/posts/<id>) — the worker/harvest machinery is identical. */
+  feedKind?: "group" | "page";
+  /** Token that must appear in a GraphQL response before its post ids are
+   *  harvested (group id for groups, page slug for pages) — keeps unrelated
+   *  responses (notifications etc.) from queueing foreign posts. */
+  feedToken?: string;
+  /** URL suffixes rotated across rediscovery passes (appended to feedUrl).
+   *  Defaults to the group-feed pair; page jobs pass extra surfaces
+   *  (/videos, /reels, /community) — video posts carry far more reactors
+   *  than timeline posts, so rotating surfaces raises the yield ceiling. */
+  rediscoverVariants?: string[];
   /** Dedicated page scrolling the group feed for post permalinks. Kept
    *  separate from worker pages so the workers start consuming the post
    *  queue IMMEDIATELY instead of idling through the discovery phase. */
@@ -104,6 +117,8 @@ const REDISCOVER_COOLDOWN_MS = 30_000;
 export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupCascadeResult> {
   const maxPosts = opts.maxPosts ?? 400;
   const saturationMs = opts.saturationMs ?? 240_000;
+  const feedKind = opts.feedKind ?? "group";
+  const feedToken = opts.feedToken ?? opts.feedUrl.match(/groups\/([^/?#]+)/)?.[1] ?? "";
   const startTime = Date.now();
   const deadline = startTime + opts.maxDurationMs;
   const discoveryDeadline = startTime + Math.min(opts.maxDiscoveryMs ?? 300_000, opts.maxDurationMs);
@@ -211,12 +226,25 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
           const fresh = addUsers([{ id: u.fb_id, name: u.name, url: u.profile_url }]);
           if (fresh.length > 0) harvested.push(...fresh);
         }
-        if (gid && text.includes(gid)) {
-          for (const m of text.matchAll(/pfbid([A-Za-z0-9_-]{8,})/g)) {
-            queuePost(`https://www.facebook.com/groups/${gid}/posts/pfbid${m[1]}`);
-          }
-          for (const m of text.matchAll(/"post_id":"(\d{10,})"/g)) {
-            queuePost(`https://www.facebook.com/groups/${gid}/posts/${m[1]}`);
+        // Post-id harvest: token gate keeps unrelated GraphQL (notifications,
+        // chat) from queueing foreign posts.
+        if (feedToken && text.includes(feedToken)) {
+          if (feedKind === "group") {
+            for (const m of text.matchAll(/pfbid([A-Za-z0-9_-]{8,})/g)) {
+              queuePost(`https://www.facebook.com/groups/${gid}/posts/pfbid${m[1]}`);
+            }
+            for (const m of text.matchAll(/"post_id":"(\d{10,})"/g)) {
+              queuePost(`https://www.facebook.com/groups/${gid}/posts/${m[1]}`);
+            }
+          } else {
+            // Page timeline: post ids map to <page>/posts/<id> permalinks;
+            // standalone video ids map to <page>/videos/<id>.
+            for (const m of text.matchAll(/"post_id":"(\d{10,})"/g)) {
+              queuePost(`https://www.facebook.com/${feedToken}/posts/${m[1]}`);
+            }
+            for (const m of text.matchAll(/"video_id":"(\d{10,})"/g)) {
+              queuePost(`https://www.facebook.com/${feedToken}/videos/${m[1]}`);
+            }
           }
         }
       } catch {
@@ -308,7 +336,7 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
    *  continuous, never one-shot. Each pass rotates to a different feed
    *  surface (ranked → chronological) so re-scrolls actually surface NEW
    *  posts instead of re-reading the same ranked set. */
-  const FEED_VARIANTS = ["", "?sorting_setting=CHRONOLOGICAL"];
+  const FEED_VARIANTS = opts.rediscoverVariants ?? ["", "?sorting_setting=CHRONOLOGICAL"];
   let rediscoverVariant = 0;
   /** Consecutive rediscoveries that surfaced ZERO new posts. A genuinely
    *  exhausted feed must not be re-scrolled forever: the saturation breaker
@@ -320,7 +348,7 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
   const runRediscovery = async (page: Page): Promise<void> => {
     const variant = FEED_VARIANTS[rediscoverVariant % FEED_VARIANTS.length];
     rediscoverVariant++;
-    log.info("GroupCascade", `post queue drained — re-scrolling group feed${variant ? " (chronological)" : ""} for more posts (have ${queuedPosts.size}/${maxPosts})`);
+    log.info("GroupCascade", `post queue drained — re-scrolling ${feedKind} feed${variant ? ` [${variant}]` : ""} for more posts (have ${queuedPosts.size}/${maxPosts})`);
     const { detach, flush } = attachHarvest(page);
     const postsBefore = queuedPosts.size;
     try {
@@ -537,20 +565,26 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
   };
 }
 
-function normalizePermalink(href: string, feedUrl: string): string | null {
+export function normalizePermalink(href: string, feedUrl: string): string | null {
   let url = href;
   if (!url) return null;
   if (url.startsWith("/")) url = `https://www.facebook.com${url}`;
   if (!url.includes("facebook.com")) return null;
 
+  // Clean to path only (drop ?query / #hash) BEFORE matching so share links
+  // with tracking params still match the /posts/ pattern below.
+  const path = url.split("?")[0].split("#")[0];
+
   const m =
-    url.match(/\/groups\/([^/?#]+)\/posts\/(pfbid[a-zA-Z0-9_-]+|\d{5,25})/) ||
-    url.match(/\/groups\/([^/?#]+)\/permalink\/(\d{5,25})/) ||
-    url.match(/story_fbid=(pfbid[a-zA-Z0-9_-]+|\d{5,25})/) ||
-    url.match(/\/(share\/[pv]\/[a-zA-Z0-9_-]+)/) ||
-    url.match(/\/posts\/(pfbid[a-zA-Z0-9_-]+|\d{5,25})/) ||
-    url.match(/\/(reel\/\d{5,25})/) ||
-    url.match(/\/(videos\/\d{5,25})/);
+    path.match(/\/groups\/([^/?#]+)\/posts\/(pfbid[a-zA-Z0-9_-]+|\d{5,25})/) ||
+    path.match(/\/groups\/([^/?#]+)\/permalink\/(\d{5,25})/) ||
+    path.match(/story_fbid=(pfbid[a-zA-Z0-9_-]+|\d{5,25})/) ||
+    // Page timeline posts: keep the page slug (<slug>/posts/<id>) — dropping
+    // it (facebook.com/<id>) produces a dead link that yields no engagers.
+    path.match(/(\/[A-Za-z0-9._-]+)?\/posts\/(pfbid[a-zA-Z0-9_-]+|\d{5,25})/) ||
+    path.match(/(\/[A-Za-z0-9._-]+)?\/videos\/(\d{5,25})/) ||
+    path.match(/(\/reel\/\d{5,25})/) ||
+    path.match(/(\/share\/[pv]\/[a-zA-Z0-9_-]+)/);
 
   if (!m) return null;
 
@@ -562,5 +596,14 @@ function normalizePermalink(href: string, feedUrl: string): string | null {
     if (groupMatch) return `https://www.facebook.com/permalink.php?story_fbid=${m[1]}&id=${groupMatch[1]}`;
     return null;
   }
-  return `https://www.facebook.com/${m[1]}`;
+  // Full-path forms (/reel/…, /share/p/…): keep the whole matched path.
+  if (m[0].startsWith("/reel") || m[0].startsWith("/share")) {
+    return `https://www.facebook.com${m[0]}`;
+  }
+  // /posts/<id> and /videos/<id> with optional page-slug prefix: rebuild as
+  // <prefix>/<kind>/<id> without dropping the slug (dead-link bug).
+  const kind = m[0].includes("/videos/") ? "videos" : "posts";
+  const id = m[2];
+  const prefix = m[1] ?? "";
+  return `https://www.facebook.com${prefix}/${kind}/${id}`;
 }
