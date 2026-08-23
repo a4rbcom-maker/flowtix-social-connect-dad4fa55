@@ -53,6 +53,11 @@ export interface GroupCascadeOptions {
    *  starts fully saturated against them: no reprocessing, and the
    *  saturation signal stays honest across phases. */
   seenIds?: Set<string>;
+  /** Fired ONCE per session when the cascade gives up (saturation breaker /
+   *  posts exhausted before target): hands each worker page back so the
+   *  orchestrator can put it on productive work instead of letting the job
+   *  end with paid time unused. Never throws into teardown. */
+  onSaturationHandoff?: (wp: CascadeWorkerPage) => void;
   extractEngagers: ExtractEngagersFn;
   onNewUsers: (users: CascadeUser[]) => Promise<number>;
   onProgress?: (info: {
@@ -321,6 +326,7 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
 
   // ---- Dynamic worker pool -------------------------------------------------
   const activeWorkerSessions = new Set<string>();
+  const workerPages = new Map<string, CascadeWorkerPage>();
   let pendingWorkers = 0;
   let resolveWorkersIdle: () => void = () => {};
   const workersIdle = new Promise<void>((res) => {
@@ -330,6 +336,7 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
   const spawnWorker = (wp: CascadeWorkerPage): void => {
     if (finished || canceled || activeWorkerSessions.has(wp.sessionId)) return;
     activeWorkerSessions.add(wp.sessionId);
+    workerPages.set(wp.sessionId, wp);
     pendingWorkers++;
     void worker(wp).finally(() => {
       pendingWorkers--;
@@ -487,6 +494,23 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
   else if (saturated) stoppedReason = "saturated";
   else if (Date.now() >= deadline) stoppedReason = "max_duration";
   else stoppedReason = "posts_exhausted";
+
+  // Hand back the worker pages when the cascade gave up early (saturation /
+  // posts exhausted before target): the orchestrator keeps them productive
+  // (e.g. joins them onto the search-shard pool). Never on cancel/timeout —
+  // there is no useful time left to hand over.
+  if (opts.onSaturationHandoff && !canceled && Date.now() < deadline && (saturated || stoppedReason === "posts_exhausted")) {
+    for (const sessionId of activeWorkerSessions) {
+      const wp = workerPages.get(sessionId);
+      if (wp) {
+        try {
+          opts.onSaturationHandoff(wp);
+        } catch (err) {
+          log.warn("GroupCascade", `saturation handoff failed for ${sessionId.slice(0, 8)}: ${String(err).substring(0, 100)}`);
+        }
+      }
+    }
+  }
 
   log.info("GroupCascade", `=== cascade finished: +${extracted} users from ${postsDone}/${queuedPosts.size} posts (${failures} failed, avg ${postsDone > 0 ? Math.round((Date.now() - startTime) / postsDone / 1000) : 0}s/post) reason=${stoppedReason} ===`);
 

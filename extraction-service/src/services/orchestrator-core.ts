@@ -199,3 +199,53 @@ function firstUntried(tried: Set<string>): SourceKey | null {
   }
   return null;
 }
+
+/** One-shot completion signal: phases can await a verdict produced elsewhere
+ *  (e.g. "feed cascade saturated") without polling. wait() resolves
+ *  immediately once fired; never rejects. */
+export class CompletionSignal {
+  private firedFlag = false;
+  private waiters: Array<() => void> = [];
+
+  get signaled(): boolean {
+    return this.firedFlag;
+  }
+
+  signal(): void {
+    if (this.firedFlag) return;
+    this.firedFlag = true;
+    for (const w of this.waiters.splice(0)) w();
+  }
+
+  wait(): Promise<void> {
+    if (this.firedFlag) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      this.waiters.push(resolve);
+    });
+  }
+}
+
+/** Shared work queue for distributed shard processing: N sessions claim
+ *  prefixes atomically (JS is single-threaded between awaits), so every
+ *  letter shard is processed exactly once no matter how many workers join. */
+export class ShardQueue {
+  private cursor = 0;
+
+  constructor(private shards: string[]) {}
+
+  get size(): number {
+    return this.shards.length;
+  }
+
+  get claimed(): number {
+    return this.cursor;
+  }
+
+  get exhausted(): boolean {
+    return this.cursor >= this.shards.length;
+  }
+
+  take(): string | null {
+    return this.exhausted ? null : this.shards[this.cursor++];
+  }
+}

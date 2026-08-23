@@ -531,6 +531,33 @@ export const supabaseService = {
     return data[0] as { id: string; config: Record<string, unknown> | null };
   },
 
+  async countRunningJobs(userId: string): Promise<number> {
+    const { count } = await sb
+      .from("extraction_jobs")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("status", "running");
+    return count ?? 0;
+  },
+
+  /** Atomic claim of a queued job into "running": the UPDATE carries its own
+   *  status guard (queued → running), so two concurrent starters can never
+   *  both succeed — Postgres serializes the row update; the loser updates
+   *  zero rows. */
+  async tryClaimQueuedJob(jobId: string): Promise<boolean> {
+    const { data, error } = await sb
+      .from("extraction_jobs")
+      .update({ status: "running", started_at: new Date().toISOString(), error: null })
+      .eq("id", jobId)
+      .eq("status", "queued")
+      .select("id");
+    if (error) {
+      log.error("Supabase", `tryClaimQueuedJob failed: ${error.message}`);
+      return false;
+    }
+    return (data?.length ?? 0) > 0;
+  },
+
   async countQueuedJobs(userId: string): Promise<number> {
     const { count } = await sb
       .from("extraction_jobs")

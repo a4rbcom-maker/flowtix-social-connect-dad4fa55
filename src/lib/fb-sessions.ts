@@ -52,6 +52,8 @@ function formatZodError(err: ZodError): string {
   return err.issues.map((e) => e.message).join(", ");
 }
 
+export const MAX_SESSIONS_PER_USER = 2;
+
 export const sessionsRepository = {
   async list(userId: string, filters?: { status?: FbSessionStatus }): Promise<FbSession[]> {
     let query = supabase
@@ -122,6 +124,21 @@ export const sessionsRepository = {
 
     if (!input.userId) {
       throw new SessionValidationError("Missing owner", "MISSING_OWNER");
+    }
+
+    // Per-user session limit (server-side): count live sessions before insert.
+    // RLS scopes the count to the caller's own rows, so the check is safe.
+    const { count: liveCount } = await supabase
+      .from("fb_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", input.userId)
+      .is("deleted_at", null);
+
+    if ((liveCount ?? 0) >= MAX_SESSIONS_PER_USER) {
+      throw new SessionValidationError(
+        "لقد وصلت إلى الحد الأقصى المسموح به وهو جلستان. / You have reached the maximum limit of 2 Facebook sessions.",
+        "SESSION_LIMIT_REACHED",
+      );
     }
 
     const { data: existing } = await supabase

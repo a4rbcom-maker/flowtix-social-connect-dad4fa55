@@ -1381,6 +1381,10 @@
     "deleteSessionDesc": "This session will be permanently removed. This action cannot be undone.",
     "renameSessionTitle": "Rename Session",
     "startFailed": "Extraction failed to start",
+    "multisessionBannerTitle": "For maximum extraction (85%+), add more Facebook sessions",
+    "multisessionBannerDesc": "You have only {{count}} connected session(s). Add 2–3 more from the sessions list to increase extraction coverage and avoid Facebook restrictions.",
+    "multisessionActiveBanner": "Great! You have {{count}} connected sessions — Round-robin load distribution for higher extraction coverage.",
+    "addMoreSessions": "Manage Sessions",
     "cancel": {
       "done": "Extraction stopped"
     },
@@ -1414,6 +1418,8 @@
       "resume": "Resume",
       "pause": "Pause",
       "cancel": "Stop",
+      "strategyRate": "Extraction Rate",
+      "strategySessions": "Active Sessions",
       "steps": {
         "connecting": "Connecting",
         "loading": "Loading",
@@ -1425,6 +1431,7 @@
       "isAdmin": "I am Page Admin"
     },
     "cancel": {
+      "done": "Extraction stopped",
       "title": "Stop Extraction?",
       "desc": "Extraction will be stopped. Already extracted results will be preserved.",
       "keepRunning": "Keep Running",

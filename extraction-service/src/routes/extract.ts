@@ -48,26 +48,48 @@ function isIgType(type: string): boolean {
   return type.startsWith("ig_");
 }
 
-async function autoStartNextQueuedJob(userId: string): Promise<void> {
-  const qJob = await supabaseService.getOldestQueuedJob(userId);
-  if (!qJob) return;
-  const qConfig = (qJob.config || {}) as Record<string, unknown>;
-  const sessionIds = (qConfig.session_ids as string[]) || [qConfig.session_id as string].filter(Boolean);
-  if (!sessionIds || sessionIds.length === 0) {
-    log.warn("Extract", `queued job ${qJob.id} missing session_ids`);
-    await supabaseService.failJob(qJob.id, "Queued job missing session_ids");
-    await autoStartNextQueuedJob(userId);
-    return;
+/** Per-user async mutex: serializes job-admission decisions within this
+ *  service process so two simultaneous POST /extract requests cannot both
+ *  count "0-1 running jobs" and start a 3rd concurrent run. The DB check
+ *  still happens inside the lock; RLS isolates users from each other. */
+const userJobLocks = new Map<string, Promise<unknown>>();
+async function withUserJobLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = userJobLocks.get(userId) ?? Promise.resolve();
+  const gate = prev.then(fn, fn);
+  userJobLocks.set(userId, gate);
+  try {
+    return await gate;
+  } finally {
+    if (userJobLocks.get(userId) === gate) userJobLocks.delete(userId);
   }
-  log.info("Extract", `auto-starting queued job ${qJob.id} for user ${userId}`);
-  // Fire-and-forget: awaiting the next job here would nest it inside the
-  // PREVIOUS task's queue slot — with concurrency 1 that deadlocks the whole
-  // queue (previous slot waits for the next job; the next job waits for the
-  // slot) and every later submission freezes in "queued" forever.
-  void runExtractionJob(qJob.id, sessionIds, userId).catch(async (err) => {
-    log.error("Extract", `auto-start failed for job ${qJob.id}: ${String(err)}`);
-    await supabaseService.failJob(qJob.id, String(err)).catch(() => {});
-    await autoStartNextQueuedJob(userId);
+}
+
+export const MAX_RUNNING_JOBS_PER_USER = 2;
+
+async function autoStartNextQueuedJob(userId: string): Promise<void> {
+  await withUserJobLock(userId, async () => {
+    // Fill BOTH running slots: keep starting oldest-first while capacity remains.
+    for (;;) {
+      const runningCount = await supabaseService.countRunningJobs(userId);
+      if (runningCount >= MAX_RUNNING_JOBS_PER_USER) return;
+      const qJob = await supabaseService.getOldestQueuedJob(userId);
+      if (!qJob) return;
+      const qConfig = (qJob.config || {}) as Record<string, unknown>;
+      const sessionIds = (qConfig.session_ids as string[]) || [qConfig.session_id as string].filter(Boolean);
+      if (!sessionIds || sessionIds.length === 0) {
+        log.warn("Extract", `queued job ${qJob.id} missing session_ids`);
+        await supabaseService.failJob(qJob.id, "Queued job missing session_ids");
+        continue;
+      }
+      const started = await supabaseService.tryClaimQueuedJob(qJob.id);
+      if (!started) continue; // lost the race to another starter — next queued
+      log.info("Extract", `auto-starting queued job ${qJob.id} for user ${userId} (${runningCount + 1}/${MAX_RUNNING_JOBS_PER_USER} slots)`);
+      void runExtractionJob(qJob.id, sessionIds, userId).catch(async (err) => {
+        log.error("Extract", `auto-start failed for job ${qJob.id}: ${String(err)}`);
+        await supabaseService.failJob(qJob.id, String(err)).catch(() => {});
+        await autoStartNextQueuedJob(userId);
+      });
+    }
   });
 }
 
@@ -422,31 +444,44 @@ router.post("/extract", async (req, res) => {  try {
     });
 
     let currentJobId = body.job_id;
-    // One active job per user: if a job is running/queued, new submissions are
-    // queued (bounded) and auto-started when the current one finishes.
-    const activeCheck = await supabaseService.hasActiveJob(sessionUserId, currentJobId || undefined, ["running", "queued"]);
+    // Per-user concurrency limit (backend rule, race-safe): up to
+    // MAX_RUNNING_JOBS_PER_USER jobs run simultaneously; anything beyond is
+    // created/kept as "queued" and auto-started oldest-first when a slot
+    // frees. Job CREATION/claim happens INSIDE the per-user lock so two
+    // simultaneous requests can never both take the last slot; the DB
+    // trigger (migration 2026082310) is the final guard even across processes.
+    const admitted = await withUserJobLock(sessionUserId, async () => {
+      const runningCount = await supabaseService.countRunningJobs(sessionUserId);
 
-    if (activeCheck.active) {
-      if (activeCheck.jobStatus === "queued") {
-        return res.status(409).json({
-          error: {
-            code: ErrorCodes.JOB_ALREADY_ACTIVE,
-            message: `لديك مهمة في قائمة الانتظار بالفعل (${activeCheck.jobName}). ستبدأ تلقائياً بعد انتهاء المهمة الحالية.`,
-          },
-        });
+      if (runningCount < MAX_RUNNING_JOBS_PER_USER) {
+        // Free slot: create/claim the job right here, inside the lock.
+        if (!currentJobId) {
+          const job = await supabaseService.createJob({
+            workspaceId: sessionWorkspaceId,
+            userId: sessionUserId,
+            type: body.type as ExtractionType,
+            source: body.source_url,
+            name: body.job_name || `Extract ${body.type}`,
+            config: { max_results: body.max_results, skip_duplicates: body.skip_duplicates, session_ids: allSessionIds },
+          });
+          log.info("Extract", `job created: ${job.id} (${runningCount + 1}/${MAX_RUNNING_JOBS_PER_USER} slots)`);
+          return { startNow: true, jobId: job.id, queuedBehind: null as string | null };
+        }
+        await supabaseService.updateJob(currentJobId, { status: "running", error: null });
+        log.info("Extract", `resuming job: ${currentJobId} (${runningCount + 1}/${MAX_RUNNING_JOBS_PER_USER} slots)`);
+        return { startNow: true, jobId: currentJobId, queuedBehind: null as string | null };
       }
 
-      const queuedCount = await supabaseService.countQueuedJobs(sessionUserId);
-      if (queuedCount >= config.maxQueuedJobsPerUser) {
-        return res.status(409).json({
-          error: {
-            code: ErrorCodes.JOB_ALREADY_ACTIVE,
-            message: `لديك مهمة قيد التشغيل (${activeCheck.jobName}) و${queuedCount} مهام في الانتظار (الحد الأقصى ${config.maxQueuedJobsPerUser}). يرجى الانتظار أو إلغاء إحداها.`,
-          },
-        });
-      }
-
+      // Both slots busy: queue (bounded) instead of starting.
       if (!currentJobId) {
+        const activeCheck = await supabaseService.hasActiveJob(sessionUserId, undefined, ["queued"]);
+        if (activeCheck.active && activeCheck.jobStatus === "queued") {
+          return { startNow: false, jobId: null as string | null, queuedBehind: activeCheck.jobId ?? null };
+        }
+        const queuedCount = await supabaseService.countQueuedJobs(sessionUserId);
+        if (queuedCount >= config.maxQueuedJobsPerUser) {
+          return { startNow: false, jobId: null as string | null, queuedBehind: "LIMIT_REACHED" as string | null };
+        }
         const job = await supabaseService.createJob({
           workspaceId: sessionWorkspaceId,
           userId: sessionUserId,
@@ -456,35 +491,33 @@ router.post("/extract", async (req, res) => {  try {
           config: { max_results: body.max_results, skip_duplicates: body.skip_duplicates, session_ids: allSessionIds },
           status: "queued",
         });
-        log.info("Extract", `job queued: ${job.id} (running job: ${activeCheck.jobName})`);
-        return res.status(200).json({ job_id: job.id, status: "queued", result_count: 0, progress: 0 });
+        log.info("Extract", `job queued: ${job.id} (${runningCount}/${MAX_RUNNING_JOBS_PER_USER} running)`);
+        return { startNow: false, jobId: null as string | null, queuedBehind: job.id };
       }
 
+      // Resume of a non-running job while slots are full → park it as queued.
       await supabaseService.updateJob(currentJobId, { status: "queued", error: null });
-      log.info("Extract", `resume deferred — job ${currentJobId} queued behind running job ${activeCheck.jobId}`);
-      return res.status(200).json({ job_id: currentJobId, status: "queued", result_count: 0, progress: 0 });
+      log.info("Extract", `resume deferred — job ${currentJobId} queued (${runningCount}/${MAX_RUNNING_JOBS_PER_USER} running)`);
+      return { startNow: false, jobId: currentJobId, queuedBehind: currentJobId };
+    });
+
+    if (!admitted.startNow) {
+      if (admitted.queuedBehind === "LIMIT_REACHED") {
+        return res.status(409).json({
+          error: {
+            code: ErrorCodes.JOB_ALREADY_ACTIVE,
+            message: `لديك ${MAX_RUNNING_JOBS_PER_USER} مهام قيد التشغيل و${config.maxQueuedJobsPerUser} مهام في الانتظار (الحد الأقصى). يرجى الانتظار أو إلغاء إحداها.`,
+          },
+        });
+      }
+      return res.status(200).json({ job_id: admitted.queuedBehind ?? "", status: "queued", result_count: 0, progress: 0 });
     }
 
-    if (!currentJobId) {
-      const job = await supabaseService.createJob({
-        workspaceId: sessionWorkspaceId,
-        userId: sessionUserId,
-        type: body.type as ExtractionType,
-        source: body.source_url,
-        name: body.job_name || `Extract ${body.type}`,
-        config: { max_results: body.max_results, skip_duplicates: body.skip_duplicates, session_ids: allSessionIds },
-      });
-      currentJobId = job.id;
-      log.info("Extract", `job created: ${currentJobId}`);
-    } else {
-      log.info("Extract", `resuming job: ${currentJobId}`);
-    }
-
-    runExtractionJob(currentJobId, allSessionIds, sessionUserId)
+    runExtractionJob(admitted.jobId as string, allSessionIds, sessionUserId)
       .catch((err) => log.error("Extract", `background runExtractionJob error: ${String(err)}`));
 
     return res.status(200).json({
-      job_id: currentJobId,
+      job_id: admitted.jobId as string,
       status: "running",
       result_count: 0,
       progress: 0,

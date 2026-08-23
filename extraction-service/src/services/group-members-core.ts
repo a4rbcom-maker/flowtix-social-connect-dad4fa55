@@ -1,5 +1,6 @@
 import type { Page, Response } from "playwright";
 import { logger } from "../logger.js";
+import { ShardQueue } from "./orchestrator-core.js";
 
 const log = logger;
 
@@ -319,6 +320,11 @@ export interface SearchShardOptions {
   onNewUsers?: (users: GroupMemberUser[]) => Promise<void> | void;
   onProgress?: (shard: string, shardsDone: number, totalSeen: number) => void;
   shouldStop?: () => Promise<boolean>;
+  /** Out-param: the orchestrator reads this AFTER calling and invokes
+   *  joinHook.fn({sessionId, page}) whenever another session's phase ends
+   *  early (e.g. feed cascade saturated) — the session then claims shards
+   *  from the same queue without duplication. */
+  joinHook?: { fn: ((wp: { sessionId: string; page: Page }) => void) | null };
 }
 
 export interface SearchShardResult {
@@ -328,7 +334,7 @@ export interface SearchShardResult {
 }
 
 export async function searchShardGroupMembers(
-  page: Page,
+  pages: Array<{ sessionId: string; page: Page }>,
   gid: string,
   sharedUsers: GroupMemberUser[],
   seenIds: Set<string>,
@@ -337,11 +343,16 @@ export async function searchShardGroupMembers(
   const maxDurationMs = opts.maxDurationMs ?? 15 * 60_000;
   const perShardRounds = opts.perShardRounds ?? 25;
   const shards = opts.shards ?? buildSearchShards();
+  const queue = new ShardQueue(shards);
   const startTime = Date.now();
+  const baseCount = sharedUsers.length;
+  let canceledFlag = false;
+  const consecutiveFailures = new Map<string, number>();
+  const searchBoxWorked = new Map<string, boolean>();
 
-  const state: SessionState = {
-    sessionId: "search-shard",
-    page,
+  const states: SessionState[] = pages.map((p) => ({
+    sessionId: p.sessionId,
+    page: p.page,
     ownCount: 0,
     pending: [],
     rounds: 0,
@@ -350,9 +361,9 @@ export async function searchShardGroupMembers(
     done: false,
     stoppedReason: "",
     lastLongBreakRound: 0,
-    nextLongBreakAt: 999,
+    nextLongBreakAt: rand(25, 40),
     detach: null,
-  };
+  }));
 
   const addShared = (s: SessionState, user: GroupMemberUser): void => {
     if (seenIds.has(user.fb_id)) return;
@@ -362,24 +373,49 @@ export async function searchShardGroupMembers(
     s.pending.push(user);
   };
 
-  const flushPending = async (): Promise<void> => {
-    if (state.pending.length === 0) return;
-    const batch = state.pending;
-    state.pending = [];
-    if (!opts.onNewUsers) return;
-    try {
-      await opts.onNewUsers(batch);
-    } catch (err) {
-      log.warn("GroupCore", `search shard: onNewUsers failed: ${String(err).substring(0, 100)}`);
+  const flushPending = async (s?: SessionState): Promise<void> => {
+    const targets = s ? [s] : states;
+    for (const t of targets) {
+      if (t.pending.length === 0) continue;
+      const batch = t.pending;
+      t.pending = [];
+      if (!opts.onNewUsers) continue;
+      try {
+        await opts.onNewUsers(batch);
+      } catch (err) {
+        log.warn("GroupCore", `search shard: onNewUsers failed: ${String(err).substring(0, 100)}`);
+      }
     }
   };
 
-  attachInterception(state, addShared);
+  for (const st of states) attachInterception(st, addShared);
 
-  const shardsDone: string[] = [];
-  let searchBoxWorked = false;
+  /** Late-joining sessions (e.g. a feed-cascade worker freed by saturation)
+   *  are appended here and start claiming shards immediately. */
+  const joinSession = (wp: { sessionId: string; page: Page }): SessionState => {
+    const existing = states.find((st) => st.sessionId === wp.sessionId);
+    if (existing) return existing;
+    const st: SessionState = {
+      sessionId: wp.sessionId,
+      page: wp.page,
+      ownCount: 0,
+      pending: [],
+      rounds: 0,
+      idleCount: 0,
+      wakeUpAttempts: 0,
+      done: false,
+      stoppedReason: "",
+      lastLongBreakRound: 0,
+      nextLongBreakAt: rand(25, 40),
+      detach: null,
+    };
+    attachInterception(st, addShared);
+    states.push(st);
+    void shardLoop(st);
+    return st;
+  };
 
-  const runShardOnPage = async (shard: string): Promise<number> => {
+  const runShardOnPage = async (state: SessionState, shard: string): Promise<number> => {
     const before = seenIds.size;
 
     // The ?q= URL param does NOT filter results (proven by diagnosis) — the
@@ -392,44 +428,45 @@ export async function searchShardGroupMembers(
     // the assignment and the filter silently never applies.
     const ensureMembersPage = async (): Promise<void> => {
       try {
-        await page.goto(`https://www.facebook.com/groups/${gid}/members`, {
+        await state.page.goto(`https://www.facebook.com/groups/${gid}/members`, {
           waitUntil: "domcontentloaded",
           timeout: 20000,
         });
-        await page.waitForTimeout(2000 + rand(0, 1000));
+        await state.page.waitForTimeout(2000 + rand(0, 1000));
       } catch {
         /* handled by typed check below */
       }
     };
 
-    if (!searchBoxWorked) await ensureMembersPage();
+    if (!searchBoxWorked.get(state.sessionId)) await ensureMembersPage();
     // Poll for the box: React renders it asynchronously, so a fixed wait
     // races hydration. NOTE: evaluate() treats a plain string as an
     // EXPRESSION — the function must be INVOKED inline with the shard
     // embedded (a second arg would be silently ignored).
     let typed = false;
     for (let attempt = 0; attempt < 8 && !typed; attempt++) {
-      if (attempt === 4 && !searchBoxWorked) await ensureMembersPage();
-      typed = Boolean(await page.evaluate(`(${TYPE_JS})(${JSON.stringify(shard)})`).catch(() => false));
-      if (!typed) await page.waitForTimeout(1500);
+      if (attempt === 4 && !searchBoxWorked.get(state.sessionId)) await ensureMembersPage();
+      typed = Boolean(await state.page.evaluate(`(${TYPE_JS})(${JSON.stringify(shard)})`).catch(() => false));
+      if (!typed) await state.page.waitForTimeout(1500);
     }
     if (!typed) {
-      const dump = await page
+      const dump = await state.page
         .evaluate("(() => ({ url: location.href, inputs: Array.from(document.querySelectorAll('input')).map((i) => (i.getAttribute(\"aria-label\") || i.placeholder || i.type || \"?\").substring(0, 40)), bodyStart: (document.body?.innerText || \"\").substring(0, 150) }))()")
         .catch(() => null);
       log.warn("GroupCore", `search shard '${shard}': members search box not found — skipping`, dump);
       return 0;
     }
-    await page.keyboard.press("Enter").catch(() => {});
-    await page.waitForTimeout(3500 + rand(0, 1500));
-    searchBoxWorked = true;
+    await state.page.keyboard.press("Enter").catch(() => {});
+    await state.page.waitForTimeout(3500 + rand(0, 1500));
+    searchBoxWorked.set(state.sessionId, true);
 
     for (let r = 0; r < perShardRounds; r++) {
       if (Date.now() - startTime > maxDurationMs) break;
-      await scrollOnce(page);
+      if (canceledFlag) break;
+      await scrollOnce(state.page);
       await sleep(500 + rand(0, 400));
       await collectDomUsers(state, addShared);
-      await flushPending();
+      await flushPending(state);
       const gained = seenIds.size - before;
       if (r >= 6 && gained === 0) break;
       if (gained > 0 && r === perShardRounds - 1) break;
@@ -439,31 +476,69 @@ export async function searchShardGroupMembers(
     return gained;
   };
 
-  log.info("GroupCore", `=== members search sharding: ${shards.length} shards, budget=${Math.round(maxDurationMs / 60000)}min ===`);
+  const shardLoop = async (s: SessionState): Promise<void> => {
+    while (!s.done) {
+      if (opts.shouldStop && (await opts.shouldStop())) {
+        canceledFlag = true;
+        s.stoppedReason = "canceled";
+        break;
+      }
+      if (Date.now() - startTime > maxDurationMs) {
+        s.stoppedReason = "max_duration";
+        break;
+      }
+      const shard = queue.take();
+      if (shard === null) {
+        s.stoppedReason = "done";
+        break;
+      }
+      s.rounds++;
+      const gained = await runShardOnPage(s, shard).catch(() => -1);
+      if (gained < 0) {
+        // Page-level failure: give the session one more shard before retiring
+        // it — avoids burning the whole queue on a dead browser context.
+        const streak = (consecutiveFailures.get(s.sessionId) ?? 0) + 1;
+        consecutiveFailures.set(s.sessionId, streak);
+        if (streak >= 2) {
+          s.stoppedReason = `error:${s.sessionId.slice(0, 8)}`;
+          break;
+        }
+      } else {
+        consecutiveFailures.set(s.sessionId, 0);
+      }
+      if (queue.claimed % 8 === 0 && gained !== 0) {
+        log.info("GroupCore", `search shards: ${queue.claimed}/${queue.size} claimed, unique=${sharedUsers.length}`);
+        await sleep(3000 + rand(0, 3000));
+      }
+    }
+    s.done = true;
+    await flushPending(s);
+  };
 
-  let canceled = false;
-  for (const shard of shards) {
-    if (Date.now() - startTime > maxDurationMs) break;
-    if (opts.shouldStop && (await opts.shouldStop())) {
-      canceled = true;
-      break;
-    }
-    const gained = await runShardOnPage(shard);
-    shardsDone.push(shard);
-    opts.onProgress?.(shard, shardsDone.length, sharedUsers.length);
-    if (shardsDone.length % 8 === 0) {
-      log.info("GroupCore", `search shards: ${shardsDone.length}/${shards.length} done, unique=${sharedUsers.length}`);
-      await sleep(3000 + rand(0, 3000));
-    }
-  }
+  // Expose the late-join hook: after this function returns, the orchestrator
+  // can call joinHook.fn({sessionId, page}) to put a freed session (its
+  // previous phase ended early, e.g. cascade saturation) straight onto the
+  // shard queue — no duplicated shards, no idle session.
+  if (opts.joinHook) opts.joinHook.fn = (wp) => void joinSession(wp);
+
+  log.info("GroupCore", `=== members search sharding: ${queue.size} shards across ${states.length} session(s), budget=${Math.round(maxDurationMs / 60000)}min ===`);
+
+  await Promise.all(states.map(shardLoop));
 
   await flushPending();
-  state.detach?.();
+  for (const st of states) st.detach?.();
 
-  const stoppedReason: SearchShardResult["stoppedReason"] = canceled ? "canceled" : Date.now() - startTime > maxDurationMs ? "max_duration" : "done";
-  log.info("GroupCore", `search sharding finished: +${state.ownCount} users from ${shardsDone.length} shards in ${Math.round((Date.now() - startTime) / 1000)}s (${stoppedReason})`);
+  const stoppedReason: SearchShardResult["stoppedReason"] = canceledFlag
+    ? "canceled"
+    : Date.now() - startTime > maxDurationMs
+      ? "max_duration"
+      : "done";
+  log.info(
+    "GroupCore",
+    `search sharding finished: +${sharedUsers.length - baseCount} users from ${queue.claimed}/${queue.size} shards across ${states.length} session(s) in ${Math.round((Date.now() - startTime) / 1000)}s (${stoppedReason})`,
+  );
 
-  return { extracted: state.ownCount, shardsDone: shardsDone.length, stoppedReason };
+  return { extracted: sharedUsers.length - baseCount, shardsDone: queue.claimed, stoppedReason };
 }
 
 function attachInterception(

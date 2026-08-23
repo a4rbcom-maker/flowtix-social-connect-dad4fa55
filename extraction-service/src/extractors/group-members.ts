@@ -81,6 +81,10 @@ export class GroupMembersExtractor extends BaseExtractor {
     // Adaptive orchestrator state: measured per-source productivity + session health.
     const stats = new SourceStats();
     const health = new SessionHealthMonitor();
+    /** Set once the distributed shard phase starts; feed-cascade workers freed
+     *  by early give-up (saturation / posts exhausted) join the shared shard
+     *  queue through it — no idle sessions, no duplicated shards. */
+    const shardJoinHook: { fn: ((wp: CascadeWorkerPage) => void) | null } = { fn: null };
     for (const p of allPages) health.register(p.sessionId);
     const recordSessionFailure = (sessionId: string, info: FailureInfo): void => {
       health.recordFailure(sessionId, info);
@@ -249,15 +253,16 @@ export class GroupMembersExtractor extends BaseExtractor {
       }
     };
 
-    const runShardPhase = async (): Promise<SearchShardResult | null> => {
+    const runShardPhase = async (pages: CascadeWorkerPage[]): Promise<SearchShardResult | null> => {
       if (doneSources.has("members_search")) return null;
       if (total >= targetCount || this.timeRemainingSec < 150) return null;
-      log.info("GroupMembers", `members list capped at ${total}/${targetCount} — starting letter-shard search phase`);
-      await storeRich({ discovered: total, phase: "scrolling", source: "members_search", nextPhase: "feed_cascade", activeSessions: allPages.length });
+      log.info("GroupMembers", `members list capped at ${total}/${targetCount} — starting letter-shard search phase on ${pages.length} session(s)`);
+      await storeRich({ discovered: total, phase: "scrolling", source: "members_search", nextPhase: "feed_cascade", activeSessions: pages.length });
       stats.start("members_search");
       try {
-        const result = await searchShardGroupMembers(allPages[0].page, gid, shared, seen, {
-          maxDurationMs: Math.min(15 * 60_000, Math.max(60_000, this.timeRemainingMs - 90_000)),
+        const result = await searchShardGroupMembers(pages.map((p) => ({ sessionId: p.sessionId, page: p.page })), gid, shared, seen, {
+          maxDurationMs: Math.min(25 * 60_000, Math.max(60_000, this.timeRemainingMs - 90_000)),
+          joinHook: shardJoinHook,
           onNewUsers: async (users) => {
             stats.addUsers("members_search", users.length);
             await persistUsers(users);
@@ -285,6 +290,9 @@ export class GroupMembersExtractor extends BaseExtractor {
       discoveryPage: CascadeWorkerPage;
       pages: CascadeWorkerPage[];
       latePages?: Promise<CascadeWorkerPage[]>;
+      /** Fired when the cascade gives up early (saturation / posts exhausted):
+       *  hands each worker page to the still-running shard phase. */
+      onEarlyGiveUp?: (wp: CascadeWorkerPage) => void;
     }): Promise<GroupCascadeResult | null> => {
       if (doneSources.has("feed_cascade")) {
         log.info("GroupMembers", `resume: feed_cascade already done — skipping`);
@@ -303,6 +311,7 @@ export class GroupMembersExtractor extends BaseExtractor {
           maxDurationMs: Math.max(60_000, this.timeRemainingMs - 45_000),
           maxPosts: config.groupCascadeMaxPosts,
           maxDiscoveryMs: allPages.length >= (opts.latePages ? 3 : 2) ? 300_000 : 120_000,
+          onSaturationHandoff: opts.onEarlyGiveUp,
           extractEngagers: (page, permalink) =>
             extractEngagers(page, permalink, {
               maxReactions: 1000,
@@ -365,7 +374,7 @@ export class GroupMembersExtractor extends BaseExtractor {
 
       const membersPromise = (async (): Promise<MultiSessionGroupResult | null> => {
         const modern = await runMembersListPhase([allPages[0]]);
-        shards = await runShardPhase();
+        shards = await runShardPhase([allPages[0]]);
         resolveMembersPage([allPages[0]]);
         return modern;
       })().catch((err) => {
@@ -379,6 +388,7 @@ export class GroupMembersExtractor extends BaseExtractor {
         discoveryPage: allPages[1],
         pages: allPages.slice(2),
         latePages,
+        onEarlyGiveUp: (wp) => shardJoinHook.fn?.(wp),
       });
 
       membersResult = await membersPromise;
@@ -394,7 +404,7 @@ export class GroupMembersExtractor extends BaseExtractor {
       });
 
       if (!doneSources.has("members_search") && total < targetCount && this.timeRemainingSec > 150 && !(await this.throttledCanceled())) {
-        shards = await runShardPhase();
+        shards = await runShardPhase(allPages);
       }
 
       if (
@@ -407,6 +417,7 @@ export class GroupMembersExtractor extends BaseExtractor {
         await runCascadePhase({
           discoveryPage: allPages[0],
           pages: allPages.slice(1),
+          onEarlyGiveUp: (wp) => shardJoinHook.fn?.(wp),
         });
       }
     }
