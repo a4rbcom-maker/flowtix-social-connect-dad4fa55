@@ -31,6 +31,7 @@ import {
   SessionTransitionError,
   type FbSessionStatus,
 } from "@/hooks/useFbSessions";
+import { MAX_SESSIONS_PER_USER } from "@/lib/fb-sessions";
 
 const statusConfig: Record<FbSessionStatus, {
   variant: "success" | "primary" | "default" | "warning" | "error";
@@ -272,10 +273,23 @@ export function SessionsPage() {
               <p className="mt-1.5 max-w-xl text-sm text-[var(--color-fg-muted)]">{t("sessions.subtitle")}</p>
             </div>
           </div>
-          <Button onClick={handleAddSession} size="lg" className="gap-2 shadow-[0_8px_24px_-8px_rgba(109,94,252,0.6)]">
-            <Plus className="size-5" />
-            {t("sessions.add.title")}
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={handleAddSession}
+              size="lg"
+              className="gap-2 shadow-[0_8px_24px_-8px_rgba(109,94,252,0.6)]"
+              disabled={totalSessions >= MAX_SESSIONS_PER_USER}
+            >
+              <Plus className="size-5" />
+              {t("sessions.add.title")}
+            </Button>
+            {totalSessions >= MAX_SESSIONS_PER_USER && (
+              <div className="flex items-center gap-2 rounded-lg border border-[color-mix(in_oklab,var(--color-warning)_30%,transparent)] bg-[color-mix(in_oklab,var(--color-warning)_8%,transparent)] px-3 py-2 text-xs text-[var(--color-fg-muted)]">
+                <AlertTriangle className="size-4 text-[var(--color-warning)] shrink-0" />
+                <span>{t("sessions.limitReached")}</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -329,7 +343,7 @@ export function SessionsPage() {
           description={sessions?.length === 0 ? t("sessions.empty.description") : t("sessions.searchPlaceholder")}
           icon={Plug}
           action={sessions?.length === 0 ? (
-            <Button onClick={handleAddSession} size="lg" className="gap-2">
+            <Button onClick={handleAddSession} size="lg" className="gap-2" disabled={totalSessions >= MAX_SESSIONS_PER_USER}>
               <Plus className="size-4" />{t("sessions.add.title")}
             </Button>
           ) : (

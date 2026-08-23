@@ -905,6 +905,7 @@
       "title": "Delete Session?",
       "question": "Are you sure you want to delete \"{{name}}\"?"
     },
+    "limitReached": "You've reached the maximum of 2 sessions. Delete or disconnect a session first to add a new one.",
     "add": {
       "title": "Add New Session",
       "sessionName": "Session Name",

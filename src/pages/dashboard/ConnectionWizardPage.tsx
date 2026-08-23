@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Plug, Cookie, CheckCircle2, Loader2, Wifi, ShieldCheck,
@@ -16,8 +16,10 @@ import { cn } from "@/lib/utils";
 import { validateFbCookiesDetailed, parseCookieStringDetailed, type CookieFormat } from "@/lib/cookie-parser";
 import {
   useSessionMutations,
+  useSessionStats,
   SessionValidationError,
 } from "@/hooks/useFbSessions";
+import { MAX_SESSIONS_PER_USER } from "@/lib/fb-sessions";
 
 type WizardStep = 1 | 2 | 3 | 4;
 type ConnectionState = "connecting" | "success" | "failed";
@@ -31,6 +33,9 @@ export function ConnectionWizardPage() {
   const [cookieString, setCookieString] = useState("");
   const [createdSessionId, setCreatedSessionId] = useState<string | null>(null);
   const mutations = useSessionMutations();
+  const { data: stats } = useSessionStats();
+
+  const atLimit = (stats?.total ?? 0) >= MAX_SESSIONS_PER_USER;
 
   const cookieValidation = cookieString ? validateFbCookiesDetailed(cookieString) : null;
   const cookieResult = cookieString ? parseCookieStringDetailed(cookieString) : null;
@@ -130,10 +135,24 @@ export function ConnectionWizardPage() {
                 <h2 className="text-xl font-extrabold text-[var(--color-fg)]">{t("wizard.nameStep.title")}</h2>
                 <p className="max-w-md text-sm text-[var(--color-fg-muted)]">{t("wizard.nameStep.description")}</p>
               </div>
-              <div className="w-full max-w-sm space-y-2">
-                <label className="text-start text-sm font-medium text-[var(--color-fg)]">{t("sessions.add.sessionName")}</label>
-                <InputIcon icon={Pencil} placeholder={t("wizard.nameStep.placeholder")} value={sessionName} onChange={(e) => setSessionName(e.target.value)} />
-              </div>
+
+              {atLimit ? (
+                <div className="flex items-start gap-3 rounded-xl border border-[color-mix(in_oklab,var(--color-warning)_30%,transparent)] bg-[color-mix(in_oklab,var(--color-warning)_8%,transparent)] p-4 w-full max-w-sm text-start">
+                  <AlertTriangle className="size-5 text-[var(--color-warning)] shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-[var(--color-fg)]">{t("sessions.limitReached")}</p>
+                    <p className="text-xs text-[var(--color-fg-muted)]">
+                      <Link to="/dashboard/facebook/sessions" className="text-[var(--color-primary)] hover:underline">{t("sessions.title")}</Link>
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full max-w-sm space-y-2">
+                  <label className="text-start text-sm font-medium text-[var(--color-fg)]">{t("sessions.add.sessionName")}</label>
+                  <InputIcon icon={Pencil} placeholder={t("wizard.nameStep.placeholder")} value={sessionName} onChange={(e) => setSessionName(e.target.value)} />
+                </div>
+              )}
+
               <div className="grid w-full gap-3 sm:grid-cols-3">
                 {[
                   { icon: ShieldCheck, label: t("wizard.nameStep.secure"), color: "text-[var(--color-success)]" },
@@ -331,12 +350,12 @@ export function ConnectionWizardPage() {
             <ArrowLeft className="size-4 rtl:rotate-180" />{step > 1 ? t("wizard.back") : t("common.cancel")}
           </Button>
           {step === 1 && (
-            <Button onClick={() => setStep(2)} disabled={!sessionName.trim()}>
+            <Button onClick={() => setStep(2)} disabled={!sessionName.trim() || atLimit}>
               {t("wizard.next")}<ArrowRight className="size-4 rtl:rotate-180" />
             </Button>
           )}
           {step === 2 && (
-            <Button onClick={handleConnect} disabled={!cookieValidation?.valid || mutations.create.isPending}>
+            <Button onClick={handleConnect} disabled={!cookieValidation?.valid || mutations.create.isPending || atLimit}>
               {mutations.create.isPending ? <Loader2 className="size-4 animate-spin" /> : <Wifi className="size-4" />}
               {t("wizard.cookies.connect")}
             </Button>
