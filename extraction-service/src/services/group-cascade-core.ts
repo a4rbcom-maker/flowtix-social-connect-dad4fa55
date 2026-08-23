@@ -518,13 +518,20 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
   if (opts.latePages) {
     // Never wait past the deadline for a late page that never arrives.
     const waitMs = Math.max(0, deadline - Date.now() + 2_000);
-    await Promise.race([
-      opts.latePages.catch(() => undefined),
-      new Promise<void>((res) => {
-        const t = setTimeout(res, waitMs);
-        t.unref?.();
-      }),
-    ]);
+    // Skip the wait entirely once the saturation breaker has fired or the
+    // job was canceled: workers exit instantly in both states, so a late
+    // page joining the pool produces nothing — measured job burned ~35 min
+    // of paid time parked on this race AFTER its breaker had concluded.
+    if (!saturated && !canceled) {
+      await Promise.race([
+        opts.latePages.catch(() => undefined),
+        new Promise<void>((res) => {
+          const t = setTimeout(res, waitMs);
+          t.unref?.();
+        }),
+      ]);
+    }
+    lateSettled = true;
   }
 
   if (pendingWorkers === 0) resolveWorkersIdle();
