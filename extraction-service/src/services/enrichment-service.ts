@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { readdirSync, statSync, existsSync } from "fs";
 import { join } from "path";
+import { Worker } from "worker_threads";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { supabaseService } from "./supabase.js";
@@ -145,6 +146,42 @@ function checkDbHealthy(db: Database.Database, name: string): boolean {
     log.error("Enrichment", `${name}.db integrity check error: ${String(err)}`);
     return false;
   }
+}
+
+interface WorkerScanResult {
+  ok: boolean;
+  elapsedMs?: number;
+  fbIdMatches?: [string, Record<string, string | null>][];
+  nameMatches?: [string, Record<string, string | null>][];
+  error?: string;
+}
+
+/** Runs FBID + unique-name scans inside a worker thread so the 2.1GB SQLite
+ *  full scans never block the main event loop (HTTP stays responsive). */
+function runEnrichmentScan(
+  dbInfo: { name: string; path: string },
+  fbIds: string[],
+  targetNames: string[] = [],
+): Promise<{ fbIdMatches: [string, any][]; nameMatches: [string, any][]; elapsedMs: number }> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("./enrichment-worker.js", import.meta.url), {
+      workerData: { dbPath: dbInfo.path, dbName: dbInfo.name, fbIds, targetNames },
+    });
+    const timeout = setTimeout(() => {
+      worker.terminate();
+      reject(new Error(`enrichment scan timeout in ${dbInfo.name}.db`));
+    }, config.enrichmentTimeoutMs);
+    worker.on("message", (msg: WorkerScanResult) => {
+      clearTimeout(timeout);
+      worker.terminate();
+      if (!msg.ok) return reject(new Error(msg.error || `scan failed in ${dbInfo.name}.db`));
+      resolve({ fbIdMatches: msg.fbIdMatches ?? [], nameMatches: msg.nameMatches ?? [], elapsedMs: msg.elapsedMs ?? 0 });
+    });
+    worker.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+  });
 }
 
 function mapRow(row: Record<string, unknown>): EnrichmentRow {
@@ -437,47 +474,28 @@ export const enrichmentService = {
       const remainingIds = allFbIds.filter((id) => !enrichedMap.has(id));
       if (remainingIds.length === 0) break;
 
-      let db: Database.Database | null = null;
-      try {
-        db = new Database(dbInfo.path, { readonly: true });
-
-        if (!checkDbHealthy(db, dbInfo.name)) {
-          log.warn("Enrichment", `${dbInfo.name}.db is corrupt — attempting per-ID salvage (slower but recovers available data)`);
-        }
-
-        log.info("Enrichment", `loaded ${dbInfo.name}.db, searching ${remainingIds.length} FBIDs`);
-
-        const batchSize = config.enrichmentBatchSize;
-        for (let i = 0; i < remainingIds.length; i += batchSize) {
-          const batch = remainingIds.slice(i, i + batchSize);
-          const matches = searchInDb(db, batch);
-          for (const [fbId, row] of matches) {
-            enrichedMap.set(fbId, {
-              phone: row.Phone || null,
-              first_name: row.first_name || null,
-              last_name: row.last_name || null,
-              email: row.email || null,
-              birthday: row.birthday || null,
-              birthdayYear: row.birthdayYear || null,
-              gender: row.gender || null,
-              hometown: row.hometown || null,
-              location: row.location || null,
-              country: row.country || null,
-              work: row.work || null,
-              education: row.education || null,
-              relationship: row.relationship || null,
-              religion: row.religion || null,
-              about_me: row.about_me || null,
-              source_db: dbInfo.name,
-            });
-          }
-          log.info("Enrichment", `batch ${Math.floor(i / batchSize) + 1}: ${matches.size} matches in ${dbInfo.name}.db`);
-        }
-      } catch (err) {
-        log.error("Enrichment", `error searching ${dbInfo.name}.db: ${String(err)}`);
-      } finally {
-        if (db) db.close();
+      const scan = await runEnrichmentScan(dbInfo, remainingIds);
+      for (const [fbId, row] of scan.fbIdMatches) {
+        enrichedMap.set(fbId, {
+          phone: row.Phone || null,
+          first_name: row.first_name || null,
+          last_name: row.last_name || null,
+          email: row.email || null,
+          birthday: row.birthday || null,
+          birthdayYear: row.birthdayYear || null,
+          gender: row.gender || null,
+          hometown: row.hometown || null,
+          location: row.location || null,
+          country: row.country || null,
+          work: row.work || null,
+          education: row.education || null,
+          relationship: row.relationship || null,
+          religion: row.religion || null,
+          about_me: row.about_me || null,
+          source_db: dbInfo.name,
+        });
       }
+      log.info("Enrichment", `${dbInfo.name}.db scan: ${scan.fbIdMatches.length} FBID matches (${(scan.elapsedMs / 1000).toFixed(1)}s worker)`);
 
       const countFromThisDb = Array.from(enrichedMap.values()).filter((v) => v.source_db === dbInfo.name).length;
       if (countFromThisDb > 0) sources[dbInfo.name] = countFromThisDb;
@@ -499,43 +517,34 @@ export const enrichmentService = {
     if (unmatchedByName.size > 0) {
       for (const dbInfo of databases) {
         if (unmatchedByName.size === 0) break;
-        let db: Database.Database | null = null;
-        try {
-          db = new Database(dbInfo.path, { readonly: true });
-          const t0 = Date.now();
-          const uniqueNames = searchByUniqueFullName(db, new Set(unmatchedByName.keys()));
-          for (const [name, row] of uniqueNames) {
-            const fbId = unmatchedByName.get(name);
-            if (!fbId || enrichedMap.has(fbId)) continue;
-            enrichedMap.set(fbId, {
-              phone: row.Phone || null,
-              first_name: row.first_name || null,
-              last_name: row.last_name || null,
-              email: row.email || null,
-              birthday: row.birthday || null,
-              birthdayYear: row.birthdayYear || null,
-              gender: row.gender || null,
-              hometown: row.hometown || null,
-              location: row.location || null,
-              country: row.country || null,
-              work: row.work || null,
-              education: row.education || null,
-              relationship: row.relationship || null,
-              religion: row.religion || null,
-              about_me: row.about_me || null,
-              source_db: dbInfo.name,
-              match_confidence: "probable",
-              match_method: "full_name",
-            });
-            unmatchedByName.delete(name);
-            nameMatched++;
-          }
-          log.info("Enrichment", `name fallback in ${dbInfo.name}.db: +${uniqueNames.size} unique-name matches (${((Date.now() - t0) / 1000).toFixed(0)}s scan)`);
-        } catch (err) {
-          log.error("Enrichment", `name fallback error in ${dbInfo.name}.db: ${String(err)}`);
-        } finally {
-          if (db) db.close();
+        const scan = await runEnrichmentScan(dbInfo, [], Array.from(unmatchedByName.keys()));
+        for (const [name, row] of scan.nameMatches) {
+          const fbId = unmatchedByName.get(name);
+          if (!fbId || enrichedMap.has(fbId)) continue;
+          enrichedMap.set(fbId, {
+            phone: row.Phone || null,
+            first_name: row.first_name || null,
+            last_name: row.last_name || null,
+            email: row.email || null,
+            birthday: row.birthday || null,
+            birthdayYear: row.birthdayYear || null,
+            gender: row.gender || null,
+            hometown: row.hometown || null,
+            location: row.location || null,
+            country: row.country || null,
+            work: row.work || null,
+            education: row.education || null,
+            relationship: row.relationship || null,
+            religion: row.religion || null,
+            about_me: row.about_me || null,
+            source_db: dbInfo.name,
+            match_confidence: "probable",
+            match_method: "full_name",
+          });
+          unmatchedByName.delete(name);
+          nameMatched++;
         }
+        log.info("Enrichment", `name fallback in ${dbInfo.name}.db: +${scan.nameMatches.length} unique-name matches (${(scan.elapsedMs / 1000).toFixed(0)}s worker scan)`);
       }
     }
 
