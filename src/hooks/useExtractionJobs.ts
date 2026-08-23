@@ -21,7 +21,10 @@ export function useExtractionJobs() {
       const jobs = query.state.data;
       if (!jobs || jobs.length === 0) return false;
       const hasActive = jobs.some(j => j.status === "running" || j.status === "queued" || j.status === "paused");
-      return hasActive ? 3000 : false;
+      // Keep polling briefly after settling so the final status reaches any
+      // UI whose realtime channel dropped mid-run.
+      if (hasActive) return 3000;
+      return query.state.dataUpdatedAt && Date.now() - query.state.dataUpdatedAt < 15000 ? 3000 : false;
     },
   });
 }

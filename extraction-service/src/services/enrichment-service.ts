@@ -153,6 +153,8 @@ interface WorkerScanResult {
   elapsedMs?: number;
   fbIdMatches?: [string, Record<string, string | null>][];
   nameMatches?: [string, Record<string, string | null>][];
+  igPhoneMatches?: [string, Record<string, string | null>][];
+  igEmailMatches?: [string, Record<string, string | null>][];
   error?: string;
 }
 
@@ -176,6 +178,49 @@ function runEnrichmentScan(
       worker.terminate();
       if (!msg.ok) return reject(new Error(msg.error || `scan failed in ${dbInfo.name}.db`));
       resolve({ fbIdMatches: msg.fbIdMatches ?? [], nameMatches: msg.nameMatches ?? [], elapsedMs: msg.elapsedMs ?? 0 });
+    });
+    worker.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+  });
+}
+
+/** IG variant of the worker scan: phone suffixes + emails + unique names.
+ *  IG enrichment previously ran better-sqlite3 scans on the MAIN thread —
+ *  a Phone LIKE over the 2.1GB DB froze the whole service (health checks,
+ *  new jobs, everything) until the scan finished. */
+function runIgEnrichmentScan(
+  dbInfo: { name: string; path: string },
+  phoneSuffixes: string[],
+  emails: string[],
+  targetNames: string[],
+): Promise<{ phoneHits: Map<string, any>; emailHits: Map<string, any>; nameHits: Map<string, any>; elapsedMs: number }> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("./enrichment-worker.js", import.meta.url), {
+      workerData: {
+        dbPath: dbInfo.path,
+        dbName: dbInfo.name,
+        fbIds: [],
+        targetNames,
+        igPhoneSuffixes: phoneSuffixes,
+        igEmails: emails,
+      },
+    });
+    const timeout = setTimeout(() => {
+      worker.terminate();
+      reject(new Error(`IG enrichment scan timeout in ${dbInfo.name}.db`));
+    }, config.enrichmentTimeoutMs);
+    worker.on("message", (msg: WorkerScanResult) => {
+      clearTimeout(timeout);
+      worker.terminate();
+      if (!msg.ok) return reject(new Error(msg.error || `IG scan failed in ${dbInfo.name}.db`));
+      resolve({
+        phoneHits: new Map(msg.igPhoneMatches ?? []),
+        emailHits: new Map(msg.igEmailMatches ?? []),
+        nameHits: new Map(msg.nameMatches ?? []),
+        elapsedMs: msg.elapsedMs ?? 0,
+      });
     });
     worker.on("error", (err) => {
       clearTimeout(timeout);
@@ -631,40 +676,39 @@ export const enrichmentService = {
     const matches = new Map<number, { row: EnrichmentRow; method: "bio_phone" | "bio_email" | "full_name"; sourceDb: string }>();
     const sources: Record<string, number> = {};
 
+    const phoneSuffixes = Array.from(new Set(candidates.map((c) => c.phone9).filter((v): v is string => !!v)));
+    const emails = Array.from(new Set(candidates.map((c) => c.email).filter((v): v is string => !!v).map((e) => e.toLowerCase())));
+    const names = Array.from(new Set(candidates.map((c) => c.fullName).filter((v): v is string => !!v).map((n) => n.toLowerCase())));
+
     for (const dbInfo of databases) {
-      let db: Database.Database | null = null;
       try {
-        db = new Database(dbInfo.path, { readonly: true });
-        if (!checkDbHealthy(db, dbInfo.name)) {
-          log.warn("Enrichment", `${dbInfo.name}.db is corrupt — IG search may be incomplete`);
-        }
-        const hits = searchIgInDb(db, "data", candidates);
+        // Worker thread: the 2.1GB scans must never run on the main loop.
+        const scan = await runIgEnrichmentScan(dbInfo, phoneSuffixes, emails, names);
         for (let i = 0; i < candidates.length; i++) {
           if (matches.has(i)) continue;
           const c = candidates[i];
-          let hit: EnrichmentRow | undefined;
+          let hit: Record<string, string | null> | undefined;
           let method: "bio_phone" | "bio_email" | "full_name" | undefined;
           if (c.phone9) {
-            hit = hits.phone.get(c.phone9);
+            hit = scan.phoneHits.get(c.phone9);
             if (hit) method = "bio_phone";
           }
           if (!hit && c.email) {
-            hit = hits.email.get(c.email.toLowerCase());
+            hit = scan.emailHits.get(c.email.toLowerCase());
             if (hit) method = "bio_email";
           }
           if (!hit && c.fullName) {
-            hit = hits.fullName.get(c.fullName.toLowerCase());
+            hit = scan.nameHits.get(c.fullName.toLowerCase());
             if (hit) method = "full_name";
           }
           if (hit && method) {
-            const row = { ...hit, source_db: dbInfo.name };
+            const row = { ...mapRow(hit as Record<string, unknown>), source_db: dbInfo.name };
             matches.set(i, { row, method, sourceDb: dbInfo.name });
           }
         }
+        log.info("Enrichment", `${dbInfo.name}.db IG scan: ${(scan.elapsedMs / 1000).toFixed(1)}s worker (phones=${phoneSuffixes.length}, emails=${emails.length}, names=${names.length})`);
       } catch (err) {
         log.error("Enrichment", `IG error searching ${dbInfo.name}.db: ${String(err)}`);
-      } finally {
-        if (db) db.close();
       }
       const countFromThisDb = Array.from(matches.values()).filter((m) => m.sourceDb === dbInfo.name).length;
       if (countFromThisDb > 0) sources[dbInfo.name] = countFromThisDb;

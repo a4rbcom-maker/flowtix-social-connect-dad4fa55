@@ -5,10 +5,7 @@ export type ExtractionType =
   | "post_reactions"
   | "messenger_contacts"
   | "ig_followers"
-  | "ig_following"
-  | "ig_post_commenters"
-  | "ig_hashtag_posts"
-  | "ig_profile_info";
+  | "ig_following";
 
 export type AuthState = "authenticated" | "needs_login" | "restricted" | "unknown";
 
@@ -97,6 +94,9 @@ export function shouldPersistSessionCookies(cookies: CookieEntry[], essentialNam
 export interface JobContext {
   jobId: string;
   workspaceId: string;
+  /** Owning user — the live dedup/ownership scope since workspaces were
+   *  removed (migration 2026072716). */
+  userId: string;
   sessionId: string;
   type: ExtractionType;
   sourceUrl: string;

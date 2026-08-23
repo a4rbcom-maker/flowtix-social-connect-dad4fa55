@@ -20,14 +20,43 @@ export const igSessionImportSchema = z.object({
   cookies: z.array(z.record(z.unknown())).min(1),
 });
 
+/** Paths that are navigation entries, never usernames. */
+const IG_NAV_PATHS = new Set([
+  "explore", "reels", "direct", "accounts", "stories", "tv", "p", "reel",
+  "share", "challenge", "emails", "sms", "session", "your_activity",
+  "graphql", "api", "about", "legal", "privacy", "terms", "help",
+  "directory", "web", "channel", "profiles", "nametag",
+]);
+
+function isIgUsernamePath(href: string): boolean {
+  const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
+  if (!m) return false;
+  const name = m[1].toLowerCase();
+  if (IG_NAV_PATHS.has(name)) return false;
+  // Internal IDs are not usernames either.
+  if (/^[_\.]/.test(m[1])) return false;
+  return true;
+}
+
 async function readIgUsernameAndAvatar(page: import("playwright").Page): Promise<{ username: string | null; avatar: string | null }> {
   const username = await page.evaluate(() => {
-    const links = document.querySelectorAll('a[href^="/"]');
-    for (const a of links) {
-      const href = a.getAttribute("href");
-      if (href && /^\/([a-zA-Z0-9._]+)\/?$/.test(href)) {
-        return href.replace(/^\//, "").replace(/\/$/, "");
-      }
+    // Prefer the sidebar/nav identity link when present — it IS the logged-in
+    // user's profile link; fall back to any username-shaped profile link.
+    const nav = document.querySelector('nav a[href^="/"][aria-label], a[role="link"][href^="/"]');
+    const links = Array.from(document.querySelectorAll('a[href^="/"]'));
+    const ordered = nav ? [nav, ...links] : links;
+    for (const a of ordered) {
+      const href = a.getAttribute("href") || "";
+      const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
+      if (!m) continue;
+      const lower = m[1].toLowerCase();
+      const NAV = ["explore", "reels", "direct", "accounts", "stories", "tv", "p", "reel",
+        "share", "challenge", "emails", "sms", "session", "your_activity",
+        "graphql", "api", "about", "legal", "privacy", "terms", "help",
+        "directory", "web", "channel", "profiles", "nametag"];
+      if (NAV.includes(lower)) continue;
+      if (/^[_\.]/.test(m[1])) continue;
+      return m[1];
     }
     return null;
   }).catch(() => null);

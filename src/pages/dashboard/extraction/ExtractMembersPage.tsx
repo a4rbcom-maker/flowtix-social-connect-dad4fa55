@@ -107,8 +107,36 @@ export function ExtractMembersPage() {
     if (active && ["group-members", "page-followers", "post-comments", "post-reactions"].includes(active.type)) {
       setActiveJob(active as unknown as ExtractionJob);
       setPhase("running");
+      return;
     }
-  }, [jobs]);
+    // Polling fallback: the realtime channel can drop silently (service
+    // restart, websocket loss), leaving the UI stuck on "running" forever.
+    // The 3s-polled jobs list is authoritative — reconcile from it.
+    if (!activeJob) return;
+    const fresh = jobs.find((j) => j.id === activeJob.id);
+    if (!fresh || fresh.updated_at === (activeJob as ExtractionJob).updated_at) return;
+    const updated = fresh as unknown as ExtractionJob;
+    setActiveJob(updated);
+    if (updated.status === "completed") setPhase("completed");
+    else if (updated.status === "failed") setPhase("failed");
+    else if (updated.status === "canceled") { setPhase("setup"); setActiveJob(null); }
+    else if (updated.status === "paused") {
+      const cursor = (updated.config as any)?.cursor;
+      if (cursor && updated.result_count > 0) {
+        continueExtraction.mutate({
+          jobId: updated.id,
+          cursor,
+          maxResults: 100000,
+          skipDuplicates,
+          sessionId: selectedSessionId,
+          dbType: updated.type!,
+          sourceUrl: updated.source!,
+        });
+      } else {
+        setPhase("completed");
+      }
+    }
+  }, [jobs, activeJob]);
 
   const urlErrorKey = targetUrl ? getSourceUrlErrorKey(sourceType, targetUrl) : null;
   const canStart = selectedSessionId && targetUrl && !urlErrorKey;

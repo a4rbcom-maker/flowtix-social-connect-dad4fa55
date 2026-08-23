@@ -10,6 +10,10 @@ interface ScanRequest {
   dbName: string;
   fbIds?: string[];
   targetNames?: string[];
+  /** IG: last-9-digit phone suffixes to match against Phone LIKE '%…' */
+  igPhoneSuffixes?: string[];
+  /** IG: lowercase emails to match against the email column */
+  igEmails?: string[];
 }
 
 interface OutRow {
@@ -126,12 +130,67 @@ function searchUniqueNames(db: Database.Database, targetNames: Set<string>): Map
   return unique;
 }
 
+/** IG phone-suffix scan: Phone LIKE '%<suffix>' over the enrichment DB,
+ *  executed here (worker thread) so the 2.1GB file never stalls the main
+ *  event loop. Mirrors enrichment-service searchIgInDb semantics. */
+function searchIgPhones(db: Database.Database, suffixes: string[], tableName = "data"): Map<string, OutRow> {
+  const map = new Map<string, OutRow>();
+  if (suffixes.length === 0) return map;
+  const columns = availableColumns(db, tableName);
+  if (!columns.includes("Phone")) return map;
+  const stmt = db.prepare(`SELECT * FROM ${tableName} WHERE Phone LIKE ?`);
+  for (const suffix of suffixes) {
+    try {
+      const rows = stmt.all(`%${suffix}`) as Record<string, unknown>[];
+      for (const row of rows) {
+        const r = mapRow(row);
+        const raw = r.Phone || "";
+        // Key by normalized last-9 so the caller maps candidate → hit directly
+        const digits = raw.replace(/\D/g, "");
+        const key = digits.length >= 9 ? digits.slice(-9) : digits;
+        if (key && !map.has(key)) map.set(key, r);
+      }
+    } catch {
+      /* per-suffix tolerated */
+    }
+  }
+  return map;
+}
+
+/** IG email scan — same rationale as searchIgPhones. */
+function searchIgEmails(db: Database.Database, emails: string[], tableName = "data"): Map<string, OutRow> {
+  const map = new Map<string, OutRow>();
+  if (emails.length === 0) return map;
+  const columns = availableColumns(db, tableName);
+  if (!columns.includes("email")) return map;
+  const SQLITE_PARAM_LIMIT = 400;
+  for (let start = 0; start < emails.length; start += SQLITE_PARAM_LIMIT) {
+    const chunk = emails.slice(start, start + SQLITE_PARAM_LIMIT);
+    const placeholders = chunk.map(() => "?").join(",");
+    try {
+      const rows = db.prepare(
+        `SELECT * FROM ${tableName} WHERE LOWER(email) IN (${placeholders})`
+      ).all(...chunk) as Record<string, unknown>[];
+      for (const row of rows) {
+        const r = mapRow(row);
+        const key = (r.email || "").toLowerCase();
+        if (key && !map.has(key)) map.set(key, r);
+      }
+    } catch {
+      /* chunk tolerated */
+    }
+  }
+  return map;
+}
+
 const req = workerData as ScanRequest;
 try {
   const db = new Database(req.dbPath, { readonly: true });
   const t0 = Date.now();
   let fbIdMatches: [string, OutRow][] = [];
   let nameMatches: [string, OutRow][] = [];
+  let igPhoneMatches: [string, OutRow][] = [];
+  let igEmailMatches: [string, OutRow][] = [];
 
   if (req.fbIds && req.fbIds.length > 0) {
     fbIdMatches = Array.from(searchFbIds(db, req.fbIds));
@@ -139,8 +198,14 @@ try {
   if (req.targetNames && req.targetNames.length > 0) {
     nameMatches = Array.from(searchUniqueNames(db, new Set(req.targetNames)));
   }
+  if (req.igPhoneSuffixes && req.igPhoneSuffixes.length > 0) {
+    igPhoneMatches = Array.from(searchIgPhones(db, req.igPhoneSuffixes));
+  }
+  if (req.igEmails && req.igEmails.length > 0) {
+    igEmailMatches = Array.from(searchIgEmails(db, req.igEmails));
+  }
   db.close();
-  parentPort!.postMessage({ ok: true, elapsedMs: Date.now() - t0, fbIdMatches, nameMatches });
+  parentPort!.postMessage({ ok: true, elapsedMs: Date.now() - t0, fbIdMatches, nameMatches, igPhoneMatches, igEmailMatches });
 } catch (err) {
   parentPort!.postMessage({ ok: false, error: String(err) });
 }

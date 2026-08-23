@@ -1,5 +1,6 @@
 import type { Page } from "playwright";
 import { IgBaseExtractor } from "./ig-base.js";
+import { IgExtractionEngine, type IgCheckpoint } from "../services/ig-engine.js";
 import { config } from "../config.js";
 import { ExtractionError, ErrorCodes } from "../errors.js";
 import { logger } from "../logger.js";
@@ -22,11 +23,20 @@ interface IgUserRow {
   avatar: string;
 }
 
+/** Cursor for the scroll dialog: the last username seen + how many rows the
+ *  dialog already held when we stopped. On resume we scroll until the last
+ *  checkpointed username reappears, then continue collecting NEW rows only. */
+interface FollowersCursor {
+  lastUsername: string | null;
+  rowsInDialog: number;
+}
+
 export class IgFollowersExtractor extends IgBaseExtractor {
   private readonly tab: "followers" | "following";
   private totalCount: number | null = null;
   private flushedCount = 0;
   private lastProgressTs = 0;
+  private engine: IgExtractionEngine | null = null;
 
   constructor(page: Page, ctx: JobContext, secondaryPages?: Array<{ sessionId: string; page: Page }>) {
     super(page, ctx, secondaryPages);
@@ -37,7 +47,39 @@ export class IgFollowersExtractor extends IgBaseExtractor {
     const username = parseIgUsername(this.ctx.sourceUrl);
     const profileUrl = `${config.igBaseUrl}/${username}/`;
 
-    log.info("IgFollowers", `starting: @${username} tab=${this.tab} sessions=${1 + this.secondarySessionPages.length}`);
+    // Engine wiring: heartbeat + checkpoint + session health for this job.
+    const sessionIds = [this.ctx.sessionId, ...this.secondarySessionPages.map((s) => s.sessionId)];
+    const engine = new IgExtractionEngine(
+      {
+        jobId: this.ctx.jobId,
+        userId: this.ctx.userId,
+        sessionIds,
+        maxResults: this.ctx.maxResults,
+      },
+      {
+        sourceKey: this.tab === "followers" ? "followers_list" : "following_list",
+        label: this.tab,
+        loadCheckpoint: () => this.loadCursor(),
+        saveCheckpoint: async (cp) => this.saveCursor(cp),
+      },
+    );
+    this.engine = engine;
+    engine.setPhase("extracting");
+
+    // Resume: a previous run may have checkpointed mid-scroll.
+    const resumed = this.loadCursor();
+    const collected = new Map<string, ExtractedMember>();
+    let resumeFromUser: string | null = null;
+    if (resumed?.cursor) {
+      try {
+        const parsed = JSON.parse(resumed.cursor) as FollowersCursor;
+        resumeFromUser = parsed.lastUsername ?? null;
+        this.flushedCount = 0; // rows before the checkpoint are already stored
+        log.info("IgFollowers", `resuming from checkpoint: last=${resumeFromUser}`);
+      } catch { /* fresh start */ }
+    }
+
+    log.info("IgFollowers", `starting: @${username} tab=${this.tab} sessions=${sessionIds.length}${resumeFromUser ? " (resume)" : ""}`);
 
     await this.navigateToProfile(profileUrl);
 
@@ -49,9 +91,9 @@ export class IgFollowersExtractor extends IgBaseExtractor {
     }
 
     this.totalCount = await this.readTotalCount();
+    engine.setTotal(this.totalCount);
     log.info("IgFollowers", `total ${this.tab} count: ${this.totalCount ?? "unknown"}`);
 
-    const collected = new Map<string, ExtractedMember>();
     let emptyScrolls = 0;
     const MAX_EMPTY_SCROLLS = 6;
     let scrollCount = 0;
@@ -60,7 +102,7 @@ export class IgFollowersExtractor extends IgBaseExtractor {
       throw new ExtractionError(ErrorCodes.EXTRACTION_FAILED, `تعذر فتح قائمة ${this.tab === "followers" ? "المتابعين" : "المتابَعين"}. تأكد من أن الحساب عام وأن الجلسة صالحة.`);
     }
 
-    while (collected.size < this.ctx.maxResults && !this.shouldStop) {
+    while (collected.size + this.previouslyStored() < this.ctx.maxResults && !this.shouldStop) {
       if (await this.checkCanceled()) break;
 
       scrollCount++;
@@ -73,7 +115,14 @@ export class IgFollowersExtractor extends IgBaseExtractor {
 
       const rows = await this.collectRowsFromDialog();
       let newCount = 0;
+      let lastUsername: string | null = null;
       for (const row of rows) {
+        lastUsername = row.username;
+        // Resume: skip everything up to and including the checkpointed user.
+        if (resumeFromUser) {
+          if (row.username === resumeFromUser) resumeFromUser = null; // caught up
+          else continue;
+        }
         if (!collected.has(row.username)) {
           collected.set(row.username, {
             fb_id: row.username,
@@ -88,23 +137,33 @@ export class IgFollowersExtractor extends IgBaseExtractor {
         }
       }
       emptyScrolls = newCount === 0 ? emptyScrolls + 1 : 0;
-      log.info("IgFollowers", `scroll #${scrollCount}: +${newCount} → ${collected.size} unique`);
+      engine.addResults(newCount);
+      engine.setCursor(JSON.stringify({ lastUsername, rowsInDialog: rows.length } satisfies FollowersCursor));
+      log.info("IgFollowers", `scroll #${scrollCount}: +${newCount} → ${this.previouslyStored() + collected.size} unique`);
 
       const html = await this.page.content().catch(() => "");
       if (this.detectIgBlocked(html, this.page.url())) {
         log.warn("IgFollowers", `block detected on session ${this.ctx.sessionId.slice(0, 8)} — rotating`);
-        const switched = await this.handleIgBlocked();
-        if (!switched) break;
+        const usable = engine.recordSessionFailure(this.ctx.sessionId, new ExtractionError(ErrorCodes.AUTH_FAILED, "IG block/checkpoint detected"));
+        const switched = usable ? await this.switchToNextSession() : false;
+        if (!switched) {
+          await this.handleIgBlocked();
+          break;
+        }
+        engine.recordSessionSuccess(this.ctx.sessionId);
         await this.navigateToProfile(profileUrl);
         if (!(await this.openDialog())) {
           log.warn("IgFollowers", `could not reopen dialog on session ${this.ctx.sessionId.slice(0, 8)} — continuing`);
         }
         emptyScrolls = 0;
         continue;
+      } else {
+        engine.recordSessionSuccess(this.ctx.sessionId);
       }
 
       await this.flushIfNeeded(collected);
       await this.updateProgress(collected.size);
+      await engine.heartbeat();
 
       if (emptyScrolls >= MAX_EMPTY_SCROLLS) {
         log.info("IgFollowers", `no new rows for ${MAX_EMPTY_SCROLLS} scrolls — dialog exhausted`);
@@ -113,17 +172,70 @@ export class IgFollowersExtractor extends IgBaseExtractor {
     }
 
     await this.flushRemaining(collected);
-    const coverage = this.computeCoverage(collected.size, this.totalCount);
-    log.info("IgFollowers", `done: ${collected.size} unique (coverage ${coverage ?? "N/A"}%)`);
+    const totalUnique = this.previouslyStored() + collected.size;
+    const coverage = this.computeCoverage(totalUnique, this.totalCount);
+    log.info("IgFollowers", `done: ${totalUnique} unique (coverage ${coverage ?? "N/A"}%)`);
+    engine.setPhase("completed");
+    await engine.heartbeat(true);
     await this.updateIgProgress({
       phase: "completed",
-      extracted: collected.size,
+      extracted: totalUnique,
       total: this.totalCount,
       coverage_rate: coverage,
       tab: this.tab,
     });
 
-    return { extracted: collected.size, done: true, authState: "authenticated" };
+    return { extracted: totalUnique, done: true, authState: "authenticated" };
+  }
+
+  /** Rows stored by a previous (checkpointed) run of the same job. */
+  private previouslyStored(): number {
+    return this.resumeStoredCount;
+  }
+  private resumeStoredCount = 0;
+
+  private cursorKey(): string {
+    return `ig_${this.ctx.jobId}_cursor`;
+  }
+  private loadCursor(): IgCheckpoint | null {
+    const raw = this.resumeCursorRaw;
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as { cursor?: string; extracted?: number };
+      this.resumeStoredCount = parsed.extracted ?? 0;
+      return { source: this.tab, cursor: parsed.cursor ?? null, extracted: parsed.extracted ?? 0, saved_at: "" };
+    } catch {
+      return null;
+    }
+  }
+  private resumeCursorRaw: string | null = null;
+
+  /** Checkpoints live in job config (survives service restarts, visible in
+   *  job row) — written via storeProgress-adjacent updateJob calls. */
+  private async saveCursor(cp: IgCheckpoint): Promise<void> {
+    // Throttled by engine.heartbeat; persisted into job config.cursor.
+    this.pendingCursorValue = JSON.stringify({ cursor: cp.cursor, extracted: this.previouslyStored() + (this.engine?.snapshot().unique_extracted ?? 0) });
+    this.lastCursorSaveMs = Date.now();
+    if (this.lastCursorSaveMs - (this.lastCursorPersistMs ?? 0) < 15_000) return; // persist at most every 15s
+    this.lastCursorPersistMs = this.lastCursorSaveMs;
+    await this.supabaseUpdateCursor(this.pendingCursorValue);
+  }
+  private pendingCursorValue: string | null = null;
+  private lastCursorSaveMs = 0;
+  private lastCursorPersistMs: number | null = null;
+
+  private async supabaseUpdateCursor(cursorJson: string): Promise<void> {
+    const { supabaseService } = await import("../services/supabase.js");
+    const job = await supabaseService.getJob(this.ctx.jobId).catch(() => null);
+    const cfg = (job?.config || {}) as Record<string, unknown>;
+    await supabaseService.updateJob(this.ctx.jobId, {
+      config: { ...cfg, cursor: cursorJson },
+    }).catch(() => {});
+  }
+
+  /** Called by runExtractionJob wiring: seed resume state from job config. */
+  seedResume(cursorRaw: string | null): void {
+    this.resumeCursorRaw = cursorRaw ?? null;
   }
 
   private async navigateToProfile(profileUrl: string): Promise<void> {
@@ -146,28 +258,58 @@ export class IgFollowersExtractor extends IgBaseExtractor {
     );
   }
 
-  /** قراءة العدد الإجمالي من رابط العدّاد في رأس الملف */
+  /** قراءة العدد الإجمالي من عدّاد رأس الملف — يدعم الشكلين:
+   *  القديم a[href*="/followers/"] والجديد a[href="#"] "686M followers" */
   private async readTotalCount(): Promise<number | null> {
     const text = await this.page
       .evaluate((tab: string) => {
-        const links = Array.from(document.querySelectorAll('header a[href*="/followers/"], header a[href*="/following/"]'));
-        const target = links.find((a) => (a.getAttribute("href") || "").includes(`/${tab}/`));
-        return target ? (target.textContent || "").trim() : "";
+        const wantFollowing = tab === "following";
+        // Old DOM: counter links point at /followers/ or /following/
+        const link = Array.from(document.querySelectorAll('header a[href*="/followers/"], header a[href*="/following/"]'))
+          .find((a) => (a.getAttribute("href") || "").includes(`/${tab}/`));
+        if (link) return (link.textContent || "").trim();
+        // New DOM: plain anchors/buttons "686M followers"
+        const cands = Array.from(document.querySelectorAll('header a, main a, header button, header [role="button"]'));
+        for (const el of cands) {
+          const txt = (el.textContent || "").trim();
+          if (!txt || txt.length > 40 || !/\d/.test(txt)) continue;
+          const lower = txt.toLowerCase();
+          const isFollowers = /followers/.test(lower);
+          const isFollowing = /following/.test(lower);
+          if (wantFollowing ? isFollowing : isFollowers) return txt;
+        }
+        return "";
       }, this.tab)
       .catch(() => "");
     if (!text) return null;
-    return this.parseIgCompactNumber(text);
+    return this.parseIgCompactNumber(text.replace(/followers|following|متابع|يتابع/gi, ""));
   }
 
-  /** فتح dialog المتابعين/المتابَعين بالنقر على العدّاد */
+  /** فتح dialog المتابعين/المتابَعين: نقر العدّاد بالنص (DOM الجديد)
+   *  مع ال fallback على روابط /followers/ القديمة */
   private async openDialog(): Promise<boolean> {
     const clicked = await this.page
       .evaluate((tab: string) => {
-        const links = Array.from(document.querySelectorAll('header a[href*="/followers/"], header a[href*="/following/"]'));
-        const target = links.find((a) => (a.getAttribute("href") || "").includes(`/${tab}/`));
-        if (target) {
-          (target as HTMLElement).click();
+        const wantFollowing = tab === "following";
+        // Old DOM first — explicit links are unambiguous
+        const oldLink = Array.from(document.querySelectorAll('a[href*="/followers/"], a[href*="/following/"]'))
+          .find((a) => (a.getAttribute("href") || "").includes(`/${tab}/`)) as HTMLElement | undefined;
+        if (oldLink) {
+          oldLink.click();
           return true;
+        }
+        // New DOM: text counters on a[href="#"] / buttons in the profile header
+        const cands = Array.from(document.querySelectorAll('header a, main a, header button, [role="button"]')) as HTMLElement[];
+        for (const el of cands) {
+          const txt = (el.textContent || "").trim();
+          if (!txt || txt.length > 40 || !/\d/.test(txt)) continue;
+          const lower = txt.toLowerCase();
+          const isFollowers = /followers/.test(lower);
+          const isFollowing = /following/.test(lower);
+          if (wantFollowing ? isFollowing : isFollowers) {
+            el.click();
+            return true;
+          }
         }
         return false;
       }, this.tab)
@@ -232,7 +374,7 @@ export class IgFollowersExtractor extends IgBaseExtractor {
         }
         return results;
       })
-      .catch(() => []);
+      .catch(() => [] as IgUserRow[]);
   }
 
   private async flushIfNeeded(collected: Map<string, ExtractedMember>): Promise<void> {
@@ -266,9 +408,9 @@ export class IgFollowersExtractor extends IgBaseExtractor {
     this.lastProgressTs = now;
     await this.updateIgProgress({
       phase: "scrolling",
-      extracted,
+      extracted: this.previouslyStored() + extracted,
       total: this.totalCount,
-      coverage_rate: this.computeCoverage(extracted, this.totalCount),
+      coverage_rate: this.computeCoverage(this.previouslyStored() + extracted, this.totalCount),
       tab: this.tab,
     });
   }

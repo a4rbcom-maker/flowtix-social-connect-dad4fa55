@@ -637,8 +637,14 @@ export abstract class BaseExtractor {
   protected async processBatch(members: ExtractedMember[], typeOverride: string, platform: string = "facebook"): Promise<number> {
     let results = members.map((m) => ({ ...m, type: typeOverride }));
     if (this.ctx.skipDuplicates) {
-      const existing = await supabaseService.getExistingIds(this.ctx.workspaceId, results.map((m) => m.fb_id));
-      results = results.filter((m) => !existing.has(m.fb_id));
+      if (platform === "instagram") {
+        // Live scope: user_id + platform (workspace_id is dead since 2026072716).
+        const existing = await supabaseService.getExistingIgIds(this.ctx.userId ?? "", results.map((m) => m.fb_id));
+        results = results.filter((m) => !existing.has(m.fb_id));
+      } else {
+        const existing = await supabaseService.getExistingIds(this.ctx.workspaceId, results.map((m) => m.fb_id));
+        results = results.filter((m) => !existing.has(m.fb_id));
+      }
     }
     if (results.length === 0) return 0;
     try {

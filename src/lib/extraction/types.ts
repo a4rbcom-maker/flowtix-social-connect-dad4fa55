@@ -11,10 +11,7 @@ export type ExtractionType =
   | "post_reactions"
   | "messenger_contacts"
   | "ig_followers"
-  | "ig_following"
-  | "ig_post_commenters"
-  | "ig_hashtag_posts"
-  | "ig_profile_info";
+  | "ig_following";
 export type JobStatus = Database["public"]["Enums"]["job_status"];
 export type ExportFormat = Database["public"]["Enums"]["export_format"];
 

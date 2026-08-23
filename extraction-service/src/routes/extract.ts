@@ -22,6 +22,11 @@ const router = Router();
 const extractSchema = z.object({
   session_id: z.string().optional(),
   session_ids: z.array(z.string()).optional(),
+  // Only IG types with a real extractor are accepted. ig_post_commenters /
+  // ig_hashtag_posts / ig_profile_info were accepted here but had NO
+  // implementation behind createExtractor — every such request failed
+  // with "Unsupported extraction type" after admission. Removed until an
+  // adapter exists.
   type: z.enum([
     "groups",
     "pages",
@@ -30,9 +35,6 @@ const extractSchema = z.object({
     "messenger_contacts",
     "ig_followers",
     "ig_following",
-    "ig_post_commenters",
-    "ig_hashtag_posts",
-    "ig_profile_info",
   ]),
   source_url: z.string().min(1),
   job_name: z.string().optional(),
@@ -147,6 +149,7 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
   const ctx: JobContext = {
     jobId,
     workspaceId: job.workspace_id,
+    userId,
     sessionId: primarySessionId,
     type: job.type as ExtractionType,
     sourceUrl: job.source,
@@ -154,6 +157,8 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
     skipDuplicates: jobConfig.skip_duplicates !== false,
     cursor: jobConfig.cursor as string | undefined,
   };
+  // Result rows carry user_id for the live IG dedup scope.
+  supabaseService.currentScopeUserId = userId;
 
   const isIg = isIgType(job.type as string);
   const poolCapacity = config.browserPoolSize * config.maxContextsPerBrowser;
@@ -275,6 +280,11 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
         }));
         const extractor = createExtractor(job.type as ExtractionType, page, ctx, secondaryPages);
         const startMs = Date.now();
+
+        // Resume wiring: IG extractors rebuild state from the job cursor.
+        if (isIg && ctx.cursor && "seedResume" in extractor) {
+          (extractor as unknown as { seedResume: (c: string) => void }).seedResume(ctx.cursor);
+        }
 
         // Job-level watchdog: the extractor self-limits via internal time
         // budgets, but a single hung browser call (e.g. page.evaluate on an

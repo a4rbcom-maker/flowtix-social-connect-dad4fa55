@@ -43,6 +43,7 @@ export function ExtractContactsPage() {
   const [selectedPage, setSelectedPage] = useState<ManagedPage | null>(null);
   const [skipDuplicates, setSkipDuplicates] = useState(true);
   const [activeJob, setActiveJob] = useState<ExtractionJob | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
   const { data: jobs } = useExtractionJobs();
 
   useEffect(() => {
@@ -51,9 +52,19 @@ export function ExtractContactsPage() {
     if (active && active.type === "messenger_contacts") {
       setActiveJob(active as unknown as ExtractionJob);
       setPhase("running");
+      return;
     }
-  }, [jobs]);
-  const [errorMsg, setErrorMsg] = useState("");
+    // Polling fallback: realtime channel can drop silently — reconcile from
+    // the 3s-polled jobs list so the UI never stays stuck on "running".
+    if (!activeJob) return;
+    const fresh = jobs.find((j) => j.id === activeJob.id);
+    if (!fresh || fresh.updated_at === (activeJob as ExtractionJob).updated_at) return;
+    const updated = fresh as unknown as ExtractionJob;
+    setActiveJob(updated);
+    if (updated.status === "completed") setPhase("completed");
+    else if (updated.status === "failed") { setPhase("failed"); setErrorMsg(updated.error || ""); }
+    else if (updated.status === "canceled") setPhase("idle");
+  }, [jobs, activeJob]);
 
   useAudioNotification(phase === "completed");
 

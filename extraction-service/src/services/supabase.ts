@@ -400,6 +400,7 @@ export const supabaseService = {
       platform,
       fb_id: r.fb_id,
       fb_type: r.type,
+      user_id: this.currentScopeUserId ?? null,
       data: {
         name: r.name,
         profile_url: r.profile_url,
@@ -418,6 +419,10 @@ export const supabaseService = {
     if (error) throw new ExtractionError(ErrorCodes.EXTRACTION_FAILED, `Store results failed: ${error.message}`);
   },
 
+  /** Scope user for result rows written by the current job (IG dedup +
+   *  ownership). Set once per job in runExtractionJob. */
+  currentScopeUserId: null as string | null,
+
   async getExistingIds(workspaceId: string, fbIds: string[]): Promise<Set<string>> {
     if (fbIds.length === 0) return new Set();
     const { data, error } = await sb
@@ -427,6 +432,31 @@ export const supabaseService = {
       .in("fb_id", fbIds);
     if (error || !data) return new Set();
     return new Set(data.map((r: { fb_id: string }) => r.fb_id));
+  },
+
+  /** Cross-job dedup for Instagram results, scoped user_id + platform.
+   *  workspace_id is dead (migration 2026072716) so the FB path above is a
+   *  no-op today — this IG-specific path uses the live scope instead.
+   *  The migration also added user_id to extraction_results (backfilled). */
+  async getExistingIgIds(userId: string, fbIds: string[]): Promise<Set<string>> {
+    if (fbIds.length === 0) return new Set();
+    const out = new Set<string>();
+    // .in() with thousands of names can exceed URL limits — chunk it.
+    for (let i = 0; i < fbIds.length; i += 500) {
+      const chunkIds = fbIds.slice(i, i + 500);
+      const { data, error } = await sb
+        .from("extraction_results")
+        .select("fb_id")
+        .eq("user_id", userId)
+        .eq("platform", "instagram")
+        .in("fb_id", chunkIds);
+      if (error) {
+        log.warn("Supabase", `getExistingIgIds error: ${error.message}`);
+        continue;
+      }
+      for (const r of data ?? []) out.add(r.fb_id);
+    }
+    return out;
   },
 
   async getJobResultsForEnrichment(jobId: string): Promise<{ id: string; fb_id: string; data: Record<string, unknown>; platform?: string }[]> {

@@ -36,7 +36,10 @@ export function useIgJob(jobId: string | undefined) {
     enabled: !!jobId,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status === "running" || status === "queued" ? 3000 : false;
+      // Poll while running AND shortly after settling, so a dropped realtime
+      // channel still delivers the final status transition to the UI.
+      if (status === "running" || status === "queued") return 3000;
+      return query.state.dataUpdatedAt && Date.now() - query.state.dataUpdatedAt < 15000 ? 3000 : false;
     },
   });
 }
