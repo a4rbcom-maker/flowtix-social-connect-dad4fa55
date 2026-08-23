@@ -335,7 +335,7 @@ export async function searchShardGroupMembers(
   opts: SearchShardOptions = {},
 ): Promise<SearchShardResult> {
   const maxDurationMs = opts.maxDurationMs ?? 15 * 60_000;
-  const perShardRounds = opts.perShardRounds ?? 12;
+  const perShardRounds = opts.perShardRounds ?? 25;
   const shards = opts.shards ?? buildSearchShards();
   const startTime = Date.now();
 
@@ -378,46 +378,51 @@ export async function searchShardGroupMembers(
 
   const shardsDone: string[] = [];
   let searchBoxWorked = false;
-  let searchBoxAttempted = false;
 
   const runShardOnPage = async (shard: string): Promise<number> => {
     const before = seenIds.size;
-    try {
-      await page.goto(`https://www.facebook.com/groups/${gid}/members/?q=${encodeURIComponent(shard)}`, {
-        waitUntil: "domcontentloaded",
-        timeout: 20000,
-      });
-      await page.waitForTimeout(1500 + rand(0, 1000));
-    } catch {
+
+    // The ?q= URL param does NOT filter results (proven by diagnosis) — the
+    // shard must be typed into the members search box. The box uses React,
+    // so the NATIVE value setter is required (plain .value= is ignored).
+    const TYPE_JS = "(q) => { const inputs = Array.from(document.querySelectorAll('input[type=\"text\"], input[type=\"search\"]')); const isGlobal = (i) => (i.getAttribute(\"aria-label\") || \"\").trim().toLowerCase() === \"search facebook\"; const looks = (t) => /search group member|find a member|member.*search|بحث.*عض|عضو|أعضاء/i.test(t); const box = inputs.find((i) => !isGlobal(i) && looks((i.getAttribute(\"aria-label\") || \"\") + \" \" + (i.placeholder || \"\"))) || inputs.find((i) => !isGlobal(i) && (i.getAttribute(\"aria-label\") || \"\").toLowerCase().includes(\"search\")) || inputs.find((i) => !isGlobal(i) && (i.placeholder || \"\").toLowerCase().includes(\"search\")) || inputs.find((i) => (i.getAttribute(\"aria-label\") || \"\").includes(\"بحث\") || (i.placeholder || \"\").includes(\"بحث\")); if (!box) return false; box.focus(); if (box.select) box.select(); const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, \"value\").set; setter.call(box, q); box.dispatchEvent(new Event(\"input\", { bubbles: true })); return true; }";
+
+    // Load /members fresh only when the SPA is not yet up (first shard, or the
+    // box was lost). Re-goto per shard breaks typing: React hydration races
+    // the assignment and the filter silently never applies.
+    const ensureMembersPage = async (): Promise<void> => {
+      try {
+        await page.goto(`https://www.facebook.com/groups/${gid}/members`, {
+          waitUntil: "domcontentloaded",
+          timeout: 20000,
+        });
+        await page.waitForTimeout(2000 + rand(0, 1000));
+      } catch {
+        /* handled by typed check below */
+      }
+    };
+
+    if (!searchBoxWorked) await ensureMembersPage();
+    // Poll for the box: React renders it asynchronously, so a fixed wait
+    // races hydration. NOTE: evaluate() treats a plain string as an
+    // EXPRESSION — the function must be INVOKED inline with the shard
+    // embedded (a second arg would be silently ignored).
+    let typed = false;
+    for (let attempt = 0; attempt < 8 && !typed; attempt++) {
+      if (attempt === 4 && !searchBoxWorked) await ensureMembersPage();
+      typed = Boolean(await page.evaluate(`(${TYPE_JS})(${JSON.stringify(shard)})`).catch(() => false));
+      if (!typed) await page.waitForTimeout(1500);
+    }
+    if (!typed) {
+      const dump = await page
+        .evaluate("(() => ({ url: location.href, inputs: Array.from(document.querySelectorAll('input')).map((i) => (i.getAttribute(\"aria-label\") || i.placeholder || i.type || \"?\").substring(0, 40)), bodyStart: (document.body?.innerText || \"\").substring(0, 150) }))()")
+        .catch(() => null);
+      log.warn("GroupCore", `search shard '${shard}': members search box not found — skipping`, dump);
       return 0;
     }
-
-    // URL param unsupported (page just shows the full list) → type into the
-    // members search box instead.
-    if (!searchBoxWorked) {
-      const typed = await page
-        .evaluate((q: string) => {
-          const inputs = Array.from(document.querySelectorAll('input[type="text"], input[type="search"]')) as HTMLInputElement[];
-          const box = inputs.find(
-            (i) =>
-              (i.getAttribute("aria-label") || "").toLowerCase().includes("search") ||
-              (i.getAttribute("aria-label") || "").includes("بحث") ||
-              (i.placeholder || "").toLowerCase().includes("search") ||
-              (i.placeholder || "").includes("بحث"),
-          );
-          if (!box) return false;
-          box.focus();
-          box.value = q;
-          box.dispatchEvent(new Event("input", { bubbles: true }));
-          return true;
-        }, shard)
-        .catch(() => false);
-      if (typed) {
-        searchBoxAttempted = true;
-        await page.keyboard.press("Enter").catch(() => {});
-        await page.waitForTimeout(2000 + rand(0, 1000));
-      }
-    }
+    await page.keyboard.press("Enter").catch(() => {});
+    await page.waitForTimeout(3500 + rand(0, 1500));
+    searchBoxWorked = true;
 
     for (let r = 0; r < perShardRounds; r++) {
       if (Date.now() - startTime > maxDurationMs) break;
@@ -426,12 +431,11 @@ export async function searchShardGroupMembers(
       await collectDomUsers(state, addShared);
       await flushPending();
       const gained = seenIds.size - before;
-      if (r >= 4 && gained === 0) break;
+      if (r >= 6 && gained === 0) break;
       if (gained > 0 && r === perShardRounds - 1) break;
     }
 
     const gained = seenIds.size - before;
-    if (gained > 0) searchBoxWorked = true;
     return gained;
   };
 
@@ -442,12 +446,6 @@ export async function searchShardGroupMembers(
     if (Date.now() - startTime > maxDurationMs) break;
     if (opts.shouldStop && (await opts.shouldStop())) {
       canceled = true;
-      break;
-    }
-    // If neither URL param nor search box produced anything after a fair
-    // try, the group's member search is unavailable — stop wasting budget.
-    if (searchBoxAttempted && !searchBoxWorked && shardsDone.length >= 3) {
-      log.info("GroupCore", `search sharding: no shard produced users after ${shardsDone.length} shards — member search unavailable for this group`);
       break;
     }
     const gained = await runShardOnPage(shard);
