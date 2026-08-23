@@ -6,7 +6,7 @@ import {
   Activity, CheckCircle2, Loader2, Play,
   ArrowRight, Filter, Pencil,
   MessageSquare, ThumbsUp, Layers,
-  Square, TrendingUp, Gauge, Navigation, RefreshCw,
+  Square, TrendingUp, Gauge, Sparkles,
 } from "lucide-react";
 import { PageHeader, StatCard } from "@/components/ui/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -412,49 +412,17 @@ export function ExtractMembersPage() {
               )}
             </div>
 
-            {typeof jobAny?.progress?.posts_done === "number" && (
+            {isEnriching && (
               <p className="flex items-center gap-2 text-xs text-[var(--color-fg-muted)]">
-                <MessageSquare className="size-3.5" />
-                {t("extract.running.cascadePosts")}: {jobAny.progress.posts_done} / {jobAny.progress.posts_total ?? "…"}
+                <Sparkles className="size-3.5 text-[var(--color-primary)]" />
+                {t("extract.running.enriching")}
               </p>
             )}
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              <StatBox
-                icon={Layers}
-                label={t("extract.running.strategySource")}
-                value={p.source ? t(`extract.running.source_${p.source}`) : "—"}
-              />
-              <StatBox
-                icon={Users}
-                label={t("extract.running.strategySessions")}
-                value={`${p.active_sessions ?? 1}`}
-              />
-              <StatBox
-                icon={Gauge}
-                label={t("extract.running.strategyRate")}
-                value={p.rate_per_min ? `${Math.round(p.rate_per_min)}` : "0"}
-              />
-              <StatBox
-                icon={AlertTriangle}
-                label={t("extract.running.strategyErrors")}
-                value={`${p.errors_count ?? 0}`}
-              />
-              <StatBox
-                icon={RefreshCw}
-                label={t("extract.running.strategyDuplicates")}
-                value={`${p.duplicates_skipped ?? 0}`}
-              />
-              <StatBox
-                icon={Navigation}
-                label={t("extract.running.strategyNext")}
-                value={p.next_strategy && p.next_strategy !== "none" ? t(`extract.running.source_${p.next_strategy}`) : t("extract.running.strategyNone")}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <StatBox icon={Users} label={t("extract.running.extracted")} value={discovered.toLocaleString()} />
-              <StatBox icon={Activity} label={t("extract.status")} value={t(`extract.jobStatus.${activeJob?.status ?? "running"}`)} />
+              <StatBox icon={Gauge} label={t("extract.running.strategyRate")} value={p.rate_per_min ? `${Math.round(p.rate_per_min)}` : "0"} />
+              <StatBox icon={Activity} label={t("extract.running.strategySessions")} value={`${p.active_sessions ?? 1}`} />
               <StatBox icon={Clock} label={t("extract.startedAt")} value={activeJob?.started_at ? new Date(activeJob.started_at).toLocaleTimeString() : "—"} />
             </div>
 
