@@ -13,6 +13,38 @@ export interface GroupMemberUser {
   profile_url: string;
 }
 
+/** Junk "name" patterns seen on member rows: join-date subtitles ("Joined on
+ *  Friday", "انضم في مايو"), role labels, placeholder accounts. These were
+ *  being STORED as names (4,675 rows in job d799b4ed) which killed the
+ *  enrichment name-fallback (name_matched=1). */
+const JUNK_NAME_PATTERNS: RegExp[] = [
+  /^joined\b/i,
+  /^new member\b/i,
+  /^(admin|moderator|administer)\b/i,
+  /^(مشرفة|مشرف|إداري|اداري|منسق)/,
+  /^عضو\s/,
+  /^(انضم|انضمت|انضمّت|انضممت|أصبح عضو|اصبح عضو)/,
+  /^facebook user$/i,
+  /^(see more|view all|عرض المزيد|اقرأ المزيد)/i,
+  /^(اعرض المزيد|مشاهدة الكل)/,
+];
+
+/** Normalize a raw anchor/GraphQL "name" into a real person name, or null.
+ *  Member cards wrap the profile link around name AND subtitle — the real
+ *  name is always the FIRST non-empty line of the anchor text. Pure function
+ *  so it is unit-testable without a browser. */
+export function cleanMemberName(raw: string): string | null {
+  if (!raw) return null;
+  const firstLine = raw.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
+  const name = firstLine.substring(0, 60).trim();
+  if (name.length < 2) return null;
+  if (/^\d+$/.test(name)) return null;
+  for (const re of JUNK_NAME_PATTERNS) {
+    if (re.test(name)) return null;
+  }
+  return name;
+}
+
 export interface MultiSessionGroupOptions {
   maxDurationMs?: number;
   targetCount?: number;
@@ -49,11 +81,13 @@ export interface MultiSessionGroupResult {
   stoppedReason: "target_reached" | "all_idle" | "max_duration" | "canceled" | "stagnated" | "low_yield";
 }
 
-/** Hard ceiling for the members-list phase: the browsable list tops out
- *  within the first couple of minutes even in huge groups (Facebook cap), so
- *  giving it more than a few minutes just starves the feed cascade — the
- *  only source that scales past the cap. */
-export const MEMBERS_PHASE_MAX_MS = 8 * 60_000;
+/** Hard ceiling for the members-list phase. Facebook caps the browsable list
+ *  (~1-2K), but the cap applies to SCROLLING — a session still accumulating
+ *  members at a healthy rate must not be cut at 8min (job d799b4ed: cut at
+ *  8min with 2,301 users while still yielding). The stall/low-yield
+ *  detectors already handle a genuinely capped list, so the ceiling only
+ *  guards against a detector that never fires. */
+export const MEMBERS_PHASE_MAX_MS = 20 * 60_000;
 
 /** Members-list phase budget: capped so the feed-cascade phase (the only way
  *  past Facebook's members-list cap) is guaranteed the lion's share of the
@@ -605,9 +639,13 @@ async function collectDomUsers(
         link.href.match(/profile\.php\?id=(\d{5,25})/) ||
         link.href.match(/\/user\/(\d{5,25})\b/);
       if (!m) continue;
+      // Anchor text wraps the whole member card: "Real Name\nJoined on
+      // Friday". cleanMemberName takes the first line and rejects junk
+      // subtitles — previously the junk subtitle was stored as the name.
+      const name = cleanMemberName(link.text) ?? "";
       addShared(s, {
         fb_id: m[1],
-        name: link.text.substring(0, 200),
+        name,
         profile_url: `https://www.facebook.com/profile.php?id=${m[1]}`,
       });
     }
@@ -720,6 +758,9 @@ function walkForUsers(obj: any, users: GroupMemberUser[], depth: number): void {
 
   if (!fbId) fbId = deepFindId(obj, 2) || "";
   if (!name) name = deepFindName(obj, 2) || "";
+  // Reject junk subtitles ("Joined on Friday" etc.) masquerading as names —
+  // they poisoned 4,675 stored rows and zeroed the name-match enrichment.
+  name = cleanMemberName(name) ?? "";
 
   if (obj?.url && typeof obj.url === "string") {
     const url = obj.url as string;

@@ -300,7 +300,8 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
     extracted < opts.targetCount &&
     Date.now() < deadline - 30_000 &&
     !saturated &&
-    !canceled;
+    !canceled &&
+    emptyRediscoveries < MAX_EMPTY_REDISCOVERIES;
 
   /** Re-scroll the group feed on the claiming worker's own page when the
    *  post queue drains but time/budget remain — post production is
@@ -309,11 +310,19 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
    *  posts instead of re-reading the same ranked set. */
   const FEED_VARIANTS = ["", "?sorting_setting=CHRONOLOGICAL"];
   let rediscoverVariant = 0;
+  /** Consecutive rediscoveries that surfaced ZERO new posts. A genuinely
+   *  exhausted feed must not be re-scrolled forever: the saturation breaker
+   *  only measures new USERS, and a feed whose 10 posts are all processed
+   *  yields no users either way — job d799b4ed burned 40 minutes in this
+   *  exact loop (10 posts, +1 user) before the user breaker fired. */
+  let emptyRediscoveries = 0;
+  const MAX_EMPTY_REDISCOVERIES = 3;
   const runRediscovery = async (page: Page): Promise<void> => {
     const variant = FEED_VARIANTS[rediscoverVariant % FEED_VARIANTS.length];
     rediscoverVariant++;
     log.info("GroupCascade", `post queue drained — re-scrolling group feed${variant ? " (chronological)" : ""} for more posts (have ${queuedPosts.size}/${maxPosts})`);
     const { detach, flush } = attachHarvest(page);
+    const postsBefore = queuedPosts.size;
     try {
       await page.goto(opts.feedUrl + variant, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
       await page.waitForTimeout(2000 + rand(0, 1000));
@@ -321,6 +330,12 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
       await flush();
     } finally {
       detach();
+    }
+    if (queuedPosts.size > postsBefore) {
+      emptyRediscoveries = 0;
+    } else {
+      emptyRediscoveries++;
+      log.info("GroupCascade", `rediscovery #${emptyRediscoveries}/${MAX_EMPTY_REDISCOVERIES} surfaced 0 new posts (${queuedPosts.size} total)`);
     }
   };
 
