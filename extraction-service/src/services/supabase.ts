@@ -507,6 +507,18 @@ export const supabaseService = {
     return data.status as JobStatus;
   },
 
+  /** Jobs that finished extraction but were mid-enrichment when the service
+   *  died — their enrichment must be re-run by the background queue. */
+  async getJobsStuckEnriching(): Promise<string[]> {
+    const { data, error } = await sb
+      .from("extraction_jobs")
+      .select("id")
+      .in("status", ["completed", "paused"])
+      .eq("progress->>phase", "enriching");
+    if (error || !data) return [];
+    return data.map((r: { id: string }) => r.id);
+  },
+
   async getOldestQueuedJob(userId: string): Promise<{ id: string; config: Record<string, unknown> | null } | null> {
     const { data } = await sb
       .from("extraction_jobs")

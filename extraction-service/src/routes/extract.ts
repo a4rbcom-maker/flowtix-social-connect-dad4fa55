@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import { supabaseService, supabaseClient } from "../services/supabase.js";
 import { igSupabaseService } from "../services/ig-supabase.js";
 import { enrichmentService } from "../services/enrichment-service.js";
+import { enrichmentQueue } from "../services/enrichment-queue.js";
 import { scanDatabases } from "../services/enrichment-service.js";
 import { contextManager } from "../services/context-manager.js";
 import { igContextManager } from "../services/ig-context-manager.js";
@@ -99,25 +100,16 @@ async function setEnrichingPhase(jobId: string): Promise<void> {
   }
 }
 
-/** Bounded enrichment — runs OUTSIDE the job watchdog, so a stuck enrichment
- *  scan would otherwise freeze the job in "running" forever. On timeout the
- *  job still completes; matching can be re-run manually via POST /enrich. */
-async function runEnrichmentSafely(jobId: string): Promise<void> {
-  let timer: NodeJS.Timeout | undefined;
+/** Re-enqueue jobs that were mid-enrichment when the service restarted —
+ *  enrichment state lives in progress.phase, so a crashed run is recoverable. */
+export async function resumeEnrichmentJobs(): Promise<void> {
   try {
-    await Promise.race([
-      enrichmentService.enrichJobResults(jobId),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`enrichment timed out after ${Math.round(config.enrichmentTimeoutMs / 1000)}s`)),
-          config.enrichmentTimeoutMs,
-        );
-      }),
-    ]);
+    const jobIds = await supabaseService.getJobsStuckEnriching();
+    if (jobIds.length === 0) return;
+    log.info("Extract", `boot: resuming enrichment for ${jobIds.length} job(s)`);
+    for (const jobId of jobIds) enrichmentQueue.enqueue(jobId);
   } catch (err) {
-    log.warn("Extract", `job ${jobId}: enrichment incomplete: ${err instanceof Error ? err.message : String(err)}`);
-  } finally {
-    if (timer) clearTimeout(timer);
+    log.error("Extract", `resumeEnrichmentJobs failed: ${String(err)}`);
   }
 }
 
@@ -281,7 +273,7 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
               const fresh = await supabaseService.getJob(jobId);
               if ((fresh.result_count || 0) > 0) {
                 await setEnrichingPhase(jobId);
-                await runEnrichmentSafely(jobId);
+                enrichmentQueue.enqueue(jobId);
               }
             } catch { /* best effort */ }
             await releasePages().catch(() => {});
@@ -300,14 +292,14 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
             log.info("Extract", `job ${jobId} stopped by user`, { extracted: result.extracted, durationMs });
             if (result.extracted > 0) {
               await setEnrichingPhase(jobId);
-              await runEnrichmentSafely(jobId);
+              enrichmentQueue.enqueue(jobId);
             }
             await supabaseService.updateJob(jobId, { status: "completed", completed_at: new Date().toISOString() });
           } else {
             log.info("Extract", `job ${jobId} extraction done, starting enrichment`, { extracted: result.extracted, durationMs });
             if (result.extracted > 0) {
               await setEnrichingPhase(jobId);
-              await runEnrichmentSafely(jobId);
+              enrichmentQueue.enqueue(jobId);
             }
             await supabaseService.updateJob(jobId, {
               status: "completed",
@@ -323,13 +315,13 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
           log.info("Extract", `job ${jobId} paused`, { extracted: result.extracted, durationMs, cursor: result.nextCursor });
           if (result.extracted > 0) {
             await setEnrichingPhase(jobId);
-            await runEnrichmentSafely(jobId);
+            enrichmentQueue.enqueue(jobId);
           }
         } else {
           log.info("Extract", `job ${jobId} extraction done (no more pages), starting enrichment`, { extracted: result.extracted, durationMs });
           if (result.extracted > 0) {
             await setEnrichingPhase(jobId);
-            await runEnrichmentSafely(jobId);
+            enrichmentQueue.enqueue(jobId);
           }
           await supabaseService.updateJob(jobId, {
             status: "completed",
