@@ -103,9 +103,11 @@ export class SessionHealthMonitor {
       s.state = "unavailable";
       return;
     }
-    if (s.failures >= this.opts.unavailableAfter) {
+    const unavailableAfter = this.opts.unavailableAfter ?? DEFAULT_OPTS.unavailableAfter;
+    const degradeAfter = this.opts.degradeAfter ?? DEFAULT_OPTS.degradeAfter;
+    if (s.failures >= unavailableAfter) {
       s.state = "unavailable";
-    } else if (s.failures >= this.opts.degradeAfter) {
+    } else if (s.failures >= degradeAfter) {
       s.state = "degraded";
     }
   }
@@ -125,8 +127,10 @@ export class SessionHealthMonitor {
   /** Exponential backoff capped at maxMs. */
   backoffMs(sessionId: string, attempt: number): number {
     const n = Math.max(1, attempt);
-    const ms = this.opts.baseMs * Math.pow(2, n - 1);
-    return Math.min(ms, this.opts.maxMs);
+    const base = this.opts.baseMs ?? DEFAULT_OPTS.baseMs;
+    const max = this.opts.maxMs ?? DEFAULT_OPTS.maxMs;
+    const ms = base * Math.pow(2, n - 1);
+    return Math.min(ms, max);
   }
 
   snapshot(): Array<{ session_id: string; state: SessionState; failures: number; last_failure_kind?: string; last_failure_detail?: string }> {

@@ -121,3 +121,27 @@ export interface ProxyConfig {
   /** optional friendly name for logging (e.g. "IPRoyal-res-1") */
   label?: string;
 }
+
+export interface SessionHealthSnapshot {
+  session_id: string;
+  state: "healthy" | "degraded" | "unavailable" | "recovery";
+  failures: number;
+  last_failure_kind?: string;
+  last_failure_detail?: string;
+}
+
+export interface SourceProgressSnapshot {
+  users: number;
+  rate_per_min: number;
+  duration_ms: number;
+  errors: number;
+  requests: number;
+  stop_reason: string | null;
+}
+
+export interface OrchestratorCheckpoint {
+  sources_done: string[];
+  seen_count: number;
+  posts_done?: number;
+  saved_at: string;
+}

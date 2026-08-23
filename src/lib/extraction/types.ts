@@ -107,4 +107,8 @@ export interface ExtractionJobProgress {
   active_sessions?: number;
   next_phase?: string;
   errors_count?: number;
+  requests_count?: number;
+  per_source?: Record<string, { users: number; rate_per_min: number; duration_ms: number; errors: number; requests: number; stop_reason?: string | null }>;
+  session_health?: Array<{ session_id: string; state: string; failures: number; last_failure_kind?: string; last_failure_detail?: string }>;
+  next_strategy?: string;
 }

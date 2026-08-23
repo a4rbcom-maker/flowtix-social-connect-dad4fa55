@@ -92,6 +92,21 @@ export const config = {
   groupCascadeEnabled: envBool("GROUP_CASCADE_ENABLED", true),
   groupCascadeMaxPosts: envInt("GROUP_CASCADE_MAX_POSTS", 400),
 
+  /** Adaptive orchestrator thresholds (see services/orchestrator-core.ts) */
+  orchMinRatePerMin: envInt("ORCH_MIN_RATE_PER_MIN", 5),
+  orchEvalWindowMs: envInt("ORCH_EVAL_WINDOW_MS", 90000),
+  orchMinPhaseMs: envInt("ORCH_MIN_PHASE_MS", 120000),
+
+  /** Lease TTL for cascade post tasks (worker death → requeue) */
+  taskLeaseMs: envInt("TASK_LEASE_MS", 120000),
+  /** Max requeue attempts per post before dead-letter */
+  taskMaxRetries: envInt("TASK_MAX_RETRIES", 2),
+
+  /** Enrichment background queue */
+  enrichmentQueueConcurrency: envInt("ENRICHMENT_QUEUE_CONCURRENCY", 1),
+  enrichmentMaxRetries: envInt("ENRICHMENT_MAX_RETRIES", 2),
+  enrichmentRetryDelayMs: envInt("ENRICHMENT_RETRY_DELAY_MS", 10000),
+
   /** How often live contexts persist Facebook-rotated cookies back to the
    *  stored profile. Keeps `xs` fresh even if the process dies mid-extraction. */
   cookieSyncIntervalMs: envInt("COOKIE_SYNC_INTERVAL_MS", 60000),
