@@ -1,6 +1,9 @@
 import type { Page, Response } from "playwright";
 import { logger } from "../logger.js";
+import { config } from "../config.js";
 import { parseGroupUsersFromGraphQL } from "./group-members-core.js";
+import { LeasedTaskQueue } from "./task-queue.js";
+import { SessionHealthMonitor, classifyFailure } from "./session-health.js";
 
 const log = logger;
 
@@ -58,6 +61,9 @@ export interface GroupCascadeOptions {
     postsKnown: number;
     activeWorkers: number;
     ratePerMin: number;
+    queuePending?: number;
+    deadLettered?: number;
+    sessionHealth?: Array<{ session_id: string; state: string; failures: number; last_failure_kind?: string }>;
   }) => void;
   shouldStop?: () => Promise<boolean>;
 }
@@ -105,7 +111,14 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
   );
 
   const seenIds = opts.seenIds ?? new Set<string>();
-  const postQueue: string[] = [];
+  const postQueue = new LeasedTaskQueue<string>(config.taskLeaseMs, config.taskMaxRetries);
+  const health = new SessionHealthMonitor();
+  for (const wp of [opts.discoveryPage, ...opts.pages]) health.register(wp.sessionId);
+  if (opts.latePages) {
+    void opts.latePages.then((pages) => {
+      for (const p of pages ?? []) health.register(p.sessionId);
+    }).catch(() => {});
+  }
   const queuedPosts = new Set<string>();
   let discoveryDone = false;
   let lateSettled = !opts.latePages;
@@ -114,7 +127,6 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
   let postsDone = 0;
   let failures = 0;
   let extracted = 0;
-  let nextIdx = 0;
   let lastCancelCheck = 0;
   let lastNewUserAt = Date.now();
   let rateWindowStart = Date.now();
@@ -175,7 +187,7 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
   const queuePost = (permalink: string): void => {
     if (queuedPosts.has(permalink) || queuedPosts.size >= maxPosts) return;
     queuedPosts.add(permalink);
-    postQueue.push(permalink);
+    postQueue.enqueue([permalink]);
   };
 
   // ---- Feed harvest & scroll ----------------------------------------------
@@ -238,7 +250,7 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
       if (checkSaturated()) return;
       if (queuedPosts.size >= maxPosts || Date.now() >= deadline) return;
       if (label === "discovery" && Date.now() >= discoveryDeadline) return;
-      if (postQueue.length - nextIdx >= 10) return;
+      if (postQueue.pending() >= 10) return;
 
       try {
         const links = await page.evaluate(() =>
@@ -341,10 +353,8 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
         if (await canceledNow()) return;
       }
 
-      const idx = nextIdx;
-      nextIdx++;
-      if (idx >= postQueue.length) {
-        nextIdx = idx;
+      const leased = postQueue.claim(wp.sessionId);
+      if (!leased) {
         if (discoveryDone && lateSettled) {
           if (!canRediscover()) return;
           if (!rediscovering && Date.now() >= nextRediscoverAt) {
@@ -362,9 +372,11 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
         continue;
       }
 
-      const permalink = postQueue[idx];
+      const permalink = leased.task;
       try {
         const res = await opts.extractEngagers(wp.page, permalink);
+        postQueue.complete(leased.id);
+        health.recordSuccess(wp.sessionId);
         consecutiveErrors = 0;
         const fresh = [...addUsers(res.reactors), ...addUsers(res.commenters)];
         if (fresh.length > 0) {
@@ -374,12 +386,19 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
       } catch (err) {
         failures++;
         consecutiveErrors++;
-        log.debug("GroupCascade", `post failed (${permalink.substring(0, 70)}): ${String(err).substring(0, 80)}`);
+        const info = classifyFailure(err);
+        health.recordFailure(wp.sessionId, info);
+        postQueue.fail(leased.id);
+        log.warn("GroupCascade", `worker ${wp.sessionId.slice(0, 8)} post failed (${info.kind}): ${info.detail.substring(0, 100)}`);
+        if (!health.available(wp.sessionId)) {
+          log.warn("GroupCascade", `worker ${wp.sessionId.slice(0, 8)} UNAVAILABLE (${health.lastFailure(wp.sessionId)?.kind}) — removing from pool after ${consecutiveErrors} consecutive errors`);
+          return;
+        }
         if (consecutiveErrors >= 8) {
           log.warn("GroupCascade", `worker ${wp.sessionId.slice(0, 8)} stopping after 8 consecutive errors`);
           return;
         }
-        await sleep(3000);
+        await sleep(health.backoffMs(wp.sessionId, consecutiveErrors));
       }
 
       postsDone++;
@@ -389,6 +408,9 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
         postsKnown: queuedPosts.size,
         activeWorkers: activeWorkerSessions.size,
         ratePerMin: ratePerMin(),
+        queuePending: postQueue.pending(),
+        deadLettered: postQueue.deadLetters().length,
+        sessionHealth: health.snapshot(),
       });
       if (postsDone % 15 === 0) {
         log.info("GroupCascade", `posts ${postsDone}/${queuedPosts.size} → +${extracted} users so far (${failures} failed, ${activeWorkerSessions.size} workers)`);

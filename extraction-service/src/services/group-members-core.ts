@@ -36,6 +36,9 @@ export interface MultiSessionGroupOptions {
   onNewUsers?: (users: GroupMemberUser[]) => Promise<void> | void;
   onProgress?: (totalSeen: number, activeSessions: number, round: number) => void;
   shouldStop?: () => Promise<boolean>;
+  /** Optional health signal hook — lets the caller's SessionHealthMonitor
+   *  learn about session-level failures inside the members-list phase. */
+  onSessionEvent?: (sessionId: string, event: "nav_failed" | "auth_failed" | "idle_exhausted") => void;
 }
 
 export interface MultiSessionGroupResult {
@@ -179,12 +182,14 @@ export async function multiSessionGroupMembers(
         if (s.page.url().includes("login")) {
           s.done = true;
           s.stoppedReason = "auth_failed";
+          opts.onSessionEvent?.(s.sessionId, "auth_failed");
           return;
         }
         await collectDomUsers(s, addShared);
         await flushPending(s);
       } catch (err) {
         log.warn("GroupCore", `session ${s.sessionId.slice(0, 8)}: nav failed — ${String(err).substring(0, 80)}`);
+        opts.onSessionEvent?.(s.sessionId, "nav_failed");
       }
     }),
   );
@@ -244,6 +249,7 @@ export async function multiSessionGroupMembers(
           s.wakeUpAttempts++;
           if (s.wakeUpAttempts > maxWakeUpAttempts) {
             s.stoppedReason = "idle_exhausted";
+            opts.onSessionEvent?.(s.sessionId, "idle_exhausted");
             break;
           }
           log.info("GroupCore", `session ${s.sessionId.slice(0, 8)} round ${s.rounds}: idle ${s.idleCount} — wake-up attempt ${s.wakeUpAttempts}/${maxWakeUpAttempts}`);
