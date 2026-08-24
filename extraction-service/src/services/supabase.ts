@@ -392,15 +392,16 @@ export const supabaseService = {
     return allData;
   },
 
-  async storeResults(jobId: string, workspaceId: string, results: ExtractedMember[], platform: string = "facebook"): Promise<void> {
+  async storeResults(jobId: string, workspaceId: string, results: ExtractedMember[], platform: string = "facebook", userId?: string | null): Promise<void> {
     if (results.length === 0) return;
+    const ownerUserId = userId ?? null;
     const rows = results.map((r) => ({
       job_id: jobId,
       workspace_id: workspaceId,
       platform,
       fb_id: r.fb_id,
       fb_type: r.type,
-      user_id: this.currentScopeUserId ?? null,
+      user_id: ownerUserId,
       data: {
         name: r.name,
         profile_url: r.profile_url,
@@ -418,10 +419,6 @@ export const supabaseService = {
     const { error } = await sb.from("extraction_results").insert(rows);
     if (error) throw new ExtractionError(ErrorCodes.EXTRACTION_FAILED, `Store results failed: ${error.message}`);
   },
-
-  /** Scope user for result rows written by the current job (IG dedup +
-   *  ownership). Set once per job in runExtractionJob. */
-  currentScopeUserId: null as string | null,
 
   async getExistingIds(workspaceId: string, fbIds: string[]): Promise<Set<string>> {
     if (fbIds.length === 0) return new Set();

@@ -245,7 +245,11 @@ export function ExtractIgPage() {
     const total = coverage.total;
     const extracted = coverage.extracted;
     const pct = total && total > 0 ? Math.round((extracted / total) * 100) : null;
-    const isEnriching = ((activeJob as { progress?: Record<string, unknown> }).progress as Record<string, unknown> | undefined)?.phase === "enriching";
+    const rawProgress = ((activeJob as { progress?: Record<string, unknown> }).progress ?? {}) as Record<string, unknown>;
+    const isEnriching = rawProgress.phase === "enriching";
+    const ratePerMin = typeof rawProgress.rate_per_min === "number" ? (rawProgress.rate_per_min as number) : null;
+    const activeSessions = typeof rawProgress.active_sessions === "number" ? (rawProgress.active_sessions as number) : null;
+    const workingState = typeof rawProgress.working_state === "string" ? (rawProgress.working_state as string) : null;
 
     return (
       <div className="mx-auto max-w-3xl space-y-6">
@@ -293,6 +297,14 @@ export function ExtractIgPage() {
               <StatBox icon={Users} label={t("ig_extract.running.extracted")} value={extracted.toLocaleString()} />
               <StatBox icon={Activity} label={t("ig_extract.status")} value={t(`ig_extract.status.${activeJob?.status ?? "running"}`)} />
               <StatBox icon={Clock} label={t("ig_extract.startedAt")} value={activeJob?.started_at ? new Date(activeJob.started_at).toLocaleTimeString() : "—"} />
+              <StatBox icon={Zap} label={t("ig_extract.running.strategyRate")} value={ratePerMin !== null ? `${ratePerMin.toLocaleString()} / ${t("ig_extract.running.minute")}` : t("ig_extract.running.strategyNone")} />
+              <StatBox icon={Globe} label={t("ig_extract.running.strategySessions")} value={activeSessions !== null ? String(activeSessions) : t("ig_extract.running.strategyNone")} />
+              <StatBox icon={Loader2} label={t("ig_extract.running.activity")} value={
+                workingState === "producing" ? t("ig_extract.running.producing")
+                : workingState === "stalled" ? t("ig_extract.running.stalled")
+                : isEnriching ? t("ig_extract.running.enriching")
+                : t("ig_extract.running.waiting")
+              } />
             </div>
 
             <div className="flex items-center gap-2 border-t border-[var(--color-border)] pt-4">

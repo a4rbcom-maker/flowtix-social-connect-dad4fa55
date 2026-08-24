@@ -35,7 +35,6 @@ export class IgFollowersExtractor extends IgBaseExtractor {
   private readonly tab: "followers" | "following";
   private totalCount: number | null = null;
   private flushedCount = 0;
-  private lastProgressTs = 0;
   private engine: IgExtractionEngine | null = null;
 
   constructor(page: Page, ctx: JobContext, secondaryPages?: Array<{ sessionId: string; page: Page }>) {
@@ -70,12 +69,14 @@ export class IgFollowersExtractor extends IgBaseExtractor {
     const resumed = this.loadCursor();
     const collected = new Map<string, ExtractedMember>();
     let resumeFromUser: string | null = null;
+    let resumeSkipBudget = 0;
     if (resumed?.cursor) {
       try {
         const parsed = JSON.parse(resumed.cursor) as FollowersCursor;
         resumeFromUser = parsed.lastUsername ?? null;
+        resumeSkipBudget = (parsed.rowsInDialog ?? 0) + 60; // safety margin
         this.flushedCount = 0; // rows before the checkpoint are already stored
-        log.info("IgFollowers", `resuming from checkpoint: last=${resumeFromUser}`);
+        log.info("IgFollowers", `resuming from checkpoint: last=${resumeFromUser}, skip budget=${resumeSkipBudget}`);
       } catch { /* fresh start */ }
     }
 
@@ -136,33 +137,51 @@ export class IgFollowersExtractor extends IgBaseExtractor {
           newCount++;
         }
       }
-      emptyScrolls = newCount === 0 ? emptyScrolls + 1 : 0;
+      // Empty-scroll exhaustion only counts in NEW territory. While catching
+      // up to the checkpoint (resumeFromUser set), the dialog reopens from
+      // the top and we scroll through already-seen rows — naturally +0.
+      const inCatchUp = resumeFromUser !== null;
+      if (inCatchUp) {
+        resumeSkipBudget -= rows.length;
+        if (resumeSkipBudget <= 0) {
+          // Checkpointed user no longer exists (renamed/removed) — give up
+          // catching up and continue from the current dialog position.
+          log.warn("IgFollowers", `checkpoint user not found after budget — continuing from current position`);
+          resumeFromUser = null;
+        }
+      }
+      emptyScrolls = newCount === 0 && !inCatchUp ? emptyScrolls + 1 : 0;
       engine.addResults(newCount);
       engine.setCursor(JSON.stringify({ lastUsername, rowsInDialog: rows.length } satisfies FollowersCursor));
-      log.info("IgFollowers", `scroll #${scrollCount}: +${newCount} → ${this.previouslyStored() + collected.size} unique`);
+      if (!inCatchUp || newCount > 0) {
+        log.info("IgFollowers", `scroll #${scrollCount}: +${newCount} → ${this.previouslyStored() + collected.size} unique${inCatchUp ? " (catching up)" : ""}`);
+      }
 
-      const html = await this.page.content().catch(() => "");
-      if (this.detectIgBlocked(html, this.page.url())) {
-        log.warn("IgFollowers", `block detected on session ${this.ctx.sessionId.slice(0, 8)} — rotating`);
-        const usable = engine.recordSessionFailure(this.ctx.sessionId, new ExtractionError(ErrorCodes.AUTH_FAILED, "IG block/checkpoint detected"));
-        const switched = usable ? await this.switchToNextSession() : false;
-        if (!switched) {
-          await this.handleIgBlocked();
-          break;
+      // Block check every 3rd scroll: page.content() serializes the entire
+      // DOM (~100ms+ each call). URL checks are cheap and run every scroll.
+      const cheapBlockSignal = this.page.url().includes("/challenge/") || this.page.url().includes("/accounts/login");
+      if (cheapBlockSignal || scrollCount % 3 === 0) {
+        const html = cheapBlockSignal ? "" : await this.page.content().catch(() => "");
+        if (cheapBlockSignal || this.detectIgBlocked(html, this.page.url())) {
+          log.warn("IgFollowers", `block detected on session ${this.ctx.sessionId.slice(0, 8)} — rotating`);
+          const usable = engine.recordSessionFailure(this.ctx.sessionId, new ExtractionError(ErrorCodes.AUTH_FAILED, "IG block/checkpoint detected"));
+          const switched = usable ? await this.switchToNextSession() : false;
+          if (!switched) {
+            await this.handleIgBlocked();
+            break;
+          }
+          engine.recordSessionSuccess(this.ctx.sessionId);
+          await this.navigateToProfile(profileUrl);
+          if (!(await this.openDialog())) {
+            log.warn("IgFollowers", `could not reopen dialog on session ${this.ctx.sessionId.slice(0, 8)} — continuing`);
+          }
+          emptyScrolls = 0;
+          continue;
         }
-        engine.recordSessionSuccess(this.ctx.sessionId);
-        await this.navigateToProfile(profileUrl);
-        if (!(await this.openDialog())) {
-          log.warn("IgFollowers", `could not reopen dialog on session ${this.ctx.sessionId.slice(0, 8)} — continuing`);
-        }
-        emptyScrolls = 0;
-        continue;
-      } else {
         engine.recordSessionSuccess(this.ctx.sessionId);
       }
 
       await this.flushIfNeeded(collected);
-      await this.updateProgress(collected.size);
       await engine.heartbeat();
 
       if (emptyScrolls >= MAX_EMPTY_SCROLLS) {
@@ -332,8 +351,8 @@ export class IgFollowersExtractor extends IgBaseExtractor {
     if (box && box.width > 0) {
       await this.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     }
-    await this.page.mouse.wheel(0, 400);
-    await this.page.waitForTimeout(600);
+    await this.page.mouse.wheel(0, 600);
+    await this.page.waitForTimeout(400);
   }
 
   /** استخراج صفوف القائمة من DOM الـ dialog (username/full_name/avatar) */
@@ -400,18 +419,5 @@ export class IgFollowersExtractor extends IgBaseExtractor {
     } catch (err) {
       log.warn("IgFollowers", `flush err: ${String(err).slice(0, 100)}`);
     }
-  }
-
-  private async updateProgress(extracted: number): Promise<void> {
-    const now = Date.now();
-    if (now - this.lastProgressTs < 6000) return;
-    this.lastProgressTs = now;
-    await this.updateIgProgress({
-      phase: "scrolling",
-      extracted: this.previouslyStored() + extracted,
-      total: this.totalCount,
-      coverage_rate: this.computeCoverage(this.previouslyStored() + extracted, this.totalCount),
-      tab: this.tab,
-    });
   }
 }

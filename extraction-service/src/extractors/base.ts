@@ -648,7 +648,7 @@ export abstract class BaseExtractor {
     }
     if (results.length === 0) return 0;
     try {
-      await supabaseService.storeResults(this.ctx.jobId, this.ctx.workspaceId, results, platform);
+      await supabaseService.storeResults(this.ctx.jobId, this.ctx.workspaceId, results, platform, this.ctx.userId ?? undefined);
       await supabaseService.incrementJobResultCount(this.ctx.jobId, results.length);
       return results.length;
     } catch (err) {

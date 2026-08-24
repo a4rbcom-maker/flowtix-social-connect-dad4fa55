@@ -157,8 +157,6 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
     skipDuplicates: jobConfig.skip_duplicates !== false,
     cursor: jobConfig.cursor as string | undefined,
   };
-  // Result rows carry user_id for the live IG dedup scope.
-  supabaseService.currentScopeUserId = userId;
 
   const isIg = isIgType(job.type as string);
   const poolCapacity = config.browserPoolSize * config.maxContextsPerBrowser;
