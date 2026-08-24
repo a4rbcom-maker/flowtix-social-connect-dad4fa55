@@ -1,6 +1,7 @@
 import type { Page } from "playwright";
 import { IgBaseExtractor } from "./ig-base.js";
 import { IgExtractionEngine, type IgCheckpoint } from "../services/ig-engine.js";
+import { IgFriendshipsClient } from "../services/ig-friendships-client.js";
 import { config } from "../config.js";
 import { ExtractionError, ErrorCodes } from "../errors.js";
 import { logger } from "../logger.js";
@@ -94,6 +95,29 @@ export class IgFollowersExtractor extends IgBaseExtractor {
     this.totalCount = await this.readTotalCount();
     engine.setTotal(this.totalCount);
     log.info("IgFollowers", `total ${this.tab} count: ${this.totalCount ?? "unknown"}`);
+
+    // FAST PATH — friendships API pagination (live-verified: 25/page,
+    // next_max_id honored, ~984 users/min). Falls back to DOM scrolling
+    // automatically on any failure (resolve, block, parse).
+    const apiDone = await this.tryApiExtraction(engine, username, collected, resumeFromUser);
+    if (apiDone !== null) {
+      await this.flushRemaining(collected);
+      const totalUnique = this.previouslyStored() + collected.size;
+      const coverage = this.computeCoverage(totalUnique, this.totalCount);
+      log.info("IgFollowers", `api path done: ${totalUnique} unique (coverage ${coverage ?? "N/A"}%)`);
+      engine.setPhase("completed");
+      await engine.heartbeat(true);
+      await this.updateIgProgress({
+        phase: "completed",
+        extracted: totalUnique,
+        total: this.totalCount,
+        coverage_rate: coverage,
+        tab: this.tab,
+      });
+      return { extracted: totalUnique, done: true, authState: "authenticated" };
+    }
+    log.warn("IgFollowers", `api path unavailable — falling back to DOM scrolling`);
+    engine.snapshot();
 
     let emptyScrolls = 0;
     const MAX_EMPTY_SCROLLS = 6;
@@ -255,6 +279,157 @@ export class IgFollowersExtractor extends IgBaseExtractor {
   /** Called by runExtractionJob wiring: seed resume state from job config. */
   seedResume(cursorRaw: string | null): void {
     this.resumeCursorRaw = cursorRaw ?? null;
+  }
+
+  /** FAST PATH: friendships API pagination. The followers dialog itself
+   *  issues GET /api/v1/friendships/<id>/<tab>/ when it opens — we capture
+   *  that exact response (id + first page + next_max_id), then paginate the
+   *  API directly. Returns null to continue DOM scrolling on the SAME open
+   *  dialog (no wasted work). */
+  private async tryApiExtraction(
+    engine: IgExtractionEngine,
+    username: string,
+    collected: Map<string, ExtractedMember>,
+    resumeFromUser: string | null,
+  ): Promise<boolean | null> {
+    interface CapturedDialog {
+      userId: string;
+      users: { username: string; full_name?: string; profile_pic_url?: string; pk?: string }[];
+      nextMaxId: string | null;
+    }
+    const box: { dialog: CapturedDialog | null } = { dialog: null };
+    const responseHandler = async (resp: import("playwright").Response) => {
+      try {
+        const url = resp.url();
+        const m = url.match(/\/api\/v1\/friendships\/(\d+)\/(followers|following)\//);
+        if (!m || m[2] !== this.tab) return;
+        if (resp.status() !== 200) return;
+        const j = await resp.json().catch(() => null);
+        if (!j || !Array.isArray(j.users)) return;
+        box.dialog = { userId: m[1], users: j.users, nextMaxId: (j.next_max_id as string | null) ?? null };
+      } catch { /* capture must never throw */ }
+    };
+    this.page.on("response", responseHandler);
+    try {
+      const opened = await this.openDialog();
+      if (!opened) return null;
+      await this.page.waitForTimeout(2500);
+    } finally {
+      this.page.off("response", responseHandler);
+    }
+    const captured = box.dialog;
+    if (!captured) {
+      log.warn("IgFollowers", `api path: dialog fired no friendships request — continuing DOM on open dialog`);
+      return null;
+    }
+    const cap = captured;
+    log.info("IgFollowers", `api path: captured dialog request (id ${cap.userId}, ${cap.users.length} rows, cursor=${cap.nextMaxId ? "yes" : "no"})`);
+
+    const client = new IgFriendshipsClient();
+    let maxId: string | null = cap.nextMaxId;
+    let consecutiveFailures = 0;
+    let pages = 0;
+
+    // First page: users already captured from the dialog's own request.
+    let newCount = 0;
+    let lastUsername: string | null = null;
+    for (const u of cap.users) {
+      lastUsername = u.username;
+      if (resumeFromUser) {
+        if (u.username === resumeFromUser) resumeFromUser = null;
+        else continue;
+      }
+      if (u.username && !collected.has(u.username)) {
+        collected.set(u.username, {
+          fb_id: u.username,
+          username: u.username,
+          name: u.full_name || u.username,
+          full_name: u.full_name || u.username,
+          profile_url: `https://www.instagram.com/${u.username}/`,
+          avatar_url: u.profile_pic_url || undefined,
+          type: this.ctx.type,
+        });
+        newCount++;
+      }
+    }
+    engine.addResults(newCount);
+    engine.setCursor(JSON.stringify({ api: true, maxId, lastUsername, rows: cap.users.length }));
+    await this.flushIfNeeded(collected);
+    await engine.heartbeat();
+    if (!maxId) {
+      log.info("IgFollowers", `api path: list exhausted on first page`);
+      return true;
+    }
+
+    while (this.previouslyStored() + collected.size < this.ctx.maxResults && !this.shouldStop) {
+      if (await this.checkCanceled()) break;
+
+      const page = await client.fetchPage(this.page, cap.userId, this.tab, maxId);
+      if (!page) {
+        consecutiveFailures++;
+        engine.addError();
+        if (consecutiveFailures >= 3) {
+          log.warn("IgFollowers", `api path: 3 consecutive failures — finishing with what we have`);
+          return true;
+        }
+        await new Promise((r) => setTimeout(r, 2000 * consecutiveFailures));
+        continue;
+      }
+      consecutiveFailures = 0;
+      pages++;
+
+      newCount = 0;
+      for (const u of page.users) {
+        lastUsername = u.username;
+        if (resumeFromUser) {
+          if (u.username === resumeFromUser) resumeFromUser = null;
+          else continue;
+        }
+        if (!collected.has(u.username)) {
+          collected.set(u.username, {
+            fb_id: u.username,
+            username: u.username,
+            name: u.fullName || u.username,
+            full_name: u.fullName || u.username,
+            profile_url: `https://www.instagram.com/${u.username}/`,
+            avatar_url: u.avatar || undefined,
+            type: this.ctx.type,
+          });
+          newCount++;
+        }
+      }
+      engine.addResults(newCount);
+      engine.setCursor(JSON.stringify({ api: true, maxId: page.nextMaxId, lastUsername, rows: page.users.length }));
+      if (pages % 10 === 0 || !page.nextMaxId) {
+        log.info("IgFollowers", `api page #${pages}: +${newCount} → ${this.previouslyStored() + collected.size} unique (cursor=${page.nextMaxId ? "yes" : "end"})`);
+      }
+
+      await this.flushIfNeeded(collected);
+      await engine.heartbeat();
+
+      if (!page.nextMaxId) {
+        log.info("IgFollowers", `api path: no next_max_id — list exhausted`);
+        return true;
+      }
+      maxId = page.nextMaxId;
+
+      // Rest cycle every 40 pages (~1000 users) keeps the pattern browser-like.
+      if (pages % 40 === 0) {
+        log.info("IgFollowers", `api path: resting ${this.restDelayMs}ms after ${pages} pages`);
+        await this.restDelay();
+      }
+    }
+    return true;
+  }
+
+  private extractApiCursor(raw: string | undefined | null): string | null {
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as { api?: boolean; maxId?: string | null };
+      return parsed.api && parsed.maxId ? parsed.maxId : null;
+    } catch {
+      return null;
+    }
   }
 
   private async navigateToProfile(profileUrl: string): Promise<void> {
