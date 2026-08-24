@@ -17,33 +17,77 @@ import { useIgExtraction, useIgJob, useIgCoverage } from "@/hooks/useIgExtractio
 import { extractionRepository } from "@/lib/extraction/extraction-repository";
 import type { ExportFormat } from "@/lib/extraction/types";
 
-type IgSourceType = "ig-followers" | "ig-following";
+type IgSourceType =
+  | "ig-followers"
+  | "ig-following"
+  | "ig-post-commenters"
+  | "ig-post-engagers"
+  | "ig-hashtag-posts"
+  | "ig-profile-info"
+  | "ig-user-search";
 
 interface SourceOption {
   key: IgSourceType;
   icon: typeof Users;
   titleKey: string;
   descKey: string;
-  usernamePlaceholderKey: string;
+  usernamePlaceholderKey?: string;
 }
 
 const sourceOptions: SourceOption[] = [
   { key: "ig-followers", icon: UserPlus, titleKey: "ig_extract.source.followers", descKey: "ig_extract.source.followersDesc", usernamePlaceholderKey: "ig_extract.source.followersPlaceholder" },
   { key: "ig-following", icon: UserCheck, titleKey: "ig_extract.source.following", descKey: "ig_extract.source.followingDesc", usernamePlaceholderKey: "ig_extract.source.followingPlaceholder" },
+  { key: "ig-post-commenters", icon: Users, titleKey: "ig_extract.source.postCommenters", descKey: "ig_extract.source.postCommentersDesc" },
+  { key: "ig-post-engagers", icon: Zap, titleKey: "ig_extract.source.postEngagers", descKey: "ig_extract.source.postEngagersDesc" },
+  { key: "ig-hashtag-posts", icon: Activity, titleKey: "ig_extract.source.hashtagPosts", descKey: "ig_extract.source.hashtagPostsDesc" },
+  { key: "ig-profile-info", icon: CheckCircle2, titleKey: "ig_extract.source.profileInfo", descKey: "ig_extract.source.profileInfoDesc" },
+  { key: "ig-user-search", icon: Globe, titleKey: "ig_extract.source.userSearch", descKey: "ig_extract.source.userSearchDesc" },
 ];
 
-function buildInstagramUrl(username: string): string {
-  const clean = username.trim().replace(/^@/, "").replace(/\/+$/, "");
-  if (/^https?:\/\/www\.instagram\.com\//i.test(clean)) return clean;
-  if (/^[a-zA-Z0-9._]{1,30}$/.test(clean)) return `https://www.instagram.com/${clean}/`;
-  return clean;
+/** Input kind per source type. */
+function inputKindFor(key: IgSourceType): "username" | "post" | "hashtag" | "query" {
+  if (key === "ig-post-commenters" || key === "ig-post-engagers") return "post";
+  if (key === "ig-hashtag-posts") return "hashtag";
+  if (key === "ig-user-search") return "query";
+  return "username";
 }
 
-function isValidUsernameOrUrl(value: string): boolean {
-  if (!value) return false;
-  const clean = value.trim().replace(/^@/, "").replace(/\/+$/, "");
-  return /^[a-zA-Z0-9._]{1,30}$/.test(clean) || /^https?:\/\/www\.instagram\.com\/[a-zA-Z0-9._]{1,30}\/?/i.test(clean);
+const DB_TYPE_BY_KEY: Record<IgSourceType, string> = {
+  "ig-followers": "ig_followers",
+  "ig-following": "ig_following",
+  "ig-post-commenters": "ig_post_commenters",
+  "ig-post-engagers": "ig_post_engagers",
+  "ig-hashtag-posts": "ig_hashtag_posts",
+  "ig-profile-info": "ig_profile_info",
+  "ig-user-search": "ig_user_search",
+};
+
+/** Validate + normalize the input for the active source type.
+ *  Returns the API source_url or null when invalid. */
+function buildSourceUrl(key: IgSourceType, raw: string): string | null {
+  const v = raw.trim().replace(/^@/, "").replace(/\/+$/, "");
+  if (!v) return null;
+  switch (inputKindFor(key)) {
+    case "username": {
+      if (/^https?:\/\/www\.instagram\.com\/[a-zA-Z0-9._]{1,30}\/?$/i.test(v)) return v;
+      if (/^[a-zA-Z0-9._]{1,30}$/.test(v)) return `https://www.instagram.com/${v}/`;
+      return null;
+    }
+    case "post":
+      return /^https?:\/\/(www\.)?instagram\.com\/(p|reel)\/[A-Za-z0-9_-]+\/?$/i.test(v)
+        ? `https://www.instagram.com/${v.match(/instagram\.com\/(p|reel)\/([A-Za-z0-9_-]+)/i)![1]}/${v.match(/instagram\.com\/(?:p|reel)\/([A-Za-z0-9_-]+)/i)![1]}/`
+        : (/^[A-Za-z0-9_-]{5,20}$/.test(v) ? `https://www.instagram.com/p/${v}/` : null);
+    case "hashtag": {
+      if (/^https?:\/\/www\.instagram\.com\/explore\/tags\//i.test(v)) return v;
+      if (/^[\p{L}\p{N}_]+$/u.test(v)) return `https://www.instagram.com/explore/tags/${encodeURIComponent(v)}/`;
+      return null;
+    }
+    case "query":
+      return /^[\p{L}\p{N}\s_.'-]+$/u.test(v) ? `?q=${encodeURIComponent(v)}` : null;
+  }
 }
+
+
 
 type Phase = "setup" | "running" | "completed" | "failed";
 
@@ -67,7 +111,8 @@ export function ExtractIgPage() {
 
   useAudioNotification(phase === "completed");
 
-  const canStart = selectedSessionId && isValidUsernameOrUrl(username);
+  const inputKind = inputKindFor(sourceType);
+  const canStart = selectedSessionId && !!buildSourceUrl(sourceType, username);
 
   useEffect(() => {
     if (!activeJob) return;
@@ -109,12 +154,17 @@ export function ExtractIgPage() {
   }, []);
 
   function handleStart() {
+    const sourceUrl = buildSourceUrl(sourceType, username);
+    if (!sourceUrl) {
+      toast({ type: "error", title: t("ig_extract.startFailed"), description: t("ig_extract.invalidInput") });
+      return;
+    }
     start.mutate(
       {
         session_id: selectedSessionId,
         session_ids: secondarySessionIds.length > 0 ? secondarySessionIds : undefined,
-        type: sourceType,
-        source_url: buildInstagramUrl(username),
+        type: DB_TYPE_BY_KEY[sourceType] as never,
+        source_url: sourceUrl,
         job_name: jobName || undefined,
         max_results: ceiling,
         skip_duplicates: skipDuplicates,
@@ -215,10 +265,20 @@ export function ExtractIgPage() {
             <CardTitle>{t("ig_extract.step3Title")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <InputIcon icon={UserPlus} placeholder={t(selectedSource.usernamePlaceholderKey)} value={username}
-              onChange={(e) => setUsername(e.target.value)} error={!!(username && !isValidUsernameOrUrl(username))} />
-            {username && !isValidUsernameOrUrl(username) && (
-              <p className="text-xs text-[var(--color-error)]">{t("ig_extract.invalidUsername")}</p>
+            <InputIcon
+              icon={UserPlus}
+              placeholder={
+                inputKind === "post" ? t("ig_extract.source.postPlaceholder")
+                : inputKind === "hashtag" ? t("ig_extract.source.hashtagPlaceholder")
+                : inputKind === "query" ? t("ig_extract.source.queryPlaceholder")
+                : t(selectedSource.usernamePlaceholderKey ?? "ig_extract.source.followersPlaceholder")
+              }
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              error={!!username && !buildSourceUrl(sourceType, username)}
+            />
+            {username && !buildSourceUrl(sourceType, username) && (
+              <p className="text-xs text-[var(--color-error)]">{t("ig_extract.invalidInput")}</p>
             )}
             <div className="grid gap-3 sm:grid-cols-2">
               <InputIcon icon={Zap} placeholder={t("ig_extract.ceilingPlaceholder")} type="number" value={String(ceiling)}

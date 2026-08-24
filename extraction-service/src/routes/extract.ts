@@ -22,11 +22,6 @@ const router = Router();
 const extractSchema = z.object({
   session_id: z.string().optional(),
   session_ids: z.array(z.string()).optional(),
-  // Only IG types with a real extractor are accepted. ig_post_commenters /
-  // ig_hashtag_posts / ig_profile_info were accepted here but had NO
-  // implementation behind createExtractor — every such request failed
-  // with "Unsupported extraction type" after admission. Removed until an
-  // adapter exists.
   type: z.enum([
     "groups",
     "pages",
@@ -35,6 +30,11 @@ const extractSchema = z.object({
     "messenger_contacts",
     "ig_followers",
     "ig_following",
+    "ig_post_commenters",
+    "ig_post_engagers",
+    "ig_hashtag_posts",
+    "ig_profile_info",
+    "ig_user_search",
   ]),
   source_url: z.string().min(1),
   job_name: z.string().optional(),
