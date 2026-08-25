@@ -132,7 +132,7 @@ jobs:
                 echo "$1=$2" >> .env
               fi
             }
-            set_env_var JOB_TIMEOUT_MS 2700000
+            set_env_var JOB_TIMEOUT_MS 3600000
             set_env_var MAX_CONTEXTS_PER_BROWSER 8
             set_env_var MAX_SESSIONS_PER_JOB 5
             set_env_var MAX_QUEUED_JOBS_PER_USER 3

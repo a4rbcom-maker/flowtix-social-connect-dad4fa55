@@ -43,8 +43,9 @@ const PAGE_CASCADE_MAX_POSTS = 8000;            // raised hard for pages: real l
 const PAGE_GROUP_MEMBERS_TARGET = 100_000;     // deep-paginate linked groups
 const PAGE_FOLLOWERS_SEARCH_MIN = 60;           // if followers tab yields fewer, run search pass
 // How deeply we harvest reactors/commenters from each post's reaction dialog.
-// Raised from 8s → 20s so every post yields far more follower-style rows.
-const PAGE_CASCADE_REACTOR_SCROLL_S = 20;
+// 10s is a balance: deep enough to pull hundreds per post, short enough that
+// a 100+ post cascade finishes within the 60-min job budget.
+const PAGE_CASCADE_REACTOR_SCROLL_S = 10;
 const PAGE_CASCADE_MAX_REACTIONS = 2000;
 const PAGE_CASCADE_MAX_COMMENTERS = 1500;
 const FOLLOWERS_SEARCH_TERMS = [
