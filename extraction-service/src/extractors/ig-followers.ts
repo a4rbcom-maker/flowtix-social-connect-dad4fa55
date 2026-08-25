@@ -519,37 +519,42 @@ export class IgFollowersExtractor extends IgBaseExtractor {
   }
 
   /** فتح dialog المتابعين/المتابَعين: نقر العدّاد بالنص (DOM الجديد)
-   *  مع ال fallback على روابط /followers/ القديمة */
+   *  مع ال fallback على روابط /followers/ القديمة. يعيد المحاولة عدة مرات
+   *  لأن IG يحمّل العدّاد أحياناً متأخراً أو يعرض spinner أولاً. */
   private async openDialog(): Promise<boolean> {
-    const clicked = await this.page
-      .evaluate((tab: string) => {
-        const wantFollowing = tab === "following";
-        // Old DOM first — explicit links are unambiguous
-        const oldLink = Array.from(document.querySelectorAll('a[href*="/followers/"], a[href*="/following/"]'))
-          .find((a) => (a.getAttribute("href") || "").includes(`/${tab}/`)) as HTMLElement | undefined;
-        if (oldLink) {
-          oldLink.click();
-          return true;
-        }
-        // New DOM: text counters on a[href="#"] / buttons in the profile header
-        const cands = Array.from(document.querySelectorAll('header a, main a, header button, [role="button"]')) as HTMLElement[];
-        for (const el of cands) {
-          const txt = (el.textContent || "").trim();
-          if (!txt || txt.length > 40 || !/\d/.test(txt)) continue;
-          const lower = txt.toLowerCase();
-          const isFollowers = /followers/.test(lower);
-          const isFollowing = /following/.test(lower);
-          if (wantFollowing ? isFollowing : isFollowers) {
-            el.click();
-            return true;
+    const MAX_ATTEMPTS = 4;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      if (attempt > 0) await this.page.waitForTimeout(1500);
+      const clicked = await this.page
+        .evaluate((tab: string) => {
+          const wantFollowing = tab === "following";
+          // Old DOM first — explicit links are unambiguous
+          const oldLink = Array.from(document.querySelectorAll('a[href*="/followers/"], a[href*="/following/"]'))
+            .find((a) => (a.getAttribute("href") || "").includes(`/${tab}/`)) as HTMLElement | undefined;
+          if (oldLink) { oldLink.click(); return true; }
+          // New DOM: text counters on a[href="#"] / buttons / sections / lists
+          // in the profile header. IG renders these in different containers
+          // (header, main, section, ul) so we cast a wide net.
+          const cands = Array.from(
+            document.querySelectorAll('header a, main a, header button, main button, section a, section button, ul a, ul button, li a, [role="button"], [role="tab"]'),
+          ) as HTMLElement[];
+          for (const el of cands) {
+            const txt = (el.textContent || "").trim();
+            if (!txt || txt.length > 40 || !/\d/.test(txt)) continue;
+            const lower = txt.toLowerCase();
+            const isFollowers = /followers/.test(lower);
+            const isFollowing = /following/.test(lower);
+            if (wantFollowing ? isFollowing : isFollowers) { el.click(); return true; }
           }
-        }
-        return false;
-      }, this.tab)
-      .catch(() => false);
-    if (!clicked) return false;
-    await this.page.waitForTimeout(2500);
-    return this.page.evaluate(() => !!document.querySelector('div[role="dialog"]')).catch(() => false);
+          return false;
+        }, this.tab)
+        .catch(() => false);
+      if (!clicked) continue;
+      await this.page.waitForTimeout(2500);
+      const opened = await this.page.evaluate(() => !!document.querySelector('div[role="dialog"]')).catch(() => false);
+      if (opened) return true;
+    }
+    return false;
   }
 
   /** تمرير داخل dialog عبر عجلة الماوس فوق مركزه */

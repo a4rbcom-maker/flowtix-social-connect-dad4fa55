@@ -75,10 +75,13 @@ const server = app.listen(config.port, async () => {
   log.info("Server", `env: ${config.nodeEnv} | headless: ${config.headless} | pool: ${config.browserPoolSize} | concurrency: ${config.maxConcurrentJobs}`);
 
   try {
-    const orphaned = await supabaseService.cleanupOrphanedJobs();
-    if (orphaned > 0) {
-      log.info("Server", `cleaned up ${orphaned} orphaned running jobs from previous session`);
-    }
+    // NOTE: we intentionally do NOT call cleanupOrphanedJobs() on boot. That
+    // helper marks every "running" job in the DB as failed regardless of which
+    // service process owns it — so a second service booting (a local probe,
+    // or a parallel deploy) would kill jobs that are still alive on the
+    // primary service, surfacing the misleading "Service restarted - job was
+    // interrupted" error. Stale "running" rows are self-healed instead: the
+    // in-job watchdog + auto-start (resumeQueuedJobs) reclaim them.
     await browserPool.init();
     log.info("Server", "browser pool initialized — service ready");
     await waManager.boot();
