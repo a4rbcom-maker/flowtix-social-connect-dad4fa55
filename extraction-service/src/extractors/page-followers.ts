@@ -323,9 +323,13 @@ export class PageFollowersExtractor extends BaseExtractor {
           feedKind: "page",
           feedToken: pid,
           // Rotate feed surfaces across rediscovery passes: timeline → videos →
-          // reels → chronological — page videos carry several× more reactors
-          // than timeline posts, so each surface adds a fresh post pool.
-          rediscoverVariants: ["", "/videos", "/reels", "?sorting_setting=CHRONOLOGICAL"],
+                    // reels → photos → posts → chronological — page videos carry several×
+                    // more reactors than timeline posts, and /photos & /posts surface
+                    // permalinks the ranked timeline never shows.
+                    rediscoverVariants: ["", "/videos", "/reels", "/photos", "/posts", "?sorting_setting=CHRONOLOGICAL"],
+                    // /videos & /reels are often empty on small pages — don't let those
+                    // dry surfaces exhaust the rediscovery budget after 3 empty passes.
+                    maxEmptyRediscoveries: 8,
           discoveryPage: opts.discoveryPage,
           pages: opts.pages,
           ...(opts.latePages ? { latePages: opts.latePages } : {}),
@@ -333,7 +337,14 @@ export class PageFollowersExtractor extends BaseExtractor {
           targetCount: Math.max(50, targetCount - total),
           maxDurationMs: Math.max(60_000, this.timeRemainingMs - 45_000),
           maxPosts: PAGE_CASCADE_MAX_POSTS,
-          maxDiscoveryMs: allPages.length >= (opts.latePages ? 3 : 2) ? 300_000 : 120_000,
+                    // Discovery window scales with remaining budget (min 5, max 12 min).
+                    // The old fixed 120s/300s capped page cascades at ~40-180 discovered
+                    // posts — the #1 harvest bottleneck proven live (manfaz.alnasr:
+                    // 43 posts → source_exhausted at 350 users).
+                    maxDiscoveryMs: Math.min(
+                      12 * 60_000,
+                      Math.max(5 * 60_000, Math.round((this.timeRemainingMs - 45_000) * 0.2)),
+                    ),
           onSaturationHandoff: opts.onEarlyGiveUp,
           extractEngagers: (page, permalink) =>
             extractEngagersDeep(page, permalink, {
@@ -504,10 +515,18 @@ export class PageFollowersExtractor extends BaseExtractor {
       !(await this.throttledCanceled())
     ) {
       log.info("PageFollowers", `followers tab yielded ${shared.length} (<${PAGE_FOLLOWERS_SEARCH_MIN}) — running single-letter search top-up`);
-      const searchUsers: GroupMemberUser[] = [];
-      for (const term of FOLLOWERS_SEARCH_TERMS) {
-        if (await this.throttledCanceled()) break;
-        await multiSessionGroupMembers(
+            const searchUsers: GroupMemberUser[] = [];
+            // Hard 3-minute cap: the search pass yields only a few dozen users and
+            // must never eat the cascade's time budget (a89a39fd burned ~10min for
+            // +50 users here).
+            const searchDeadline = Date.now() + 3 * 60_000;
+            for (const term of FOLLOWERS_SEARCH_TERMS) {
+              if (await this.throttledCanceled()) break;
+              if (Date.now() >= searchDeadline) {
+                log.info("PageFollowers", `search top-up timeboxed at 3min (recovered ${searchUsers.length} so far) — moving on`);
+                break;
+              }
+              await multiSessionGroupMembers(
           allPages,
           `${pageUrl}/followers/?search=${encodeURIComponent(term)}`,
           searchUsers,

@@ -408,7 +408,7 @@ async function scrollContainerAggressively(page: Page, maxSeconds: number, logTa
 
     if (before === harvested) {
       noProgress++;
-      if (noProgress >= 40) break; // genuine stall
+      if (noProgress >= 14) break; // ~4s of no new rows — genuine stall, move on
     } else {
       harvested = before;
       noProgress = 0;
@@ -498,7 +498,9 @@ async function extractCommentersDeep(
   };
   drain();
   if (usersMap.size < opts.maxCommenters) {
-    await scrollContainerAggressively(page, Math.max(7, opts.scrollDialogSeconds), "commenters");
+    // Reactors are the primary follower signal for pages; commenters get a
+      // lighter budget (60% of the reactor scroll) to keep per-post time low.
+      await scrollContainerAggressively(page, Math.max(6, Math.round(opts.scrollDialogSeconds * 0.6)), "commenters");
     drain();
   }
   if (usersMap.size > 0) {

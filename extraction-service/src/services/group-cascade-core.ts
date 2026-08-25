@@ -55,6 +55,10 @@ export interface GroupCascadeOptions {
   targetCount: number;
   maxDurationMs: number;
   maxPosts?: number;
+  /** Max rediscovery passes that surface 0 new posts before giving up.
+   *  Default 3 (groups). Pages pass a higher value — their /videos, /reels
+   *  surfaces are often empty and must not burn the whole budget. */
+  maxEmptyRediscoveries?: number;
   /** Hard cap on the INITIAL feed-discovery phase (the discovery page joins
    *  the worker pool as soon as discovery finishes). */
   maxDiscoveryMs?: number;
@@ -315,7 +319,13 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
 
         await page.evaluate(() => window.scrollBy(0, 1500));
         if (round % 6 === 5) await page.keyboard?.press("End").catch(() => {});
-        await sleep(900 + rand(0, 600));
+        // Page feeds lazy-load heavier than group feeds; too-fast scrolling
+        // never triggers the next batch of posts. Groups keep the old cadence.
+        if (feedKind === "page") {
+          await sleep(2200 + rand(0, 1500));
+        } else {
+          await sleep(900 + rand(0, 600));
+        }
         if (stagnantRounds >= DISCOVERY_STAGNANT_ROUNDS) return;
       } catch {
         return;
@@ -344,7 +354,7 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
    *  yields no users either way — job d799b4ed burned 40 minutes in this
    *  exact loop (10 posts, +1 user) before the user breaker fired. */
   let emptyRediscoveries = 0;
-  const MAX_EMPTY_REDISCOVERIES = 3;
+  const MAX_EMPTY_REDISCOVERIES = opts.maxEmptyRediscoveries ?? 3;
   const runRediscovery = async (page: Page): Promise<void> => {
     const variant = FEED_VARIANTS[rediscoverVariant % FEED_VARIANTS.length];
     rediscoverVariant++;
@@ -359,7 +369,9 @@ export async function runGroupCascade(opts: GroupCascadeOptions): Promise<GroupC
     } finally {
       detach();
     }
-    if (queuedPosts.size > postsBefore) {
+    const surfaced = queuedPosts.size - postsBefore;
+    log.info("GroupCascade", `rediscovery: surface=${variant || "timeline"} surfaced ${surfaced} new posts (total ${queuedPosts.size}/${maxPosts})`);
+    if (surfaced > 0) {
       emptyRediscoveries = 0;
     } else {
       emptyRediscoveries++;
