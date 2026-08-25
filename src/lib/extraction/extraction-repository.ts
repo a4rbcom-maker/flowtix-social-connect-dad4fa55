@@ -7,6 +7,7 @@ import {
   type ExportResult,
   type ExportFormat,
   type PlatformFilter,
+  type ExtractionType,
   SOURCE_TO_DB_TYPE,
 } from "./types";
 
@@ -97,7 +98,12 @@ export const extractionRepository = {
   },
 
   async startExtraction(input: StartExtractionInput): Promise<ExtractionProgress> {
-    const dbType = SOURCE_TO_DB_TYPE[input.type];
+    // IG pages pass the DB type directly (underscore form, e.g. "ig_followers"),
+    // FB pages pass the source type (dash form, e.g. "group-members"). Accept
+    // either: convert dash-form through the map, but keep any value that is
+    // already a valid DB type (underscore form) untouched.
+    const dbType = (SOURCE_TO_DB_TYPE as Record<string, ExtractionType>)[input.type]
+      ?? (input.type as ExtractionType);
     const sessionIds = input.session_ids && input.session_ids.length > 0
       ? Array.from(new Set([input.session_id, ...input.session_ids])).filter(Boolean)
       : [input.session_id];
