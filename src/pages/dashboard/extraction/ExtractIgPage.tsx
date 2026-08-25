@@ -305,7 +305,7 @@ export function ExtractIgPage() {
     const total = coverage.total;
     const extracted = coverage.extracted;
     const pct = total && total > 0 ? Math.round((extracted / total) * 100) : null;
-    const rawProgress = ((activeJob as { progress?: Record<string, unknown> }).progress ?? {}) as Record<string, unknown>;
+    const rawProgress = ((activeJob as { progress?: Record<string, unknown> } | undefined)?.progress ?? {}) as Record<string, unknown>;
     const isEnriching = rawProgress.phase === "enriching";
     const ratePerMin = typeof rawProgress.rate_per_min === "number" ? (rawProgress.rate_per_min as number) : null;
     const activeSessions = typeof rawProgress.active_sessions === "number" ? (rawProgress.active_sessions as number) : null;
