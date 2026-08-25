@@ -77,73 +77,76 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
     };
 
     // 1) Load the post; keep GraphQL listener armed for the entire session.
-        const client = new IgMediaClient();
-        const capture = client.armContinuousCapture(this.page);
-        await this.page.goto(`${config.igBaseUrl}/p/${shortcode}/`, { waitUntil: "domcontentloaded", timeout: 30_000 });
-        await this.page.waitForTimeout(3000);
+    const client = new IgMediaClient();
+    const capture = client.armContinuousCapture(this.page);
+    await this.page.goto(`${config.igBaseUrl}/p/${shortcode}/`, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await this.page.waitForTimeout(3000);
 
-        // 2) Click "View all N comments" / "Load more comments" / "عرض" to
-        //    trigger additional GraphQL comment loads before the DOM harvest.
-        for (let attempt = 0; attempt < 5; attempt++) {
-          const clicked = await this.page
-            .evaluate(() => {
-              const btns = Array.from(document.querySelectorAll('span, div[role="button"], button, a')) as HTMLElement[];
-              for (const b of btns) {
-                const t = (b.textContent || "").trim();
-                if (/(view all|all \d+|comments|عرض|مزيد|تحميل|load more|MORE)/i.test(t) && t.length < 60) {
-                  b.click();
-                  return t;
-                }
-              }
-              return null;
-            })
-            .catch(() => null);
-          if (!clicked) break;
-          await this.page.waitForTimeout(2000);
-        }
+    // 2) Click "View all N comments" / "Load more comments" / "عرض" to
+    //    trigger additional GraphQL comment loads before the DOM harvest.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const clicked = await this.page
+        .evaluate(() => {
+          const btns = Array.from(document.querySelectorAll('span, div[role="button"], button, a')) as HTMLElement[];
+          for (const b of btns) {
+            const t = (b.textContent || "").trim();
+            if (/(view all|all \d+|comments|عرض|مزيد|تحميل|load more|MORE)/i.test(t) && t.length < 60) {
+              b.click();
+              return t;
+            }
+          }
+          return null;
+        })
+        .catch(() => null);
+      if (!clicked) break;
+      await this.page.waitForTimeout(2000);
+    }
 
-        let got = 0;
+    let got = 0;
 
-        // 3) DOM harvest of rendered comments (always works when visible).
-        for (const u of await usersFromPostDom(this.page)) if (add(u)) { got++; engine.addResults(1); }
-        log.info("IgPostUsers", `first batch: +${got} → ${collected.size} unique`);
-        await flush();
+    // 3) DOM harvest of rendered comments (always works when visible).
+    for (const u of await usersFromPostDom(this.page)) if (add(u)) { got++; engine.addResults(1); }
+    log.info("IgPostUsers", `first batch: +${got} → ${collected.size} unique`);
+    await flush();
 
-        // 4) Engagers: also open the likers dialog and read its rows.
-        if (this.wantLikers && !this.shouldStop) {
-      const likers = await this.openLikersAndCollect();
+    // 4) Engagers: fetch likers via direct GraphQL API (not DOM dialog).
+    //    This is the critical path — the "N likes" button is often hidden
+    //    or unclickable in modern IG, so the old openLikersAndCollect()
+    //    returned 0. The API path returns every liker with pagination.
+    if (this.wantLikers && !this.shouldStop) {
+      const likers = await this.fetchLikersViaApi(shortcode);
       let lk = 0;
       for (const u of likers) if (add(u)) { lk++; engine.addResults(1); }
-      log.info("IgPostUsers", `likers batch: +${lk} → ${collected.size} unique`);
+      log.info("IgPostUsers", `likers API: +${lk} → ${collected.size} unique`);
       await flush();
     }
 
     // 5) Keep scrolling for long comment threads (page self-paginates).
-        let stale = 0;
-        while (
-          collected.size < this.ctx.maxResults &&
-          !this.shouldStop &&
-          !(await this.checkCanceled()) &&
-          stale < 15
-        ) {
-          const before = collected.size;
-          await this.page.mouse.wheel(0, 900);
-          await this.page.waitForTimeout(1700);
-          for (const u of await usersFromPostDom(this.page)) if (add(u)) engine.addResults(1);
-          await flush();
-          if (collected.size === before) stale++;
-          else stale = 0;
-        }
+    let stale = 0;
+    while (
+      collected.size < this.ctx.maxResults &&
+      !this.shouldStop &&
+      !(await this.checkCanceled()) &&
+      stale < 15
+    ) {
+      const before = collected.size;
+      await this.page.mouse.wheel(0, 900);
+      await this.page.waitForTimeout(1700);
+      for (const u of await usersFromPostDom(this.page)) if (add(u)) engine.addResults(1);
+      await flush();
+      if (collected.size === before) stale++;
+      else stale = 0;
+    }
 
-        // 6) Stop the continuous GraphQL listener and add any users it captured
-        //    across the whole session (paginated comments, likers dialog loads).
-        const graphqlSnapshot = capture.stop();
-        let fromGraphQL = 0;
-        for (const u of graphqlSnapshot.users) if (add(u)) { fromGraphQL++; engine.addResults(1); }
-        log.info("IgPostUsers", `graphql total: +${fromGraphQL} → ${collected.size} unique`);
+    // 6) Stop the continuous GraphQL listener and add any users it captured
+    //    across the whole session (paginated comments, likers dialog loads).
+    const graphqlSnapshot = capture.stop();
+    let fromGraphQL = 0;
+    for (const u of graphqlSnapshot.users) if (add(u)) { fromGraphQL++; engine.addResults(1); }
+    log.info("IgPostUsers", `graphql total: +${fromGraphQL} → ${collected.size} unique`);
 
-        await this.flushRemaining(collected);
-        log.info("IgPostUsers", `done: ${collected.size} unique`);
+    await this.flushRemaining(collected);
+    log.info("IgPostUsers", `done: ${collected.size} unique`);
     engine.setPhase("completed");
     await engine.heartbeat(true);
     await this.updateIgProgress({
@@ -156,85 +159,116 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
     return { extracted: collected.size, done: true, authState: "authenticated" };
   }
 
-  /** Open the "N likes" dialog and return usernames from its rows. */
-    private async openLikersAndCollect(): Promise<{ username: string; fullName?: string; avatar?: string }[]> {
-      const clicked = await this.page
-        .evaluate(() => {
-          const cands = Array.from(document.querySelectorAll(
-            'a[href*="/liked_by/"], section button, button, [role="button"], span'
-          )) as HTMLElement[];
-          for (const el of cands) {
-            const txt = (el.textContent || "").trim();
-            // Match "N likes", "N إعجاب", "N others", "and N others"
-            if (/(\d[\d,.]*[KkMm]?)\s*(likes?|إعجاب|others|آخرون)/i.test(txt)) {
-              el.click();
-              return true;
-            }
-          }
-          return false;
-        })
-        .catch(() => false);
-      if (!clicked) {
-        log.info("IgPostUsers", `likers dialog not available (hidden likes or 1-2 likes post)`);
-        return [];
-      }
-      await this.page.waitForTimeout(3500);
+  /** Fetch likers directly via IG's GraphQL API, using the same logged-in
+   *  session. IG's web UI issues a /graphql/query with the post's shortcode
+   *  to paginate edge_liked_by. We replay the same query in-page.
+   *  This replaces the unreliable DOM-dialog-click path (openLikersAndCollect)
+   *  which often returns 0 because the "N likes" button is hidden or
+   *  structurally changed by IG. */
+  private async fetchLikersViaApi(
+    shortcode: string,
+  ): Promise<{ username: string; fullName: string; avatar: string }[]> {
+    const all: { username: string; fullName: string; avatar: string }[] = [];
+    const seen = new Set<string>();
+    let after: string | null = null;
+    const MAX_PAGES = 100;
 
-      const out: { username: string; fullName?: string; avatar?: string }[] = [];
-      const seen = new Set<string>();
-      let staleLikers = 0;
-      let prevSize = 0;
-      // Scroll inside the dialog until no new rows appear (max 30 rounds —
-      // 35+ likers need more than the old fixed 6 rounds to fully load).
-      for (let round = 0; round < 30 && staleLikers < 6; round++) {
-        const rows = await this.page
-          .evaluate(() => {
-            const res: { username: string; fullName: string; avatar: string }[] = [];
-            const dialog = document.querySelector('div[role="dialog"]');
-            if (!dialog) return res;
-            const NAV = new Set(["p", "reel", "reels", "explore", "accounts", "tags", "popular", "directory", "about", "locations", "hashtag"]);
-            for (const a of dialog.querySelectorAll('a[href^="/"]')) {
-              const href = a.getAttribute("href") || "";
-              const m = href.match(/^\/([a-zA-Z0-9._]{1,30})\/?$/);
-              if (!m || NAV.has(m[1].toLowerCase())) continue;
-              const parent = a.closest("div[role='button']") || a.parentElement;
-              let full = "";
-              if (parent) {
-                for (const s of Array.from(parent.querySelectorAll("span"))) {
-                  const t = (s.textContent || "").trim();
-                  if (t && t !== m[1] && t.length <= 100) { full = t; break; }
+    for (let pageIdx = 0; pageIdx < MAX_PAGES; pageIdx++) {
+      const result = await this.page
+        .evaluate(
+          async ({ shortcode, after }: { shortcode: string; after: string | null }) => {
+            const variables = {
+              shortcode,
+              child_comment_count: 3,
+              fetch_comment_count: 40,
+              parent_comment_count: 24,
+              has_threaded_comments: true,
+              after,
+            };
+            const params = new URLSearchParams({
+              doc_id: "8604818727118937",
+              variables: JSON.stringify(variables),
+              fb_api_req_friendly_name: "PolarisPostCommentsPageQuery",
+            });
+            try {
+              const res = await fetch(`https://www.instagram.com/graphql/query/?${params.toString()}`, {
+                credentials: "include",
+                headers: { "x-ig-app-id": "936619743392459", accept: "*/*" },
+              });
+              if (!res.ok) return { status: res.status, error: true };
+              const text = await res.text();
+              let body: unknown;
+              try {
+                body = JSON.parse(text);
+              } catch {
+                return { error: true, status: 0 };
+              }
+              const media = (body as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+              const xdt = media?.xdt_shortcode_media as Record<string, unknown> | undefined;
+              if (!xdt) return { error: true, status: 0 };
+
+              const likeEdges = (xdt.edge_liked_by as Record<string, unknown> | undefined)?.edges
+                ?? (xdt.edge_media_preview_like as Record<string, unknown> | undefined)?.edges
+                ?? [];
+
+              const users: { username: string; fullName: string; avatar: string }[] = [];
+              for (const e of likeEdges as Array<Record<string, unknown>>) {
+                const n = e?.node as Record<string, unknown> | undefined;
+                if (n?.username && typeof n.username === "string") {
+                  users.push({
+                    username: n.username,
+                    fullName: String(n.full_name ?? ""),
+                    avatar: String(n.profile_pic_url ?? ""),
+                  });
                 }
               }
-              res.push({ username: m[1], fullName: full, avatar: "" });
-            }
-            return res;
-          })
-          .catch(() => [] as { username: string; fullName: string; avatar: string }[]);
-        for (const r of rows) {
-          if (!seen.has(r.username)) {
-            seen.add(r.username);
-            out.push(r);
-          }
-        }
-        if (out.length === prevSize) staleLikers++;
-        else { staleLikers = 0; prevSize = out.length; }
-        await this.scrollDialogCenter();
-      }
-      return out;
-    }
 
-  private async scrollDialogCenter(): Promise<void> {
-    const box = await this.page
-      .evaluate(() => {
-        const dialog = document.querySelector('div[role="dialog"]');
-        if (!dialog) return null;
-        const r = dialog.getBoundingClientRect();
-        return { x: r.x, y: r.y, width: r.width, height: r.height };
-      })
-      .catch(() => null);
-    if (box && box.width > 0) await this.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await this.page.mouse.wheel(0, 600);
-    await this.page.waitForTimeout(1200);
+              const pageInfo = ((xdt.edge_liked_by ?? xdt.edge_media_preview_like) as Record<string, unknown> | undefined)
+                ?.page_info as Record<string, unknown> | undefined;
+              return {
+                users,
+                endCursor: (pageInfo?.end_cursor as string | null) ?? null,
+                hasNext: !!pageInfo?.has_next_page,
+                total: ((xdt.edge_liked_by ?? xdt.edge_media_preview_like) as Record<string, unknown> | undefined)
+                  ?.count as number | null,
+              };
+            } catch (e) {
+              return { error: true, status: 0, message: String(e).slice(0, 100) };
+            }
+          },
+          { shortcode, after },
+        )
+        .then(
+          (r: {
+            error?: boolean;
+            status?: number;
+            users?: { username: string; fullName: string; avatar: string }[];
+            endCursor?: string | null;
+            hasNext?: boolean;
+            total?: number | null;
+            message?: string;
+          }) => r,
+        )
+        .catch(() => ({ error: true, status: 0 } as const));
+
+      if (result.error || !result.users?.length) {
+        if (result.status === 429) log.warn("IgPostUsers", `likers API rate-limited (page ${pageIdx})`);
+        break;
+      }
+      let added = 0;
+      for (const u of result.users) {
+        if (!seen.has(u.username)) {
+          seen.add(u.username);
+          all.push(u);
+          added++;
+        }
+      }
+      if (!result.hasNext) break;
+      after = result.endCursor;
+      await this.page.waitForTimeout(1200);
+    }
+    log.info("IgPostUsers", `fetchLikersViaApi: got ${all.length} from ${seen.size} unique (API pages: ${Math.min(pageIdx + 1, MAX_PAGES)})`);
+    return all;
   }
 
   private flushedCount = 0;

@@ -450,6 +450,8 @@ export function parseFollowersCount(html: string): { count: number | null; sourc
 
 export abstract class BaseExtractor {
   protected page: Page;
+  protected primaryPage: Page;
+  protected primarySessionId: string;
   protected ctx: JobContext;
   protected secondarySessionPages: Array<{ sessionId: string; page: Page }> = [];
   protected activeSessionIndex = 0;
@@ -473,29 +475,50 @@ export abstract class BaseExtractor {
 
   constructor(page: Page, ctx: JobContext, secondaryPages?: Array<{ sessionId: string; page: Page }>) {
     this.page = page;
+    this.primaryPage = page;
+    this.primarySessionId = ctx.sessionId;
     this.ctx = ctx;
     this.secondarySessionPages = secondaryPages || [];
     this.activeSessionIndex = 0;
     this.startTime = Date.now();
   }
 
-  /** Switch to the next available session. Returns true if switched, false if no more sessions. */
+  /** Switch to the next available LIVE session. Returns true if a live page is
+   *  now active (which may be the primary again, if every secondary died),
+   *  false only when there is genuinely nothing left to switch to. */
   protected async switchToNextSession(): Promise<boolean> {
     if (this.secondarySessionPages.length === 0) return false;
-    const nextIdx = this.activeSessionIndex + 1;
-    if (nextIdx >= 1 + this.secondarySessionPages.length) return false;
 
-    const nextSession = this.secondarySessionPages[nextIdx - 1];
+    // Preference order: round-robin to the next secondary, then fall back to
+    // any other secondary that is still open, then back to the primary.
+    const ordered: Array<{ sessionId: string; page: Page }> = [];
+    for (let i = 1; i < 1 + this.secondarySessionPages.length; i++) {
+      const idx = (this.activeSessionIndex + i) % (1 + this.secondarySessionPages.length);
+      if (idx === 0) ordered.push({ sessionId: this.primarySessionId, page: this.primaryPage });
+      else ordered.push(this.secondarySessionPages[idx - 1]);
+    }
+
     const prevSessionId = this.ctx.sessionId;
+    let chosen: { sessionId: string; page: Page } | null = null;
+    for (const cand of ordered) {
+      if (cand.page && !cand.page.isClosed()) { chosen = cand; break; }
+      log.warn("BaseExtractor", `skipping dead session ${cand.sessionId.slice(0, 8)} (page closed) during switch`);
+    }
+    if (!chosen) {
+      log.warn("BaseExtractor", `no live session to switch to — all secondaries closed; attempting return to primary`);
+      if (this.primaryPage && !this.primaryPage.isClosed()) chosen = { sessionId: this.primarySessionId, page: this.primaryPage };
+    }
+    if (!chosen) return false;
 
-    this.page = nextSession.page;
-    this.ctx.sessionId = nextSession.sessionId;
-    this.activeSessionIndex = nextIdx;
+    this.page = chosen.page;
+    this.ctx.sessionId = chosen.sessionId;
+    this.activeSessionIndex = this.secondarySessionPages.findIndex((s) => s.sessionId === chosen!.sessionId) + 1;
+    if (chosen.sessionId === this.primarySessionId) this.activeSessionIndex = 0;
 
     // Re-extract cachedDtsg for new session
     (this as any).cachedDtsg = undefined;
 
-    log.info("BaseExtractor", `switched session: ${prevSessionId} -> ${nextSession.sessionId} (index ${this.activeSessionIndex})`);
+    log.info("BaseExtractor", `switched session: ${prevSessionId} -> ${chosen.sessionId} (index ${this.activeSessionIndex})`);
     return true;
   }
 

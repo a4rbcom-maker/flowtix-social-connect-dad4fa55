@@ -148,7 +148,26 @@ export class PostReactionsExtractor extends BaseExtractor {
                 ({ dialogOpened, scrollBox } = await this.tryOpenReactionsDialog());
                 dialogActive = dialogOpened;
               } catch (err) {
-                throw new ExtractionError(ErrorCodes.NETWORK_ERROR, `Navigation error after session switch: ${String(err)}`);
+                const msg = String(err);
+                // A dead/closed page after a switch is a session that Facebook
+                // force-logged out (usually same-IP multi-account) — not a fatal
+                // error. Recover: try another live session, otherwise stop the
+                // job gracefully instead of failing it and losing partial results.
+                if (msg.includes("has been closed") || msg.includes("Target page") || msg.includes("Target closed")) {
+                  log.warn("PostReactions", `session page closed after switch — ${msg.slice(0, 120)}`);
+                  const recovered = await this.switchToNextSession();
+                  if (recovered) {
+                    log.info("PostReactions", `recovered to another live session, reloading post`);
+                    consecutiveEmpty = 0;
+                    scrollAttempts = 0;
+                    continue;
+                  }
+                  log.warn("PostReactions", `no live sessions remain after switch — stopping gracefully`);
+                  this.lastStopReason = this.totalSessions > 1 ? "session_rate_limited" : "no_secondary_session";
+                  done = true;
+                  break;
+                }
+                throw new ExtractionError(ErrorCodes.NETWORK_ERROR, `Navigation error after session switch: ${msg}`);
               }
               await this.storeExtractionProgress(total, "scrolling", 0);
               continue;
