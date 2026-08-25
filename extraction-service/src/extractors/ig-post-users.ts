@@ -47,7 +47,7 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
     log.info("IgPostUsers", `starting: ${shortcode} likers=${this.wantLikers}`);
 
     const collected = new Map<string, ExtractedMember>();
-    const add = (u: { username: string; fullName?: string; avatar?: string }): boolean => {
+    const add = (u: { username: string; fullName?: string; avatar?: string; commentText?: string; commentId?: string }): boolean => {
       if (!u.username || collected.has(u.username)) return false;
       collected.set(u.username, {
         fb_id: u.username,
@@ -57,6 +57,8 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
         profile_url: `https://www.instagram.com/${u.username}/`,
         avatar_url: u.avatar || undefined,
         type: this.ctx.type,
+        comment_text: u.commentText || undefined,
+        comment_id: u.commentId || undefined,
       });
       return true;
     };
@@ -109,7 +111,16 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
     log.info("IgPostUsers", `first batch: +${got} → ${collected.size} unique`);
     await flush();
 
-    // 4) Engagers: fetch likers via direct GraphQL API (not DOM dialog).
+    // 4a) Commenters: also fetch comments via GraphQL API (with full text).
+    if (!this.wantLikers && !this.shouldStop) {
+      const commenters = await this.fetchCommentsViaApi(shortcode);
+      let cm = 0;
+      for (const u of commenters) if (add(u)) { cm++; engine.addResults(1); }
+      log.info("IgPostUsers", `comments API: +${cm} → ${collected.size} unique`);
+      await flush();
+    }
+
+    // 4b) Engagers: fetch likers via direct GraphQL API (not DOM dialog).
     //    This is the critical path — the "N likes" button is often hidden
     //    or unclickable in modern IG, so the old openLikersAndCollect()
     //    returned 0. The API path returns every liker with pagination.
@@ -277,6 +288,111 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
       await this.page.waitForTimeout(1200);
     }
     log.info("IgPostUsers", `fetchLikersViaApi: got ${all.length} from ${seen.size} unique (API pages: ${Math.min(pageIdx + 1, MAX_PAGES)})`);
+    return all;
+  }
+
+  /** Fetch comments + their authors directly via IG's GraphQL API, paginated.
+   *  Each row carries the commenter's @username + the comment text, so users
+   *  who comment multiple times yield one row per unique username (and the
+   *  first/most-recent comment text wins). For commenter-only extraction
+   *  this replaces the DOM path with the same reliable API used for likers. */
+  private async fetchCommentsViaApi(
+    shortcode: string,
+  ): Promise<{ username: string; fullName: string; avatar: string; commentText: string; commentId: string }[]> {
+    const all: { username: string; fullName: string; avatar: string; commentText: string; commentId: string }[] = [];
+    const seen = new Set<string>();
+    let after: string | null = null;
+    const MAX_PAGES = 200;
+
+    let pageIdx: number;
+    for (pageIdx = 0; pageIdx < MAX_PAGES; pageIdx++) {
+      const result: {
+        error?: boolean;
+        status?: number;
+        comments?: { id: string; text: string; username: string; fullName: string; avatar: string }[];
+        endCursor?: string | null;
+        hasNext?: boolean;
+        total?: number | null;
+        message?: string;
+      } = await this.page
+        .evaluate(
+          async ({ shortcode, after }: { shortcode: string; after: string | null }) => {
+            const variables = {
+              shortcode,
+              first: 50,
+              after,
+            };
+            const params = new URLSearchParams({
+              doc_id: "9361150124142511", // PolarisPostCommentsByShortcodeQuery — stable, returns comment edges with text
+              variables: JSON.stringify(variables),
+              fb_api_req_friendly_name: "PolarisPostCommentsByShortcodeQuery",
+            });
+            try {
+              const res = await fetch(`https://www.instagram.com/graphql/query/?${params.toString()}`, {
+                credentials: "include",
+                headers: { "x-ig-app-id": "936619743392459", accept: "*/*" },
+              });
+              if (!res.ok) return { error: true, status: res.status };
+              const text = await res.text();
+              let body: unknown;
+              try {
+                body = JSON.parse(text);
+              } catch {
+                return { error: true, status: 0 };
+              }
+              const media = (body as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+              const xdt = media?.xdt_shortcode_media as Record<string, unknown> | undefined;
+              if (!xdt) return { error: true, status: 0 };
+
+              const conn = (xdt.edge_media_to_comment_thread_or_show_more_edge_or_toplined_comments
+                ?? xdt.edge_media_to_parent_comment ?? xdt.edge_media_to_comment) as Record<string, unknown> | undefined;
+              const edges = (conn?.edges as Array<Record<string, unknown>> | undefined) ?? [];
+              const comments: { id: string; text: string; username: string; fullName: string; avatar: string }[] = [];
+              for (const e of edges) {
+                const n = e?.node as Record<string, unknown> | undefined;
+                if (!n) continue;
+                // skip the "Show more comments" placeholder
+                if (n.__typename === "GraphTombstone" || n.text === "...") continue;
+                const owner = n.owner as Record<string, unknown> | undefined;
+                if (!owner?.username) continue;
+                comments.push({
+                  id: String(n.id ?? ""),
+                  text: String(n.text ?? ""),
+                  username: String(owner.username),
+                  fullName: String(owner.full_name ?? ""),
+                  avatar: String((owner.profile_pic_url as string) ?? ""),
+                });
+              }
+              const pageInfo = conn?.page_info as Record<string, unknown> | undefined;
+              return {
+                comments,
+                endCursor: (pageInfo?.end_cursor as string | null) ?? null,
+                hasNext: !!pageInfo?.has_next_page,
+                total: (conn?.count as number | null) ?? null,
+              };
+            } catch (e) {
+              return { error: true, status: 0, message: String(e).slice(0, 100) };
+            }
+          },
+          { shortcode, after },
+        )
+        .catch(() => ({ error: true, status: 0 } as const));
+
+      if (result.error || !result.comments?.length) {
+        if (result.status === 429) log.warn("IgPostUsers", `comments API rate-limited (page ${pageIdx})`);
+        break;
+      }
+      for (const c of result.comments) {
+        if (!seen.has(c.username)) {
+          seen.add(c.username);
+          all.push({ username: c.username, fullName: c.fullName, avatar: c.avatar, commentText: c.text, commentId: c.id });
+        }
+      }
+      if (!result.hasNext) break;
+      after = result.endCursor ?? null;
+      await this.page.waitForTimeout(1200);
+    }
+    log.info("IgPostUsers", `fetchCommentsViaApi: got ${all.length} from ${seen.size} unique (API pages: ${Math.min(pageIdx + 1, MAX_PAGES)})`);
     return all;
   }
 
