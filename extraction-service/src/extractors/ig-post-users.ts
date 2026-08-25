@@ -172,9 +172,18 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
     const seen = new Set<string>();
     let after: string | null = null;
     const MAX_PAGES = 100;
+    let pageIdx: number;
 
-    for (let pageIdx = 0; pageIdx < MAX_PAGES; pageIdx++) {
-      const result = await this.page
+    for (pageIdx = 0; pageIdx < MAX_PAGES; pageIdx++) {
+      const result: {
+        error?: boolean;
+        status?: number;
+        users?: { username: string; fullName: string; avatar: string }[];
+        endCursor?: string | null;
+        hasNext?: boolean;
+        total?: number | null;
+        message?: string;
+      } = await this.page
         .evaluate(
           async ({ shortcode, after }: { shortcode: string; after: string | null }) => {
             const variables = {
@@ -264,7 +273,7 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
         }
       }
       if (!result.hasNext) break;
-      after = result.endCursor;
+      after = result.endCursor ?? null;
       await this.page.waitForTimeout(1200);
     }
     log.info("IgPostUsers", `fetchLikersViaApi: got ${all.length} from ${seen.size} unique (API pages: ${Math.min(pageIdx + 1, MAX_PAGES)})`);
