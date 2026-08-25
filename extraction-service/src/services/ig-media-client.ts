@@ -30,6 +30,20 @@ export interface IgCapturedPage {
   afterCursor: string | null;
 }
 
+export interface ContinuousCapture {
+  /** All users accumulated across every GraphQL response since arming. */
+  users: Map<string, IgMediaUser>;
+  /** Latest pagination cursor seen (null if none). */
+  afterCursor: string | null;
+  /** Stop listening and return the final snapshot. */
+  stop: () => ContinuousSnapshot;
+}
+
+export interface ContinuousSnapshot {
+  users: IgMediaUser[];
+  afterCursor: string | null;
+}
+
 /** Extract usernames from any GraphQL payload section we care about:
  *  comment edges (owner), like edges (node.username), user edges. */
 function usersFromGraphqlBody(body: unknown): { users: IgMediaUser[]; after: string | null } {
@@ -220,6 +234,58 @@ export class IgMediaClient {
     return { users: parsed.users, afterCursor: parsed.after };
   }
 
+  /** Start capturing ALL GraphQL responses on this page. Call stop() to finish.
+   *  Unlike captureFirstPage (single-shot), this stays armed for the entire
+   *  extraction session so every paginated comment/like response is collected. */
+  armContinuousCapture(page: Page): ContinuousCapture {
+    this.continuousAcc = new Map();
+    this.continuousAfter = null;
+    if (this.continuousHandler) page.off("response", this.continuousHandler);
+    this.continuousHandler = (resp: import("playwright").Response): void => {
+      try {
+        const u = resp.url();
+        if (!(u.includes("/graphql/query") || u.includes("/api/graphql") || u.includes("/api/v1/media"))) return;
+        if (resp.status() !== 200) return;
+        const ct = resp.headers()["content-type"] || "";
+        if (!ct.includes("json")) return;
+        void resp
+          .json()
+          .then((j: unknown) => {
+            if (!j || !this.continuousAcc) return;
+            const parsed = usersFromGraphqlBody(j);
+            if (parsed.users.length > 0) {
+              let added = 0;
+              for (const usr of parsed.users) {
+                if (!this.continuousAcc.has(usr.username)) {
+                  this.continuousAcc.set(usr.username, usr);
+                  added++;
+                }
+              }
+              if (parsed.after) this.continuousAfter = parsed.after;
+              log.info("IgMedia", `continuous capture: +${added} users (total=${this.continuousAcc.size}), after=${parsed.after ? "yes" : "no"}`);
+            }
+          })
+          .catch(() => { /* never throw */ });
+      } catch { /* never throw */ }
+    };
+    page.on("response", this.continuousHandler);
+    return {
+      users: this.continuousAcc,
+      afterCursor: null,
+      stop: (): ContinuousSnapshot => {
+        page.off("response", this.continuousHandler!);
+        this.continuousHandler = null;
+        const snapshot = {
+          users: Array.from(this.continuousAcc?.values() ?? []),
+          afterCursor: this.continuousAfter,
+        };
+        this.continuousAcc = null;
+        this.continuousAfter = null;
+        return snapshot;
+      },
+    };
+  }
+
   /** Hashtag pagination via VERBATIM template capture + replay.
    *  1) listen for PolarisKeywordSearchExplorePageRelayPaginationQuery while
    *     the tag page loads/scrolls (the app's own feed request),
@@ -318,7 +384,11 @@ export class IgMediaClient {
   }
 
   private tagTemplate: { url: string; method: string; headers: Record<string, string>; body: string | null } | null = null;
-  private tagHandler: ((req: import("playwright").Request) => void) | null = null;
+    private tagHandler: ((req: import("playwright").Request) => void) | null = null;
+
+    private continuousHandler: ((resp: import("playwright").Response) => void) | null = null;
+    private continuousAcc: Map<string, IgMediaUser> | null = null;
+    private continuousAfter: string | null = null;
 
   private async pace(): Promise<void> {
     const now = Date.now();
