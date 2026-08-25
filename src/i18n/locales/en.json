@@ -1114,13 +1114,21 @@
     "rotationHint": "The system will auto-rotate between {{count}} sessions when Instagram blocks one.",
     "secondaryHint": "Click one or more sessions to enable auto-rotation. More sessions = higher coverage and better block protection.",
     "needMoreSessions": "You only have one session. Add 2-3 more Instagram sessions to improve coverage and avoid account blocks.",
-    "status": "Status",
+    "statusLabel": "Status",
     "statusRunning": "Running",
     "statusqueued": "Queued",
     "statuscompleted": "Completed",
     "statusfailed": "Failed",
     "statuscanceled": "Canceled",
     "statuspaused": "Paused",
+    "status": {
+      "running": "Running",
+      "queued": "Queued",
+      "completed": "Completed",
+      "failed": "Failed",
+      "canceled": "Canceled",
+      "paused": "Paused"
+    },
     "startedAt": "Started at",
     "running": {
       "title": "Extracting data",

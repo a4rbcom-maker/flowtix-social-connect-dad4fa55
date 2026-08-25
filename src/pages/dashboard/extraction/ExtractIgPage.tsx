@@ -355,7 +355,7 @@ export function ExtractIgPage() {
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <StatBox icon={Users} label={t("ig_extract.running.extracted")} value={extracted.toLocaleString()} />
-              <StatBox icon={Activity} label={t("ig_extract.status")} value={t(`ig_extract.status.${activeJob?.status ?? "running"}`)} />
+              <StatBox icon={Activity} label={t("ig_extract.statusLabel")} value={t(`ig_extract.status.${activeJob?.status ?? "running"}`)} />
               <StatBox icon={Clock} label={t("ig_extract.startedAt")} value={activeJob?.started_at ? new Date(activeJob.started_at).toLocaleTimeString() : "—"} />
               <StatBox icon={Zap} label={t("ig_extract.running.strategyRate")} value={ratePerMin !== null ? `${ratePerMin.toLocaleString()} / ${t("ig_extract.running.minute")}` : t("ig_extract.running.strategyNone")} />
               <StatBox icon={Globe} label={t("ig_extract.running.strategySessions")} value={activeSessions !== null ? String(activeSessions) : t("ig_extract.running.strategyNone")} />
