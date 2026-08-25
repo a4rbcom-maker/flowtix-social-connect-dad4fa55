@@ -102,7 +102,7 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
       collected.size < this.ctx.maxResults &&
       !this.shouldStop &&
       !(await this.checkCanceled()) &&
-      stale < 4
+      stale < 15
     ) {
       const before = collected.size;
       await this.page.mouse.wheel(0, 900);

@@ -69,21 +69,26 @@ function usersFromGraphqlBody(body: unknown): { users: IgMediaUser[]; after: str
   return { users: out, after };
 }
 
-/** Parse commenter authors from the rendered post DOM. */
+/** Parse commenter authors from the rendered post DOM. IG's modern layout
+ *  does NOT nest comments in `ul ul`; the commenter <a> links live directly
+ *  under the comment thread container. We scan every in-page profile link and
+ *  drop navigation links (explore/reels/tags/popular/accounts), keeping only
+ *  real @usernames. */
 async function usersFromPostDom(page: Page): Promise<IgMediaUser[]> {
   return page
     .evaluate(() => {
       const out: { username: string; fullName: string; avatar: string }[] = [];
       const seen = new Set<string>();
-      for (const a of document.querySelectorAll('ul ul a[href^="/"], article a[href^="/"]')) {
+      const NAV = new Set(["p", "reel", "reels", "explore", "tags", "accounts", "popular", "directory", "about", "locations", "hashtag"]);
+      for (const a of document.querySelectorAll('a[href^="/"]')) {
         const href = a.getAttribute("href") || "";
         const m = href.match(/^\/([a-zA-Z0-9._]{1,30})\/?$/);
-        if (!m || m[1] === "p" || m[1] === "reel" || m[1] === "explore") continue;
+        if (!m || NAV.has(m[1].toLowerCase())) continue;
         if (seen.has(m[1])) continue;
         seen.add(m[1]);
         const img = a.querySelector("img");
         let full = "";
-        const parent = a.closest("li") || a.parentElement;
+        const parent = a.closest("li") || a.closest("div[role='button']") || a.parentElement;
         if (parent) {
           for (const s of Array.from(parent.querySelectorAll("span"))) {
             const t = (s.textContent || "").trim();
