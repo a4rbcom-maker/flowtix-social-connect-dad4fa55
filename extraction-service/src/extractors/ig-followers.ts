@@ -666,8 +666,8 @@ export class IgFollowersExtractor extends IgBaseExtractor {
       for (let k = 0; k < slice.length; k++) {
         const r = results[k];
         if (!r) continue;
-        if (r.bio_phone) { slice[k].bio_phone = r.bio_phone; done++; withContact++; }
-        if (r.bio_email) { slice[k].bio_email = r.bio_email; done++; withContact++; }
+        if (r.bio_phone) { slice[k].bio_phone = r.bio_phone; withContact++; }
+        if (r.bio_email) { slice[k].bio_email = r.bio_email; withContact++; }
       }
       // Gentle pacing between batches to avoid IG rate/ID blocks.
       await this.page.waitForTimeout(800);
