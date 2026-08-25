@@ -500,6 +500,9 @@ export const enrichmentService = {
       await supabaseService.storeProgress(jobId, {
         ...currentProgress,
         phase: "enriching",
+        // Explicitly clear any stale enrichment object so the dashboard does not
+        // treat an empty {} as "data ready" while enrichment is in flight.
+        enrichment: null,
         last_update: new Date().toISOString(),
       });
     } catch (err) {

@@ -172,7 +172,15 @@ export function TasksPage() {
     const TypeIcon = getTypeIcon(job.type);
     const isActive = job.status === "running" || job.status === "queued";
     const isEnriching = job.progress?.phase === "enriching";
-    const datasetReady = !isActive && !isEnriching && !!job.progress?.enrichment;
+    const enrichment = job.progress?.enrichment;
+    // Keep the download button locked until enrichment has actually produced
+    // data — an empty object ({}) is truthy in JS, so a bare `!!enrichment`
+    // check wrongly enabled downloads on jobs that only wrote `enrichment: {}`.
+    const datasetReady =
+      !isActive &&
+      !isEnriching &&
+      !!enrichment &&
+      ((enrichment.enriched ?? 0) > 0 || (enrichment.coverage_percent ?? 0) > 0 || (enrichment.not_found ?? 0) > 0);
     const createdAt = job.created_at ? formatRelativeTime(new Date(job.created_at)) : "";
 
     return (
