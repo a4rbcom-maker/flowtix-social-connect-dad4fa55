@@ -5,7 +5,8 @@ import { config } from "../config.js";
 import { supabaseService } from "../services/supabase.js";
 import { cleanMemberName, parseGroupUsersFromGraphQL } from "../services/group-members-core.js";
 import { runGroupCascade, type GroupCascadeResult, type CascadeWorkerPage } from "../services/group-cascade-core.js";
-import { extractEngagers } from "../services/engager-extractor-v2.js";
+import { multiSessionGroupMembers, type GroupMemberUser } from "../services/group-members-core.js";
+import { extractEngagers, extractEngagersDeep } from "../services/engager-extractor-v2.js";
 import { SourceStats, decideNextSource, type SourceStopReason } from "../services/orchestrator-core.js";
 import { SessionHealthMonitor, type FailureInfo } from "../services/session-health.js";
 import type { AuthState, ExtractedMember, OrchestratorCheckpoint } from "../types.js";
@@ -14,7 +15,7 @@ import type { Page } from "playwright";
 const log = logger;
 
 type PageStopReason = "session_rate_limited" | "no_secondary_session" | "source_exhausted" | "max_results_reached";
-type PageSourceKey = "followers_list" | "posts_cascade";
+type PageSourceKey = "followers_list" | "posts_cascade" | "page_groups" | "followers_search";
 const PAGE_SOURCE_ORDER: readonly PageSourceKey[] = ["followers_list", "posts_cascade"];
 
 const AUTO_GEN = /^(Adventurous|Playful|Shiny|Brave|Clever|Happy|Jolly|Mysterious|Silly|Friendly)\w+\d+/i;
@@ -29,6 +30,49 @@ function validName(name: string): boolean {
  *  Facebook caps the /followers/ tab (~1-2K), but the cap binds scrolling,
  *  not the clock; idle/stall detectors handle a genuinely capped list. */
 const FOLLOWERS_PHASE_MAX_MS = 20 * 60_000;
+
+/** Page-extraction tuning: Facebook caps the inline followers tab at ~40 users
+ *  (proven live: the list hard-stops, GraphQL pagination returns HTTP 500).
+ *  To reach thousands we lean on the two surfaces that DO paginate deeply:
+ *    (3) the page's own post feed (posts_cascade) — reaches thousands, bound
+ *        only by GROUP_CASCADE_MAX_POSTS + time budget, and
+ *    (1) groups the page is linked to (page_groups) — same deep-pagination as
+ *        group members. Both are merged into a single follower-style export.
+ *  A single-letter search pass is added as a best-effort followers top-up. */
+const PAGE_CASCADE_MAX_POSTS = 8000;            // raised hard for pages: real limit is time + page's post count, not FB block
+const PAGE_GROUP_MEMBERS_TARGET = 100_000;     // deep-paginate linked groups
+const PAGE_FOLLOWERS_SEARCH_MIN = 60;           // if followers tab yields fewer, run search pass
+// How deeply we harvest reactors/commenters from each post's reaction dialog.
+// Raised from 8s → 20s so every post yields far more follower-style rows.
+const PAGE_CASCADE_REACTOR_SCROLL_S = 20;
+const PAGE_CASCADE_MAX_REACTIONS = 2000;
+const PAGE_CASCADE_MAX_COMMENTERS = 1500;
+const FOLLOWERS_SEARCH_TERMS = [
+  "ا", "ب", "ت", "ث", "ج", "ح", "خ", "د", "ر", "س", "ش", "ص", "ض", "ط", "ع", "غ", "ف", "ق", "ك", "ل", "م", "ن", "ه", "و", "ي",
+  "a", "b", "c", "d", "e", "m", "s", "o",
+];
+
+/** Discover groups linked to a page (about/groups tabs). Returns numeric ids. */
+async function discoverPageGroups(page: import("playwright").Page, pageUrl: string): Promise<string[]> {
+  const candidates = [`${pageUrl}/groups`, `${pageUrl}?sk=groups`, `${pageUrl}/about`];
+  const ids = new Set<string>();
+  for (const url of candidates) {
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+      await page.waitForTimeout(2000);
+    } catch { /* keep going */ }
+    const found: string[] = await page.evaluate(() => {
+      const out: string[] = [];
+      for (const a of Array.from(document.querySelectorAll("a[href]"))) {
+        const m = (a.getAttribute("href") ?? "").match(/facebook\.com\/groups\/(\d{8,})/);
+        if (m) out.push(m[1]);
+      }
+      return out;
+    });
+    for (const g of found) ids.add(g);
+  }
+  return [...ids];
+}
 
 /** Follows the same reserve policy as membersPhaseBudgetMs(). */
 function followersPhaseBudgetMs(remainingMs: number): number {
@@ -287,14 +331,14 @@ export class PageFollowersExtractor extends BaseExtractor {
           seenIds: seen,
           targetCount: Math.max(50, targetCount - total),
           maxDurationMs: Math.max(60_000, this.timeRemainingMs - 45_000),
-          maxPosts: config.groupCascadeMaxPosts,
+          maxPosts: PAGE_CASCADE_MAX_POSTS,
           maxDiscoveryMs: allPages.length >= (opts.latePages ? 3 : 2) ? 300_000 : 120_000,
           onSaturationHandoff: opts.onEarlyGiveUp,
           extractEngagers: (page, permalink) =>
-            extractEngagers(page, permalink, {
-              maxReactions: 1000,
-              maxCommenters: 500,
-              scrollDialogSeconds: 8,
+            extractEngagersDeep(page, permalink, {
+              maxReactions: PAGE_CASCADE_MAX_REACTIONS,
+              maxCommenters: PAGE_CASCADE_MAX_COMMENTERS,
+              scrollDialogSeconds: PAGE_CASCADE_REACTOR_SCROLL_S,
             }),
           onNewUsers: async (users) => {
             stats.addUsers("posts_cascade", users.length);
@@ -392,7 +436,91 @@ export class PageFollowersExtractor extends BaseExtractor {
       }
     }
 
-    const coreReason = cascade?.stoppedReason ?? followersResult?.stoppedReason ?? "";
+    // ── (1) Linked-page-groups deep pagination (conditional) ──────────────
+    // Facebook caps the inline followers tab, but groups paginate deeply. If the
+    // page is linked to any groups, harvest their members as follower-style
+    // rows. Skipped silently when no groups are discoverable (e.g. manfaz.alnasr).
+    const persistGroupUsers = (sourceKey: PageSourceKey) => async (users: GroupMemberUser[]): Promise<number> => {
+      const batch: ExtractedMember[] = [];
+      for (const u of users) {
+        if (validName(u.name) && cleanMemberName(u.name)) batch.push({ fb_id: u.fb_id, name: cleanMemberName(u.name) as string, profile_url: u.profile_url, type: "follower" });
+      }
+      if (batch.length === 0) return 0;
+      duplicatesSkipped += users.length - batch.length;
+      stats.addUsers(sourceKey, batch.length);
+      const persisted = await this.processBatch(batch, "follower");
+      total += persisted;
+      return persisted;
+    };
+    const persistPageGroups = persistGroupUsers("page_groups");
+    const persistSearch = persistGroupUsers("followers_search");
+    let pageGroupsResult: { persisted: number; stoppedReason: string } | null = null;
+    if (
+      !doneSources.has("page_groups") &&
+      total < targetCount &&
+      this.timeRemainingSec > 120 &&
+      !(await this.throttledCanceled())
+    ) {
+      const probePage = allPages[0].page;
+      log.info("PageFollowers", `discovering groups linked to page ${pid}…`);
+      const groupIds = await discoverPageGroups(probePage, pageUrl).catch(() => [] as string[]);
+      if (groupIds.length > 0) {
+        log.info("PageFollowers", `found ${groupIds.length} linked group(s): ${groupIds.join(", ")} — harvesting members`);
+        stats.start("page_groups");
+        try {
+          const sharedPageGroups: GroupMemberUser[] = [];
+          for (const gid of groupIds) {
+            if (await this.throttledCanceled()) break;
+            await multiSessionGroupMembers(
+              allPages,
+              `https://www.facebook.com/groups/${gid}/members`,
+              sharedPageGroups,
+              seen,
+            );
+            await persistPageGroups(sharedPageGroups);
+          }
+          stats.finish("page_groups", "saturated");
+          await persistCheckpointAfterPhase("page_groups");
+          pageGroupsResult = { persisted: sharedPageGroups.length, stoppedReason: "saturated" };
+        } catch (err) {
+          errorsCount++;
+          stats.finish("page_groups", "stagnated");
+          await persistCheckpointAfterPhase("page_groups");
+          log.warn("PageFollowers", `page-groups harvest failed: ${String(err).substring(0, 120)}`);
+        }
+      } else {
+        log.info("PageFollowers", `no linked groups discovered — skipping page_groups phase`);
+        doneSources.add("page_groups");
+      }
+    }
+
+    // ── followers search top-up (best-effort) ─────────────────────────────
+    // When the inline tab barely yielded (Facebook cap), a single-letter search
+    // pass recovers a few dozen more follower ids. Never blocks the run.
+    if (
+      shared.length < PAGE_FOLLOWERS_SEARCH_MIN &&
+      this.timeRemainingSec > 90 &&
+      !(await this.throttledCanceled())
+    ) {
+      log.info("PageFollowers", `followers tab yielded ${shared.length} (<${PAGE_FOLLOWERS_SEARCH_MIN}) — running single-letter search top-up`);
+      const searchUsers: GroupMemberUser[] = [];
+      for (const term of FOLLOWERS_SEARCH_TERMS) {
+        if (await this.throttledCanceled()) break;
+        await multiSessionGroupMembers(
+          allPages,
+          `${pageUrl}/followers/?search=${encodeURIComponent(term)}`,
+          searchUsers,
+          seen,
+        ).catch(() => null);
+        if (searchUsers.length >= PAGE_FOLLOWERS_SEARCH_MIN * 3) break;
+      }
+      if (searchUsers.length > 0) {
+        await persistSearch(searchUsers);
+      }
+      log.info("PageFollowers", `search top-up recovered ${searchUsers.length} additional follower ids`);
+    }
+
+    const coreReason = cascade?.stoppedReason ?? followersResult?.stoppedReason ?? pageGroupsResult?.stoppedReason ?? "";
     this.lastStopReason = this.mapStopReason(coreReason, total);
     await storeRich({ discovered: total, phase: "completed", source: cascade ? "posts_cascade" : "followers_list", stopReason: this.lastStopReason, immediate: true });
     log.info("PageFollowers", `extraction finished: total=${total}, coverage=${this.computeCoverage(total)}%, stopReason=${this.lastStopReason ?? "null"}${cascade ? `, cascadePosts=${cascade.postsProcessed}/${cascade.postsDiscovered} (+${cascade.extracted})` : ""}${followersResult ? `, followersReason=${followersResult.stoppedReason}` : ""}`);
