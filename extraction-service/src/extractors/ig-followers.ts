@@ -101,6 +101,7 @@ export class IgFollowersExtractor extends IgBaseExtractor {
     // automatically on any failure (resolve, block, parse).
     const apiDone = await this.tryApiExtraction(engine, username, collected, resumeFromUser);
     if (apiDone !== null) {
+      await this.scrapeBios(collected);
       await this.flushRemaining(collected);
       const totalUnique = this.previouslyStored() + collected.size;
       const coverage = this.computeCoverage(totalUnique, this.totalCount);
@@ -214,6 +215,7 @@ export class IgFollowersExtractor extends IgBaseExtractor {
       }
     }
 
+    await this.scrapeBios(collected);
     await this.flushRemaining(collected);
     const totalUnique = this.previouslyStored() + collected.size;
     const coverage = this.computeCoverage(totalUnique, this.totalCount);
@@ -613,6 +615,64 @@ export class IgFollowersExtractor extends IgBaseExtractor {
         return results;
       })
       .catch(() => [] as IgUserRow[]);
+  }
+
+  /** Scrape public bio (phone/email) for each collected user by fetching the
+   *  profile HTML through the logged-in session. Runs in bounded parallel
+   *  batches after extraction completes so it never slows the scroll loop.
+   *  The enrichment service then matches these contacts against the data DBs.
+   *  Users without a phone/email in their bio are left untouched (no error). */
+  private async scrapeBios(collected: Map<string, ExtractedMember>): Promise<void> {
+    const all = Array.from(collected.values());
+    if (all.length === 0) return;
+    const BATCH = 5;
+    let withContact = 0;
+    log.info("IgFollowers", `scraping bios for ${all.length} users (batch=${BATCH} parallel)`);
+
+    for (let i = 0; i < all.length; i += BATCH) {
+      const slice = all.slice(i, i + BATCH);
+      const results = await Promise.all(
+        slice.map((m) =>
+          this.page
+            .evaluate(async (user: string | undefined) => {
+              if (!user) return null;
+              try {
+                const r = await fetch(`https://www.instagram.com/${user}/`, { credentials: "include" });
+                if (!r.ok) return null;
+                return await r.text();
+              } catch {
+                return null;
+              }
+            }, m.username)
+            .then((html: string | null) => {
+              if (!html) return null;
+              const bioMatch = html.match(/"biography":"([^"]*)"/);
+              const bio = bioMatch ? bioMatch[1].replace(/\\u[\dA-Fa-f]{4}/g, (s) => {
+                try { return JSON.parse('"' + s + '"'); } catch { return ""; }
+              }) : "";
+              const phone = bio.match(/(?:\+?\d[\d\s().-]{7,}\d)/);
+              const email = bio.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+              // Some accounts expose a public contact field directly.
+              const pubPhone = html.match(/"public_phone_number":"([^"]*)"/);
+              const pubEmail = html.match(/"public_email":"([^"]*)"/);
+              return {
+                bio_phone: (phone?.[0] || pubPhone?.[1] || "").replace(/[\s().-]/g, "").slice(0, 20) || null,
+                bio_email: (email?.[0] || pubEmail?.[1] || "").toLowerCase().slice(0, 120) || null,
+              };
+            })
+            .catch(() => null),
+        ),
+      );
+      for (let k = 0; k < slice.length; k++) {
+        const r = results[k];
+        if (!r) continue;
+        if (r.bio_phone) { slice[k].bio_phone = r.bio_phone; done++; withContact++; }
+        if (r.bio_email) { slice[k].bio_email = r.bio_email; done++; withContact++; }
+      }
+      // Gentle pacing between batches to avoid IG rate/ID blocks.
+      await this.page.waitForTimeout(800);
+    }
+    log.info("IgFollowers", `bio scrape complete: ${withContact} users with contact info (out of ${all.length})`);
   }
 
   private async flushIfNeeded(collected: Map<string, ExtractedMember>): Promise<void> {
