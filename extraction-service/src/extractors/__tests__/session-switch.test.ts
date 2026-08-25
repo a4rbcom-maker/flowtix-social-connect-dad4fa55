@@ -1,13 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BaseExtractor } from "../base.js";
-import type { Page, JobContext } from "../../types.js";
+import type { Page } from "playwright";
+import type { JobContext } from "../../types.js";
 
 // Minimal Page stub — only what switchToNextSession touches.
-function fakePage(closed: boolean, id: string): Page {
+function fakePage(closed: boolean): Page {
   return {
     isClosed: () => closed,
-    // the rest are unused by switchToNextSession
   } as unknown as Page;
 }
 
@@ -18,6 +18,9 @@ class SwitchHarness extends BaseExtractor {
     secondaries: Array<{ sessionId: string; page: Page }>,
   ) {
     super(primary, ctx, secondaries);
+  }
+  async extract() {
+    return { extracted: 0, done: true, authState: "authenticated" as const };
   }
   async testSwitch(): Promise<boolean> {
     return this.switchToNextSession();
@@ -30,7 +33,7 @@ class SwitchHarness extends BaseExtractor {
 const baseCtx = (sessionId: string): JobContext =>
   ({
     jobId: "test-job",
-    workspaceId: null,
+    workspaceId: "",
     userId: "u",
     sessionId,
     type: "post_reactions" as any,
@@ -41,25 +44,23 @@ const baseCtx = (sessionId: string): JobContext =>
   }) as JobContext;
 
 test("switchToNextSession skips a DEAD secondary and lands on a live one", async () => {
-  const primary = fakePage(false, "primary");
-  const dead = fakePage(true, "dead-sec");
-  const live = fakePage(false, "live-sec");
+  const primary = fakePage(false);
+  const dead = fakePage(true);
+  const live = fakePage(false);
   const h = new SwitchHarness(primary, baseCtx("primary"), [
     { sessionId: "dead-sec", page: dead },
-    { sessionId: "live-sec", id: "live-sec" } as any,
+    { sessionId: "live-sec", page: live },
   ]);
-  // replace second entry page with the live one
-  (h as any).secondarySessionPages[1].page = live;
 
-  const switched = await (h as any).testSwitch();
+  const switched = await h.testSwitch();
   assert.equal(switched, true);
-  assert.equal((h as any).activeSession, "live-sec");
+  assert.equal(h.activeSession, "live-sec");
 });
 
 test("switchToNextSession returns to PRIMARY when all secondaries are closed", async () => {
-  const primary = fakePage(false, "primary");
-  const dead1 = fakePage(true, "d1");
-  const dead2 = fakePage(true, "d2");
+  const primary = fakePage(false);
+  const dead1 = fakePage(true);
+  const dead2 = fakePage(true);
   const h = new SwitchHarness(primary, baseCtx("primary"), [
     { sessionId: "d1", page: dead1 },
     { sessionId: "d2", page: dead2 },
@@ -68,24 +69,24 @@ test("switchToNextSession returns to PRIMARY when all secondaries are closed", a
   (h as any).activeSessionIndex = 1;
   (h as any).ctx.sessionId = "d1";
 
-  const switched = await (h as any).testSwitch();
+  const switched = await h.testSwitch();
   assert.equal(switched, true);
-  assert.equal((h as any).activeSession, "primary");
+  assert.equal(h.activeSession, "primary");
 });
 
 test("switchToNextSession returns false when EVERYTHING is closed", async () => {
-  const deadPrimary = fakePage(true, "primary");
-  const deadSec = fakePage(true, "d1");
+  const deadPrimary = fakePage(true);
+  const deadSec = fakePage(true);
   const h = new SwitchHarness(deadPrimary, baseCtx("d1"), [
     { sessionId: "d1", page: deadSec },
   ]);
-  const switched = await (h as any).testSwitch();
+  const switched = await h.testSwitch();
   assert.equal(switched, false);
 });
 
 test("switchToNextSession returns false when there are no secondaries", async () => {
-  const primary = fakePage(false, "primary");
+  const primary = fakePage(false);
   const h = new SwitchHarness(primary, baseCtx("primary"), []);
-  const switched = await (h as any).testSwitch();
+  const switched = await h.testSwitch();
   assert.equal(switched, false);
 });
