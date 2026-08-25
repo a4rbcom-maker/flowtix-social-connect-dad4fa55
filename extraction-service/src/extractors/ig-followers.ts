@@ -357,8 +357,39 @@ export class IgFollowersExtractor extends IgBaseExtractor {
     await this.flushIfNeeded(collected);
     await engine.heartbeat();
     if (!maxId) {
-      log.info("IgFollowers", `api path: list exhausted on first page`);
-      return true;
+      // Instagram sometimes omits next_max_id on the dialog's very first
+      // response even when more users exist. Probe one real API page before
+      // declaring exhaustion — otherwise we stop at ~43 of potentially millions.
+      log.info("IgFollowers", `api path: first dialog response had no cursor — probing one API page to confirm`);
+      const probe = await client.fetchPage(this.page, cap.userId, this.tab, null);
+      if (!probe || probe.users.length === 0) {
+        log.info("IgFollowers", `api path: list genuinely exhausted on first page`);
+        return true;
+      }
+      // Fold the probed page in and continue the normal pagination loop.
+      for (const u of probe.users) {
+        if (u.username && !collected.has(u.username)) {
+          collected.set(u.username, {
+            fb_id: u.username, username: u.username,
+            name: u.fullName || u.username, full_name: u.fullName || u.username,
+            profile_url: `https://www.instagram.com/${u.username}/`,
+            avatar_url: u.avatar || undefined, type: this.ctx.type,
+          });
+        }
+      }
+      engine.addResults(probe.users.length);
+      if (!probe.nextMaxId) {
+        const total = this.previouslyStored() + collected.size;
+        if (total < 100) {
+          log.warn("IgFollowers", `api path: probed page had no cursor and only ${total} harvested (<100) — IG likely blocking API pagination, falling back to DOM scrolling`);
+          return null;
+        }
+        log.info("IgFollowers", `api path: probed page had no cursor — list exhausted`);
+        await this.flushIfNeeded(collected);
+        return true;
+      }
+      maxId = probe.nextMaxId;
+      log.info("IgFollowers", `api path: probe confirmed more users (cursor=${maxId ? "yes" : "no"}), continuing`);
     }
 
     while (this.previouslyStored() + collected.size < this.ctx.maxResults && !this.shouldStop) {
@@ -408,6 +439,14 @@ export class IgFollowersExtractor extends IgBaseExtractor {
       await engine.heartbeat();
 
       if (!page.nextMaxId) {
+        const total = this.previouslyStored() + collected.size;
+        // If the API yielded only a tiny fraction of the account's followers,
+        // Instagram is blocking pagination (no next_max_id despite more users).
+        // Fall through to DOM scrolling instead of declaring success at ~40.
+        if (total < 100) {
+          log.warn("IgFollowers", `api path: no next_max_id but only ${total} harvested (<100) — IG likely blocking API pagination, falling back to DOM scrolling`);
+          return null;
+        }
         log.info("IgFollowers", `api path: no next_max_id — list exhausted`);
         return true;
       }
