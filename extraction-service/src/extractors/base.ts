@@ -661,9 +661,12 @@ export abstract class BaseExtractor {
     let results = members.map((m) => ({ ...m, type: typeOverride }));
     if (this.ctx.skipDuplicates) {
       if (platform === "instagram") {
-        // Live scope: user_id + platform (workspace_id is dead since 2026072716).
-        const existing = await supabaseService.getExistingIgIds(this.ctx.userId ?? "", results.map((m) => m.fb_id));
-        results = results.filter((m) => !existing.has(m.fb_id));
+        // IG: rely on in-memory dedup in `add()` (e.g. ig-post-users.ts).
+        // Previously this queried every existing IG result for the user
+        // across all jobs, which prevented re-extracting the same
+        // post multiple times. The new behavior: duplicates are only
+        // removed WITHIN the current job, so re-running the same post
+        // gives a fresh count instead of always returning 0-3.
       } else {
         const existing = await supabaseService.getExistingIds(this.ctx.workspaceId, results.map((m) => m.fb_id));
         results = results.filter((m) => !existing.has(m.fb_id));
