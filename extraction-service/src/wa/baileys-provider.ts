@@ -124,17 +124,25 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
         await persistSessionInDB(sessionId, jid, pushName);
       }
       if (connection === "close") {
-        const code = (lastDisconnect?.error as Boom)?.output?.statusCode;
-        const shouldReconnect = code !== DisconnectReason.loggedOut;
+        const reason = (lastDisconnect?.error as Boom)?.output?.statusCode;
+        const loggedOut = reason === DisconnectReason.loggedOut;
         sockets.delete(sessionId);
         qrCache.delete(sessionId);
-        onClose(`closed (${code ?? "unknown"})`);
-        if (shouldReconnect) {
-          await transitionStatus(sessionId, "reconnecting", `disconnect ${code}`);
-          setTimeout(() => baileysProvider.start(sessionId, workspaceId, onQR, onReady, onMessage, onClose), 5000);
-        } else {
+        onClose(`closed (${reason ?? "unknown"})`);
+        if (loggedOut) {
           await transitionStatus(sessionId, "disconnected", "logged out");
           await fs.rm(authPathFor(sessionId), { recursive: true, force: true }).catch(() => {});
+          return;
+        }
+        // Only auto-reconnect if the session is still meant to be connected.
+        // If the user manually disconnected/paused/expired/errored it, do NOT
+        // re-open the socket — otherwise inbound messages keep arriving.
+        const { data: cur } = await supabaseClient
+          .from("wa_sessions").select("status").eq("id", sessionId).maybeSingle();
+        const shouldAutoReconnect = cur && (cur.status === "connected" || cur.status === "reconnecting");
+        if (shouldAutoReconnect) {
+          await transitionStatus(sessionId, "reconnecting", `disconnect ${reason}`);
+          setTimeout(() => baileysProvider.start(sessionId, workspaceId, onQR, onReady, onMessage, onClose), 5000);
         }
       }
     });

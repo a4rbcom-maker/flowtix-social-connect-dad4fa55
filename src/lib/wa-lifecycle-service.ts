@@ -1,4 +1,4 @@
-import { waSessionsRepository, WaSessionTransitionError, WaSessionValidationError } from "@/lib/wa-sessions";
+import { waSessionsRepository, stopWaSocket, WaSessionTransitionError, WaSessionValidationError } from "@/lib/wa-sessions";
 import type { WaSession, TransitionResult, WaSessionStatus } from "@/types/wa.types";
 import { isValidTransition, getAvailableTransitions } from "@/types/wa.types";
 
@@ -48,7 +48,10 @@ export const waLifecycleService = {
 
   async disconnect(sessionId: string, reason?: string): Promise<TransitionResult> {
     const result = await waSessionsRepository.transitionStatus(sessionId, "disconnected", reason ?? "Manual disconnect");
-    if (result.success) await waSessionsRepository.logActivity(sessionId, "disconnected", reason ?? "Session disconnected");
+    if (result.success) {
+      await waSessionsRepository.logActivity(sessionId, "disconnected", reason ?? "Session disconnected");
+      await stopWaSocket(sessionId);
+    }
     return result;
   },
 
@@ -66,7 +69,10 @@ export const waLifecycleService = {
 
   async markExpired(sessionId: string, reason?: string): Promise<TransitionResult> {
     const result = await waSessionsRepository.transitionStatus(sessionId, "expired", reason ?? "Session expired");
-    if (result.success) await waSessionsRepository.logActivity(sessionId, "expired", reason ?? "Session expired");
+    if (result.success) {
+      await waSessionsRepository.logActivity(sessionId, "expired", reason ?? "Session expired");
+      await stopWaSocket(sessionId);
+    }
     return result;
   },
 

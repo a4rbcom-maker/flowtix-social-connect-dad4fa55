@@ -64,6 +64,21 @@ router.get("/wa/:sessionId/status", async (req, res) => {
   res.json({ session_id: req.params.sessionId, status, push_name: data?.push_name, phone: data?.phone_number });
 });
 
+router.post("/wa/:sessionId/stop", async (req, res) => {
+  try {
+    const { data, error } = await supabaseClient
+      .from("wa_sessions")
+      .select("id")
+      .eq("id", req.params.sessionId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: { code: "SESSION_NOT_FOUND", message: "WhatsApp session not found" } });
+    await waManager.stop(req.params.sessionId);
+    res.json({ session_id: req.params.sessionId, status: "stopped" });
+  } catch (e) { log.error("WARoute", `stop: ${String(e)}`); res.status(500).json({ error: { code: "UNKNOWN_ERROR", message: String(e) } }); }
+});
+
 const sendSchema = z.object({ session_id: z.string().min(1), to: z.string().min(1), payload: z.object({ type: z.string(), text: z.string().optional(), mediaUrl: z.string().optional(), caption: z.string().optional(), mimeType: z.string().optional(), fileName: z.string().optional() }) });
 router.post("/wa/send", async (req, res) => {
   const parsed = sendSchema.safeParse(req.body);

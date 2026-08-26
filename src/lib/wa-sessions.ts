@@ -14,6 +14,22 @@ export type {
   WaSessionWithStats, WaSessionStats, TransitionResult,
 };
 
+// Tell the extraction service to tear down the live Baileys socket so no more
+// inbound messages arrive. The frontend can show the UI as disconnected
+// immediately; this is best-effort and does not block the status transition.
+export async function stopWaSocket(sessionId: string): Promise<void> {
+  const url = import.meta.env.VITE_EXTRACTION_API_URL || "http://localhost:3100";
+  const key = import.meta.env.VITE_EXTRACTION_API_KEY || "local-dev-key-change-in-production";
+  try {
+    await fetch(`${url}/wa/${sessionId}/stop`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": key },
+    });
+  } catch {
+    // backend unreachable — the DB status transition still reflects disconnect
+  }
+}
+
 export class WaSessionValidationError extends Error {
   code: string;
   constructor(message: string, code = "VALIDATION_ERROR") {
