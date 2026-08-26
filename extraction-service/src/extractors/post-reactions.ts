@@ -136,7 +136,10 @@ export class PostReactionsExtractor extends BaseExtractor {
             const switched = await this.switchToNextSession();
             if (switched) {
               log.info("PostReactions", `switched session after 3 empty scrolls, reloading post and reopening dialog (session #${this.activeSessionIndex + 1}/${this.totalSessions})`);
-              consecutiveEmpty = 0;
+              // Do NOT reset consecutiveEmpty on switch: with 2+ live sessions the
+              // round-robin switch always returns true, so a reset would let a
+              // zero-yield scroll loop forever until the job watchdog. Keep counting
+              // so the consecutiveEmpty>=15 stop terminates a useless source.
               scrollAttempts = 0;
               try {
                 await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
