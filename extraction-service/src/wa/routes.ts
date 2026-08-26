@@ -65,18 +65,29 @@ router.get("/wa/:sessionId/status", async (req, res) => {
 });
 
 router.post("/wa/:sessionId/stop", async (req, res) => {
+  const sessionId = req.params.sessionId;
   try {
+    // Verify the session belongs to a real row (best-effort; a missing row is
+    // not fatal — we still want to tear down any live socket).
     const { data, error } = await supabaseClient
       .from("wa_sessions")
       .select("id")
-      .eq("id", req.params.sessionId)
+      .eq("id", sessionId)
       .is("deleted_at", null)
       .maybeSingle();
-    if (error) throw error;
-    if (!data) return res.status(404).json({ error: { code: "SESSION_NOT_FOUND", message: "WhatsApp session not found" } });
-    await waManager.stop(req.params.sessionId);
-    res.json({ session_id: req.params.sessionId, status: "stopped" });
-  } catch (e) { log.error("WARoute", `stop: ${String(e)}`); res.status(500).json({ error: { code: "UNKNOWN_ERROR", message: String(e) } }); }
+    if (error) log.warn("WARoute", `stop lookup warning: ${error.message}`);
+    if (!data) {
+      // No DB row — but still attempt to stop a possibly-live socket.
+      await waManager.stop(sessionId);
+      return res.status(404).json({ error: { code: "SESSION_NOT_FOUND", message: "WhatsApp session not found" } });
+    }
+    await waManager.stop(sessionId);
+    res.json({ session_id: sessionId, status: "stopped" });
+  } catch (e) {
+    const detail = e instanceof Error ? `${e.message} | ${e.stack}` : JSON.stringify(e);
+    log.error("WARoute", `stop failed: ${detail}`);
+    res.status(500).json({ error: { code: "UNKNOWN_ERROR", message: e instanceof Error ? e.message : "unknown" } });
+  }
 });
 
 const sendSchema = z.object({ session_id: z.string().min(1), to: z.string().min(1), payload: z.object({ type: z.string(), text: z.string().optional(), mediaUrl: z.string().optional(), caption: z.string().optional(), mimeType: z.string().optional(), fileName: z.string().optional() }) });
