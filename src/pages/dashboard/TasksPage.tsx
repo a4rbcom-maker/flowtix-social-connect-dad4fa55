@@ -144,6 +144,14 @@ export function TasksPage() {
     });
   }
 
+  function handleExport(jobId: string, format: ExportFormat) {
+    setExportingJob(jobId);
+    exportMutation.mutate({ jobId, format }, {
+      onSuccess: () => { setExportingJob(null); toast({ type: "success", title: t("extract.exportStarted") }); },
+      onError: (err) => { setExportingJob(null); toast({ type: "error", title: t("extract.exportFailed"), description: err.message }); },
+    });
+  }
+
   async function handleExportBoth(jobId: string) {
     setExportingJob(jobId);
     try {
