@@ -156,7 +156,7 @@ export class IgFollowersExtractor extends IgBaseExtractor {
     collected: Map<string, ExtractedMember>,
     stopReason: IgStopReason,
   ): Promise<{ extracted: number; nextCursor?: string; done: boolean; authState: AuthState }> {
-    await this.scrapeBios(collected);
+    await this.scrapeBios(collected, { throttled: stopReason === "all_sessions_stagnant" || stopReason === "platform_limit" });
     await this.flushRemaining(collected);
     const totalUnique = this.previouslyStored() + collected.size;
     const gate = evaluateCoverageGate({ stored: totalUnique, total: this.totalCount });
@@ -795,28 +795,63 @@ export class IgFollowersExtractor extends IgBaseExtractor {
 
   /** Scrape public bio (phone/email) for each collected user by fetching the
    *  profile HTML through the logged-in session. Runs in bounded parallel
-   *  batches after extraction completes so it never slows the scroll loop. */
-  private async scrapeBios(collected: Map<string, ExtractedMember>): Promise<void> {
+   *  batches after extraction completes so it never slows the scroll loop.
+   *
+   *  Hardened (2026-08-27 production freeze, job a84dd160: 49 min silent hang
+   *  at 9,509 → watchdog kill):
+   *  - per-call 12s abort timeout — a hung TLS fetch can no longer wedge the
+   *    whole job (AbortController closes the socket for real, not just a
+   *    Promise.race over a dangling request);
+   *  - wall-clock budget (2 min) + shouldStop respect — bios are a bonus, they
+   *    must never delay completion, and they are SKIPPED entirely when the run
+   *    stopped because IG throttled us (inviting more throttling is pointless);
+   *  - per-batch log + progress heartbeat ("bio_enrich") so the dashboard
+   *    shows live "1200/9527" instead of a frozen counter. */
+  private async scrapeBios(
+    collected: Map<string, ExtractedMember>,
+    opts: { throttled?: boolean } = {},
+  ): Promise<void> {
     const all = Array.from(collected.values());
     if (all.length === 0) return;
     const BATCH = 5;
+    const PER_CALL_TIMEOUT_MS = 12_000;
+    // Bios are a bonus: cap the whole phase at 2 minutes of wall clock.
+    const PHASE_BUDGET_MS = 120_000;
+    const phaseDeadline = Date.now() + PHASE_BUDGET_MS;
+
+    if (opts.throttled || this.shouldStop) {
+      log.info("IgFollowers", `bio scrape skipped (${opts.throttled ? "platform throttled — avoid more requests" : "time budget exhausted"}) for ${all.length} users`);
+      await this.updateIgProgress({ phase: "completed" });
+      return;
+    }
+
     let withContact = 0;
-    log.info("IgFollowers", `scraping bios for ${all.length} users (batch=${BATCH} parallel)`);
+    let aborted = 0;
+    log.info("IgFollowers", `scraping bios for ${all.length} users (batch=${BATCH} parallel, timeout=${PER_CALL_TIMEOUT_MS / 1000}s, budget=${PHASE_BUDGET_MS / 1000}s)`);
 
     for (let i = 0; i < all.length; i += BATCH) {
       if (await this.checkCanceled()) break;
+      if (Date.now() >= phaseDeadline || this.shouldStop) {
+        log.warn("IgFollowers", `bio scrape: time budget reached at ${i}/${all.length} — finishing without remaining bios`);
+        await this.updateIgProgress({ phase: "completed" });
+        break;
+      }
       const slice = all.slice(i, i + BATCH);
       const results = await Promise.all(
         slice.map((m) =>
           this.page
             .evaluate(async (user: string | undefined) => {
               if (!user) return null;
+              const ac = new AbortController();
+              const timer = setTimeout(() => ac.abort(), 12_000);
               try {
-                const r = await fetch(`https://www.instagram.com/${user}/`, { credentials: "include" });
+                const r = await fetch(`https://www.instagram.com/${user}/`, { credentials: "include", signal: ac.signal });
                 if (!r.ok) return null;
                 return await r.text();
               } catch {
                 return null;
+              } finally {
+                clearTimeout(timer);
               }
             }, m.username)
             .then((html: string | null) => {
@@ -840,14 +875,24 @@ export class IgFollowersExtractor extends IgBaseExtractor {
       );
       for (let k = 0; k < slice.length; k++) {
         const r = results[k];
-        if (!r) continue;
+        if (!r) { aborted++; continue; }
         if (r.bio_phone) { slice[k].bio_phone = r.bio_phone; withContact++; }
         if (r.bio_email) { slice[k].bio_email = r.bio_email; withContact++; }
+      }
+      // Heartbeat every batch: dashboard shows live counts instead of freezing.
+      await this.updateIgProgress({
+        phase: "extracting",
+        extracted: this.previouslyStored() + collected.size,
+        total: this.totalCount,
+        bio_enrich: { done: Math.min(i + BATCH, all.length), total: all.length },
+      });
+      if ((i / BATCH) % 20 === 19) {
+        log.info("IgFollowers", `bio scrape: ${Math.min(i + BATCH, all.length)}/${all.length} done, ${withContact} contacts so far`);
       }
       // Gentle pacing between batches to avoid IG rate/ID blocks.
       await this.page.waitForTimeout(800);
     }
-    log.info("IgFollowers", `bio scrape complete: ${withContact} users with contact info (out of ${all.length})`);
+    log.info("IgFollowers", `bio scrape complete: ${withContact} users with contact info (out of ${all.length}, ${aborted} empty/aborted)`);
   }
 
   private async flushIfNeeded(collected: Map<string, ExtractedMember>): Promise<void> {
