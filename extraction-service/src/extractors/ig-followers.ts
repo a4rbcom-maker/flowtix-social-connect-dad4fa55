@@ -52,6 +52,9 @@ const CAPTURE_WAIT_MS = 8_000;
  *  "exhausted" claim. IG soft-blocks look exactly like missing cursors. */
 const CURSOR_PROBE_ATTEMPTS = 3;
 const CURSOR_PROBE_GAP_MS = 5_000;
+/** Below this many harvested users, a missing next_max_id is a BLOCK signal,
+ *  not exhaustion — fall through to DOM instead of pausing at <1% coverage. */
+const API_MIN_HARVEST_FOR_EXHAUSTED_CLAIM = 100;
 /** DOM patience: two full empty-scroll cycles with recovery between them,
  *  replacing the old single 6-empty-scroll give-up that ended jobs in <60s. */
 const EMPTY_SCROLLS_PER_CYCLE = 6;
@@ -418,7 +421,15 @@ export class IgFollowersExtractor extends IgBaseExtractor {
       await this.flushIfNeeded(collected);
       await engine.heartbeat();
       if (!probedNext) {
-        log.info("IgFollowers", `api path: probe produced rows but still no cursor — list exhausted (single page available)`);
+        // Tiny harvest + no cursor = API pagination BLOCKED, not exhausted
+        // (the exact production failure signature). DOM scrolling gets more;
+        // genuine single-page lists are tiny accounts where DOM also ends fast.
+        const harvested = this.previouslyStored() + collected.size;
+        if (harvested < API_MIN_HARVEST_FOR_EXHAUSTED_CLAIM) {
+          log.warn("IgFollowers", `api path: probe rows but no cursor and only ${harvested} harvested (<${API_MIN_HARVEST_FOR_EXHAUSTED_CLAIM}) — falling back to DOM scrolling`);
+          return null;
+        }
+        log.info("IgFollowers", `api path: probe produced rows but still no cursor — list exhausted (${harvested})`);
         return "api_list_exhausted";
       }
       maxId = probedNext;
@@ -456,7 +467,16 @@ export class IgFollowersExtractor extends IgBaseExtractor {
       await engine.heartbeat();
 
       if (!page.nextMaxId) {
-        log.info("IgFollowers", `api path: no next_max_id — list exhausted`);
+        const harvested = this.previouslyStored() + collected.size;
+        if (harvested < API_MIN_HARVEST_FOR_EXHAUSTED_CLAIM) {
+          // IG rate/ID-blocks the API mid-pagination: fetchPage returns ~25-50
+          // users with next_max_id=null. Treat as "blocked", NOT exhausted —
+          // fall through to DOM scrolling on the same session instead of
+          // pausing the job at <1% coverage (the reported production failure).
+          log.warn("IgFollowers", `api path: no next_max_id but only ${harvested} harvested (<${API_MIN_HARVEST_FOR_EXHAUSTED_CLAIM}) — IG likely blocking API pagination, falling back to DOM scrolling`);
+          return null;
+        }
+        log.info("IgFollowers", `api path: no next_max_id — list exhausted (${harvested})`);
         this.lastApiMaxId = null; // exhausted lists have nothing to resume into
         return "api_list_exhausted";
       }
