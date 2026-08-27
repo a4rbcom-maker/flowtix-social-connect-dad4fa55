@@ -144,12 +144,17 @@ export function TasksPage() {
     });
   }
 
-  function handleExport(jobId: string, format: ExportFormat) {
+  async function handleExportBoth(jobId: string) {
     setExportingJob(jobId);
-    exportMutation.mutate({ jobId, format }, {
-      onSuccess: () => { setExportingJob(null); toast({ type: "success", title: t("extract.exportStarted") }); },
-      onError: (err) => { setExportingJob(null); toast({ type: "error", title: t("extract.exportFailed"), description: err.message }); },
-    });
+    try {
+      await exportMutation.mutateAsync({ jobId, format: "csv" });
+      await exportMutation.mutateAsync({ jobId, format: "xlsx" });
+      toast({ type: "success", title: t("extract.exportStarted") });
+    } catch (err) {
+      toast({ type: "error", title: t("extract.exportFailed"), description: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setExportingJob(null);
+    }
   }
 
   function handleDelete(jobId: string) {
@@ -296,11 +301,8 @@ export function TasksPage() {
           )}
           {canDownload && !isEnriching && (
             <>
-              <Button variant="primary" size="sm" onClick={() => handleExport(job.id, "csv")} disabled={exportMutation.isPending}>
-                {exportingJob === job.id ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}CSV
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => handleExport(job.id, "xlsx")} disabled={exportMutation.isPending}>
-                <Download className="size-3.5" />Excel
+              <Button variant="primary" size="sm" onClick={() => handleExportBoth(job.id)} disabled={exportMutation.isPending}>
+                {exportingJob === job.id ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}CSV + Excel
               </Button>
               <Button variant="secondary" size="sm" onClick={() => handleExport(job.id, "json")} disabled={exportMutation.isPending}>
                 <Download className="size-3.5" />JSON
