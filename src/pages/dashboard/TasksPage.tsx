@@ -172,15 +172,18 @@ export function TasksPage() {
     const TypeIcon = getTypeIcon(job.type);
     const isActive = job.status === "running" || job.status === "queued";
     const isEnriching = job.progress?.phase === "enriching";
-    const enrichment = job.progress?.enrichment;
-    // Keep the download button locked until enrichment has actually produced
-    // data — an empty object ({}) is truthy in JS, so a bare `!!enrichment`
-    // check wrongly enabled downloads on jobs that only wrote `enrichment: {}`.
-    const datasetReady =
-      !isActive &&
-      !isEnriching &&
-      !!enrichment &&
-      ((enrichment.enriched ?? 0) > 0 || (enrichment.coverage_percent ?? 0) > 0 || (enrichment.not_found ?? 0) > 0);
+    // Live progress (running/paused extraction jobs): shows a real progress bar
+    // with counts + coverage so an active job never looks "stuck".
+    const pExtracted = Number(job.progress?.extracted ?? 0) || 0;
+    const pTotal = Number(job.progress?.total ?? 0) || 0;
+    const showProgress = !job.isPublish && (job.status === "running" || job.status === "paused") && (pExtracted > 0 || pTotal > 0 || isEnriching);
+    const progressPct = pTotal > 0 ? Math.min(100, Math.round((pExtracted / pTotal) * 100)) : null;
+    // Downloads are meaningful as soon as a run settles and produced rows —
+    // while enrichment is still running we hide the buttons and show a "preparing" callout instead.
+    const canDownload =
+      !job.isPublish &&
+      job.result_count > 0 &&
+      (job.status === "completed" || ((job.status === "canceled" || job.status === "failed") && job.result_count > 0));
     const createdAt = job.created_at ? formatRelativeTime(new Date(job.created_at)) : "";
 
     return (
@@ -206,35 +209,48 @@ export function TasksPage() {
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-[var(--color-fg)]">{job.name || job.type || ""}</p>
               <p className="text-xs text-[var(--color-fg-muted)] truncate">{job.isPublish ? `نشر جماعي • ${job.result_count} جروب` : job.source?.substring(0, 60) || ""}</p>
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-[var(--color-fg-subtle)]">
-                <Clock className="size-3" aria-hidden />
-                <span>{createdAt}</span>
-                {job.status === "running" && job.progress?.phase && (
-                  <>
-                    <span className="text-[var(--color-border-strong)]">·</span>
-                    <span className="font-medium text-[var(--color-primary-soft)]">
-                      {t(`pages.tasks.phase_${job.progress.phase}` as any)}
-                    </span>
-                  </>
-                )}
-                {job.result_count > 0 && (
-                  <>
-                    <span className="text-[var(--color-border-strong)]">·</span>
-                    <span className="font-semibold text-[var(--color-fg-muted)]">{job.result_count.toLocaleString()}</span>
-                    <span>{t("pages.tasks.results")}</span>
-                  </>
-                )}
-              </div>
+              {!showProgress && job.result_count > 0 && (
+                <p className="mt-0.5 text-xs">
+                  <span className="font-semibold tabular-nums text-[var(--color-fg)]">{job.result_count.toLocaleString()}</span>{" "}
+                  <span className="text-[var(--color-fg-subtle)]">{t("pages.tasks.results")}</span>
+                </p>
+              )}
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
             <Badge variant={cfg.variant} className="gap-1">
-              {cfg.animate && <StatusIcon className="size-3 animate-spin" aria-hidden />}
-              {!cfg.animate && <StatusIcon className="size-3" aria-hidden />}
+              {cfg.animate ? <StatusIcon className="size-3 animate-spin" aria-hidden /> : <StatusIcon className="size-3" aria-hidden />}
               {t(`pages.tasks.status.${job.status}` as any)}
             </Badge>
+            <span className="flex items-center gap-1 text-[0.7rem] text-[var(--color-fg-subtle)]" title={new Date(job.created_at).toLocaleString()}>
+              <Clock className="size-3" aria-hidden />
+              {createdAt}
+            </span>
           </div>
         </div>
+
+        {/* Live progress strip: counts + coverage bar + phase — makes any active job readable at a glance */}
+        {showProgress && (
+          <div className="ms-0 sm:ms-14 mt-3">
+            <div className="mb-1.5 flex items-center justify-between gap-2 text-xs">
+              <span className="flex items-center gap-1.5 font-medium text-[var(--color-fg-muted)]">
+                {isEnriching && <Loader2 className="size-3 animate-spin text-[var(--color-primary)]" aria-hidden />}
+                {t(isEnriching ? "pages.tasks.phase_enriching" : `pages.tasks.phase_${job.progress?.phase ?? "extracting"}` as any)}
+              </span>
+              <span className="font-semibold tabular-nums text-[var(--color-fg)]">
+                {pExtracted.toLocaleString()}
+                {pTotal > 0 && <span className="text-[var(--color-fg-subtle)]"> / {pTotal.toLocaleString()}</span>}
+                {progressPct !== null && <span className="ms-1.5 text-[var(--color-primary-soft)]">{progressPct}%</span>}
+              </span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-3)]" role="progressbar" aria-valuenow={progressPct ?? undefined} aria-valuemin={0} aria-valuemax={100}>
+              <div
+                className={cn("h-full rounded-full transition-all duration-500", progressPct === null || progressPct < 100 ? "bg-[var(--color-primary)]" : "bg-[var(--color-success)]")}
+                style={{ width: `${progressPct === null ? (isEnriching ? 100 : 8) : Math.max(3, progressPct)}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {job.status === "failed" && job.error && (
           <div className="ms-0 sm:ms-14 mt-3 flex items-start gap-2 rounded-lg border border-[var(--color-error)]/20 bg-[color-mix(in_oklab,var(--color-error)_5%,transparent)] p-2.5 text-xs text-[var(--color-error)]">
@@ -251,11 +267,11 @@ export function TasksPage() {
           </div>
         )}
 
-        {/* Enrichment in progress: download data would be incomplete until it settles */}
+        {/* Enrichment in progress: download unlocks once it settles */}
         {isEnriching && (
-          <div className="ms-0 sm:ms-14 mt-2 flex items-center gap-2 rounded-lg border border-[var(--color-primary)]/20 bg-[color-mix(in_oklab,var(--color-primary)_5%,transparent)] p-2.5 text-xs text-[var(--color-primary)]">
-            <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
-            <span>{t("pages.tasks.enriching")}</span>
+          <div className="ms-0 sm:ms-14 mt-2 flex items-center gap-2.5 rounded-xl border border-[var(--color-primary)]/25 bg-[color-mix(in_oklab,var(--color-primary)_8%,transparent)] px-3.5 py-2.5 text-xs">
+            <Loader2 className="size-4 shrink-0 animate-spin text-[var(--color-primary)]" aria-hidden />
+            <span className="text-[var(--color-fg)]">{t("pages.tasks.enriching")}</span>
           </div>
         )}
 
@@ -272,20 +288,21 @@ export function TasksPage() {
               {t("pages.tasks.forceStop")}
             </Button>
           )}
-          {job.status === "running" && (
-            <Button variant="ghost" size="sm" onClick={() => navigate(job.type === "messenger_contacts" ? `/dashboard/facebook/messenger-contacts` : `/dashboard/facebook/extract-members`)}>
-              <Activity className="size-3.5" />{t("pages.tasks.viewProgress")}
-            </Button>
+          {job.status === "running" && job.progress?.phase && !showProgress && (
+            <div className="ms-0 sm:ms-14 mt-2 flex items-center gap-1.5 text-xs font-medium text-[var(--color-primary-soft)]">
+              <Loader2 className="size-3 animate-spin" aria-hidden />
+              {t(`pages.tasks.phase_${job.progress.phase}` as any)}
+            </div>
           )}
-          {(job.status === "completed" || ((job.status === "canceled" || job.status === "failed") && job.result_count > 0)) && !job.isPublish && (
+          {canDownload && !isEnriching && (
             <>
-              <Button variant="outline" size="sm" onClick={() => handleExport(job.id, "csv")} disabled={exportMutation.isPending || !datasetReady} title={!datasetReady ? t("pages.tasks.enriching") : undefined}>
+              <Button variant="primary" size="sm" onClick={() => handleExport(job.id, "csv")} disabled={exportMutation.isPending}>
                 {exportingJob === job.id ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}CSV
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handleExport(job.id, "xlsx")} disabled={exportMutation.isPending || !datasetReady} title={!datasetReady ? t("pages.tasks.enriching") : undefined}>
+              <Button variant="secondary" size="sm" onClick={() => handleExport(job.id, "xlsx")} disabled={exportMutation.isPending}>
                 <Download className="size-3.5" />Excel
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handleExport(job.id, "json")} disabled={exportMutation.isPending || !datasetReady} title={!datasetReady ? t("pages.tasks.enriching") : undefined}>
+              <Button variant="secondary" size="sm" onClick={() => handleExport(job.id, "json")} disabled={exportMutation.isPending}>
                 <Download className="size-3.5" />JSON
               </Button>
               <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard/facebook/extract-members")}>
