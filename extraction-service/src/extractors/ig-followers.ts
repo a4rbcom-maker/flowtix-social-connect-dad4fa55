@@ -524,6 +524,13 @@ export class IgFollowersExtractor extends IgBaseExtractor {
     let skipBudget = resumeSkipBudgetInitial;
     let caughtUp = resumeFromUser === null;
     let rowsEverSeen = 0;
+    // Growth tracking across cycles: the platform-limit notice ("Only X can
+    // see all followers") also appears on THROTTLED dialogs that later
+    // unload more rows (live-probed 2026-08-27: it coexists with a long,
+    // still-growing list). The notice is only a REAL boundary when combined
+    // with zero growth — so we gate the platform_limit verdict on both.
+    let harvestBeforeCycle = collected.size + this.previouslyStored();
+    let totalGrowthAllCycles = 0;
 
     while (collected.size + this.previouslyStored() < this.ctx.maxResults && !this.shouldStop) {
       if (await this.checkCanceled()) return "canceled";
@@ -595,13 +602,20 @@ export class IgFollowersExtractor extends IgBaseExtractor {
 
       if (emptyScrolls >= EMPTY_SCROLLS_PER_CYCLE) {
         cyclesCompleted++;
-        if (await this.dialogShowsPlatformLimit()) {
-          log.warn("IgFollowers", `platform limit notice detected in dialog — genuine IG boundary, stopping`);
+        const harvestedNow = collected.size + this.previouslyStored();
+        const cycleGrowth = harvestedNow - harvestBeforeCycle;
+        totalGrowthAllCycles += cycleGrowth;
+        log.info("IgFollowers", `cycle ${cyclesCompleted}: growth=+${cycleGrowth} (total all cycles +${totalGrowthAllCycles}, dialog ${rowsEverSeen} rows ever)`);
+        if (await this.dialogShowsPlatformLimit() && totalGrowthAllCycles === 0) {
+          // Notice present AND the list never grew across any patience cycle —
+          // a genuine IG data boundary (e.g. @instagram 686M → ~41 rows).
+          log.warn("IgFollowers", `platform limit notice + zero growth across ${cyclesCompleted} cycle(s) — genuine IG boundary, stopping`);
           return "platform_limit";
         }
         if (cyclesCompleted >= DOM_EXHAUSTION_CYCLES) {
           // Two full patience cycles exhausted. If secondaries exist, rotate
           // once and RESET the patience window instead of giving up here.
+          harvestBeforeCycle = harvestedNow; // rotation resets the growth baseline
           if (this.stagnationRotations < Math.min(2, this.secondarySessionPages.length)) {
             const rotated = await this.rotateOffStagnantSession(engine, profileUrl);
             if (rotated && (await this.openDialog())) {
