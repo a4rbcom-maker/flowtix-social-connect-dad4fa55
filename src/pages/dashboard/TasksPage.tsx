@@ -305,9 +305,6 @@ export function TasksPage() {
               <Button variant="secondary" size="sm" onClick={() => handleExport(job.id, "json")} disabled={exportMutation.isPending}>
                 <Download className="size-3.5" />JSON
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard/facebook/extract-members")}>
-                <Zap className="size-3.5" />{t("extraction.start")}
-              </Button>
               {job.type === "messenger_contacts" && (
                 <Button variant="primary" size="sm" onClick={() => navigate(`/dashboard/messenger/broadcast/${job.id}`)}>
                   <Send className="size-3.5" />{t("pages.tasks.sendMessage")}
