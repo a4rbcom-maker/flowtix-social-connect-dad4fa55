@@ -232,10 +232,6 @@ export function MessageComposerPage() {
                     className="w-full h-9 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm focus:outline-none focus:border-[var(--color-primary)]/60" />
                 </label>
               </div>
-              <label className="flex items-center gap-2.5 text-sm cursor-pointer">
-                <Checkbox checked={pacing.respect_quiet_hours} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPacing((p) => ({ ...p, respect_quiet_hours: e.target.checked }))} />
-                <span className="text-[var(--color-fg-muted)]">{t("messaging.pacing.quietHours")}</span>
-              </label>
             </CardContent>
           </Card>
 

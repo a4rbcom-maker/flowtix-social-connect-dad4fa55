@@ -21,7 +21,6 @@ const pacingFields = {
   delay_max: z.number().int().min(20).max(600).default(150),
   batch_size: z.number().int().min(1).max(30).default(8),
   batch_pause: z.number().int().min(60).max(3600).default(900),
-  respect_quiet_hours: z.boolean().default(true),
   max_errors: z.number().int().min(1).max(20).default(5),
   retry_max: z.number().int().min(1).max(3).default(2),
 };
@@ -149,7 +148,6 @@ router.post("/messages/start", async (req, res) => {
       delay_max: input.delay_max,
       batch_size: input.batch_size,
       batch_pause: input.batch_pause,
-      respect_quiet_hours: input.respect_quiet_hours,
       max_errors: input.max_errors,
       retry_max: input.retry_max,
     };

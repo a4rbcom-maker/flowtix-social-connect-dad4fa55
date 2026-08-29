@@ -5,7 +5,6 @@ export interface MessagePacing {
   delay_max: number;
   batch_size: number;
   batch_pause: number;
-  respect_quiet_hours: boolean;
   max_errors: number;
   retry_max: number;
 }
@@ -17,7 +16,6 @@ export const MESSAGE_PACING_DEFAULTS: MessagePacing = {
   delay_max: 150,
   batch_size: 8,
   batch_pause: 900,
-  respect_quiet_hours: true,
   max_errors: 5,
   retry_max: 2,
 };

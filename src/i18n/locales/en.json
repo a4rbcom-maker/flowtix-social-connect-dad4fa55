@@ -2333,8 +2333,7 @@
     "pacing": {
       "title": "Safety settings",
       "dailyCap": "Daily cap / session",
-      "perHour": "Messages / hour",
-      "quietHours": "Pause sending automatically from 1 AM to 7 AM"
+      "perHour": "Messages / hour"
     },
     "progress": {
       "total": "Total",

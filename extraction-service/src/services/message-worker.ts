@@ -16,7 +16,6 @@ import {
   dayKeyUtc,
   nextDelayMs,
   renderTemplate,
-  isQuietHour,
   pickSession,
   type SessionCandidate,
 } from "./message-pacing.js";
@@ -59,7 +58,6 @@ interface PacingConfig {
   delay_max: number;
   batch_size: number;
   batch_pause: number;
-  respect_quiet_hours: boolean;
   max_errors: number;
   retry_max: number;
 }
@@ -159,7 +157,6 @@ export async function runMessageWorker(jobId: string, hooks: WorkerHooks = {}): 
     delay_max: job.config?.delay_max ?? 150,
     batch_size: job.config?.batch_size ?? 8,
     batch_pause: job.config?.batch_pause ?? 900,
-    respect_quiet_hours: job.config?.respect_quiet_hours ?? true,
     max_errors: job.config?.max_errors ?? 5,
     retry_max: job.config?.retry_max ?? 2,
   };
@@ -228,13 +225,6 @@ export async function runMessageWorker(jobId: string, hooks: WorkerHooks = {}): 
         | undefined;
       if (!recipient) {
         progress.stop_reason = progress.stop_reason ?? "all_recipients_done";
-        break;
-      }
-
-      if (cfg.respect_quiet_hours && isQuietHour()) {
-        progress.stop_reason = "quiet_hours";
-        await updateProgress(jobId, progress);
-        log.info("MsgWorker", `job ${jobId}: quiet hours — pausing until 07:00 Cairo`);
         break;
       }
 
