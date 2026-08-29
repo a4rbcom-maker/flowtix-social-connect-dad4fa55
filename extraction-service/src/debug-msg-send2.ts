@@ -33,7 +33,7 @@ async function main() {
       return { rows: all.length, sentRows: n };
     })()`);
 
-    const before = await countOutgoing();
+    const before = await countOutgoing() as { rows: number; sentRows: number };
     console.log("before:", JSON.stringify(before));
 
     await page.focus(TB);
@@ -46,7 +46,7 @@ async function main() {
     await page.keyboard.press("Enter");
     await page.waitForTimeout(5000);
 
-    const after = await countOutgoing();
+    const after = await countOutgoing() as { rows: number; sentRows: number };
     const body = await page.evaluate(`(() => (document.body.innerText || "").replace(/\\s+/g, " ").slice(0, 400))()`);
     console.log("after:", JSON.stringify(after));
     console.log("body:", body);
