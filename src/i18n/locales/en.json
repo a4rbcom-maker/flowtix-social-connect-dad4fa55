@@ -135,6 +135,7 @@
       "statusPending": "Pending",
       "statusSuspended": "Suspended",
       "statusExpired": "Expired",
+      "statusDeleted": "Deleted",
       "roleSuperAdmin": "Super Admin",
       "roleAdmin": "Admin",
       "roleUser": "User",

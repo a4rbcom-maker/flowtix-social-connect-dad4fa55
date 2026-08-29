@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Users, UserCog, Pause, Play, Trash2, KeyRound, UserPlus, Mail, Building2, Clock, Search, Loader2, CreditCard, MoreVertical, Eye, EyeOff } from "lucide-react";
-import { useAdminUsers, useAdminUser, useUpdateUserStatus, useChangeUserRole, useSetUserPassword, useInviteUser } from "@/hooks/useAdmin";
+import { useAdminUsers, useAdminUser, useUpdateUserStatus, useChangeUserRole, useSetUserPassword, useInviteUser, useDeleteUser } from "@/hooks/useAdmin";
 import { PageHeader } from "@/components/ui/page";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,7 @@ export function AdminUsersPage() {
   const changeRole = useChangeUserRole();
   const setPwd = useSetUserPassword();
   const invite = useInviteUser();
+  const delUser = useDeleteUser();
 
   function handleAction(userId: string, action: string, user: AdminUserListItem) {
     switch (action) {
@@ -268,7 +269,7 @@ export function AdminUsersPage() {
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDeleteTarget(null)}>{t("common.no")}</Button>
             <Button variant="danger" onClick={() => {
-              updateStatus.mutate({ userId: deleteTarget, status: "deleted" }, {
+              delUser.mutate(deleteTarget, {
                 onSuccess: () => { toast({ type: "success", title: t("admin.users.deletedOk") }); setDeleteTarget(null); },
                 onError: (e) => toast({ type: "error", title: e.message }),
               });

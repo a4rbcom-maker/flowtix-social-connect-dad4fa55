@@ -45,6 +45,12 @@ export const adminRepository = {
     });
     if (error) handleRpcError(error, "updateUserStatus");
   },
+  async deleteUser(userId: string): Promise<void> {
+    const { error } = await (supabase as any).rpc("admin_delete_user", {
+      p_user_id: userId,
+    });
+    if (error) handleRpcError(error, "deleteUser");
+  },
   async changeUserRole(userId: string, role: string, _workspaceId?: string): Promise<void> {
     const { error } = await (supabase as any).rpc("admin_change_user_role", {
       p_user_id: userId, p_role: role,

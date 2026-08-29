@@ -157,6 +157,7 @@
       "statusPending": "قيد الانتظار",
       "statusSuspended": "موقوف",
       "statusExpired": "منتهي",
+      "statusDeleted": "محذوف",
       "roleSuperAdmin": "مدير عام",
       "roleAdmin": "مدير",
       "roleUser": "مستخدم",

@@ -24,6 +24,13 @@ export function useUpdateUserStatus() {
     onSuccess: (_d, v) => { qc.invalidateQueries({ queryKey: ["admin-users"] }); qc.invalidateQueries({ queryKey: ["admin-user", v.userId] }); },
   });
 }
+export function useDeleteUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => adminRepository.deleteUser(userId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-users"] }); },
+  });
+}
 export function useChangeUserRole() {
   const qc = useQueryClient();
   return useMutation({
