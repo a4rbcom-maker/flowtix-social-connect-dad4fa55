@@ -2419,6 +2419,21 @@
       "failed": "فشلت",
       "canceled": "ألغيت"
     },
-    "cardLabel": "حالة المراسلة"
+    "cardLabel": "حالة المراسلة",
+    "source": {
+      "task": "مهمة المصدر",
+      "from": "المصدر",
+      "extracted": "إجمالي المستخرجين",
+      "eligible": "سيصلهم الرسالة",
+      "type": {
+        "groups": "أعضاء جروب",
+        "pages": "متابعو صفحة",
+        "post_comments": "معلقو بوست",
+        "post_reactions": "تفاعلات بوست",
+        "messenger_contacts": "جهات ماسنجر",
+        "ig_followers": "متابعو انستجرام",
+        "ig_following": "يتابعهم انستجرام"
+      }
+    }
   }
 }

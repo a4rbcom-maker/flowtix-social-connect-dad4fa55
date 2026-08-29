@@ -34,9 +34,24 @@ export function MessageComposerPage() {
   const [starting, setStarting] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [sourceInfo, setSourceInfo] = useState<{ name: string; type: string; result_count: number; source?: string | null } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Load the source job name via preview endpoint (also validates eligibility)
+  // Load source job identity ONCE (name + origin + total extracted count)
+  useEffect(() => {
+    if (!jobId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { supabase } = await import("@/lib/supabase");
+        const { data } = await supabase.from("extraction_jobs").select("name, type, source, result_count").eq("id", jobId).single();
+        if (!cancelled && data) setSourceInfo(data);
+      } catch { /* card simply stays hidden */ }
+    })();
+    return () => { cancelled = true; };
+  }, [jobId]);
+
+  // Load eligibility via preview endpoint (also validates)
   useEffect(() => {
     if (!jobId || !body.trim()) { setPreview(null); return; }
     let cancelled = false;
@@ -125,6 +140,39 @@ export function MessageComposerPage() {
   return (
     <div className="space-y-6">
       <PageHeader title={t("messaging.title")} description={t("messaging.subtitle")} icon={MessageCircle} />
+
+      {/* Source card: which task, from where, how many extracted vs eligible */}
+      {sourceInfo && (
+        <Card className="overflow-hidden">
+          <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-3 p-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_oklab,var(--color-primary)_12%,transparent)] text-[var(--color-primary)]">
+                <Users className="size-5" aria-hidden />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[var(--color-fg)]">{t("messaging.source.task")}: {sourceInfo.name}</p>
+                <p className="text-xs text-[var(--color-fg-muted)] truncate">
+                  {sourceInfo.source ? `${t("messaging.source.from")}: ${sourceInfo.source}` : ""}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 ms-auto">
+              <div className="text-center">
+                <p className="text-xl font-bold tabular-nums text-[var(--color-fg)]">{(sourceInfo.result_count ?? 0).toLocaleString()}</p>
+                <p className="text-[10px] text-[var(--color-fg-muted)]">{t("messaging.source.extracted")}</p>
+              </div>
+              <div className="h-8 w-px bg-[var(--color-border)]" aria-hidden />
+              <div className="text-center">
+                <p className="text-xl font-bold tabular-nums text-[var(--color-success)]">
+                  {previewLoading ? <Loader2 className="size-5 animate-spin mx-auto" /> : (preview?.eligible ?? "—").toLocaleString?.() ?? preview?.eligible}
+                </p>
+                <p className="text-[10px] text-[var(--color-fg-muted)]">{t("messaging.source.eligible")}</p>
+              </div>
+              <Badge variant="default">{t(`messaging.source.type.${sourceInfo.type}`, sourceInfo.type)}</Badge>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-5">
         {/* LEFT: composer */}
