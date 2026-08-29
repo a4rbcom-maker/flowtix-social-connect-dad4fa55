@@ -33,6 +33,8 @@ const startSchema = z.object({
   body: z.string().min(1).max(2000),
   media_keys: z.array(z.string()).max(4).default([]),
   ...pacingFields,
+  /** Test escape hatch: cap materialized recipients (never exposed in UI). */
+  max_recipients: z.number().int().min(1).max(100000).optional(),
 }).refine((d) => d.delay_max >= d.delay_min, { message: "delay_max must be >= delay_min" });
 
 const previewSchema = z.object({
@@ -174,13 +176,14 @@ router.post("/messages/start", async (req, res) => {
     }
     const jobId = created.id as string;
 
-    const rows = eligible.map((r) => ({
+    const all = eligible.map((r) => ({
       message_job_id: jobId,
       fb_id: r.fb_id,
       thread_id: r.thread_id,
       name: r.name,
       status: "pending" as const,
     }));
+    const rows = input.max_recipients ? all.slice(0, input.max_recipients) : all;
     for (let i = 0; i < rows.length; i += 500) {
       const { error: recErr } = await sb.from("message_recipients").insert(rows.slice(i, i + 500));
       if (recErr) {

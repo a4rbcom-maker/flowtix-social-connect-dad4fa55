@@ -89,6 +89,7 @@ export function TasksPage() {
   const deleteMutation = useDeleteExtraction();
 
   const [publishJobs, setPublishJobs] = useState<FlatJob[]>([]);
+  const [messageJobs, setMessageJobs] = useState<Record<string, { status: string; sent: number; failed: number; skipped: number }>>({});
   const [filter, setFilter] = useState<Status>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
@@ -110,6 +111,39 @@ export function TasksPage() {
         }
       } catch {}
     })();
+  }, []);
+
+  // Message-jobs status per source extraction job — drives the per-card send badge.
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const { data } = await (supabase as any)
+          .from("message_jobs")
+          .select("id, source_job_id, status, progress")
+          .order("created_at", { ascending: false })
+          .limit(100);
+        if (!alive || !data) return;
+        const map: Record<string, { status: string; sent: number; failed: number; skipped: number }> = {};
+        for (const m of data) {
+          if (!m.source_job_id) continue;
+          // keep the most recent message-job per source job
+          if (!map[m.source_job_id]) {
+            map[m.source_job_id] = {
+              status: m.status,
+              sent: m.progress?.sent ?? 0,
+              failed: m.progress?.failed ?? 0,
+              skipped: m.progress?.skipped ?? 0,
+            };
+          }
+        }
+        setMessageJobs(map);
+      } catch { /* RLS or table not yet visible — badges simply don't show */ }
+    };
+    load();
+    const hasActive = Object.values(messageJobs).some((m) => m.status === "running" || m.status === "queued");
+    const interval = hasActive ? setInterval(load, 5000) : null;
+    return () => { alive = false; if (interval) clearInterval(interval); };
   }, []);
 
   const extractMapped: FlatJob[] = (extractionJobs ?? []).map((j: any) => ({
@@ -268,6 +302,21 @@ export function TasksPage() {
                 style={{ width: `${progressPct === null ? (isEnriching ? 100 : 8) : Math.max(3, progressPct)}%` }}
               />
             </div>
+          </div>
+        )}
+
+        {/* Messaging status strip: send state + counts for this task's data */}
+        {messageJobs[job.id] && (
+          <div className="ms-0 sm:ms-14 mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--color-info)]/20 bg-[color-mix(in_oklab,var(--color-info)_6%,transparent)] px-3 py-2 text-xs">
+            <Send className="size-3.5 shrink-0 text-[var(--color-info)]" aria-hidden />
+            <span className="font-medium text-[var(--color-fg)]">{t("messaging.cardLabel")}</span>
+            <Badge variant={messageJobs[job.id].status === "running" ? "primary" : messageJobs[job.id].status === "completed" ? "success" : messageJobs[job.id].status === "failed" ? "error" : "warning"} className="gap-1">
+              {messageJobs[job.id].status === "running" && <Loader2 className="size-3 animate-spin" aria-hidden />}
+              {t(`messaging.status.${messageJobs[job.id].status}`)}
+            </Badge>
+            <span className="tabular-nums text-[var(--color-success)]" aria-live="polite">✓ {messageJobs[job.id].sent}</span>
+            {messageJobs[job.id].failed > 0 && <span className="tabular-nums text-[var(--color-error)]">✗ {messageJobs[job.id].failed}</span>}
+            {messageJobs[job.id].skipped > 0 && <span className="tabular-nums text-[var(--color-warning)]">↷ {messageJobs[job.id].skipped}</span>}
           </div>
         )}
 
