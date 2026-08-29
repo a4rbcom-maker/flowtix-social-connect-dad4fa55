@@ -12,6 +12,8 @@ interface BreadcrumbItem {
 function localizeSegment(seg: string, t: (k: string) => string): string {
   // Map URL segments to nav i18n keys
   const mapping: Record<string, string> = {
+    "messenger": "nav.messenger",
+    "compose": "nav.compose",
     "messenger-contacts": "nav.fbMessengerContacts",
     "extract-members": "nav.fbExtractMembers",
     "ai-agent": "nav.waAIAgent",

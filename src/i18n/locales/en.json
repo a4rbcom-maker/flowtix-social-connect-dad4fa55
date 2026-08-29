@@ -81,7 +81,9 @@
     "waTemplates": "Templates",
     "waAnalytics": "Analytics",
     "waSettings": "Settings",
-    "account": "Account"
+    "account": "Account",
+    "messenger": "Messenger",
+    "compose": "Compose"
   },
   "dashboard": {
     "search": "Search...",

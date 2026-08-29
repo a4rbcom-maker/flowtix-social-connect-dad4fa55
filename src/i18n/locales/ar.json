@@ -81,7 +81,9 @@
     "waTemplates": "القوالب",
     "waAnalytics": "التحليلات",
     "waSettings": "الإعدادات",
-    "account": "الحساب"
+    "account": "الحساب",
+    "messenger": "ماسنجر",
+    "compose": "إنشاء رسالة"
   },
   "dashboard": {
     "search": "بحث...",
