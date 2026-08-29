@@ -685,48 +685,6 @@ router.post("/export", async (req, res) => {
   }
 });
 
-const broadcastSchema = z.object({
-  job_id: z.string().min(1),
-  message: z.string().min(1).max(5000),
-});
-
-router.post("/broadcast", async (req, res) => {
-  try {
-    const parsed = broadcastSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: { code: ErrorCodes.INVALID_INPUT, message: "Invalid request" } });
-    }
-
-    const { job_id, message } = parsed.data;
-    const results = await supabaseService.getJobResults(job_id);
-    if (!results || results.length === 0) {
-      return res.status(404).json({ error: { code: "NOT_FOUND", message: "No contacts to broadcast to" } });
-    }
-
-    // For now, store the broadcast request and return success
-    // Full Playwright-based sending will be implemented in a future update
-    await supabaseService.updateJob(job_id, {
-      config: await supabaseService.getJob(job_id).then(j => ({
-        ...j.config,
-        broadcast_message: message,
-        broadcast_requested_at: new Date().toISOString(),
-      })).catch(() => ({})),
-    });
-
-    log.info("Broadcast", `broadcast requested for job ${job_id}: ${results.length} contacts`);
-
-    return res.status(200).json({
-      status: "queued",
-      contact_count: results.length,
-      message: "Broadcast queued successfully",
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    log.error("Broadcast", `error: ${message}`);
-    res.status(500).json({ error: { code: "BROADCAST_FAILED", message } });
-  }
-});
-
 const enrichSchema = z.object({
   job_id: z.string().min(1),
 });

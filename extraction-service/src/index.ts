@@ -13,6 +13,7 @@ import sessionCheckRouter from "./routes/session-check.js";
 import listPagesRouter from "./routes/list-pages.js";
 import listGroupsRouter from "./routes/list-groups.js";
 import publishRouter from "./routes/publish.js";
+import messagesRouter, { resumeMessageJobs } from "./routes/messages.js";
 import waRouter from "./wa/routes.js";
 import aiRouter from "./ai/routes.js";
 import debugPageRouter from "./routes/debug-page.js";
@@ -54,6 +55,7 @@ app.use("/", sessionCheckRouter);
 app.use("/", listPagesRouter);
 app.use("/", listGroupsRouter);
 app.use("/", publishRouter);
+app.use("/", messagesRouter);
 app.use("/", waRouter);
 app.use("/", aiRouter);
 app.use("/", debugPageRouter);
@@ -88,6 +90,7 @@ const server = app.listen(config.port, async () => {
     log.info("Server", "WhatsApp manager booted");
     await resumeQueuedJobs();
     await resumeEnrichmentJobs();
+    await resumeMessageJobs();
 
     const address = server.address();
     log.info("Server", `server address: ${JSON.stringify(address)}`);
