@@ -57,6 +57,12 @@ function getTypeAccent(type: string) {
   return typeAccents[type] || typeAccents.default;
 }
 
+/** Messaging is available for every Facebook extraction path with results;
+ *  Instagram DMs are a different (unimplemented) channel. */
+function canMessage(job: FlatJob): boolean {
+  return !job.isPublish && job.result_count > 0 && !String(job.type).startsWith("ig_");
+}
+
 function getTypeIcon(type: string) {
   if (type === "publish") return Send;
   return typeIcons[type] || Database;
@@ -315,11 +321,15 @@ export function TasksPage() {
               <Button variant="secondary" size="sm" onClick={() => handleExport(job.id, "json")} disabled={exportMutation.isPending}>
                 <Download className="size-3.5" />JSON
               </Button>
-              {job.type === "messenger_contacts" && (
-                <Button variant="primary" size="sm" onClick={() => navigate(`/dashboard/messenger/broadcast/${job.id}`)}>
+              {canMessage(job) ? (
+                <Button variant="primary" size="sm" onClick={() => navigate(`/dashboard/messenger/compose/${job.id}`)}>
                   <Send className="size-3.5" />{t("pages.tasks.sendMessage")}
                 </Button>
-              )}
+              ) : String(job.type).startsWith("ig_") && job.result_count > 0 && !job.isPublish ? (
+                <Button variant="ghost" size="sm" disabled title={t("messaging.igUnsupported")}>
+                  <Send className="size-3.5" />{t("pages.tasks.sendMessage")}
+                </Button>
+              ) : null}
             </>
           )}
           {job.status === "failed" && (

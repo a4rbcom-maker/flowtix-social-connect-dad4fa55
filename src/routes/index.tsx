@@ -35,7 +35,7 @@ const ExtractMembersPage = lazy(() => import("@/pages/dashboard/extraction/Extra
 const ExtractIgPage = lazy(() => import("@/pages/dashboard/extraction/ExtractIgPage").then((m) => ({ default: m.ExtractIgPage })));
 const ResultsPage = lazy(() => import("@/pages/dashboard/extraction/ResultsPage").then((m) => ({ default: m.ResultsPage })));
 const ExtractContactsPage = lazy(() => import("@/pages/dashboard/extraction/ExtractContactsPage").then((m) => ({ default: m.ExtractContactsPage })));
-const MessengerBroadcastPage = lazy(() => import("@/pages/dashboard/messenger/MessengerBroadcastPage").then((m) => ({ default: m.MessengerBroadcastPage })));
+const MessageComposerPage = lazy(() => import("@/pages/dashboard/messenger/MessageComposerPage").then((m) => ({ default: m.MessageComposerPage })));
 const GroupsPage = lazy(() => import("@/pages/dashboard/groups/GroupsPage").then((m) => ({ default: m.GroupsPage })));
 const SessionsPage = lazy(() => import("@/pages/dashboard/SessionsPage").then((m) => ({ default: m.SessionsPage })));
 const IgSessionsPage = lazy(() => import("@/pages/dashboard/IgSessionsPage").then((m) => ({ default: m.IgSessionsPage })));
@@ -98,7 +98,8 @@ export const router = createBrowserRouter([
         { index: true, element: withSuspense(<DashboardOverviewPage />) },
         { path: "facebook/extract-members", element: withSuspense(<ExtractMembersPage />) },
         { path: "facebook/messenger-contacts", element: withSuspense(<ExtractContactsPage />) },
-        { path: "messenger/broadcast/:jobId", element: withSuspense(<MessengerBroadcastPage />) },
+        { path: "messenger/compose/:jobId", element: withSuspense(<MessageComposerPage />) },
+        { path: "messenger/broadcast/:jobId", element: withSuspense(<MessageComposerPage />) },
         { path: "facebook/groups", element: withSuspense(<GroupsPage />) },
         { path: "facebook/sessions", element: withSuspense(<SessionsPage />) },
         { path: "facebook/sessions/connect", element: withSuspense(<ConnectionWizardPage />) },

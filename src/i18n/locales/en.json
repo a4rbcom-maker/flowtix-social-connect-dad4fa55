@@ -2298,5 +2298,59 @@
     "created": "Created successfully",
     "deleted": "Deleted successfully",
     "noWaConfig": "No WhatsApp session found. Please connect a number first."
+  },
+  "messaging": {
+    "title": "Message Results",
+    "subtitle": "Safely message your extracted data — smart pacing protects your sessions",
+    "igUnsupported": "Messaging is available for Facebook paths — Instagram coming soon",
+    "noSourceJob": "No source job. Start from the tasks page.",
+    "backToTasks": "Back to Tasks",
+    "newMessage": "New message",
+    "progressTitle": "Messaging Progress",
+    "startedTitle": "Messaging started",
+    "startedDesc": "Messages will be sent gradually to {{count}} recipients within safety limits",
+    "bodyPlaceholder": "Write your message... use {{name}} for the name and {opt1|opt2} to vary",
+    "spintaxHint": "Vary your messages to avoid restrictions: each recipient gets a different variant automatically.",
+    "insertExample": "Insert variation example",
+    "spintaxExample": "Hi|Hello|Hey there",
+    "attachments": "Attachments",
+    "attachMedia": "Attach images / video",
+    "attachedCount": "{{count}} file(s) attached",
+    "sessions": "Sending sessions",
+    "noSessions": "No connected Facebook sessions. Connect one first.",
+    "startButton": "Start sending",
+    "starting": "Starting...",
+    "warn": {
+      "noVariation": "Text is identical for everyone — add {alternatives} or {{name}} to reduce restriction risk.",
+      "coldOutreach": "Cold outreach: recipients haven't messaged you recently — higher restriction risk, daily cap is 15.",
+      "coldAck": "I understand the risk and want to continue"
+    },
+    "preview": {
+      "title": "Preview before start",
+      "eligible": "Eligible",
+      "estDays": "Est. days",
+      "skipped": "Unsupported",
+      "samples": "Text samples"
+    },
+    "pacing": {
+      "title": "Safety settings",
+      "dailyCap": "Daily cap / session",
+      "perHour": "Messages / hour",
+      "quietHours": "Night pause (1-7 AM Cairo)"
+    },
+    "progress": {
+      "total": "Total",
+      "sent": "Sent",
+      "failed": "Failed",
+      "skipped": "Skipped"
+    },
+    "status": {
+      "queued": "Queued",
+      "running": "Sending",
+      "paused": "Paused",
+      "completed": "Completed",
+      "failed": "Failed",
+      "canceled": "Canceled"
+    }
   }
 }

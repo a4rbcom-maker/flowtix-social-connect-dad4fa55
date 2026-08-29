@@ -173,9 +173,9 @@ export function ExtractContactsPage() {
     }
   };
 
-  const handleBroadcast = () => {
+  const handleComposeMessage = () => {
     if (!activeJob) return;
-    navigate(`/dashboard/messenger/broadcast/${activeJob.id}`);
+    navigate(`/dashboard/messenger/compose/${activeJob.id}`);
   };
 
   const handleBackToSelection = () => {
@@ -629,7 +629,7 @@ export function ExtractContactsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <Button
                     variant="primary"
-                    onClick={handleBroadcast}
+                    onClick={handleComposeMessage}
                     disabled={!stats.hasMessage}
                     className="gap-2"
                   >
