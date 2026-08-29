@@ -2321,9 +2321,7 @@
     "startButton": "Start sending",
     "starting": "Starting...",
     "warn": {
-      "noVariation": "Text is identical for everyone — add {alternatives} or {{name}} to reduce restriction risk.",
-      "coldOutreach": "Cold outreach: recipients haven't messaged you recently — higher restriction risk, daily cap is 15.",
-      "coldAck": "I understand the risk and want to continue"
+      "noVariation": "Text is identical for everyone — add {alternatives} or {{name}} to reduce restriction risk."
     },
     "preview": {
       "title": "Preview before start",
@@ -2336,7 +2334,7 @@
       "title": "Safety settings",
       "dailyCap": "Daily cap / session",
       "perHour": "Messages / hour",
-      "quietHours": "Night pause (1-7 AM Cairo)"
+      "quietHours": "Pause sending automatically from 1 AM to 7 AM"
     },
     "progress": {
       "total": "Total",

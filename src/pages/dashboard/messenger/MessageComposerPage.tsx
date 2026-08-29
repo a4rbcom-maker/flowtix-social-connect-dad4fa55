@@ -31,7 +31,6 @@ export function MessageComposerPage() {
   const [preview, setPreview] = useState<MessagePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [pacing, setPacing] = useState(MESSAGE_PACING_DEFAULTS);
-  const [ackCold, setAckCold] = useState(false);
   const [starting, setStarting] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -62,8 +61,7 @@ export function MessageComposerPage() {
   };
 
   const hasVariation = preview?.has_variation ?? false;
-  const isCold = preview?.cold_outreach ?? false;
-  const canStart = !!jobId && !!body.trim() && selected.size > 0 && !!preview && preview.eligible > 0 && (!isCold || ackCold);
+  const canStart = !!jobId && !!body.trim() && selected.size > 0 && !!preview && preview.eligible > 0;
 
   const handleStart = async () => {
     if (!jobId || !canStart) return;
@@ -271,18 +269,6 @@ export function MessageComposerPage() {
                       <p key={i} className="text-xs rounded-lg bg-[var(--color-surface-2)] px-3 py-2 line-clamp-2" dir="auto">{s}</p>
                     ))}
                   </div>
-                )}
-                {isCold && (
-                  <div className="flex items-start gap-2 rounded-lg border border-[var(--color-warning)]/25 bg-[color-mix(in_oklab,var(--color-warning)_8%,transparent)] p-3 text-xs text-[var(--color-warning)]" role="alert">
-                    <AlertTriangle className="size-4 shrink-0 mt-0.5" aria-hidden />
-                    <span>{t("messaging.warn.coldOutreach")}</span>
-                  </div>
-                )}
-                {isCold && (
-                  <label className="flex items-center gap-2.5 text-xs cursor-pointer">
-                    <Checkbox checked={ackCold} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAckCold(e.target.checked)} />
-                    <span className="text-[var(--color-fg-muted)]">{t("messaging.warn.coldAck")}</span>
-                  </label>
                 )}
               </CardContent>
             </Card>

@@ -90,14 +90,11 @@ router.post("/messages/preview", async (req, res) => {
 
     const { eligible, skippedUnsupported } = await materializeRecipients(source_job_id);
     const samples = eligible.slice(0, 3).map((r) => renderTemplate(body, { name: r.name }));
-    const coldOutreach = job.type !== "messenger_contacts";
-    const perDay = coldOutreach ? Math.min(15, 40) : 40;
-    const estDays = eligible.length > 0 ? Math.ceil(eligible.length / Math.max(1, perDay)) : 0;
+    const estDays = eligible.length > 0 ? Math.ceil(eligible.length / Math.max(1, 40)) : 0;
 
     return res.json({
       eligible: eligible.length,
       skipped_unsupported: skippedUnsupported,
-      cold_outreach: coldOutreach,
       source_type: job.type,
       has_variation: hasVariation(body),
       est_days: estDays,
@@ -146,7 +143,7 @@ router.post("/messages/start", async (req, res) => {
 
     const coldOutreach = sourceJob.type !== "messenger_contacts";
     const config = {
-      daily_cap: coldOutreach ? Math.min(input.daily_cap, 15) : input.daily_cap,
+      daily_cap: input.daily_cap,
       rate_per_hour: input.rate_per_hour,
       delay_min: input.delay_min,
       delay_max: input.delay_max,
