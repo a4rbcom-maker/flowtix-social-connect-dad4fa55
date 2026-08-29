@@ -153,7 +153,7 @@ export function MessageComposerPage() {
                 <button
                   type="button"
                   className="text-[var(--color-primary)] underline underline-offset-2 hover:opacity-80"
-                  onClick={() => setBody((b) => `${b}{${t("messaging.spintaxExample")}}`)}
+                  onClick={() => setBody((b) => `${b}{مرحبا|أهلا} {{name}}`)}
                 >
                   {t("messaging.insertExample")}
                 </button>
