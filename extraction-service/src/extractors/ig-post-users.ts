@@ -39,6 +39,20 @@ function parsePostUrl(sourceUrl: string): string {
   return m[1];
 }
 
+/** IG shortcodes are the media pk in base-64 numeric form.
+ *  Live-proven 2026-08-30: "DcqY-5Hu8Wm" → 3975099496164738470, exactly the
+ *  media id the app used for /api/v1/media/{id}/likers/ on that post. */
+function deriveMediaPk(shortcode: string): string | null {
+  const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  let pk = 0n;
+  for (const ch of shortcode) {
+    const idx = ALPHABET.indexOf(ch);
+    if (idx < 0) return null;
+    pk = pk * 64n + BigInt(idx);
+  }
+  return pk > 0n ? pk.toString() : null;
+}
+
 export class IgPostUsersExtractor extends IgBaseExtractor {
   private readonly wantLikers: boolean;
 
@@ -329,53 +343,62 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
    *  response is dense username+avatar nodes with no "text" field). */
   private async captureLikersTemplate(shortcode: string): Promise<LikersTemplate | null> {
     const cands = new Map<string, LikersTemplate>();
-    const handler = (req: import("playwright").Request): void => {
+    const parseInto = (rawUrl: string, body: string | null): void => {
       try {
-        if (!req.url().includes("/graphql/query")) return;
-        const u = new URL(req.url());
-        const docId = u.searchParams.get("doc_id");
-        const varsRaw = u.searchParams.get("variables");
+        const u = new URL(rawUrl);
+        if (!u.pathname.includes("/graphql/query")) return;
+        // doc_id/variables arrive as URL params (GET) OR as POST form fields.
+        const sp = u.searchParams;
+        const form = new URLSearchParams(body || "");
+        const docId = sp.get("doc_id") || form.get("doc_id");
+        const varsRaw = sp.get("variables") || form.get("variables");
         if (!docId || !varsRaw) return;
         const variables = JSON.parse(varsRaw) as Record<string, unknown>;
         if (!("comment_id" in variables)) return; // liked-by / thread query shape
         if (cands.has(docId)) return;
         const headers: Record<string, string> = {};
         for (const k of ["x-ig-app-id", "x-csrftoken", "x-web-session-id", "x-asbd-id", "x-ig-www-claim", "x-requested-with", "referer", "accept", "accept-language"]) {
-          const v = req.headers()[k];
+          const v = reqHeadersCache.get(k) ?? "";
           if (v) headers[k] = v;
         }
         cands.set(docId, { url: `${u.origin}${u.pathname}`, docId, variables, headers });
       } catch { /* never throw */ }
     };
-    // Arm capture FIRST, then click — the liked-by request fires immediately.
+    // URL-param headers must be read on the request itself; stash per request.
+    let reqHeadersCache = new Map<string, string>();
+    const handler = (req: import("playwright").Request): void => {
+      try {
+        reqHeadersCache = new Map(Object.entries(req.headers()));
+        parseInto(req.url(), req.method() === "POST" ? req.postData() : null);
+      } catch { /* never throw */ }
+    };
+    // Arm capture FIRST, then navigate — the liked-by request fires on load.
     this.page.on("request", handler);
+    const diag: Record<string, unknown> = { anchor: null, candidates: 0, scores: [] };
     try {
-      const clicked = await this.page
-        .evaluate(`(() => {
-          const exact = document.querySelector('a[href="/p/${shortcode}/liked_by/"], a[href="/p/${shortcode}/liked_by"]');
-          if (exact) { exact.click(); return "exact-anchor"; }
-          const loose = Array.from(document.querySelectorAll('a[href*="/p/${shortcode}/liked_by"]'));
-          if (loose.length > 0) { loose[0].click(); return "loose-anchor"; }
-          return null;
-        })()`)
-        .catch(() => null);
-      if (!clicked) {
-        log.warn("IgPostUsers", `no liked_by anchor for /p/${shortcode}/ — no template capture`);
-        return null;
-      }
+      // Deterministic: open THIS post's liked_by view. Its own page-load
+      // issues the liked-by graphql for this exact media (live-proven);
+      // no click-target guessing, so suggested-post tiles can't leak in.
+      await this.page
+        .goto(`${config.igBaseUrl}/p/${shortcode}/liked_by/`, { waitUntil: "domcontentloaded", timeout: 30_000 })
+        .catch(() => {});
+      diag.anchor = "direct-nav";
       for (let i = 0; i < 16 && cands.size === 0; i++) await this.page.waitForTimeout(500);
       if (cands.size > 0) await this.page.waitForTimeout(1500); // let late candidates land
 
       const all = [...cands.values()];
       const matching = all.filter((c) => this.observedCommentIds.has(String(c.variables.comment_id)));
       const pool = matching.length > 0 ? matching : all;
+      diag.candidates = cands.size;
       log.info("IgPostUsers", `liked_by anchor clicked (${String(clicked)}) — ${cands.size} candidate(s), ${pool.length} preferred for this post`);
 
-      // Validate candidates by one-shot replay; real liked-by pages are dense
-      // username+avatar nodes WITHOUT comment text fields.
+      // Validate candidates by one-shot replay; a real liked-by response is
+      // dense username+avatar nodes and contains NO comment "text" fields —
+      // comment-thread queries always carry text, so they score negative.
       let best: { tpl: LikersTemplate; score: number } | null = null;
       for (const tpl of pool) {
         const score = await this.validateLikersTemplate(tpl).catch(() => 0);
+        (diag.scores as Array<unknown>).push({ doc_id: tpl.docId, comment_id: tpl.variables.comment_id, score });
         log.info("IgPostUsers", `template doc_id=${tpl.docId} vars=${JSON.stringify(tpl.variables).slice(0, 80)} → likerScore=${score}`);
         if (!best || score > best.score) best = { tpl, score };
         if (best.score >= 20) break; // decisively the liked-by query
@@ -388,11 +411,15 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
       return null;
     } finally {
       this.page.off("request", handler);
+      void this.updateIgProgress({ likers_diag: diag }).catch(() => {});
     }
   }
 
   /** Replay a candidate once and score how liked-by-like the response is:
-   *  +1 per username node that has pk/id + avatar and NO comment text. */
+   *  +1 per DIRECT user node (username + pk/id, not nested under an
+   *  `owner` key, no comment `text` on the node). Liked-by pages carry
+   *  direct user nodes; comment-thread pages nest every user inside
+   *  owner — so thread queries score ~0 even with many users present. */
   private async validateLikersTemplate(tpl: LikersTemplate): Promise<number> {
     const r = await this.page
       .evaluate(
@@ -408,16 +435,16 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
             if (!res.ok) return { status: res.status, score: 0 };
             const body = await res.json();
             let score = 0;
-            const stack = [body];
-            while (stack.length) {
-              const o = stack.pop();
-              if (!o || typeof o !== "object") continue;
-              if (typeof o.username === "string" && (o.id || o.pk) && !("text" in o)) score++;
+            const walk = (o, inOwner) => {
+              if (!o || typeof o !== "object") return;
+              if (typeof o.username === "string" && (o.id || o.pk) && !inOwner && !("text" in o)) score++;
+              if (o.owner && typeof o.owner === "object") walk(o.owner, true);
               for (const v of Object.values(o)) {
-                if (v && typeof v === "object") stack.push(v);
-                else if (Array.isArray(v)) for (const it of v) stack.push(it);
+                if (v && typeof v === "object") walk(v, inOwner);
+                else if (Array.isArray(v)) for (const it of v) walk(it, inOwner);
               }
-            }
+            };
+            walk(body, false);
             return { status: 200, score };
           } catch (e) {
             return { status: 0, score: 0 };
