@@ -212,12 +212,16 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
     // 2) Replay the captured template with real pagination.
     if (tpl) {
       const MAX_PAGES = 400;
+      const MAX_PAGE_RETRIES = 3; // transient 429/5xx: retry the SAME cursor before giving up
       let after: string | null = null;
       let pages = 0;
       for (let pageIdx = 0; pageIdx < MAX_PAGES; pageIdx++) {
-        const result: LikersReplayPage | null = await this.page
-          .evaluate(
-            `(async () => {
+        let result: LikersReplayPage | null = null;
+        let attempt = 0;
+        for (;;) {
+          result = await this.page
+            .evaluate(
+              `(async () => {
               const tpl = ${JSON.stringify({ url: tpl.url, docId: tpl.docId, variables: tpl.variables, headers: tpl.headers })};
               const vars = { ...tpl.variables, after: ${JSON.stringify(after)} };
               const params = new URLSearchParams({
@@ -252,12 +256,20 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
                 return { error: true, status: 0, users: [], endCursor: null, hasNext: false };
               }
             })()`,
-          )
-          .then((r) => r as LikersReplayPage)
-          .catch(() => null);
+            )
+            .then((r) => r as LikersReplayPage)
+            .catch(() => null);
+          // A successful-but-empty page is a genuine end; an errored page may be transient.
+          if (result && !result.error) break;
+          attempt++;
+          if (attempt > MAX_PAGE_RETRIES) break;
+          const backoff = 3000 * attempt;
+          log.warn("IgPostUsers", `likers page ${pageIdx} failed (status ${result?.status ?? "network"}) — retry ${attempt}/${MAX_PAGE_RETRIES} in ${backoff}ms`);
+          await this.page.waitForTimeout(backoff);
+        }
 
         if (!result || result.error || !result.users?.length) {
-          if (result?.status === 429) log.warn("IgPostUsers", `likers template rate-limited (page ${pageIdx})`);
+          if (result?.status === 429) log.warn("IgPostUsers", `likers template rate-limited (page ${pageIdx}) — stopping`);
           else if (result?.status && result.status >= 400) log.warn("IgPostUsers", `likers template page failed (page ${pageIdx}, status ${result.status})`);
           break;
         }
