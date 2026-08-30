@@ -1749,7 +1749,17 @@
     },
     "groups": {
       "myGroups": "My Groups",
-      "publish": "Bulk Publish"
+      "publish": "Bulk Publish",
+      "noGroups": "No Groups Found",
+      "noGroupsDesc": "No groups managed by or linked to your account were found.",
+      "fetchError": "Failed to load groups",
+      "sortByName": "Name",
+      "sortByMembers": "Members",
+      "sortByPrivacy": "Privacy",
+      "public": "Public",
+      "private": "Private",
+      "admin": "Admin",
+      "member": "Member"
     },
     "tasks": {
       "title": "Tasks",
@@ -2366,5 +2376,76 @@
         "ig_following": "IG following"
       }
     }
+  }
+
+  ,
+  "ig_actions": {
+    "title": "Instagram Action",
+    "subtitle": "Pick a post mention or a direct message for your extraction results.",
+    "noSourceJob": "No source job.",
+    "backToTasks": "Back to tasks",
+    "newAction": "New action",
+    "progressTitle": "Action progress",
+    "mentionButton": "Mention in post",
+    "dmButton": "Send message",
+    "mode": {
+      "mention": "Mention in post",
+      "mentionDesc": "Post a comment that mentions several accounts at once on your post.",
+      "dm": "Send message",
+      "dmDesc": "Send a direct message to each account individually."
+    },
+    "postUrlPlaceholder": "Post URL (p/ or reel/)",
+    "invalidPostUrl": "Invalid post URL. Use https://www.instagram.com/p/CODE/",
+    "bodyPlaceholder": "Write the message or comment… use {a|b} for variation and {name} for the handle.",
+    "spintaxHint": "You can use {option1|option2} variation and {{name}} for the account name.",
+    "insertExample": "Insert example",
+    "warn": {
+      "mentionOnYourPost": "Note: comments post on the post you specified. Avoid spam to protect your account."
+    },
+    "sessions": "Instagram sessions",
+    "sessionsSelected": "session selected",
+    "settings": {
+      "title": "Settings",
+      "mentionsPerComment": "Mentions per comment",
+      "commentsPerHour": "Comments per hour",
+      "dailyCap": "Daily cap",
+      "perHour": "Messages per hour"
+    },
+    "preview": {
+      "title": "Preview",
+      "eligible": "Eligible",
+      "comments": "Comments",
+      "messages": "Messages",
+      "estHours": "Est. hours",
+      "samples": "Samples",
+      "commentNote": "{{comments}} comments will be posted on the selected post."
+    },
+    "source": {
+      "task": "Source task",
+      "from": "Source",
+      "extracted": "Total extracted",
+      "eligible": "Will receive the action"
+    },
+    "progress": {
+      "total": "Processed",
+      "sent": "Sent",
+      "failed": "Failed",
+      "skipped": "Skipped"
+    },
+    "status": {
+      "queued": "Queued",
+      "running": "Running",
+      "paused": "Paused",
+      "completed": "Completed",
+      "failed": "Failed",
+      "canceled": "Canceled"
+    },
+    "pause": "Pause",
+    "resume": "Resume",
+    "stop": "Stop",
+    "startButton": "Start action",
+    "starting": "Starting…",
+    "startedTitle": "Action started",
+    "startedDesc": "Created a job for {{count}} recipients."
   }
 }

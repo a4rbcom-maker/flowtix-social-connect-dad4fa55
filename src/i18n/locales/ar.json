@@ -1752,7 +1752,17 @@
     },
     "groups": {
       "myGroups": "جروباتي",
-      "publish": "نشر جماعي"
+      "publish": "نشر جماعي",
+      "noGroups": "لا توجد جروبات مرتبطة بحسابك",
+      "noGroupsDesc": "لم يتم العثور على أي جروبات تديرها أو مرتبطة بحسابك.",
+      "fetchError": "تعذر جلب الجروبات",
+      "sortByName": "الاسم",
+      "sortByMembers": "عدد الأعضاء",
+      "sortByPrivacy": "الخصوصية",
+      "public": "عام",
+      "private": "خاص",
+      "admin": "مدير",
+      "member": "عضو"
     },
     "tasks": {
       "title": "المهام",
@@ -2437,5 +2447,76 @@
         "ig_following": "يتابعهم انستجرام"
       }
     }
+  }
+
+  ,
+  "ig_actions": {
+    "title": "إجراء على إنستجرام",
+    "subtitle": "اختر منشن في منشور أو إرسال رسالة مباشرة لنتائج الاستخراج.",
+    "noSourceJob": "لا توجد مهمة مصدر.",
+    "backToTasks": "العودة للمهام",
+    "newAction": "إجراء جديد",
+    "progressTitle": "تقدم الإجراء",
+    "mentionButton": "منشن في منشور",
+    "dmButton": "إرسال رسالة",
+    "mode": {
+      "mention": "منشن في منشور",
+      "mentionDesc": "انشر تعليقاً يحتوي المنشن لعدة حسابات دفعة واحدة على منشورك.",
+      "dm": "إرسال رسالة",
+      "dmDesc": "أرسل رسالة مباشرة لكل حساب على حدة."
+    },
+    "postUrlPlaceholder": "رابط المنشور (p/ أو reel/)",
+    "invalidPostUrl": "رابط المنشور غير صالح. استخدم https://www.instagram.com/p/CODE/",
+    "bodyPlaceholder": "اكتب نص الرسالة أو التعليق… استخدم {أ|ب} للتنويع و{name} للاسم.",
+    "spintaxHint": "يمكنك استخدام التنويع {خيار1|خيار2} و{{name}} لاسم الحساب.",
+    "insertExample": "إدراج مثال",
+    "warn": {
+      "mentionOnYourPost": "ملاحظة: التعليقات ستُنشر على المنشور الذي حددته أنت. تجنّب الإزعاج لحماية حسابك."
+    },
+    "sessions": "جلسات إنستجرام",
+    "sessionsSelected": "جلسة مختارة",
+    "settings": {
+      "title": "الإعدادات",
+      "mentionsPerComment": "عدد الأسماء في التعليق",
+      "commentsPerHour": "التعليقات في الساعة",
+      "dailyCap": "الحد اليومي",
+      "perHour": "الرسائل في الساعة"
+    },
+    "preview": {
+      "title": "معاينة",
+      "eligible": "مؤهلون",
+      "comments": "تعليقات",
+      "messages": "رسائل",
+      "estHours": "ساعات تقريباً",
+      "samples": "عيّنات",
+      "commentNote": "سيتم نشر {{comments}} تعليق على المنشور المحدد."
+    },
+    "source": {
+      "task": "مهمة المصدر",
+      "from": "المصدر",
+      "extracted": "إجمالي المستخرجين",
+      "eligible": "سيصلهم الإجراء"
+    },
+    "progress": {
+      "total": "المعالَجون",
+      "sent": "تم الإرسال",
+      "failed": "فشل",
+      "skipped": "تخطٍّ"
+    },
+    "status": {
+      "queued": "في الانتظار",
+      "running": "قيد التنفيذ",
+      "paused": "متوقف مؤقتاً",
+      "completed": "اكتمل",
+      "failed": "فشل",
+      "canceled": "أُلغي"
+    },
+    "pause": "إيقاف مؤقت",
+    "resume": "استئناف",
+    "stop": "إيقاف",
+    "startButton": "بدء الإجراء",
+    "starting": "جارٍ البدء…",
+    "startedTitle": "تم بدء الإجراء",
+    "startedDesc": "تم إنشاء مهمة لـ {{count}} مستلم."
   }
 }
