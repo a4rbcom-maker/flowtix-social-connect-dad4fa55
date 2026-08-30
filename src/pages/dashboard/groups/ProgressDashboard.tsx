@@ -35,10 +35,12 @@ export function ProgressDashboard({ jobId, onDone }: Props) {
   }, [jobId]);
 
   const doAction = async (action: string) => {
+    // session_id lives on the job row server-side; sending an empty string
+    // would fail backend validation. resume() falls back to the recorded session.
     await fetch(`${API_URL}/publish/${action}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
-      body: JSON.stringify({ job_id: jobId, session_id: "" }),
+      body: JSON.stringify({ job_id: jobId }),
     });
   };
 
@@ -82,8 +84,9 @@ export function ProgressDashboard({ jobId, onDone }: Props) {
               {job.status === "completed" && <CheckCircle2 className="size-4 text-[var(--color-success)]" />}
               {job.status === "failed" && <XCircle className="size-4 text-[var(--color-error)]" />}
               {job.status === "canceled" && <XCircle className="size-4 text-[var(--color-warning)]" />}
+              {job.status === "paused" && <Clock className="size-4 text-[var(--color-warning)]" />}
               <span className="text-xs text-[var(--color-fg-muted)]">
-                {job.status === "queued" ? "في الانتظار" : job.status === "running" ? "جاري" : job.status === "completed" ? "مكتمل" : job.status === "failed" ? "فشل" : job.status === "canceled" ? "ملغي" : job.status}
+                {job.status === "queued" ? "في الانتظار" : job.status === "running" ? "جاري" : job.status === "completed" ? "مكتمل" : job.status === "failed" ? "فشل" : job.status === "canceled" ? "ملغي" : job.status === "paused" ? "متوقف مؤقتًا" : job.status}
               </span>
             </div>
           </div>

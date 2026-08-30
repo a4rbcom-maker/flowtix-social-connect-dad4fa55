@@ -1,5 +1,5 @@
-import { useState, useRef } from "react";
-import { Send, Hash, Settings2, X, Paperclip } from "lucide-react";
+import { useState } from "react";
+import { Send, Hash, Settings2, Paperclip } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/form";
@@ -21,8 +21,6 @@ export function PublishTab({ preselected = [] }: Props) {
   const [phase, setPhase] = useState<"config" | "running">("config");
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [images, setImages] = useState<File[]>([]);
-  const imageRef = useRef<HTMLInputElement>(null);
 
   if (phase === "running" && activeJobId) {
     return <ProgressDashboard jobId={activeJobId} onDone={() => { setPhase("config"); setActiveJobId(null); }} />;
@@ -86,17 +84,10 @@ export function PublishTab({ preselected = [] }: Props) {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs text-[var(--color-fg-muted)]">مرفقات:</span>
-            <input ref={imageRef} type="file" accept="image/*,video/*" multiple className="hidden"
-              onChange={e => { if (e.target.files) setImages(prev => [...prev, ...Array.from(e.target.files!)].slice(0, 4)); }} />
-            <button type="button" className="flex items-center gap-2 text-sm h-9 px-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] hover:bg-[var(--color-surface-2)] transition-colors" onClick={() => imageRef.current?.click()}>
-              <Paperclip className="size-4" />
-              {images.length > 0 ? `تم إرفاق ${images.length} ملف` : "إرفاق صور / فيديو"}
-            </button>
-            {images.length > 0 && (
-              <button type="button" className="flex items-center gap-1 h-9 px-2 text-sm text-[var(--color-error)] hover:bg-[var(--color-error)]/10 rounded-lg transition-colors" onClick={() => setImages([])}>
-                <X className="size-3" /> إزالة
-              </button>
-            )}
+            <div className="flex items-center gap-2 text-xs text-[var(--color-fg-muted)] bg-[var(--color-surface-2)] px-3 py-2 rounded-lg border border-[var(--color-border)]">
+              <Paperclip className="size-3.5" />
+              <span>مرفقات الصور والفيديو — قريبًا</span>
+            </div>
           </div>
         </CardContent>
       </Card>
