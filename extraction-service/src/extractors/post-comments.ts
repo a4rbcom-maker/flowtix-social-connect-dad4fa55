@@ -1,13 +1,40 @@
+/**
+ * FB POST COMMENTS extractor — cursor-driven GraphQL pagination.
+ *
+ * PROBE FINDINGS (probe-reactions.ts MODE=comments, live run):
+ *   - Clicking "view more comments" / "عرض المزيد من التعليقات" expands the
+ *     thread and fires FB's OWN GraphQL comment-list request (/api/graphql/,
+ *     POST). The response carries comment edges (node.author.id + name + url +
+ *     body.text) and page_info.end_cursor + has_next_page.
+ *   - Replaying that captured request from the page context (recycled fb_dtsg
+ *     + cursor in variables) returns the next page of comments — far faster and
+ *     more complete than scrolling the DOM.
+ *   - The old scroll-and-hope loop only harvested the first ~3 rendered
+ *     comments; the comment thread's "more comments" control was frequently
+ *     missed by keyword-clicking, so the job stopped at consecutiveEmpty>=15.
+ *
+ * The DOM article scrape is now ONLY a fallback: used when FB never fires a
+ * comment GraphQL request (rare surface).
+ */
 import { BaseExtractor, parsePostId, parseFollowersCount, detectAuthState, authStateToMessage, authStateToErrorCode } from "./base.js";
 import { ExtractionError, ErrorCodes } from "../errors.js";
 import { logger } from "../logger.js";
 import { supabaseService } from "../services/supabase.js";
-import type { Page, Response } from "playwright";
-import type { AuthState, ExtractedMember } from "../types.js";
+import { GraphQLInterceptor, parseGraphQLResponse, type CapturedRequest } from "../services/graphql-interceptor.js";
+import { paginateGraphQL, type PageData, type ExtractedMember } from "./graphql-pagination.js";
+import type { Page } from "playwright";
+import type { AuthState } from "../types.js";
 
 const log = logger;
 
-type CommentStopReason = "session_rate_limited" | "no_secondary_session" | "source_exhausted" | "max_results_reached";
+type CommentStopReason =
+  | "session_rate_limited"
+  | "no_secondary_session"
+  | "source_exhausted"
+  | "max_results_reached"
+  | "has_next_page_false"
+  | "budget_exhausted"
+  | "canceled";
 
 interface InterceptedComment {
   fb_id: string;
@@ -34,22 +61,22 @@ export class PostCommentsExtractor extends BaseExtractor {
   private totalCommentsSource: string = "unknown";
   private lastStopReason: CommentStopReason | null = null;
   private lastProgressTs = 0;
+  private interceptor = new GraphQLInterceptor();
 
   async extract(): Promise<{ extracted: number; nextCursor?: string; done: boolean; authState: AuthState }> {
     const pid = parsePostId(this.ctx.sourceUrl);
     if (!pid) throw new ExtractionError(ErrorCodes.INVALID_INPUT, "Invalid post URL");
 
-    let total = 0, done = false, consecutiveEmpty = 0;
     let authState: AuthState = "unknown";
-    const seen = new Set<string>();
-    let scrollAttempts = 0;
-
-    const url = this.ctx.cursor || this.ctx.sourceUrl;
-    log.info("PostComments", `starting`, { jobId: this.ctx.jobId, url });
+    log.info("PostComments", `starting`, { jobId: this.ctx.jobId, mode: "graphql-pagination" });
     await this.storeExtractionProgress(0, "navigating", 0);
 
+    // Begin capturing FB's own GraphQL traffic BEFORE any navigation, so we
+    // catch the comment-list request FB fires during the initial page load.
+    this.interceptor.attach(this.page);
+
     try {
-      await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+      await this.page.goto(this.ctx.sourceUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
       await this.page.waitForTimeout(3000);
       await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
       await this.page.waitForTimeout(2000);
@@ -58,174 +85,293 @@ export class PostCommentsExtractor extends BaseExtractor {
     }
 
     const html = await this.page.content();
-    authState = detectAuthState(html, this.page.url());
+    const finalUrl = this.page.url();
+    authState = detectAuthState(html, finalUrl);
     if (authState !== "authenticated") throw new ExtractionError(authStateToErrorCode(authState), authStateToMessage(authState));
+
+    await this.followViewPostPermalink();
 
     const countResult = parseFollowersCount(html);
     this.totalCommentsCount = countResult.count;
     this.totalCommentsSource = countResult.source;
     log.info("PostComments", `total comments: ${countResult.count ?? "unknown"} (source=${countResult.source})`);
-    if (countResult.count !== null) {
-      await this.persistCommentsCount(countResult.count, countResult.source);
-    }
-    await this.storeExtractionProgress(0, "scrolling", 0);
+    if (countResult.count !== null) await this.persistCommentsCount(countResult.count, countResult.source);
 
-    // GraphQL interception: comment nodes carry the real author id + body text.
-    const intercepted: InterceptedComment[] = [];
-    const onResponse = async (resp: Response): Promise<void> => {
-      const respUrl = resp.url();
-      if (!respUrl.includes("graphql") || resp.status() !== 200) return;
-      try {
-        const text = await resp.text();
-        for (const c of parseCommentsFromGraphQL(text)) {
-          if (!intercepted.some((i) => i.fb_id === c.fb_id && i.comment_id === c.comment_id)) {
-            intercepted.push(c);
-          }
-        }
-      } catch { /* response body unavailable */ }
-    };
-    this.page.on("response", onResponse);
-
+    // (Interceptor was already attached before goto — see top of extract().)
     try {
-      while (!done && !this.shouldStop && total < this.ctx.maxResults) {
-        if (await this.checkCanceled()) return { extracted: total, done: true, authState };
+      await this.expandCommentsThread();
+      await this.page.waitForTimeout(4000);
 
-        await this.clickMoreCommentsButtons();
-        await this.page.waitForTimeout(1200);
-
-        const batch = this.drainIntercepted(intercepted, seen);
-
-        log.info("PostComments", `+[${batch.length}] scroll#${scrollAttempts} total=${total} seen=${seen.size} interceptedPending=${intercepted.length}`);
-
-        if (batch.length > 0) {
-          total += await this.processBatch(batch, "commenter");
-          consecutiveEmpty = 0;
-          if (scrollAttempts > 0 && scrollAttempts % this.batchSizeForRest === 0) await this.restDelay();
-          if (scrollAttempts % 10 === 9) {
-            await this.storeExtractionProgress(total, "scrolling", scrollAttempts + 1);
-          }
-        } else {
-          // DOM fallback (only comment articles — never page-wide link sweeping)
-          const domBatch = await this.extractCommentsFromDom(seen);
-          if (domBatch.length > 0) {
-            total += await this.processBatch(domBatch, "commenter");
-            consecutiveEmpty = 0;
-            log.info("PostComments", `+[${domBatch.length}] (DOM) total=${total}`);
-          } else {
-            consecutiveEmpty++;
-          }
-
-          if (consecutiveEmpty === 3) {
-            const switched = await this.switchToNextSession();
-            if (switched) {
-              log.info("PostComments", `switched session after 3 empty scrolls, reloading post (session #${this.activeSessionIndex + 1}/${this.totalSessions})`);
-              consecutiveEmpty = 0;
-              scrollAttempts = 0;
-              try {
-                await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-                await this.page.waitForTimeout(3000);
-                await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-                await this.page.waitForTimeout(2000);
-              } catch (err) {
-                throw new ExtractionError(ErrorCodes.NETWORK_ERROR, `Navigation error after session switch: ${String(err)}`);
-              }
-              await this.storeExtractionProgress(total, "scrolling", 0);
-              continue;
-            } else {
-              this.lastStopReason = this.totalSessions > 1 ? "session_rate_limited" : "no_secondary_session";
-            }
-          }
-
-          if (consecutiveEmpty >= 15) {
-            if (this.lastStopReason === null) this.lastStopReason = "source_exhausted";
-            done = true;
-            break;
+      const capturedWorking = this.findCommentsRequest();
+      if (capturedWorking) {
+        log.info("PostComments", `captured comments GraphQL doc_id=${capturedWorking.docId}`);
+        if (this.totalCommentsCount === null) {
+          const total = this.readTotalFromResponses("comment_count", "total_count");
+          if (total !== null) {
+            this.totalCommentsCount = total;
+            this.totalCommentsSource = "graphql";
+            await this.persistCommentsCount(total, "graphql");
           }
         }
-
-        scrollAttempts++;
-        await this.scrollFeed(this.page);
-        await this.delay();
+      } else {
+        log.warn("PostComments", `no comments GraphQL request captured — will use DOM fallback`);
       }
+
+      await this.storeExtractionProgress(0, "extracting", 0);
+      let total = 0;
+      let hasNext = true;
+
+      // Open the full comment thread first (FB lazy-loads it).
+      await this.tryOpenCommentsThread();
+      await this.page.waitForTimeout(2000);
+
+      // PRIMARY path: if FB fired a real paginated comment connection, replay it
+      // (this is what reached 19/25 on small posts). Falls through to DOM if the
+      // captured response carried no real comment users.
+      if (capturedWorking) {
+        const gqlUsers = await this.tryGraphQLBoost(capturedWorking);
+        if (gqlUsers > 0) {
+          total += gqlUsers;
+          log.info("PostComments", `GraphQL phase: extracted=${total}`);
+        }
+      }
+
+      // FALLBACK: expand the thread + scroll the feed + scrape comment articles.
+      if (total < this.ctx.maxResults) {
+        const domResult = await this.extractFromDomLoop(this.ctx.maxResults - total);
+        total += domResult.extracted;
+        hasNext = domResult.hasNext;
+        if (domResult.extracted > 0) {
+          log.info("PostComments", `DOM thread phase: +${domResult.extracted} (total=${total}) stop=${domResult.stopReason}`);
+        }
+      }
+      this.finalizeStopReason(total);
+      await this.storeExtractionProgress(total, "completed", 0, this.lastStopReason);
+      log.info("PostComments", `extraction finished: total=${total}, coverage=${this.computeCoverage(total)}%, stopReason=${this.lastStopReason ?? "null"}`);
+
+      const done = !hasNext || this.ctx.maxResults <= total;
+      const nextCursor = done ? undefined : this.ctx.sourceUrl;
+      return { extracted: total, nextCursor, done, authState };
     } finally {
-      this.page.off("response", onResponse);
+      this.interceptor.detach(this.page);
     }
-
-    this.finalizeStopReason(total);
-    await this.storeExtractionProgress(total, "completed", 0, this.lastStopReason);
-    log.info("PostComments", `extraction finished: total=${total}, coverage=${this.computeCoverage(total)}%, stopReason=${this.lastStopReason ?? "null"}`);
-
-    if (total === 0) done = true;
-    return { extracted: total, nextCursor: done ? undefined : url, done, authState };
   }
 
-  private drainIntercepted(intercepted: InterceptedComment[], seen: Set<string>): ExtractedMember[] {
-    const batch: ExtractedMember[] = [];
-    while (intercepted.length > 0) {
-      const c = intercepted.shift()!;
-      if (seen.has(c.fb_id)) continue;
-      seen.add(c.fb_id);
-      batch.push({
-        fb_id: c.fb_id,
-        name: c.name,
-        profile_url: c.profile_url,
-        type: "commenter",
-        comment_text: c.comment_text,
-        ...(c.comment_id ? { comment_id: c.comment_id } : {}),
-      });
-    }
-    return batch;
-  }
+  // ── FB-own GraphQL capture + replay ──────────────────────────────────────
 
-  private async clickMoreCommentsButtons(): Promise<void> {
-    await this.page.evaluate(() => {
-      const all = document.querySelectorAll<HTMLElement>('[role="button"], a, span, div');
-      const keywords = ['view more comments', 'عرض المزيد من التعليقات', 'more comments',
-        'view more replies', 'عرض المزيد من الردود', 'more replies', 'عرض المزيد', 'view more',
-        'see more', 'previous comments', 'التعليقات السابقة', 'view previous comments',
-        'عرض التعليقات السابقة', 'الردود', 'replies'];
-      for (const el of all) {
-        const t = (el.innerText || el.getAttribute('aria-label') || '').trim().toLowerCase();
-        if (!t || t.length > 80) continue;
-        for (const kw of keywords) { if (t.includes(kw)) { el.click(); break; } }
+  private findCommentsRequest(): CapturedRequest | null {
+    const texts = this.interceptor.getInterceptedTexts();
+    const reqs = this.interceptor.getCapturedRequests();
+    // Dump every captured request for diagnostics (will be removed after fix).
+    if (reqs.length === 0) {
+      log.warn("PostComments", `findCommentsRequest: NO requests captured. texts=${texts.length}`);
+    } else {
+      log.info("PostComments", `findCommentsRequest: ${reqs.length} requests, ${texts.length} texts, docIds=${reqs.slice(0, 10).map(r => r?.docId ?? 'null').join('|')}`);
+    }
+    // FB 2026 fires the comment thread via doc_id=28647291724863619 (variables
+    // include feedbackTargetID / nodeID / mediasetToken). Capture it by doc_id
+    // first, then fall back to variable/response heuristics.
+    const COMMENT_DOC_IDS = [
+      "28647291724863619",
+      "25220416984279164",
+      "26996952523264441",
+      "27255340990751033",
+      "9989124061109700",
+    ];
+    for (let i = reqs.length - 1; i >= 0; i--) {
+      const docId = reqs[i]?.docId;
+      if (docId && COMMENT_DOC_IDS.includes(docId)) {
+        this.primeResponseCache(texts);
+        return reqs[i];
       }
-    }).catch(() => {});
+    }
+    // Fallback: variables mention comment/feedback.
+    const keyA = ["comment", "feedback", "thread"];
+    for (let i = reqs.length - 1; i >= 0; i--) {
+      const v = JSON.stringify(reqs[i]?.variables ?? {}).toLowerCase();
+      if (keyA.some((k) => v.includes(k))) { this.primeResponseCache(texts); return reqs[i]; }
+    }
+    // Fallback: a captured response that carries comment authors + page_info.
+    for (let i = 0; i < texts.length; i++) {
+      const page = parseGraphQLResponse(texts[i]);
+      if (page.users.length > 0 && (page.endCursor || page.hasNextPage)) {
+        this.primeResponseCache(texts);
+        return reqs[i] ?? null;
+      }
+    }
+    return null;
   }
 
-  /** DOM fallback: only real comment articles with author links (relative or absolute). */
-  private async extractCommentsFromDom(seen: Set<string>): Promise<ExtractedMember[]> {
+  private responseCache: string[] = [];
+  private primeResponseCache(texts: string[]): void { this.responseCache = texts.slice(); }
+
+  private readTotalFromResponses(...fields: string[]): number | null {
+    for (const t of this.responseCache) {
+      try {
+        const idx = t.indexOf("for (;;);");
+        const json = idx >= 0 ? t.slice(idx + 9).trim() : t.trim();
+        const walk = (obj: any, depth: number): number | null => {
+          if (!obj || depth < 0) return null;
+          if (Array.isArray(obj)) { for (const it of obj) { const r = walk(it, depth - 1); if (r !== null) return r; } return null; }
+          if (typeof obj !== "object") return null;
+          for (const k of Object.keys(obj)) {
+            const val = obj[k];
+            if (typeof k === "string" && fields.includes(k.toLowerCase()) && typeof val === "number" && val > 0) return val;
+            if (val && typeof val === "object") { const r = walk(val, depth - 1); if (r !== null) return r; }
+          }
+          return null;
+        };
+        const n = walk(JSON.parse(json), 10);
+        if (n !== null) return n;
+      } catch { /* not json */ }
+    }
+    return null;
+  }
+
+  private async fetchCommentsPage(req: CapturedRequest, cursor: string | null): Promise<PageData> {
+    const text = await this.interceptor.replayWithCursor(this.page, req, cursor ?? "", 100);
+    if (!text) return { users: [], cursor: null, hasNext: false };
+    const page = parseGraphQLResponse(text);
+    const users: ExtractedMember[] = page.users
+      .filter((u) => u.id && /^\d{5,25}$/.test(u.id))
+      .map((u) => ({
+        fb_id: u.id,
+        name: u.name,
+        profile_url: u.url,
+        type: "commenter",
+        ...(u.comment_text ? { comment_text: u.comment_text } : {}),
+      }));
+    return { users, cursor: page.endCursor, hasNext: page.hasNextPage };
+  }
+
+  /** GraphQL boost: only when FB serves a paginated comment connection. */
+  private async tryGraphQLBoost(req: CapturedRequest): Promise<number> {
+    try {
+      const first = await this.fetchCommentsPage(req, null);
+      if (first.users.length === 0) return 0;
+      let added = 0;
+      let cursor: string | null = first.cursor;
+      let hasNext = first.hasNext;
+      const seen = new Set<string>();
+      let pages = 0;
+      while (hasNext && added < this.ctx.maxResults && pages < 200) {
+        const fresh = first.users.filter((u) => !seen.has(u.fb_id));
+        for (const u of fresh) seen.add(u.fb_id);
+        if (fresh.length > 0) added += await this.processBatch(fresh, "commenter");
+        if (!cursor) break;
+        const next = await this.fetchCommentsPage(req, cursor);
+        hasNext = next.hasNext;
+        cursor = next.cursor;
+        pages++;
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+      return added;
+    } catch {
+      return 0;
+    }
+  }
+
+  // ── PRIMARY path: expand thread + scroll feed, scraping comment articles ──
+
+  /** Open the full comment thread (FB lazy-loads it behind a "view all N
+   *  comments" control). Must run before scrape or drainDomBatch sees nothing. */
+  private async tryOpenCommentsThread(): Promise<boolean> {
+    const opened = await this.page.evaluate(() => {
+      const keywords = [
+        "view all", "view all comments", "all comments", "عرض كل التعليقات",
+        "عرض التعليقات", "see all", "show all comments", "most relevant comments",
+        "comments", "التعليقات",
+      ];
+      const all = document.querySelectorAll<HTMLElement>('[role="button"], a, span, div');
+      for (const el of all) {
+        const t = (el.innerText || el.getAttribute("aria-label") || "").trim().toLowerCase();
+        if (!t || t.length > 80) continue;
+        for (const kw of keywords) {
+          if (t === kw || t.startsWith(kw + " ") || t.includes(" " + kw + " ")) {
+            const rect = el.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) { el.click(); return true; }
+          }
+        }
+      }
+      return false;
+    }).catch(() => false);
+    if (opened) {
+      await this.page.waitForTimeout(2500);
+      // expand any "view more comments / replies" that appeared
+      await this.expandCommentsThread();
+    }
+    return opened;
+  }
+
+  private async extractFromDomLoop(maxResults: number): Promise<{ extracted: number; hasNext: boolean; stopReason: string }> {
+    let total = 0;
+    let consecutiveEmpty = 0;
+    let phaseCycle = 0;
+    const seen = new Set<string>();
+    while (total < maxResults && consecutiveEmpty < 15 && !this.shouldStop) {
+      if (await this.checkCanceled()) break;
+      // expand "more comments / replies" controls each round so the thread grows
+      await this.expandCommentsThread();
+      const batch = await this.drainDomBatch(seen);
+      if (batch.length > 0) {
+        total += await this.processBatch(batch, "commenter");
+        consecutiveEmpty = 0;
+      } else {
+        consecutiveEmpty++;
+      }
+      phaseCycle++;
+      void this.storeExtractionProgress(total, "extracting", phaseCycle);
+      await this.scrollFeed(this.page);
+      await this.delay();
+    }
+    const hasNext = consecutiveEmpty < 15 && total < maxResults;
+    const stopReason = total >= maxResults ? "max_results_reached" : "source_exhausted";
+    return { extracted: total, hasNext, stopReason };
+  }
+
+  // ── DOM fallback (old name kept for reference) ───────────────────────────
+
+  private async extractFromDomFallback(maxResults: number): Promise<number> {
+    const r = await this.extractFromDomLoop(maxResults);
+    return r.extracted;
+  }
+
+  private async drainDomBatch(seen: Set<string>): Promise<ExtractedMember[]> {
     const raw: { href: string; name: string; comment_text: string; comment_id?: string }[] = await this.page.evaluate(() => {
       const items: { href: string; name: string; comment_text: string; comment_id?: string }[] = [];
       const seenHrefs = new Set<string>();
-
       const articles = document.querySelectorAll('[role="article"]');
       articles.forEach((article) => {
-        // author link: profile.php?id=…, /user/…, or a relative/absolute profile href
         const candidates = Array.from(article.querySelectorAll('a[href]')) as HTMLAnchorElement[];
         const userLink = candidates.find((a) => {
-          const href = a.getAttribute('href') || '';
+          const href = a.getAttribute("href") || "";
           return /profile\.php\?id=\d+/.test(href) || /\/user\/\d+/.test(href);
         }) || candidates.find((a) => {
-          const href = a.getAttribute('href') || '';
-          if (href.includes('/help/') || href.includes('/settings/')) return false;
-          // relative profile link like /username?comment_id=…
+          const href = a.getAttribute("href") || "";
+          if (href.includes("/help/") || href.includes("/settings/")) return false;
           const m = href.match(/^\/([a-zA-Z0-9.]{3,60})(?:[/?#]|$)/);
           if (!m) return false;
           const slug = m[1].toLowerCase();
-          if (['help', 'settings', 'login', 'watch', 'reel', 'videos', 'photos', 'groups', 'events', 'marketplace', 'photo.php', 'story.php', 'permalink.php', 'posts'].includes(slug)) return false;
+          if (["help", "settings", "login", "watch", "reel", "videos", "photos", "groups", "events", "marketplace", "photo.php", "story.php", "permalink.php", "posts"].includes(slug)) return false;
           return true;
         });
         if (!userLink) return;
-
-        const href = userLink.getAttribute('href') || '';
-        const name = (userLink.innerText || '').trim();
-        if (!name || name.length < 2 || name.length > 80) return;
+        const href = userLink.getAttribute("href") || "";
+        const idMatch = href.match(/profile\.php\?id=(\d{5,25})/) || href.match(/\/user\/(\d{5,25})/);
+        if (!idMatch) return; // only count real user ids, skip pages/links
+        // Name may live on the link, its aria-label, or a sibling inside the article.
+        let name = ((userLink as HTMLElement).innerText || "").trim();
+        if (!name) name = (userLink.getAttribute("aria-label") || "").trim();
+        if (!name) {
+          const sib = (article.querySelector("[dir=\"auto\"]") as HTMLElement | null);
+          name = sib ? (sib.innerText || "").trim().slice(0, 80) : "";
+        }
+        if (!name || name.length > 80) name = "Facebook User";
         if (seenHrefs.has(href)) return;
-
         const textSpans = article.querySelectorAll('span[dir="auto"], div[dir="auto"], [data-ad-comet-preview]');
-        let commentText = '';
+        let commentText = "";
         for (const span of textSpans) {
-          const t = ((span as HTMLElement).innerText || '').trim();
+          const t = ((span as HTMLElement).innerText || "").trim();
           if (!t || t.length < 3 || t === name) continue;
           if (/^\d+\s*(like|react|reply|comment|share)/i.test(t)) continue;
           if (/^(like|react|reply|share|أعجبني|ردّ|رد|مشاركة|إعجاب)/i.test(t)) continue;
@@ -233,17 +379,14 @@ export class PostCommentsExtractor extends BaseExtractor {
           commentText = t;
           break;
         }
-
-        const commentIdAttr = (article as HTMLElement).getAttribute('data-comment-id')
-          || (article.closest('[data-comment-id]') as HTMLElement | null)?.getAttribute('data-comment-id')
+        const commentIdAttr = (article as HTMLElement).getAttribute("data-comment-id")
+          || (article.closest("[data-comment-id]") as HTMLElement | null)?.getAttribute("data-comment-id")
           || undefined;
-
         seenHrefs.add(href);
         items.push({ href, name, comment_text: commentText, comment_id: commentIdAttr || undefined });
       });
-
       return items;
-    }).catch(() => []);
+    }).catch(() => [] as { href: string; name: string; comment_text: string; comment_id?: string }[]);
 
     const batch: ExtractedMember[] = [];
     for (const c of raw) {
@@ -293,16 +436,13 @@ export class PostCommentsExtractor extends BaseExtractor {
 
   private async storeExtractionProgress(
     discovered: number,
-    phase: "navigating" | "scrolling" | "completed",
+    phase: "navigating" | "extracting" | "completed",
     phaseCycle: number,
     stopReason?: CommentStopReason | null,
   ): Promise<void> {
     const now = Date.now();
-    if (phase !== "navigating" && phase !== "completed" && now - this.lastProgressTs < 10_000) {
-      return;
-    }
+    if (phase !== "navigating" && phase !== "completed" && now - this.lastProgressTs < 8_000) return;
     this.lastProgressTs = now;
-
     const coverage = this.computeCoverage(discovered);
     const progress: Record<string, unknown> = {
       discovered,
@@ -313,7 +453,6 @@ export class PostCommentsExtractor extends BaseExtractor {
       last_update: new Date().toISOString(),
     };
     if (stopReason !== undefined) progress.stop_reason = stopReason;
-
     try {
       await supabaseService.storeProgress(this.ctx.jobId, progress);
     } catch (err) {
@@ -321,76 +460,62 @@ export class PostCommentsExtractor extends BaseExtractor {
     }
   }
 
+  private mapStopReason(result: { stopReason: string; exhausted: boolean; hasNext: boolean }): void {
+    switch (result.stopReason) {
+      case "max_results_reached": this.lastStopReason = "max_results_reached"; break;
+      case "has_next_page_false": this.lastStopReason = "source_exhausted"; break;
+      case "budget_exhausted": this.lastStopReason = "budget_exhausted"; break;
+      case "canceled": this.lastStopReason = "canceled"; break;
+      case "empty_pages_exhausted":
+      case "replay_error":
+        this.lastStopReason = this.totalSessions > 1 ? "session_rate_limited" : "no_secondary_session";
+        break;
+    }
+  }
+
   private finalizeStopReason(total: number): void {
     if (this.lastStopReason !== null) return;
-
-    if (total >= this.ctx.maxResults) {
-      this.lastStopReason = "max_results_reached";
-      return;
-    }
-
+    if (total >= this.ctx.maxResults) { this.lastStopReason = "max_results_reached"; return; }
     const coverage = this.computeCoverage(total);
-    if (coverage === null || coverage >= 85) {
-      this.lastStopReason = null;
-      return;
-    }
-
+    if (coverage === null || coverage >= 85) { this.lastStopReason = "source_exhausted"; return; }
     this.lastStopReason = "source_exhausted";
   }
-}
 
-/**
- * Parse comment nodes out of a Facebook GraphQL response text.
- * A comment node carries the comment body plus a nested author —
- * the AUTHOR id is the user id (node.id is the comment's own id).
- */
-function parseCommentsFromGraphQL(text: string): InterceptedComment[] {
-  const out: InterceptedComment[] = [];
-  const seen = new Set<string>();
-  let jsonText = text;
-  const forIdx = text.indexOf("for (;;);");
-  if (forIdx >= 0) jsonText = text.substring(forIdx + 9).trim();
-  try {
-    walkForComments(JSON.parse(jsonText), out, seen, 8);
-  } catch { /* not JSON */ }
-  return out;
-}
-
-function walkForComments(obj: any, out: InterceptedComment[], seen: Set<string>, depth: number): void {
-  if (!obj || depth < 0) return;
-  if (Array.isArray(obj)) { for (const item of obj) walkForComments(item, out, seen, depth - 1); return; }
-  if (typeof obj !== "object") return;
-
-  const actor = obj.actor || obj.author || obj.commenter;
-  const body = obj.body?.text ?? obj.body?.text?.text ?? obj.text ?? obj.message?.text ?? obj.comment_text;
-
-  if (
-    actor?.id && /^\d{5,25}$/.test(String(actor.id)) &&
-    typeof actor.name === "string" && actor.name.trim().length >= 2 &&
-    typeof body === "string" && body.trim().length > 0
-  ) {
-    const fbId = String(actor.id);
-    const commentId = typeof obj.id === "string" ? obj.id : undefined;
-    const dedupKey = `${fbId}:${commentId ?? ""}`;
-    if (!seen.has(dedupKey)) {
-      seen.add(dedupKey);
-      const url = typeof actor.url === "string" && actor.url.includes("facebook.com")
-        ? (actor.url.startsWith("http") ? actor.url : `https://www.facebook.com${actor.url}`)
-        : `https://www.facebook.com/profile.php?id=${fbId}`;
-      out.push({
-        fb_id: fbId,
-        name: actor.name.trim().substring(0, 200),
-        profile_url: url,
-        comment_text: body.substring(0, 2000),
-        comment_id: commentId,
-      });
-      return;
+  private async followViewPostPermalink(): Promise<void> {
+    const followed = await this.page.evaluate(() => {
+      const links = document.querySelectorAll<HTMLAnchorElement>('a[href]');
+      for (const a of links) {
+        const t = (a.innerText || "").trim();
+        if (t === "عرض المنشور" || t.toLowerCase() === "view post") return a.href;
+      }
+      return null;
+    }).catch(() => null);
+    if (followed) {
+      try {
+        await this.page.goto(followed, { waitUntil: "domcontentloaded", timeout: 30000 });
+        await this.page.waitForTimeout(3500);
+        await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+        await this.page.waitForTimeout(1500);
+      } catch { /* best effort */ }
     }
   }
 
-  for (const key of Object.keys(obj)) {
-    if (typeof obj[key] === "object" && obj[key] !== null) {
-      walkForComments(obj[key], out, seen, depth - 1);
+  private async expandCommentsThread(): Promise<void> {
+    for (let pass = 0; pass < 4; pass++) {
+      const clicked = await this.page.evaluate(() => {
+        const keywords = ["view more comments", "عرض المزيد من التعليقات", "more comments",
+          "view more replies", "عرض المزيد من الردود", "more replies", "عرض المزيد", "view more",
+          "see more", "previous comments", "التعليقات السابقة", "view previous comments",
+          "عرض التعليقات السابقة", "الردود", "replies"];
+        const all = document.querySelectorAll<HTMLElement>('[role="button"], a, span, div');
+        for (const el of all) {
+          const t = (el.innerText || el.getAttribute("aria-label") || "").trim().toLowerCase();
+          if (!t || t.length > 80) continue;
+          for (const kw of keywords) { if (t.includes(kw)) { el.click(); return true; } }
+        }
+        return false;
+      }).catch(() => false);
+      if (clicked) await this.page.waitForTimeout(1500);
     }
   }
 }

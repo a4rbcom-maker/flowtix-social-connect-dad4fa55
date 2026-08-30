@@ -673,13 +673,42 @@ export abstract class BaseExtractor {
       }
     }
     if (results.length === 0) return 0;
+
+    // Retry the DB write up to 3× (1s backoff) so a transient Supabase blip
+    // mid-job doesn't silently erase a whole batch (RC7). On final failure we
+    // record the dropped batch ids in progress.lost_batches for telemetry
+    // (never surfaced to end users).
+    let stored = 0;
+    let lastErr: unknown = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await supabaseService.storeResults(this.ctx.jobId, this.ctx.workspaceId, results, platform, this.ctx.userId ?? undefined);
+        await supabaseService.incrementJobResultCount(this.ctx.jobId, results.length);
+        stored = results.length;
+        lastErr = null;
+        break;
+      } catch (err) {
+        lastErr = err;
+        log.error("Extractor", `processBatch attempt ${attempt}/3 failed: ${String(err)}`);
+        if (attempt < 3) await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+    if (stored === 0) {
+      log.error("Extractor", `processBatch: DROPPED batch of ${results.length} (all retries failed) — ${String(lastErr).slice(0, 160)}`);
+      void this.recordLostBatch(results.map((m) => m.fb_id));
+    }
+    return stored;
+  }
+
+  private async recordLostBatch(ids: string[]): Promise<void> {
     try {
-      await supabaseService.storeResults(this.ctx.jobId, this.ctx.workspaceId, results, platform, this.ctx.userId ?? undefined);
-      await supabaseService.incrementJobResultCount(this.ctx.jobId, results.length);
-      return results.length;
+      const job = await supabaseService.getJob(this.ctx.jobId);
+      const progress = (job.progress || {}) as Record<string, unknown>;
+      const lost = Array.isArray(progress.lost_batches) ? (progress.lost_batches as string[]) : [];
+      const merged = lost.concat(ids).slice(-500); // keep last 500 for diagnosis
+      await supabaseService.storeProgress(this.ctx.jobId, { ...progress, lost_batches: merged });
     } catch (err) {
-      log.error("Extractor", `processBatch failed: ${String(err)}`);
-      return 0;
+      log.debug("Extractor", `recordLostBatch failed: ${String(err)}`);
     }
   }
 

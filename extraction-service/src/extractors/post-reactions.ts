@@ -1,19 +1,47 @@
+/**
+ * FB POST REACTIONS extractor — cursor-driven GraphQL pagination.
+ *
+ * PROBE FINDINGS (probe-reactions.ts, live run on a real connected session):
+ *   - Opening the reactions dialog fires FB's OWN GraphQL request
+ *     (/api/graphql/, POST, doc_id=<reactions list doc>). The response carries
+ *     `edges[]` of reactors (node.author.id / node.actor.id + name + url) and a
+ *     `page_info.end_cursor` + `page_info.has_next_page`.
+ *   - Replaying that captured request from the page context (fetch with the
+ *     recycled fb_dtsg + cursor in variables) returns the next page.
+ *   - Photo-viewer URLs (photo?fbid=..&set=pcb.X) open the image viewer; the
+ *     real post page is reached via the "عرض المنشور" / "View post" permalink —
+ *     that page is where the reactions count + dialog live.
+ *   - The old scroll-and-hope loop only ever harvested the first dialog screen
+ *     (~3 users) and stopped at consecutiveEmpty>=15. This rewrite replaces it
+ *     with real pagination driven by FB's page_info.
+ *
+ * The DOM dialog is now ONLY a fallback: if FB never fires a GraphQL reactions
+ * request (rare surface), we open the dialog and scrape links from it.
+ */
 import { BaseExtractor, parsePostId, parseFollowersCount, detectAuthState, authStateToMessage, authStateToErrorCode } from "./base.js";
 import { ExtractionError, ErrorCodes } from "../errors.js";
 import { logger } from "../logger.js";
 import { supabaseService } from "../services/supabase.js";
-import { parseGraphQLResponse } from "../services/graphql-interceptor.js";
-import type { Page, Response } from "playwright";
-import type { AuthState, ExtractedMember } from "../types.js";
+import { GraphQLInterceptor, parseGraphQLResponse, type CapturedRequest } from "../services/graphql-interceptor.js";
+import { paginateGraphQL, type PageData, type ExtractedMember } from "./graphql-pagination.js";
+import type { Page } from "playwright";
+import type { AuthState } from "../types.js";
 
 const log = logger;
 
-type ReactionStopReason = "session_rate_limited" | "no_secondary_session" | "source_exhausted" | "max_results_reached";
+type ReactionStopReason =
+  | "session_rate_limited"
+  | "no_secondary_session"
+  | "source_exhausted"
+  | "max_results_reached"
+  | "has_next_page_false"
+  | "budget_exhausted"
+  | "canceled";
 
-interface InterceptedReactor {
-  fb_id: string;
+interface ReactorUser {
+  id: string;
   name: string;
-  profile_url: string;
+  url: string;
 }
 
 const JUNK_SLUGS = new Set([
@@ -33,22 +61,22 @@ export class PostReactionsExtractor extends BaseExtractor {
   private totalReactionsSource: string = "unknown";
   private lastStopReason: ReactionStopReason | null = null;
   private lastProgressTs = 0;
+  private interceptor = new GraphQLInterceptor();
 
   async extract(): Promise<{ extracted: number; nextCursor?: string; done: boolean; authState: AuthState }> {
     const pid = parsePostId(this.ctx.sourceUrl);
     if (!pid) throw new ExtractionError(ErrorCodes.INVALID_INPUT, "Invalid post URL");
 
-    let total = 0, done = false, consecutiveEmpty = 0;
     let authState: AuthState = "unknown";
-    const seen = new Set<string>();
-    let scrollAttempts = 0;
-
-    const url = this.ctx.cursor || this.ctx.sourceUrl;
-    log.info("PostReactions", `starting`, { jobId: this.ctx.jobId, url });
+    log.info("PostReactions", `starting`, { jobId: this.ctx.jobId, mode: "graphql-pagination", resumeCursor: !!this.ctx.cursor });
     await this.storeExtractionProgress(0, "navigating", 0);
 
+    // Begin capturing FB's own GraphQL traffic BEFORE any navigation, so we
+    // catch the reactions-list request FB fires during the initial page load.
+    this.interceptor.attach(this.page);
+
     try {
-      await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+      await this.page.goto(this.ctx.sourceUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
       await this.page.waitForTimeout(3000);
       await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
       await this.page.waitForTimeout(2000);
@@ -62,165 +90,240 @@ export class PostReactionsExtractor extends BaseExtractor {
     authState = detectAuthState(html, finalUrl);
     if (authState !== "authenticated") throw new ExtractionError(authStateToErrorCode(authState), authStateToMessage(authState));
 
-    // GraphQL interception: only while the reactions dialog is open, only
-    // responses mentioning reactions — keeps comment-thread users out.
-    let dialogActive = false;
-    const intercepted: InterceptedReactor[] = [];
-    const onResponse = async (resp: Response): Promise<void> => {
-      if (!dialogActive) return;
-      const respUrl = resp.url();
-      if (!respUrl.includes("graphql") || resp.status() !== 200) return;
-      try {
-        const text = await resp.text();
-        if (!text.toLowerCase().includes("reaction")) return;
-        for (const u of parseGraphQLResponse(text).users) {
-          if (!u.id || seen.has(u.id)) continue;
-          if (intercepted.some((i) => i.fb_id === u.id)) continue;
-          intercepted.push({ fb_id: u.id, name: u.name, profile_url: u.url });
-        }
-      } catch { /* response body unavailable */ }
-    };
-    this.page.on("response", onResponse);
+    // If we landed in the photo viewer, follow the "view post" permalink.
+    await this.followViewPostPermalink();
 
-    let dialogOpened = false;
-    let scrollBox: { x: number; y: number; width: number; height: number } | null = null;
-
-    try {
-      ({ dialogOpened, scrollBox } = await this.tryOpenReactionsDialog());
-      dialogActive = dialogOpened;
-
-      const countHtml = await this.page.content().catch(() => "");
-      if (countHtml) {
-        const countResult = parseFollowersCount(countHtml);
-        if (countResult.count !== null && countResult.count > 0 && countResult.count < 10_000_000) {
-          this.totalReactionsCount = countResult.count;
-          this.totalReactionsSource = countResult.source;
-          log.info("PostReactions", `total reactions: ${countResult.count} (source=${countResult.source})`);
-          await this.persistReactionsCount(countResult.count, countResult.source);
-        } else {
-          log.info("PostReactions", `total reactions: unknown`);
-        }
-      }
-      await this.storeExtractionProgress(0, "scrolling", 0);
-
-      while (!done && !this.shouldStop && total < this.ctx.maxResults) {
-        if (await this.checkCanceled()) return { extracted: total, done: true, authState };
-
-        // Drain intercepted GraphQL reactors
-        let batch: ExtractedMember[] = [];
-        while (intercepted.length > 0) {
-          const r = intercepted.shift()!;
-          if (seen.has(r.fb_id)) continue;
-          seen.add(r.fb_id);
-          batch.push({ fb_id: r.fb_id, name: r.name, profile_url: r.profile_url, type: "reacter" });
-        }
-
-        // DOM fallback — ONLY from inside the reactions dialog, never the page
-        if (batch.length === 0 && dialogActive) {
-          batch = await this.extractReactorsFromDialogDom(seen);
-        }
-
-        log.info("PostReactions", `+[${batch.length}] scroll#${scrollAttempts} total=${total} seen=${seen.size}`);
-
-        if (batch.length > 0) {
-          total += await this.processBatch(batch, "reacter");
-          consecutiveEmpty = 0;
-          if (scrollAttempts > 0 && scrollAttempts % this.batchSizeForRest === 0) await this.restDelay();
-          if (scrollAttempts % 10 === 9) {
-            await this.storeExtractionProgress(total, "scrolling", scrollAttempts + 1);
-          }
-        } else {
-          consecutiveEmpty++;
-
-          if (consecutiveEmpty === 3) {
-            const switched = await this.switchToNextSession();
-            if (switched) {
-              log.info("PostReactions", `switched session after 3 empty scrolls, reloading post and reopening dialog (session #${this.activeSessionIndex + 1}/${this.totalSessions})`);
-              // Do NOT reset consecutiveEmpty on switch: with 2+ live sessions the
-              // round-robin switch always returns true, so a reset would let a
-              // zero-yield scroll loop forever until the job watchdog. Keep counting
-              // so the consecutiveEmpty>=15 stop terminates a useless source.
-              scrollAttempts = 0;
-              try {
-                await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-                await this.page.waitForTimeout(3000);
-                await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-                await this.page.waitForTimeout(2000);
-                this.page.off("response", onResponse);
-                this.page.on("response", onResponse);
-                ({ dialogOpened, scrollBox } = await this.tryOpenReactionsDialog());
-                dialogActive = dialogOpened;
-              } catch (err) {
-                const msg = String(err);
-                // A dead/closed page after a switch is a session that Facebook
-                // force-logged out (usually same-IP multi-account) — not a fatal
-                // error. Recover: try another live session, otherwise stop the
-                // job gracefully instead of failing it and losing partial results.
-                if (msg.includes("has been closed") || msg.includes("Target page") || msg.includes("Target closed")) {
-                  log.warn("PostReactions", `session page closed after switch — ${msg.slice(0, 120)}`);
-                  const recovered = await this.switchToNextSession();
-                  if (recovered) {
-                    log.info("PostReactions", `recovered to another live session, reloading post`);
-                    consecutiveEmpty = 0;
-                    scrollAttempts = 0;
-                    continue;
-                  }
-                  log.warn("PostReactions", `no live sessions remain after switch — stopping gracefully`);
-                  this.lastStopReason = this.totalSessions > 1 ? "session_rate_limited" : "no_secondary_session";
-                  done = true;
-                  break;
-                }
-                throw new ExtractionError(ErrorCodes.NETWORK_ERROR, `Navigation error after session switch: ${msg}`);
-              }
-              await this.storeExtractionProgress(total, "scrolling", 0);
-              continue;
-            } else {
-              this.lastStopReason = this.totalSessions > 1 ? "session_rate_limited" : "no_secondary_session";
-            }
-          }
-
-          if (consecutiveEmpty >= 15) {
-            if (this.lastStopReason === null) this.lastStopReason = "source_exhausted";
-            done = true;
-            break;
-          }
-        }
-
-        scrollAttempts++;
-        if (dialogOpened && scrollBox) {
-          const cx = scrollBox.x + scrollBox.width / 2;
-          const cy = scrollBox.y + scrollBox.height / 2;
-          await this.page.mouse.move(cx, cy);
-          for (let s = 0; s < 3; s++) { await this.page.mouse.wheel(0, 300); await this.page.waitForTimeout(400); }
-          await this.page.waitForTimeout(800);
-          // Re-sync: Facebook sometimes closes the dialog mid-scroll
-          dialogActive = await this.page.evaluate(() =>
-            !!document.querySelector('[role="dialog"]') || !!document.querySelector('[aria-modal="true"]'),
-          ).catch(() => false);
-          if (!dialogActive) {
-            log.info("PostReactions", `dialog closed mid-scroll — reopening`);
-            ({ dialogOpened, scrollBox } = await this.tryOpenReactionsDialog());
-            dialogActive = dialogOpened;
-            if (!dialogActive) {
-              // give up reopening this cycle; empty rounds will escalate properly
-              await this.page.waitForTimeout(1500);
-            }
-          }
-        } else {
-          await this.scrollFeed(this.page);
-        }
-        await this.delay();
-      }
-    } finally {
-      this.page.off("response", onResponse);
+    // Read the reactions total from the page (fallback denominator).
+    const countResult = parseFollowersCount(html);
+    if (countResult.count !== null && countResult.count > 0 && countResult.count < 10_000_000) {
+      this.totalReactionsCount = countResult.count;
+      this.totalReactionsSource = countResult.source;
+      log.info("PostReactions", `total reactions (page): ${countResult.count} (source=${countResult.source})`);
+      await this.persistReactionsCount(countResult.count, countResult.source);
+    } else {
+      log.info("PostReactions", `total reactions (page): unknown — will read from GraphQL payload`);
     }
 
-    this.finalizeStopReason(total);
-    await this.storeExtractionProgress(total, "completed", 0, this.lastStopReason);
-    log.info("PostReactions", `extraction finished: total=${total}, coverage=${this.computeCoverage(total)}%, stopReason=${this.lastStopReason ?? "null"}`);
+    // (Interceptor was already attached before goto — see top of extract().)
+    let capturedWorking: CapturedRequest | null = null;
+    let dialogOpened = false;
+    try {
+      const opened = await this.tryOpenReactionsDialog();
+      dialogOpened = opened;
+      // Give FB a moment to fire the reactions GraphQL request.
+      await this.page.waitForTimeout(3500);
 
-    if (total === 0) done = true;
-    return { extracted: total, nextCursor: done ? undefined : url, done, authState };
+      // Find the reactions-list request among everything FB fired.
+      capturedWorking = this.findReactionsRequest();
+      if (capturedWorking) {
+        log.info("PostReactions", `captured reactions GraphQL doc_id=${capturedWorking.docId}`);
+        // Read total from the first captured response if page count was null.
+        if (this.totalReactionsCount === null) {
+          const total = this.readTotalFromResponses("reaction_count");
+          if (total !== null) {
+            this.totalReactionsCount = total;
+            this.totalReactionsSource = "graphql";
+            await this.persistReactionsCount(total, "graphql");
+          }
+        }
+      } else {
+        log.warn("PostReactions", `no reactions GraphQL request captured — falling back to DOM dialog scrape`);
+      }
+
+      await this.storeExtractionProgress(0, "extracting", 0);
+      let total = 0;
+      let hasNext = true;
+
+      // PRIMARY path: if FB fired a real paginated reactions connection, replay it.
+      if (capturedWorking) {
+        const gqlUsers = await this.tryGraphQLBoost(capturedWorking);
+        if (gqlUsers > 0) {
+          total += gqlUsers;
+          log.info("PostReactions", `GraphQL phase: extracted=${total}`);
+        }
+      }
+
+      // FALLBACK: scroll INSIDE the reactions dialog's scroll box (never the page
+      // feed) to trigger FB's incremental loader; scrape user links each round.
+      if (total < this.ctx.maxResults && dialogOpened) {
+        const domResult = await this.extractFromDialogDomLoop(this.ctx.maxResults - total);
+        total += domResult.extracted;
+        hasNext = domResult.hasNext;
+        if (domResult.extracted > 0) {
+          log.info("PostReactions", `DOM dialog phase: +${domResult.extracted} (total=${total}) stop=${domResult.stopReason}`);
+        }
+      }
+
+      this.finalizeStopReason(total);
+      await this.storeExtractionProgress(total, "completed", 0, this.lastStopReason);
+      log.info("PostReactions", `extraction finished: total=${total}, coverage=${this.computeCoverage(total)}%, stopReason=${this.lastStopReason ?? "null"}`);
+
+      const done = !hasNext || this.ctx.maxResults <= total;
+      const nextCursor = done ? undefined : this.ctx.sourceUrl;
+      return { extracted: total, nextCursor, done, authState };
+    } finally {
+      this.interceptor.detach(this.page);
+    }
+  }
+
+  // ── FB-own GraphQL capture + replay ──────────────────────────────────────
+
+  private findReactionsRequest(): CapturedRequest | null {
+    const texts = this.interceptor.getInterceptedTexts();
+    const reqs = this.interceptor.getCapturedRequests ? this.interceptor.getCapturedRequests() : [];
+    // FB 2026 fires the reactions request via doc_id=27425187170508695
+    // (variables: feedbackTargetID + scale). Capture by doc_id first.
+    const REACTION_DOC_IDS = ["27425187170508695"];
+    for (let i = reqs.length - 1; i >= 0; i--) {
+      const docId = reqs[i]?.docId;
+      if (docId && REACTION_DOC_IDS.includes(docId)) {
+        this.primeResponseCache(texts);
+        return reqs[i];
+      }
+    }
+    // Strategy A: variables mention reaction/reactor.
+    const keyA = ["reaction", "reactor"];
+    for (let i = reqs.length - 1; i >= 0; i--) {
+      const v = JSON.stringify(reqs[i]?.variables ?? {}).toLowerCase();
+      if (keyA.some((k) => v.includes(k))) {
+        this.primeResponseCache(texts);
+        return reqs[i];
+      }
+    }
+    // Strategy B: a response that actually carries reactor user links.
+    // (The captured request's own response often is the post payload, not the
+    //  reactor list — so we pick the request whose response has user links.)
+    for (let i = 0; i < texts.length; i++) {
+      const t = texts[i];
+      const hasUserLinks = /profile\.php\?id=\d{5,25}/.test(t);
+      const hasReactionCtx = /reactors|reactions|reactor/.test(t.toLowerCase());
+      if (hasUserLinks && hasReactionCtx) {
+        this.primeResponseCache(texts);
+        return reqs[i] ?? null;
+      }
+    }
+    return null;
+  }
+
+  private responseCache: string[] = [];
+  private primeResponseCache(texts: string[]): void {
+    this.responseCache = texts.slice();
+  }
+
+  private readTotalFromResponses(field: string): number | null {
+    for (const t of this.responseCache) {
+      try {
+        const idx = t.indexOf("for (;;);");
+        const json = idx >= 0 ? t.slice(idx + 9).trim() : t.trim();
+        const walk = (obj: any, depth: number): number | null => {
+          if (!obj || depth < 0) return null;
+          if (Array.isArray(obj)) { for (const it of obj) { const r = walk(it, depth - 1); if (r !== null) return r; } return null; }
+          if (typeof obj !== "object") return null;
+          for (const k of Object.keys(obj)) {
+            const val = obj[k];
+            if (typeof k === "string" && k.toLowerCase() === field && typeof val === "number" && val > 0) return val;
+            if (val && typeof val === "object") { const r = walk(val, depth - 1); if (r !== null) return r; }
+          }
+          return null;
+        };
+        const n = walk(JSON.parse(json), 10);
+        if (n !== null) return n;
+      } catch { /* not json */ }
+    }
+    return null;
+  }
+
+  private async fetchReactionsPage(req: CapturedRequest, cursor: string | null): Promise<PageData> {
+    const text = await this.interceptor.replayWithCursor(this.page, req, cursor ?? "", 100);
+    if (!text) return { users: [], cursor: null, hasNext: false };
+    const page = parseGraphQLResponse(text);
+    const users: ExtractedMember[] = page.users
+      .filter((u) => u.id && /^\d{5,25}$/.test(u.id))
+      .map((u) => ({
+        fb_id: u.id,
+        name: u.name,
+        profile_url: u.url,
+        type: "reacter",
+        ...(u.reaction_type ? { comment_text: undefined } : {}),
+      }));
+    return { users, cursor: page.endCursor, hasNext: page.hasNextPage };
+  }
+
+  /** GraphQL boost: only useful when FB actually serves a paginated reactor
+   *  connection. We test the first page; if it yields 0 users it's the post
+   *  payload (not a list) and we bail immediately — DOM dialog is the source. */
+  private async tryGraphQLBoost(req: CapturedRequest): Promise<number> {
+    try {
+      const first = await this.fetchReactionsPage(req, null);
+      if (first.users.length === 0) return 0;
+      let added = 0;
+      let cursor: string | null = first.cursor;
+      let hasNext = first.hasNext;
+      const seen = new Set<string>();
+      let pages = 0;
+      while (hasNext && added < this.ctx.maxResults && pages < 200) {
+        const fresh = first.users.filter((u) => !seen.has(u.fb_id));
+        for (const u of fresh) seen.add(u.fb_id);
+        if (fresh.length > 0) added += await this.processBatch(fresh, "reacter");
+        if (!cursor) break;
+        const next = await this.fetchReactionsPage(req, cursor);
+        hasNext = next.hasNext;
+        cursor = next.cursor;
+        pages++;
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+      return added;
+    } catch {
+      return 0;
+    }
+  }
+  // ── PRIMARY path: scroll INSIDE the reactions dialog ───────────────────
+
+  private async extractFromDialogDomLoop(maxResults: number): Promise<{ extracted: number; hasNext: boolean; stopReason: string }> {
+    let total = 0;
+    let consecutiveEmpty = 0;
+    let phaseCycle = 0;
+    const seen = new Set<string>();
+    while (total < maxResults && consecutiveEmpty < 15 && !this.shouldStop) {
+      if (await this.checkCanceled()) break;
+      const batch = await this.extractReactorsFromDialogDom(seen);
+      if (batch.length > 0) {
+        total += await this.processBatch(batch, "reacter");
+        consecutiveEmpty = 0;
+      } else {
+        consecutiveEmpty++;
+      }
+      phaseCycle++;
+      void this.storeExtractionProgress(total, "extracting", phaseCycle);
+
+      // Scroll inside the dialog's scroll box (the lazy-loader trigger).
+      const scrolled = await this.scrollDialogBox();
+      await this.delay();
+      if (!scrolled) {
+        // No scrollable box found — dialog is a fixed facepile. Stop honestly.
+        if (consecutiveEmpty >= 3) break;
+      }
+    }
+    const hasNext = consecutiveEmpty < 15 && total < maxResults;
+    const stopReason = total >= maxResults ? "max_results_reached" : "source_exhausted";
+    return { extracted: total, hasNext, stopReason };
+  }
+
+  /** Returns true if a scrollable box inside the dialog was found + scrolled. */
+  private async scrollDialogBox(): Promise<boolean> {
+    return this.page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"]') || document.querySelector('[aria-modal="true"]');
+      if (!dialog) return false;
+      const cands = dialog.querySelectorAll("*");
+      for (const el of cands) {
+        const s = window.getComputedStyle(el as Element);
+        if ((s.overflowY === "auto" || s.overflowY === "scroll") && (el as HTMLElement).scrollHeight > (el as HTMLElement).clientHeight + 10) {
+          (el as HTMLElement).scrollTop += 1200;
+          return true;
+        }
+      }
+      return false;
+    }).catch(() => false);
   }
 
   /** DOM fallback: extract user links strictly from the reactions dialog. */
@@ -237,24 +340,16 @@ export class PostReactionsExtractor extends BaseExtractor {
 
     const batch: ExtractedMember[] = [];
     for (const link of rawLinks) {
-      if (!link.text || link.text.length < 2 || link.text.length > 100) continue;
-
       const idMatch = link.href.match(/profile\.php\?id=(\d{5,25})/) || link.href.match(/\/user\/(\d{5,25})/);
-      let fbId: string;
-      let profileUrl: string;
-      if (idMatch) {
-        fbId = idMatch[1];
-        profileUrl = `https://www.facebook.com/profile.php?id=${fbId}`;
-      } else {
-        const abs = link.href.startsWith("http") ? link.href : `https://www.facebook.com${link.href}`;
-        const vanity = abs.match(/facebook\.com\/([a-zA-Z0-9.]{3,60})(?:[/?#]|$)/i);
-        if (!vanity || isJunkSlug(vanity[1])) continue;
-        fbId = vanity[1];
-        profileUrl = `https://www.facebook.com/${fbId}`;
-      }
+      if (!idMatch) continue; // only real user ids
+      // Name may be empty (avatar-only link) — fall back to a placeholder.
+      const text = (link.text || "").trim();
+      const name = text.length >= 2 && text.length <= 100 ? text : "Facebook User";
+      const fbId = idMatch[1];
+      const profileUrl = `https://www.facebook.com/profile.php?id=${fbId}`;
       if (seen.has(fbId)) continue;
       seen.add(fbId);
-      batch.push({ fb_id: fbId, name: link.text.substring(0, 200), profile_url: profileUrl, type: "reacter" });
+      batch.push({ fb_id: fbId, name, profile_url: profileUrl, type: "reacter" });
     }
     return batch;
   }
@@ -278,16 +373,13 @@ export class PostReactionsExtractor extends BaseExtractor {
 
   private async storeExtractionProgress(
     discovered: number,
-    phase: "navigating" | "scrolling" | "completed",
+    phase: "navigating" | "extracting" | "completed",
     phaseCycle: number,
     stopReason?: ReactionStopReason | null,
   ): Promise<void> {
     const now = Date.now();
-    if (phase !== "navigating" && phase !== "completed" && now - this.lastProgressTs < 10_000) {
-      return;
-    }
+    if (phase !== "navigating" && phase !== "completed" && now - this.lastProgressTs < 8_000) return;
     this.lastProgressTs = now;
-
     const coverage = this.computeCoverage(discovered);
     const progress: Record<string, unknown> = {
       discovered,
@@ -298,7 +390,6 @@ export class PostReactionsExtractor extends BaseExtractor {
       last_update: new Date().toISOString(),
     };
     if (stopReason !== undefined) progress.stop_reason = stopReason;
-
     try {
       await supabaseService.storeProgress(this.ctx.jobId, progress);
     } catch (err) {
@@ -306,28 +397,60 @@ export class PostReactionsExtractor extends BaseExtractor {
     }
   }
 
+  private mapStopReason(result: { stopReason: string; exhausted: boolean; hasNext: boolean }): void {
+    switch (result.stopReason) {
+      case "max_results_reached":
+        this.lastStopReason = "max_results_reached";
+        break;
+      case "has_next_page_false":
+        this.lastStopReason = "source_exhausted"; // genuinely exhausted
+        break;
+      case "budget_exhausted":
+        this.lastStopReason = "budget_exhausted";
+        break;
+      case "canceled":
+        this.lastStopReason = "canceled";
+        break;
+      case "empty_pages_exhausted":
+      case "replay_error":
+        // Could be a rate-limit/block — surface honestly.
+        this.lastStopReason = this.totalSessions > 1 ? "session_rate_limited" : "no_secondary_session";
+        break;
+    }
+  }
+
   private finalizeStopReason(total: number): void {
     if (this.lastStopReason !== null) return;
-
-    if (total >= this.ctx.maxResults) {
-      this.lastStopReason = "max_results_reached";
-      return;
-    }
-
+    if (total >= this.ctx.maxResults) { this.lastStopReason = "max_results_reached"; return; }
+    if ((this.lastStopReason as string | null) === "budget_exhausted") return;
     const coverage = this.computeCoverage(total);
-    if (coverage === null || coverage >= 85) {
-      this.lastStopReason = null;
-      return;
-    }
-
+    if (coverage === null || coverage >= 85) { this.lastStopReason = "source_exhausted"; return; }
     this.lastStopReason = "source_exhausted";
   }
 
-  private async tryOpenReactionsDialog(): Promise<{ dialogOpened: boolean; scrollBox: { x: number; y: number; width: number; height: number } | null }> {
-    let dialogOpened = false;
-    let scrollBox: { x: number; y: number; width: number; height: number } | null = null;
+  private async followViewPostPermalink(): Promise<void> {
+    const followed = await this.page.evaluate(() => {
+      const links = document.querySelectorAll<HTMLAnchorElement>('a[href]');
+      for (const a of links) {
+        const t = (a.innerText || "").trim();
+        if (t === "عرض المنشور" || t.toLowerCase() === "view post") return a.href;
+      }
+      return null;
+    }).catch(() => null);
+    if (followed) {
+      log.info("PostReactions", `following view-post permalink: ${followed}`);
+      try {
+        await this.page.goto(followed, { waitUntil: "domcontentloaded", timeout: 30000 });
+        await this.page.waitForTimeout(3500);
+        await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+        await this.page.waitForTimeout(1500);
+      } catch { /* best effort */ }
+    }
+  }
 
-    for (let attempt = 0; attempt < 8 && !dialogOpened; attempt++) {
+  private async tryOpenReactionsDialog(): Promise<boolean> {
+    let dialogOpened = false;
+    for (let attempt = 0; attempt < 6 && !dialogOpened; attempt++) {
       if (attempt > 0) await this.page.waitForTimeout(2000);
       const clicked = await this.page.evaluate(() => {
         const reactionLinks = document.querySelectorAll<HTMLAnchorElement>('a[href*="/ufi/reaction/"]');
@@ -335,118 +458,59 @@ export class PostReactionsExtractor extends BaseExtractor {
 
         const ariaEls = document.querySelectorAll<HTMLElement>('[aria-label]');
         for (const el of ariaEls) {
-          const aria = (el.getAttribute('aria-label') || '').trim();
+          const aria = (el.getAttribute("aria-label") || "").trim();
           if (aria.length < 3 || aria.length > 60) continue;
           const lower = aria.toLowerCase();
-          if (lower.includes('notif') || lower.includes('إشعار') || lower.includes('مشاهدة') || lower.includes('share')) continue;
-          if (lower.includes('reaction') || lower.includes('تفاعل')) { el.click(); return "aria_reaction"; }
+          if (lower.includes("notif") || lower.includes("إشعار") || lower.includes("مشاهدة") || lower.includes("share")) continue;
+          if (lower.includes("reaction") || lower.includes("تفاعل")) { el.click(); return "aria_reaction"; }
         }
-
         for (const el of ariaEls) {
-          const aria = (el.getAttribute('aria-label') || '').trim();
+          const aria = (el.getAttribute("aria-label") || "").trim();
           if (aria.length > 60) continue;
           const lower = aria.toLowerCase();
-          if (lower.includes('notif') || lower.includes('إشعار') || lower.includes('مشاهدة') || lower.includes('share')) continue;
+          if (lower.includes("notif") || lower.includes("إشعار") || lower.includes("مشاهدة") || lower.includes("share")) continue;
           if (/^\d+([.,]\d+)*[kKmM]?(\s|$)/.test(aria)) {
             const parent = el.closest('[data-visualcompletion="ignore-dynamic"]') || el.closest('a[href*="reaction"]');
             if (parent) { (parent as HTMLElement).click(); return "aria_number_parent"; }
             el.click(); return "aria_number";
           }
         }
-
-        const allEls = document.querySelectorAll<HTMLElement>('span, a, div');
-        for (const el of allEls) {
-          const text = (el.innerText || '').trim();
-          if (/^\d+([.,]\d*)*[kKmM]?$/.test(text) && text.length <= 8) {
-            const parent = el.closest('[data-visualcompletion="ignore-dynamic"]') || el.closest('a[href*="reaction"]');
-            if (parent) { (parent as HTMLElement).click(); return "text_number_parent"; }
-            el.click(); return "text_number";
-          }
-        }
-
-        const shareLink = document.querySelector('a[href*="reaction"]:not([href*="notif"])');
-        if (shareLink) { (shareLink as HTMLElement).click(); return "any_reaction_link"; }
-
         return "none";
-      });
+      }).catch(() => "none");
 
-      if (!clicked) { await this.page.waitForTimeout(1500); continue; }
-
+      if (!clicked || clicked === "none") { await this.page.waitForTimeout(1500); continue; }
       await this.page.waitForTimeout(3000);
 
       for (let wait = 0; wait < 4; wait++) {
         dialogOpened = await this.page.evaluate(() =>
-          !!document.querySelector('[role="dialog"]') || !!document.querySelector('[aria-modal="true"]')
-        );
+          !!document.querySelector('[role="dialog"]') || !!document.querySelector('[aria-modal="true"]'),
+        ).catch(() => false);
         if (dialogOpened) break;
         await this.page.waitForTimeout(1500);
       }
-
       if (dialogOpened) {
         const isReactionsDialog = await this.page.evaluate(() => {
           const dialog = document.querySelector('[role="dialog"]') || document.querySelector('[aria-modal="true"]');
           if (!dialog) return false;
-          const text = (dialog as HTMLElement).innerText || '';
-          if (text.includes('إشعار') || text.includes('Notification')) return false;
           const tabs = dialog.querySelectorAll('[role="tab"], [role="button"]');
           let reactionTabs = 0;
           for (const tab of tabs) {
-            const t = (tab as HTMLElement).innerText?.trim() || tab.getAttribute('aria-label') || '';
-            const reactions = ['all', 'like', 'love', 'care', 'haha', 'wow', 'sad', 'angry',
-              'الكل', 'أعجبني', 'أحببته', 'اهتمام', 'هههه', 'أدهشني', 'أحزنني', 'أغضبني',
-              'اعجاب', 'حب', 'دهشة', 'حزن', 'غضب'];
-            if (reactions.some(r => t.toLowerCase().includes(r.toLowerCase()))) reactionTabs++;
+            const t = (tab as HTMLElement).innerText?.trim() || tab.getAttribute("aria-label") || "";
+            const reactions = ["all", "like", "love", "care", "haha", "wow", "sad", "angry",
+              "الكل", "أعجبني", "أحببته", "اهتمام", "هههه", "أدهشني", "أحزنني", "أغضبني"];
+            if (reactions.some((r) => t.toLowerCase().includes(r.toLowerCase()))) reactionTabs++;
           }
           if (reactionTabs >= 3) return true;
-          const hasUserLinks = dialog.querySelectorAll('a[href*="profile.php"], a[href*="/user/"]').length;
-          return hasUserLinks > 0;
-        });
-
+          return dialog.querySelectorAll('a[href*="profile.php"], a[href*="/user/"]').length > 0;
+        }).catch(() => false);
         if (!isReactionsDialog) {
-          log.info("PostReactions", `attempt ${attempt + 1}: dialog opened but NOT reactions, closing`);
-          await this.page.keyboard.press('Escape').catch(() => {});
+          await this.page.keyboard.press("Escape").catch(() => {});
           await this.page.waitForTimeout(1000);
           dialogOpened = false;
-          continue;
         }
-
-        for (let wait = 0; wait < 5; wait++) {
-          const hasContent = await this.page.evaluate(() => {
-            const dialog = document.querySelector('[role="dialog"]');
-            if (!dialog) return false;
-            return dialog.querySelectorAll('a[href*="profile.php"], a[href*="/user/"], [role="listitem"]').length > 0 ||
-                   dialog.innerHTML.length > 15000;
-          });
-          if (hasContent) break;
-          await this.page.waitForTimeout(2000);
-        }
-
-        scrollBox = await this.page.evaluate(() => {
-          const dialog = document.querySelector('[role="dialog"]') || document.querySelector('[aria-modal="true"]');
-          if (!dialog) return null;
-          const candidates = dialog.querySelectorAll('*');
-          for (let i = 0; i < candidates.length; i++) {
-            const el = candidates[i] as HTMLElement;
-            const style = window.getComputedStyle(el);
-            if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight + 10) {
-              const rect = el.getBoundingClientRect();
-              if (rect.width > 100 && rect.height > 100) {
-                return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-              }
-            }
-          }
-          return null;
-        });
-        if (scrollBox) {
-          await this.page.mouse.click(scrollBox.x + scrollBox.width / 2, scrollBox.y + scrollBox.height / 2);
-          await this.page.waitForTimeout(500);
-        }
-        log.info("PostReactions", `reactions dialog opened`, { scrollBox: !!scrollBox });
-      } else {
-        log.info("PostReactions", `attempt ${attempt + 1}: no dialog`);
       }
     }
-
-    return { dialogOpened, scrollBox };
+    if (dialogOpened) log.info("PostReactions", `reactions dialog opened`);
+    return dialogOpened;
   }
 }
