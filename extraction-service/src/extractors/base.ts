@@ -668,8 +668,17 @@ export abstract class BaseExtractor {
         // removed WITHIN the current job, so re-running the same post
         // gives a fresh count instead of always returning 0-3.
       } else {
-        const existing = await supabaseService.getExistingIds(this.ctx.workspaceId, results.map((m) => m.fb_id));
+        // messenger_contact used to dedup via the dead workspace_id column —
+        // a silent no-op that let cross-job duplicates through. Dedup now
+        // queries the live ownership scope (user_id) narrowed to this result
+        // kind; every other FB extractor keeps its old behavior.
+        const existing = typeOverride === "messenger_contact"
+          ? await supabaseService.getExistingFbIds(this.ctx.userId, results.map((m) => m.fb_id), "messenger_contact")
+          : await supabaseService.getExistingIds(this.ctx.workspaceId, results.map((m) => m.fb_id));
         results = results.filter((m) => !existing.has(m.fb_id));
+        if (existing.size > 0) {
+          log.debug("Extractor", `processBatch: ${results.length}/${members.length} new after cross-job dedup (${existing.size} existing ids returned)`);
+        }
       }
     }
     if (results.length === 0) return 0;

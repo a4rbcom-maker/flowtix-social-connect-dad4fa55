@@ -36,10 +36,15 @@ interface GraphQLRequestInfo {
 type MessengerStopReason = "session_rate_limited" | "no_secondary_session" | "source_exhausted" | "max_results_reached";
 
 export class MessengerContactsExtractor extends BaseExtractor {
-  protected maxExecutionMs = 540_000;
+  // maxExecutionMs is inherited from BaseExtractor (derived from
+  // JOB_TIMEOUT_MS config with an enrichment safety margin) — the old fixed
+  // 540s override silently capped large inboxes at 9 minutes.
   protected maxConsecutiveEmpty = 3;
   private lastStopReason: MessengerStopReason | null = null;
   private lastProgressTs = 0;
+  /** doc_ids captured from LIVE thread-list GraphQL requests during this run
+   *  (Task 4) — used before any static doc_id fallback. */
+  private capturedThreadDocIds: string[] = [];
 
   async extract(): Promise<{ extracted: number; nextCursor?: string; done: boolean; authState: AuthState }> {
     const pageIdentifier = this.ctx.sourceUrl;
@@ -77,6 +82,13 @@ export class MessengerContactsExtractor extends BaseExtractor {
             postData.includes("message_thread"))) {
           if (graphqlReqs.length < 100) {
             graphqlReqs.push({ url, postData });
+          }
+          // Task 4: remember LIVE thread-list doc_ids in arrival order (newest
+          // last) — static doc_ids go stale silently when FB ships changes.
+          const liveDocId = postData.match(/doc_id[=:](\d+)/)?.[1];
+          if (liveDocId && !this.capturedThreadDocIds.includes(liveDocId)) {
+            this.capturedThreadDocIds.push(liveDocId);
+            if (this.capturedThreadDocIds.length > 20) this.capturedThreadDocIds.shift();
           }
         }
 
@@ -290,12 +302,10 @@ export class MessengerContactsExtractor extends BaseExtractor {
       // ─── Phase 1: Flush remaining contacts (pagination handled by bootstrapAndPaginate) ───
       total += await this.flushContacts(contacts, seen);
 
-      // ─── Phase 2: mbasic.facebook.com (plain HTML, reliable pagination) ───
-      if (contacts.size < this.ctx.maxResults && !this.shouldStop) {
-        log.info("MessengerContacts", `trying mbasic.facebook.com fallback`);
-        await this.tryMbasic(pageIdentifier, contacts);
-        total += await this.flushContacts(contacts, seen);
-      }
+      // ─── Phase 2: mbasic.facebook.com — RETIRED (probe 2026-08-30: mbasic
+      // now redirects to www.facebook.com, serves no conversation list, and
+      // the old parse could inject the account's last-open thread as a junk
+      // contact). Do not re-add without a fresh probe showing a real list. ───
 
       // ─── Phase 3: Scroll loop (last resort, triggers more GraphQL) ───
       if (contacts.size < this.ctx.maxResults && !this.shouldStop) {
@@ -570,15 +580,88 @@ export class MessengerContactsExtractor extends BaseExtractor {
   // Bootstrap & Paginate (primary extraction engine)
   // ═══════════════════════════════════════════════════
 
+  /**
+   * FR-5: Resolve the real Business Suite mailbox id for the selected page
+   * at runtime. The mailbox is NEVER hardcoded — every account/page pair has
+   * its own mailbox, and using a foreign one cross-contaminates results.
+   *
+   * Strategy:
+   *   1. Navigate to business.facebook.com latest inbox for the page and
+   *      read the resolved ids Facebook itself puts in the final URL.
+   *   2. Read a live mailbox_id / page_id token from the page HTML.
+   *   3. A redirect away from the inbox means this page seed is unusable —
+   *      give up and let the caller skip the GraphQL engine (no guessing).
+   *
+   * Returns "" when nothing can be resolved — the caller must then skip the
+   * GraphQL engine instead of guessing.
+   */
+  private async resolveMailboxId(pageId: string): Promise<string> {
+    if (!pageId) {
+      log.warn("MessengerContacts", `[resolveMailbox] no page id — cannot resolve mailbox`);
+      return "";
+    }
+
+    const bizUrl = `https://business.facebook.com/latest/inbox/all?asset_id=${pageId}&asset_id_list=[%22${pageId}%22]&mailbox_id=${pageId}`;
+    try {
+      await this.page.goto(bizUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+      await this.page.waitForTimeout(5000);
+      await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+      await this.page.waitForTimeout(2000);
+    } catch (err) {
+      log.warn("MessengerContacts", `[resolveMailbox] nav failed: ${String(err).substring(0, 120)}`);
+    }
+
+    const finalUrl = this.page.url();
+    const urlAsset = finalUrl.match(/asset_id=(\d{10,})/)?.[1] || "";
+    const urlMailbox = finalUrl.match(/mailbox_id=(\d{10,})/)?.[1] || "";
+
+    const htmlIds = await this.page.evaluate(() => {
+      const html = document.documentElement.innerHTML;
+      const grab = (re: RegExp): string => html.match(re)?.[1] || "";
+      // Redirect to business picker/home without an asset in the URL means
+      // this session cannot access the page's inbox.
+      if (/business\.facebook\.com\/(overview|home|select|latest\/redirect)/.test(location.href) && !location.href.includes("asset_id=")) {
+        return { asset: "", mailbox: "", redirect: true };
+      }
+      return {
+        asset: grab(/"(?:asset_id|page_id|pageID)"\s*:\s*"?(\d{10,})"?/),
+        mailbox: grab(/"(?:mailbox_id|mailboxID|viewer_mailbox_id)"\s*:\s*"?(\d{10,})"?/),
+        redirect: false,
+      };
+    }).catch(() => ({ asset: "", mailbox: "", redirect: true }));
+
+    if (htmlIds.redirect) {
+      log.info("MessengerContacts", `[resolveMailbox] redirected away (no inbox access for page=${pageId})`);
+      return "";
+    }
+
+    const mailbox = urlMailbox || htmlIds.mailbox || urlAsset || htmlIds.asset || "";
+    if (mailbox) {
+      log.info("MessengerContacts", `[resolveMailbox] resolved mailbox=${mailbox} (url_asset=${urlAsset || "-"} url_mailbox=${urlMailbox || "-"} html_asset=${htmlIds.asset || "-"} html_mailbox=${htmlIds.mailbox || "-"})`);
+      return mailbox;
+    }
+
+    log.warn("MessengerContacts", `[resolveMailbox] could not resolve mailbox for page=${pageId}`);
+    return "";
+  }
+
   private async bootstrapAndPaginate(
     pageId: string,
     contacts: Map<string, CapturedContact>,
     seen: Set<string>,
     batchListCursor: string,
   ): Promise<void> {
-    const mailboxId = "551321368296102";
-    const pageIdNum = pageId || "100092451731675";
     const filterCtx = { pageName: "", excludedPages: 0, excludedAutoGen: 0 }; // direct API calls don't track these
+
+    // FR-5: Derive the mailbox for the SELECTED page at runtime. No hardcoded
+    // mailbox/page fallbacks — extraction must never cross pages or accounts.
+    const mailboxId = await this.resolveMailboxId(pageId);
+    if (!mailboxId) {
+      this.logStopReason("no_working_pattern", `mailbox not resolvable for page=${pageId || "?"} — skipping GraphQL engine (no hardcoded fallback)`);
+      return;
+    }
+    const pageIdNum = pageId;
+    log.info("MessengerContacts", `[bootstrap] resolved mailbox=${mailboxId} for page=${pageIdNum}`);
 
     // Step 1: Try extracting tokens from current page first (faster)
     let tokens = await this.extractTokens();
@@ -612,7 +695,10 @@ export class MessengerContactsExtractor extends BaseExtractor {
       return;
     }
 
-    let workingDocId = "27615938851434506";
+    // Task 4: prefer LIVE doc_ids captured from real thread-list requests this
+    // run; the static id is only a last-resort fallback.
+    const workingDocId = this.capturedThreadDocIds[this.capturedThreadDocIds.length - 1] || "27615938851434506";
+    log.info("MessengerContacts", `[bootstrap] doc_id=${workingDocId} (source=${this.capturedThreadDocIds.length ? "live-captured" : "static-fallback"}, captured=${this.capturedThreadDocIds.length})`);
     let workingVars: Record<string, any> = { mailbox_id: mailboxId, thread_type: "FB_MESSAGE", count: 200 };
     let cursor = batchListCursor || "";
 
@@ -711,107 +797,10 @@ export class MessengerContactsExtractor extends BaseExtractor {
   }
 
   // ═══════════════════════════════════════════════════
-  // mbasic.facebook.com Fallback
+  // mbasic.facebook.com — RETIRED (probe 2026-08-30: permanent redirect to
+  // www, no conversation list; parse could inject junk contacts). Kept as a
+  // comment only; delete the block after one stable release.
   // ═══════════════════════════════════════════════════
-
-  private async tryMbasic(
-    pageIdentifier: string,
-    contacts: Map<string, CapturedContact>,
-  ): Promise<void> {
-    const urls = [
-      "https://mbasic.facebook.com/messages/",
-      `https://mbasic.facebook.com/${pageIdentifier}/messages/`,
-      "https://m.facebook.com/messages/",
-    ];
-
-    let url = "";
-    let foundList = false;
-
-    for (const tryUrl of urls) {
-      log.info("MessengerContacts", `[mbasic] trying ${tryUrl}`);
-      await this.page.goto(tryUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
-      await this.page.waitForTimeout(2000);
-
-      const finalUrl = this.page.url();
-      const html = await this.page.content();
-
-      // Check if we see conversation links
-      const linkCount = (html.match(/\/messages\/t\/\d+/g) || []).length;
-      const threadLinks = (html.match(/\/messages\/thread\/|tid=/g) || []).length;
-      const seeMore = html.match(/href="([^"]*)"[^>]*>(?:See More|عرض المزيد|Show more|الأحدث)/i);
-
-      log.info("MessengerContacts", `[mbasic] landed: ${finalUrl} msgLinks=${linkCount} threadLinks=${threadLinks} seeMore=${!!seeMore}`);
-
-      if (linkCount > 0 || threadLinks > 0) {
-        url = tryUrl;
-        foundList = true;
-        break;
-      }
-    }
-
-    if (!foundList) {
-      log.info("MessengerContacts", `[mbasic] no conversation list found on any URL`);
-      return;
-    }
-
-    // Paginate through conversation list
-    let pages = 0;
-    const maxPages = 100;
-    let currentUrl = url;
-
-    while (pages < maxPages && contacts.size < this.ctx.maxResults && !this.shouldStop) {
-      if (await this.checkCanceled()) break;
-      pages++;
-
-      if (pages > 1) {
-        log.info("MessengerContacts", `[mbasic ${pages}] navigating to ${currentUrl.substring(0, 100)}`);
-        await this.page.goto(currentUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
-        await this.page.waitForTimeout(2000);
-      }
-
-      const html = await this.page.content();
-      const before = contacts.size;
-
-      // Parse conversation links — mbasic uses /messages/t/{id}/ or ?tid=cid.c.{id}
-      const patterns = [
-        /href="[^"]*\/messages\/t\/(\d+)[^"]*"[^>]*>([\s\S]*?)<\/a>/gi,
-        /href="[^"]*tid=cid\.c\.(\d+)[^"]*"[^>]*>([\s\S]*?)<\/a>/gi,
-        /href="[^"]*\/messages\/thread\/[^"]*tid=([^&"]+)[^"]*"[^>]*>([\s\S]*?)<\/a>/gi,
-      ];
-
-      for (const pattern of patterns) {
-        let m: RegExpExecArray | null;
-        while ((m = pattern.exec(html)) !== null) {
-          const id = m[1];
-          const rawName = m[2].replace(/<[^>]+>/g, "").trim();
-          const name = rawName.split("\n")[0]?.trim() || rawName;
-          if (id && name && name.length >= 2 && name.length <= 80) {
-            const key = `msg_${id}`;
-            if (!contacts.has(key)) {
-              contacts.set(key, { id: key, name, avatarUrl: "" });
-            }
-          }
-        }
-      }
-
-      const gained = contacts.size - before;
-      log.info("MessengerContacts", `[mbasic ${pages}] +${gained} (total ${contacts.size})`);
-
-      if (gained === 0) break;
-
-      // Find "See More" / pagination link
-      const html2 = await this.page.content();
-      const seeMoreMatch = html2.match(/href="([^"]*)"[^>]*>(?:See More|عرض المزيد|Show more|الأحدث|See more messages)/i);
-      if (seeMoreMatch?.[1]) {
-        currentUrl = seeMoreMatch[1].startsWith("http") ? seeMoreMatch[1] : `https://mbasic.facebook.com${seeMoreMatch[1].replace(/&amp;/g, "&")}`;
-      } else {
-        log.info("MessengerContacts", `[mbasic] no more pages`);
-        break;
-      }
-
-      await this.page.waitForTimeout(1500);
-    }
-  }
 
   // ═══════════════════════════════════════════════════
   // DOM MutationObserver

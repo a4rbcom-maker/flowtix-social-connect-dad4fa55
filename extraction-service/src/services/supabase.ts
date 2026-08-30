@@ -456,6 +456,32 @@ export const supabaseService = {
     return out;
   },
 
+  /** Cross-job dedup for FB messenger contacts, scoped user_id + platform.
+   *  workspace_id is dead (migration 2026072716) so the workspace-scoped path
+   *  above is a silent no-op. Mirrors getExistingIgIds; fbType narrows the
+   *  scope to one result kind so other FB extractors keep their behavior. */
+  async getExistingFbIds(userId: string, fbIds: string[], fbType: string): Promise<Set<string>> {
+    if (fbIds.length === 0) return new Set();
+    const out = new Set<string>();
+    // .in() with thousands of ids can exceed URL limits — chunk it.
+    for (let i = 0; i < fbIds.length; i += 500) {
+      const chunkIds = fbIds.slice(i, i + 500);
+      const { data, error } = await sb
+        .from("extraction_results")
+        .select("fb_id")
+        .eq("user_id", userId)
+        .eq("platform", "facebook")
+        .eq("fb_type", fbType)
+        .in("fb_id", chunkIds);
+      if (error) {
+        log.warn("Supabase", `getExistingFbIds error: ${error.message}`);
+        continue;
+      }
+      for (const r of data ?? []) out.add(r.fb_id);
+    }
+    return out;
+  },
+
   async getJobResultsForEnrichment(jobId: string): Promise<{ id: string; fb_id: string; data: Record<string, unknown>; platform?: string }[]> {
     const PAGE_SIZE = 1000;
     const allData: { id: string; fb_id: string; data: Record<string, unknown>; platform?: string }[] = [];
