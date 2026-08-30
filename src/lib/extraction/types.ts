@@ -20,8 +20,6 @@ export type ExtractionType =
 export type JobStatus = Database["public"]["Enums"]["job_status"];
 export type ExportFormat = Database["public"]["Enums"]["export_format"];
 
-export type PlatformFilter = "all" | "facebook" | "instagram";
-
 export type MemberSourceType = "group-members" | "page-followers" | "post-comments" | "post-reactions" | "messenger-contacts" | "ig-followers" | "ig-following";
 
 export const SOURCE_TO_DB_TYPE: Record<MemberSourceType, ExtractionType> = {
