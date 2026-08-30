@@ -14,6 +14,7 @@ import listPagesRouter from "./routes/list-pages.js";
 import listGroupsRouter from "./routes/list-groups.js";
 import publishRouter from "./routes/publish.js";
 import messagesRouter, { resumeMessageJobs } from "./routes/messages.js";
+import igActionsRouter, { resumeIgActionJobs } from "./routes/ig-actions.js";
 import waRouter from "./wa/routes.js";
 import aiRouter from "./ai/routes.js";
 import debugPageRouter from "./routes/debug-page.js";
@@ -57,6 +58,7 @@ app.use("/", listGroupsRouter);
 app.use("/", publishRouter);
 app.use("/", messagesRouter);
 app.use("/", waRouter);
+app.use("/", igActionsRouter);
 app.use("/", aiRouter);
 app.use("/", debugPageRouter);
 
@@ -91,6 +93,7 @@ const server = app.listen(config.port, async () => {
     await resumeQueuedJobs();
     await resumeEnrichmentJobs();
     await resumeMessageJobs();
+    await resumeIgActionJobs();
 
     const address = server.address();
     log.info("Server", `server address: ${JSON.stringify(address)}`);

@@ -35,6 +35,7 @@ export class GraphQLInterceptor {
   private requestListener: ((req: Request) => void) | null = null;
   private responseListener: ((resp: Response) => void) | null = null;
   private interceptedTexts: string[] = [];
+  private _loggedFirst = false;
 
   /** Start listening for GraphQL requests on the page */
   attach(page: Page): void {
@@ -52,6 +53,11 @@ export class GraphQLInterceptor {
         const docId = parsed.get("doc_id");
         const variablesStr = parsed.get("variables");
         const variables = variablesStr ? JSON.parse(variablesStr) : null;
+        // DEBUG
+        if (!this._loggedFirst) {
+          console.log(`[INTERCEPTOR] First graphql request: docId=${docId}`);
+          this._loggedFirst = true;
+        }
         this.capturedRequests.push({
           url,
           docId,
@@ -89,6 +95,11 @@ export class GraphQLInterceptor {
     return [...this.interceptedTexts];
   }
 
+  /** Get all captured GraphQL requests (most recent last). */
+  getCapturedRequests(): CapturedRequest[] {
+    return [...this.capturedRequests];
+  }
+
   /** Drain intercepted texts (returns and clears) */
   drainInterceptedTexts(): string[] {
     const texts = [...this.interceptedTexts];
@@ -121,13 +132,20 @@ export class GraphQLInterceptor {
   ): Promise<string | null> {
     if (!captured.variables || !captured.docId) return null;
 
-    const newVariables = { ...captured.variables };
+    const newVariables = { ...captured.variables } as Record<string, any>;
     // Update cursor in common locations
     if (newVariables.cursor !== undefined) newVariables.cursor = newCursor;
     if (newVariables.after !== undefined) newVariables.after = newCursor;
-    // Nested in feedback or reaction_connection
-    if (newVariables.feedback) {
-      newVariables.feedback = { ...newVariables.feedback, cursor: newCursor, after: newCursor };
+    // Always set a top-level cursor — FB 2026 comment/reaction queries accept it
+    // even when the initial captured request omitted it.
+    if (newCursor) {
+      if (newVariables.cursor === undefined && newVariables.after === undefined) {
+        newVariables.cursor = newCursor;
+      }
+      // Nested in feedback or reaction_connection
+      if (newVariables.feedback && typeof newVariables.feedback === "object") {
+        newVariables.feedback = { ...newVariables.feedback, cursor: newCursor, after: newCursor };
+      }
     }
     if (newVariables.count !== undefined) newVariables.count = count;
     if (newVariables.limit !== undefined) newVariables.limit = count;
@@ -189,35 +207,63 @@ export function parseGraphQLResponse(text: string): GraphQLPage {
   const forIdx = text.indexOf("for (;;);");
   if (forIdx >= 0) jsonText = text.substring(forIdx + 9).trim();
 
-  // Handle multiple JSON objects separated by newlines
-  if (jsonText.startsWith("{")) {
-    try {
-      const data = JSON.parse(jsonText);
-      const result = extractUsersAndPageInfo(data);
-      return result;
-    } catch {
-      // Try line-by-line parsing (Facebook sometimes sends multiple responses)
-      const lines = jsonText.split("\n").filter(l => l.trim().startsWith("{"));
-      const allUsers: GraphQLUser[] = [];
-      let endCursor: string | null = null;
-      let hasNextPage = false;
-      const seen = new Set<string>();
-      for (const line of lines) {
-        try {
-          const partData = JSON.parse(line);
-          const partResult = extractUsersAndPageInfo(partData);
-          for (const u of partResult.users) {
-            if (!seen.has(u.id)) { seen.add(u.id); allUsers.push(u); }
-          }
-          if (partResult.endCursor) endCursor = partResult.endCursor;
-          if (partResult.hasNextPage) hasNextPage = true;
-        } catch { /* skip */ }
-      }
+  // Facebook frequently sends multiple concatenated JSON objects (the leading
+  // "for (;;);" prefix is followed by one or more JSON blobs). Split them
+  // robustly by scanning for top-level objects.
+  const blobs = splitJsonBlobs(jsonText);
+  if (blobs.length > 0) {
+    const allUsers: GraphQLUser[] = [];
+    let endCursor: string | null = null;
+    let hasNextPage = false;
+    const seen = new Set<string>();
+    for (const blob of blobs) {
+      try {
+        const data = JSON.parse(blob);
+        const partResult = extractUsersAndPageInfo(data);
+        for (const u of partResult.users) {
+          if (!seen.has(u.id)) { seen.add(u.id); allUsers.push(u); }
+        }
+        if (partResult.endCursor) endCursor = partResult.endCursor;
+        if (partResult.hasNextPage) hasNextPage = true;
+      } catch { /* skip non-JSON blob */ }
+    }
+    if (allUsers.length > 0 || endCursor !== null || hasNextPage) {
       return { users: allUsers, endCursor, hasNextPage };
     }
   }
 
   return { users: [], endCursor: null, hasNextPage: false };
+}
+
+/** Split a string that may contain one or more concatenated top-level JSON
+ *  objects into individual valid JSON strings. */
+function splitJsonBlobs(input: string): string[] {
+  const blobs: string[] = [];
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  let start = -1;
+  for (let i = 0; i < input.length; i++) {
+    const c = input[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === "{" || c === "[") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (c === "}" || c === "]") {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        blobs.push(input.substring(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+  return blobs;
 }
 
 function extractUsersAndPageInfo(data: any): GraphQLPage {
@@ -258,6 +304,24 @@ function walkForConnections(obj: any, users: GraphQLUser[], seen: Set<string>, d
     }
   }
 
+  // FB 2026 nests comment authors / reactors inside non-standard arrays:
+  //  - comment_action_links[*].author
+  //  - reactors (connection or bare array of user nodes)
+  //  - top_reactions / supported_reaction_infos (user-ish nodes, but no profile link — skip)
+  for (const key of ["comment_action_links", "reactors", "reactor_list", "actors", "participants"]) {
+    const arr = obj[key];
+    if (Array.isArray(arr)) {
+      for (const item of arr) {
+        const node = item?.author ?? item?.node ?? item?.actor ?? item;
+        const user = extractUserFromNode(node);
+        if (user && !seen.has(user.id)) {
+          seen.add(user.id);
+          users.push(user);
+        }
+      }
+    }
+  }
+
   // Check if this is a node with user data directly
   if (!Array.isArray(obj.edges)) {
     const user = extractUserFromNode(obj);
@@ -278,24 +342,51 @@ function walkForConnections(obj: any, users: GraphQLUser[], seen: Set<string>, d
 function extractUserFromNode(node: any): GraphQLUser | null {
   if (!node || typeof node !== "object") return null;
 
+  // Skip nodes that are clearly not user entities (posts, comments, photos).
+  if (node.__typename && !/User|Profile|Page|Group/.test(node.__typename)) return null;
+  // If the node has a post/photo URL, it's not a user.
+  const nodeUrl = node.url || node.uri || "";
+  if (typeof nodeUrl === "string" && /photo\.php|posts\/|\/videos\/|permalink/.test(nodeUrl) && !/profile\.php/.test(nodeUrl)) {
+    return null;
+  }
+  // Supported reaction infos carry reaction-type IDs (e.g. 613557422527858),
+  // not user profiles — skip them.
+  if (node.__typename === "SupportedReactionInfo" || node.is_supported_reaction === true) return null;
+  // A node with reaction_count / localized_name / a nested `reaction` object /
+  // a `color` field is a reaction *type*, not a user.
+  if (node.id === "613557422527858") return null; // reaction-type id seen in probe
+  if (node.localized_name || node.reaction_count !== undefined || node.reaction_count_reduced) return null;
+  if (node.reaction && typeof node.reaction === "object") return null;
+  if (typeof node.color === "string" && /^[0-9A-F]{6}$/i.test(node.color)) return null;
+
   // Try multiple paths for user ID — author/actor first: for comment nodes
   // node.id is the COMMENT's own id, while the user id is nested in author.
   const id = String(
     node.author?.id || node.actor?.id ||
-    node.id || node.uid || node.fbid || node.user_id || node.pk || "",
+    node.id || node.uid || node.fbid || node.user_id || node.pk ||
+    (typeof nodeUrl === "string" ? (nodeUrl.match(/profile\.php\?id=(\d{5,25})/)?.[1] || nodeUrl.match(/facebook\.com\/(\d{5,25})/)?.[1]) : "") || ""
   ).trim();
   if (!id || !/^\d{5,25}$/.test(id)) return null;
 
-  // Try multiple paths for name
-  const name = String(
+  // The id must correspond to a real user profile, not a post/comment fbid.
+  // FB post/comment IDs are typically 15-17 digits; user IDs are 10-15 digits.
+  // We accept any numeric id that came from a user-shaped node (author/actor/url).
+  const fromUserShape = !!(node.author || node.actor || (typeof nodeUrl === "string" && /profile\.php\?id=\d{5,25}/.test(nodeUrl)));
+  if (!fromUserShape && /^\d{16,}$/.test(id)) return null; // likely a post/comment fbid
+
+  // Try multiple paths for name. FB 2026 often renders avatar-only nodes with
+  // no inline name — fall back to a placeholder rather than dropping the user.
+  let name = String(
     node.name || node.full_name || node.display_name ||
     node.title?.text || node.text_name ||
-    node.profile?.name || node.actor?.name || node.author?.name || ""
+    node.profile?.name || node.actor?.name || node.author?.name ||
+    (typeof nodeUrl === "string" ? nodeUrl.match(/facebook\.com\/([a-zA-Z0-9.]+)/i)?.[1] : "") || ""
   ).trim();
-  if (!name || name.length < 2) return null;
+  if (!name || name.length < 2) name = "Facebook User";
+  if (name.length > 200) name = name.substring(0, 200);
 
   // Build profile URL
-  const url = node.url || node.profile_url || node.actor?.url || node.author?.url || "";
+  const url = nodeUrl || node.profile_url || node.actor?.url || node.author?.url || "";
   const profileUrl = typeof url === "string" && url.includes("facebook.com")
     ? (url.startsWith("http") ? url : `https://www.facebook.com${url}`)
     : `https://www.facebook.com/profile.php?id=${id}`;
@@ -304,13 +395,14 @@ function extractUserFromNode(node: any): GraphQLUser | null {
   const reaction_type = node.reaction_type || node.reaction || node.reaction_label || undefined;
   const comment_text = node.body?.text || node.text || node.message?.text || undefined;
 
-  return {
+  const user: GraphQLUser = {
     id,
     name: name.substring(0, 200),
     url: profileUrl,
     reaction_type: typeof reaction_type === "string" ? reaction_type : undefined,
     comment_text: typeof comment_text === "string" ? comment_text.substring(0, 300) : undefined,
   };
+  return user;
 }
 
 function findPageInfo(obj: any, callback: (cursor: string | null, hasNext: boolean) => void, depth: number): void {
