@@ -325,10 +325,15 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
     }
 
     // 3) Fallback: bootstrap via the private media likers endpoint (first ~100).
-    if (all.length === 0) {
+    //    ⚠️ 2026-09-01: This is now the primary fallback for non-owned posts,
+    //    as IG caps GraphQL liked-by queries at ~100 users for non-owners.
+    if (all.length === 0 || all.length < 100) {
       const users = await this.fetchLikersViaMediaEndpoint();
-      for (const u of users) if (!seen.has(u.username)) { seen.add(u.username); all.push(u); }
-      log.info("IgPostUsers", `fetchLikersViaApi: media-endpoint fallback got ${all.length}`);
+      let added = 0;
+      for (const u of users) {
+        if (!seen.has(u.username)) { seen.add(u.username); all.push(u); added++; }
+      }
+      if (added > 0) log.info("IgPostUsers", `fetchLikersViaApi: media-endpoint fallback got ${added} (total ${all.length})`);
     }
 
     return all;
