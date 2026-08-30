@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, Link } from "react-router-dom";
-import { ListChecks, Activity, CheckCircle2, Loader2, PauseCircle, Clock, AlertTriangle, Square, Download, Zap, ArrowRight, Send, Search, Users, Globe, ThumbsUp, MessageSquare, Database, Trash2 } from "lucide-react";
+import { ListChecks, Activity, CheckCircle2, Loader2, PauseCircle, Clock, AlertTriangle, Square, Download, Zap, ArrowRight, Send, AtSign, Search, Users, Globe, ThumbsUp, MessageSquare, Database, Trash2 } from "lucide-react";
 import { PageHeader, StatCard } from "@/components/ui/page";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -376,10 +376,15 @@ export function TasksPage() {
                   <Send className="size-3.5" />{t("pages.tasks.sendMessage")}
                 </Button>
               )}
-              {String(job.type).startsWith("ig_") && (
-                <Button variant="ghost" size="sm" disabled title={t("messaging.igUnsupported")}>
-                  <Send className="size-3.5" />{t("pages.tasks.sendMessage")}
-                </Button>
+              {String(job.type).startsWith("ig_") && job.result_count > 0 && !job.isPublish && !isEnriching && (
+                <>
+                  <Button variant="primary" size="sm" onClick={() => navigate(`/dashboard/instagram/action/${job.id}?mode=mention`)}>
+                    <AtSign className="size-3.5" />{t("ig_actions.mentionButton")}
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => navigate(`/dashboard/instagram/action/${job.id}?mode=dm`)}>
+                    <Send className="size-3.5" />{t("ig_actions.dmButton")}
+                  </Button>
+                </>
               )}
             </>
           )}

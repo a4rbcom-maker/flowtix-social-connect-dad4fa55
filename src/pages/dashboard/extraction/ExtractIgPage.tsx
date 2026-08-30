@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import {
-  Users, UserPlus, UserCheck, Clock, Zap, AlertTriangle, Download, Globe,
+  Users, UserPlus, UserCheck, Clock, Zap, AlertTriangle, Download, Globe, AtSign, Send,
   Activity, CheckCircle2, Loader2, ArrowRight, Square, Camera, Pencil,
 } from "lucide-react";
 import { PageHeader, StatCard } from "@/components/ui/page";
@@ -93,6 +94,7 @@ type Phase = "setup" | "running" | "completed" | "failed";
 
 export function ExtractIgPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
 
   const [phase, setPhase] = useState<Phase>("setup");
   const [sourceType, setSourceType] = useState<IgSourceType>("ig-followers");
@@ -440,6 +442,16 @@ export function ExtractIgPage() {
           <Button variant="outline" onClick={() => { setPhase("setup"); setActiveJobId(null); }}>
             <Zap className="size-4" />{t("ig_extract.completed.newExtraction")}
           </Button>
+          {(activeJob?.result_count ?? 0) > 0 && (
+            <>
+              <Button variant="primary" onClick={() => navigate(`/dashboard/instagram/action/${activeJob?.id}?mode=mention`)}>
+                <AtSign className="size-4" />{t("ig_actions.mentionButton")}
+              </Button>
+              <Button variant="secondary" onClick={() => navigate(`/dashboard/instagram/action/${activeJob?.id}?mode=dm`)}>
+                <Send className="size-4" />{t("ig_actions.dmButton")}
+              </Button>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
