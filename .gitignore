@@ -21,3 +21,12 @@ pass*.txt
 
 .opencode/
 captcha.png
+
+# Supabase CLI local state
+supabase/.temp/
+
+# Debug/probe artifacts
+extraction-service/.probe-*
+extraction-service/probe-*
+extraction-service/monitor-*.txt
+extraction-service/service-run-*.txt
