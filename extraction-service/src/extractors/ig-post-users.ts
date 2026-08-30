@@ -16,6 +16,23 @@ import type { AuthState, ExtractedMember, JobContext } from "../types.js";
 
 const log = logger;
 
+/** The app's own liked-by list query, captured live (doc_id + variables + headers). */
+interface LikersTemplate {
+  url: string;
+  docId: string;
+  variables: Record<string, unknown>;
+  headers: Record<string, string>;
+}
+
+/** One replayed liked-by page: parsed users + real pagination info. */
+interface LikersReplayPage {
+  error: boolean;
+  status: number;
+  users: { username: string; fullName: string; avatar: string }[];
+  endCursor: string | null;
+  hasNext: boolean;
+}
+
 function parsePostUrl(sourceUrl: string): string {
   const m = sourceUrl.match(/instagram\.com\/(?:p|reel)\/([A-Za-z0-9_-]+)/i);
   if (!m) throw new ExtractionError(ErrorCodes.INVALID_INPUT, "رابط منشور غير صالح. استخدم رابطاً مثل https://www.instagram.com/p/CODE/");
@@ -133,9 +150,12 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
     }
 
     // 5) Keep scrolling for long comment threads (page self-paginates).
+    //    Engagers: skip entirely once the likers path already collected the
+    //    full visible like list — scrolling the post only yields commenters.
     let stale = 0;
     while (
       collected.size < this.ctx.maxResults &&
+      !(this.wantLikers && this.knownLikeTotal !== null && collected.size >= this.knownLikeTotal) &&
       !this.shouldStop &&
       !(await this.checkCanceled()) &&
       stale < 15
@@ -163,132 +183,206 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
     await this.updateIgProgress({
       phase: "completed",
       extracted: collected.size,
-      total: null,
-      coverage_rate: null,
+      total: this.knownLikeTotal,
+      coverage_rate: this.computeCoverage(collected.size, this.knownLikeTotal),
       shortcode,
     });
     return { extracted: collected.size, done: true, authState: "authenticated" };
   }
 
-  /** Fetch likers directly via IG's GraphQL API, using the same logged-in
-   *  session. IG's web UI issues a /graphql/query with the post's shortcode
-   *  to paginate edge_liked_by. We replay the same query in-page.
-   *  This replaces the unreliable DOM-dialog-click path (openLikersAndCollect)
-   *  which often returns 0 because the "N likes" button is hidden or
-   *  structurally changed by IG. */
+  /** Fetch likers via IG's OWN liked-by GraphQL query, captured live from the
+   *  web app: click the likes counter, intercept the app's request
+   *  (GET /graphql/query?doc_id=…&variables={"comment_id":…,"first":48}),
+   *  then replay it in-page with after=<end_cursor> until exhaustion.
+   *  Live-proven 2026-08-30 (post DcqY-5Hu8Wm, 1,805 likes): 25 pages × 48
+   *  unique users, has_next=true on every page.
+   *  This replaces the old comments-doc_id path (8604818727118937) whose
+   *  edge_liked_by / edge_media_preview_like fields are 3-12 item PREVIEWS
+   *  with no real cursor — the reason engagers jobs returned 2-3 users. */
   private async fetchLikersViaApi(
     shortcode: string,
   ): Promise<{ username: string; fullName: string; avatar: string }[]> {
+    void shortcode; // the captured template carries the post reference itself
     const all: { username: string; fullName: string; avatar: string }[] = [];
     const seen = new Set<string>();
-    let after: string | null = null;
-    const MAX_PAGES = 100;
-    let pageIdx: number;
 
-    for (pageIdx = 0; pageIdx < MAX_PAGES; pageIdx++) {
-      const result: {
-        error?: boolean;
-        status?: number;
-        users?: { username: string; fullName: string; avatar: string }[];
-        endCursor?: string | null;
-        hasNext?: boolean;
-        total?: number | null;
-        message?: string;
-      } = await this.page
-        .evaluate(
-          async ({ shortcode, after }: { shortcode: string; after: string | null }) => {
-            const variables = {
-              shortcode,
-              child_comment_count: 3,
-              fetch_comment_count: 40,
-              parent_comment_count: 24,
-              has_threaded_comments: true,
-              after,
-            };
-            const params = new URLSearchParams({
-              doc_id: "8604818727118937",
-              variables: JSON.stringify(variables),
-              fb_api_req_friendly_name: "PolarisPostCommentsPageQuery",
-            });
-            try {
-              const res = await fetch(`https://www.instagram.com/graphql/query/?${params.toString()}`, {
-                credentials: "include",
-                headers: { "x-ig-app-id": "936619743392459", accept: "*/*" },
+    // 1) Capture the app's own liked-by query template by clicking the counter.
+    const tpl = await this.captureLikersTemplate();
+
+    // 2) Replay the captured template with real pagination.
+    if (tpl) {
+      const MAX_PAGES = 400;
+      let after: string | null = null;
+      let pages = 0;
+      for (let pageIdx = 0; pageIdx < MAX_PAGES; pageIdx++) {
+        const result: LikersReplayPage | null = await this.page
+          .evaluate(
+            `(async () => {
+              const tpl = ${JSON.stringify({ url: tpl.url, docId: tpl.docId, variables: tpl.variables, headers: tpl.headers })};
+              const vars = { ...tpl.variables, after: ${JSON.stringify(after)} };
+              const params = new URLSearchParams({
+                doc_id: tpl.docId,
+                variables: JSON.stringify(vars),
+                fb_api_req_friendly_name: "PolarisPostLikedByListQuery",
               });
-              if (!res.ok) return { status: res.status, error: true };
-              const text = await res.text();
-              let body: unknown;
               try {
-                body = JSON.parse(text);
-              } catch {
-                return { error: true, status: 0 };
-              }
-              const media = (body as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-              const xdt = media?.xdt_shortcode_media as Record<string, unknown> | undefined;
-              if (!xdt) return { error: true, status: 0 };
-
-              const likeEdges = (xdt.edge_liked_by as Record<string, unknown> | undefined)?.edges
-                ?? (xdt.edge_media_preview_like as Record<string, unknown> | undefined)?.edges
-                ?? [];
-
-              const users: { username: string; fullName: string; avatar: string }[] = [];
-              for (const e of likeEdges as Array<Record<string, unknown>>) {
-                const n = e?.node as Record<string, unknown> | undefined;
-                if (n?.username && typeof n.username === "string") {
-                  users.push({
-                    username: n.username,
-                    fullName: String(n.full_name ?? ""),
-                    avatar: String(n.profile_pic_url ?? ""),
-                  });
+                const res = await fetch(tpl.url + "?" + params.toString(), { credentials: "include", headers: tpl.headers });
+                if (!res.ok) return { error: true, status: res.status, users: [], endCursor: null, hasNext: false };
+                const body = await res.json();
+                const users = [];
+                let endCursor = null; let hasNext = false;
+                const stack = [body];
+                while (stack.length) {
+                  const o = stack.pop();
+                  if (!o || typeof o !== "object") continue;
+                  if (typeof o.username === "string" && (o.id || o.pk) && !users.some((x) => x.username === o.username)) {
+                    users.push({ username: o.username, fullName: String(o.full_name ?? ""), avatar: String(o.profile_pic_url ?? "") });
+                  }
+                  if (o.page_info && typeof o.page_info === "object") {
+                    endCursor = o.page_info.end_cursor ?? null;
+                    hasNext = !!o.page_info.has_next_page;
+                  }
+                  for (const v of Object.values(o)) {
+                    if (v && typeof v === "object") stack.push(v);
+                    else if (Array.isArray(v)) for (const it of v) stack.push(it);
+                  }
                 }
+                return { error: false, status: 200, users, endCursor, hasNext };
+              } catch (e) {
+                return { error: true, status: 0, users: [], endCursor: null, hasNext: false };
               }
+            })()`,
+          )
+          .then((r) => r as LikersReplayPage)
+          .catch(() => null);
 
-              const pageInfo = ((xdt.edge_liked_by ?? xdt.edge_media_preview_like) as Record<string, unknown> | undefined)
-                ?.page_info as Record<string, unknown> | undefined;
-              return {
-                users,
-                endCursor: (pageInfo?.end_cursor as string | null) ?? null,
-                hasNext: !!pageInfo?.has_next_page,
-                total: ((xdt.edge_liked_by ?? xdt.edge_media_preview_like) as Record<string, unknown> | undefined)
-                  ?.count as number | null,
-              };
-            } catch (e) {
-              return { error: true, status: 0, message: String(e).slice(0, 100) };
-            }
-          },
-          { shortcode, after },
-        )
-        .then(
-          (r: {
-            error?: boolean;
-            status?: number;
-            users?: { username: string; fullName: string; avatar: string }[];
-            endCursor?: string | null;
-            hasNext?: boolean;
-            total?: number | null;
-            message?: string;
-          }) => r,
-        )
-        .catch(() => ({ error: true, status: 0 } as const));
-
-      if (result.error || !result.users?.length) {
-        if (result.status === 429) log.warn("IgPostUsers", `likers API rate-limited (page ${pageIdx})`);
-        break;
-      }
-      let added = 0;
-      for (const u of result.users) {
-        if (!seen.has(u.username)) {
-          seen.add(u.username);
-          all.push(u);
-          added++;
+        if (!result || result.error || !result.users?.length) {
+          if (result?.status === 429) log.warn("IgPostUsers", `likers template rate-limited (page ${pageIdx})`);
+          else if (result?.status && result.status >= 400) log.warn("IgPostUsers", `likers template page failed (page ${pageIdx}, status ${result.status})`);
+          break;
         }
+        pages++;
+        let added = 0;
+        for (const u of result.users) {
+          if (!seen.has(u.username)) { seen.add(u.username); all.push(u); added++; }
+        }
+        log.info("IgPostUsers", `likers page ${pageIdx}: +${added} → ${all.length} unique (hasNext=${result.hasNext})`);
+        if (!result.hasNext || !result.endCursor) break;
+        after = result.endCursor;
+        if (this.ctx.maxResults > 0 && all.length >= this.ctx.maxResults) break;
+        await this.page.waitForTimeout(1200);
       }
-      if (!result.hasNext) break;
-      after = result.endCursor ?? null;
-      await this.page.waitForTimeout(1200);
+      log.info("IgPostUsers", `fetchLikersViaApi: ${all.length} unique from ${pages} liked-by template pages`);
+    } else {
+      log.warn("IgPostUsers", "liked-by template not captured — falling back to /media/{id}/likers/");
     }
-    log.info("IgPostUsers", `fetchLikersViaApi: got ${all.length} from ${seen.size} unique (API pages: ${Math.min(pageIdx + 1, MAX_PAGES)})`);
+
+    // 3) Fallback: bootstrap via the private media likers endpoint (first ~100).
+    if (all.length === 0) {
+      const users = await this.fetchLikersViaMediaEndpoint();
+      for (const u of users) if (!seen.has(u.username)) { seen.add(u.username); all.push(u); }
+      log.info("IgPostUsers", `fetchLikersViaApi: media-endpoint fallback got ${all.length}`);
+    }
+
     return all;
+  }
+
+  /** Click the likes counter and intercept the app's own liked-by GraphQL
+   *  request. Returns the template (url + doc_id + variables + the app's own
+   *  headers incl. csrf/www-claim/asbd) to replay, or null when unavailable. */
+  private async captureLikersTemplate(): Promise<LikersTemplate | null> {
+    const box: { tpl: LikersTemplate | null } = { tpl: null };
+    const handler = (req: import("playwright").Request): void => {
+      try {
+        if (box.tpl || !req.url().includes("/graphql/query")) return;
+        const u = new URL(req.url());
+        const docId = u.searchParams.get("doc_id");
+        const varsRaw = u.searchParams.get("variables");
+        if (!docId || !varsRaw) return;
+        const variables = JSON.parse(varsRaw) as Record<string, unknown>;
+        if (!("comment_id" in variables)) return; // liked-by list query shape
+        const headers: Record<string, string> = {};
+        for (const k of ["x-ig-app-id", "x-csrftoken", "x-web-session-id", "x-asbd-id", "x-ig-www-claim", "x-requested-with", "referer", "accept", "accept-language"]) {
+          const v = req.headers()[k];
+          if (v) headers[k] = v;
+        }
+        box.tpl = { url: `${u.origin}${u.pathname}`, docId, variables, headers };
+      } catch { /* never throw */ }
+    };
+    this.page.on("request", handler);
+    try {
+      const clicked = await this.page
+        .evaluate(`(() => {
+          const cands = Array.from(document.querySelectorAll('a[href$="/liked_by/"], a[href*="/liked_by"], button, span, div[role="button"]'));
+          for (const el of cands) {
+            const t = (el.textContent || "").trim();
+            if (!t || t.length >= 40 || /comment|تعليق/i.test(t)) continue;
+            if (/(like|likes|إعجاب|إعجابات)/i.test(t) && /\\d/.test(t)) { el.click(); return t; }
+          }
+          return null;
+        })()`)
+        .catch(() => null);
+      if (!clicked) {
+        log.warn("IgPostUsers", "likes counter not found/clickable — no template capture");
+        return null;
+      }
+      const total = this.parseIgCompactNumber(String(clicked));
+      if (total && total > 0) {
+        this.knownLikeTotal = total;
+        this.engine?.setTotal(total);
+      }
+      for (let i = 0; i < 16 && !box.tpl; i++) await this.page.waitForTimeout(500);
+      if (box.tpl) log.info("IgPostUsers", `likers template captured: doc_id=${box.tpl.docId} vars=${JSON.stringify(box.tpl.variables).slice(0, 90)}`);
+      else log.warn("IgPostUsers", "likes counter clicked but no liked-by graphql request observed");
+      return box.tpl;
+    } finally {
+      this.page.off("request", handler);
+    }
+  }
+
+  /** Bootstrap fallback: the private media likers endpoint the liked-by view
+   *  itself fires (live-verified: 200 + 100 users, NO pagination cursor).
+   *  Needs the app's headers; csrf comes from the session cookie. */
+  private async fetchLikersViaMediaEndpoint(): Promise<{ username: string; fullName: string; avatar: string }[]> {
+    const box = await this.page
+      .evaluate(`(() => {
+        const m = document.documentElement.innerHTML.match(/"id":"(\\d+)_(\\d+)"/);
+        const csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || "";
+        return m ? { mediaId: m[1], csrf } : null;
+      })()`)
+      .then((r) => r as { mediaId: string; csrf: string } | null)
+      .catch(() => null);
+    if (!box) return [];
+    const result = await this.page
+      .evaluate(`(async () => {
+        try {
+          const res = await fetch("https://www.instagram.com/api/v1/media/${box.mediaId}/likers/", {
+            credentials: "include",
+            headers: {
+              "x-ig-app-id": "936619743392459",
+              "x-csrftoken": "${box.csrf}",
+              "x-requested-with": "XMLHttpRequest",
+              accept: "*/*",
+            },
+          });
+          if (!res.ok) return { error: true, status: res.status, users: [] };
+          const j = await res.json();
+          const raw = j.users || (j.likers && j.likers.users) || [];
+          const users = raw
+            .filter((u) => u && typeof u.username === "string")
+            .map((u) => ({ username: u.username, fullName: String(u.full_name ?? ""), avatar: String(u.profile_pic_url ?? "") }));
+          return { error: false, status: 200, users };
+        } catch (e) {
+          return { error: true, status: 0, users: [] };
+        }
+      })()`)
+      .then((r) => r as { error: boolean; status: number; users: { username: string; fullName: string; avatar: string }[] })
+      .catch(() => null);
+    if (!result || result.error) {
+      log.warn("IgPostUsers", `media likers endpoint failed (status ${result?.status ?? "?"})`);
+      return [];
+    }
+    return result.users;
   }
 
   /** Fetch comments + their authors directly via IG's GraphQL API, paginated.
@@ -398,6 +492,7 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
 
   private flushedCount = 0;
   private engine: IgExtractionEngine | null = null;
+  private knownLikeTotal: number | null = null;
 
   private async flushRemaining(collected: Map<string, ExtractedMember>): Promise<void> {
     const all = Array.from(collected.values());
