@@ -101,6 +101,26 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
     await this.page.goto(`${config.igBaseUrl}/p/${shortcode}/`, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await this.page.waitForTimeout(3000);
 
+    // 1b) Record the comment/media ids the app uses for THIS post during its
+    //     own page-load graphql traffic. Suggested posts in the sidebar use
+    //     different ids — this set is how we reject templates for the wrong
+    //     media when several comment_id-shaped queries share the click window.
+    //     Also read this post's real like count from its embedded JSON.
+    this.observedCommentIds.clear();
+    this.armCommentIdObserver();
+    const likeTotal = await this.page
+      .evaluate(`(() => {
+        const m = document.documentElement.innerHTML.match(/"edge_media_preview_like":\\{"count":(\\d+)/);
+        return m ? Number(m[1]) : null;
+      })()`)
+      .then((r) => r as number | null)
+      .catch(() => null);
+    if (likeTotal && likeTotal > 0) {
+      this.knownLikeTotal = likeTotal;
+      this.engine?.setTotal(likeTotal);
+      log.info("IgPostUsers", `post like count (from embedded JSON): ${likeTotal}`);
+    }
+
     // 2) Click "View all N comments" / "Load more comments" / "عرض" to
     //    trigger additional GraphQL comment loads before the DOM harvest.
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -206,8 +226,9 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
     const all: { username: string; fullName: string; avatar: string }[] = [];
     const seen = new Set<string>();
 
-    // 1) Capture the app's own liked-by query template by clicking the counter.
-    const tpl = await this.captureLikersTemplate();
+    // 1) Capture IG's own liked-by query template by opening THIS post's
+    //    liked_by page (deterministic — no click-target guessing).
+    const tpl = await this.captureLikersTemplate(shortcode);
 
     // 2) Replay the captured template with real pagination.
     if (tpl) {
@@ -299,13 +320,14 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
     return all;
   }
 
-  /** Click the likes counter and intercept the app's own liked-by GraphQL
-   *  request. Several queries share the comment_id+first shape (comment
-   *  threads too), so ALL candidates in the click window are captured and
-   *  each is VALIDATED by a one-shot replay: a real liked-by response is
-   *  full of username+avatar nodes with no "text" field. Returns the
-   *  validated template, or null when unavailable. */
-  private async captureLikersTemplate(): Promise<LikersTemplate | null> {
+  /** Click THIS post's likes counter (deterministically: the
+   *  a[href="/p/<shortcode>/liked_by/"] anchor — NOT a text scan, which on
+   *  the server landed on a suggested post's "202 likes" tile) and intercept
+   *  the liked-by GraphQL request the app fires for it. Candidates whose
+   *  comment_id matches ids the app used for this post are preferred;
+   *  every candidate is then validated by a one-shot replay (a real liked-by
+   *  response is dense username+avatar nodes with no "text" field). */
+  private async captureLikersTemplate(shortcode: string): Promise<LikersTemplate | null> {
     const cands = new Map<string, LikersTemplate>();
     const handler = (req: import("playwright").Request): void => {
       try {
@@ -325,37 +347,34 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
         cands.set(docId, { url: `${u.origin}${u.pathname}`, docId, variables, headers });
       } catch { /* never throw */ }
     };
+    // Arm capture FIRST, then click — the liked-by request fires immediately.
     this.page.on("request", handler);
     try {
       const clicked = await this.page
         .evaluate(`(() => {
-          const cands = Array.from(document.querySelectorAll('a[href$="/liked_by/"], a[href*="/liked_by"], button, span, div[role="button"]'));
-          for (const el of cands) {
-            const t = (el.textContent || "").trim();
-            if (!t || t.length >= 40) continue;
-            if (!/^\\d[\\d,.]*\\s*(likes?|إعجاب)/i.test(t)) continue;
-            el.click(); return t;
-          }
+          const exact = document.querySelector('a[href="/p/${shortcode}/liked_by/"], a[href="/p/${shortcode}/liked_by"]');
+          if (exact) { exact.click(); return "exact-anchor"; }
+          const loose = Array.from(document.querySelectorAll('a[href*="/p/${shortcode}/liked_by"]'));
+          if (loose.length > 0) { loose[0].click(); return "loose-anchor"; }
           return null;
         })()`)
         .catch(() => null);
       if (!clicked) {
-        log.warn("IgPostUsers", "likes counter not found/clickable — no template capture");
+        log.warn("IgPostUsers", `no liked_by anchor for /p/${shortcode}/ — no template capture`);
         return null;
-      }
-      const total = this.parseIgCompactNumber(String(clicked));
-      if (total && total > 0) {
-        this.knownLikeTotal = total;
-        this.engine?.setTotal(total);
       }
       for (let i = 0; i < 16 && cands.size === 0; i++) await this.page.waitForTimeout(500);
       if (cands.size > 0) await this.page.waitForTimeout(1500); // let late candidates land
-      log.info("IgPostUsers", `likes counter clicked ("${String(clicked).slice(0, 30)}") — ${cands.size} candidate template(s)`);
+
+      const all = [...cands.values()];
+      const matching = all.filter((c) => this.observedCommentIds.has(String(c.variables.comment_id)));
+      const pool = matching.length > 0 ? matching : all;
+      log.info("IgPostUsers", `liked_by anchor clicked (${String(clicked)}) — ${cands.size} candidate(s), ${pool.length} preferred for this post`);
 
       // Validate candidates by one-shot replay; real liked-by pages are dense
       // username+avatar nodes WITHOUT comment text fields.
       let best: { tpl: LikersTemplate; score: number } | null = null;
-      for (const tpl of cands.values()) {
+      for (const tpl of pool) {
         const score = await this.validateLikersTemplate(tpl).catch(() => 0);
         log.info("IgPostUsers", `template doc_id=${tpl.docId} vars=${JSON.stringify(tpl.variables).slice(0, 80)} → likerScore=${score}`);
         if (!best || score > best.score) best = { tpl, score };
@@ -563,6 +582,26 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
   private flushedCount = 0;
   private engine: IgExtractionEngine | null = null;
   private knownLikeTotal: number | null = null;
+  /** comment_id values the app itself used for THIS post's media (page-load traffic). */
+  private readonly observedCommentIds = new Set<string>();
+  private commentIdObserver: ((req: import("playwright").Request) => void) | null = null;
+
+  /** Watch page-load graphql requests and remember every comment_id the app
+   *  sends for this post (used to reject wrong-media templates later). */
+  private armCommentIdObserver(): void {
+    if (this.commentIdObserver) this.page.off("request", this.commentIdObserver);
+    this.commentIdObserver = (req: import("playwright").Request): void => {
+      try {
+        if (!req.url().includes("/graphql/query")) return;
+        const u = new URL(req.url());
+        const varsRaw = u.searchParams.get("variables");
+        if (!varsRaw) return;
+        const vars = JSON.parse(varsRaw) as Record<string, unknown>;
+        if (typeof vars.comment_id === "string") this.observedCommentIds.add(vars.comment_id);
+      } catch { /* never throw */ }
+    };
+    this.page.on("request", this.commentIdObserver);
+  }
 
   private async flushRemaining(collected: Map<string, ExtractedMember>): Promise<void> {
     const all = Array.from(collected.values());
