@@ -300,25 +300,29 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
   }
 
   /** Click the likes counter and intercept the app's own liked-by GraphQL
-   *  request. Returns the template (url + doc_id + variables + the app's own
-   *  headers incl. csrf/www-claim/asbd) to replay, or null when unavailable. */
+   *  request. Several queries share the comment_id+first shape (comment
+   *  threads too), so ALL candidates in the click window are captured and
+   *  each is VALIDATED by a one-shot replay: a real liked-by response is
+   *  full of username+avatar nodes with no "text" field. Returns the
+   *  validated template, or null when unavailable. */
   private async captureLikersTemplate(): Promise<LikersTemplate | null> {
-    const box: { tpl: LikersTemplate | null } = { tpl: null };
+    const cands = new Map<string, LikersTemplate>();
     const handler = (req: import("playwright").Request): void => {
       try {
-        if (box.tpl || !req.url().includes("/graphql/query")) return;
+        if (!req.url().includes("/graphql/query")) return;
         const u = new URL(req.url());
         const docId = u.searchParams.get("doc_id");
         const varsRaw = u.searchParams.get("variables");
         if (!docId || !varsRaw) return;
         const variables = JSON.parse(varsRaw) as Record<string, unknown>;
-        if (!("comment_id" in variables)) return; // liked-by list query shape
+        if (!("comment_id" in variables)) return; // liked-by / thread query shape
+        if (cands.has(docId)) return;
         const headers: Record<string, string> = {};
         for (const k of ["x-ig-app-id", "x-csrftoken", "x-web-session-id", "x-asbd-id", "x-ig-www-claim", "x-requested-with", "referer", "accept", "accept-language"]) {
           const v = req.headers()[k];
           if (v) headers[k] = v;
         }
-        box.tpl = { url: `${u.origin}${u.pathname}`, docId, variables, headers };
+        cands.set(docId, { url: `${u.origin}${u.pathname}`, docId, variables, headers });
       } catch { /* never throw */ }
     };
     this.page.on("request", handler);
@@ -328,8 +332,9 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
           const cands = Array.from(document.querySelectorAll('a[href$="/liked_by/"], a[href*="/liked_by"], button, span, div[role="button"]'));
           for (const el of cands) {
             const t = (el.textContent || "").trim();
-            if (!t || t.length >= 40 || /comment|تعليق/i.test(t)) continue;
-            if (/(like|likes|إعجاب|إعجابات)/i.test(t) && /\\d/.test(t)) { el.click(); return t; }
+            if (!t || t.length >= 40) continue;
+            if (!/^\\d[\\d,.]*\\s*(likes?|إعجاب)/i.test(t)) continue;
+            el.click(); return t;
           }
           return null;
         })()`)
@@ -343,13 +348,66 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
         this.knownLikeTotal = total;
         this.engine?.setTotal(total);
       }
-      for (let i = 0; i < 16 && !box.tpl; i++) await this.page.waitForTimeout(500);
-      if (box.tpl) log.info("IgPostUsers", `likers template captured: doc_id=${box.tpl.docId} vars=${JSON.stringify(box.tpl.variables).slice(0, 90)}`);
-      else log.warn("IgPostUsers", "likes counter clicked but no liked-by graphql request observed");
-      return box.tpl;
+      for (let i = 0; i < 16 && cands.size === 0; i++) await this.page.waitForTimeout(500);
+      if (cands.size > 0) await this.page.waitForTimeout(1500); // let late candidates land
+      log.info("IgPostUsers", `likes counter clicked ("${String(clicked).slice(0, 30)}") — ${cands.size} candidate template(s)`);
+
+      // Validate candidates by one-shot replay; real liked-by pages are dense
+      // username+avatar nodes WITHOUT comment text fields.
+      let best: { tpl: LikersTemplate; score: number } | null = null;
+      for (const tpl of cands.values()) {
+        const score = await this.validateLikersTemplate(tpl).catch(() => 0);
+        log.info("IgPostUsers", `template doc_id=${tpl.docId} vars=${JSON.stringify(tpl.variables).slice(0, 80)} → likerScore=${score}`);
+        if (!best || score > best.score) best = { tpl, score };
+        if (best.score >= 20) break; // decisively the liked-by query
+      }
+      if (best && best.score >= 10) {
+        log.info("IgPostUsers", `likers template VALIDATED: doc_id=${best.tpl.docId} (likerScore=${best.score})`);
+        return best.tpl;
+      }
+      log.warn("IgPostUsers", "no candidate validated as a liked-by query");
+      return null;
     } finally {
       this.page.off("request", handler);
     }
+  }
+
+  /** Replay a candidate once and score how liked-by-like the response is:
+   *  +1 per username node that has pk/id + avatar and NO comment text. */
+  private async validateLikersTemplate(tpl: LikersTemplate): Promise<number> {
+    const r = await this.page
+      .evaluate(
+        `(async () => {
+          const tpl = ${JSON.stringify({ url: tpl.url, docId: tpl.docId, variables: tpl.variables, headers: tpl.headers })};
+          const params = new URLSearchParams({
+            doc_id: tpl.docId,
+            variables: JSON.stringify(tpl.variables),
+            fb_api_req_friendly_name: "PolarisPostLikedByListQuery",
+          });
+          try {
+            const res = await fetch(tpl.url + "?" + params.toString(), { credentials: "include", headers: tpl.headers });
+            if (!res.ok) return { status: res.status, score: 0 };
+            const body = await res.json();
+            let score = 0;
+            const stack = [body];
+            while (stack.length) {
+              const o = stack.pop();
+              if (!o || typeof o !== "object") continue;
+              if (typeof o.username === "string" && (o.id || o.pk) && !("text" in o)) score++;
+              for (const v of Object.values(o)) {
+                if (v && typeof v === "object") stack.push(v);
+                else if (Array.isArray(v)) for (const it of v) stack.push(it);
+              }
+            }
+            return { status: 200, score };
+          } catch (e) {
+            return { status: 0, score: 0 };
+          }
+        })()`,
+      )
+      .then((r) => r as { status: number; score: number })
+      .catch(() => ({ status: 0, score: 0 }));
+    return r.status === 200 ? r.score : 0;
   }
 
   /** Bootstrap fallback: the private media likers endpoint the liked-by view
