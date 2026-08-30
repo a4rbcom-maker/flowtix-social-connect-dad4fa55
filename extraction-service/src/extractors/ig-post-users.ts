@@ -390,7 +390,7 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
       const matching = all.filter((c) => this.observedCommentIds.has(String(c.variables.comment_id)));
       const pool = matching.length > 0 ? matching : all;
       diag.candidates = cands.size;
-      log.info("IgPostUsers", `liked_by anchor clicked (${String(clicked)}) — ${cands.size} candidate(s), ${pool.length} preferred for this post`);
+      log.info("IgPostUsers", `liked_by view opened (direct-nav) — ${cands.size} candidate(s), ${pool.length} preferred for this post`);
 
       // Validate candidates by one-shot replay; a real liked-by response is
       // dense username+avatar nodes and contains NO comment "text" fields —
