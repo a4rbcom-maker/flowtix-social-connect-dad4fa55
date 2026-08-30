@@ -548,6 +548,58 @@ const exportSchema = z.object({
   format: z.enum(["csv", "json", "xlsx"]).default("csv"),
 });
 
+// ── Export column schema (shared by csv / xlsx / json) ─────────────────────
+// The first 22 columns reproduce the historical layout exactly so older jobs
+// export identically. The trailing columns surface fields that newer
+// extraction types actually store (IG full_name/username, comment_text, …)
+// which the old hard-coded exporter silently dropped — that omission is what
+// made recent exports look garbled / misaligned.
+const EXPORT_COLUMNS: { key: string; label: string; get: (r: any) => unknown }[] = [
+  { key: "id", label: "معرف", get: (r) => r.fb_id || "" },
+  { key: "name", label: "الاسم", get: (r) => r.data?.name || r.data?.full_name || r.data?.username || "" },
+  { key: "profile_url", label: "رابط الحساب", get: (r) => r.data?.profile_url || "" },
+  { key: "platform", label: "المنصة", get: (r) => r.metadata?.platform || r.platform || "facebook" },
+  { key: "match_confidence", label: "الثقة", get: (r) => r.metadata?.match_confidence || "" },
+  { key: "bio_phone", label: "هاتف الحساب", get: (r) => r.data?.bio_phone || "" },
+  { key: "bio_email", label: "بريد الحساب", get: (r) => r.data?.bio_email || "" },
+  { key: "phone", label: "رقم الجوال", get: (r) => r.metadata?.enrichment?.phone || "" },
+  { key: "first_name", label: "الاسم الأول", get: (r) => r.metadata?.enrichment?.first_name || "" },
+  { key: "last_name", label: "الاسم الأخير", get: (r) => r.metadata?.enrichment?.last_name || "" },
+  { key: "email", label: "البريد الإلكتروني", get: (r) => r.metadata?.enrichment?.email || "" },
+  { key: "birthday", label: "تاريخ الميلاد", get: (r) => r.metadata?.enrichment?.birthday || "" },
+  { key: "birthdayYear", label: "سنة الميلاد", get: (r) => r.metadata?.enrichment?.birthdayYear || "" },
+  { key: "gender", label: "الجنس", get: (r) => r.metadata?.enrichment?.gender || "" },
+  { key: "hometown", label: "المدينة الأصلية", get: (r) => r.metadata?.enrichment?.hometown || "" },
+  { key: "location", label: "الموقع", get: (r) => r.metadata?.enrichment?.location || "" },
+  { key: "country", label: "البلد", get: (r) => r.metadata?.enrichment?.country || "" },
+  { key: "work", label: "العمل", get: (r) => r.metadata?.enrichment?.work || "" },
+  { key: "education", label: "التعليم", get: (r) => r.metadata?.enrichment?.education || "" },
+  { key: "relationship", label: "الحالة الاجتماعية", get: (r) => r.metadata?.enrichment?.relationship || "" },
+  { key: "religion", label: "الدين", get: (r) => r.metadata?.enrichment?.religion || "" },
+  { key: "about_me", label: "نبذة", get: (r) => r.metadata?.enrichment?.about_me || "" },
+  { key: "username", label: "المعرّف", get: (r) => r.data?.username || "" },
+  { key: "comment_text", label: "نص التعليق/التفاعل", get: (r) => r.data?.comment_text || "" },
+  { key: "comment_id", label: "معرّف التعليق", get: (r) => r.data?.comment_id || "" },
+  { key: "comments_count", label: "عدد التعليقات", get: (r) => r.data?.comments_count || "" },
+  { key: "avatar_url", label: "الصورة", get: (r) => r.data?.avatar_url || "" },
+  { key: "match_method", label: "طريقة المطابقة", get: (r) => r.metadata?.match_method || "" },
+  { key: "source_db", label: "مصدر الإثراء", get: (r) => r.metadata?.enrichment?.source_db || "" },
+];
+
+/** Flatten any cell value to a primitive string safe for CSV/XLSX.
+ *  Objects/arrays become compact JSON so they never render as "[object
+ *  Object]" or shift column alignment. */
+function cellToString(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  try { return JSON.stringify(v); } catch { return String(v); }
+}
+
+function csvEscape(v: unknown): string {
+  return `"${cellToString(v).replace(/"/g, '""')}"`;
+}
+
 router.post("/export", async (req, res) => {
   try {
     const parsed = exportSchema.safeParse(req.body);
@@ -581,91 +633,28 @@ router.post("/export", async (req, res) => {
     if (format === "json") {
       res.setHeader("Content-Type", "application/json; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename=flowtix-export-${job_id}.json`);
+      // Ordered object: keeps the same top-level shape old jobs produced,
+      // now driven by the shared schema so every known field is present.
       return res.json(results.map((r: any) => {
-        const enrichment = r.metadata?.enrichment || {};
-        return {
-          id: r.fb_id,
-          name: r.data?.name || "",
-          profile_url: r.data?.profile_url || "",
-          avatar_url: r.data?.avatar_url || "",
-          platform: r.metadata?.platform || r.platform || "facebook",
-          bio_phone: r.data?.bio_phone || "",
-          bio_email: r.data?.bio_email || "",
-          match_confidence: r.metadata?.match_confidence || "",
-          match_method: r.metadata?.match_method || "",
-          phone: enrichment.phone || "",
-          first_name: enrichment.first_name || "",
-          last_name: enrichment.last_name || "",
-          email: enrichment.email || "",
-          birthday: enrichment.birthday || "",
-          birthdayYear: enrichment.birthdayYear || "",
-          gender: enrichment.gender || "",
-          hometown: enrichment.hometown || "",
-          location: enrichment.location || "",
-          country: enrichment.country || "",
-          work: enrichment.work || "",
-          education: enrichment.education || "",
-          relationship: enrichment.relationship || "",
-          religion: enrichment.religion || "",
-          about_me: enrichment.about_me || "",
-          source_db: enrichment.source_db || "",
-        };
+        const row: Record<string, unknown> = {};
+        for (const col of EXPORT_COLUMNS) row[col.key] = cellToString(col.get(r));
+        return row;
       }));
     }
 
     if (format === "csv") {
-      const enrichmentFields = ["phone", "first_name", "last_name", "email", "birthday", "birthdayYear", "gender", "hometown", "location", "country", "work", "education", "relationship", "religion", "about_me"];
-      const header = `\uFEFFمعرف,الاسم,رابط الحساب,المنصة,الثقة,هاتف الحساب,بريد الحساب,رقم الجوال,الاسم الأول,الاسم الأخير,البريد الإلكتروني,تاريخ الميلاد,سنة الميلاد,الجنس,المدينة الأصلية,الموقع,البلد,العمل,التعليم,الحالة الاجتماعية,الدين,نبذة`;
-      const rows = results.map((r: any) => {
-        const name = (r.data?.name || "").replace(/"/g, '""');
-        const profile = (r.data?.profile_url || "").replace(/"/g, '""');
-        const enrichment = r.metadata?.enrichment || {};
-        const platform = (r.metadata?.platform || r.platform || "facebook").replace(/"/g, '""');
-        const confidence = (r.metadata?.match_confidence || "").replace(/"/g, '""');
-        const bioPhone = (r.data?.bio_phone || "").replace(/"/g, '""');
-        const bioEmail = (r.data?.bio_email || "").replace(/"/g, '""');
-        const enrichmentValues = enrichmentFields.map((f) => {
-          const v = enrichment[f] || "";
-          return `"${String(v).replace(/"/g, '""')}"`;
-        }).join(",");
-        return `"${r.fb_id}","${name}","${profile}","${platform}","${confidence}","${bioPhone}","${bioEmail}",${enrichmentValues}`;
-      }).join("\n");
+      const header = `\uFEFF${EXPORT_COLUMNS.map((c) => c.label).join(",")}`;
+      const rows = results.map((r: any) =>
+        EXPORT_COLUMNS.map((c) => csvEscape(c.get(r))).join(",")
+      ).join("\n");
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename=flowtix-export-${job_id}.csv`);
       return res.send(`${header}\n${rows}`);
     }
 
     if (format === "xlsx") {
-      const enrichmentFields = ["phone", "first_name", "last_name", "email", "birthday", "birthdayYear", "gender", "hometown", "location", "country", "work", "education", "relationship", "religion", "about_me"];
-      const headers = ["ID", "الاسم", "رابط الحساب", "المنصة", "الثقة", "هاتف الحساب", "بريد الحساب", "رقم الجوال", "الاسم الأول", "الاسم الأخير", "البريد الإلكتروني", "تاريخ الميلاد", "سنة الميلاد", "الجنس", "المدينة الأصلية", "الموقع", "البلد", "العمل", "التعليم", "الحالة الاجتماعية", "الدين", "نبذة"];
-      const rows = results.map((r: any) => {
-        const enrichment = r.metadata?.enrichment || {};
-        return [
-          r.fb_id || "",
-          r.data?.name || "",
-          r.data?.profile_url || "",
-          r.metadata?.platform || r.platform || "facebook",
-          r.metadata?.match_confidence || "",
-          r.data?.bio_phone || "",
-          r.data?.bio_email || "",
-          enrichment.phone || "",
-          enrichment.first_name || "",
-          enrichment.last_name || "",
-          enrichment.email || "",
-          enrichment.birthday || "",
-          enrichment.birthdayYear || "",
-          enrichment.gender || "",
-          enrichment.hometown || "",
-          enrichment.location || "",
-          enrichment.country || "",
-          enrichment.work || "",
-          enrichment.education || "",
-          enrichment.relationship || "",
-          enrichment.religion || "",
-          enrichment.about_me || "",
-        ];
-      });
-
+      const headers = EXPORT_COLUMNS.map((c) => c.label);
+      const rows = results.map((r: any) => EXPORT_COLUMNS.map((c) => cellToString(c.get(r))));
       const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
       ws["!cols"] = headers.map(() => ({ wch: 25 }));
       const wb = XLSX.utils.book_new();
