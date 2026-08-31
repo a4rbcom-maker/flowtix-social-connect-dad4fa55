@@ -552,7 +552,7 @@ export class PostReactionsExtractor extends BaseExtractor {
             if (reactions.some((r) => t.toLowerCase().includes(r.toLowerCase()))) reactionTabs++;
           }
           if (reactionTabs >= 3) return true;
-          return dialog.querySelectorAll('a[href*="profile.php"], a[href*="/user/"]').length > 0;
+            return dialog.querySelectorAll('a[href*="profile.php"], a[href*="/user/"], a[href*="facebook.com/"]').length > 0;
         }).catch(() => false);
         if (!isReactionsDialog) {
           await this.page.keyboard.press("Escape").catch(() => {});
