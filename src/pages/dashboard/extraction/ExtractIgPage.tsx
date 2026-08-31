@@ -5,7 +5,7 @@ import {
   Users, UserPlus, UserCheck, Clock, Zap, AlertTriangle, Download, Globe, AtSign, Send,
   Activity, CheckCircle2, Loader2, ArrowRight, Square, Camera, Pencil,
 } from "lucide-react";
-import { PageHeader, StatCard } from "@/components/ui/page";
+import { PageHeader } from "@/components/ui/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { InputIcon } from "@/components/ui/input-icon";
@@ -399,58 +399,76 @@ export function ExtractIgPage() {
     );
   }
 
+  const igTotalResults = activeJob?.result_count ?? 0;
+  const igDurationLabel = activeJob?.started_at && activeJob?.completed_at
+    ? formatDuration(new Date(activeJob.started_at), new Date(activeJob.completed_at))
+    : "—";
+  const igHandle = username.replace(/^@/, "").replace(/\/+$/, "");
+
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-2xl space-y-5">
       <PageHeader title={t("ig_extract.completed.title")} description={t("ig_extract.completed.subtitle")} icon={CheckCircle2} />
 
+      {/* Success hero — compact & balanced */}
       <Card className="overflow-hidden">
-        <div className="flex flex-col items-center gap-4 bg-[color-mix(in_oklab,var(--color-success)_8%,transparent)] p-8 text-center animate-[scale-in_0.4s_ease-out]">
-          <div className="flex size-20 items-center justify-center rounded-2xl bg-[color-mix(in_oklab,var(--color-success)_15%,transparent)]">
-            <CheckCircle2 className="size-10 text-[var(--color-success)]" />
+        <div className="flex items-center gap-4 bg-[color-mix(in_oklab,var(--color-success)_7%,transparent)] p-5 animate-[scale-in_0.35s_ease-out]">
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-[color-mix(in_oklab,var(--color-success)_16%,transparent)]">
+            <CheckCircle2 className="size-6 text-[var(--color-success)]" />
           </div>
-          <h2 className="text-xl font-extrabold text-[var(--color-success)]">{t("ig_extract.completed.success")}</h2>
-          <p className="text-sm text-[var(--color-fg-muted)]">@{username.replace(/^@/, "").replace(/\/+$/, "")}</p>
-          {coverage.coverage !== null && (
-            <p className="text-sm font-bold text-[var(--color-fg)]">
-              {t("ig_extract.completed.coverage", { value: coverage.coverage })}
-            </p>
-          )}
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-bold text-[var(--color-fg)]">{t("ig_extract.completed.success")}</h2>
+            <p className="mt-0.5 truncate text-xs text-[var(--color-fg-muted)]" dir="ltr">@{igHandle}</p>
+            {coverage.coverage !== null && (
+              <p className="mt-1 text-xs font-semibold text-[var(--color-fg-muted)]">{t("ig_extract.completed.coverage", { value: coverage.coverage })}</p>
+            )}
+          </div>
+          <div className="shrink-0 text-end">
+            <p className="text-2xl font-extrabold tabular-nums text-[var(--color-success)]">{igTotalResults.toLocaleString()}</p>
+            <p className="text-[11px] text-[var(--color-fg-muted)]">{t("ig_extract.completed.total")}</p>
+          </div>
         </div>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label={t("ig_extract.completed.total")} value={(activeJob?.result_count ?? 0).toLocaleString()} icon={Users} />
-        <StatCard label={t("ig_extract.completed.duration")} value={activeJob?.started_at && activeJob?.completed_at
-          ? formatDuration(new Date(activeJob.started_at), new Date(activeJob.completed_at))
-          : "—"} icon={Clock} />
-        <StatCard label={t("ig_extract.completed.status")} value={t(`ig_extract.status.${activeJob?.status ?? "completed"}`)} icon={CheckCircle2} />
-        <StatCard label={t("ig_extract.completed.skipped")} value={skipDuplicates ? t("ig_extract.completed.enabled") : t("ig_extract.completed.disabled")} icon={Download} />
+      {/* Result summary — balanced chips */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <SummaryChip icon={Users} label={t("ig_extract.completed.total")} value={igTotalResults.toLocaleString()} />
+        <SummaryChip icon={Clock} label={t("ig_extract.completed.duration")} value={igDurationLabel} />
+        <SummaryChip icon={CheckCircle2} label={t("ig_extract.completed.status")}
+          badge={{ text: t(`ig_extract.status.${activeJob?.status ?? "completed"}`), tone: "success" }} />
+        <SummaryChip icon={Download} label={t("ig_extract.completed.skipped")}
+          badge={{ text: skipDuplicates ? t("ig_extract.completed.enabled") : t("ig_extract.completed.disabled"), tone: skipDuplicates ? "success" : "muted" }} />
       </div>
 
+      {/* Downloads + actions — grouped block */}
       <Card>
-        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-center pt-6">
-          <Button variant="primary" onClick={() => handleExport("csv")}>
-            <Download className="size-4" />
-            {t("ig_extract.completed.downloadCsv")}
-          </Button>
-          <Button variant="secondary" onClick={() => handleExport("json")}>
-            <Download className="size-4" />JSON
-          </Button>
-          <Button variant="secondary" onClick={() => handleExport("xlsx")}>
-            <Download className="size-4" />Excel
-          </Button>
-          <Button variant="outline" onClick={() => { setPhase("setup"); setActiveJobId(null); }}>
-            <Zap className="size-4" />{t("ig_extract.completed.newExtraction")}
-          </Button>
+        <CardContent className="space-y-4 pt-5">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+            <Download className="size-3.5" />{t("ig_extract.completed.downloadTitle")}
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Button variant="primary" onClick={() => handleExport("csv")}>
+              <Download className="size-4" />{t("ig_extract.completed.downloadCsv")}
+            </Button>
+            <Button variant="secondary" onClick={() => handleExport("xlsx")}>
+              <Download className="size-4" />Excel
+            </Button>
+            <Button variant="secondary" onClick={() => handleExport("json")}>
+              <Download className="size-4" />JSON
+            </Button>
+            <Button variant="outline" className="ms-auto" onClick={() => { setPhase("setup"); setActiveJobId(null); }}>
+              <Zap className="size-4" />{t("ig_extract.completed.newExtraction")}
+            </Button>
+          </div>
+
           {(activeJob?.result_count ?? 0) > 0 && (
-            <>
+            <div className="flex flex-wrap items-center gap-2.5 border-t border-[var(--color-border)] pt-4">
               <Button variant="primary" onClick={() => navigate(`/dashboard/instagram/action/${activeJob?.id}?mode=mention`)}>
                 <AtSign className="size-4" />{t("ig_actions.mentionButton")}
               </Button>
               <Button variant="secondary" onClick={() => navigate(`/dashboard/instagram/action/${activeJob?.id}?mode=dm`)}>
                 <Send className="size-4" />{t("ig_actions.dmButton")}
               </Button>
-            </>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -473,6 +491,31 @@ function StatBox({ icon: Icon, label, value }: { icon: typeof Zap; label: string
     <div className="rounded-lg border border-[var(--color-border)] p-3">
       <div className="flex items-center gap-1.5 text-xs text-[var(--color-fg-subtle)]"><Icon className="size-3" />{label}</div>
       <p className="mt-1 text-lg font-bold text-[var(--color-fg)]">{value}</p>
+    </div>
+  );
+}
+
+function SummaryChip({ icon: Icon, label, value, badge }: {
+  icon: typeof Zap;
+  label: string;
+  value?: string;
+  badge?: { text: string; tone: "success" | "muted" };
+}) {
+  return (
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3.5">
+      <div className="flex items-center gap-1.5 text-xs text-[var(--color-fg-subtle)]"><Icon className="size-3.5" />{label}</div>
+      {badge ? (
+        <span className={cn(
+          "mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold",
+          badge.tone === "success"
+            ? "bg-[color-mix(in_oklab,var(--color-success)_14%,transparent)] text-[var(--color-success)]"
+            : "bg-[var(--color-surface-2)] text-[var(--color-fg-muted)]",
+        )}>
+          <CheckCircle2 className="size-3" />{badge.text}
+        </span>
+      ) : (
+        <p className="mt-1 text-lg font-bold tabular-nums text-[var(--color-fg)]">{value}</p>
+      )}
     </div>
   );
 }

@@ -1170,6 +1170,7 @@
       "enabled": "مفعّل",
       "disabled": "معطّل",
       "coverage": "نسبة التغطية: {{value}}%",
+      "downloadTitle": "تحميل النتائج",
       "downloadCsv": "تحميل CSV",
       "newExtraction": "استخراج جديد"
     },
@@ -1513,6 +1514,9 @@
       "status": "الحالة",
       "enabled": "مُفعّل",
       "disabled": "مُعطّل",
+      "enrichTitle": "جارٍ إثراء البيانات",
+      "enrichDesc": "نبحث عن أرقام الجوال والبريد الإلكتروني — أزرار التحميل ستُفعَّل تلقائياً عند الانتهاء.",
+      "downloadTitle": "تحميل النتائج",
       "downloadCsv": "تحميل CSV",
       "newExtraction": "استخراج جديد"
     }

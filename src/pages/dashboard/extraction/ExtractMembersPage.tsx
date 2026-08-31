@@ -8,7 +8,7 @@ import {
   MessageSquare, ThumbsUp, Layers,
   Square, TrendingUp, Gauge, Sparkles,
 } from "lucide-react";
-import { PageHeader, StatCard } from "@/components/ui/page";
+import { PageHeader } from "@/components/ui/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { InputIcon } from "@/components/ui/input-icon";
@@ -504,50 +504,83 @@ export function ExtractMembersPage() {
   // ─── COMPLETED PHASE ───
   const completedJobAny = activeJob as any;
   const completedDatasetReady = !!completedJobAny?.progress?.enrichment && !["running", "queued"].includes(activeJob?.status ?? "");
+  const totalResults = activeJob?.result_count ?? 0;
+  const durationLabel = activeJob?.started_at && activeJob?.completed_at
+    ? formatDuration(new Date(activeJob.started_at), new Date(activeJob.completed_at))
+    : "—";
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-2xl space-y-5">
       <PageHeader title={t("extract.completed.title")} description={t("extract.completed.subtitle")} icon={CheckCircle2} />
 
+      {/* Success hero — compact & balanced */}
       <Card className="overflow-hidden">
-        <div className="flex flex-col items-center gap-4 bg-[color-mix(in_oklab,var(--color-success)_8%,transparent)] p-8 text-center animate-[scale-in_0.4s_ease-out]">
-          <div className="flex size-20 items-center justify-center rounded-2xl bg-[color-mix(in_oklab,var(--color-success)_15%,transparent)]">
-            <CheckCircle2 className="size-10 text-[var(--color-success)]" />
+        <div className="flex items-center gap-4 bg-[color-mix(in_oklab,var(--color-success)_7%,transparent)] p-5 animate-[scale-in_0.35s_ease-out]">
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-[color-mix(in_oklab,var(--color-success)_16%,transparent)]">
+            <CheckCircle2 className="size-6 text-[var(--color-success)]" />
           </div>
-          <h2 className="text-xl font-extrabold text-[var(--color-success)]">{t("extract.completed.success")}</h2>
-          <p className="text-sm text-[var(--color-fg-muted)]">{targetUrl}</p>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-bold text-[var(--color-fg)]">{t("extract.completed.success")}</h2>
+            <p className="mt-0.5 truncate text-xs text-[var(--color-fg-muted)]" dir="ltr">{targetUrl}</p>
+          </div>
+          <div className="shrink-0 text-end">
+            <p className="text-2xl font-extrabold tabular-nums text-[var(--color-success)]">{totalResults.toLocaleString()}</p>
+            <p className="text-[11px] text-[var(--color-fg-muted)]">{t("extract.completed.total")}</p>
+          </div>
         </div>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label={t("extract.completed.total")} value={(activeJob?.result_count ?? 0).toLocaleString()} icon={Users} />
-        <StatCard label={t("extract.completed.duration")} value={activeJob?.started_at && activeJob?.completed_at
-          ? formatDuration(new Date(activeJob.started_at), new Date(activeJob.completed_at))
-          : "—"} icon={Clock} />
-        <StatCard label={t("extract.completed.status")} value={t(`extract.jobStatus.${activeJob?.status ?? "completed"}`)} icon={CheckCircle2} />
-        <StatCard label={t("extract.completed.skipped")} value={skipDuplicates ? t("extract.completed.enabled") : t("extract.completed.disabled")} icon={Filter} />
+      {/* Result summary — balanced chips */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <SummaryChip icon={Users} label={t("extract.completed.total")} value={totalResults.toLocaleString()} />
+        <SummaryChip icon={Clock} label={t("extract.completed.duration")} value={durationLabel} />
+        <SummaryChip icon={CheckCircle2} label={t("extract.completed.status")}
+          badge={{ text: t(`extract.jobStatus.${activeJob?.status ?? "completed"}`), tone: "success" }} />
+        <SummaryChip icon={Filter} label={t("extract.completed.skipped")}
+          badge={{ text: skipDuplicates ? t("extract.completed.enabled") : t("extract.completed.disabled"), tone: skipDuplicates ? "success" : "muted" }} />
       </div>
 
+      {/* Enrichment in-progress — professional callout (replaces raw status text) */}
+      {!completedDatasetReady && (
+        <div className="overflow-hidden rounded-2xl border border-[var(--color-primary)]/25 bg-[color-mix(in_oklab,var(--color-primary)_7%,transparent)]">
+          <div className="flex items-center gap-3.5 p-4">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_oklab,var(--color-primary)_16%,transparent)]">
+              <Sparkles className="size-5 text-[var(--color-primary)]" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-2 text-sm font-bold text-[var(--color-fg)]">
+                {t("extract.completed.enrichTitle")}
+                <Loader2 className="size-3.5 animate-spin text-[var(--color-primary)]" />
+              </p>
+              <p className="mt-0.5 text-xs text-[var(--color-fg-muted)]">{t("extract.completed.enrichDesc")}</p>
+            </div>
+          </div>
+          <div className="h-1 w-full overflow-hidden bg-[color-mix(in_oklab,var(--color-primary)_12%,transparent)]">
+            <div className="h-full w-1/2 rounded-full bg-[var(--color-primary)] animate-[pulse_1.6s_ease-in-out_infinite]" />
+          </div>
+        </div>
+      )}
+
+      {/* Downloads + actions — grouped block */}
       <Card>
-        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-center pt-6">
-          <Button variant="primary" disabled={exportResults.isPending || !completedDatasetReady} onClick={() => handleExport("csv")} title={!completedDatasetReady ? t("pages.tasks.enriching") : undefined}>
-            {exportResults.isPending ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
-            {t("extract.completed.downloadCsv")}
-          </Button>
-          <Button variant="secondary" disabled={exportResults.isPending || !completedDatasetReady} onClick={() => handleExport("json")} title={!completedDatasetReady ? t("pages.tasks.enriching") : undefined}>
-            <Download className="size-4" />JSON
-          </Button>
-          <Button variant="secondary" disabled={exportResults.isPending || !completedDatasetReady} onClick={() => handleExport("xlsx")} title={!completedDatasetReady ? t("pages.tasks.enriching") : undefined}>
-            <Download className="size-4" />Excel
-          </Button>
-          {!completedDatasetReady && (
-            <p className="flex items-center gap-1.5 text-xs text-[var(--color-fg-muted)]">
-              <Loader2 className="size-3.5 animate-spin" />
-              {t("pages.tasks.enriching")}
-            </p>
-          )}
-          <Button variant="outline" onClick={() => { setPhase("setup"); setActiveJob(null); }}>
-            <Zap className="size-4" />{t("extract.completed.newExtraction")}
-          </Button>
+        <CardContent className="space-y-4 pt-5">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+            <Download className="size-3.5" />{t("extract.completed.downloadTitle")}
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Button variant="primary" disabled={exportResults.isPending || !completedDatasetReady} onClick={() => handleExport("csv")} title={!completedDatasetReady ? t("pages.tasks.enriching") : undefined}>
+              {exportResults.isPending ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+              {t("extract.completed.downloadCsv")}
+            </Button>
+            <Button variant="secondary" disabled={exportResults.isPending || !completedDatasetReady} onClick={() => handleExport("xlsx")} title={!completedDatasetReady ? t("pages.tasks.enriching") : undefined}>
+              <Download className="size-4" />Excel
+            </Button>
+            <Button variant="secondary" disabled={exportResults.isPending || !completedDatasetReady} onClick={() => handleExport("json")} title={!completedDatasetReady ? t("pages.tasks.enriching") : undefined}>
+              <Download className="size-4" />JSON
+            </Button>
+            <Button variant="outline" className="ms-auto" onClick={() => { setPhase("setup"); setActiveJob(null); }}>
+              <Zap className="size-4" />{t("extract.completed.newExtraction")}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -559,6 +592,31 @@ function StatBox({ icon: Icon, label, value }: { icon: typeof Zap; label: string
     <div className="rounded-lg border border-[var(--color-border)] p-3">
       <div className="flex items-center gap-1.5 text-xs text-[var(--color-fg-subtle)]"><Icon className="size-3" />{label}</div>
       <p className="mt-1 text-lg font-bold text-[var(--color-fg)]">{value}</p>
+    </div>
+  );
+}
+
+function SummaryChip({ icon: Icon, label, value, badge }: {
+  icon: typeof Zap;
+  label: string;
+  value?: string;
+  badge?: { text: string; tone: "success" | "muted" };
+}) {
+  return (
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3.5">
+      <div className="flex items-center gap-1.5 text-xs text-[var(--color-fg-subtle)]"><Icon className="size-3.5" />{label}</div>
+      {badge ? (
+        <span className={cn(
+          "mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold",
+          badge.tone === "success"
+            ? "bg-[color-mix(in_oklab,var(--color-success)_14%,transparent)] text-[var(--color-success)]"
+            : "bg-[var(--color-surface-2)] text-[var(--color-fg-muted)]",
+        )}>
+          <CheckCircle2 className="size-3" />{badge.text}
+        </span>
+      ) : (
+        <p className="mt-1 text-lg font-bold tabular-nums text-[var(--color-fg)]">{value}</p>
+      )}
     </div>
   );
 }
