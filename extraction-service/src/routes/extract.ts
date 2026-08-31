@@ -731,7 +731,15 @@ router.delete("/extract/:jobId", async (req, res) => {
     log.info("Extract", `job ${jobId.slice(0, 8)} deleted permanently (results + job row)`);
     return res.status(200).json({ status: "ok", deleted: jobId });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    // Supabase errors are plain objects ({message, code, details, hint}), not
+    // Error instances — String(err) would render as "[object Object]" in the
+    // client. Normalize to a readable string so the UI shows the real reason.
+    const message =
+      err instanceof Error
+        ? err.message
+        : (err && typeof err === "object" && "message" in err)
+          ? String((err as { message: unknown }).message)
+          : JSON.stringify(err);
     log.error("Extract", `delete failed for ${jobId.slice(0, 8)}: ${message}`);
     return res.status(500).json({ error: { code: "DELETE_FAILED", message } });
   }

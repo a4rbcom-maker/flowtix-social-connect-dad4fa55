@@ -16,7 +16,13 @@ const EXTRACTION_API_KEY = import.meta.env.VITE_EXTRACTION_API_KEY || "local-dev
 async function readFetchError(res: Response): Promise<string> {
   try {
     const body = await res.json();
-    return body?.error?.message ?? body?.error ?? body?.message ?? `HTTP ${res.status}`;
+    const extracted =
+      body?.error?.message ??
+      (typeof body?.error === "string" ? body.error : undefined) ??
+      body?.message ??
+      (typeof body === "string" ? body : undefined);
+    if (extracted !== undefined) return String(extracted);
+    return `HTTP ${res.status}`;
   } catch {
     return `HTTP ${res.status}`;
   }

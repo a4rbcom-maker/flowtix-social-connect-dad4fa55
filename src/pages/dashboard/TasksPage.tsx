@@ -212,7 +212,8 @@ export function TasksPage() {
         toast({ type: "success", title: t("pages.tasks.deleted") });
       },
       onError: (err) => {
-        toast({ type: "error", title: t("common.error"), description: err.message });
+        const message = err instanceof Error ? err.message : String(err ?? "Unknown error");
+        toast({ type: "error", title: t("common.error"), description: message });
       },
     });
   }
