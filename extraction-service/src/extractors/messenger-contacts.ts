@@ -159,8 +159,11 @@ export class MessengerContactsExtractor extends BaseExtractor {
     this.page.on("response", handleResponse);
 
     try {
-      // ─── Navigate to page profile ───
-      await this.page.goto(`https://www.facebook.com/${pageIdentifier}`, {
+      // ─── Navigate to page profile (numeric id → profile.php?id=) ───
+      const profileUrl = /^\d{5,}$/.test(pageIdentifier)
+        ? `https://www.facebook.com/profile.php?id=${pageIdentifier}`
+        : `https://www.facebook.com/${pageIdentifier}`;
+      await this.page.goto(profileUrl, {
         waitUntil: "domcontentloaded",
         timeout: 30000,
       });
@@ -225,26 +228,21 @@ export class MessengerContactsExtractor extends BaseExtractor {
         throw new ExtractionError(authStateToErrorCode(authState), authStateToMessage(authState));
       }
 
-      // ─── Navigate to inbox — try all URLs to maximize GraphQL capture ───
-      const inboxUrls = [
-        `https://www.facebook.com/${pageIdentifier}/inbox/`,
-        `https://www.facebook.com/${pageIdentifier}/messages/`,
-        `https://www.facebook.com/messages/?page_id=${pageId}`,
-      ];
-
-      for (const url of inboxUrls) {
-        if (this.shouldStop) break;
-        log.info("MessengerContacts", `navigate: ${url}`);
-        await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-        await this.page.waitForTimeout(5000);
-        await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-        await this.page.waitForTimeout(5000);
-
-        const finalUrl = this.page.url();
-        log.info("MessengerContacts", `landed: ${finalUrl} graphql=${graphqlCount} contacts=${contacts.size}`);
-
-        // Try all URLs — we want to maximize GraphQL capture, don't break early
-      }
+      // ─── Navigate to page inbox — ONE navigation (nav-churn reduction).
+      // Multi-URL loops + repeated Business Suite navigations were the main
+      // slowness and the session-kill signal (probe 2026-08-31: a session went
+      // guest ~15 min after its last messenger job). The GraphQL engine
+      // (bootstrapAndPaginate) is the volume source; this visit is a warmup.
+      const inboxUrl = /^\d{5,}$/.test(pageIdentifier)
+        ? (pageId ? `https://www.facebook.com/messages/?page_id=${pageId}` : `https://www.facebook.com/profile.php?id=${pageIdentifier}&sk=messages`)
+        : `https://www.facebook.com/${pageIdentifier}/inbox/`;
+      log.info("MessengerContacts", `navigate: ${inboxUrl}`);
+      await this.page.goto(inboxUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+      await this.page.waitForTimeout(5000);
+      await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+      await this.page.waitForTimeout(3000);
+      const landedUrl = this.page.url();
+      log.info("MessengerContacts", `landed: ${landedUrl} graphql=${graphqlCount} contacts=${contacts.size}`);
 
       // Wait for late GraphQL responses
       await this.page.waitForTimeout(5000);
@@ -261,9 +259,11 @@ export class MessengerContactsExtractor extends BaseExtractor {
       total += await this.flushContacts(contacts, seen);
 
       // ─── Phase 0: Scroll the current inbox page to trigger lazy loading ───
-      // The Meta Business Suite inbox loads conversations via GraphQL as you scroll
-      if (contacts.size > 0 && contacts.size < this.ctx.maxResults && !this.shouldStop) {
-        log.info("MessengerContacts", `scrolling inbox for lazy-loaded conversations`);
+      // LAST RESORT only (contacts.size === 0): the GraphQL engine is the
+      // volume source; scroll loops here used to burn ~25s/cycle for near-zero
+      // yield and add navigation churn.
+      if (contacts.size === 0 && !this.shouldStop) {
+        log.info("MessengerContacts", `scrolling inbox for lazy-loaded conversations (last resort)`);
         let scrollCycle = 0;
         let scrollEmpty = 0;
 
@@ -274,7 +274,7 @@ export class MessengerContactsExtractor extends BaseExtractor {
           const beforeGql = graphqlCount;
           const workStart = Date.now();
 
-          while (Date.now() - workStart < 25_000 && !this.shouldStop) {
+          while (Date.now() - workStart < 12_000 && !this.shouldStop) {
             await this.scrollAggressively();
             await this.page.waitForTimeout(300);
           }
@@ -307,9 +307,9 @@ export class MessengerContactsExtractor extends BaseExtractor {
       // the old parse could inject the account's last-open thread as a junk
       // contact). Do not re-add without a fresh probe showing a real list. ───
 
-      // ─── Phase 3: Scroll loop (last resort, triggers more GraphQL) ───
-      if (contacts.size < this.ctx.maxResults && !this.shouldStop) {
-        log.info("MessengerContacts", `starting scroll loop`);
+      // ─── Phase 3: Scroll loop (last resort — only when GraphQL yielded 0) ───
+      if (contacts.size === 0 && !this.shouldStop) {
+        log.info("MessengerContacts", `starting scroll loop (last resort)`);
         let cycle = 0;
         let consecutiveEmpty = 0;
 
@@ -321,7 +321,7 @@ export class MessengerContactsExtractor extends BaseExtractor {
           const beforeGql = graphqlCount;
           const workStart = Date.now();
 
-          while (Date.now() - workStart < 30_000 && !this.shouldStop) {
+          while (Date.now() - workStart < 15_000 && !this.shouldStop) {
             await this.scrollAggressively();
             await this.page.waitForTimeout(300);
           }
@@ -680,13 +680,19 @@ export class MessengerContactsExtractor extends BaseExtractor {
       return;
     }
 
-    // Step 2: Navigate to business inbox to get cookies/context + trigger auto-load
+    // Step 2: Land on the business inbox — SKIP the navigation when
+    // resolveMailboxId already left us on the right inbox (nav-churn cut:
+    // fewer Business Suite loads = weaker force-logout signal).
     const bizUrl = `https://business.facebook.com/latest/inbox/all?asset_id=${mailboxId}&mailbox_id=${mailboxId}`;
-    log.info("MessengerContacts", `[bootstrap] navigating to ${bizUrl}`);
-    await this.page.goto(bizUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
-    await this.page.waitForTimeout(5000);
-    await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-    await this.page.waitForTimeout(3000);
+    if (!this.page.url().includes(`asset_id=${mailboxId}`)) {
+      log.info("MessengerContacts", `[bootstrap] navigating to ${bizUrl}`);
+      await this.page.goto(bizUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+      await this.page.waitForTimeout(5000);
+      await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+      await this.page.waitForTimeout(3000);
+    } else {
+      log.info("MessengerContacts", `[bootstrap] already on target inbox — skipping re-navigation`);
+    }
 
     log.info("MessengerContacts", `[bootstrap] loaded: ${this.page.url()} contacts=${contacts.size}`);
 
