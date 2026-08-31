@@ -82,15 +82,19 @@ class IgContextManager {
       const page = await context.newPage();
       page.setDefaultTimeout(config.igNavTimeoutMs);
       page.setDefaultNavigationTimeout(config.igNavTimeoutMs);
+      
+      // Configure page for better performance
+      await page.setViewportSize({ width: 1280, height: 720 });
+      await page.emulateMedia({ media: "print" }); // Disable animations
 
       // Verify session is logged in (not redirected to /accounts/login)
       try {
-        await page.goto(`${config.igBaseUrl}/`, { waitUntil: "domcontentloaded", timeout: 20000 });
-        await page.waitForTimeout(3000);
+        await page.goto(`${config.igBaseUrl}/`, { waitUntil: "domcontentloaded", timeout: 15000 });
+        await page.waitForTimeout(1000);
         const finalUrl = page.url();
         const redirectedToLogin = finalUrl.includes("/accounts/login");
-        const html = await page.content();
-        const hasLoginForm = html.includes('name="username"') && html.includes('name="password"');
+        // Quick check for login form instead of reading full HTML content
+        const hasLoginForm = await page.$('input[name="username"], input[name="password"]').catch(() => null);
         const isVerified = !redirectedToLogin && !hasLoginForm;
         log.info("IgContextManager", `session ${sessionId.slice(0, 8)}: verified = ${isVerified ? "logged_in" : "guest"} (url=${finalUrl.substring(0, 60)})`);
 

@@ -50,7 +50,7 @@ export const config = {
   fbNavTimeoutMs: envInt("FB_NAV_TIMEOUT_MS", 30000),
 
   igBaseUrl: env("IG_BASE_URL", "https://www.instagram.com"),
-  igNavTimeoutMs: envInt("IG_NAV_TIMEOUT_MS", 30000),
+  igNavTimeoutMs: envInt("IG_NAV_TIMEOUT_MS", 15000), // Reduced from 30000 to 15000
   igScrollDelayMinMs: envInt("IG_SCROLL_DELAY_MIN_MS", 1500),
   igScrollDelayMaxMs: envInt("IG_SCROLL_DELAY_MAX_MS", 3000),
   igRestAfterScrolls: envInt("IG_REST_AFTER_SCROLLS", 10),

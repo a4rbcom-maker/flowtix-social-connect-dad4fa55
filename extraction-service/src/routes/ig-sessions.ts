@@ -39,32 +39,54 @@ function isIgUsernamePath(href: string): boolean {
 }
 
 async function readIgUsernameAndAvatar(page: import("playwright").Page): Promise<{ username: string | null; avatar: string | null }> {
-  const username = await page.evaluate(() => {
-    // Prefer the sidebar/nav identity link when present — it IS the logged-in
-    // user's profile link; fall back to any username-shaped profile link.
-    const nav = document.querySelector('nav a[href^="/"][aria-label], a[role="link"][href^="/"]');
-    const links = Array.from(document.querySelectorAll('a[href^="/"]'));
-    const ordered = nav ? [nav, ...links] : links;
-    for (const a of ordered) {
-      const href = a.getAttribute("href") || "";
-      const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
-      if (!m) continue;
-      const lower = m[1].toLowerCase();
-      const NAV = ["explore", "reels", "direct", "accounts", "stories", "tv", "p", "reel",
-        "share", "challenge", "emails", "sms", "session", "your_activity",
-        "graphql", "api", "about", "legal", "privacy", "terms", "help",
-        "directory", "web", "channel", "profiles", "nametag"];
-      if (NAV.includes(lower)) continue;
-      if (/^[_\.]/.test(m[1])) continue;
-      return m[1];
-    }
-    return null;
-  }).catch(() => null);
-
-  const avatar = await page.evaluate(() => {
-    const img = document.querySelector('img[alt*="profile" i], img[alt*="photo" i], header img[src*="scontent"]');
-    return img?.getAttribute("src") || null;
-  }).catch(() => null);
+  // Try to get username and avatar in parallel for better performance
+  const [username, avatar] = await Promise.all([
+    page.evaluate(() => {
+      // Try multiple selectors in order of reliability
+      const selectors = [
+        'nav a[href^="/"][aria-label]',
+        'a[role="link"][href^="/"]',
+        'a[href^="/"]'
+      ];
+      
+      for (const selector of selectors) {
+        const element = document.querySelector(selector);
+        if (element) {
+          const href = element.getAttribute("href") || "";
+          const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
+          if (m) {
+            const name = m[1].toLowerCase();
+            const NAV = ["explore", "reels", "direct", "accounts", "stories", "tv", "p", "reel",
+              "share", "challenge", "emails", "sms", "session", "your_activity",
+              "graphql", "api", "about", "legal", "privacy", "terms", "help",
+              "directory", "web", "channel", "profiles", "nametag"];
+            if (!NAV.includes(name) && !/^[_\\.]/.test(m[1])) {
+              return m[1];
+            }
+          }
+        }
+      }
+      return null;
+    }).catch(() => null),
+    
+    page.evaluate(() => {
+      // Try multiple avatar selectors
+      const selectors = [
+        'img[alt*="profile" i]',
+        'img[alt*="photo" i]', 
+        'header img[src*="scontent"]',
+        'img[alt*="avatar" i]'
+      ];
+      
+      for (const selector of selectors) {
+        const img = document.querySelector(selector);
+        if (img?.getAttribute("src")) {
+          return img.getAttribute("src");
+        }
+      }
+      return null;
+    }).catch(() => null)
+  ]);
 
   return { username, avatar };
 }
@@ -133,17 +155,24 @@ router.post("/ig/sessions/import", async (req, res) => {
 
       const { page, contextId } = await igContextManager.createContext(session.id, cookieEntries);
       try {
-        await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 30000 });
-        await page.waitForTimeout(3000);
+        await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 15000 });
+        await page.waitForTimeout(1000);
         const url = page.url();
         if (url.includes("/accounts/login")) {
           finalStatus = "disconnected";
           log.info("IgSessions", `import: session ${session.id.slice(0, 8)} redirected to login`);
         } else {
-          const info = await readIgUsernameAndAvatar(page);
-          igUsername = info.username;
-          avatarUrl = info.avatar;
-          log.info("IgSessions", `import: session ${session.id.slice(0, 8)} checked, user=${igUsername}`);
+          // Quick check - just look for login form elements instead of full page content
+          const hasLoginForm = await page.$('input[name="username"], input[name="password"]').catch(() => null);
+          if (hasLoginForm) {
+            finalStatus = "disconnected";
+            log.info("IgSessions", `import: session ${session.id.slice(0, 8)} found login form`);
+          } else {
+            const info = await readIgUsernameAndAvatar(page);
+            igUsername = info.username;
+            avatarUrl = info.avatar;
+            log.info("IgSessions", `import: session ${session.id.slice(0, 8)} checked, user=${igUsername}`);
+          }
         }
       } finally {
         await igContextManager.releaseContext(contextId);
@@ -194,13 +223,13 @@ router.post("/ig/session-check", async (req, res) => {
     const { page, contextId } = await igContextManager.createContext(session_id, cookies, undefined, userAgent);
 
     try {
-      await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 30000 });
-      await page.waitForTimeout(3000);
+      await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 15000 });
+      await page.waitForTimeout(1000);
       const url = page.url();
-      const html = await page.content();
 
       const redirectedToLogin = url.includes("/accounts/login");
-      const hasLoginForm = html.includes('name="username"') && html.includes('name="password"');
+      // Quick check for login form instead of reading full HTML content
+      const hasLoginForm = await page.$('input[name="username"], input[name="password"]').catch(() => null);
       const authenticated = !redirectedToLogin && !hasLoginForm;
 
       if (authenticated) {
