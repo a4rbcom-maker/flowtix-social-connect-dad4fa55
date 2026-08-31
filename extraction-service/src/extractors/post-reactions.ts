@@ -171,6 +171,29 @@ export class PostReactionsExtractor extends BaseExtractor {
   private findReactionsRequest(): CapturedRequest | null {
     const texts = this.interceptor.getInterceptedTexts();
     const reqs = this.interceptor.getCapturedRequests ? this.interceptor.getCapturedRequests() : [];
+    const pairs = this.interceptor.getCapturedPairs ? this.interceptor.getCapturedPairs() : [];
+    // PRIMARY (response-driven): pick the request whose OWN response actually
+    // carried REACTOR users + pagination. FB reuses the same doc_id for the
+    // empty post-payload response AND rich list responses, so matching by
+    // doc_id alone frequently selects the empty one. We additionally require
+    // reactor context in the response so we never mislabel a COMMENT
+    // connection's authors as reactors (they share doc_ids on some surfaces).
+    let bestPair: { pair: import("../services/graphql-interceptor.js").CapturedPair; users: number } | null = null;
+    for (const pair of pairs) {
+      const t = pair.responseText;
+      const hasReactionCtx = /reactors|reaction_count|top_reactions|supported_reaction/i.test(t);
+      const isCommentCtx = /edge_media_to|comment_list_renderer|"comments":\{|comment_rendering_instance/i.test(t);
+      if (!hasReactionCtx || isCommentCtx) continue;
+      const page = parseGraphQLResponse(t);
+      if (page.users.length > 0 && (page.endCursor || page.hasNextPage)) {
+        if (!bestPair || page.users.length > bestPair.users) bestPair = { pair, users: page.users.length };
+      }
+    }
+    if (bestPair) {
+      log.info("PostReactions", `findReactionsRequest: response-driven pick doc_id=${bestPair.pair.request.docId} (reactors=${bestPair.users} in its own response)`);
+      this.responseCache = [bestPair.pair.responseText, ...texts];
+      return bestPair.pair.request;
+    }
     // FB 2026 fires the reactions request via doc_id=27425187170508695
     // (variables: feedbackTargetID + scale). Capture by doc_id first.
     const REACTION_DOC_IDS = ["27425187170508695"];
@@ -203,6 +226,19 @@ export class PostReactionsExtractor extends BaseExtractor {
       }
     }
     return null;
+  }
+
+  /** Parse the ALREADY-CAPTURED winning response into PageData without a
+   *  network call (replay of FB's reactor request often returns error 1357054,
+   *  so the passively-captured page is the reliable seed). */
+  private seedPageFromCache(): PageData {
+    const seed = this.responseCache[0];
+    if (!seed) return { users: [], cursor: null, hasNext: false };
+    const page = parseGraphQLResponse(seed);
+    const users: ExtractedMember[] = page.users
+      .filter((u) => u.id && /^\d{5,25}$/.test(u.id))
+      .map((u) => ({ fb_id: u.id, name: u.name, profile_url: u.url, type: "reacter" }));
+    return { users, cursor: page.endCursor, hasNext: page.hasNextPage };
   }
 
   private responseCache: string[] = [];
@@ -254,19 +290,32 @@ export class PostReactionsExtractor extends BaseExtractor {
    *  payload (not a list) and we bail immediately — DOM dialog is the source. */
   private async tryGraphQLBoost(req: CapturedRequest): Promise<number> {
     try {
-      const first = await this.fetchReactionsPage(req, null);
+      // 1) Seed from the passively-captured winning response (no network).
+      let first = this.seedPageFromCache();
+      // 2) If empty, try a live replay of the request.
+      if (first.users.length === 0) first = await this.fetchReactionsPage(req, null);
       if (first.users.length === 0) return 0;
+
       let added = 0;
+      const seen = new Set<string>();
+      const seedFresh = first.users.filter((u) => !seen.has(u.fb_id));
+      for (const u of seedFresh) seen.add(u.fb_id);
+      if (seedFresh.length > 0) added += await this.processBatch(seedFresh, "reacter");
+
       let cursor: string | null = first.cursor;
       let hasNext = first.hasNext;
-      const seen = new Set<string>();
       let pages = 0;
-      while (hasNext && added < this.ctx.maxResults && pages < 200) {
-        const fresh = first.users.filter((u) => !seen.has(u.fb_id));
-        for (const u of fresh) seen.add(u.fb_id);
-        if (fresh.length > 0) added += await this.processBatch(fresh, "reacter");
-        if (!cursor) break;
+      let emptyReplays = 0;
+      while (hasNext && cursor && added < this.ctx.maxResults && pages < 200 && emptyReplays < 3) {
         const next = await this.fetchReactionsPage(req, cursor);
+        if (next.users.length === 0) {
+          emptyReplays++;
+        } else {
+          const fresh = next.users.filter((u) => !seen.has(u.fb_id));
+          for (const u of fresh) seen.add(u.fb_id);
+          if (fresh.length > 0) added += await this.processBatch(fresh, "reacter");
+          emptyReplays = 0;
+        }
         hasNext = next.hasNext;
         cursor = next.cursor;
         pages++;

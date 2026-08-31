@@ -25,6 +25,17 @@ export interface CapturedRequest {
   lsd: string | null;
 }
 
+/** A captured request correlated with its own response body. This is the
+ *  reliable way to pick "the request whose RESPONSE actually carried the
+ *  reactor/comment list" — the request metadata alone (doc_id/variables)
+ *  cannot distinguish the rich list response from the empty post-payload
+ *  response, since FB reuses the same doc_ids for both. */
+export interface CapturedPair {
+  request: CapturedRequest;
+  responseText: string;
+}
+
+
 /**
  * Captures GraphQL requests/responses on a page.
  * Provides utilities to parse Facebook GraphQL responses and replay
@@ -35,12 +46,14 @@ export class GraphQLInterceptor {
   private requestListener: ((req: Request) => void) | null = null;
   private responseListener: ((resp: Response) => void) | null = null;
   private interceptedTexts: string[] = [];
+  private capturedPairs: CapturedPair[] = [];
   private _loggedFirst = false;
 
   /** Start listening for GraphQL requests on the page */
   attach(page: Page): void {
     this.capturedRequests = [];
     this.interceptedTexts = [];
+    this.capturedPairs = [];
 
     this.requestListener = (req: Request) => {
       const url = req.url();
@@ -75,6 +88,27 @@ export class GraphQLInterceptor {
       try {
         const text = await resp.text();
         this.interceptedTexts.push(text);
+        // Correlate this response with its own request so callers can pick the
+        // request whose RESPONSE actually carried the list (not the empty
+        // post-payload response that shares the same doc_id).
+        try {
+          const req = resp.request();
+          const postData = req.postData();
+          if (req.method() === "POST" && postData) {
+            const parsed = new URLSearchParams(postData);
+            const variablesStr = parsed.get("variables");
+            this.capturedPairs.push({
+              request: {
+                url: req.url(),
+                docId: parsed.get("doc_id"),
+                variables: variablesStr ? JSON.parse(variablesStr) : null,
+                fbDtsg: parsed.get("fb_dtsg"),
+                lsd: parsed.get("lsd"),
+              },
+              responseText: text,
+            });
+          }
+        } catch { /* correlation best-effort */ }
       } catch { /* skip */ }
     };
 
@@ -93,6 +127,11 @@ export class GraphQLInterceptor {
   /** Get all intercepted response texts */
   getInterceptedTexts(): string[] {
     return [...this.interceptedTexts];
+  }
+
+  /** Get every captured request paired with its own response body. */
+  getCapturedPairs(): CapturedPair[] {
+    return [...this.capturedPairs];
   }
 
   /** Get all captured GraphQL requests (most recent last). */

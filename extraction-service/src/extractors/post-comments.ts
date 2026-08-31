@@ -162,11 +162,31 @@ export class PostCommentsExtractor extends BaseExtractor {
   private findCommentsRequest(): CapturedRequest | null {
     const texts = this.interceptor.getInterceptedTexts();
     const reqs = this.interceptor.getCapturedRequests();
+    const pairs = this.interceptor.getCapturedPairs();
     // Dump every captured request for diagnostics (will be removed after fix).
     if (reqs.length === 0) {
       log.warn("PostComments", `findCommentsRequest: NO requests captured. texts=${texts.length}`);
     } else {
-      log.info("PostComments", `findCommentsRequest: ${reqs.length} requests, ${texts.length} texts, docIds=${reqs.slice(0, 10).map(r => r?.docId ?? 'null').join('|')}`);
+      log.info("PostComments", `findCommentsRequest: ${reqs.length} requests, ${texts.length} texts, ${pairs.length} pairs, docIds=${reqs.slice(0, 10).map(r => r?.docId ?? 'null').join('|')}`);
+    }
+    // PRIMARY (response-driven): pick the request whose OWN response actually
+    // carried comment authors + pagination. FB reuses the same comment doc_ids
+    // for an empty post-payload response AND the rich comment-list response, so
+    // matching by doc_id alone frequently selects the empty one (root cause of
+    // the 0-result bug). Correlating request↔response removes the guess.
+    let bestPair: { pair: import("../services/graphql-interceptor.js").CapturedPair; users: number } | null = null;
+    for (const pair of pairs) {
+      const page = parseGraphQLResponse(pair.responseText);
+      if (page.users.length > 0 && (page.endCursor || page.hasNextPage)) {
+        if (!bestPair || page.users.length > bestPair.users) bestPair = { pair, users: page.users.length };
+      }
+    }
+    if (bestPair) {
+      log.info("PostComments", `findCommentsRequest: response-driven pick doc_id=${bestPair.pair.request.docId} (users=${bestPair.users} in its own response)`);
+      // Prime the cache with the winning response FIRST so tryGraphQLBoost's
+      // seed read finds it immediately, then the rest for total-count scans.
+      this.responseCache = [bestPair.pair.responseText, ...texts];
+      return bestPair.pair.request;
     }
     // FB 2026 fires the comment thread via doc_id=28647291724863619 (variables
     // include feedbackTargetID / nodeID / mediasetToken). Capture it by doc_id
@@ -244,22 +264,59 @@ export class PostCommentsExtractor extends BaseExtractor {
     return { users, cursor: page.endCursor, hasNext: page.hasNextPage };
   }
 
-  /** GraphQL boost: only when FB serves a paginated comment connection. */
+  /** Parse the ALREADY-CAPTURED winning response (responseCache[0]) into a
+   *  PageData without any network call. FB serves the first comment page in
+   *  the page-load traffic itself; replaying that request often returns error
+   *  1357054, so this passively-captured page is the reliable seed. */
+  private seedPageFromCache(): PageData {
+    const seed = this.responseCache[0];
+    if (!seed) return { users: [], cursor: null, hasNext: false };
+    const page = parseGraphQLResponse(seed);
+    const users: ExtractedMember[] = page.users
+      .filter((u) => u.id && /^\d{5,25}$/.test(u.id))
+      .map((u) => ({
+        fb_id: u.id,
+        name: u.name,
+        profile_url: u.url,
+        type: "commenter",
+        ...(u.comment_text ? { comment_text: u.comment_text } : {}),
+      }));
+    return { users, cursor: page.endCursor, hasNext: page.hasNextPage };
+  }
+
+  /** GraphQL boost: seed from the captured first-page response (guaranteed to
+   *  hold the users FB already served), then paginate via cursor replay for
+   *  the rest. Replay may fail (FB error 1357054) — the seed still counts. */
   private async tryGraphQLBoost(req: CapturedRequest): Promise<number> {
     try {
-      const first = await this.fetchCommentsPage(req, null);
+      // 1) Seed from the passively-captured winning response (no network).
+      let first = this.seedPageFromCache();
+      // 2) If the cache seed was empty for some reason, try a live replay.
+      if (first.users.length === 0) first = await this.fetchCommentsPage(req, null);
       if (first.users.length === 0) return 0;
+
       let added = 0;
+      const seen = new Set<string>();
+      // Store the seed page immediately.
+      const seedFresh = first.users.filter((u) => !seen.has(u.fb_id));
+      for (const u of seedFresh) seen.add(u.fb_id);
+      if (seedFresh.length > 0) added += await this.processBatch(seedFresh, "commenter");
+
       let cursor: string | null = first.cursor;
       let hasNext = first.hasNext;
-      const seen = new Set<string>();
       let pages = 0;
-      while (hasNext && added < this.ctx.maxResults && pages < 200) {
-        const fresh = first.users.filter((u) => !seen.has(u.fb_id));
-        for (const u of fresh) seen.add(u.fb_id);
-        if (fresh.length > 0) added += await this.processBatch(fresh, "commenter");
-        if (!cursor) break;
+      let emptyReplays = 0;
+      while (hasNext && cursor && added < this.ctx.maxResults && pages < 200 && emptyReplays < 3) {
         const next = await this.fetchCommentsPage(req, cursor);
+        if (next.users.length === 0) {
+          // Replay came back empty/blocked — count it, bail after a few.
+          emptyReplays++;
+        } else {
+          const fresh = next.users.filter((u) => !seen.has(u.fb_id));
+          for (const u of fresh) seen.add(u.fb_id);
+          if (fresh.length > 0) added += await this.processBatch(fresh, "commenter");
+          emptyReplays = 0;
+        }
         hasNext = next.hasNext;
         cursor = next.cursor;
         pages++;
