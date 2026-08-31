@@ -19,6 +19,7 @@
  * request (rare surface), we open the dialog and scrape links from it.
  */
 import { BaseExtractor, parsePostId, parseFollowersCount, detectAuthState, authStateToMessage, authStateToErrorCode } from "./base.js";
+import { normalizeUserHref } from "./post-comments.js";
 import { ExtractionError, ErrorCodes } from "../errors.js";
 import { logger } from "../logger.js";
 import { supabaseService } from "../services/supabase.js";
@@ -389,16 +390,17 @@ export class PostReactionsExtractor extends BaseExtractor {
 
     const batch: ExtractedMember[] = [];
     for (const link of rawLinks) {
-      const idMatch = link.href.match(/profile\.php\?id=(\d{5,25})/) || link.href.match(/\/user\/(\d{5,25})/);
-      if (!idMatch) continue; // only real user ids
+      // Accept numeric ids AND vanity slugs (same rules as the comments
+      // extractor — DRY via the shared normalizeUserHref). Numeric-only
+      // matching dropped every reactor rendered as facebook.com/<slug>.
+      const norm = normalizeUserHref(link.href);
+      if (!norm) continue;
       // Name may be empty (avatar-only link) — fall back to a placeholder.
       const text = (link.text || "").trim();
       const name = text.length >= 2 && text.length <= 100 ? text : "Facebook User";
-      const fbId = idMatch[1];
-      const profileUrl = `https://www.facebook.com/profile.php?id=${fbId}`;
-      if (seen.has(fbId)) continue;
-      seen.add(fbId);
-      batch.push({ fb_id: fbId, name, profile_url: profileUrl, type: "reacter" });
+      if (seen.has(norm.fbId)) continue;
+      seen.add(norm.fbId);
+      batch.push({ fb_id: norm.fbId, name, profile_url: norm.profileUrl, type: "reacter" });
     }
     return batch;
   }

@@ -50,10 +50,29 @@ const JUNK_SLUGS = new Set([
   "community", "offers", "promotions", "marketplace", "bookmarks", "feed",
   "findfriends", "friends", "story.php", "photo", "photo.php", "video", "video.php",
   "reel", "reels", "posts", "permalink.php", "watchparty", "groups", "events",
+  "help", "settings", "login", "pages", "profile", "people", "public",
+  "policies", "privacy", "terms", "business", "advertising", "jobs", "about",
+  "home.php", "hashtag", "search", "directory", "gaming/video", "support",
 ]);
 
 function isJunkSlug(slug: string): boolean {
   return JUNK_SLUGS.has(slug.toLowerCase());
+}
+
+/** Normalize a comment/reactor author href into a stable fb_id.
+ *  Accepts numeric profile.php / /user/ ids AND vanity slugs
+ *  (facebook.com/<slug>?comment_id=…). Returns null for junk/non-user links.
+ *  Exported so the reactions extractor shares the same resolution rules (DRY)
+ *  and so the vanity-vs-numeric behavior is unit-testable without a browser. */
+export function normalizeUserHref(href: string): { fbId: string; profileUrl: string } | null {
+  const idMatch = href.match(/profile\.php\?id=(\d{5,25})/) || href.match(/\/user\/(\d{5,25})/);
+  if (idMatch) {
+    return { fbId: idMatch[1], profileUrl: `https://www.facebook.com/profile.php?id=${idMatch[1]}` };
+  }
+  const abs = href.startsWith("http") ? href : `https://www.facebook.com${href}`;
+  const vanity = abs.match(/facebook\.com\/([a-zA-Z0-9.]{3,60})(?:[/?#]|$)/i);
+  if (!vanity || isJunkSlug(vanity[1])) return null;
+  return { fbId: vanity[1], profileUrl: `https://www.facebook.com/${vanity[1]}` };
 }
 
 export class PostCommentsExtractor extends BaseExtractor {
@@ -364,13 +383,43 @@ export class PostCommentsExtractor extends BaseExtractor {
     let total = 0;
     let consecutiveEmpty = 0;
     let phaseCycle = 0;
+    let consumedPairs = 0;
     const seen = new Set<string>();
     while (total < maxResults && consecutiveEmpty < 15 && !this.shouldStop) {
       if (await this.checkCanceled()) break;
       // expand "more comments / replies" controls each round so the thread grows
       await this.expandCommentsThread();
+
+      // HARVEST-CAPTURED: every "view more comments" click makes FB fire a new
+      // paginated comment GraphQL response. The interceptor already captured
+      // it — consume NEW pairs each round (before the DOM catches up) so the
+      // pagination cursor chain is usable even when the DOM lags.
+      let newPairs = 0;
+      try {
+        const pairs = this.interceptor.getCapturedPairs();
+        for (; consumedPairs < pairs.length; consumedPairs++) {
+          const page = parseGraphQLResponse(pairs[consumedPairs].responseText);
+          if (page.users.length === 0) continue;
+          const users: ExtractedMember[] = page.users
+            .filter((u) => u.id && /^\d{5,25}$/.test(u.id))
+            .map((u) => ({
+              fb_id: u.id,
+              name: u.name,
+              profile_url: u.url,
+              type: "commenter",
+              ...(u.comment_text ? { comment_text: u.comment_text } : {}),
+            }));
+          const fresh = users.filter((u) => !seen.has(u.fb_id));
+          for (const u of fresh) seen.add(u.fb_id);
+          if (fresh.length > 0) {
+            newPairs += fresh.length;
+            total += await this.processBatch(fresh, "commenter");
+          }
+        }
+      } catch { /* best-effort harvest */ }
+
       const batch = await this.drainDomBatch(seen);
-      if (batch.length > 0) {
+      if (batch.length > 0 || newPairs > 0) {
         total += await this.processBatch(batch, "commenter");
         consecutiveEmpty = 0;
       } else {
@@ -414,8 +463,14 @@ export class PostCommentsExtractor extends BaseExtractor {
         });
         if (!userLink) return;
         const href = userLink.getAttribute("href") || "";
-        const idMatch = href.match(/profile\.php\?id=(\d{5,25})/) || href.match(/\/user\/(\d{5,25})/);
-        if (!idMatch) return; // only count real user ids, skip pages/links
+        // Accept BOTH numeric ids AND vanity slugs. The vanity path is resolved
+        // via normalizeUserHref in the outer loop; dropping non-numeric hrefs
+        // here was the root cause of 0-comment results on /posts/ surfaces,
+        // where FB renders every commenter as facebook.com/<slug>?comment_id=…
+        const looksUserish = /profile\.php\?id=\d{5,25}/.test(href)
+          || /\/user\/\d{5,25}/.test(href)
+          || /^\/?(?:https?:\/\/[^/]*facebook\.com)?\/[a-zA-Z0-9.]{3,60}(?:[/?#]|$)/.test(href);
+        if (!looksUserish) return;
         // Name may live on the link, its aria-label, or a sibling inside the article.
         let name = ((userLink as HTMLElement).innerText || "").trim();
         if (!name) name = (userLink.getAttribute("aria-label") || "").trim();
@@ -447,20 +502,10 @@ export class PostCommentsExtractor extends BaseExtractor {
 
     const batch: ExtractedMember[] = [];
     for (const c of raw) {
-      const idMatch = c.href.match(/profile\.php\?id=(\d{5,25})/) || c.href.match(/\/user\/(\d{5,25})/);
-      let fbId: string | null = null;
-      let profileUrl: string;
-      if (idMatch) {
-        fbId = idMatch[1];
-        profileUrl = `https://www.facebook.com/profile.php?id=${fbId}`;
-      } else {
-        const abs = c.href.startsWith("http") ? c.href : `https://www.facebook.com${c.href}`;
-        const vanity = abs.match(/facebook\.com\/([a-zA-Z0-9.]{3,60})(?:[/?#]|$)/i);
-        if (!vanity || isJunkSlug(vanity[1])) continue;
-        fbId = vanity[1];
-        profileUrl = `https://www.facebook.com/${fbId}`;
-      }
-      if (!fbId || seen.has(fbId)) continue;
+      const norm = normalizeUserHref(c.href);
+      if (!norm) continue;
+      const { fbId, profileUrl } = norm;
+      if (seen.has(fbId)) continue;
       seen.add(fbId);
       batch.push({
         fb_id: fbId,
