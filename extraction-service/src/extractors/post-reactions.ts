@@ -512,7 +512,12 @@ export class PostReactionsExtractor extends BaseExtractor {
           const aria = (el.getAttribute("aria-label") || "").trim();
           if (aria.length < 3 || aria.length > 60) continue;
           const lower = aria.toLowerCase();
+          // Ignore labels that contain "reaction" but are NOT the list entry:
+          // "Hide comments and reactions" / "Change Like reaction" (video
+          // surface) toggle or change the viewer's own reaction — clicking
+          // them never opens the reactor list.
           if (lower.includes("notif") || lower.includes("إشعار") || lower.includes("مشاهدة") || lower.includes("share")) continue;
+          if (lower.includes("hide") || lower.includes("إخفاء") || lower.includes("change") || lower.includes("تغيير")) continue;
           if (lower.includes("reaction") || lower.includes("تفاعل")) { el.click(); return "aria_reaction"; }
         }
         for (const el of ariaEls) {
@@ -525,6 +530,32 @@ export class PostReactionsExtractor extends BaseExtractor {
             if (parent) { (parent as HTMLElement).click(); return "aria_number_parent"; }
             el.click(); return "aria_number";
           }
+        }
+        // Video surface (share/v → creator/videos/…): no /ufi/reaction/ link and
+        // no numeric aria-label. FB renders a clickable "All reactions:" (or
+        // "تفاعلات") text summary whose click opens the full reactor dialog and
+        // fires the standard reactor GraphQL request (doc 27425187170508695).
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        let n;
+        while ((n = walker.nextNode())) {
+          const t = (n.textContent || "").trim();
+          if (!t || t.length > 60) continue;
+          if (/^(all reactions:|تفاعلات|reactions:|all\b)/i.test(t)) {
+            const el = n.parentElement as HTMLElement;
+            const clickable = (el.closest('[role="button"], a') as HTMLElement) || el;
+            clickable.click();
+            return "text_all_reactions";
+          }
+        }
+        // Fallback: a bare standalone number (reaction count) whose ancestor is
+        // clickable — covers surfaces that show only the count.
+        const w2 = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        while ((n = w2.nextNode())) {
+          const t = (n.textContent || "").trim();
+          if (!/^\d{1,3}([.,]\d+)?$/.test(t)) continue;
+          const el = n.parentElement as HTMLElement;
+          const c = el.closest('[role="button"], a');
+          if (c) { (c as HTMLElement).click(); return "text_count"; }
         }
         return "none";
       }).catch(() => "none");
