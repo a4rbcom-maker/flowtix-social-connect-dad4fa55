@@ -61,9 +61,15 @@ export const extractionRepository = {
   },
 
   async cancelJob(jobId: string): Promise<void> {
+    // Do NOT set completed_at here. The extraction service is still flushing
+    // persisted results/result_count when the user hits stop; stamping
+    // completed_at immediately races the service's own final write and can
+    // leave a "canceled" job with 0 results and no enrichment/report. The
+    // service sets completed_at itself once extract() settles and the data is
+    // actually saved.
     const { error } = await supabase
       .from("extraction_jobs")
-      .update({ status: "canceled", completed_at: new Date().toISOString() })
+      .update({ status: "canceled" })
       .eq("id", jobId);
     if (error) throw error;
   },

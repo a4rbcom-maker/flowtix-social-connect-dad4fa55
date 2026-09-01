@@ -325,11 +325,17 @@ async function runExtractionJob(jobId: string, sessionIds: string[], userId: str
           const currentStatus = await supabaseService.getJobStatus(jobId);
           if (currentStatus === "canceled") {
             log.info("Extract", `job ${jobId} stopped by user`, { extracted: result.extracted, durationMs });
-            if (result.extracted > 0) {
+            // The extractor may report extracted=0 due to a stop arriving
+            // mid-flush, but rows can already be in extraction_results. Use the
+            // real persisted count so enrichment + report run on the saved data
+            // instead of being skipped on a stale 0.
+            const realCount = await supabaseService.getJobResultCount(jobId);
+            const effectiveCount = Math.max(result.extracted, realCount);
+            if (effectiveCount > 0) {
               await setEnrichingPhase(jobId);
               enrichmentQueue.enqueue(jobId);
             }
-            await supabaseService.updateJob(jobId, { status: "completed", completed_at: new Date().toISOString() });
+            await supabaseService.updateJob(jobId, { status: "completed", result_count: effectiveCount, completed_at: new Date().toISOString() });
           } else {
             log.info("Extract", `job ${jobId} extraction done, starting enrichment`, { extracted: result.extracted, durationMs });
             if (result.extracted > 0) {

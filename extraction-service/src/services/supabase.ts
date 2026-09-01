@@ -560,6 +560,21 @@ export const supabaseService = {
     return data.status as JobStatus;
   },
 
+  /** Live count of rows already persisted in extraction_results for a job.
+   *  Used to reconcile the job's result_count after a user-initiated cancel,
+   *  where the extractor may have flushed rows that its in-memory total missed. */
+  async getJobResultCount(jobId: string): Promise<number> {
+    const { count, error } = await sb
+      .from("extraction_results")
+      .select("id", { count: "exact", head: true })
+      .eq("job_id", jobId);
+    if (error) {
+      log.warn("Supabase", `getJobResultCount failed: ${error.message}`);
+      return 0;
+    }
+    return count ?? 0;
+  },
+
   /** Jobs that finished extraction but were mid-enrichment when the service
    *  died — their enrichment must be re-run by the background queue. */
   async getJobsStuckEnriching(): Promise<string[]> {
