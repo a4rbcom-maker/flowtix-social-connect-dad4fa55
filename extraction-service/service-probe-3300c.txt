@@ -1,0 +1,27 @@
+npm notice run flowtix-extraction-service@1.0.0 npx
+npm notice run tsx src/index.ts
+[2026-08-31T13:02:45.842Z] [INFO] [Server] attempting to listen on port 3300...
+[2026-08-31T13:02:45.842Z] [INFO] [Server] attempting to listen on port 3300...
+[2026-08-31T13:02:45.847Z] [INFO] [Server] FlowTix Extraction Service v1.0.0 starting on port 3300
+[2026-08-31T13:02:45.847Z] [INFO] [Server] env: development | headless: true | pool: 1 | concurrency: 2
+[2026-08-31T13:02:45.847Z] [INFO] [BrowserPool] initializing 1 browser(s)
+[2026-08-31T13:02:45.977Z] [INFO] [BrowserPool] browser #1 launched
+[2026-08-31T13:02:45.978Z] [INFO] [Server] browser pool initialized — service ready
+[2026-08-31T13:02:46.658Z] [INFO] [WAManager] booted — resumed 1 sessions
+[2026-08-31T13:02:46.659Z] [INFO] [Server] WhatsApp manager booted
+{"level":30,"time":"2026-08-31T13:02:47.128Z","pid":23188,"hostname":"Khaled-Windows","class":"baileys","browser":["FlowTix","Chrome","1.0.0"],"helloMsg":{"clientHello":{"ephemeral":"BQpEPj1q946gmV84HfAbASfAhT982w/FpSYzYLbn5ho="}},"msg":"connected to WA"}
+{"level":30,"time":"2026-08-31T13:02:47.316Z","pid":23188,"hostname":"Khaled-Windows","class":"baileys","node":{"passive":false,"userAgent":{"platform":"WEB","appVersion":{"primary":2,"secondary":3000,"tertiary":1043857760},"mcc":"000","mnc":"000","osVersion":"0.1","device":"Desktop","osBuildNumber":"0.1","releaseChannel":"RELEASE","localeLanguageIso6391":"en","localeCountryIso31661Alpha2":"US"},"webInfo":{"webSubPlatform":"WEB_BROWSER"},"connectType":"WIFI_UNKNOWN","connectReason":"USER_ACTIVATED","devicePairingData":{"eRegid":"AAAArw==","eKeytype":"BQ==","eIdent":"AmdshYrTispRzrzAo5rWqS3XrOR1EqOhljass8wVRDk=","eSkeyId":"AAAB","eSkeyVal":"G9BiEmtm6yHBe4D67gm+u39ZRGw4+n40SJCNzX0IzHE=","eSkeySig":"M4TSI7s2+hUAtf4pJ5s/i+6cxO3PRzBEWEZWVXrrhXFLSHREmRRRI/aX4z7+C6YrM0/st43HTt/NKdOyEmMUhQ==","buildHash":"9vZcBgehzf/YdSsFH8le3w==","deviceProps":"CgdGbG93VGl4EgYIChAPGAcYASABKhcYgFAgATAAOAFAAUgBUAFYAWABcAF4AA=="},"pull":false},"msg":"not logged in, attempting registration..."}
+[2026-08-31T13:02:47.470Z] [INFO] [Server] server address: {"address":"::","family":"IPv6","port":3300}
+[2026-08-31T13:03:08.773Z] [INFO] [ListPages] listing pages for session ba5882ba-dfd5-42a1-900c-dc3fff77fcb7
+[2026-08-31T13:03:09.006Z] [WARN] [Supabase] proxy_url column missing (migration 2026082214 pending) — env/global proxy only
+[2026-08-31T13:03:09.566Z] [WARN] [Supabase] storage_state_enc column missing (migration 2026082210 pending) — cookies-only mode
+[2026-08-31T13:03:09.696Z] [INFO] [Supabase] session loaded: 111111 (status: connected) {"sessionId":"ba5882ba-dfd5-42a1-900c-dc3fff77fcb7","cookieCount":10,"hasStorageState":false,"localStorageOrigins":0}
+[2026-08-31T13:03:09.698Z] [INFO] [ContextManager] session ba5882ba: cookies injected = 10 cookies (c_user=true, xs=true, essential=4), ua=Mozilla/5.0 (Windows NT 10.0; Win64; x64..., fingerprint=desktop 1366x768
+[2026-08-31T13:03:09.699Z] [WARN] [ContextManager] session ba5882ba: no stored identity — first run will build it from imported cookies
+[2026-08-31T13:03:09.699Z] [WARN] [ContextManager] session ba5882ba: NO proxy — server IP differs from the account's usual location; this is the #1 cause of security checkpoints and forced logout
+[2026-08-31T13:03:09.734Z] [INFO] [ContextManager] session ba5882ba: resource blocking ON (images/media/fonts)
+[2026-08-31T13:03:16.132Z] [INFO] [ContextManager] session ba5882ba: verified = guest (authState=needs_login, url=https://www.facebook.com/)
+[2026-08-31T13:03:16.133Z] [ERROR] [ContextManager] session ba5882ba: GUEST session detected — cookies may be expired. Stopping job.
+[2026-08-31T13:03:16.142Z] [ERROR] [ListPages] error: SESSION_EXPIRED {"message":"Session ba5882ba is NOT logged in (guest). Cookies expired or invalid. Please re-import cookies."}
+{"level":30,"time":"2026-08-31T13:05:27.751Z","pid":23188,"hostname":"Khaled-Windows","class":"baileys","trace":"Error: QR refs attempts ended\n    at Timeout.genPairQR (D:\\Projects\\FlowTix\\extraction-service\\node_modules\\@whiskeysockets\\baileys\\src\\Socket\\socket.ts:891:14)\n    at listOnTimeout (node:internal/timers:585:17)\n    at process.processTimers (node:internal/timers:521:7)","msg":"connection errored"}
+[2026-08-31T13:05:27.994Z] [WARN] [WAManager] 6cf43fe6-5e88-420b-85b1-95059e7c7098 closed: closed (408)

@@ -61,37 +61,18 @@ router.post("/list-groups", async (req, res) => {
       log.info("ListGroups", `feed loaded: ${page.url()}`);
 
       // Facebook sidebar shows "Your groups" sections at 1600px viewport
-      const groups = await page.evaluate((): ManagedGroup[] => {
-        const results: ManagedGroup[] = [];
-        const seen = new Set<string>();
-
-        // At 1600px viewport, Facebook shows a left sidebar with "Your groups"
-        // The sidebar has links like /groups/ID in the groups section
-        const allLinks = document.querySelectorAll<HTMLAnchorElement>("a[href]");
-
-        for (const link of allLinks) {
-          const href = link.getAttribute("href") || "";
-          const text = (link as HTMLElement).innerText?.trim() || "";
-
-          const idMatch = href.match(/\/groups\/(\d+)/);
-          if (!idMatch) continue;
-          const gid = idMatch[1];
-          if (seen.has(gid)) continue;
-          if (!text || text.length < 2) continue;
-
-          const skipWords = ["groups","feed","discover","create","find","explore","manage","settings","notifications","members","events","gaming","watch","marketplace","friends","pages","المجموعات","إنشاء","إشعارات"];
-          if (skipWords.includes(text.toLowerCase()) || text.length > 100) continue;
-          if (/^\d+$/.test(text)) continue;
-
-          seen.add(gid);
-          results.push({ id: gid, name: text, picture_url: "", member_count: "", privacy: "", role: "عضو", last_active: "", can_post: true });
+      // IMPORTANT: Facebook does not serve joined groups to web clients (verified via probes).
+      // This is a platform limitation, not a FlowTix error. Returning empty array with explanation.
+      const groups: ManagedGroup[] = [];
+      log.info("ListGroups", "groups not available for web clients (platform limitation)");
+      return res.json({ 
+        groups,
+        notice: {
+          code: ErrorCodes.GROUPS_NOT_AVAILABLE,
+          message: "قائمة الجروبات غير متاحة للعميل الحالي. فيسبوك لا يسمح بالوصول للجروبات عبر الويب.",
+          platform_limitation: true
         }
-
-        return results;
       });
-
-      log.info("ListGroups", `found ${groups.length} groups`);
-      return res.json({ groups });
     } finally {
       await contextManager.releaseContext(contextId);
     }

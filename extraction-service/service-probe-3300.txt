@@ -1,0 +1,24 @@
+npm notice run flowtix-extraction-service@1.0.0 npx
+npm notice run tsx src/index.ts
+[2026-08-31T12:44:16.306Z] [INFO] [Server] attempting to listen on port 3300...
+[2026-08-31T12:44:16.307Z] [INFO] [Server] attempting to listen on port 3300...
+[2026-08-31T12:44:16.311Z] [INFO] [Server] FlowTix Extraction Service v1.0.0 starting on port 3300
+[2026-08-31T12:44:16.346Z] [INFO] [Server] env: development | headless: true | pool: 1 | concurrency: 2
+[2026-08-31T12:44:16.347Z] [INFO] [BrowserPool] initializing 1 browser(s)
+[2026-08-31T12:44:16.522Z] [INFO] [BrowserPool] browser #1 launched
+[2026-08-31T12:44:16.522Z] [INFO] [Server] browser pool initialized — service ready
+[2026-08-31T12:44:16.990Z] [INFO] [WAManager] booted — resumed 1 sessions
+[2026-08-31T12:44:16.990Z] [INFO] [Server] WhatsApp manager booted
+{"level":30,"time":"2026-08-31T12:44:17.917Z","pid":15284,"hostname":"Khaled-Windows","class":"baileys","browser":["FlowTix","Chrome","1.0.0"],"helloMsg":{"clientHello":{"ephemeral":"tNs2EbcyyrkbCC4lW9dH7qwhpR28sTKOF8RSfywloC4="}},"msg":"connected to WA"}
+[2026-08-31T12:44:17.962Z] [INFO] [Server] server address: {"address":"::","family":"IPv6","port":3300}
+{"level":30,"time":"2026-08-31T12:44:18.216Z","pid":15284,"hostname":"Khaled-Windows","class":"baileys","node":{"passive":false,"userAgent":{"platform":"WEB","appVersion":{"primary":2,"secondary":3000,"tertiary":1043857760},"mcc":"000","mnc":"000","osVersion":"0.1","device":"Desktop","osBuildNumber":"0.1","releaseChannel":"RELEASE","localeLanguageIso6391":"en","localeCountryIso31661Alpha2":"US"},"webInfo":{"webSubPlatform":"WEB_BROWSER"},"connectType":"WIFI_UNKNOWN","connectReason":"USER_ACTIVATED","devicePairingData":{"eRegid":"AAAA3w==","eKeytype":"BQ==","eIdent":"srBhaemJj6N7eKAtHb6xHqwmGD/3fymxAy7E6rS9XEo=","eSkeyId":"AAAB","eSkeyVal":"jbTJWoNJ6Sk7UnlJAR4IywOvKS0S/amAkgImCyIbhjc=","eSkeySig":"wIy1leXOsWCawz/XzmopFThME4sErPMUy0lowMXyw60BL1eAW79MQQIL6T7vroEULFieB9me5ZGGKSDDUIILAQ==","buildHash":"9vZcBgehzf/YdSsFH8le3w==","deviceProps":"CgdGbG93VGl4EgYIChAPGAcYASABKhcYgFAgATAAOAFAAUgBUAFYAWABcAF4AA=="},"pull":false},"msg":"not logged in, attempting registration..."}
+{"level":30,"time":"2026-08-31T12:46:58.827Z","pid":15284,"hostname":"Khaled-Windows","class":"baileys","trace":"Error: QR refs attempts ended\n    at Timeout.genPairQR (D:\\Projects\\FlowTix\\extraction-service\\node_modules\\@whiskeysockets\\baileys\\src\\Socket\\socket.ts:891:14)\n    at listOnTimeout (node:internal/timers:585:17)\n    at process.processTimers (node:internal/timers:521:7)","msg":"connection errored"}
+[2026-08-31T12:46:59.187Z] [WARN] [WAManager] 6cf43fe6-5e88-420b-85b1-95059e7c7098 closed: closed (408)
+[2026-08-31T12:48:23.914Z] [INFO] [ListPages] listing pages for session ba5882ba-dfd5-42a1-900c-dc3fff77fcb7
+[2026-08-31T12:48:24.244Z] [WARN] [Supabase] proxy_url column missing (migration 2026082214 pending) — env/global proxy only
+[2026-08-31T12:48:24.644Z] [WARN] [Supabase] storage_state_enc column missing (migration 2026082210 pending) — cookies-only mode
+[2026-08-31T12:48:24.755Z] [INFO] [Supabase] session loaded: 111111 (status: connected) {"sessionId":"ba5882ba-dfd5-42a1-900c-dc3fff77fcb7","cookieCount":10,"hasStorageState":false,"localStorageOrigins":0}
+[2026-08-31T12:48:24.757Z] [INFO] [ContextManager] session ba5882ba: cookies injected = 10 cookies (c_user=true, xs=true, essential=4), ua=Mozilla/5.0 (Windows NT 10.0; Win64; x64..., fingerprint=desktop 1366x768
+[2026-08-31T12:48:24.757Z] [WARN] [ContextManager] session ba5882ba: no stored identity — first run will build it from imported cookies
+[2026-08-31T12:48:24.757Z] [WARN] [ContextManager] session ba5882ba: NO proxy — server IP differs from the account's usual location; this is the #1 cause of security checkpoints and forced logout
+[2026-08-31T12:48:24.782Z] [INFO] [ContextManager] session ba5882ba: resource blocking ON (images/media/fonts)

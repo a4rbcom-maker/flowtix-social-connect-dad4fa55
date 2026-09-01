@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { FbSessionSelector } from "@/components/extraction/FbSessionSelector";
-import type { ManagedGroup } from "./types";
+import type { ManagedGroup, ListGroupsResponse } from "./types";
 
 interface Props {
   onGoToPublish: (ids: string[], names: string[]) => void;
@@ -34,9 +34,23 @@ export function MyGroupsTab({ onGoToPublish }: Props) {
         headers: { "Content-Type": "application/json", "X-API-Key": import.meta.env.VITE_EXTRACTION_API_KEY || "" },
         body: JSON.stringify({ session_id: sessionId }),
       });
-      const data = await res.json();
+      const data = await res.json() as ListGroupsResponse;
       if (!res.ok || data.error) throw new Error(data.error?.message || "Failed");
-      if (!data.groups?.length) { setPhase("empty"); return; }
+      
+      // Handle platform limitation notice
+      if (data.notice?.platform_limitation) {
+        setGroups([]);
+        setPhase("empty");
+        return;
+      }
+      
+      // Handle normal empty state
+      if (!data.groups?.length) { 
+        setGroups([]);
+        setPhase("empty"); 
+        return;
+      }
+      
       setGroups(data.groups);
       setPhase("loaded");
     } catch { setPhase("error"); }
@@ -133,16 +147,34 @@ export function MyGroupsTab({ onGoToPublish }: Props) {
     );
   }
 
-  // EMPTY STATE
+  // EMPTY STATE — include platform notice if relevant
   if (phase === "empty") {
+    const isPlatformLimit = groups.length === 0 && sessionId;
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Card className="max-w-md w-full border-dashed border-2 border-[var(--color-border)] bg-[var(--color-surface-1)]/50">
           <CardContent className="flex flex-col items-center gap-4 py-14">
-            <div className="p-4 rounded-full bg-[var(--color-fg-muted)]/10"><Group className="size-10 text-[var(--color-fg-muted)]" /></div>
-            <p className="text-xl font-bold">{t("pages.groups.noGroups")}</p>
-            <p className="text-sm text-[var(--color-fg-muted)]">{t("pages.groups.noGroupsDesc")}</p>
-            <Button onClick={fetchGroups} variant="outline" className="gap-2"><RefreshCw className="size-4" /> تحديث</Button>
+            {isPlatformLimit ? (
+              <>
+                <div className="p-4 rounded-full bg-[var(--color-warning)]/10"><AlertTriangle className="size-10 text-[var(--color-warning)]" /></div>
+                <p className="text-xl font-bold">قائمة الجروبات غير متاحة</p>
+                <p className="text-sm text-center text-[var(--color-fg-muted)]">
+                  فيسبوك لا يسمح بالوصول للجروبات عبر الويب. هذه ميزة منصة وليست عطل في FlowTix.
+                  <br />
+                  <span className="text-[var(--color-fg-muted)]/70">يمكنك النشر باستخدام الجروبات التي تعرفها يدوياً.</span>
+                </p>
+                <div className="text-xs text-[var(--color-fg-muted)]/60 bg-[var(--color-surface-2)] px-3 py-2 rounded-lg border border-[var(--color-border)]">
+                  <strong>ملاحظة:</strong> هذه رسالة واضحة لتجنب التوقعات الخاطئة. FlowTix يعمل بشكل طبيعي للخدمات الأخرى.
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="p-4 rounded-full bg-[var(--color-fg-muted)]/10"><Group className="size-10 text-[var(--color-fg-muted)]" /></div>
+                <p className="text-xl font-bold">{t("pages.groups.noGroups")}</p>
+                <p className="text-sm text-[var(--color-fg-muted)]">{t("pages.groups.noGroupsDesc")}</p>
+                <Button onClick={fetchGroups} variant="outline" className="gap-2"><RefreshCw className="size-4" /> تحديث</Button>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

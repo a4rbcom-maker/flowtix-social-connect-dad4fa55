@@ -9,6 +9,19 @@ export interface ManagedGroup {
   can_post: boolean;
 }
 
+export interface ListGroupsResponse {
+  groups: ManagedGroup[];
+  error?: {
+    code: string;
+    message: string;
+  };
+  notice?: {
+    code: string;
+    message: string;
+    platform_limitation?: boolean;
+  };
+}
+
 export interface PublishConfig {
   message: string;
   group_ids: string[];
