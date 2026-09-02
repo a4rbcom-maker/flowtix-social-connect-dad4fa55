@@ -4,19 +4,42 @@ import type { ConversationWithContact, WaMessage, WaNote } from "@/types/wa-inbo
 const apiUrl = import.meta.env.VITE_EXTRACTION_API_URL || "http://localhost:3100";
 const apiKey = import.meta.env.VITE_EXTRACTION_API_KEY || "local-dev-key-change-in-production";
 
+interface ConversationFilters {
+  status?: string; unread?: boolean; starred?: boolean; archived?: boolean;
+  assignedTo?: string; spam?: boolean;
+}
+
+function applyConversationFilters(q: ReturnType<typeof supabase.from>, f: ConversationFilters) {
+  let query = q;
+  if (f.status) query = query.eq("status", f.status);
+  if (f.unread) query = query.gt("unread_count", 0);
+  if (f.starred) query = query.eq("is_starred", true);
+  if (f.archived !== undefined) query = query.eq("is_archived", !!f.archived);
+  if (f.spam !== undefined) query = query.eq("is_spam", !!f.spam);
+  if (f.assignedTo) query = query.eq("assigned_to", f.assignedTo);
+  return query;
+}
+
 export const waInboxRepository = {
-  async listConversations(workspaceId: string, filters?: {
-    status?: string; unread?: boolean; starred?: boolean; archived?: boolean;
-    assignedTo?: string; spam?: boolean;
-  }): Promise<ConversationWithContact[]> {
-    let q = supabase.from("wa_conversations").select("*, contact:wa_contacts(*)")
-      .eq("workspace_id", workspaceId).order("last_message_at", { ascending: false, nullsFirst: false });
-    if (filters?.status) q = q.eq("status", filters.status);
-    if (filters?.unread) q = q.gt("unread_count", 0);
-    if (filters?.starred) q = q.eq("is_starred", true);
-    if (filters?.archived !== undefined) q = q.eq("is_archived", !!filters.archived);
-    if (filters?.spam !== undefined) q = q.eq("is_spam", !!filters.spam);
-    if (filters?.assignedTo) q = q.eq("assigned_to", filters.assignedTo);
+  async listConversations(workspaceId: string, filters?: ConversationFilters & { includeDisconnectedSessions?: boolean }): Promise<ConversationWithContact[]> {
+    const baseQuery = () => supabase.from("wa_conversations").select("*, contact:wa_contacts(*)")
+      .eq("workspace_id", workspaceId)
+      .order("last_message_at", { ascending: false, nullsFirst: false });
+
+    if (filters?.includeDisconnectedSessions) {
+      const { data, error } = await applyConversationFilters(baseQuery(), filters);
+      if (error) throw error;
+      return (data ?? []) as ConversationWithContact[];
+    }
+
+    const { data: sessions } = await supabase.from("wa_sessions").select("id")
+      .eq("workspace_id", workspaceId).eq("status", "disconnected");
+
+    const disconnectedIds = (sessions ?? []).map((s) => s.id);
+    const q = disconnectedIds.length > 0
+      ? applyConversationFilters(baseQuery().not("wa_session_id", "in", disconnectedIds), filters ?? {})
+      : applyConversationFilters(baseQuery(), filters ?? {});
+
     const { data, error } = await q;
     if (error) throw error;
     return (data ?? []) as ConversationWithContact[];

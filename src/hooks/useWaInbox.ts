@@ -30,7 +30,11 @@ export function useWaConversations(filters?: Parameters<typeof waInboxRepository
           if (p.eventType === "UPDATE" && (p.new?.unread_count ?? 0) > (p.old?.unread_count ?? 0)) playMessageSound();
         })
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    const chSessions = supabase.channel(`wa-sessions-conv-${ws}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "wa_sessions", filter: `workspace_id=eq.${ws}` },
+        () => { qc.invalidateQueries({ queryKey: [CONVS_KEY] }); })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); supabase.removeChannel(chSessions); };
   }, [ws, qc]);
 
   return q;
