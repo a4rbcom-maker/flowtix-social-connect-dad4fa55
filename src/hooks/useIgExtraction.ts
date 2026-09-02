@@ -13,6 +13,8 @@ export function useIgExtraction() {
 
   const start = useMutation<ExtractionProgress, Error, StartExtractionInput>({
     mutationFn: (input) => extractionRepository.startExtraction(input),
+    retry: 3,
+    retryDelay: 1000,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [IG_JOBS_KEY] });
     },
@@ -20,6 +22,8 @@ export function useIgExtraction() {
 
   const cancel = useMutation<void, Error, string>({
     mutationFn: (jobId) => extractionRepository.cancelJob(jobId),
+    retry: 2,
+    retryDelay: 800,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [IG_JOBS_KEY] });
     },
