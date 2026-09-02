@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Bot, Zap, MessageSquare, Brain, Sparkles, BookOpen,
@@ -18,6 +18,7 @@ import { useAuth } from "@/lib/authProvider";
 import { useWaAiConfig, useWaAiMutations, useWaAiInstructions } from "@/hooks/useWaAi";
 import { AI_LEVELS } from "@/types/wa-ai.types";
 import { useWaAiModels } from "@/hooks/useWaAiModels";
+import { AiModel } from "@/lib/wa-ai-models";
 import type { AiInstructionItem, AiProviderConfig } from "@/types/wa-ai.types";
 import { toast } from "@/components/ui/toast";
 
@@ -176,7 +177,7 @@ function StatusBanner({
 }: {
   active: boolean;
   config: AiProviderConfig | null | undefined;
-  aiModels: any;
+  aiModels: AiModel[] | undefined;
 }) {
   const { t } = useTranslation();
   return (
@@ -327,7 +328,7 @@ function LevelsTab({
 }: {
   config: AiProviderConfig | null | undefined;
   muts: ReturnType<typeof useWaAiMutations>;
-  aiModels: any;
+  aiModels: AiModel[] | undefined;
 }) {
   const { t, i18n } = useTranslation();
   const locale: "en" | "ar" = i18n.language === "ar" ? "ar" : "en";
@@ -383,10 +384,12 @@ function LevelsTab({
     } as any);
   };
 
-  const modelOptions = (aiModels ?? []).map((m: any) => ({
-    value: m.model_id,
-    label: `${m.display_name[locale] ?? m.model_id} — ${m.description[locale] ?? ""}`,
-  }));
+  const modelOptions = useMemo(() => {
+    return (aiModels ?? []).map((m) => ({
+      value: m.model_id,
+      label: `${m.display_name[locale] ?? m.model_id} — ${m.description[locale] ?? ""}`,
+    }));
+  }, [aiModels, locale]);
 
   return (
     <div className="space-y-6">
