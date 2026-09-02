@@ -298,7 +298,7 @@ function TabsBar({
             className={cn(
               "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all duration-300",
               isActive
-                ? "bg-gradient-brand text-white shadow-[0_4px_16px_-4px_rgba(109,94,252,0.5)]"
+                ? "bg-gradient-brand text-white shadow-[0_4px_16px_-4px_rgba(109,94,252,0.5)] [text-shadow:0_1px_3px_rgba(0,0,0,0.35)]"
                 : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
             )}
             aria-pressed={isActive}
