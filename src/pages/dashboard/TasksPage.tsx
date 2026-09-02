@@ -194,14 +194,56 @@ export function TasksPage() {
 
   async function handleExportBoth(jobId: string) {
     setExportingJob(jobId);
+    const results: { format: ExportFormat; ok: boolean; error?: string }[] = [];
+
+    // CSV first
     try {
       await exportMutation.mutateAsync({ jobId, format: "csv" });
-      await exportMutation.mutateAsync({ jobId, format: "xlsx" });
-      toast({ type: "success", title: t("extract.exportStarted") });
+      results.push({ format: "csv", ok: true });
     } catch (err) {
-      toast({ type: "error", title: t("extract.exportFailed"), description: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setExportingJob(null);
+      const msg = err instanceof Error ? err.message : String(err);
+      results.push({ format: "csv", ok: false, error: msg });
+    }
+
+    // XLSX second — slight delay so the browser does NOT merge them into one
+    // download action (which some browsers block as "duplicate download").
+    try {
+      await new Promise<void>((resolve, reject) => {
+        setTimeout(async () => {
+          try {
+            await exportMutation.mutateAsync({ jobId, format: "xlsx" });
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        }, 600);
+      });
+      results.push({ format: "xlsx", ok: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      results.push({ format: "xlsx", ok: false, error: msg });
+    }
+
+    setExportingJob(null);
+
+    const allOk = results.every((r) => r.ok);
+    const partialOk = results.some((r) => r.ok);
+    const failed = results.filter((r) => !r.ok);
+
+    if (allOk) {
+      toast({ type: "success", title: t("tasks.exportBothDone") });
+    } else if (partialOk) {
+      toast({
+        type: "warning",
+        title: t("tasks.exportPartial"),
+        description: failed.map((f) => `${f.format}: ${f.error}`).join("\n"),
+      });
+    } else {
+      toast({
+        type: "error",
+        title: t("extract.exportFailed"),
+        description: failed.map((f) => `${f.format}: ${f.error}`).join("\n"),
+      });
     }
   }
 
