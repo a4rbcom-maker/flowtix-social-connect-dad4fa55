@@ -133,8 +133,19 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
     };
 
     // 1) Load the post; keep GraphQL listener armed for the entire session.
+    //    bodyFilter rejects graphql responses that don't relate to THIS post's
+    //    shortcode (sidebar suggestions, "accounts you may know", suggested
+    //    posts) — they share the endpoint but carry different media ids.
     const client = new IgMediaClient();
-    const capture = client.armContinuousCapture(this.page);
+    const bodyFilter = (j: unknown): boolean => {
+      if (!j || typeof j !== "object") return false;
+      const s = JSON.stringify(j);
+      // Must reference this shortcode or its derived media pk — otherwise
+      // it's a sidebar/suggestion graphql response, not this post's data.
+      return s.includes(shortcode) || (!!this.knownMediaPk && s.includes(this.knownMediaPk));
+    };
+    this.knownMediaPk = deriveMediaPk(shortcode) ?? null;
+    const capture = client.armContinuousCapture(this.page, bodyFilter);
     await this.page.goto(`${config.igBaseUrl}/p/${shortcode}/`, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await this.page.waitForTimeout(3000);
 
@@ -644,6 +655,8 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
   private flushedCount = 0;
   private engine: IgExtractionEngine | null = null;
   private knownLikeTotal: number | null = null;
+  /** Media pk derived from the shortcode — used to scope GraphQL capture to this post only. */
+  private knownMediaPk: string | null = null;
   /** Remaining wall-clock budget for bio scraping across the WHOLE job (ms).
    *  One shared budget — not per-flush — so mid-job flushes cannot each
    *  restart a 2-minute phase (bios are a bonus, never a delay). */
@@ -653,8 +666,14 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
    *  shared budget by elapsed wall clock. No-op once the budget is exhausted. */
   private async maybeScrapeFreshBios(fresh: ExtractedMember[]): Promise<void> {
     if (fresh.length === 0) return;
-    if (this.bioBudgetMs <= 0) return;
-    if (this.shouldStop || (await this.checkCanceled())) return;
+    if (this.bioBudgetMs <= 0) {
+      await this.updateIgProgress({ phase: "extracting", bio_scrape: { skipped: true, reason: "budget_exhausted" } });
+      return;
+    }
+    if (this.shouldStop || (await this.checkCanceled())) {
+      await this.updateIgProgress({ phase: "extracting", bio_scrape: { skipped: true, reason: this.shouldStop ? "should_stop" : "canceled" } });
+      return;
+    }
     const started = Date.now();
     const pending = new Map(fresh.map((m) => [m.fb_id, m]));
     try {
@@ -664,7 +683,10 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
         shouldStop: () => this.shouldStop,
         checkCanceled: async () => await this.checkCanceled(),
       });
+      await this.updateIgProgress({ phase: "extracting", bio_scrape: { done: true, scraped: res.scraped, withContact: res.withContact, elapsedMs: Date.now() - started } });
       void res;
+    } catch (err) {
+      await this.updateIgProgress({ phase: "extracting", bio_scrape: { error: String(err).slice(0, 120) } });
     } finally {
       this.bioBudgetMs -= Date.now() - started;
       if (this.bioBudgetMs < 0) this.bioBudgetMs = 0;
