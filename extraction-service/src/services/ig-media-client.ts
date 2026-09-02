@@ -94,7 +94,14 @@ async function usersFromPostDom(page: Page): Promise<IgMediaUser[]> {
       const out: { username: string; fullName: string; avatar: string }[] = [];
       const seen = new Set<string>();
       const NAV = new Set(["p", "reel", "reels", "explore", "tags", "accounts", "popular", "directory", "about", "locations", "hashtag"]);
-      for (const a of document.querySelectorAll('a[href^="/"]')) {
+      // Scope to the post's own <article> container — the sidebar
+      // suggestions, suggested posts, and "accounts you may know"
+      // sections live OUTSIDE it. This prevents harvesting accounts
+      // from other sections that have nothing to do with this post's
+      // comments.
+      const article = document.querySelector("article");
+      const scope = article ?? document.documentElement;
+      for (const a of scope.querySelectorAll('a[href^="/"]')) {
         const href = a.getAttribute("href") || "";
         const m = href.match(/^\/([a-zA-Z0-9._]{1,30})\/?$/);
         if (!m || NAV.has(m[1].toLowerCase())) continue;
@@ -236,8 +243,11 @@ export class IgMediaClient {
 
   /** Start capturing ALL GraphQL responses on this page. Call stop() to finish.
    *  Unlike captureFirstPage (single-shot), this stays armed for the entire
-   *  extraction session so every paginated comment/like response is collected. */
-  armContinuousCapture(page: Page): ContinuousCapture {
+   *  extraction session so every paginated comment/like response is collected.
+   *  bodyFilter (optional): only accumulate responses whose JSON body passes
+   *  the predicate — used to reject sidebar/suggestion traffic that shares
+   *  the graphql endpoint but carries no post data. */
+  armContinuousCapture(page: Page, bodyFilter?: (body: unknown) => boolean): ContinuousCapture {
     this.continuousAcc = new Map();
     this.continuousAfter = null;
     if (this.continuousHandler) page.off("response", this.continuousHandler);
@@ -252,6 +262,10 @@ export class IgMediaClient {
           .json()
           .then((j: unknown) => {
             if (!j || !this.continuousAcc) return;
+            if (bodyFilter && !bodyFilter(j)) {
+              log.info("IgMedia", `continuous capture: rejected non-post graphql response`);
+              return;
+            }
             const parsed = usersFromGraphqlBody(j);
             if (parsed.users.length > 0) {
               let added = 0;
