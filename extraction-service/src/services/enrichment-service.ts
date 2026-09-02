@@ -664,7 +664,17 @@ export const enrichmentService = {
       const d = r.data || {};
       const bioPhone = typeof d.bio_phone === "string" ? d.bio_phone : null;
       const bioEmail = typeof d.bio_email === "string" ? d.bio_email.trim() : null;
-      const fullName = typeof d.full_name === "string" ? d.full_name.trim() : null;
+      let fullName = typeof d.full_name === "string" ? d.full_name.trim() : null;
+      // Junk-name guard (mirrors extractors/ig-post-users.ts sanitizeFullName):
+      // IG DOM sometimes yields "Profile"/role labels or echoes the username
+      // back as full_name. Matching the Egypt DB on those wastes scans and can
+      // never legitimately confirm an identity.
+      if (fullName) {
+        const uname = typeof d.username === "string" ? d.username.trim().toLowerCase() : String(r.fb_id ?? "").trim().toLowerCase();
+        if (!fullName || fullName.toLowerCase() === uname || /^(profile|instagram|user|account|مستخدم|حساب)$/i.test(fullName)) {
+          fullName = null;
+        }
+      }
       const phone9 = bioPhone ? normalizeEgyptPhone(bioPhone).slice(-9) : null;
       return { phone9: phone9 && phone9.length >= 9 ? phone9 : null, email: bioEmail || null, fullName: fullName || null };
     });

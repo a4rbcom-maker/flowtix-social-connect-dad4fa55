@@ -12,6 +12,7 @@ import { IgMediaClient, usersFromPostDom } from "../services/ig-media-client.js"
 import { config } from "../config.js";
 import { ExtractionError, ErrorCodes } from "../errors.js";
 import { logger } from "../logger.js";
+import { scrapeIgBios } from "./ig-bio-scrape.js";
 import type { AuthState, ExtractedMember, JobContext } from "../types.js";
 
 const log = logger;
@@ -37,6 +38,18 @@ function parsePostUrl(sourceUrl: string): string {
   const m = sourceUrl.match(/instagram\.com\/(?:p|reel)\/([A-Za-z0-9_-]+)/i);
   if (!m) throw new ExtractionError(ErrorCodes.INVALID_INPUT, "رابط منشور غير صالح. استخدم رابطاً مثل https://www.instagram.com/p/CODE/");
   return m[1];
+}
+
+/** Reject names that poison enrichment/UI: DOM residue ("Profile", "Instagram",
+ *  role labels) and the username echoed back as full_name. Empty string means
+ *  "no real name" — callers fall back to the username for display only. */
+export function sanitizeFullName(fullName: string | undefined, username: string): string {
+  const raw = (fullName ?? "").trim();
+  if (!raw) return "";
+  const uname = username.trim().toLowerCase();
+  if (raw.toLowerCase() === uname) return "";
+  if (/^(profile|instagram|user|account|مستخدم|حساب)$/i.test(raw)) return "";
+  return raw;
 }
 
 /** IG shortcodes are the media pk in base-64 numeric form.
@@ -80,11 +93,15 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
     const collected = new Map<string, ExtractedMember>();
     const add = (u: { username: string; fullName?: string; avatar?: string; commentText?: string; commentId?: string }): boolean => {
       if (!u.username || collected.has(u.username)) return false;
+      // Guard the display/matching name: IG sometimes yields "Profile" (DOM
+      // template residue) or echoes the username back as full_name. Storing
+      // either poisons enrichment (full_name is a matching key) and the UI.
+      const cleanName = sanitizeFullName(u.fullName, u.username);
       collected.set(u.username, {
         fb_id: u.username,
         username: u.username,
-        name: u.fullName || u.username,
-        full_name: u.fullName || u.username,
+        name: cleanName || u.username,
+        full_name: cleanName || undefined,
         profile_url: `https://www.instagram.com/${u.username}/`,
         avatar_url: u.avatar || undefined,
         type: this.ctx.type,
@@ -99,6 +116,12 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
       const fresh = all.slice(this.flushedCount);
       if (fresh.length >= 50) {
         try {
+          // Bio scrape BEFORE the batch insert: members are patched in place
+          // so the stored rows carry bio_phone / bio_email (the enrichment
+          // service's only reliable confirmed-match channel). A shared wall-
+          // clock budget throttles the phase once, for the WHOLE job, so
+          // mid-job flushes cannot each restart a 2-minute scrape.
+          await this.maybeScrapeFreshBios(fresh);
           const n = await this.processBatch(fresh, this.ctx.type, "instagram");
           this.flushedCount += fresh.length;
           if (n > 0) log.info("IgPostUsers", `flushed ${n}`);
@@ -209,6 +232,13 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
     let fromGraphQL = 0;
     for (const u of graphqlSnapshot.users) if (add(u)) { fromGraphQL++; engine.addResults(1); }
     log.info("IgPostUsers", `graphql total: +${fromGraphQL} → ${collected.size} unique`);
+
+    // 5b) Bio enrichment for the tail (rows never flushed): bio_phone /
+    //     bio_email are patched onto members in place BEFORE processBatch,
+    //     because storeResults is a plain INSERT — post-hoc patching would
+    //     miss stored rows. Mid-job flushes already scraped their own slices
+    //     (see flush()); this covers the final <50 + GraphQL snapshot users.
+    await this.maybeScrapeFreshBios(Array.from(collected.values()).slice(this.flushedCount));
 
     await this.flushRemaining(collected);
     log.info("IgPostUsers", `done: ${collected.size} unique`);
@@ -614,6 +644,33 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
   private flushedCount = 0;
   private engine: IgExtractionEngine | null = null;
   private knownLikeTotal: number | null = null;
+  /** Remaining wall-clock budget for bio scraping across the WHOLE job (ms).
+   *  One shared budget — not per-flush — so mid-job flushes cannot each
+   *  restart a 2-minute phase (bios are a bonus, never a delay). */
+  private bioBudgetMs = 120_000;
+
+  /** Scrape bios for not-yet-stored members when budget remains; consumes the
+   *  shared budget by elapsed wall clock. No-op once the budget is exhausted. */
+  private async maybeScrapeFreshBios(fresh: ExtractedMember[]): Promise<void> {
+    if (fresh.length === 0) return;
+    if (this.bioBudgetMs <= 0) return;
+    if (this.shouldStop || (await this.checkCanceled())) return;
+    const started = Date.now();
+    const pending = new Map(fresh.map((m) => [m.fb_id, m]));
+    try {
+      const res = await scrapeIgBios(this.page, pending, {
+        onProgress: async (extra) => { await this.updateIgProgress({ phase: "extracting", ...extra }); },
+        budgetMs: this.bioBudgetMs,
+        shouldStop: () => this.shouldStop,
+        checkCanceled: async () => await this.checkCanceled(),
+      });
+      void res;
+    } finally {
+      this.bioBudgetMs -= Date.now() - started;
+      if (this.bioBudgetMs < 0) this.bioBudgetMs = 0;
+    }
+  }
+
   /** comment_id values the app itself used for THIS post's media (page-load traffic). */
   private readonly observedCommentIds = new Set<string>();
   private commentIdObserver: ((req: import("playwright").Request) => void) | null = null;

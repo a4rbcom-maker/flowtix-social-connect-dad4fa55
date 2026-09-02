@@ -1170,6 +1170,9 @@
       "enabled": "مفعّل",
       "disabled": "معطّل",
       "coverage": "نسبة التغطية: {{value}}%",
+      "enrichedStat": "إثراء البيانات",
+      "enrichTitle": "جارٍ إثراء البيانات",
+      "enrichDesc": "نبحث عن أرقام الجوال والبريد الإلكتروني — أزرار التحميل ستُفعَّل تلقائياً عند الانتهاء.",
       "downloadTitle": "تحميل النتائج",
       "downloadCsv": "تحميل CSV",
       "newExtraction": "استخراج جديد"
@@ -1794,6 +1797,8 @@
       "noJobsDesc": "ابدأ استخراجاً جديداً من صفحة استخراج الأعضاء",
       "sendMessage": "إرسال رسالة",
       "phase_extracting": "جاري الاستخراج",
+      "exportBothDone": "تم تصدير CSV و Excel بنجاح",
+      "exportPartial": "تم تصدير أحد الصيغ فقط",
       "stopReason_all_sessions_stagnant": "توقف الاستخراج مؤقتاً بسبب تقييد مؤقت من المنصة — يمكن الاستئناف لاحقاً من نفس النقطة.",
       "stopReason_platform_limit": "المنصة أوقفت الجلسة (تقييد مؤقت). جرّب إضافة جلسة ثانية أو الاستئناف بعد فترة.",
       "stopReason_api_list_exhausted": "تم استخراج كل ما هو متاح من هذا المصدر.",

@@ -1165,6 +1165,9 @@
       "enabled": "Enabled",
       "disabled": "Disabled",
       "coverage": "Coverage: {{value}}%",
+      "enrichedStat": "Data enrichment",
+      "enrichTitle": "Enriching data",
+      "enrichDesc": "Finding phone numbers and emails — download buttons unlock automatically when done.",
       "downloadTitle": "Download results",
       "downloadCsv": "Download CSV",
       "newExtraction": "New extraction"
@@ -1791,6 +1794,8 @@
       "noJobsDesc": "Start a new extraction from the Extract Members page",
       "sendMessage": "Send Message",
       "phase_extracting": "Extracting",
+      "exportBothDone": "CSV and Excel exported successfully",
+      "exportPartial": "Only one format was exported",
       "stopReason_all_sessions_stagnant": "Extraction paused due to temporary platform throttling — you can resume later from the same point.",
       "stopReason_platform_limit": "The platform throttled the session. Try adding a second session or resuming later.",
       "stopReason_api_list_exhausted": "Everything available from this source has been extracted.",

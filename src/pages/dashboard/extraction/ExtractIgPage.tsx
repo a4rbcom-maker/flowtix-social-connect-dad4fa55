@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import {
   Users, UserPlus, UserCheck, Clock, Zap, AlertTriangle, Download, Globe, AtSign, Send,
-  Activity, CheckCircle2, Loader2, ArrowRight, Square, Camera, Pencil,
+  Activity, CheckCircle2, Loader2, ArrowRight, Square, Camera, Pencil, Sparkles,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -95,6 +96,7 @@ type Phase = "setup" | "running" | "completed" | "failed";
 export function ExtractIgPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [phase, setPhase] = useState<Phase>("setup");
   const [sourceType, setSourceType] = useState<IgSourceType>("ig-followers");
@@ -148,6 +150,16 @@ export function ExtractIgPage() {
       }
     };
   }, [activeJobId, t]);
+
+  // Enrichment runs AFTER the job settles — keep a poll alive until the
+  // enrichment object lands, otherwise the completed screen would wait forever
+  // on a dropped realtime channel (mirrors ExtractMembersPage).
+  const igEnrichmentPending = !!activeJobId && phase === "completed" && !(activeJob as { progress?: { enrichment?: unknown } } | undefined)?.progress?.enrichment;
+  useEffect(() => {
+    if (!igEnrichmentPending || !activeJobId) return;
+    const id = setInterval(() => { queryClient.invalidateQueries({ queryKey: ["extraction-job", activeJobId] }); }, 4000);
+    return () => clearInterval(id);
+  }, [igEnrichmentPending, activeJobId, queryClient]);
 
   useEffect(() => {
     return () => {
@@ -404,6 +416,11 @@ export function ExtractIgPage() {
     ? formatDuration(new Date(activeJob.started_at), new Date(activeJob.completed_at))
     : "—";
   const igHandle = username.replace(/^@/, "").replace(/\/+$/, "");
+  const igEnrichment = (activeJob as { progress?: { enrichment?: Record<string, unknown> } | undefined })?.progress?.enrichment;
+  const igDatasetReady = !!igEnrichment && !["running", "queued"].includes(activeJob?.status ?? "");
+  const igEnrTotal = typeof igEnrichment?.total === "number" ? igEnrichment.total : null;
+  const igEnrHits = typeof igEnrichment?.enriched === "number" ? igEnrichment.enriched : null;
+  const igEnrCoverage = typeof igEnrichment?.coverage_percent === "number" ? igEnrichment.coverage_percent : null;
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
@@ -439,6 +456,33 @@ export function ExtractIgPage() {
           badge={{ text: skipDuplicates ? t("ig_extract.completed.enabled") : t("ig_extract.completed.disabled"), tone: skipDuplicates ? "success" : "muted" }} />
       </div>
 
+      {/* Enrichment stats — mirrors the FB completed screen; only when done */}
+      {igEnrichment && typeof igEnrTotal === "number" && typeof igEnrHits === "number" && (
+        <SummaryChip icon={Sparkles} label={t("ig_extract.completed.enrichedStat")}
+          value={`${igEnrHits.toLocaleString()} / ${igEnrTotal.toLocaleString()}${igEnrCoverage !== null ? ` · ${igEnrCoverage}%` : ""}`} />
+      )}
+
+      {/* Enrichment in progress — professional callout (mirrors ExtractMembersPage) */}
+      {!igDatasetReady && (
+        <div className="overflow-hidden rounded-2xl border border-[var(--color-primary)]/25 bg-[color-mix(in_oklab,var(--color-primary)_7%,transparent)]">
+          <div className="flex items-center gap-3.5 p-4">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_oklab,var(--color-primary)_16%,transparent)]">
+              <Sparkles className="size-5 text-[var(--color-primary)]" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-2 text-sm font-bold text-[var(--color-fg)]">
+                {t("ig_extract.completed.enrichTitle")}
+                <Loader2 className="size-3.5 animate-spin text-[var(--color-primary)]" />
+              </p>
+              <p className="mt-0.5 text-xs text-[var(--color-fg-muted)]">{t("ig_extract.completed.enrichDesc")}</p>
+            </div>
+          </div>
+          <div className="h-1 w-full overflow-hidden bg-[color-mix(in_oklab,var(--color-primary)_12%,transparent)]">
+            <div className="h-full w-1/2 rounded-full bg-[var(--color-primary)] animate-[pulse_1.6s_ease-in-out_infinite]" />
+          </div>
+        </div>
+      )}
+
       {/* Downloads + actions — grouped block */}
       <Card>
         <CardContent className="space-y-4 pt-5">
@@ -446,13 +490,13 @@ export function ExtractIgPage() {
             <Download className="size-3.5" />{t("ig_extract.completed.downloadTitle")}
           </div>
           <div className="flex flex-wrap items-center gap-2.5">
-            <Button variant="primary" onClick={() => handleExport("csv")}>
+            <Button variant="primary" disabled={!igDatasetReady} onClick={() => handleExport("csv")} title={!igDatasetReady ? t("ig_extract.completed.enrichTitle") : undefined}>
               <Download className="size-4" />{t("ig_extract.completed.downloadCsv")}
             </Button>
-            <Button variant="secondary" onClick={() => handleExport("xlsx")}>
+            <Button variant="secondary" disabled={!igDatasetReady} onClick={() => handleExport("xlsx")} title={!igDatasetReady ? t("ig_extract.completed.enrichTitle") : undefined}>
               <Download className="size-4" />Excel
             </Button>
-            <Button variant="secondary" onClick={() => handleExport("json")}>
+            <Button variant="secondary" disabled={!igDatasetReady} onClick={() => handleExport("json")} title={!igDatasetReady ? t("ig_extract.completed.enrichTitle") : undefined}>
               <Download className="size-4" />JSON
             </Button>
             <Button variant="outline" className="ms-auto" onClick={() => { setPhase("setup"); setActiveJobId(null); }}>
