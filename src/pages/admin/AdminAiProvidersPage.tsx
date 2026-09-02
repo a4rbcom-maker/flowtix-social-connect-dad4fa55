@@ -3,12 +3,13 @@ import { useTranslation } from "react-i18next";
 import {
   Plus, RefreshCw, Trash2, Pencil, Wallet,
   CheckCircle2, XCircle, Loader2, ArrowUpDown,
-  Eye, EyeOff, Key, Server,
+  Eye, EyeOff, Key, Server, Sparkles, ToggleLeft, ToggleRight,
 } from "lucide-react";
 import { PageHeader, StatCard } from "@/components/ui/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input, Label } from "@/components/ui/input";
 import { InputIcon } from "@/components/ui/input-icon";
 import { Dialog, DialogHeader, DialogTitle, DialogClose, DialogBody, DialogFooter } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,6 +17,8 @@ import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/authProvider";
 import { kieService, type AiProviderAccount, DuplicateApiKeyError, InvalidApiKeyError } from "@/lib/kie-service";
+import { useWaAiModelsAdmin } from "@/hooks/useWaAiModels";
+import type { AiModel } from "@/lib/wa-ai-models";
 
 export function AdminAiProvidersPage() {
   const { t } = useTranslation();
@@ -36,6 +39,12 @@ export function AdminAiProvidersPage() {
   const [formApiKey, setFormApiKey] = useState("");
   const [formPriority, setFormPriority] = useState("0");
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
+  const [showAddModel, setShowAddModel] = useState(false);
+  const [editModel, setEditModel] = useState<AiModel | null>(null);
+  const [modelForm, setModelForm] = useState({ model_id: "", display_name_en: "", display_name_ar: "", desc_en: "", desc_ar: "", is_premium: false });
+  const [tab, setTab] = useState<"accounts" | "models">("accounts");
+
+  const { query: modelsQuery, toggle: toggleModel, remove: removeModel, save: saveModel } = useWaAiModelsAdmin();
 
   const load = async () => {
     if (!userId) return;
@@ -121,6 +130,44 @@ export function AdminAiProvidersPage() {
   function openEdit(a: AiProviderAccount) { setEditTarget(a); setFormName(a.name); setFormApiKey(""); setFormPriority(String(a.priority)); setShowEdit(true); }
   function openDelete(a: AiProviderAccount) { setDeleteTarget(a); setShowDelete(true); }
   function maskKey(key: string) { return key.slice(0, 8) + "••••••••" + key.slice(-4); }
+
+  async function handleAddModel() {
+    if (!modelForm.model_id.trim() || !modelForm.display_name_en.trim()) return;
+    try {
+      await saveModel.mutateAsync({
+        model_id: modelForm.model_id.trim(),
+        provider: "kie",
+        display_name: { en: modelForm.display_name_en, ar: modelForm.display_name_ar || modelForm.display_name_en },
+        description: { en: modelForm.desc_en, ar: modelForm.desc_ar || modelForm.desc_en },
+        is_premium: modelForm.is_premium,
+        is_active: true,
+        sort_order: (modelsQuery.data?.length ?? 0) + 1,
+      });
+      toast({ type: "success", title: "Model added" });
+      setShowAddModel(false);
+      setModelForm({ model_id: "", display_name_en: "", display_name_ar: "", desc_en: "", desc_ar: "", is_premium: false });
+    } catch (e: any) {
+      toast({ type: "error", title: e.message || "Failed to add model" });
+    }
+  }
+
+  function openEditModel(m: AiModel) {
+    setEditModel(m);
+    setModelForm({
+      model_id: m.model_id,
+      display_name_en: m.display_name.en ?? "",
+      display_name_ar: m.display_name.ar ?? "",
+      desc_en: m.description.en ?? "",
+      desc_ar: m.description.ar ?? "",
+      is_premium: m.is_premium,
+    });
+    setShowAddModel(true);
+  }
+
+  async function handleDeleteModel(id: string) {
+    try { await removeModel.mutateAsync(id); toast({ type: "success", title: "Model deleted" }); }
+    catch { toast({ type: "error", title: "Failed to delete" }); }
+  }
 
   return (
     <div className="space-y-6">
@@ -210,13 +257,79 @@ export function AdminAiProvidersPage() {
         </CardContent>
       </Card>
 
-      {/* Add Dialog */}
+      {/* Tab switcher */}
+      <div className="inline-flex rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-1">
+        <button onClick={() => setTab("accounts")} className={cn("flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all", tab === "accounts" ? "bg-gradient-brand text-white" : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]")}>
+          <Wallet className="size-4" /> Accounts
+        </button>
+        <button onClick={() => setTab("models")} className={cn("flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all", tab === "models" ? "bg-gradient-brand text-white" : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]")}>
+          <Sparkles className="size-4" /> Models
+        </button>
+      </div>
+
+      {/* Models tab */}
+      {tab === "models" && (
+        <Card>
+          <CardHeader className="flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle>AI Models</CardTitle>
+            <Button size="sm" onClick={() => { setEditModel(null); setModelForm({ model_id: "", display_name_en: "", display_name_ar: "", desc_en: "", desc_ar: "", is_premium: false }); setShowAddModel(true); }}>
+              <Plus className="size-4" /> Add Model
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {modelsQuery.isLoading ? (
+              <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
+            ) : modelsQuery.data?.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 py-12 text-center">
+                <Sparkles className="size-12 text-[var(--color-fg-subtle)]" />
+                <p className="text-sm text-[var(--color-fg-muted)]">No models yet</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {modelsQuery.data?.map((m) => (
+                  <div key={m.id} className={cn("flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border p-3 sm:p-4 transition-all", m.is_active ? "border-[var(--color-border)]" : "border-[var(--color-border)] opacity-50")}>
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg", m.is_active ? "bg-[color-mix(in_oklab,var(--color-primary)_15%,transparent)]" : "bg-[var(--color-surface-2)]")}>
+                        <Sparkles className={cn("size-5", m.is_active ? "text-[var(--color-primary)]" : "text-[var(--color-fg-muted)]")} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-bold text-[var(--color-fg)] truncate">{m.display_name.en}</span>
+                          <Badge variant="outline" className="text-xs">{m.provider}</Badge>
+                          {m.is_premium && <Badge variant="warning" className="text-xs">Premium</Badge>}
+                          {!m.is_active && <Badge variant="default" className="text-xs">Hidden</Badge>}
+                        </div>
+                        <p className="text-xs text-[var(--color-fg-subtle)] truncate">{m.model_id} • {m.description.en}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => toggleModel.mutate({ id: m.id, isActive: !m.is_active })}
+                        className={cn("flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-all",
+                          m.is_active
+                            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
+                            : "border-[var(--color-border-strong)] bg-[var(--color-surface-2)] text-[var(--color-fg-muted)]"
+                        )}
+                      >
+                        {m.is_active ? <ToggleRight className="size-3.5" /> : <ToggleLeft className="size-3.5" />}
+                        {m.is_active ? "Active" : "Hidden"}
+                      </button>
+                      <Button variant="ghost" size="sm" onClick={() => openEditModel(m)} className="size-9 p-0"><Pencil className="size-4" /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDeleteModel(m.id)} className="size-9 p-0"><Trash2 className="size-4 text-[var(--color-error)]" /></Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
       <Dialog open={showAdd} onClose={() => setShowAdd(false)}>
         <DialogHeader><DialogTitle>{t("admin.aiProviders.addTitle")}</DialogTitle><DialogClose onClose={() => setShowAdd(false)} /></DialogHeader>
         <DialogBody className="space-y-4">
-          <div className="space-y-2"><label className="text-sm font-medium">{t("admin.aiProviders.name")}</label><InputIcon icon={Pencil} value={formName} onChange={(e) => setFormName(e.target.value)} placeholder={t("admin.aiProviders.namePlaceholder")} /></div>
-          <div className="space-y-2"><label className="text-sm font-medium">{t("admin.aiProviders.apiKey")}</label><InputIcon icon={Key} value={formApiKey} onChange={(e) => setFormApiKey(e.target.value)} placeholder="kie_..." type={showKey.add ? "text" : "password"} /><button onClick={() => setShowKey((s) => ({ ...s, add: !s.add }))} className="text-xs text-[var(--color-fg-muted)]">{showKey.add ? t("admin.aiProviders.hide") : t("admin.aiProviders.show")}</button></div>
-          <div className="space-y-2"><label className="text-sm font-medium">{t("admin.aiProviders.priorityLabel")}</label><InputIcon icon={ArrowUpDown} value={formPriority} onChange={(e) => setFormPriority(e.target.value)} placeholder="0" /></div>
+          <div className="space-y-2"><label className="text-sm font-medium">{t("admin.aiProviders.name")}</label><InputIcon icon={Pencil} value={formName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormName(e.target.value)} placeholder={t("admin.aiProviders.namePlaceholder")} /></div>
+          <div className="space-y-2"><label className="text-sm font-medium">{t("admin.aiProviders.apiKey")}</label><InputIcon icon={Key} value={formApiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormApiKey(e.target.value)} placeholder="kie_..." type={showKey.add ? "text" : "password"} /><button onClick={() => setShowKey((s) => ({ ...s, add: !s.add }))} className="text-xs text-[var(--color-fg-muted)]">{showKey.add ? t("admin.aiProviders.hide") : t("admin.aiProviders.show")}</button></div>
+          <div className="space-y-2"><label className="text-sm font-medium">{t("admin.aiProviders.priorityLabel")}</label><InputIcon icon={ArrowUpDown} value={formPriority} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormPriority(e.target.value)} placeholder="0" /></div>
         </DialogBody>
         <DialogFooter>
           <Button variant="ghost" onClick={() => setShowAdd(false)}>{t("common.cancel")}</Button>
@@ -226,13 +339,59 @@ export function AdminAiProvidersPage() {
         </DialogFooter>
       </Dialog>
 
-      {/* Edit Dialog */}
+      {/* Add/Edit Model Dialog */}
+      <Dialog open={showAddModel} onClose={() => { setShowAddModel(false); setEditModel(null); }}>
+        <DialogHeader>
+          <DialogTitle>{editModel ? "Edit Model" : "Add Model"}</DialogTitle>
+          <DialogClose onClose={() => { setShowAddModel(false); setEditModel(null); }} />
+        </DialogHeader>
+        <DialogBody className="space-y-4">
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Model ID</Label>
+            <Input disabled={!!editModel} value={modelForm.model_id} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModelForm({ ...modelForm, model_id: e.target.value })} placeholder="e.g. gpt-4o" />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Display Name (English)</Label>
+            <Input value={modelForm.display_name_en} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModelForm({ ...modelForm, display_name_en: e.target.value })} placeholder="e.g. GPT-4o" />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Display Name (Arabic)</Label>
+            <Input value={modelForm.display_name_ar} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModelForm({ ...modelForm, display_name_ar: e.target.value })} placeholder="e.g. جي بي تي 4o" />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Description (English)</Label>
+            <Input value={modelForm.desc_en} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModelForm({ ...modelForm, desc_en: e.target.value })} placeholder="e.g. Strong reasoning" />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Description (Arabic)</Label>
+            <Input value={modelForm.desc_ar} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModelForm({ ...modelForm, desc_ar: e.target.value })} placeholder="e.g. استدلال قوي" />
+          </div>
+          <div className="flex items-center gap-3">
+            <input type="checkbox" checked={modelForm.is_premium} onChange={(e) => setModelForm({ ...modelForm, is_premium: e.target.checked })} className="size-4 rounded border-[var(--color-border)] accent-[var(--color-primary)]" />
+            <Label className="text-sm font-medium">Premium only</Label>
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => { setShowAddModel(false); setEditModel(null); }}>Cancel</Button>
+          <Button disabled={!modelForm.model_id.trim() || !modelForm.display_name_en.trim()} onClick={() => {
+            if (editModel) {
+              saveModel.mutateAsync({ id: editModel.id, ...modelForm }).then(() => { setShowAddModel(false); setEditModel(null); toast({ type: "success", title: "Model updated" }); });
+            } else {
+              handleAddModel();
+            }
+          }}>
+            {editModel ? "Save" : "Add"}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* Add Dialog */}
       <Dialog open={showEdit} onClose={() => setShowEdit(false)}>
         <DialogHeader><DialogTitle>{t("admin.aiProviders.editTitle")}</DialogTitle><DialogClose onClose={() => setShowEdit(false)} /></DialogHeader>
         <DialogBody className="space-y-4">
-          <div className="space-y-2"><label className="text-sm font-medium">{t("admin.aiProviders.name")}</label><InputIcon icon={Pencil} value={formName} onChange={(e) => setFormName(e.target.value)} placeholder={t("admin.aiProviders.namePlaceholder")} /></div>
-          <div className="space-y-2"><label className="text-sm font-medium">{t("admin.aiProviders.newApiKey")}</label><InputIcon icon={Key} value={formApiKey} onChange={(e) => setFormApiKey(e.target.value)} placeholder={t("admin.aiProviders.apiKeyKeepEmpty")} /></div>
-          <div className="space-y-2"><label className="text-sm font-medium">{t("admin.aiProviders.priorityLabel")}</label><InputIcon icon={ArrowUpDown} value={formPriority} onChange={(e) => setFormPriority(e.target.value)} placeholder="0" /></div>
+          <div className="space-y-2"><label className="text-sm font-medium">{t("admin.aiProviders.name")}</label><InputIcon icon={Pencil} value={formName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormName(e.target.value)} placeholder={t("admin.aiProviders.namePlaceholder")} /></div>
+          <div className="space-y-2"><label className="text-sm font-medium">{t("admin.aiProviders.newApiKey")}</label><InputIcon icon={Key} value={formApiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormApiKey(e.target.value)} placeholder={t("admin.aiProviders.apiKeyKeepEmpty")} /></div>
+          <div className="space-y-2"><label className="text-sm font-medium">{t("admin.aiProviders.priorityLabel")}</label><InputIcon icon={ArrowUpDown} value={formPriority} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormPriority(e.target.value)} placeholder="0" /></div>
         </DialogBody>
         <DialogFooter>
           <Button variant="ghost" onClick={() => setShowEdit(false)}>{t("common.cancel")}</Button>

@@ -16,7 +16,8 @@ import { LoadingState } from "@/components/ui/state";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/authProvider";
 import { useWaAiConfig, useWaAiMutations, useWaAiInstructions } from "@/hooks/useWaAi";
-import { AI_MODELS, AI_LEVELS } from "@/types/wa-ai.types";
+import { AI_LEVELS } from "@/types/wa-ai.types";
+import { useWaAiModels } from "@/hooks/useWaAiModels";
 import type { AiInstructionItem, AiProviderConfig } from "@/types/wa-ai.types";
 import { toast } from "@/components/ui/toast";
 
@@ -58,6 +59,7 @@ export function WaAIAgentPage() {
   const { data: config, isLoading } = useWaAiConfig();
   const { data: instructions } = useWaAiInstructions();
   const muts = useWaAiMutations();
+  const { data: aiModels } = useWaAiModels();
 
   if (!ws) return <LoadingState className="min-h-[60vh]" />;
 
@@ -84,13 +86,13 @@ export function WaAIAgentPage() {
       />
 
       {/* Premium status banner */}
-      <StatusBanner active={isActive} config={config} />
+      <StatusBanner active={isActive} config={config} aiModels={aiModels} />
 
       {/* Animated tabs */}
       <TabsBar tab={tab} setTab={setTab} t={t} />
 
       <div className="animate-[fade-up_0.4s_ease-out]">
-        {tab === "levels" && <LevelsTab config={config} muts={muts} />}
+        {tab === "levels" && <LevelsTab config={config} muts={muts} aiModels={aiModels} />}
         {tab === "instruction" && <InstructionsTab instructions={instructions ?? []} muts={muts} />}
       </div>
     </div>
@@ -170,9 +172,11 @@ function StatusToggle({
 function StatusBanner({
   active,
   config: _config,
+  aiModels,
 }: {
   active: boolean;
   config: AiProviderConfig | null | undefined;
+  aiModels: any;
 }) {
   const { t } = useTranslation();
   return (
@@ -223,7 +227,7 @@ function StatusBanner({
         {/* Quick stats */}
         <div className="flex items-center gap-4 sm:gap-6">
           <Stat icon={Activity} label="Levels" value={3} />
-          <Stat icon={Sparkles} label="Models" value={AI_MODELS.length} />
+          <Stat icon={Sparkles} label="Models" value={aiModels?.length ?? 0} />
           <Stat icon={CheckCircle2} label="Status" value={active ? "ON" : "OFF"} highlight={active} />
         </div>
       </div>
@@ -319,9 +323,11 @@ function TabsBar({
 function LevelsTab({
   config,
   muts,
+  aiModels,
 }: {
   config: AiProviderConfig | null | undefined;
   muts: ReturnType<typeof useWaAiMutations>;
+  aiModels: any;
 }) {
   const { t, i18n } = useTranslation();
   const locale: "en" | "ar" = i18n.language === "ar" ? "ar" : "en";
@@ -377,9 +383,9 @@ function LevelsTab({
     } as any);
   };
 
-  const modelOptions = AI_MODELS.map((m) => ({
-    value: m.id,
-    label: `${m.id} — ${m.desc[locale]}`,
+  const modelOptions = (aiModels ?? []).map((m: any) => ({
+    value: m.model_id,
+    label: `${m.display_name[locale] ?? m.model_id} — ${m.description[locale] ?? ""}`,
   }));
 
   return (
