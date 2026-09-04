@@ -184,7 +184,14 @@ export async function runIgActionWorker(jobId: string, hooks: IgWorkerHooks = {}
   };
 
   const isMention = job.mode === "mention";
-  
+
+  const sessionIds = job.session_ids ?? [];
+  const body = job.content?.body ?? "";
+  const shortcode = job.content?.post_shortcode ?? "";
+
+  const { data: sessionRows } = await sb.from("ig_sessions").select("id, status").in("id", sessionIds);
+  const connectedIds = (sessionRows ?? []).filter((s) => s.status === "connected").map((s) => s.id);
+
   // Use two-session optimized config for mention mode when exactly 2 sessions available
   const useTwoSessionConfig = isMention && connectedIds.length === 2;
   const cfg: PacingConfig = {
@@ -200,21 +207,6 @@ export async function runIgActionWorker(jobId: string, hooks: IgWorkerHooks = {}
     max_errors: job.config?.max_errors ?? (useTwoSessionConfig ? IG_MENTION_TWO_SESSIONS.max_errors : IG_MENTION_DEFAULTS.max_errors),
     retry_max: job.config?.retry_max ?? (useTwoSessionConfig ? IG_MENTION_TWO_SESSIONS.retry_max : IG_MENTION_DEFAULTS.retry_max),
   };
-
-  const sessionIds = job.session_ids ?? [];
-  const body = job.content?.body ?? "";
-  const shortcode = job.content?.post_shortcode ?? "";
-
-  const { data: sessionRows } = await sb.from("ig_sessions").select("id, status").in("id", sessionIds);
-  const connectedIds = (sessionRows ?? []).filter((s) => s.status === "connected").map((s) => s.id);
-  if (connectedIds.length === 0) {
-    await sb.from("message_jobs").update({
-      status: "failed",
-      error: "لا توجد جلسات إنستجرام متصلة. أعد توصيل جلسة واحدة على الأقل ثم استأنف المهمة.",
-      completed_at: new Date().toISOString(),
-    }).eq("id", jobId);
-    return;
-  }
 
   const contexts: CtxHandle[] = [];
   for (const sid of connectedIds) {
@@ -291,8 +283,8 @@ export async function runIgActionWorker(jobId: string, hooks: IgWorkerHooks = {}
       .in("thread_id", usernames)
       .eq("message_job_id", jobId)
       .eq("status", "sent");
-    
-    return existing.length === 0;
+
+    return (existing.data ?? []).length === 0;
   }
 
   try {

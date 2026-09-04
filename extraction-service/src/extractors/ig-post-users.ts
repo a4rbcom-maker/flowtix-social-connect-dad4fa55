@@ -66,6 +66,49 @@ function deriveMediaPk(shortcode: string): string | null {
   return pk > 0n ? pk.toString() : null;
 }
 
+// ---- Comments pagination helpers (2026-09-04) -----------------------------
+// Root causes of "8 of 182 commenters" (post Dc1LGfkITiZ, job 4912ca35):
+// single-shot network call without retry, first-page crash aborting the whole
+// job, and media pk derived from the shortcode instead of a real comment id.
+// These pure helpers are exported for regression tests
+// (__tests__/ig-comments-pagination.test.ts).
+
+/** Media pk from an IG comment id ("<comment_pk>_<media_pk>") or a bare
+ *  numeric pk. The trailing segment of a comment id is the EXACT media id
+ *  (live-proven: post Dc1LGfkITiZ og:ios:url media id 3978134670572337305 ==
+ *  base64 decode of the shortcode; comment ids carry it as the suffix). */
+export function parseCommentMediaPk(commentId: string): string | null {
+  const m = commentId.trim().match(/^(\d+)(?:_(\d+))?$/);
+  if (!m) return null;
+  return m[2] ?? m[1];
+}
+
+/** True when a comments page result is transient-failed and worth retrying:
+ *  network death (status 0), rate limit (429), or server errors (5xx) — up to
+ *  3 attempts. A successful page (any users) or a client error (4xx) is NOT
+ *  retried; an empty 200 is a genuine end-of-list. */
+export function shouldRetryCommentsPage(status: number, usersLen: number, attempt: number): boolean {
+  if (usersLen > 0) return false;
+  if (attempt > 3) return false;
+  return status === 0 || status === 429 || status >= 500;
+}
+
+/** Resolve the comments connection from xdt_shortcode_media, trying the three
+ *  known edge keys in order (modern long key → parent_comment → comment). */
+export function pickCommentsConn(
+  xdt: Record<string, unknown> | undefined | null,
+): { edges: Array<Record<string, unknown>>; pageInfo: Record<string, unknown> | null; count: number | null } {
+  if (!xdt) return { edges: [], pageInfo: null, count: null };
+  const conn = (xdt.edge_media_to_comment_thread_or_show_more_edge_or_toplined_comments
+    ?? xdt.edge_media_to_parent_comment
+    ?? xdt.edge_media_to_comment) as Record<string, unknown> | undefined;
+  return {
+    edges: (conn?.edges as Array<Record<string, unknown>> | undefined) ?? [],
+    pageInfo: (conn?.page_info as Record<string, unknown> | undefined) ?? null,
+    count: (conn?.count as number | null) ?? null,
+  };
+}
+
 export class IgPostUsersExtractor extends IgBaseExtractor {
   private readonly wantLikers: boolean;
 
