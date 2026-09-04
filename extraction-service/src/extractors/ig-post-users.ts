@@ -241,10 +241,26 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
 
     // 4a) Commenters: also fetch comments via GraphQL API (with full text).
     if (!this.wantLikers && !this.shouldStop) {
-      const commenters = await this.fetchCommentsViaApi(shortcode);
+      const { users: commenters, totalCommentCount, derivedMediaPk, exhausted } =
+        await this.fetchCommentsViaApi(shortcode);
+      // Exact media pk from a real comment id ("<comment>_<media>" suffix) —
+      // tighter capture scoping than the shortcode decode.
+      if (derivedMediaPk) this.knownMediaPk = derivedMediaPk;
+      // True comment count from the connection — the real coverage denominator.
+      if (totalCommentCount && !this.wantLikers) {
+        this.knownCommentTotal = totalCommentCount;
+        this.engine?.setTotal(totalCommentCount);
+        log.info("IgPostUsers", `post comment count (from comments API): ${totalCommentCount}`);
+      }
       let cm = 0;
       for (const u of commenters) if (add(u)) { cm++; engine.addResults(1); }
-      log.info("IgPostUsers", `comments API: +${cm} → ${collected.size} unique`);
+      log.info("IgPostUsers", `comments API: +${cm} → ${collected.size} unique (exhausted: ${exhausted})`);
+      // First-page crash with nothing else collected: record a diagnosable
+      // stop_reason instead of silently completing at 0.
+      if (collected.size === 0 && !exhausted) {
+        await this.updateIgProgress({ phase: "extracting", stop_reason: "comments_api_unavailable" });
+        log.warn("IgPostUsers", "comments API unavailable and nothing collected — stop_reason=comments_api_unavailable");
+      }
       await flush();
     }
 
@@ -594,18 +610,91 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
    *  Each row carries the commenter's @username + the comment text, so users
    *  who comment multiple times yield one row per unique username (and the
    *  first/most-recent comment text wins). For commenter-only extraction
-   *  this replaces the DOM path with the same reliable API used for likers. */
-  private async fetchCommentsViaApi(
-    shortcode: string,
-  ): Promise<{ username: string; fullName: string; avatar: string; commentText: string; commentId: string }[]> {
+   *  this replaces the DOM path with the same reliable API used for likers.
+   *
+   *  2026-09-04 hardening (post Dc1LGfkITiZ yielded 8 of 182 comments):
+   *  - every page is RETRIED on transient failures (network death / 429 / 5xx)
+   *    via shouldRetryCommentsPage — a single dropped response no longer
+   *    truncates the harvest to whatever pages landed before it;
+   *  - a first-page crash no longer aborts the job: we return what earlier
+   *    paths (DOM + GraphQL capture) found plus `exhausted:false`, and the
+   *    job ends with stop_reason instead of silently completing at page 1;
+   *  - the in-page snippet is a template STRING (never a transformed arrow
+   *    function) so tsx/esbuild cannot inject `__name` into page context;
+   *  - the first comment id yields the EXACT media pk
+   *    ("<comment_pk>_<media_pk>" suffix — parseCommentMediaPk), which the
+   *    caller stores in knownMediaPk so GraphQL capture scoping uses the real
+   *    id instead of the shortcode decode;
+   *  - the connection's `count` is returned as totalCommentCount (the true
+   *    denominator for coverage). */
+  private async fetchCommentsViaApi(shortcode: string): Promise<{
+    users: { username: string; fullName: string; avatar: string; commentText: string; commentId: string }[];
+    totalCommentCount: number | null;
+    derivedMediaPk: string | null;
+    exhausted: boolean;
+  }> {
     const all: { username: string; fullName: string; avatar: string; commentText: string; commentId: string }[] = [];
     const seen = new Set<string>();
     let after: string | null = null;
     const MAX_PAGES = 200;
+    const MAX_RETRIES = 3;
+    let totalCommentCount: number | null = null;
+    let derivedMediaPk: string | null = null;
+    let exhausted = false;
 
-    let pageIdx: number;
-    for (pageIdx = 0; pageIdx < MAX_PAGES; pageIdx++) {
-      const result: {
+    for (let pageIdx = 0; pageIdx < MAX_PAGES; pageIdx++) {
+      // In-page GraphQL fetch as a template string — tsx must not transform it.
+      const snippet: string = `(async () => {
+        const params = new URLSearchParams({
+          doc_id: "9361150124142511",
+          variables: JSON.stringify({ shortcode: ${JSON.stringify(shortcode)}, first: 50, after: ${JSON.stringify(after)} }),
+          fb_api_req_friendly_name: "PolarisPostCommentsByShortcodeQuery",
+        });
+        try {
+          const res = await fetch("https://www.instagram.com/graphql/query/?" + params.toString(), {
+            credentials: "include",
+            headers: { "x-ig-app-id": "936619743392459", accept: "*/*" },
+          });
+          if (!res.ok) return { error: true, status: res.status };
+          const text = await res.text();
+          let body;
+          try { body = JSON.parse(text); } catch (e) { return { error: true, status: 0 }; }
+          const media = body && body.data;
+          const xdt = media && media.xdt_shortcode_media;
+          if (!xdt) return { error: true, status: 0 };
+          const conn = xdt.edge_media_to_comment_thread_or_show_more_edge_or_toplined_comments
+            || xdt.edge_media_to_parent_comment || xdt.edge_media_to_comment;
+          const edges = (conn && conn.edges) || [];
+          const comments = [];
+          for (const e of edges) {
+            const n = e && e.node;
+            if (!n) continue;
+            if (n.__typename === "GraphTombstone" || n.text === "...") continue;
+            const owner = n.owner;
+            if (!owner || !owner.username) continue;
+            comments.push({
+              id: String(n.id ?? ""),
+              text: String(n.text ?? ""),
+              username: String(owner.username),
+              fullName: String(owner.full_name ?? ""),
+              avatar: String((owner.profile_pic_url && String(owner.profile_pic_url)) || ""),
+            });
+          }
+          const pageInfo = (conn && conn.page_info) || {};
+          return {
+            comments,
+            endCursor: pageInfo.end_cursor ?? null,
+            hasNext: !!pageInfo.has_next_page,
+            total: (conn && conn.count != null) ? Number(conn.count) : null,
+          };
+        } catch (e) {
+          return { error: true, status: 0, message: String(e).slice(0, 100) };
+        }
+      })()`;
+
+      // Retry loop: transient failures (network death / 429 / 5xx) retry the
+      // SAME cursor up to MAX_RETRIES; genuine ends do not.
+      let result: {
         error?: boolean;
         status?: number;
         comments?: { id: string; text: string; username: string; fullName: string; avatar: string }[];
@@ -613,91 +702,60 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
         hasNext?: boolean;
         total?: number | null;
         message?: string;
-      } = await this.page
-        .evaluate(
-          async ({ shortcode, after }: { shortcode: string; after: string | null }) => {
-            const variables = {
-              shortcode,
-              first: 50,
-              after,
-            };
-            const params = new URLSearchParams({
-              doc_id: "9361150124142511", // PolarisPostCommentsByShortcodeQuery — stable, returns comment edges with text
-              variables: JSON.stringify(variables),
-              fb_api_req_friendly_name: "PolarisPostCommentsByShortcodeQuery",
-            });
-            try {
-              const res = await fetch(`https://www.instagram.com/graphql/query/?${params.toString()}`, {
-                credentials: "include",
-                headers: { "x-ig-app-id": "936619743392459", accept: "*/*" },
-              });
-              if (!res.ok) return { error: true, status: res.status };
-              const text = await res.text();
-              let body: unknown;
-              try {
-                body = JSON.parse(text);
-              } catch {
-                return { error: true, status: 0 };
-              }
-              const media = (body as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-              const xdt = media?.xdt_shortcode_media as Record<string, unknown> | undefined;
-              if (!xdt) return { error: true, status: 0 };
+      } | null = null;
+      let attempt = 0;
+      for (;;) {
+        result = await this.page.evaluate(snippet)
+          .then((r) => r as Exclude<typeof result, null>)
+          .catch(() => null);
+        const usersLen = result?.comments?.length ?? 0;
+        if (result && !result.error && usersLen > 0) break;
+        attempt++;
+        const status = result?.status ?? 0;
+        if (!shouldRetryCommentsPage(status, usersLen, attempt)) break;
+        const backoff = 3000 * attempt;
+        log.warn("IgPostUsers", `comments page ${pageIdx} failed (status ${status || "network"}) — retry ${attempt}/${MAX_RETRIES} in ${backoff}ms`);
+        await this.page.waitForTimeout(backoff);
+      }
 
-              const conn = (xdt.edge_media_to_comment_thread_or_show_more_edge_or_toplined_comments
-                ?? xdt.edge_media_to_parent_comment ?? xdt.edge_media_to_comment) as Record<string, unknown> | undefined;
-              const edges = (conn?.edges as Array<Record<string, unknown>> | undefined) ?? [];
-              const comments: { id: string; text: string; username: string; fullName: string; avatar: string }[] = [];
-              for (const e of edges) {
-                const n = e?.node as Record<string, unknown> | undefined;
-                if (!n) continue;
-                // skip the "Show more comments" placeholder
-                if (n.__typename === "GraphTombstone" || n.text === "...") continue;
-                const owner = n.owner as Record<string, unknown> | undefined;
-                if (!owner?.username) continue;
-                comments.push({
-                  id: String(n.id ?? ""),
-                  text: String(n.text ?? ""),
-                  username: String(owner.username),
-                  fullName: String(owner.full_name ?? ""),
-                  avatar: String((owner.profile_pic_url as string) ?? ""),
-                });
-              }
-              const pageInfo = conn?.page_info as Record<string, unknown> | undefined;
-              return {
-                comments,
-                endCursor: (pageInfo?.end_cursor as string | null) ?? null,
-                hasNext: !!pageInfo?.has_next_page,
-                total: (conn?.count as number | null) ?? null,
-              };
-            } catch (e) {
-              return { error: true, status: 0, message: String(e).slice(0, 100) };
-            }
-          },
-          { shortcode, after },
-        )
-        .catch(() => ({ error: true, status: 0 } as const));
-
-      if (result.error || !result.comments?.length) {
-        if (result.status === 429) log.warn("IgPostUsers", `comments API rate-limited (page ${pageIdx})`);
+      if (!result || result.error || !result.comments?.length) {
+        if (pageIdx === 0) {
+          // First-page crash: DO NOT throw — preserve DOM/capture results.
+          log.warn("IgPostUsers", `comments API first page failed (status ${result?.status ?? "network"}) — continuing with DOM/capture results only`);
+        } else {
+          log.warn("IgPostUsers", `comments API stopped at page ${pageIdx} (status ${result?.status ?? "network"}) after ${all.length} unique`);
+        }
+        if (result?.status === 429) log.warn("IgPostUsers", "comments API rate-limited — backing off ends this path");
         break;
       }
+
+      if (!totalCommentCount && result.total != null && result.total > 0) totalCommentCount = result.total;
+      if (!derivedMediaPk) derivedMediaPk = parseCommentMediaPk(result.comments[0]?.id ?? "");
+
+      let added = 0;
       for (const c of result.comments) {
         if (!seen.has(c.username)) {
           seen.add(c.username);
           all.push({ username: c.username, fullName: c.fullName, avatar: c.avatar, commentText: c.text, commentId: c.id });
+          added++;
         }
       }
-      if (!result.hasNext) break;
-      after = result.endCursor ?? null;
+      log.info("IgPostUsers", `comments page ${pageIdx}: +${added} → ${all.length} unique (hasNext=${result.hasNext})`);
+      if (!result.hasNext || !result.endCursor) { exhausted = true; break; }
+      after = result.endCursor;
+      if (this.ctx.maxResults > 0 && all.length >= this.ctx.maxResults) { exhausted = true; break; }
       await this.page.waitForTimeout(1200);
     }
-    log.info("IgPostUsers", `fetchCommentsViaApi: got ${all.length} from ${seen.size} unique (API pages: ${Math.min(pageIdx + 1, MAX_PAGES)})`);
-    return all;
+    log.info("IgPostUsers", `fetchCommentsViaApi: ${all.length} unique commenters (post total: ${totalCommentCount ?? "?"}, exhausted: ${exhausted})`);
+    return { users: all, totalCommentCount, derivedMediaPk, exhausted };
   }
 
   private flushedCount = 0;
   private engine: IgExtractionEngine | null = null;
   private knownLikeTotal: number | null = null;
+  /** True comment count from the comments API connection — used as the
+   *  coverage denominator for commenter jobs and to stop the scroll loop. */
+  private knownCommentTotal: number | null = null;
   /** Media pk derived from the shortcode — used to scope GraphQL capture to this post only. */
   private knownMediaPk: string | null = null;
   /** Remaining wall-clock budget for bio scraping across the WHOLE job (ms).
