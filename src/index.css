@@ -265,7 +265,8 @@
     color: transparent;
   }
 
-  .gradient-brand {
+  .gradient-brand,
+  .bg-gradient-brand {
     background: linear-gradient(120deg, var(--color-primary-strong), var(--color-primary) 55%, var(--color-secondary));
   }
 
