@@ -85,7 +85,7 @@ export const aiRouter = {
     }
     messages.push({ role: "user", content: m.text ?? "" });
 
-    const model = (cfg.models as any)[level] ?? "glm-flash";
+    const model = (cfg.models as any)[level] ?? "gemini-3.5-flash";
     const temperature = (cfg.settings as any)[`${level}_temperature`] ?? 0.5;
 
     const result = await kieChat({

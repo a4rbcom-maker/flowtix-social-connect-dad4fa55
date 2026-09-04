@@ -16,13 +16,8 @@ export interface AiInvocation {
   confidence?: number | null; success: boolean; error?: string | null; escalated_to_human: boolean; created_at: string;
 }
 
-export const AI_MODELS = [
-  { id: "glm-flash",          desc: { en: "Fast & economical", ar: "سريع واقتصادي" } },
-  { id: "glm-5.2",            desc: { en: "Balanced",          ar: "متوازن" } },
-  { id: "deepseek-v4",        desc: { en: "Balanced",          ar: "متوازن" } },
-  { id: "gpt-4o",             desc: { en: "Strong reasoning",  ar: "استدلال قوي" } },
-  { id: "claude-3-5-sonnet",  desc: { en: "Most capable",      ar: "الأقوى" } },
-] as const;
+// ملاحظة: القائمة الفعلية تأتي من جدول ai_models (كتالوج kie.ai الرسمي، انظر src/lib/kie-chat-models-catalog.ts)
+// وAI_MODELS الثابتة حُذفت — كانت تحتوي أسماء موديلات غير موجودة عند kie.ai (glm-*/deepseek/gpt-4o/claude-3-5-sonnet)
 
 export interface AiLevelDef {
   id: "l1" | "l2" | "l3";
@@ -36,11 +31,11 @@ export interface AiLevelDef {
 export const AI_LEVELS: AiLevelDef[] = [
   { id: "l1", label: { en: "Level 1 — Simple",   ar: "المستوى 1 — بسيط" },
     desc:   { en: "Ordinary replies, traditional questions", ar: "للردود العادية والأسئلة التقليدية (ترحيب، أسئلة شائعة)" },
-    intents: ["greeting", "faq"], defaultModel: "glm-flash", defaultTemp: 0.3 },
+    intents: ["greeting", "faq"], defaultModel: "gemini-3.5-flash", defaultTemp: 0.3 },
   { id: "l2", label: { en: "Level 2 — Medium",   ar: "المستوى 2 — متوسط" },
     desc:   { en: "Explaining services, sales negotiation", ar: "للشرح والتفاوض في المبيعات والعروض" },
-    intents: ["sales"], defaultModel: "glm-5.2", defaultTemp: 0.5 },
+    intents: ["sales"], defaultModel: "gemini-3.7-flash", defaultTemp: 0.5 },
   { id: "l3", label: { en: "Level 3 — Advanced", ar: "المستوى 3 — متقدم" },
     desc:   { en: "Price objections, complex negotiation, technical issues", ar: "للاعتراضات على السعر والتفاوض المعقد والمشاكل التقنية" },
-    intents: ["complaint", "technical"], defaultModel: "claude-3-5-sonnet", defaultTemp: 0.7 },
+    intents: ["complaint", "technical"], defaultModel: "claude-sonnet-5", defaultTemp: 0.7 },
 ];

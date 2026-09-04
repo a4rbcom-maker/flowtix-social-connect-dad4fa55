@@ -46,8 +46,10 @@ export async function kieChat(input: {
   }
 }
 
+// الأسعار تقديرية بمتوسط موحّد — لا توجد أسعار رسمية معتمدة لكل موديل عند kie.ai بعد.
+// عند اعتماد أسعار رسمية: حدّث ai_models.cost_per_1k_tokens في DB (مصدر الحقيقة).
 export function estimateCost(model: string, totalTokens: number | undefined): number {
   if (!totalTokens) return 0;
-  const per1k: Record<string, number> = { "glm-flash": 0.0001, "glm-5.2": 0.002, "deepseek-v4": 0.002, "claude-3-5-sonnet": 0.015, "gpt-4o": 0.005 };
-  return Number(((totalTokens / 1000) * (per1k[model] ?? 0.001)).toFixed(6));
+  const DEFAULT_PER_1K = 0.002;
+  return Number(((totalTokens / 1000) * DEFAULT_PER_1K).toFixed(6));
 }
