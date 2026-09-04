@@ -387,9 +387,10 @@ function LevelsTab({
   const modelOptions = useMemo(() => {
     return (aiModels ?? []).map((m) => ({
       value: m.model_id,
-      label: `${m.display_name[locale] ?? m.model_id} — ${m.description[locale] ?? ""}`,
+      // أسماء الموديلات أسماء علم — تُعرض بالإنجليزية فقط في كل اللغات
+      label: `${m.display_name.en ?? m.model_id}${m.description.en ? ` — ${m.description.en}` : ""}`,
     }));
-  }, [aiModels, locale]);
+  }, [aiModels]);
 
   return (
     <div className="space-y-6">
