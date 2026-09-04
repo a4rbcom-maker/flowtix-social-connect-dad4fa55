@@ -398,18 +398,40 @@ export function AdminAiProvidersPage() {
       {tab === "models" && (
         <Card>
           <CardHeader className="flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle>AI Models</CardTitle>
-            <Button size="sm" onClick={openPicker}>
-              <Plus className="size-4" /> {t("admin.aiProviders.models.browse")}
-            </Button>
+            <CardTitle className="flex items-center gap-2">
+              {t("admin.aiProviders.models.title")}
+              {modelsQuery.data && (
+                <Badge variant="outline" className="text-xs font-normal">{modelsQuery.data.length}</Badge>
+              )}
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => modelsQuery.refetch()} disabled={modelsQuery.isFetching} className="size-9 p-0">
+                <RefreshCw className={cn("size-4", modelsQuery.isFetching && "animate-spin")} />
+              </Button>
+              <Button size="sm" onClick={openPicker}>
+                <Plus className="size-4" /> {t("admin.aiProviders.models.browse")}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
-            {modelsQuery.isLoading ? (
+            {modelsQuery.isError ? (
+              <div className="flex flex-col items-center gap-3 py-12 text-center">
+                <XCircle className="size-12 text-[var(--color-error)]" />
+                <p className="text-sm font-semibold text-[var(--color-error)]">Failed to load models</p>
+                <p className="text-xs text-[var(--color-fg-muted)] max-w-md">{String((modelsQuery.error as any)?.message ?? modelsQuery.error ?? "Unknown error")}</p>
+                <Button variant="outline" size="sm" onClick={() => modelsQuery.refetch()}>
+                  <RefreshCw className="size-4" /> Retry
+                </Button>
+              </div>
+            ) : modelsQuery.isLoading ? (
               <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
             ) : modelsQuery.data?.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-12 text-center">
                 <Sparkles className="size-12 text-[var(--color-fg-subtle)]" />
                 <p className="text-sm text-[var(--color-fg-muted)]">No models yet</p>
+                <Button onClick={openPicker}>
+                  <Plus className="size-4" /> {t("admin.aiProviders.models.browse")}
+                </Button>
               </div>
             ) : (
               <div className="space-y-2">
