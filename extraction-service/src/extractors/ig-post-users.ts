@@ -606,86 +606,95 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
     return result.users;
   }
 
-  /** Fetch comments + their authors directly via IG's GraphQL API, paginated.
-   *  Each row carries the commenter's @username + the comment text, so users
-   *  who comment multiple times yield one row per unique username (and the
-   *  first/most-recent comment text wins). For commenter-only extraction
-   *  this replaces the DOM path with the same reliable API used for likers.
+  /** Fetch comments + their authors via IG's private media comments API,
+   *  paginated with min_id=<next_min_id> (the bifilter token).
+   *
+   *  2026-09-04 — REPLACED the PolarisPostCommentsByShortcodeQuery GraphQL
+   *  path (doc_id 9361150124142511): IG now 400s that doc_id, and the post
+   *  page no longer fires any comment GraphQL query we could capture (probed
+   *  live on session 157c28a1 — only PolarisFeedTimelineRootV2Query fires).
+   *  The private endpoint still works (probed: 13 pages → 168 unique of 199
+   *  total, min_id=bifilter_token pagination, comment text included).
+   *
+   *  Key facts proven live (debug-post-load4/5/6):
+   *  - the FIRST call returns the ranked PREVIEW (6 rows, is_ranked=true,
+   *    has_more_comments=false, next_min_id={bifilter_token}) — pagination is
+   *    driven by passing next_min_id as min_id, NOT by next_max_id;
+   *  - the response carries `comment_count` = the post's true comment total;
+   *  - each comment row: {pk, text, user:{username, full_name,
+   *    profile_pic_url}, child_comment_count} — text included, so the export
+   *    keeps comment_text/comment_id.
    *
    *  2026-09-04 hardening (post Dc1LGfkITiZ yielded 8 of 182 comments):
    *  - every page is RETRIED on transient failures (network death / 429 / 5xx)
    *    via shouldRetryCommentsPage — a single dropped response no longer
-   *    truncates the harvest to whatever pages landed before it;
+   *    truncates the harvest;
    *  - a first-page crash no longer aborts the job: we return what earlier
    *    paths (DOM + GraphQL capture) found plus `exhausted:false`, and the
-   *    job ends with stop_reason instead of silently completing at page 1;
+   *    caller records stop_reason instead of silently completing at page 1;
    *  - the in-page snippet is a template STRING (never a transformed arrow
    *    function) so tsx/esbuild cannot inject `__name` into page context;
-   *  - the first comment id yields the EXACT media pk
-   *    ("<comment_pk>_<media_pk>" suffix — parseCommentMediaPk), which the
-   *    caller stores in knownMediaPk so GraphQL capture scoping uses the real
-   *    id instead of the shortcode decode;
-   *  - the connection's `count` is returned as totalCommentCount (the true
-   *    denominator for coverage). */
+   *  - the first comment id ("<comment_pk>_<media_pk>" via
+   *    parseCommentMediaPk) yields the EXACT media pk for knownMediaPk. */
   private async fetchCommentsViaApi(shortcode: string): Promise<{
     users: { username: string; fullName: string; avatar: string; commentText: string; commentId: string }[];
     totalCommentCount: number | null;
     derivedMediaPk: string | null;
     exhausted: boolean;
   }> {
+    void shortcode; // the media pk (this.knownMediaPk) carries the post reference
     const all: { username: string; fullName: string; avatar: string; commentText: string; commentId: string }[] = [];
     const seen = new Set<string>();
-    let after: string | null = null;
-    const MAX_PAGES = 200;
+    const MAX_PAGES = 100;
     const MAX_RETRIES = 3;
     let totalCommentCount: number | null = null;
     let derivedMediaPk: string | null = null;
     let exhausted = false;
 
+    // Resolve the media pk: prefer a previously-observed exact id, else the
+    // base64 shortcode decode (verified == og:ios:url media id).
+    const mediaPk = this.knownMediaPk ?? deriveMediaPk(shortcode);
+    if (!mediaPk) {
+      log.warn("IgPostUsers", "fetchCommentsViaApi: no media pk resolvable — skipping API path");
+      return { users: all, totalCommentCount: null, derivedMediaPk: null, exhausted: false };
+    }
+
+    let minId: string | null = null;
     for (let pageIdx = 0; pageIdx < MAX_PAGES; pageIdx++) {
-      // In-page GraphQL fetch as a template string — tsx must not transform it.
+      // In-page private API fetch as a template string — tsx must not transform it.
       const snippet: string = `(async () => {
-        const params = new URLSearchParams({
-          doc_id: "9361150124142511",
-          variables: JSON.stringify({ shortcode: ${JSON.stringify(shortcode)}, first: 50, after: ${JSON.stringify(after)} }),
-          fb_api_req_friendly_name: "PolarisPostCommentsByShortcodeQuery",
-        });
+        const csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || "";
+        const url = "https://www.instagram.com/api/v1/media/${mediaPk}/comments/?can_support_threading=true&permalink_enabled=false"
+          + (${JSON.stringify(minId)} ? "&min_id=" + encodeURIComponent(${JSON.stringify(minId)}) : "");
         try {
-          const res = await fetch("https://www.instagram.com/graphql/query/?" + params.toString(), {
+          const res = await fetch(url, {
             credentials: "include",
-            headers: { "x-ig-app-id": "936619743392459", accept: "*/*" },
+            headers: {
+              "x-ig-app-id": "936619743392459",
+              "x-csrftoken": csrf,
+              "x-requested-with": "XMLHttpRequest",
+              accept: "*/*",
+            },
           });
           if (!res.ok) return { error: true, status: res.status };
-          const text = await res.text();
-          let body;
-          try { body = JSON.parse(text); } catch (e) { return { error: true, status: 0 }; }
-          const media = body && body.data;
-          const xdt = media && media.xdt_shortcode_media;
-          if (!xdt) return { error: true, status: 0 };
-          const conn = xdt.edge_media_to_comment_thread_or_show_more_edge_or_toplined_comments
-            || xdt.edge_media_to_parent_comment || xdt.edge_media_to_comment;
-          const edges = (conn && conn.edges) || [];
-          const comments = [];
-          for (const e of edges) {
-            const n = e && e.node;
-            if (!n) continue;
-            if (n.__typename === "GraphTombstone" || n.text === "...") continue;
-            const owner = n.owner;
-            if (!owner || !owner.username) continue;
-            comments.push({
-              id: String(n.id ?? ""),
-              text: String(n.text ?? ""),
-              username: String(owner.username),
-              fullName: String(owner.full_name ?? ""),
-              avatar: String((owner.profile_pic_url && String(owner.profile_pic_url)) || ""),
+          const j = await res.json();
+          const rows = [];
+          for (const c of j.comments || []) {
+            const u = c.user;
+            if (!u || !u.username) continue;
+            rows.push({
+              id: String(c.pk ?? c.id ?? ""),
+              text: String(c.text ?? ""),
+              username: String(u.username),
+              fullName: String(u.full_name ?? ""),
+              avatar: String(u.profile_pic_url ?? ""),
             });
           }
-          const pageInfo = (conn && conn.page_info) || {};
+          const nmi = typeof j.next_min_id === "string" ? j.next_min_id : (j.next_min_id && j.next_min_id.bifilter_token) || null;
           return {
-            comments,
-            endCursor: pageInfo.end_cursor ?? null,
-            hasNext: !!pageInfo.has_next_page,
-            total: (conn && conn.count != null) ? Number(conn.count) : null,
+            comments: rows,
+            nextMinId: nmi,
+            total: (j.comment_count != null) ? Number(j.comment_count) : null,
           };
         } catch (e) {
           return { error: true, status: 0, message: String(e).slice(0, 100) };
@@ -698,15 +707,21 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
         error?: boolean;
         status?: number;
         comments?: { id: string; text: string; username: string; fullName: string; avatar: string }[];
-        endCursor?: string | null;
-        hasNext?: boolean;
+        nextMinId?: string | null;
         total?: number | null;
         message?: string;
       } | null = null;
       let attempt = 0;
       for (;;) {
         result = await this.page.evaluate(snippet)
-          .then((r) => r as Exclude<typeof result, null>)
+          .then((r) => r as {
+            error?: boolean;
+            status?: number;
+            comments?: { id: string; text: string; username: string; fullName: string; avatar: string }[];
+            nextMinId?: string | null;
+            total?: number | null;
+            message?: string;
+          })
           .catch(() => null);
         const usersLen = result?.comments?.length ?? 0;
         if (result && !result.error && usersLen > 0) break;
@@ -740,9 +755,9 @@ export class IgPostUsersExtractor extends IgBaseExtractor {
           added++;
         }
       }
-      log.info("IgPostUsers", `comments page ${pageIdx}: +${added} → ${all.length} unique (hasNext=${result.hasNext})`);
-      if (!result.hasNext || !result.endCursor) { exhausted = true; break; }
-      after = result.endCursor;
+      log.info("IgPostUsers", `comments page ${pageIdx}: +${added} → ${all.length} unique (nextMinId: ${result.nextMinId ? "yes" : "no"})`);
+      if (!result.nextMinId) { exhausted = true; break; }
+      minId = result.nextMinId;
       if (this.ctx.maxResults > 0 && all.length >= this.ctx.maxResults) { exhausted = true; break; }
       await this.page.waitForTimeout(1200);
     }
