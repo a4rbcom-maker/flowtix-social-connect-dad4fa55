@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { AtSign, Send, ArrowRight, Users, Loader2, MessageCircle, CheckCircle2, AlertTriangle, Sparkles, Link2 } from "lucide-react";
+import { AtSign, Send, ArrowRight, Users, Loader2, MessageCircle, CheckCircle2, AlertTriangle, Sparkles, Link2, Zap } from "lucide-react";
 import { PageHeader } from "@/components/ui/page";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { igActionRepository } from "@/lib/ig-actions/ig-action-repository";
-import { IG_MENTION_DEFAULTS, IG_DM_DEFAULTS, type IgActionMode, type IgActionPacing, type IgActionPreview } from "@/lib/ig-actions/types";
+import { IG_MENTION_DEFAULTS, IG_MENTION_TWO_SESSIONS, IG_DM_DEFAULTS, type IgActionMode, type IgActionPacing, type IgActionPreview } from "@/lib/ig-actions/types";
 import { IgMultiSessionSelector } from "@/components/extraction/IgMultiSessionSelector";
 import { useIgActionJob, useIgActionActions } from "@/hooks/useIgActions";
 
@@ -55,10 +55,14 @@ export function IgActionPage() {
     return () => { cancelled = true; };
   }, [jobId]);
 
-  // reset pacing when toggling mode
+  // reset pacing when toggling mode or session count
   useEffect(() => {
-    setPacing(mode === "mention" ? IG_MENTION_DEFAULTS : IG_DM_DEFAULTS);
-  }, [mode]);
+    const useTwoSessionConfig = mode === "mention" && sessionIds.length === 2;
+    setPacing(mode === "mention" ? 
+      (useTwoSessionConfig ? IG_MENTION_TWO_SESSIONS : IG_MENTION_DEFAULTS) : 
+      IG_DM_DEFAULTS
+    );
+  }, [mode, sessionIds]);
 
   // debounced preview (no start yet)
   useEffect(() => {
@@ -367,9 +371,16 @@ export function IgActionPage() {
             {starting ? t("ig_actions.starting") : t("ig_actions.startButton")}
           </Button>
           {sessionIds.length > 0 && (
-            <p className="text-center text-xs text-[var(--color-fg-subtle)]">
-              <Badge variant="primary" className="gap-1"><CheckCircle2 className="size-3" />{sessionIds.length} {t("ig_actions.sessionsSelected")}</Badge>
-            </p>
+            <div className="space-y-2">
+              <p className="text-center text-xs text-[var(--color-fg-subtle)]">
+                <Badge variant="primary" className="gap-1"><CheckCircle2 className="size-3" />{sessionIds.length} {t("ig_actions.sessionsSelected")}</Badge>
+              </p>
+              {mode === "mention" && sessionIds.length === 2 && (
+                <p className="text-center text-xs text-[var(--color-success)] bg-[var(--color-success)]/5 py-2 px-3 rounded-lg border border-[var(--color-success)]/20">
+                  <Badge variant="success" className="gap-1"><Zap className="size-3" />{t("ig_actions.twoSessionMode")}</Badge>
+                </p>
+              )}
+            </div>
           )}
         </div>
       </div>

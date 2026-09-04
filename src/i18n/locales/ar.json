@@ -2532,6 +2532,8 @@
     "startButton": "بدء الإجراء",
     "starting": "جارٍ البدء…",
     "startedTitle": "تم بدء الإجراء",
-    "startedDesc": "تم إنشاء مهمة لـ {{count}} مستلم."
+    "startedDesc": "تم إنشاء مهمة لـ {{count}} مستلم",
+    "twoSessionMode": "وضع الجلستين نشط (سرعة محسّنة)",
+    "twoSessionModeDesc": "استخدام جلستين لمعالجة أسرع"
   }
 }

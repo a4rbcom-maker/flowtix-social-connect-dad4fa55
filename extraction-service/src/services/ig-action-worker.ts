@@ -192,6 +192,15 @@ export async function runIgActionWorker(jobId: string, hooks: IgWorkerHooks = {}
   const { data: sessionRows } = await sb.from("ig_sessions").select("id, status").in("id", sessionIds);
   const connectedIds = (sessionRows ?? []).filter((s) => s.status === "connected").map((s) => s.id);
 
+  if (connectedIds.length === 0) {
+    await sb.from("message_jobs").update({
+      status: "failed",
+      error: "لا توجد جلسات إنستجرام متصلة. أعد توصيل جلسة واحدة على الأقل ثم استأنف المهمة.",
+      completed_at: new Date().toISOString(),
+    }).eq("id", jobId);
+    return;
+  }
+
   // Use two-session optimized config for mention mode when exactly 2 sessions available
   const useTwoSessionConfig = isMention && connectedIds.length === 2;
   const cfg: PacingConfig = {

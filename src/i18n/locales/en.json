@@ -2461,6 +2461,8 @@
     "startButton": "Start action",
     "starting": "Starting…",
     "startedTitle": "Action started",
-    "startedDesc": "Created a job for {{count}} recipients."
+    "startedDesc": "Created a job for {{count}} recipients.",
+    "twoSessionMode": "Two-session mode active (optimized speed)",
+    "twoSessionModeDesc": "Using 2 sessions for faster processing"
   }
 }

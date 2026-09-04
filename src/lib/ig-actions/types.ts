@@ -30,6 +30,21 @@ export const IG_MENTION_DEFAULTS: IgActionPacing = {
   retry_max: 2,
 };
 
+/** Two-session optimized config — used when exactly 2 sessions are available */
+export const IG_MENTION_TWO_SESSIONS: IgActionPacing = {
+  mentions_per_comment: 5, // Maximum allowed by Instagram
+  comments_per_hour: 6, // 6 per session = 12 total
+  daily_cap: 120, // 60 per session
+  rate_per_hour: 6,
+  delay_min: 480, // 8 minutes between comments
+  delay_max: 600, // 10 minutes between comments
+  batch_size: 5, // 5 comments per batch per session
+  batch_pause: 600, // 10 minutes between batches
+  respect_quiet_hours: true,
+  max_errors: 3,
+  retry_max: 2,
+};
+
 export const IG_DM_DEFAULTS: IgActionPacing = {
   mentions_per_comment: 1,
   comments_per_hour: 5,
