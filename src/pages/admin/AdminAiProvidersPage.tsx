@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Plus, RefreshCw, Trash2, Pencil, Wallet,
   CheckCircle2, XCircle, Loader2, ArrowUpDown,
   Eye, EyeOff, Key, Server, Sparkles, ToggleLeft, ToggleRight,
+  Search, X as XIcon, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { PageHeader, StatCard } from "@/components/ui/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +20,7 @@ import { useAuth } from "@/lib/authProvider";
 import { kieService, type AiProviderAccount, DuplicateApiKeyError, InvalidApiKeyError } from "@/lib/kie-service";
 import { useWaAiModelsAdmin } from "@/hooks/useWaAiModels";
 import type { AiModel } from "@/lib/wa-ai-models";
+import { KIE_CHAT_MODELS, KIE_CHAT_FAMILY_LABELS, type KieChatModel } from "@/lib/kie-chat-models-catalog";
 
 export function AdminAiProvidersPage() {
   const { t } = useTranslation();
@@ -39,9 +41,14 @@ export function AdminAiProvidersPage() {
   const [formApiKey, setFormApiKey] = useState("");
   const [formPriority, setFormPriority] = useState("0");
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
-  const [showAddModel, setShowAddModel] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
   const [editModel, setEditModel] = useState<AiModel | null>(null);
-  const [modelForm, setModelForm] = useState({ model_id: "", display_name_en: "", display_name_ar: "", desc_en: "", desc_ar: "", is_premium: false });
+  const [editModelForm, setEditModelForm] = useState({ display_name_en: "", display_name_ar: "", desc_en: "", desc_ar: "", is_premium: false });
+  const [pickerSearch, setPickerSearch] = useState("");
+  const [pickerFamily, setPickerFamily] = useState<KieChatModel["family"] | "all">("all");
+  const [pickerSelected, setPickerSelected] = useState<Set<string>>(new Set());
+  const [pickerSaving, setPickerSaving] = useState(false);
+  const [pickerExpanded, setPickerExpanded] = useState<Record<KieChatModel["family"], boolean>>({ claude: true, gpt: true, gemini: true, grok: true });
   const [tab, setTab] = useState<"accounts" | "models">("accounts");
 
   const { query: modelsQuery, toggle: toggleModel, remove: removeModel, save: saveModel } = useWaAiModelsAdmin();
@@ -131,37 +138,135 @@ export function AdminAiProvidersPage() {
   function openDelete(a: AiProviderAccount) { setDeleteTarget(a); setShowDelete(true); }
   function maskKey(key: string) { return key.slice(0, 8) + "••••••••" + key.slice(-4); }
 
-  async function handleAddModel() {
-    if (!modelForm.model_id.trim() || !modelForm.display_name_en.trim()) return;
-    try {
-      await saveModel.mutateAsync({
-        model_id: modelForm.model_id.trim(),
-        provider: "kie",
-        display_name: { en: modelForm.display_name_en, ar: modelForm.display_name_ar || modelForm.display_name_en },
-        description: { en: modelForm.desc_en, ar: modelForm.desc_ar || modelForm.desc_en },
-        is_premium: modelForm.is_premium,
-        is_active: true,
-        sort_order: (modelsQuery.data?.length ?? 0) + 1,
-      });
-      toast({ type: "success", title: "Model added" });
-      setShowAddModel(false);
-      setModelForm({ model_id: "", display_name_en: "", display_name_ar: "", desc_en: "", desc_ar: "", is_premium: false });
-    } catch (e: any) {
-      toast({ type: "error", title: e.message || "Failed to add model" });
+  function openPicker() {
+    setPickerSearch("");
+    setPickerFamily("all");
+    // لا تحدد شيئاً افتراضياً — المستخدم يختار بنفسه
+    setPickerSelected(new Set());
+    setPickerExpanded({ claude: true, gpt: true, gemini: true, grok: true });
+    setShowPicker(true);
+  }
+
+  const groupedCatalog = useMemo(() => {
+    const q = pickerSearch.trim().toLowerCase();
+    const groups: Record<KieChatModel["family"], KieChatModel[]> = { claude: [], gpt: [], gemini: [], grok: [] };
+    for (const m of KIE_CHAT_MODELS) {
+      if (pickerFamily !== "all" && m.family !== pickerFamily) continue;
+      if (q) {
+        const hay = `${m.model_id} ${m.display_name_en} ${m.display_name_ar} ${m.desc_en} ${m.desc_ar}`.toLowerCase();
+        if (!hay.includes(q)) continue;
+      }
+      groups[m.family].push(m);
     }
+    return groups;
+  }, [pickerSearch, pickerFamily]);
+
+  const visibleIds = useMemo(
+    () => Object.values(groupedCatalog).flat().map((m) => m.model_id),
+    [groupedCatalog],
+  );
+
+  function togglePick(modelId: string) {
+    setPickerSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(modelId)) next.delete(modelId);
+      else next.add(modelId);
+      return next;
+    });
+  }
+
+  function togglePickFamily(family: KieChatModel["family"]) {
+    const familyIds = groupedCatalog[family].filter((m) => !existingModelIds.has(m.model_id)).map((m) => m.model_id);
+    if (familyIds.length === 0) return;
+    setPickerSelected((prev) => {
+      const allSelected = familyIds.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allSelected) familyIds.forEach((id) => next.delete(id));
+      else familyIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }
+
+  function togglePickAllVisible() {
+    const selectable = visibleIds.filter((id) => !existingModelIds.has(id));
+    if (selectable.length === 0) return;
+    setPickerSelected((prev) => {
+      const allSelected = selectable.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allSelected) selectable.forEach((id) => next.delete(id));
+      else selectable.forEach((id) => next.add(id));
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setPickerSelected(new Set());
+  }
+
+  const existingModelIds = useMemo(
+    () => new Set((modelsQuery.data ?? []).map((m) => m.model_id)),
+    [modelsQuery.data],
+  );
+
+  async function handlePickerAdd() {
+    if (pickerSelected.size === 0) return;
+    setPickerSaving(true);
+    const baseOrder = modelsQuery.data?.length ?? 0;
+    const toAdd = KIE_CHAT_MODELS.filter((m) => pickerSelected.has(m.model_id));
+    const created: string[] = [];
+    const skipped: string[] = [];
+    for (let i = 0; i < toAdd.length; i++) {
+      const m = toAdd[i];
+      try {
+        await saveModel.mutateAsync({
+          model_id: m.model_id,
+          provider: "kie",
+          display_name: { en: m.display_name_en, ar: m.display_name_ar },
+          description: { en: m.desc_en, ar: m.desc_ar },
+          is_premium: m.is_premium ?? false,
+          is_active: true,
+          sort_order: baseOrder + i + 1,
+        });
+        created.push(m.display_name_en);
+      } catch {
+        skipped.push(m.display_name_en);
+      }
+    }
+    setPickerSaving(false);
+    if (created.length > 0) {
+      toast({ type: "success", title: `Added ${created.length} model(s)` });
+    }
+    if (skipped.length > 0) {
+      toast({ type: "error", title: `Skipped ${skipped.length} (already exist)` });
+    }
+    setShowPicker(false);
   }
 
   function openEditModel(m: AiModel) {
     setEditModel(m);
-    setModelForm({
-      model_id: m.model_id,
+    setEditModelForm({
       display_name_en: m.display_name.en ?? "",
       display_name_ar: m.display_name.ar ?? "",
       desc_en: m.description.en ?? "",
       desc_ar: m.description.ar ?? "",
       is_premium: m.is_premium,
     });
-    setShowAddModel(true);
+  }
+
+  async function handleEditModel() {
+    if (!editModel || !editModelForm.display_name_en.trim()) return;
+    try {
+      await saveModel.mutateAsync({
+        id: editModel.id,
+        display_name: { en: editModelForm.display_name_en, ar: editModelForm.display_name_ar || editModelForm.display_name_en },
+        description: { en: editModelForm.desc_en, ar: editModelForm.desc_ar || editModelForm.desc_en },
+        is_premium: editModelForm.is_premium,
+      });
+      toast({ type: "success", title: "Model updated" });
+      setEditModel(null);
+    } catch (e: any) {
+      toast({ type: "error", title: e.message || "Failed to update" });
+    }
   }
 
   async function handleDeleteModel(id: string) {
@@ -272,8 +377,8 @@ export function AdminAiProvidersPage() {
         <Card>
           <CardHeader className="flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle>AI Models</CardTitle>
-            <Button size="sm" onClick={() => { setEditModel(null); setModelForm({ model_id: "", display_name_en: "", display_name_ar: "", desc_en: "", desc_ar: "", is_premium: false }); setShowAddModel(true); }}>
-              <Plus className="size-4" /> Add Model
+            <Button size="sm" onClick={openPicker}>
+              <Plus className="size-4" /> Browse Kie Models
             </Button>
           </CardHeader>
           <CardContent>
@@ -339,48 +444,210 @@ export function AdminAiProvidersPage() {
         </DialogFooter>
       </Dialog>
 
-      {/* Add/Edit Model Dialog */}
-      <Dialog open={showAddModel} onClose={() => { setShowAddModel(false); setEditModel(null); }}>
+      {/* Picker Dialog — choose from Kie.ai chat models catalog */}
+      <Dialog open={showPicker} onClose={() => setShowPicker(false)} className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{editModel ? "Edit Model" : "Add Model"}</DialogTitle>
-          <DialogClose onClose={() => { setShowAddModel(false); setEditModel(null); }} />
+          <DialogTitle>Browse Kie.ai Models</DialogTitle>
+          <DialogClose onClose={() => setShowPicker(false)} />
+        </DialogHeader>
+        <DialogBody className="space-y-3">
+          <div className="relative">
+            <InputIcon icon={Search} value={pickerSearch} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPickerSearch(e.target.value)} placeholder="Search by name or model id..." />
+            {pickerSearch && (
+              <button onClick={() => setPickerSearch("")} className="absolute end-2 top-1/2 -translate-y-1/2 text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]">
+                <XIcon className="size-4" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => setPickerFamily("all")}
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs font-semibold transition-all",
+                pickerFamily === "all"
+                  ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
+                  : "border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
+              )}
+            >
+              All ({KIE_CHAT_MODELS.length})
+            </button>
+            {(Object.keys(KIE_CHAT_FAMILY_LABELS) as KieChatModel["family"][]).map((f) => {
+              const count = KIE_CHAT_MODELS.filter((m) => m.family === f).length;
+              return (
+                <button
+                  key={f}
+                  onClick={() => setPickerFamily(f)}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs font-semibold transition-all",
+                    pickerFamily === f
+                      ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
+                      : "border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
+                  )}
+                >
+                  {KIE_CHAT_FAMILY_LABELS[f].en} ({count})
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2">
+            <span className="text-xs font-semibold text-[var(--color-fg)]">
+              <span className="text-[var(--color-primary)]">{pickerSelected.size}</span>
+              <span className="text-[var(--color-fg-muted)]"> / {visibleIds.filter((id) => !existingModelIds.has(id)).length} selected</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={togglePickAllVisible}
+                disabled={visibleIds.filter((id) => !existingModelIds.has(id)).length === 0}
+                className="text-xs font-semibold text-[var(--color-primary)] hover:underline disabled:opacity-50"
+              >
+                Select all
+              </button>
+              <span className="text-[var(--color-border)]">·</span>
+              <button
+                onClick={clearSelection}
+                disabled={pickerSelected.size === 0}
+                className="text-xs font-semibold text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] disabled:opacity-50"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-2 pe-1">
+            {visibleIds.length === 0 ? (
+              <p className="py-8 text-center text-sm text-[var(--color-fg-muted)]">No models match your filter</p>
+            ) : (
+              (Object.keys(groupedCatalog) as KieChatModel["family"][]).map((family) => {
+                const models = groupedCatalog[family];
+                if (models.length === 0) return null;
+                const familySelectable = models.filter((m) => !existingModelIds.has(m.model_id));
+                const familySelectedCount = familySelectable.filter((m) => pickerSelected.has(m.model_id)).length;
+                const expanded = pickerExpanded[family];
+                const allFamilySelected = familySelectable.length > 0 && familySelectedCount === familySelectable.length;
+                return (
+                  <div key={family} className="rounded-lg border border-[var(--color-border)] overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setPickerExpanded((prev) => ({ ...prev, [family]: !prev[family] }))}
+                      className="flex w-full items-center justify-between gap-2 bg-[var(--color-surface-2)] px-3 py-2 text-start transition-colors hover:bg-[var(--color-surface-3)]"
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <input
+                          type="checkbox"
+                          checked={allFamilySelected}
+                          ref={(el) => { if (el) el.indeterminate = familySelectedCount > 0 && !allFamilySelected; }}
+                          disabled={familySelectable.length === 0}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={() => togglePickFamily(family)}
+                          className="size-4 rounded border-[var(--color-border)] accent-[var(--color-primary)]"
+                        />
+                        <span className="text-sm font-bold text-[var(--color-fg)]">{KIE_CHAT_FAMILY_LABELS[family].en}</span>
+                        <span className="text-xs text-[var(--color-fg-muted)]">
+                          ({familySelectedCount}/{familySelectable.length}
+                          {models.length - familySelectable.length > 0 ? ` · ${models.length - familySelectable.length} already added` : ""})
+                        </span>
+                      </div>
+                      {expanded ? <ChevronUp className="size-4 text-[var(--color-fg-muted)]" /> : <ChevronDown className="size-4 text-[var(--color-fg-muted)]" />}
+                    </button>
+                    {expanded && (
+                      <div className="space-y-1 p-2">
+                        {models.map((m) => {
+                          const isSelected = pickerSelected.has(m.model_id);
+                          const alreadyExists = existingModelIds.has(m.model_id);
+                          return (
+                            <label
+                              key={m.model_id}
+                              className={cn(
+                                "flex items-start gap-3 rounded-md border p-2.5 transition-all",
+                                alreadyExists
+                                  ? "border-[var(--color-border)] bg-[var(--color-surface-2)] opacity-60 cursor-not-allowed"
+                                  : isSelected
+                                    ? "border-[var(--color-primary)] bg-[color-mix(in_oklab,var(--color-primary)_10%,transparent)] cursor-pointer"
+                                    : "border-[var(--color-border)] hover:border-[var(--color-primary)]/60 cursor-pointer",
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                disabled={alreadyExists}
+                                onChange={() => togglePick(m.model_id)}
+                                className="mt-0.5 size-4 rounded border-[var(--color-border)] accent-[var(--color-primary)]"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-semibold text-[var(--color-fg)]">{m.display_name_en}</span>
+                                  <span className="text-[0.65rem] font-mono text-[var(--color-fg-subtle)]">{m.model_id}</span>
+                                  {m.is_premium && <Badge variant="warning" className="text-[0.65rem]">Premium</Badge>}
+                                  {alreadyExists && <Badge variant="default" className="text-[0.65rem]">Added</Badge>}
+                                </div>
+                                <p className="text-xs text-[var(--color-fg-muted)] truncate">{m.desc_en}</p>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </DialogBody>
+        <DialogFooter className="bg-[var(--color-surface-2)] px-6 py-4">
+          <div className="flex w-full items-center justify-between gap-3">
+            <div className="text-sm">
+              <span className="font-bold text-[var(--color-primary)]">{pickerSelected.size}</span>
+              <span className="text-[var(--color-fg-muted)]"> model{pickerSelected.size === 1 ? "" : "s"} selected</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" onClick={() => setShowPicker(false)}>{t("common.cancel")}</Button>
+              <Button disabled={pickerSelected.size === 0 || pickerSaving} onClick={handlePickerAdd} className="min-w-[120px]">
+                {pickerSaving ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+                Add {pickerSelected.size > 0 ? `(${pickerSelected.size})` : ""}
+              </Button>
+            </div>
+          </div>
+        </DialogFooter>
+      </Dialog>
+
+      {/* Edit Model Dialog */}
+      <Dialog open={!!editModel} onClose={() => setEditModel(null)}>
+        <DialogHeader>
+          <DialogTitle>Edit Model</DialogTitle>
+          <DialogClose onClose={() => setEditModel(null)} />
         </DialogHeader>
         <DialogBody className="space-y-4">
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Model ID</Label>
-            <Input disabled={!!editModel} value={modelForm.model_id} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModelForm({ ...modelForm, model_id: e.target.value })} placeholder="e.g. gpt-4o" />
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+            <p className="text-xs text-[var(--color-fg-subtle)]">Model ID</p>
+            <p className="text-sm font-mono font-semibold">{editModel?.model_id}</p>
           </div>
           <div className="space-y-2">
             <Label className="text-sm font-medium">Display Name (English)</Label>
-            <Input value={modelForm.display_name_en} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModelForm({ ...modelForm, display_name_en: e.target.value })} placeholder="e.g. GPT-4o" />
+            <Input value={editModelForm.display_name_en} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditModelForm({ ...editModelForm, display_name_en: e.target.value })} placeholder="e.g. GPT-4o" />
           </div>
           <div className="space-y-2">
             <Label className="text-sm font-medium">Display Name (Arabic)</Label>
-            <Input value={modelForm.display_name_ar} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModelForm({ ...modelForm, display_name_ar: e.target.value })} placeholder="e.g. جي بي تي 4o" />
+            <Input value={editModelForm.display_name_ar} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditModelForm({ ...editModelForm, display_name_ar: e.target.value })} placeholder="e.g. جي بي تي 4o" />
           </div>
           <div className="space-y-2">
             <Label className="text-sm font-medium">Description (English)</Label>
-            <Input value={modelForm.desc_en} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModelForm({ ...modelForm, desc_en: e.target.value })} placeholder="e.g. Strong reasoning" />
+            <Input value={editModelForm.desc_en} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditModelForm({ ...editModelForm, desc_en: e.target.value })} placeholder="e.g. Strong reasoning" />
           </div>
           <div className="space-y-2">
             <Label className="text-sm font-medium">Description (Arabic)</Label>
-            <Input value={modelForm.desc_ar} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModelForm({ ...modelForm, desc_ar: e.target.value })} placeholder="e.g. استدلال قوي" />
+            <Input value={editModelForm.desc_ar} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditModelForm({ ...editModelForm, desc_ar: e.target.value })} placeholder="e.g. استدلال قوي" />
           </div>
           <div className="flex items-center gap-3">
-            <input type="checkbox" checked={modelForm.is_premium} onChange={(e) => setModelForm({ ...modelForm, is_premium: e.target.checked })} className="size-4 rounded border-[var(--color-border)] accent-[var(--color-primary)]" />
+            <input type="checkbox" checked={editModelForm.is_premium} onChange={(e) => setEditModelForm({ ...editModelForm, is_premium: e.target.checked })} className="size-4 rounded border-[var(--color-border)] accent-[var(--color-primary)]" />
             <Label className="text-sm font-medium">Premium only</Label>
           </div>
         </DialogBody>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => { setShowAddModel(false); setEditModel(null); }}>Cancel</Button>
-          <Button disabled={!modelForm.model_id.trim() || !modelForm.display_name_en.trim()} onClick={() => {
-            if (editModel) {
-              saveModel.mutateAsync({ id: editModel.id, ...modelForm }).then(() => { setShowAddModel(false); setEditModel(null); toast({ type: "success", title: "Model updated" }); });
-            } else {
-              handleAddModel();
-            }
-          }}>
-            {editModel ? "Save" : "Add"}
+          <Button variant="ghost" onClick={() => setEditModel(null)}>{t("common.cancel")}</Button>
+          <Button disabled={!editModelForm.display_name_en.trim()} onClick={handleEditModel}>
+            {t("common.save")}
           </Button>
         </DialogFooter>
       </Dialog>
