@@ -33,6 +33,7 @@ import {
   buildMentionComment,
   normalizeIgHandle,
   IG_MENTION_DEFAULTS,
+  IG_MENTION_TWO_SESSIONS,
   IG_DM_DEFAULTS,
   type SessionCandidate,
 } from "./ig-action-pacing.js";
@@ -183,18 +184,21 @@ export async function runIgActionWorker(jobId: string, hooks: IgWorkerHooks = {}
   };
 
   const isMention = job.mode === "mention";
+  
+  // Use two-session optimized config for mention mode when exactly 2 sessions available
+  const useTwoSessionConfig = isMention && connectedIds.length === 2;
   const cfg: PacingConfig = {
-    mentions_per_comment: job.config?.mentions_per_comment ?? IG_MENTION_DEFAULTS.mentions_per_comment,
-    comments_per_hour: job.config?.comments_per_hour ?? IG_MENTION_DEFAULTS.comments_per_hour,
-    daily_cap: job.config?.daily_cap ?? (isMention ? IG_MENTION_DEFAULTS.daily_cap : IG_DM_DEFAULTS.daily_cap),
-    rate_per_hour: job.config?.rate_per_hour ?? (isMention ? IG_MENTION_DEFAULTS.rate_per_hour : IG_DM_DEFAULTS.rate_per_hour),
-    delay_min: job.config?.delay_min ?? (isMention ? IG_MENTION_DEFAULTS.delay_min : IG_DM_DEFAULTS.delay_min),
-    delay_max: job.config?.delay_max ?? (isMention ? IG_MENTION_DEFAULTS.delay_max : IG_DM_DEFAULTS.delay_max),
-    batch_size: job.config?.batch_size ?? (isMention ? IG_MENTION_DEFAULTS.batch_size : IG_DM_DEFAULTS.batch_size),
-    batch_pause: job.config?.batch_pause ?? (isMention ? IG_MENTION_DEFAULTS.batch_pause : IG_DM_DEFAULTS.batch_pause),
+    mentions_per_comment: job.config?.mentions_per_comment ?? (useTwoSessionConfig ? IG_MENTION_TWO_SESSIONS.mentions_per_comment : IG_MENTION_DEFAULTS.mentions_per_comment),
+    comments_per_hour: job.config?.comments_per_hour ?? (useTwoSessionConfig ? IG_MENTION_TWO_SESSIONS.comments_per_hour : IG_MENTION_DEFAULTS.comments_per_hour),
+    daily_cap: job.config?.daily_cap ?? (isMention ? (useTwoSessionConfig ? IG_MENTION_TWO_SESSIONS.daily_cap : IG_MENTION_DEFAULTS.daily_cap) : IG_DM_DEFAULTS.daily_cap),
+    rate_per_hour: job.config?.rate_per_hour ?? (isMention ? (useTwoSessionConfig ? IG_MENTION_TWO_SESSIONS.rate_per_hour : IG_MENTION_DEFAULTS.rate_per_hour) : IG_DM_DEFAULTS.rate_per_hour),
+    delay_min: job.config?.delay_min ?? (isMention ? (useTwoSessionConfig ? IG_MENTION_TWO_SESSIONS.delay_min : IG_MENTION_DEFAULTS.delay_min) : IG_DM_DEFAULTS.delay_min),
+    delay_max: job.config?.delay_max ?? (isMention ? (useTwoSessionConfig ? IG_MENTION_TWO_SESSIONS.delay_max : IG_MENTION_DEFAULTS.delay_max) : IG_DM_DEFAULTS.delay_max),
+    batch_size: job.config?.batch_size ?? (isMention ? (useTwoSessionConfig ? IG_MENTION_TWO_SESSIONS.batch_size : IG_MENTION_DEFAULTS.batch_size) : IG_DM_DEFAULTS.batch_size),
+    batch_pause: job.config?.batch_pause ?? (isMention ? (useTwoSessionConfig ? IG_MENTION_TWO_SESSIONS.batch_pause : IG_MENTION_DEFAULTS.batch_pause) : IG_DM_DEFAULTS.batch_pause),
     respect_quiet_hours: job.config?.respect_quiet_hours ?? true,
-    max_errors: job.config?.max_errors ?? 5,
-    retry_max: job.config?.retry_max ?? 2,
+    max_errors: job.config?.max_errors ?? (useTwoSessionConfig ? IG_MENTION_TWO_SESSIONS.max_errors : IG_MENTION_DEFAULTS.max_errors),
+    retry_max: job.config?.retry_max ?? (useTwoSessionConfig ? IG_MENTION_TWO_SESSIONS.retry_max : IG_MENTION_DEFAULTS.retry_max),
   };
 
   const sessionIds = job.session_ids ?? [];
@@ -244,6 +248,52 @@ export async function runIgActionWorker(jobId: string, hooks: IgWorkerHooks = {}
   let consecutiveErrors = 0;
   let sentInBatch = 0;
   let stopRequested = false;
+  
+  // Checkpoint system for recovery
+  const CHECKPOINT_INTERVAL = 50; // Save checkpoint every 50 mentions
+  let lastCheckpointIdx = (job.progress?.checkpoint_idx as number) || 0;
+  
+  async function saveCheckpoint(): Promise<void> {
+    if (progress.current_idx - lastCheckpointIdx >= CHECKPOINT_INTERVAL) {
+      await sb.from("message_jobs").update({ 
+        progress: { 
+          ...progress, 
+          checkpoint_idx: progress.current_idx,
+          checkpoint_time: new Date().toISOString()
+        } 
+      }).eq("id", jobId);
+      lastCheckpointIdx = progress.current_idx;
+      log.info("IgAction", `job ${jobId}: checkpoint saved at ${progress.current_idx} mentions`);
+    }
+  }
+  
+  function generateProgressReport(): string {
+    const totalUsers = progress.sent + progress.failed + progress.skipped;
+    const successRate = totalUsers > 0 ? Math.round((progress.sent / totalUsers) * 100) : 0;
+    const estimatedRemaining = progress.sent > 0 ? 
+      Math.round((progress.current_idx - progress.sent) * 480 / 60) : 0; // Estimate in minutes
+    
+    return `Progress Report for Job ${jobId}:
+- Total Mentions: ${progress.current_idx}
+- Successfully Sent: ${progress.sent}
+- Failed: ${progress.failed}
+- Skipped: ${progress.skipped}
+- Success Rate: ${successRate}%
+- Estimated Time Remaining: ${estimatedRemaining} minutes
+- Checkpoint: ${lastCheckpointIdx}/${progress.current_idx}
+- Sessions Active: ${contexts.length}`;
+  }
+  
+  async function preventDuplicates(usernames: string[]): Promise<boolean> {
+    const existing = await sb
+      .from("message_recipients")
+      .select("thread_id")
+      .in("thread_id", usernames)
+      .eq("message_job_id", jobId)
+      .eq("status", "sent");
+    
+    return existing.length === 0;
+  }
 
   try {
     while (!stopRequested && workers.get(jobId) !== false) {
@@ -278,6 +328,17 @@ export async function runIgActionWorker(jobId: string, hooks: IgWorkerHooks = {}
           break;
         }
         const handles = nextBatch.map((r) => normalizeIgHandle(r.thread_id) ?? normalizeIgHandle(r.fb_id)).filter(Boolean) as string[];
+        
+        // Prevent duplicates before processing
+        const hasDuplicates = await preventDuplicates(handles);
+        if (!hasDuplicates) {
+          log.warn("IgAction", `job ${jobId}: skipping batch due to duplicate mentions`);
+          await markBatchSkipped(jobId, nextBatch.map((r) => r.id), "duplicate mentions detected");
+          progress.skipped += nextBatch.length;
+          progress.current_idx += nextBatch.length;
+          continue;
+        }
+        
         const commentText = buildMentionComment(body, handles);
         let outcome: CommentOutcome;
         try {
@@ -292,6 +353,14 @@ export async function runIgActionWorker(jobId: string, hooks: IgWorkerHooks = {}
           progress.current_idx += nextBatch.length;
           sentInBatch += 1;
           consecutiveErrors = 0;
+          
+          // Save checkpoint and log progress
+          await saveCheckpoint();
+          if (progress.sent % 100 === 0) {
+            log.info("IgAction", `job ${jobId}: progress milestone - ${progress.sent}/${progress.current_idx} mentions sent`);
+            log.info("IgAction", generateProgressReport());
+          }
+          
           log.info("IgAction", `job ${jobId}: mention comment sent (${handles.length} handles) via ${chosen.sessionId.slice(0, 8)} — ${progress.sent} total`);
         } else if (outcome.kind === "rate_limited" || outcome.kind === "session_dead") {
           await setCooldown(chosen.sessionId, outcome.kind === "session_dead" ? 72 : 24);
@@ -433,6 +502,28 @@ async function chooseSession(
   _progress: { sent: number },
 ): Promise<CtxHandle | null> {
   const counters = await loadCounters(contexts.map((c) => c.sessionId));
+  
+  // Special handling for exactly 2 sessions with smart distribution
+  if (contexts.length === 2) {
+    const [session1, session2] = contexts;
+    const ctr1 = counters.get(session1.sessionId)!;
+    const ctr2 = counters.get(session2.sessionId)!;
+    
+    // Prefer the session with lower usage for load balancing
+    const session1Usage = ctr1.sentToday / cfg.daily_cap;
+    const session2Usage = ctr2.sentToday / cfg.daily_cap;
+    
+    // Add randomization to prevent pattern detection
+    const randomFactor = Math.random() * 0.1; // 10% randomization
+    
+    if (session1Usage < session2Usage + randomFactor) {
+      return session1;
+    } else {
+      return session2;
+    }
+  }
+  
+  // Default behavior for other session counts
   const candidates: SessionCandidate[] = contexts.map((c) => {
     const ctr = counters.get(c.sessionId)!;
     return {
