@@ -213,8 +213,9 @@ export function AdminAiProvidersPage() {
     setPickerSaving(true);
     const baseOrder = modelsQuery.data?.length ?? 0;
     const toAdd = KIE_CHAT_MODELS.filter((m) => pickerSelected.has(m.model_id));
-    const created: string[] = [];
+    const created: { name: string; id: string }[] = [];
     const skipped: string[] = [];
+    const failed: { name: string; reason: string }[] = [];
     for (let i = 0; i < toAdd.length; i++) {
       const m = toAdd[i];
       try {
@@ -227,19 +228,40 @@ export function AdminAiProvidersPage() {
           is_active: true,
           sort_order: baseOrder + i + 1,
         });
-        created.push(m.display_name_en);
-      } catch {
-        skipped.push(m.display_name_en);
+        created.push({ name: m.display_name_en, id: m.model_id });
+      } catch (e: any) {
+        const msg = String(e?.message ?? e ?? "");
+        if (msg.includes("23505") || msg.includes("duplicate") || msg.includes("uniq")) {
+          skipped.push(m.display_name_en);
+        } else {
+          failed.push({ name: m.display_name_en, reason: msg || "Unknown error" });
+        }
       }
     }
+    // إعادة تحميل القائمة فوراً لضمان ظهور الإضافات الجديدة
+    await modelsQuery.refetch();
     setPickerSaving(false);
     if (created.length > 0) {
-      toast({ type: "success", title: `Added ${created.length} model(s)` });
+      toast({
+        type: "success",
+        title: t("admin.aiProviders.models.added", { count: created.length }),
+        description: failed.length > 0 || skipped.length > 0 ? `${skipped.length} skipped · ${failed.length} failed` : undefined,
+      });
     }
-    if (skipped.length > 0) {
-      toast({ type: "error", title: `Skipped ${skipped.length} (already exist)` });
+    if (skipped.length > 0 && created.length === 0) {
+      toast({ type: "error", title: t("admin.aiProviders.models.allSkipped", { count: skipped.length }) });
     }
-    setShowPicker(false);
+    if (failed.length > 0) {
+      const detail = failed.slice(0, 3).map((f) => `${f.name}: ${f.reason}`).join(" · ");
+      toast({
+        type: "error",
+        title: t("admin.aiProviders.models.failed", { count: failed.length }),
+        description: detail + (failed.length > 3 ? ` (+${failed.length - 3} more)` : ""),
+      });
+    }
+    if (created.length > 0) {
+      setShowPicker(false);
+    }
   }
 
   function openEditModel(m: AiModel) {
@@ -378,7 +400,7 @@ export function AdminAiProvidersPage() {
           <CardHeader className="flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle>AI Models</CardTitle>
             <Button size="sm" onClick={openPicker}>
-              <Plus className="size-4" /> Browse Kie Models
+              <Plus className="size-4" /> {t("admin.aiProviders.models.browse")}
             </Button>
           </CardHeader>
           <CardContent>
@@ -447,12 +469,12 @@ export function AdminAiProvidersPage() {
       {/* Picker Dialog — choose from Kie.ai chat models catalog */}
       <Dialog open={showPicker} onClose={() => setShowPicker(false)} className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Browse Kie.ai Models</DialogTitle>
+          <DialogTitle>{t("admin.aiProviders.models.browse")}</DialogTitle>
           <DialogClose onClose={() => setShowPicker(false)} />
         </DialogHeader>
         <DialogBody className="space-y-3">
           <div className="relative">
-            <InputIcon icon={Search} value={pickerSearch} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPickerSearch(e.target.value)} placeholder="Search by name or model id..." />
+            <InputIcon icon={Search} value={pickerSearch} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPickerSearch(e.target.value)} placeholder={t("admin.aiProviders.models.search")} />
             {pickerSearch && (
               <button onClick={() => setPickerSearch("")} className="absolute end-2 top-1/2 -translate-y-1/2 text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]">
                 <XIcon className="size-4" />
@@ -502,7 +524,7 @@ export function AdminAiProvidersPage() {
                 disabled={visibleIds.filter((id) => !existingModelIds.has(id)).length === 0}
                 className="text-xs font-semibold text-[var(--color-primary)] hover:underline disabled:opacity-50"
               >
-                Select all
+                {t("admin.aiProviders.models.selectAll")}
               </button>
               <span className="text-[var(--color-border)]">·</span>
               <button
@@ -510,14 +532,14 @@ export function AdminAiProvidersPage() {
                 disabled={pickerSelected.size === 0}
                 className="text-xs font-semibold text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] disabled:opacity-50"
               >
-                Clear
+                {t("admin.aiProviders.models.clear")}
               </button>
             </div>
           </div>
 
           <div className="space-y-2 pe-1">
             {visibleIds.length === 0 ? (
-              <p className="py-8 text-center text-sm text-[var(--color-fg-muted)]">No models match your filter</p>
+              <p className="py-8 text-center text-sm text-[var(--color-fg-muted)]">{t("admin.aiProviders.models.noMatches")}</p>
             ) : (
               (Object.keys(groupedCatalog) as KieChatModel["family"][]).map((family) => {
                 const models = groupedCatalog[family];
@@ -580,7 +602,7 @@ export function AdminAiProvidersPage() {
                                   <span className="text-sm font-semibold text-[var(--color-fg)]">{m.display_name_en}</span>
                                   <span className="text-[0.65rem] font-mono text-[var(--color-fg-subtle)]">{m.model_id}</span>
                                   {m.is_premium && <Badge variant="warning" className="text-[0.65rem]">Premium</Badge>}
-                                  {alreadyExists && <Badge variant="default" className="text-[0.65rem]">Added</Badge>}
+                                  {alreadyExists && <Badge variant="default" className="text-[0.65rem]">{t("admin.aiProviders.models.added")}</Badge>}
                                 </div>
                                 <p className="text-xs text-[var(--color-fg-muted)] truncate">{m.desc_en}</p>
                               </div>

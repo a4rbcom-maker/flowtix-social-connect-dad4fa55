@@ -380,11 +380,29 @@
       "failoverTarget": "Failover Target",
       "provider": "Provider",
       "errors": {
-        "duplicateKey": "This API key is already added",
-        "invalidKey": "Invalid or expired API key",
-        "networkError": "Failed to connect to Kie.ai"
-      }
-    },
+              "duplicateKey": "This API key is already added",
+              "invalidKey": "Invalid or expired API key",
+              "networkError": "Failed to connect to Kie.ai"
+            },
+      "models": {
+              "title": "AI Models",
+              "browse": "Browse Kie Models",
+              "search": "Search by name or model id...",
+              "selectAll": "Select all",
+              "clear": "Clear",
+              "added": "Added",
+              "premium": "Premium",
+              "alreadyAdded": "Already added",
+              "noMatches": "No models match your filter",
+              "selectedCount": "{{selected}} of {{total}} selected",
+              "added_one": "Added 1 model",
+              "added_other": "Added {{count}} models",
+              "addedDesc": "{{skipped}} skipped · {{failed}} failed",
+              "allSkipped": "All {{count}} models already exist",
+              "failed_one": "Failed to add 1 model",
+              "failed_other": "Failed to add {{count}} models"
+            }
+          },
     "security": {
       "title": "Security",
       "description": "Monitor security posture and recent threats",
@@ -1058,6 +1076,22 @@
     "importDone": "Session imported successfully",
     "checkDone": "Check passed — session is connected",
     "deleteDone": "Session deleted",
+    "checkpointSaved": "Checkpoint saved successfully",
+    "progressMilestone": "Progress milestone reached",
+    "duplicateMentions": "Duplicate mentions detected",
+    "skippedDuplicates": "Skipped duplicate mentions",
+    "smartDistribution": "Smart session distribution active",
+    "twoSessionMode": "Two-session mode enabled",
+    "checkpointInterval": "Checkpoint every 50 mentions",
+    "progressReport": "Progress Report",
+    "totalMentions": "Total Mentions",
+    "successfullySent": "Successfully Sent",
+    "failed": "Failed",
+    "skipped": "Skipped",
+    "successRate": "Success Rate",
+    "estimatedTimeRemaining": "Estimated Time Remaining",
+    "checkpoint": "Checkpoint",
+    "sessionsActive": "Sessions Active",
     "deleteConfirm": "Confirm Deletion",
     "deleteQuestion": "Are you sure you want to delete \"{{name}}\"?",
     "empty": {

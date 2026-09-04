@@ -406,11 +406,29 @@
       "failoverTarget": "الحساب النشط حالياً",
       "provider": "المزود",
       "errors": {
-        "duplicateKey": "هذا المفتاح مضاف مسبقاً",
-        "invalidKey": "مفتاح API غير صالح أو منتهي",
-        "networkError": "تعذّر الاتصال بـ Kie.ai"
-      }
-    },
+              "duplicateKey": "هذا المفتاح مضاف مسبقاً",
+              "invalidKey": "مفتاح API غير صالح أو منتهي",
+              "networkError": "تعذّر الاتصال بـ Kie.ai"
+            },
+      "models": {
+              "title": "موديلات الذكاء الاصطناعي",
+              "browse": "تصفح موديلات Kie",
+              "search": "ابحث بالاسم أو model id...",
+              "selectAll": "تحديد الكل",
+              "clear": "مسح",
+              "added": "مُضاف",
+              "premium": "مميز",
+              "alreadyAdded": "مُضاف مسبقاً",
+              "noMatches": "لا توجد موديلات تطابق الفيلتر",
+              "selectedCount": "{{selected}} من {{total}} مُحدد",
+              "added_one": "تمت إضافة موديل واحد",
+              "added_other": "تمت إضافة {{count}} موديلات",
+              "addedDesc": "{{skipped}} مكرر · {{failed}} فشل",
+              "allSkipped": "كل الـ {{count}} موديلات مضافة مسبقاً",
+              "failed_one": "فشل إضافة موديل واحد",
+              "failed_other": "فشل إضافة {{count}} موديلات"
+            }
+          },
     "notifications": {
       "title": "الإشعارات",
       "desc": "إرسال إشعارات جماعية لجميع مستخدمي المنصة",
@@ -1063,6 +1081,22 @@
     "importDone": "تم استيراد الجلسة بنجاح",
     "checkDone": "الفحص ناجح — الجلسة متصلة",
     "deleteDone": "تم حذف الجلسة",
+    "checkpointSaved": "تم حفظ نقطة التفتيش بنجاح",
+    "progressMilestone": "تم الوصول إلى مرحلة تقدم",
+    "duplicateMentions": "اكتشاف منشنات مكررة",
+    "skippedDuplicates": "تم تجاهل المنشنات المكررة",
+    "smartDistribution": "توزيع ذكي للجلسات نشط",
+    "twoSessionMode": "وضع الجلستين مفعّل",
+    "checkpointInterval": "نقطة تفتيش كل 50 منشن",
+    "progressReport": "تقرير التقدم",
+    "totalMentions": "إجمالي المنشنات",
+    "successfullySent": "تم الإرسال بنجاح",
+    "failed": "فشل",
+    "skipped": "تم تجاهله",
+    "successRate": "معدل النجاح",
+    "estimatedTimeRemaining": "الوقت المقدر المتبقي",
+    "checkpoint": "نقطة تفتيش",
+    "sessionsActive": "الجلسات النشطة",
     "deleteConfirm": "تأكيد الحذف",
     "deleteQuestion": "هل أنت متأكد من حذف الجلسة \"{{name}}\"?",
     "empty": {

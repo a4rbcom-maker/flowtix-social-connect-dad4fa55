@@ -21,18 +21,27 @@ export function useWaAiModelsAdmin() {
   const toggle = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       waAiModelsRepository.toggleActive(id, isActive),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [KEY] });
+      qc.invalidateQueries({ queryKey: [KEY, "admin"] });
+    },
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => waAiModelsRepository.delete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [KEY] });
+      qc.invalidateQueries({ queryKey: [KEY, "admin"] });
+    },
   });
 
   const save = useMutation({
     mutationFn: (input: Parameters<typeof waAiModelsRepository.save>[0]) =>
       waAiModelsRepository.save(input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [KEY] });
+      qc.invalidateQueries({ queryKey: [KEY, "admin"] });
+    },
   });
 
   return { query, toggle, remove, save };
