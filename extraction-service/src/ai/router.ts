@@ -10,6 +10,33 @@ const log = logger;
 const CONFIDENCE_THRESHOLD = 0.5;
 const MEMORY_SUMMARY_EVERY = 8;
 
+export interface Instructions {
+  name: string;
+  role: string;
+  company: string;
+  services: string;
+  training: string;
+  blocked: string;
+}
+
+// Parses the frontend-saved ai_instructions blob (Arabic labels, \n-separated).
+// Mirrors the parse logic in src/pages/dashboard/whatsapp/WaAIAgentPage.tsx
+// (same labels, same prefix stripping) so server and client agree on the shape.
+export function parseInstructions(blob: string): Instructions {
+  const out: Instructions = { name: "", role: "", company: "", services: "", training: "", blocked: "" };
+  if (!blob) return out;
+  const sections = blob.split(/\n(?=اسم الوكيل|وظيفة|الشركة|الخدمات|تعليمات التدريب|المواضيع المحظورة)/);
+  for (const s of sections) {
+    if (s.startsWith("اسم الوكيل:")) out.name = s.replace("اسم الوكيل:", "").trim();
+    else if (s.startsWith("وظيفة:")) out.role = s.replace("وظيفة:", "").trim();
+    else if (s.startsWith("الشركة:")) out.company = s.replace("الشركة:", "").trim();
+    else if (s.startsWith("الخدمات:")) out.services = s.replace("الخدمات:", "").trim();
+    else if (s.startsWith("تعليمات التدريب:")) out.training = s.replace("تعليمات التدريب:", "").trim();
+    else if (s.startsWith("المواضيع المحظورة:")) out.blocked = s.replace("المواضيع المحظورة:", "").trim();
+  }
+  return out;
+}
+
 export const aiRouter = {
   async handleMessage(m: IncomingWaMessage, conversationId?: string): Promise<{ handled: boolean; level?: string }> {
     const cfg = await loadProviderConfig(m.workspaceId);
@@ -44,7 +71,13 @@ export const aiRouter = {
       .eq("workspace_id", m.workspaceId).eq("is_active", true).limit(3);
     const kbContext = (kbRows ?? []).map((k: any) => `### ${k.title}\n${k.content}`).join("\n\n");
 
-    const systemPrompt = this.buildSystemPrompt(intent, level, contact.name ?? contact.push_name ?? "", mem?.language ?? "ar", kbContext);
+    // Load the latest active saved agent instructions (never fails the message flow).
+    const { data: instrRow } = await supabaseClient.from("ai_instructions")
+      .select("instructions").eq("workspace_id", m.workspaceId)
+      .eq("is_active", true).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const instructions = parseInstructions(instrRow?.instructions ?? "");
+
+    const systemPrompt = this.buildSystemPrompt(intent, level, contact.name ?? contact.push_name ?? "", mem?.language ?? "ar", kbContext, instructions);
     const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }];
     if (mem?.last_context) {
       const hist = (mem.last_context as any[]).slice(-3);
@@ -105,13 +138,20 @@ export const aiRouter = {
     return { handled: true, level };
   },
 
-  buildSystemPrompt(intent: Intent, level: string, name: string, lang: string, kbContext: string): string {
-    const role = level === "l1" ? "مساعد خدمة عملاء سريع وودود"
-      : level === "l2" ? "خبير مبيعات محترف يشرح الخدمات والباقات"
-      : "خبير دعم فني محترف يحل المشاكل المعقدة بحرص ودقة";
+  buildSystemPrompt(intent: Intent, level: string, name: string, lang: string, kbContext: string, instructions: Instructions = { name: "", role: "", company: "", services: "", training: "", blocked: "" }): string {
+    const custom = instructions.name || instructions.role || instructions.company;
+    // Custom instructions (if any) override the hardcoded level-based identity.
+    const role = custom
+      ? [instructions.role, instructions.name ? `اسمي ${instructions.name}` : "", instructions.company ? `شركتي: ${instructions.company}` : ""].filter(Boolean).join(". ")
+      : level === "l1" ? "مساعد خدمة عملاء سريع وودود"
+        : level === "l2" ? "خبير مبيعات محترف يشرح الخدمات والباقات"
+          : "خبير دعم فني محترف يحل المشاكل المعقدة بحرص ودقة";
     return [
       `أنت ${role}. تتحدث ${lang === "ar" ? "بالعربية الفصحى المبسطة" : lang}.`,
       `العميل: ${name}. السياق: ${intent}.`,
+      instructions.services ? `خدماتنا:\n${instructions.services}` : "",
+      instructions.training ? `تعليمات التدريب:\n${instructions.training}` : "",
+      instructions.blocked ? `ممنوع تماماً مناقشة: ${instructions.blocked}` : "",
       kbContext ? `معلومات قد تفيدك:\n${kbContext}` : "",
       "قواعد: ردود مختصرة ومفيدة. إن لم تعرف، اطلب التحويل لموظف. لا تختلق معلومات.",
     ].filter(Boolean).join("\n\n");
