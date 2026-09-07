@@ -22,7 +22,7 @@ const sb = supabaseClient;
 const pacingFields = {
   mentions_per_comment: z.number().int().min(1).max(5).default(4),
   comments_per_hour: z.number().int().min(1).max(12).default(8),
-  daily_cap: z.number().int().min(1).max(80).default(60),
+  daily_cap: z.number().int().min(1).max(120).default(60),
   rate_per_hour: z.number().int().min(1).max(20).default(5),
   delay_min: z.number().int().min(20).max(900).default(380),
   delay_max: z.number().int().min(20).max(900).default(520),
@@ -191,7 +191,7 @@ router.post("/ig-actions/start", async (req, res) => {
         ? {
             mentions_per_comment: Math.min(input.mentions_per_comment ?? 4, 5),
             comments_per_hour: Math.min(input.comments_per_hour ?? 8, 12),
-            daily_cap: Math.min(input.daily_cap ?? 60, 80),
+            daily_cap: Math.min(input.daily_cap ?? 60, 120),
             rate_per_hour: Math.min(input.rate_per_hour ?? 8, 12),
             delay_min: Math.max(input.delay_min ?? 380, 350),
             delay_max: input.delay_max,
