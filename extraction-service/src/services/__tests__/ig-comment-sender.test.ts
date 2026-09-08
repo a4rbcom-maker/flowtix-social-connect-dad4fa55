@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  classifyNoMountOutcome,
   isCommentVisibleInPage,
   isPostUnavailable,
 } from "../ig-comment-sender.js";
@@ -49,6 +50,44 @@ test("handles-only comment (no template body) delivers via first handle", () => 
 test("empty boxes list falls back to plain substring match", () => {
   assert.equal(isCommentVisibleInPage("hello مرحبا world", [], "مرحبا"), true);
   assert.equal(isCommentVisibleInPage("hello world", [], "مرحبا"), false);
+});
+
+// ─── 2026-09-08: كشف الجلسة الميتة في مسار no-mount ─────────────────────────
+// Reality model: with a dead session, the post URL redirects to the login
+// page — no comment box ever mounts, and the page text carries login-wall
+// markers, NOT a 404. classifyNoMountOutcome turns that into session_dead
+// (→ cooldown + fast-fail path) instead of retryable thread_unavailable
+// (the 2h13m zero-yield churn of job 47dc024c).
+
+test("classifyNoMountOutcome: login wall → session_dead", () => {
+  const loginWall = "Instagram\nLog in to Instagram\nSign up to see photos, videos and more from your friends.";
+  assert.deepEqual(classifyNoMountOutcome(loginWall), {
+    ok: false, kind: "session_dead", detail: "login wall — session expired (no comment box)",
+  });
+  assert.deepEqual(classifyNoMountOutcome("تسجيل الدخول إلى إنستجرام • Instagram"), {
+    ok: false, kind: "session_dead", detail: "login wall — session expired (no comment box)",
+  });
+});
+
+test("classifyNoMountOutcome: restriction banner → rate_limited", () => {
+  assert.deepEqual(classifyNoMountOutcome("Action Blocked — Try again later"), {
+    ok: false, kind: "rate_limited", detail: "restriction banner (no comment box)",
+  });
+});
+
+test("classifyNoMountOutcome: dead post → post_unavailable (permanent skip)", () => {
+  assert.deepEqual(classifyNoMountOutcome("Sorry, this page isn't available."), {
+    ok: false, kind: "post_unavailable", detail: "post unavailable (404/comments off)",
+  });
+});
+
+test("classifyNoMountOutcome: slow/blank page stays retryable", () => {
+  assert.deepEqual(classifyNoMountOutcome("Instagram\nLoading comments…"), {
+    ok: false, kind: "thread_unavailable", detail: "comment box never mounted (45s)",
+  });
+  assert.deepEqual(classifyNoMountOutcome(""), {
+    ok: false, kind: "thread_unavailable", detail: "comment box never mounted (45s)",
+  });
 });
 
 // ─── Task 2: تمييز البوست غير المتاح عن فشل قابل لإعادة المحاولة ───────────

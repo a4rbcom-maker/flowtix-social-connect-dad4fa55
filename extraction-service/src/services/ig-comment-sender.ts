@@ -73,6 +73,28 @@ export function isPostUnavailable(pageText: string): boolean {
   );
 }
 
+/**
+ * Classify "the comment box never mounted" against the page text we were
+ * actually served. A dead session renders the login wall (→ session_dead),
+ * a restricted session renders a banner (→ rate_limited), a deleted/disabled
+ * post renders the unavailable page (→ post_unavailable); anything else is a
+ * slow page (→ retryable thread_unavailable). Pure so the decision table is
+ * unit-testable without a browser.
+ */
+export function classifyNoMountOutcome(pageText: string): SendOutcome {
+  const block = detectIgActionBlock(pageText);
+  if (block === "session_dead") {
+    return { ok: false, kind: "session_dead", detail: "login wall — session expired (no comment box)" };
+  }
+  if (block === "rate_limited" || block === "send_rejected") {
+    return { ok: false, kind: "rate_limited", detail: "restriction banner (no comment box)" };
+  }
+  if (isPostUnavailable(pageText)) {
+    return { ok: false, kind: "post_unavailable", detail: "post unavailable (404/comments off)" };
+  }
+  return { ok: false, kind: "thread_unavailable", detail: "comment box never mounted (45s)" };
+}
+
 /** The new comment must surface in the page text to count as delivered. */
 async function confirmDelivered(page: Page, textPrefix: string, timeoutMs: number): Promise<boolean> {
   const t0 = Date.now();
@@ -114,15 +136,12 @@ export async function postComment(page: Page, shortcode: string, text: string): 
       await sleep(2000);
     }
     if (!mounted) {
-      // Distinguish a dead/disabled post (permanent skip) from a slow page
-      // (retry): check the page text before giving up on this batch.
+      // Distinguish dead session / restricted session / dead post from a slow
+      // page: each leaves a different fingerprint in the page text.
       const pageText = (await page
         .evaluate(`(() => (document.body.innerText || ""))()`)
         .catch(() => "")) as string;
-      if (isPostUnavailable(pageText)) {
-        return { ok: false, kind: "post_unavailable", detail: "post unavailable (404/comments off)" };
-      }
-      return { ok: false, kind: "thread_unavailable", detail: "comment box never mounted (45s)" };
+      return classifyNoMountOutcome(pageText);
     }
 
     await sleep(1200 + Math.random() * 1800);
