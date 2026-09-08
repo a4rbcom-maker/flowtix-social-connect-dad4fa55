@@ -127,6 +127,19 @@ export function normalizeIgHandle(raw: string | null | undefined): string | null
 }
 
 /**
+ * Disposition contract shared by the worker and its tests:
+ *  - "skip_permanent": the target post itself is gone / has comments disabled —
+ *    retrying the batch can never succeed, so mark it skipped for good.
+ *  - "retry": transient failure (slow mount, network, rate limit) — the batch
+ *    goes back to pending until retry_max is exhausted.
+ */
+export function batchDispositionForOutcome(
+  kind: "rate_limited" | "send_rejected" | "session_dead" | "send_failed" | "thread_unavailable" | "post_unavailable",
+): "skip_permanent" | "retry" {
+  return kind === "post_unavailable" ? "skip_permanent" : "retry";
+}
+
+/**
  * Scan page text for Instagram restriction / logged-out markers. Mirrors the
  * signals in ig-base.ts (action_blocked, feedback_required, challenge_required,
  * /accounts/login) with Arabic co-labels. Returns the action kind, or null.

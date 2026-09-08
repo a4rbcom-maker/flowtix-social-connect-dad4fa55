@@ -100,6 +100,31 @@ function parsePostShortcode(url: string): string | null {
   return m2 ? m2[1] : null;
 }
 
+router.post("/ig-actions/count", async (req, res) => {
+  try {
+    const parsed = z.object({ source_job_id: z.string().uuid() }).safeParse(req.body);
+    if (!parsed.success) return httpError(res, 400, ErrorCodes.INVALID_INPUT, "Invalid request");
+    const { source_job_id } = parsed.data;
+
+    const { data: job } = await sb.from("extraction_jobs").select("id, type").eq("id", source_job_id).maybeSingle();
+    if (!job) return httpError(res, 404, "NOT_FOUND", "المهمة المصدر غير موجودة");
+    if (!String(job.type).startsWith("ig_")) return httpError(res, 400, ErrorCodes.INVALID_INPUT, "المهمة المصدر ليست من إنستجرام");
+
+    // Head-only count: zero rows downloaded — cheap enough to call while typing.
+    const { count, error } = await sb
+      .from("extraction_results")
+      .select("fb_id", { count: "exact", head: true })
+      .eq("job_id", source_job_id)
+      .eq("platform", "instagram");
+    if (error) return httpError(res, 500, ErrorCodes.UNKNOWN_ERROR, `count failed: ${error.message}`);
+
+    return res.json({ eligible: count ?? 0, skipped_unsupported: 0 });
+  } catch (err) {
+    log.error("IgActions", `count: ${String(err)}`);
+    return httpError(res, 500, ErrorCodes.UNKNOWN_ERROR, err instanceof Error ? err.message : String(err));
+  }
+});
+
 router.post("/ig-actions/preview", async (req, res) => {
   try {
     const parsed = previewSchema.safeParse(req.body);

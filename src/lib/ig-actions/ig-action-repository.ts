@@ -23,6 +23,18 @@ async function readFetchError(res: Response): Promise<string> {
 }
 
 export const igActionRepository = {
+  /** Lightweight eligible-count for live typing (no rows downloaded). */
+  async count(sourceJobId: string, signal?: AbortSignal): Promise<{ eligible: number; skipped_unsupported: number }> {
+    const res = await fetch(`${EXTRACTION_API_URL}/ig-actions/count`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": EXTRACTION_API_KEY },
+      body: JSON.stringify({ source_job_id: sourceJobId }),
+      signal,
+    });
+    if (!res.ok) throw new Error(await readFetchError(res));
+    return res.json();
+  },
+
   async preview(sourceJobId: string, mode: "mention" | "dm", body: string, mentionsPerComment?: number): Promise<IgActionPreview> {
     return postJson<IgActionPreview>("/ig-actions/preview", {
       source_job_id: sourceJobId,

@@ -32,6 +32,7 @@ import {
   chunkMentions,
   buildMentionComment,
   normalizeIgHandle,
+  batchDispositionForOutcome,
   IG_MENTION_DEFAULTS,
   IG_MENTION_TWO_SESSIONS,
   IG_DM_DEFAULTS,
@@ -244,6 +245,7 @@ export async function runIgActionWorker(jobId: string, hooks: IgWorkerHooks = {}
     failed: (job.progress?.failed as number) || 0,
     skipped: (job.progress?.skipped as number) || 0,
     current_idx: (job.progress?.current_idx as number) || 0,
+    next_comment_at: (job.progress?.next_comment_at as string | null) ?? null,
     stop_reason: null as string | null,
   };
   let consecutiveErrors = 0;
@@ -367,10 +369,13 @@ export async function runIgActionWorker(jobId: string, hooks: IgWorkerHooks = {}
           await setCooldown(chosen.sessionId, outcome.kind === "session_dead" ? 72 : 24);
           consecutiveErrors += 1;
           log.warn("IgAction", `job ${jobId}: session ${chosen.sessionId.slice(0, 8)} ${outcome.kind} — ${outcome.detail}`);
-        } else if (outcome.kind === "thread_unavailable") {
+        } else if (batchDispositionForOutcome(outcome.kind) === "skip_permanent") {
+          // The post itself is gone / comments disabled — retrying can never
+          // succeed, so the batch is skipped for good.
           await markBatchSkipped(jobId, nextBatch.map((r) => r.id), outcome.detail);
           progress.skipped += nextBatch.length;
           progress.current_idx += nextBatch.length;
+          log.warn("IgAction", `job ${jobId}: batch skipped permanently (${outcome.kind}) — ${outcome.detail}`);
         } else {
           await markBatchFailed(jobId, nextBatch.map((r) => r.id), cfg.retry_max, outcome.detail);
           progress.failed += nextBatch.length;
@@ -453,7 +458,13 @@ export async function runIgActionWorker(jobId: string, hooks: IgWorkerHooks = {}
         if (workers.get(jobId) === false) break;
       }
 
-      await delay(nextDelayMs(cfg.delay_min, cfg.delay_max));
+      const interDelay = nextDelayMs(cfg.delay_min, cfg.delay_max);
+      // Expose the ETA so the UI can show "next comment in ~X min" instead of
+      // a silent run that looks stuck during the 6–9 min pacing gaps.
+      progress.next_comment_at = new Date(Date.now() + interDelay).toISOString();
+      await updateProgress(jobId, progress);
+      await delay(interDelay);
+      progress.next_comment_at = null;
     }
 
     if (progress.stop_reason === "all_recipients_done" || (progress.stop_reason === null && !stopRequested)) {

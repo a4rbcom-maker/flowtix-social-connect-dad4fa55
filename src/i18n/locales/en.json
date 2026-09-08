@@ -2472,7 +2472,15 @@
       "total": "Processed",
       "sent": "Sent",
       "failed": "Failed",
-      "skipped": "Skipped"
+      "skipped": "Skipped",
+      "nextCommentIn": "Next comment in ~{{minutes}} min (pacing protects your account)"
+    },
+    "stopReason": {
+      "quiet_hours": "Quiet hours — sending pauses automatically until morning (7:00 Cairo)",
+      "all_sessions_cooling": "All sessions are cooling down due to Instagram limits — will resume automatically",
+      "too_many_errors": "Stopped due to repeated errors — retry or check your sessions",
+      "all_recipients_done": "All recipients processed",
+      "unknown": "Action temporarily stopped"
     },
     "status": {
       "queued": "Queued",

@@ -35,7 +35,9 @@ export function IgActionPage() {
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [sourceInfo, setSourceInfo] = useState<{ name: string; type: string; result_count: number; source?: string | null } | null>(null);
+  const [lightEligible, setLightEligible] = useState<number | null>(null);
   const timer = useRef<number | null>(null);
+  void lightEligible; // live typing indicator — full preview refreshes it on settle
 
   const sessionIds = useMemo(
     () => [primarySessionId, ...secondaryIds].filter(Boolean).slice(0, 2),
@@ -64,7 +66,23 @@ export function IgActionPage() {
     );
   }, [mode, sessionIds]);
 
-  // debounced preview (no start yet)
+  // debounced preview (no start yet): typing only triggers the LIGHTWEIGHT
+  // /count endpoint (no rows downloaded); the full /preview (samples, comments
+  // needed) runs once on mount and again only when the user stops typing.
+  const lightCount = useRef<number | null>(null);
+  useEffect(() => {
+    if (!jobId) return;
+    let cancelled = false;
+    const ctrl = new AbortController();
+    (async () => {
+      try {
+        const c = await igActionRepository.count(jobId, ctrl.signal);
+        if (!cancelled) setLightEligible(c.eligible);
+      } catch { /* keep last value */ }
+    })();
+    return () => { cancelled = true; ctrl.abort(); };
+  }, [jobId]);
+
   useEffect(() => {
     if (!jobId || !body.trim()) { setPreview(undefined); return; }
     let cancelled = false;
@@ -79,13 +97,14 @@ export function IgActionPage() {
       } finally {
         if (!cancelled) setPreviewLoading(false);
       }
-    }, 600);
+    }, 1200);
     return () => { cancelled = true; if (timer.current) window.clearTimeout(timer.current); };
   }, [jobId, body, mode, pacing.mentions_per_comment]);
 
   const postUrlValid = !postUrl || /^https?:\/\/(www\.)?instagram\.com\/(p|reel)\/[A-Za-z0-9_-]+/.test(postUrl);
   const canStart = !!jobId && !!body.trim() && sessionIds.length > 0 && !!preview && preview.eligible > 0 &&
     (mode === "dm" || postUrlValid);
+  void lightCount;
 
   const handleStart = async () => {
     if (!jobId || !canStart) return;
@@ -393,13 +412,18 @@ function IgActionProgressInline({ jobId }: { jobId: string }) {
   const { data } = useIgActionJob(jobId);
   const { pause, resume, stop } = useIgActionActions(jobId);
   if (!data) return <Skeleton className="h-40 w-full" />;
-  const p = data.job?.progress as { sent?: number; failed?: number; skipped?: number } | null;
+  const p = (data.job?.progress ?? {}) as {
+    sent?: number; failed?: number; skipped?: number; next_comment_at?: string | null; stop_reason?: string | null;
+  };
   const sent = p?.sent ?? 0;
   const failed = p?.failed ?? 0;
   const skipped = p?.skipped ?? 0;
   const processed = sent + failed + skipped;
   const pct = processed > 0 ? Math.round((sent / Math.max(processed, 1)) * 100) : 0;
   const status = data.job?.status ?? "queued";
+  const nextAt = p?.next_comment_at ? new Date(p.next_comment_at).getTime() : null;
+  const minutesLeft = nextAt && nextAt > Date.now() ? Math.max(1, Math.ceil((nextAt - Date.now()) / 60000)) : null;
+  const stopReason = p?.stop_reason ?? null;
 
   return (
     <Card>
@@ -421,6 +445,16 @@ function IgActionProgressInline({ jobId }: { jobId: string }) {
           <div className="h-full rounded-full bg-[var(--color-primary)] transition-all duration-500" style={{ width: `${pct}%` }} />
         </div>
         <p className="text-center text-xs text-[var(--color-fg-muted)]" aria-live="polite">{t(`ig_actions.status.${status}`)}</p>
+        {minutesLeft !== null && status === "running" && (
+          <p className="text-center text-xs text-[var(--color-fg)] bg-[var(--color-surface-2)] py-2 px-3 rounded-lg border border-[var(--color-border)]" aria-live="polite">
+            ⏳ {t("ig_actions.progress.nextCommentIn", { minutes: minutesLeft })}
+          </p>
+        )}
+        {stopReason && status !== "completed" && (
+          <p className="text-center text-xs text-[var(--color-warning)] bg-[color-mix(in_oklab,var(--color-warning)_8%,transparent)] py-2 px-3 rounded-lg border border-[var(--color-warning)]/20" role="alert">
+            {t(`ig_actions.stopReason.${stopReason}`, { defaultValue: t("ig_actions.stopReason.unknown") })}
+          </p>
+        )}
         <div className="flex gap-2 justify-center">
           {status === "running" && <Button variant="outline" size="sm" onClick={() => pause.mutate()} disabled={pause.isPending}>{t("ig_actions.pause")}</Button>}
           {status === "paused" && <Button variant="outline" size="sm" onClick={() => resume.mutate()} disabled={resume.isPending}>{t("ig_actions.resume")}</Button>}
