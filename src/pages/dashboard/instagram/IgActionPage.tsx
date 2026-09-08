@@ -451,7 +451,15 @@ function IgActionProgressInline({ jobId }: { jobId: string }) {
           </p>
         )}
         {stopReason && status !== "completed" && (
-          <p className="text-center text-xs text-[var(--color-warning)] bg-[color-mix(in_oklab,var(--color-warning)_8%,transparent)] py-2 px-3 rounded-lg border border-[var(--color-warning)]/20" role="alert">
+          <p
+            className={cn(
+              "text-center text-xs py-2 px-3 rounded-lg border",
+              stopReason === "session_expired"
+                ? "text-[var(--color-error)] bg-[color-mix(in_oklab,var(--color-error)_8%,transparent)] border-[var(--color-error)]/20"
+                : "text-[var(--color-warning)] bg-[color-mix(in_oklab,var(--color-warning)_8%,transparent)] border-[var(--color-warning)]/20",
+            )}
+            role="alert"
+          >
             {t(`ig_actions.stopReason.${stopReason}`, { defaultValue: t("ig_actions.stopReason.unknown") })}
           </p>
         )}

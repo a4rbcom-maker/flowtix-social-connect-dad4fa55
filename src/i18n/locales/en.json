@@ -2402,6 +2402,7 @@
       "failed": "Failed",
       "canceled": "Canceled"
     },
+    "nothingSentWarning": "Nothing was sent from this task — check the sending session and retry.",
     "cardLabel": "Messaging",
     "source": {
       "task": "Source task",
@@ -2479,6 +2480,7 @@
       "quiet_hours": "Quiet hours — sending pauses automatically until morning (7:00 Cairo)",
       "all_sessions_cooling": "All sessions are cooling down due to Instagram limits — will resume automatically",
       "too_many_errors": "Stopped due to repeated errors — retry or check your sessions",
+      "session_expired": "Session expired — reconnect it from the Instagram sessions page, then run the task again.",
       "all_recipients_done": "All recipients processed",
       "unknown": "Action temporarily stopped"
     },

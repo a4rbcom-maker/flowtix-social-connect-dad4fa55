@@ -360,6 +360,11 @@ export function TasksPage() {
             <span className="tabular-nums text-[var(--color-success)]" aria-live="polite">✓ {messageJobs[job.id].sent}</span>
             {messageJobs[job.id].failed > 0 && <span className="tabular-nums text-[var(--color-error)]">✗ {messageJobs[job.id].failed}</span>}
             {messageJobs[job.id].skipped > 0 && <span className="tabular-nums text-[var(--color-warning)]">↷ {messageJobs[job.id].skipped}</span>}
+            {messageJobs[job.id].sent === 0 && (messageJobs[job.id].skipped + messageJobs[job.id].failed) > 0 && (
+              <span className="w-full font-medium text-[var(--color-warning)]" role="alert">
+                {t("messaging.nothingSentWarning")}
+              </span>
+            )}
           </div>
         )}
 
