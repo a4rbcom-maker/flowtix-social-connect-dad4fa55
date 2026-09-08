@@ -64,9 +64,13 @@ function makeStubDb(tables: Record<string, { rows: Row[] }>) {
       },
       update(payload: Row) {
         calls.push({ table, op: "update", payload: payload as Row });
+        // Support the .eq(...).eq(...) chains the worker's writers use.
         const eqable: any = {
           eq(_k: string, _v: unknown) {
-            return Promise.resolve({ data: null });
+            return eqable;
+          },
+          then(res: (v: { data: null }) => void) {
+            res({ data: null });
           },
         };
         return eqable;
@@ -121,22 +125,20 @@ test("worker module loads and exposes the right exports", async () => {
 
 test("handleSessionDead: first occurrence triggers, repeats are no-ops", async () => {
   const mod = await import("../ig-action-worker.js");
-  const db = makeStubDb({
-    ig_sessions: { rows: [{ id: SESSION_ID, status: "connected" }] },
-  });
+  const db = makeStubDb({});
   (mod as any).__setSupabaseForTests(db);
 
   const progress: Record<string, unknown> = {};
   const r1 = await (mod as any).handleSessionDead(JOB_ID, SESSION_ID, progress);
   assert.equal(r1, true);
   assert.equal(progress.stop_reason, "session_expired");
-  // session marked disconnected + job failed
-  const sessionMark = db.calls.find((c) => c.table === "ig_sessions" && c.op === "update");
-  assert.ok(sessionMark, "expected ig_sessions update");
-  assert.equal((sessionMark!.payload as Row).status, "disconnected");
+  // job failed with the Arabic reconnect hint (the ig_sessions disconnect goes
+  // through igSupabaseService, outside this stub's reach)
   const jobFail = db.calls.find((c) => c.table === "message_jobs" && c.op === "update");
   assert.ok(jobFail);
   assert.equal((jobFail!.payload as Row).status, "failed");
+  assert.match(String((jobFail!.payload as Row).error), /الجلسة منتهية الصلاحية/);
+  assert.ok((jobFail!.payload as Row).progress, "progress persisted with the job row (no torn state)");
 
   // Second call: already flagged → no-op (idempotent guard)
   const before = db.calls.length;

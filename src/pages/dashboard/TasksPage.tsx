@@ -116,6 +116,7 @@ export function TasksPage() {
   // Message-jobs status per source extraction job — drives the per-card send badge.
   useEffect(() => {
     let alive = true;
+    let interval: ReturnType<typeof setInterval> | null = null;
     const load = async () => {
       try {
         const { data } = await (supabase as any)
@@ -138,11 +139,17 @@ export function TasksPage() {
           }
         }
         setMessageJobs(map);
+        // Poll only while something is actually in flight (decided from the
+        // FRESH data — the state snapshot at mount is always empty).
+        const hasActive = Object.values(map).some((m) => m.status === "running" || m.status === "queued");
+        if (hasActive && !interval) interval = setInterval(load, 5000);
+        if (!hasActive && interval) {
+          clearInterval(interval);
+          interval = null;
+        }
       } catch { /* RLS or table not yet visible — badges simply don't show */ }
     };
     load();
-    const hasActive = Object.values(messageJobs).some((m) => m.status === "running" || m.status === "queued");
-    const interval = hasActive ? setInterval(load, 5000) : null;
     return () => { alive = false; if (interval) clearInterval(interval); };
   }, []);
 

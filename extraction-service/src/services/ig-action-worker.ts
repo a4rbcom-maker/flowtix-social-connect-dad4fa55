@@ -43,9 +43,13 @@ const log = logger;
 let sb = supabaseClient;
 const workers = new Map<string, boolean>();
 
-/** Test seam: swap the supabase client (stub DB) in unit tests. */
-export function __setSupabaseForTests(client: unknown): void {
+/** Test seam: swap the supabase client (stub DB) in unit tests. Returns a restore fn. */
+export function __setSupabaseForTests(client: unknown): () => void {
+  const previous = sb;
   sb = client as typeof supabaseClient;
+  return () => {
+    sb = previous;
+  };
 }
 
 export function startIgActionWorker(jobId: string): void {
@@ -158,9 +162,9 @@ async function setCooldown(sessionId: string, hours = 24): Promise<void> {
  * are dead and NO further send on it (or, in practice, on this job's other
  * stale sessions) can succeed. Job 47dc024c burned 95 recipients over 2h13m
  * in exactly this state. Contract: flag once per run — mark the session
- * `disconnected` in ig_sessions, fail the job with an Arabic hint, stop the
- * run. Idempotent: repeat calls are no-ops so DM/mention paths can call it
- * freely.
+ * `disconnected` via the session service, fail the job with an Arabic hint,
+ * stop the run. Idempotent: repeat calls are no-ops so DM/mention paths can
+ * call it freely.
  */
 export async function handleSessionDead(
   jobId: string,
@@ -169,19 +173,25 @@ export async function handleSessionDead(
 ): Promise<boolean> {
   if (progress.stop_reason === "session_expired") return false;
   progress.stop_reason = "session_expired";
-  await sb
-    .from("ig_sessions")
-    .update({ status: "disconnected", updated_at: new Date().toISOString() })
-    .eq("id", sessionId);
-  await sb
-    .from("message_jobs")
-    .update({
-      status: "failed",
-      error: "الجلسة منتهية الصلاحية — أعد ربطها من صفحة جلسات إنستجرام ثم أعد تشغيل المهمة.",
-      completed_at: new Date().toISOString(),
-    })
-    .eq("id", jobId);
-  await updateProgress(jobId, progress);
+  // Keep this sentence in sync with ig_actions.stopReason.session_expired
+  // (ar/en.json) — TasksPage shows job.error, the progress card shows the key.
+  const error = "الجلسة منتهية الصلاحية — أعد ربطها من صفحة جلسات إنستجرام ثم أعد تشغيل المهمة.";
+  // Two independent tables; a merged single-row write keeps status+progress
+  // atomic for pollers (no torn "failed without stop_reason" window).
+  const [, { error: jobError }] = await Promise.all([
+    igSupabaseService.updateIgSessionStatus(sessionId, "disconnected", "login wall — session dead during IG action job"),
+    sb
+      .from("message_jobs")
+      .update({
+        status: "failed",
+        error,
+        completed_at: new Date().toISOString(),
+        progress,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", jobId),
+  ]);
+  if (jobError) log.error("IgAction", `handleSessionDead: failed to persist job failure ${jobId}: ${jobError.message}`);
   log.error("IgAction", `job ${jobId}: session ${sessionId.slice(0, 8)} is dead — job failed fast (session_expired)`);
   return true;
 }
@@ -408,7 +418,7 @@ export async function runIgActionWorker(jobId: string, hooks: IgWorkerHooks = {}
           // recipients aren't burned for hours (job 47dc024c regression).
           const flagged = await handleSessionDead(jobId, chosen.sessionId, progress);
           if (flagged) {
-            workers.set(jobId, false);
+            stopRequested = true;
             break;
           }
           await setCooldown(chosen.sessionId, 72);
@@ -478,7 +488,7 @@ export async function runIgActionWorker(jobId: string, hooks: IgWorkerHooks = {}
           // session is dead — stop before burning the remaining recipients.
           const flagged = await handleSessionDead(jobId, chosen.sessionId, progress);
           if (flagged) {
-            workers.set(jobId, false);
+            stopRequested = true;
             break;
           }
           await setCooldown(chosen.sessionId, 72);
