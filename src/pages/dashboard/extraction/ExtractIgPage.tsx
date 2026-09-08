@@ -522,8 +522,10 @@ export function ExtractIgPage() {
 
 async function extractRepositoryExport(jobId: string, format: ExportFormat, t: (key: string) => string) {
   try {
-    const res = await extractionRepository.exportResults(jobId, format);
-    window.open(res.download_url, "_blank");
+    // exportResults triggers the browser download itself (a.click()); opening
+    // download_url in a new tab used to surface ERR_FILE_NOT_FOUND because
+    // the blob URL was revoked before the tab could request it.
+    await extractionRepository.exportResults(jobId, format);
     toast({ type: "success", title: t("ig_extract.exportStarted") });
   } catch (err) {
     toast({ type: "error", title: t("ig_extract.exportFailed"), description: err instanceof Error ? err.message : String(err) });

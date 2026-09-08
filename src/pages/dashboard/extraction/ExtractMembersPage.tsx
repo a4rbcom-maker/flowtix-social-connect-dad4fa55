@@ -241,8 +241,10 @@ export function ExtractMembersPage() {
     exportResults.mutate(
       { jobId: activeJob.id, format },
       {
-        onSuccess: (result) => {
-          window.open(result.download_url, "_blank");
+        // exportResults triggers the browser download itself (a.click());
+        // opening download_url here used to surface ERR_FILE_NOT_FOUND — the
+        // blob was already revoked by the time the new tab requested it.
+        onSuccess: () => {
           toast({ type: "success", title: t("extract.exportStarted") });
         },
         onError: (err) => {

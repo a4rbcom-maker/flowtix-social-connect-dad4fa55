@@ -142,8 +142,14 @@ export const extractionRepository = {
     const a = document.createElement("a");
     a.href = url;
     a.download = `flowtix-export-${jobId}.${format}`;
+    // The anchor must be in the DOM for the click to be honored reliably.
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    // The blob backs the browser's download until it consumes it — revoking
+    // synchronously (the old code) killed the download and any tab opened on
+    // this URL surfaced "Your file couldn't be accessed / ERR_FILE_NOT_FOUND".
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
     return { export_id: jobId, download_url: url, row_count: 0, file_size_bytes: blob.size, format };
   },
 

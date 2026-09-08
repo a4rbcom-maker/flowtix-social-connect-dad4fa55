@@ -1211,7 +1211,7 @@
       "downloadCsv": "تحميل CSV",
       "newExtraction": "استخراج جديد"
     },
-    "exportStarted": "بدأ التصدير",
+    "exportStarted": "بدأ التحميل",
     "exportFailed": "فشل التصدير",
     "cancelDone": "تم إلغاء المهمة"
   },
@@ -1498,7 +1498,7 @@
       "keepRunning": "استمر",
       "confirm": "نعم، إيقاف"
     },
-    "exportStarted": "بدأ التصدير",
+    "exportStarted": "بدأ التحميل",
     "exportFailed": "فشل التصدير",
     "failed": {
       "title": "فشل الاستخراج",
