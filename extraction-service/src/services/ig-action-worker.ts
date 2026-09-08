@@ -40,8 +40,13 @@ import {
 } from "./ig-action-pacing.js";
 
 const log = logger;
-const sb = supabaseClient;
+let sb = supabaseClient;
 const workers = new Map<string, boolean>();
+
+/** Test seam: swap the supabase client (stub DB) in unit tests. */
+export function __setSupabaseForTests(client: unknown): void {
+  sb = client as typeof supabaseClient;
+}
 
 export function startIgActionWorker(jobId: string): void {
   if (workers.has(jobId)) return;
@@ -146,6 +151,39 @@ async function setCooldown(sessionId: string, hours = 24): Promise<void> {
     updated_at: new Date().toISOString(),
   });
   log.warn("IgAction", `session ${sessionId.slice(0, 8)} cooling down until ${until.toISOString()}`);
+}
+
+/**
+ * A session_dead outcome means IG served the login wall: the session's cookies
+ * are dead and NO further send on it (or, in practice, on this job's other
+ * stale sessions) can succeed. Job 47dc024c burned 95 recipients over 2h13m
+ * in exactly this state. Contract: flag once per run — mark the session
+ * `disconnected` in ig_sessions, fail the job with an Arabic hint, stop the
+ * run. Idempotent: repeat calls are no-ops so DM/mention paths can call it
+ * freely.
+ */
+export async function handleSessionDead(
+  jobId: string,
+  sessionId: string,
+  progress: Record<string, unknown>,
+): Promise<boolean> {
+  if (progress.stop_reason === "session_expired") return false;
+  progress.stop_reason = "session_expired";
+  await sb
+    .from("ig_sessions")
+    .update({ status: "disconnected", updated_at: new Date().toISOString() })
+    .eq("id", sessionId);
+  await sb
+    .from("message_jobs")
+    .update({
+      status: "failed",
+      error: "الجلسة منتهية الصلاحية — أعد ربطها من صفحة جلسات إنستجرام ثم أعد تشغيل المهمة.",
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", jobId);
+  await updateProgress(jobId, progress);
+  log.error("IgAction", `job ${jobId}: session ${sessionId.slice(0, 8)} is dead — job failed fast (session_expired)`);
+  return true;
 }
 
 export interface IgWorkerHooks {
@@ -365,8 +403,19 @@ export async function runIgActionWorker(jobId: string, hooks: IgWorkerHooks = {}
           }
           
           log.info("IgAction", `job ${jobId}: mention comment sent (${handles.length} handles) via ${chosen.sessionId.slice(0, 8)} — ${progress.sent} total`);
-        } else if (outcome.kind === "rate_limited" || outcome.kind === "session_dead") {
-          await setCooldown(chosen.sessionId, outcome.kind === "session_dead" ? 72 : 24);
+        } else if (outcome.kind === "session_dead") {
+          // Dead session (login wall) — nothing else can send; fail fast so
+          // recipients aren't burned for hours (job 47dc024c regression).
+          const flagged = await handleSessionDead(jobId, chosen.sessionId, progress);
+          if (flagged) {
+            workers.set(jobId, false);
+            break;
+          }
+          await setCooldown(chosen.sessionId, 72);
+          consecutiveErrors += 1;
+          log.warn("IgAction", `job ${jobId}: session ${chosen.sessionId.slice(0, 8)} ${outcome.kind} — ${outcome.detail}`);
+        } else if (outcome.kind === "rate_limited") {
+          await setCooldown(chosen.sessionId, 24);
           consecutiveErrors += 1;
           log.warn("IgAction", `job ${jobId}: session ${chosen.sessionId.slice(0, 8)} ${outcome.kind} — ${outcome.detail}`);
         } else if (batchDispositionForOutcome(outcome.kind) === "skip_permanent") {
@@ -424,8 +473,18 @@ export async function runIgActionWorker(jobId: string, hooks: IgWorkerHooks = {}
           progress.current_idx += 1;
           sentInBatch += 1;
           consecutiveErrors = 0;
-        } else if (outcome.kind === "rate_limited" || outcome.kind === "session_dead") {
-          await setCooldown(chosen.sessionId, outcome.kind === "session_dead" ? 72 : 24);
+        } else if (outcome.kind === "session_dead") {
+          // Same fast-fail contract as mention mode: a login wall means the
+          // session is dead — stop before burning the remaining recipients.
+          const flagged = await handleSessionDead(jobId, chosen.sessionId, progress);
+          if (flagged) {
+            workers.set(jobId, false);
+            break;
+          }
+          await setCooldown(chosen.sessionId, 72);
+          consecutiveErrors += 1;
+        } else if (outcome.kind === "rate_limited") {
+          await setCooldown(chosen.sessionId, 24);
           consecutiveErrors += 1;
         } else if (outcome.kind === "thread_unavailable") {
           await markRecipientSkipped(jobId, recipient.id, outcome.detail);

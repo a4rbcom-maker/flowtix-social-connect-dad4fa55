@@ -9,8 +9,8 @@ import assert from "node:assert/strict";
  *  - quiet hours → stop_reason 'quiet_hours', no send executed
  *  - thread_unavailable (DM) → recipient skipped, not failed
  *
- * The worker imports the real supabase client at module load, so we stub
- * supabaseClient.from via its exported object before importing the worker.
+ * The worker imports the real supabase client at module load, so we swap
+ * supabaseClient via the __setSupabaseForTests seam before exercising it.
  */
 
 type Row = Record<string, unknown>;
@@ -64,7 +64,12 @@ function makeStubDb(tables: Record<string, { rows: Row[] }>) {
       },
       update(payload: Row) {
         calls.push({ table, op: "update", payload: payload as Row });
-        return Promise.resolve({ data: null });
+        const eqable: any = {
+          eq(_k: string, _v: unknown) {
+            return Promise.resolve({ data: null });
+          },
+        };
+        return eqable;
       },
       insert(payload: Row | Row[]) {
         calls.push({ table, op: "insert", payload: payload as Row });
@@ -106,4 +111,46 @@ test("worker module loads and exposes the right exports", async () => {
   assert.equal(typeof mod.stopIgActionWorker, "function");
   assert.equal(typeof mod.resumeIgActionJobs, "function");
   assert.equal(typeof mod.runIgActionWorker, "function");
+});
+
+// ─── 2026-09-08: الفشل السريع عند جلسة ميتة (session_expired) ───────────────
+// Reality model: job 47dc024c burned 95 recipients as skipped over 2h13m on a
+// session that had been dead for 3 days. The new contract: the FIRST
+// session_dead outcome must end the run — no more sends attempted — with
+// stop_reason 'session_expired', and the caller decides the final job status.
+
+test("handleSessionDead: first occurrence triggers, repeats are no-ops", async () => {
+  const mod = await import("../ig-action-worker.js");
+  const db = makeStubDb({
+    ig_sessions: { rows: [{ id: SESSION_ID, status: "connected" }] },
+  });
+  (mod as any).__setSupabaseForTests(db);
+
+  const progress: Record<string, unknown> = {};
+  const r1 = await (mod as any).handleSessionDead(JOB_ID, SESSION_ID, progress);
+  assert.equal(r1, true);
+  assert.equal(progress.stop_reason, "session_expired");
+  // session marked disconnected + job failed
+  const sessionMark = db.calls.find((c) => c.table === "ig_sessions" && c.op === "update");
+  assert.ok(sessionMark, "expected ig_sessions update");
+  assert.equal((sessionMark!.payload as Row).status, "disconnected");
+  const jobFail = db.calls.find((c) => c.table === "message_jobs" && c.op === "update");
+  assert.ok(jobFail);
+  assert.equal((jobFail!.payload as Row).status, "failed");
+
+  // Second call: already flagged → no-op (idempotent guard)
+  const before = db.calls.length;
+  const r2 = await (mod as any).handleSessionDead(JOB_ID, SESSION_ID, progress);
+  assert.equal(r2, false);
+  assert.equal(db.calls.length, before);
+});
+
+test("handleSessionDead still fires when the session row update races", async () => {
+  const mod = await import("../ig-action-worker.js");
+  const db = makeStubDb({});
+  (mod as any).__setSupabaseForTests(db);
+  const progress: Record<string, unknown> = {};
+  const r = await (mod as any).handleSessionDead(JOB_ID, "other-session", progress);
+  assert.equal(r, true);
+  assert.equal(progress.stop_reason, "session_expired");
 });
