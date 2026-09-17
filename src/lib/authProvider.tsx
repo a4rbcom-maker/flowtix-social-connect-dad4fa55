@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   type AuthState,
@@ -23,20 +23,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     role: "user",
     loading: true,
   });
+  const refreshInFlight = useRef(false);
 
   const refreshProfile = useCallback(async () => {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) {
         setState({ session: null, profile: null, role: "user", loading: false });
         return;
       }
-      const profile = await fetchProfile(session.user.id);
-      const role = await fetchUserRole(session.user.id, (profile as any)?.workspace_id ?? null);
+      const [profile, role] = await Promise.all([
+        fetchProfile(session.user.id),
+        fetchUserRole(session.user.id),
+      ]);
       setState({ session, profile, role, loading: false });
     } catch (err) {
       console.error("[AuthProvider] refreshProfile error:", err);
       setState({ session: null, profile: null, role: "user", loading: false });
+    } finally {
+      refreshInFlight.current = false;
     }
   }, []);
 

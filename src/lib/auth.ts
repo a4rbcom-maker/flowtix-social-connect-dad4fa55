@@ -34,15 +34,12 @@ export async function fetchProfile(userId: string) {
 }
 
 export async function fetchUserRole(userId: string, _workspaceId?: string | null): Promise<RoleKey> {
-  try {
-    const { data: isSuper } = await (supabase as any).rpc("is_super_admin");
-    if (isSuper === true) return "super_admin";
-  } catch {}
-
-  const { data } = await supabase
-    .from("user_roles")
-    .select("roles(key)")
-    .eq("user_id", userId);
+  const superQuery = (supabase as any).rpc("is_super_admin") as Promise<{ data: boolean | null }>;
+  const [{ data }, { data: isSuper }] = await Promise.all([
+    supabase.from("user_roles").select("roles(key)").eq("user_id", userId),
+    superQuery,
+  ]);
+  if (isSuper === true) return "super_admin";
   if (!data || data.length === 0) return "user";
   const keys = data.map((r: { roles: { key: string } | null }) => r.roles?.key).filter(Boolean) as string[];
   if (keys.includes("admin")) return "admin";
