@@ -25,9 +25,12 @@ export function MyGroupsTab({ onGoToPublish }: Props) {
   const [privacyFilter, setPrivacyFilter] = useState<"all" | "public" | "private">("all");
   const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "moderator" | "member">("all");
 
+  const [errMsg, setErrMsg] = useState("");
+
   const fetchGroups = useCallback(async () => {
     if (!sessionId) return;
     setPhase("loading");
+    setErrMsg("");
     try {
       const res = await fetch(`${import.meta.env.VITE_EXTRACTION_API_URL}/list-groups`, {
         method: "POST",
@@ -53,7 +56,10 @@ export function MyGroupsTab({ onGoToPublish }: Props) {
       
       setGroups(data.groups);
       setPhase("loaded");
-    } catch { setPhase("error"); }
+    } catch (e) {
+      setErrMsg(e instanceof Error ? e.message : "");
+      setPhase("error");
+    }
   }, [sessionId]);
 
   useEffect(() => { if (sessionId && phase === "idle") fetchGroups(); }, [sessionId, phase, fetchGroups]);
@@ -139,7 +145,7 @@ export function MyGroupsTab({ onGoToPublish }: Props) {
           <CardContent className="flex flex-col items-center gap-4 py-14">
             <div className="p-4 rounded-full bg-[var(--color-error)]/10"><AlertTriangle className="size-10 text-[var(--color-error)]" /></div>
             <p className="text-xl font-bold">{t("pages.groups.fetchError")}</p>
-            <p className="text-sm text-[var(--color-fg-muted)]">تعذر الاتصال بخدمة فيسبوك. تحقق من اتصالك وحالة الجلسة.</p>
+            <p className="text-sm text-center text-[var(--color-fg-muted)]">{errMsg || "تعذر الاتصال بخدمة فيسبوك. تحقق من اتصالك وحالة الجلسة."}</p>
             <Button onClick={fetchGroups} className="gap-2"><RefreshCw className="size-4" /> إعادة المحاولة</Button>
           </CardContent>
         </Card>
