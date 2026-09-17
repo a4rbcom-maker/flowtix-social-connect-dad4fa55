@@ -38,7 +38,12 @@ export function MyGroupsTab({ onGoToPublish }: Props) {
         body: JSON.stringify({ session_id: sessionId }),
       });
       const data = await res.json() as ListGroupsResponse;
-      if (!res.ok || data.error) throw new Error(data.error?.message || "Failed");
+      if (!res.ok || data.error) {
+        const message = data.error?.code === "SESSION_EXPIRED"
+          ? "الجلسة غير نشطة. تعذّر جلب الجروبات لأن تسجيل الدخول انتهى أو بيانات الجلسة غير صالحة. انتقل إلى «الجلسات» وأعد ربط الحساب، ثم حاول مرة أخرى."
+          : data.error?.message || "تعذّر جلب الجروبات. حاول مرة أخرى.";
+        throw new Error(message);
+      }
       
       // Handle platform limitation notice
       if (data.notice?.platform_limitation) {
