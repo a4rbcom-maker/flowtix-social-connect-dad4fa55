@@ -1,5 +1,5 @@
 import { Search } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
+
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { ConversationItem } from "./ConversationItem";
@@ -39,14 +39,14 @@ export function ConversationList({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-[var(--color-border)] p-3 space-y-2.5">
+      <div className="border-b border-[var(--color-border)] p-3 space-y-2.5 bg-[var(--color-surface-1)]">
         <div className="relative">
           <Search className="absolute start-3 top-1/2 -translate-y-1/2 size-4 text-[var(--color-fg-muted)]" />
           <input
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={t("wa.inbox.searchPlaceholder")}
-            className="w-full ps-9 pe-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-sm text-[var(--color-fg)] placeholder:text-[var(--color-fg-muted)] focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+            className="w-full ps-9 pe-3 py-2.5 rounded-full border border-transparent bg-[var(--color-surface-2)] text-sm text-[var(--color-fg)] placeholder:text-[var(--color-fg-muted)] focus:outline-none focus:bg-[var(--color-bg)] focus:border-[var(--color-primary)] transition-colors"
           />
         </div>
 
@@ -56,9 +56,9 @@ export function ConversationList({
               key={f.key}
               onClick={() => onFilterChange(f.key)}
               className={cn(
-                "shrink-0 px-3 py-1 text-xs font-medium rounded-full transition-colors",
+                "shrink-0 px-3.5 py-1.5 text-xs font-semibold rounded-full transition-all",
                 filter === f.key
-                  ? "bg-[var(--color-primary)] text-white"
+                  ? "bg-[#25d366] text-white shadow-sm"
                   : "bg-[var(--color-surface-2)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:bg-[var(--color-surface-3)]"
               )}
             >
@@ -68,11 +68,17 @@ export function ConversationList({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto bg-[var(--color-bg)]">
         {isLoading ? (
           <div className="p-2 space-y-2">
             {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-16 w-full rounded-lg" />
+              <div key={i} className="flex items-center gap-3 p-2.5 animate-pulse">
+                <div className="size-12 rounded-full bg-[var(--color-surface-2)]" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3.5 w-2/3 rounded bg-[var(--color-surface-2)]" />
+                  <div className="h-3 w-4/5 rounded bg-[var(--color-surface-2)]" />
+                </div>
+              </div>
             ))}
           </div>
         ) : conversations.length === 0 ? (

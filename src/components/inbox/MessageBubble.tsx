@@ -82,26 +82,29 @@ export function MessageBubble({
   const renderStatusIcon = () => {
     if (!isOut) return null;
     if (message.status === "pending") return <span className="size-3 rounded-full border border-current opacity-50" />;
-    if (message.status === "sent") return <Check className="size-3.5 inline" />;
-    if (message.status === "delivered") return <CheckCheck className="size-3.5 inline" />;
-    if (message.status === "read") return <CheckCheck className="size-3.5 inline text-blue-300" />;
-    if (message.status === "failed") return <span className="text-red-300 text-[10px]">!</span>;
+    if (message.status === "sent") return <Check className="size-4 inline" />;
+    if (message.status === "delivered") return <CheckCheck className="size-4 inline" />;
+    if (message.status === "read") return <CheckCheck className="size-4 inline" style={{ color: "#53bdeb" }} />;
+    if (message.status === "failed") return <span className="text-red-400 text-[10px] font-bold">!</span>;
     return null;
   };
 
   return (
-    <div className={cn("group flex px-1", isOut ? "justify-end" : "justify-start", isHighlighted && "bg-[var(--color-primary)]/5 -mx-1 px-2 rounded-lg")}>
-      <div className={cn("relative max-w-[75%] sm:max-w-[65%]", isOut ? "items-end" : "items-start")}>
-        <div className={cn(
-          "px-3.5 py-2 rounded-2xl text-sm",
+    <div className={cn("group flex px-1.5", isOut ? "justify-start" : "justify-end", isHighlighted && "bg-[var(--color-primary)]/5 -mx-1 px-2 rounded-lg")}>
+      <div
+        className={cn(
+          "relative max-w-[75%] sm:max-w-[65%] shadow-sm",
           isOut
-            ? "bg-[var(--color-primary)] text-white rounded-ee-md"
-            : "bg-[var(--color-surface-2)] text-[var(--color-fg)] rounded-es-md"
-        )}>
+            ? "rounded-2xl rounded-ts-md bg-[#d9fdd3]"
+            : "rounded-2xl rounded-te-md text-white"
+        )}
+        style={{ backgroundColor: isOut ? "#d9fdd3" : "#00a884" }}
+      >
+        <div className={cn("px-3 py-1.5 text-[14.5px]", isOut ? "text-[#111b21]" : "text-white")}>
           {hasMedia && mediaUrl && (
-            <div className="mb-1.5 overflow-hidden rounded-lg">
-              {mediaType === "image" && <img src={mediaUrl} alt="" className="max-w-full max-h-60 object-cover rounded" />}
-              {mediaType === "video" && <video src={mediaUrl} controls className="max-w-full max-h-60 rounded" />}
+            <div className="mb-1.5 overflow-hidden rounded-xl">
+              {mediaType === "image" && <img src={mediaUrl} alt="" className="max-w-full max-h-60 object-cover rounded-xl" />}
+              {mediaType === "video" && <video src={mediaUrl} controls className="max-w-full max-h-60 rounded-xl" />}
               {mediaType === "audio" && <audio src={mediaUrl} controls className="max-w-full h-9" />}
               {mediaType === "document" && (
                 <a
@@ -109,7 +112,7 @@ export function MessageBubble({
                   target="_blank"
                   rel="noopener noreferrer"
                   download={fileName}
-                  className={cn("flex items-center gap-2 p-2.5 rounded-lg", isOut ? "bg-white/10 hover:bg-white/15" : "bg-[var(--color-bg)] hover:bg-[var(--color-surface-3)]")}
+                  className={cn("flex items-center gap-2 p-2.5 rounded-lg", isOut ? "bg-black/5 hover:bg-black/10" : "bg-white/15 hover:bg-white/25")}
                 >
                   <Download className="size-5 shrink-0" />
                   <span className="text-xs truncate">{fileName || t("wa.inbox.message.file")}</span>
@@ -118,13 +121,18 @@ export function MessageBubble({
             </div>
           )}
 
-          {message.body && <LinkifiedText text={message.body} outbound={isOut} />}
+          {message.body && <LinkifiedText text={message.body} outbound={false} />}
 
-          <div className={cn("flex items-center gap-1 mt-0.5", isOut ? "text-white/50 justify-end" : "text-[var(--color-fg-muted)]")}>
-            <span className="text-[10px]">{formatTime(message.created_at)}</span>
+          <div className={cn("flex items-center gap-1 mt-0.5", isOut ? "justify-end" : "justify-end")}>
+            <span className={cn("text-[10px]", isOut ? "text-[#667781]" : "text-white/70")}>{formatTime(message.created_at)}</span>
             {renderStatusIcon()}
           </div>
         </div>
+        {/* Tail */}
+        <div
+          className={cn("absolute top-2 size-3 rotate-45", isOut ? "-start-1" : "-end-1")}
+          style={{ backgroundColor: isOut ? "#d9fdd3" : "#00a884" }}
+        />
 
         <div className={cn(
           "absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 bg-[var(--color-surface-2)] rounded-lg border border-[var(--color-border)] p-0.5 shadow-sm",

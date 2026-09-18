@@ -1,6 +1,6 @@
 import { Star, Archive, ShieldAlert, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getInitials } from "@/lib/inbox-helpers";
+
 import { useTranslation } from "react-i18next";
 import type { ConversationWithContact } from "@/types/wa-inbox.types";
 
@@ -31,19 +31,20 @@ export function ChatHeader({
   };
 
   return (
-    <div className="flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface-1)] px-4 py-2.5">
+    <div className="flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface-1)] px-4 py-2.5 shadow-sm">
       <div className="flex items-center gap-3 min-w-0">
         {conv.contact?.avatar_url ? (
-          <img src={conv.contact.avatar_url} alt="" className="size-9 rounded-full object-cover shrink-0" />
+          <img src={conv.contact.avatar_url} alt="" className="size-10 rounded-full object-cover shrink-0" />
         ) : (
-          <div className="size-9 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center text-[var(--color-primary)] font-bold text-xs shrink-0">
-            {getInitials(conv.contact?.push_name || conv.contact?.name)}
+          <div className="size-10 rounded-full flex items-center justify-center text-white font-semibold text-sm shrink-0 shadow-sm"
+            style={{ background: "linear-gradient(135deg,#00a884,#25d366)" }}>
+            {(conv.contact?.push_name || conv.contact?.name || conv.contact?.phone || "؟").trim().charAt(0)}
           </div>
         )}
 
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <p className="text-sm font-semibold truncate text-[var(--color-fg)]">{name}</p>
+            <p className="text-[15px] font-semibold truncate text-[var(--color-fg)]">{name}</p>
             {conv.status && (
               <span className={cn("shrink-0 px-1.5 py-0.5 text-[10px] font-medium rounded", statusColors[conv.status] || statusColors.open)}>
                 {t(`wa.inbox.status.${conv.status}`)}

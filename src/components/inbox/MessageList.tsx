@@ -81,7 +81,9 @@ export function MessageList({
   }
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-1 scroll-smooth">
+    <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-1.5 scroll-smooth"
+      style={{ backgroundColor: "#efeae2", backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260' viewBox='0 0 260 260'%3E%3Cg fill='%23dcd5c9' fill-opacity='0.35'%3E%3Cpath d='M-40 30c20-14 44-14 64 0s44 14 64 0 44-14 64 0 44 14 64 0 44-14 64 0v-30H-40z'/%3E%3Cpath d='M-40 190c20-14 44-14 64 0s44 14 64 0 44-14 64 0-44 14-64 0-44 14-64 0z'/%3E%3Ccircle cx='30' cy='110' r='3'/%3E%3Ccircle cx='150' cy='70' r='2.5'/%3E%3Ccircle cx='90' cy='150' r='2'/%3E%3Ccircle cx='210' cy='130' r='3'/%3E%3Ccircle cx='250' cy='40' r='2'/%3E%3Ccircle cx='70' cy='220' r='2.5'/%3E%3Ccircle cx='190' cy='210' r='2'/%3E%3C/g%3E%3C/svg%3E\")" }}
+    >
       <div style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative", width: "100%" }}>
         {virtualizer.getVirtualItems().map((vItem) => {
           const item = items[vItem.index];
