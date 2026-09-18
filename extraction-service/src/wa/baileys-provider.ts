@@ -205,8 +205,10 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
       }
     });
 
-    sock.ev.on("messaging-history.set", async ({ messages, isLatest }) => {
-      if (!isLatest) return;
+    sock.ev.on("messaging-history.set", async ({ messages, isLatest, syncType }) => {
+      // WhatsApp delivers history in chunks: a RECENT batch first, then older
+      // FULL batches. The old `if (!isLatest) return` gate discarded every
+      // pre-latest chunk — that is why old conversations never appeared.
       const capped = messages.slice(-1000);
       let imported = 0;
       for (const m of capped) {
@@ -215,7 +217,7 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
         const incoming = toIncoming(m, sessionId, workspaceId);
         if (incoming) { incoming.workspaceId = workspaceId; incoming.remoteJid = stripDeviceSuffix(await resolveLidJid(incoming.remoteJid)); onMessage({ ...incoming, isHistory: true }); imported++; }
       }
-      log.info("Baileys", `history sync: ${imported}/${capped.length} messages imported`);
+      log.info("Baileys", `history sync (${syncType ?? "?"}, isLatest=${!!isLatest}): ${imported}/${capped.length} messages imported`);
     });
   },
 
