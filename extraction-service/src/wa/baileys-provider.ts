@@ -12,6 +12,11 @@ import { mediaService } from "./media.js";
 const log = logger;
 const sockets = new Map<string, ReturnType<typeof makeWASocket>>();
 const qrCache = new Map<string, string>();
+// Bounded QR auto-retry: an abandoned qr_ready session would otherwise loop
+// (QR expires → close → restart) forever. After MAX_QR_RETRIES cycles without
+// a scan we stop and let the user request a fresh QR manually.
+const qrRetryCounts = new Map<string, number>();
+const MAX_QR_RETRIES = 20;
 
 function authPathFor(sessionId: string): string {
   return path.resolve(config.waAuthDir, sessionId);
@@ -124,6 +129,7 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
       }
       if (connection === "open") {
         qrCache.delete(sessionId);
+        qrRetryCounts.delete(sessionId);
         const jid = sock.user?.id ?? "";
         const pushName = sock.user?.name ?? undefined;
         onReady({ jid, pushName });
@@ -137,6 +143,7 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
         onClose(`closed (${reason ?? "unknown"})`);
         if (loggedOut) {
           await transitionStatus(sessionId, "disconnected", "logged out");
+          qrRetryCounts.delete(sessionId);
           await fs.rm(authPathFor(sessionId), { recursive: true, force: true }).catch(() => {});
           return;
         }
@@ -147,6 +154,14 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
           .from("wa_sessions").select("status").eq("id", sessionId).maybeSingle();
         const shouldAutoReconnect = cur && (cur.status === "connected" || cur.status === "reconnecting" || cur.status === "qr_ready");
         if (shouldAutoReconnect) {
+          const retries = (qrRetryCounts.get(sessionId) ?? 0);
+          if (retries >= MAX_QR_RETRIES) {
+            log.warn("Baileys", `session ${sessionId}: QR retry limit reached (${MAX_QR_RETRIES}) — stopping auto-reconnect, manual re-link required`);
+            qrRetryCounts.delete(sessionId);
+            await transitionStatus(sessionId, "error", `QR retry limit reached (${MAX_QR_RETRIES})`);
+            return;
+          }
+          qrRetryCounts.set(sessionId, retries + 1);
           await transitionStatus(sessionId, "reconnecting", `disconnect ${reason}`);
           setTimeout(() => baileysProvider.start(sessionId, workspaceId, onQR, onReady, onMessage, onClose), 5000);
         }
@@ -244,6 +259,7 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
         sock.end(new Error("service shutdown"));
       } catch {}
       sockets.delete(sessionId); qrCache.delete(sessionId);
+      qrRetryCounts.delete(sessionId);
     }
   },
 
