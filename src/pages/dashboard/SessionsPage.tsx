@@ -211,7 +211,7 @@ export function SessionsPage() {
   function handleCreateSession() {
     if (!sessionName.trim() || !cookieValid) return;
     mutations.create.mutate(
-      { name: sessionName.trim(), browser: "Chrome", connectionMethod: "cookie", cookies: cookieString, proxyUrl: proxyUrl.trim() || null },
+      { name: sessionName.trim(), browser: "Chrome", connectionMethod: "cookie", cookies: cookieString, proxyUrl: proxyUrl.trim() || null, userAgent: navigator.userAgent },
       {
         onSuccess: (result) => {
           mutations.connect.mutate(result.session.id, {
@@ -221,6 +221,22 @@ export function SessionsPage() {
               setCookieString("");
               setProxyUrl("");
               toast({ type: "success", title: t("sessions.add.success"), description: result.session.name });
+              // Verify the cookies against Facebook immediately — the dashboard
+              // must never present a dead session as "connected". This catches
+              // expired/revoked exports at import time instead of failing the
+              // first extraction with "الجلسة غير نشطة".
+              mutations.testConnection.mutate(result.session.id, {
+                onSuccess: (check) => {
+                  if (check.auth_state !== "authenticated") {
+                    setLocalStatusOverrides((prev) => ({ ...prev, [result.session.id]: "error" }));
+                    toast({
+                      type: "warning",
+                      title: t("sessions.add.importCheckFailedTitle"),
+                      description: check.message,
+                    });
+                  }
+                },
+              });
             },
             onError: () => {
               setShowAddDialog(false);

@@ -999,6 +999,7 @@
       "proxyOptional": "اختياري",
       "proxyPlaceholder": "http://user:pass@host:port أو socks5://host:port",
       "proxyDesc": "بروكسي مخصص لهذه الجلسة يحميها من الحظر ويحافظ على ثبات IP. يُستخدم لهذه الجلسة فقط ولا يُشارك مع الجلسات الأخرى.",
+      "importCheckFailedTitle": "تم استيراد الجلسة لكن فيسبوك يرفضها",
       "steps": {
         "name": "الاسم",
         "browser": "المتصفح",

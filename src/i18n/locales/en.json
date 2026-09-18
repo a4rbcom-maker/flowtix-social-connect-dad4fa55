@@ -994,6 +994,7 @@
       "proxyOptional": "Optional",
       "proxyPlaceholder": "http://user:pass@host:port or socks5://host:port",
       "proxyDesc": "A dedicated proxy for this session protects it from bans and keeps a stable IP. Used only for this session, never shared.",
+      "importCheckFailedTitle": "Session imported but Facebook rejects it",
       "steps": {
         "name": "Name",
         "browser": "Browser",

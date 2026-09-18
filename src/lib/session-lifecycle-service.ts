@@ -15,6 +15,10 @@ export const sessionLifecycleService = {
     profileName?: string;
     cookies?: string;
     proxyUrl?: string | null;
+    /** UA of the browser the cookies were exported from — replaying a session
+     *  under a different UA reads as a login from an unknown device and makes
+     *  Facebook reject the cookies as guest. */
+    userAgent?: string | null;
   }): Promise<{ session: FbSession; profile: Awaited<ReturnType<typeof browserProfileService.create>> }> {
     const session = await sessionsRepository.create({
       userId: input.userId,
@@ -29,6 +33,7 @@ export const sessionLifecycleService = {
       user_id: input.userId,
       profile_name: input.profileName ?? `${input.name} Profile`,
       cookies_enc: input.cookies ?? null,
+      user_agent: input.userAgent ?? null,
     });
 
     await sessionsRepository.logActivity(session.id, "created", "Session created");
