@@ -36,8 +36,12 @@ export const waInboxRepository = {
       .eq("workspace_id", workspaceId).eq("status", "disconnected");
 
     const disconnectedIds = (sessions ?? []).map((s) => s.id);
+    // PostgREST gotcha: .not("col", "in", [array]) emits `not.in.(...)` WITHOUT
+    // parentheses around the list → PGRST100 parse error kills the whole query
+    // whenever ANY disconnected session exists. Use .filter() with an explicit
+    // parenthesized list instead.
     const q = disconnectedIds.length > 0
-      ? applyConversationFilters(baseQuery().not("wa_session_id", "in", disconnectedIds), filters ?? {})
+      ? applyConversationFilters(baseQuery().filter("wa_session_id", "not.in", `(${disconnectedIds.join(",")})`), filters ?? {})
       : applyConversationFilters(baseQuery(), filters ?? {});
 
     const { data, error } = await q;
