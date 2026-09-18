@@ -482,7 +482,10 @@ export const enrichmentService = {
 
     const results = await supabaseService.getJobResultsForEnrichment(jobId);
     if (!results || results.length === 0) {
-      log.info("Enrichment", `no results with fb_id for job ${jobId}`);
+      log.info("Enrichment", `no results with fb_id for job ${jobId} — finalizing with empty stats`);
+      // Settled job with zero enrichable rows: still close the enrichment
+      // phase, otherwise progress.phase stays "enriching" forever.
+      await this.finalizeIgEnrichment(jobId, 0, new Map(), {});
       return;
     }
 
@@ -682,7 +685,12 @@ export const enrichmentService = {
     const hasAnyBio = candidates.some((c) => c.phone9 || c.email);
     const hasAnyName = candidates.some((c) => c.fullName);
     if (!hasAnyBio && !hasAnyName) {
-      log.info("Enrichment", `IG job ${jobId}: no bio contact or full_name present to match — skipping`);
+      // Early exit MUST still finalize: writing phase="enriching" above and
+      // returning without stats left the job on a perpetual dashboard
+      // spinner (progress.phase=enriching, no enrichment object → download
+      // locked forever). Zero matches is a legitimate terminal state.
+      log.info("Enrichment", `IG job ${jobId}: no bio contact or full_name present to match — finalizing with zero matches`);
+      await this.finalizeIgEnrichment(jobId, results.length, new Map(), {});
       return;
     }
 
@@ -742,16 +750,35 @@ export const enrichmentService = {
       });
     }
 
+    await this.finalizeIgEnrichment(jobId, results.length, new Map(updates.map((u) => [u.id, u.metadata.enrichment as Record<string, unknown>])), sources);
+  },
+
+  /** Single terminal write for IG enrichment: persists per-row metadata then
+   *  closes the job's progress with phase="completed" + an enrichment stats
+   *  object. EVERY exit path of enrichIgJobResults must land here — a return
+   *  that skips it strands the job in phase="enriching" with no enrichment
+   *  object, which the dashboard renders as an endless "تجهيز النتائج"
+   *  spinner and the export gate refuses to unlock. */
+  async finalizeIgEnrichment(
+    jobId: string,
+    totalResults: number,
+    matchedByRowId: Map<string, Record<string, unknown>>,
+    sources: Record<string, number>,
+  ): Promise<void> {
+    const updates: { id: string; metadata: Record<string, unknown> }[] = [];
+    for (const [rowId, enrichment] of matchedByRowId) {
+      updates.push({ id: rowId, metadata: { platform: "instagram", enrichment } });
+    }
     if (updates.length > 0) {
       await supabaseService.updateResultMetadataBatch(jobId, updates);
       log.info("Enrichment", `IG updated ${updates.length} results with enrichment metadata`);
     }
 
     const stats: EnrichmentStats = {
-      total: results.length,
+      total: totalResults,
       enriched: updates.length,
-      not_found: results.length - updates.length,
-      coverage_percent: results.length > 0 ? Math.round((updates.length / results.length) * 100) : 0,
+      not_found: totalResults - updates.length,
+      coverage_percent: totalResults > 0 ? Math.round((updates.length / totalResults) * 100) : 0,
       sources,
     };
 
@@ -764,6 +791,6 @@ export const enrichmentService = {
       })).catch(() => ({ phase: "completed", enrichment: stats })),
     });
 
-    log.info("Enrichment", `IG done: ${updates.length}/${results.length} enriched (${stats.coverage_percent}%)`, { sources });
+    log.info("Enrichment", `IG done: ${updates.length}/${totalResults} enriched (${stats.coverage_percent}%)`, { sources });
   },
 };
