@@ -18,6 +18,9 @@ export function useWaConversations(filters?: Parameters<typeof waInboxRepository
     queryKey: [CONVS_KEY, ws, filters],
     queryFn: () => ws ? waInboxRepository.listConversations(ws, filters) : Promise.resolve([]),
     enabled: !!ws,
+    // Safety net: if the realtime websocket silently dies (network blip, server
+    // restart), the inbox self-heals via polling instead of going stale forever.
+    refetchInterval: 15000,
   });
 
   useEffect(() => {
@@ -47,6 +50,8 @@ export function useWaMessages(conversationId: string | undefined) {
     queryKey: [MSGS_KEY, conversationId],
     queryFn: () => waInboxRepository.getMessages(conversationId!),
     enabled: !!conversationId,
+    // Same self-heal as conversations: poll the open thread every 10s
+    refetchInterval: 10000,
   });
 
   useEffect(() => {
