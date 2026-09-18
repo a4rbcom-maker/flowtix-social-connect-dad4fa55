@@ -89,22 +89,32 @@ router.post("/list-groups", async (req, res) => {
       await page.goto(`https://www.facebook.com/groups/joins/?nav_source=tab&ordering=viewer_added`, {
         waitUntil: "domcontentloaded", timeout: config.fbNavTimeoutMs,
       });
-      // First harvest as soon as the cards exist — no fixed sleeps. The 5s+10s
-      // idle waits made every call take ≥16s even when the list was ready in 2s.
-      await page.waitForSelector('a[href*="/groups/"]', { timeout: 15000 }).catch(() => {});
-      let groups = await page.evaluate(`(${parseGroupsFromDom.toString()})()`) as RawGroup[];
+      // Wait for whichever outcome actually lands: group cards, or a login form
+      // (guest). Firing a flat selector wait and then a second evaluate wasted a
+      // round trip on every call — this resolves on the first paint that matters.
+      const outcome = await page.waitForFunction(`(() => {
+        if (document.querySelector('form[action*="login"]') || document.querySelector('input[name="email"]')) return "login";
+        if (document.querySelector('a[href*="/groups/"]')) return "cards";
+        return "";
+      })()`, undefined, { timeout: 15000 }).then(h => h.jsonValue()).catch(() => "");
+      let groups = outcome === "login" ? [] : await page.evaluate(`(${parseGroupsFromDom.toString()})()`) as RawGroup[];
 
       // Login guard — a guest/downgraded session renders the login form instead of groups
-      const loginForm = await page.evaluate(`(() => !!document.querySelector('form[action*="login"]'))()`);
-      if (loginForm) {
+      if (outcome === "login") {
         throw new ExtractionError(ErrorCodes.SESSION_EXPIRED, "الجلسة منتهية أو غير موثوقة — أعد ربط الجلسة من صفحة الجلسات");
       }
 
       // scroll to load more cards (FB virtualizes long lists) — early-exit as
-      // soon as a scroll adds nothing new
+      // soon as a scroll adds nothing new, and poll for the new cards instead of
+      // paying a flat 1.5s per round.
       for (let i = 0; i < 6 && groups.length > 0; i++) {
+        const before = groups.length;
         await page.evaluate(`window.scrollTo(0, document.body.scrollHeight)`);
-        await page.waitForTimeout(1500);
+        for (let w = 0; w < 10; w++) {
+          await page.waitForTimeout(150);
+          const probe = await page.evaluate(`document.querySelectorAll('a[href*="/groups/"]').length`).catch(() => 0);
+          if (typeof probe === "number" && probe > before) break;
+        }
         const more = await page.evaluate(`(${parseGroupsFromDom})()`) as RawGroup[];
         let added = 0;
         for (const g of more) if (!groups.some(x => x.id === g.id)) { groups.push(g); added++; }

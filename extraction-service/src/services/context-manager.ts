@@ -286,29 +286,59 @@ class ContextManager {
       page.setDefaultTimeout(config.fbNavTimeoutMs);
       page.setDefaultNavigationTimeout(config.fbNavTimeoutMs);
 
-      // Verify session is logged in (not guest)
+      // Verify session is logged in (not guest).
+      //
+      // The old flow slept a flat 3s then pulled the full page HTML — ~8.4s per
+      // call, paid again on every refresh because each request rebuilt its own
+      // context. Instead, wait for the DOM to actually tell us which of the two
+      // outcomes we're in (a login form, or Facebook chrome), polled while the
+      // page settles, and read only the marker we need rather than the whole
+      // document.
       try {
         await page.goto("https://www.facebook.com/", { waitUntil: "domcontentloaded", timeout: 20000 });
-        await page.waitForTimeout(3000);
-        const html = await page.content();
+
+        // Resolve as soon as either state is observable. FB renders the login
+        // form for guests, and a nav/banner or feed container for live
+        // sessions; whichever appears first settles the question.
+        const stateProbe = `(() => {
+          if (document.querySelector('form[action*="login"]') || document.querySelector('input[name="email"]')) return "needs_login";
+          if (location.pathname.startsWith("/login") || location.href.includes("login.php")) return "needs_login";
+          if (document.querySelector('[role="navigation"]') || document.querySelector('[role="banner"]') || document.querySelector('[data-pagelet="page"]')) return "authenticated";
+          return "";
+        })()`;
+
+        let settled = "";
+        for (let i = 0; i < 25; i++) {
+          settled = await page.evaluate<string>(stateProbe).catch(() => "");
+          if (settled) break;
+          await page.waitForTimeout(120);
+        }
+
         const finalUrl = page.url();
-        const authState = detectAuthState(html, finalUrl);
+        const html = settled ? "" : await page.content();
+        const authState = settled || detectAuthState(html, finalUrl);
         const isVerified = authState === "authenticated";
         log.info("ContextManager", `session ${sessionId.slice(0, 8)}: verified = ${isVerified ? "logged_in" : "guest"} (authState=${authState}, url=${finalUrl.substring(0, 60)})`);
 
         if (!isVerified) {
-          log.error("ContextManager", `session ${sessionId.slice(0, 8)}: GUEST session detected — cookies may be expired. Stopping job.`);
+          log.error("ContextManager", `session ${sessionId.slice(0, 8)}: GUEST session detected — cookies expired/invalid. Stopping job, refusing any write.`);
+          await supabaseService.markSessionInvalid(sessionId, "guest_on_open").catch(() => {});
           await context.close();
           browserPool.release(browser);
           throw new ExtractionError(
             ErrorCodes.SESSION_EXPIRED,
-            `Session ${sessionId.slice(0, 8)} is NOT logged in (guest). Cookies expired or invalid. Please re-import cookies.`
+            `الجلسة (${sessionId.slice(0, 8)}) منتهية: فيسبوك عرض صفحة تسجيل الدخول بدل الحساب. لم يتم حفظ أي كوكيز فوق جلستك، وتم وسم الجلسة «منتهية». صدّر كوكيز جديدة من Cookie-Editor (Export JSON) وأعد الربط.`
           );
         }
 
         // Facebook rotates the `xs` token on the very first navigation —
         // capture the full identity (cookies + localStorage) immediately so a
         // crash right after creation cannot leave the stored session stale.
+        // The write itself is gated: persistRotatedCookies only stores a state
+        // that still proves the logged-in identity, and we snapshot the
+        // imported state first so a bad capture can always be rolled back.
+        await supabaseService.takeSessionSnapshot(sessionId).catch((err) =>
+          log.warn("ContextManager", `snapshot failed for ${sessionId.slice(0, 8)}: ${String(err)}`));
         await this.persistRotatedCookies(sessionId, context);
       } catch (err) {
         if (err instanceof ExtractionError) throw err;

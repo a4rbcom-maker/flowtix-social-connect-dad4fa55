@@ -89,11 +89,38 @@ export interface StoredStorageState {
   origins: StorageStateOrigin[];
 }
 
-/** Never overwrite a working profile with a state that lacks the auth tokens —
- *  that would be saving a logged-OUT state over a logged-IN one. */
+/**
+ * A cookie set is only worth persisting when it still PROVES the same identity
+ * Facebook already trusts.
+ *
+ * Facebook answers an expired/refused session with a login page whose cookie
+ * jar still carries `c_user` and `xs` keys — empty or freshly minted. Checking
+ * names alone therefore accepted that dead jar and wrote it over a live
+ * session, which is what forced our users into a logout on their next task.
+ * Names are not proof; validity is: a numeric user id, a non-trivial `xs`, no
+ * expired auth cookie, and the `datr` device cookie a real browsing session
+ * always carries.
+ */
 export function shouldPersistSessionCookies(cookies: CookieEntry[], essentialNames: string[] = ["c_user", "xs"]): boolean {
-  const names = new Set(cookies.map((c) => c.name));
-  return essentialNames.every((n) => names.has(n));
+  // Callers hand us whatever the capture returned — a failed capture yields
+  // undefined. Treat that as "no proof of identity", never as an exception.
+  if (!Array.isArray(cookies) || cookies.length === 0) return false;
+
+  const byName = new Map(cookies.map((c) => [c.name, c]));
+  if (!essentialNames.every((n) => byName.has(n))) return false;
+
+  if (!/^\d{6,}$/.test(byName.get("c_user")?.value ?? "")) return false;
+  if ((byName.get("xs")?.value ?? "").length < 8) return false;
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  for (const name of essentialNames) {
+    const expires = byName.get(name)?.expires;
+    // undefined/0 means a session cookie — valid for this run.
+    if (typeof expires === "number" && expires > 0 && expires < nowSec) return false;
+  }
+
+  // A login-page capture never carries `datr`; a real browsing session does.
+  return byName.has("datr");
 }
 
 export interface JobContext {

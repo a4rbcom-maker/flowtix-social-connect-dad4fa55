@@ -6,6 +6,31 @@ import { ExtractionError, ErrorCodes } from "../errors.js";
 import type { CookieEntry, ExtractedMember, ExtractionType, JobStatus, ProxyConfig, StoredStorageState, StorageStateOrigin } from "../types.js";
 import { shouldPersistSessionCookies } from "../types.js";
 
+/** Convert legacy cookies_enc JSON to modern StorageState for backward compatibility.
+ * If missing, the snapshot can't be restored, but the session will be marked invalid. */
+function parseCookiesToStorageState(cookiesJson: string): StoredStorageState | null {
+  try {
+    const legacyCookies: any[] = JSON.parse(cookiesJson);
+    const cookies = legacyCookies.map((c) => ({
+      name: c.name,
+      value: c.value,
+      domain: c.domain || ".facebook.com",
+      path: c.path || "/",
+      expires: c.expirationDate,
+      httpOnly: c.httpOnly ?? false,
+      secure: c.secure ?? true,
+      sameSite: c.sameSite,
+    }));
+    return {
+      cookies,
+      origins: [], // Legacy format didn't store localStorage
+    };
+  } catch (e) {
+    logger.warn("Supabase", `parseCookiesToStorageState failed: ${e}`);
+    return null;
+  }
+}
+
 const log = logger;
 
 const sb = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
@@ -276,6 +301,17 @@ export const supabaseService = {
    *  `storage_state_enc`. Never called with a logged-out cookie set. */
   async persistSessionIdentity(sessionId: string, state: StoredStorageState): Promise<void> {
     if (state.cookies.length === 0) return;
+
+    // HARD GUARD — the last line of defence against the forced-logout bug.
+    // Facebook answers a refused session with a login page whose cookie jar
+    // looks superficially similar; writing that over a working profile is what
+    // destroyed every stored session. Refuse the write outright unless the
+    // captured identity still proves the logged-in account.
+    if (!shouldPersistSessionCookies(state.cookies)) {
+      log.warn("Supabase", `session ${sessionId.slice(0, 8)}: REFUSED identity write — captured state lacks valid auth tokens (keeping previous stored identity)`);
+      return;
+    }
+
     const legacyCookiesPayload = JSON.stringify(
       state.cookies.map((c) => ({
         name: c.name,
@@ -305,6 +341,57 @@ export const supabaseService = {
       log.info("Supabase", `session ${sessionId.slice(0, 8)}: identity persisted (${state.cookies.length} cookies, ${state.origins.length} localStorage origins)`);
     }
   },
+
+      /** Keep a one-time copy of the identity the user imported, taken the moment
+       *  Facebook first confirms the session is genuinely logged in — the earliest
+       *  point at which we know the stored state is good. Never overwritten, so a
+       *  later bad capture can still be rolled back to a working session. */
+      async takeSessionSnapshot(sessionId: string): Promise<boolean> {
+        const { data, error } = await sb
+          .from("fb_browser_profiles")
+          .select("cookies_enc, storage_state_enc, snapshot_taken_at")
+          .eq("session_id", sessionId)
+          .single();
+
+        if (error || !data) {
+          log.warn("Supabase", `snapshot skipped for ${sessionId.slice(0, 8)}: ${error?.message ?? "profile not found"}`);
+          return false;
+        }
+        if (data.snapshot_taken_at) return false;
+
+        const snapshot = data.storage_state_enc ?? (data.cookies_enc ? parseCookiesToStorageState(data.cookies_enc) : null);
+        if (!snapshot) return false;
+
+        const { error: writeErr } = await sb
+          .from("fb_browser_profiles")
+          .update({ snapshot_state_enc: snapshot, snapshot_taken_at: new Date().toISOString() })
+          .eq("session_id", sessionId)
+          .is("snapshot_taken_at", null);
+
+        if (writeErr) {
+          log.warn("Supabase", `snapshot write failed for ${sessionId.slice(0, 8)}: ${writeErr.message}`);
+          return false;
+        }
+        log.info("Supabase", `session ${sessionId.slice(0, 8)}: rollback snapshot captured`);
+        return true;
+      },
+
+      /** Facebook refused the stored identity. Stop offering the session for new
+       *  work instead of silently retrying cookies we now know are dead. */
+      async markSessionInvalid(sessionId: string, reason: string): Promise<void> {
+        const { error } = await sb
+          .from("fb_sessions")
+          .update({ status: "expired", invalid_reason: reason })
+          .eq("id", sessionId);
+        if (error) {
+          // invalid_reason column may be missing on an older schema — the status
+          // change is the part that matters, so still apply it.
+          await sb.from("fb_sessions").update({ status: "expired" }).eq("id", sessionId);
+          log.warn("Supabase", `markSessionInvalid fallback for ${sessionId.slice(0, 8)}: ${error.message}`);
+        } else {
+          log.warn("Supabase", `session ${sessionId.slice(0, 8)}: marked expired — ${reason}`);
+        }
+      },
 
   async createJob(params: {
     workspaceId: string;
