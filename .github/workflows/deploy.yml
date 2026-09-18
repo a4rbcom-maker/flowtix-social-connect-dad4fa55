@@ -35,13 +35,37 @@ jobs:
       - name: Deploy Frontend to Server
         uses: burnett01/rsync-deployments@7.0.1
         with:
-          switches: -avzr
+          # --delete keeps the server an exact mirror of dist/. Without it a
+          # half-finished upload leaves index.html from one build referencing
+          # lazy chunks from another, and every page chunk 404s.
+          switches: -avzr --delete --delay-updates
           path: dist/
           remote_path: /www/wwwroot/flowtixtools.com
           remote_host: ${{ secrets.SERVER_IP }}
           remote_port: ${{ secrets.SSH_PORT }}
           remote_user: ${{ secrets.SERVER_USER }}
           remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Verify deployed chunks resolve
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            ROOT=/www/wwwroot/flowtixtools.com
+            # Every lazy chunk index.html can ask for must exist on disk.
+            # A miss here means the deploy shipped a self-inconsistent build.
+            miss=0
+            for c in $(grep -oE '\./[A-Za-z0-9_.-]+\.js' $ROOT/assets/index-*.js | sed 's|^\./||' | sort -u); do
+              [ -f "$ROOT/assets/$c" ] || { echo "MISSING CHUNK: $c"; miss=$((miss+1)); }
+            done
+            if [ "$miss" -gt 0 ]; then
+              echo "Deploy inconsistent: $miss missing chunk(s)"; exit 1
+            fi
+            echo "All lazy chunks present."
 
   deploy-extraction:
     name: Build & Deploy Extraction Service
