@@ -68,6 +68,32 @@ const DESKTOP_VIEWPORTS: Array<{ width: number; height: number }> = [
   { width: 1920, height: 1080 },
 ];
 
+/**
+ * Viewport implied by a user agent string, when it can be determined.
+ *
+ * This matters more than it looks. If the exporter is on a phone (or a
+ * narrow laptop) their Facebook cookie was minted while `wd`/`dpr` client
+ * hints described THAT screen. Replaying it in a 1920x1080 desktop context
+ * tells Facebook the same token is suddenly being used from a different
+ * device than the one it was issued to — one of the signals that triggers a
+ * forced logout. Matching the exporter's real screen keeps the replayed
+ * device identical to the one Facebook already trusts.
+ */
+export function viewportFromUserAgent(ua?: string | null): { width: number; height: number } | null {
+  if (!ua) return null;
+  const s = ua.toLowerCase();
+
+  // iPhone / Android phone → the portrait screen the token was minted on.
+  if (/iphone/.test(s)) return { width: 390, height: 844 };
+  if (/ipad/.test(s)) return { width: 820, height: 1180 };
+  if (/android/.test(s) && /mobile/.test(s)) return { width: 412, height: 915 };
+  if (/android/.test(s)) return { width: 800, height: 1280 };
+
+  // "Windows NT ... Win64; x64" tells us nothing about the monitor size, so
+  // fall through to the seeded desktop pool rather than guessing wrong.
+  return null;
+}
+
 const MOBILE_VIEWPORTS: Array<{ width: number; height: number }> = [
   { width: 360, height: 800 },
   { width: 390, height: 844 },
@@ -91,7 +117,13 @@ export function buildSessionFingerprint(sessionId: string, ua: string): SessionF
   const rnd = seededRandom(sessionSeed(sessionId));
   const mobile = isMobileUserAgent(ua);
   const pool = mobile ? MOBILE_VIEWPORTS : DESKTOP_VIEWPORTS;
-  const viewport = pool[Math.floor(rnd() * pool.length) % pool.length];
+  // Prefer the screen implied by the exporter's own UA (a phone export must
+  // replay on a phone-sized screen). Fall back to the seeded pool for desktop
+  // UAs, where the UA carries no screen information.
+  const fromUa = viewportFromUserAgent(ua);
+  const viewport = fromUa && mobile
+    ? fromUa
+    : pool[Math.floor(rnd() * pool.length) % pool.length];
   return {
     viewport,
     isMobile: mobile,
