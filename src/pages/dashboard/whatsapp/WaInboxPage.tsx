@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { useWaConversations, useWaMessages, useWaInboxMutations, useWaNotes } from "@/hooks/useWaInbox";
 import { waInboxRepository } from "@/lib/wa-inbox";
 import { useAuth } from "@/lib/authProvider";
+import { Button } from "@/components/ui/button";
 import type { WaMessage } from "@/types/wa-inbox.types";
 import type { ConvFilter, SendInput } from "@/types/inbox.types";
 import { ConversationList } from "@/components/inbox/ConversationList";
@@ -25,7 +26,7 @@ export function WaInboxPage() {
     return f;
   })();
 
-  const { data: conversations, isLoading: convsLoading } = useWaConversations(repoFilters);
+  const { data: conversations, isLoading: convsLoading, isError: convsError, refetch: refetchConvs } = useWaConversations(repoFilters);
   const { data: messages, isLoading: msgsLoading } = useWaMessages(activeConvId ?? undefined);
   const { data: notes } = useWaNotes(activeConvId);
   const muts = useWaInboxMutations();
@@ -104,6 +105,12 @@ export function WaInboxPage() {
   return (
     <div className="flex h-[calc(100vh-180px)] gap-0 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]">
       <div className={`shrink-0 border-e border-[var(--color-border)] bg-[var(--color-surface-1)] w-full sm:w-80 lg:w-96 flex-col ${activeConvId ? "hidden sm:flex" : "flex"}`}>
+        {convsError ? (
+          <div className="flex flex-col items-center gap-3 p-6 text-center">
+            <span className="text-sm text-[var(--color-danger)]">تعذّر تحميل المحادثات — انتهت صلاحية الجلسة أو انقطع الاتصال</span>
+            <Button variant="outline" size="sm" onClick={() => refetchConvs()}>إعادة المحاولة</Button>
+          </div>
+        ) : (
         <ConversationList
           conversations={filteredConversations}
           activeConvId={activeConvId}
@@ -114,6 +121,7 @@ export function WaInboxPage() {
           onSelectConv={handleSelectConv}
           isLoading={convsLoading}
         />
+        )}
       </div>
 
       <div className={`flex-1 flex-col bg-[var(--color-bg)] min-w-0 ${activeConvId ? "flex" : "hidden sm:flex"}`}>
