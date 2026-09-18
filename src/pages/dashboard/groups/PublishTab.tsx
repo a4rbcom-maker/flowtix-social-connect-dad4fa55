@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Send, Hash, Settings2, Paperclip } from "lucide-react";
+import { Send, Hash, Settings2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/form";
 import { cn } from "@/lib/utils";
 import { useActiveSessionsForSelect } from "@/hooks/useFbSessions";
 import { ProgressDashboard } from "./ProgressDashboard";
+import { MediaAttachments, UploadingHint, uploadPublishMedia, type AttachedMedia } from "./MediaAttachments";
 
 interface Props { preselected?: {id: string; name: string}[]; }
 
@@ -21,6 +22,8 @@ export function PublishTab({ preselected = [] }: Props) {
   const [phase, setPhase] = useState<"config" | "running">("config");
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [media, setMedia] = useState<AttachedMedia[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   if (phase === "running" && activeJobId) {
     return <ProgressDashboard jobId={activeJobId} onDone={() => { setPhase("config"); setActiveJobId(null); }} />;
@@ -42,17 +45,33 @@ export function PublishTab({ preselected = [] }: Props) {
   const handleStart = async () => {
     if (!sessionId || !message.trim() || selectedIds.length === 0) return;
     setError("");
-    setPhase("running");
     try {
+      // Upload attachments BEFORE creating the job: the worker downloads them
+      // by URL, so a job must never exist without its media already in place.
+      let mediaUrls: string[] = [];
+      if (media.length > 0) {
+        setUploading(true);
+        mediaUrls = await uploadPublishMedia(media);
+        setUploading(false);
+      }
+
       const res = await fetch(`${import.meta.env.VITE_EXTRACTION_API_URL}/publish/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-API-Key": import.meta.env.VITE_EXTRACTION_API_KEY || "" },
-        body: JSON.stringify({ session_id: sessionId, message: message.trim(), group_ids: selectedIds, delay_min: delayMin, delay_max: delayMax, max_retries: 3, skip_restricted: skipRestricted, batch_size: 5, batch_pause: 50 }),
+        body: JSON.stringify({ session_id: sessionId, message: message.trim(), group_ids: selectedIds, delay_min: delayMin, delay_max: delayMax, max_retries: 3, skip_restricted: skipRestricted, batch_size: 5, batch_pause: 50, media_urls: mediaUrls }),
       });
       const data = await res.json();
-      if (data.job_id) setActiveJobId(data.job_id);
-      else { setPhase("config"); setError(data.error?.message || "فشل بدء النشر"); }
-    } catch (err) { setPhase("config"); setError(String(err)); }
+      if (data.job_id) {
+        setPhase("running");
+        setActiveJobId(data.job_id);
+      } else {
+        setError(data.error?.message || "فشل بدء النشر");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploading(false);
+    }
   };
 
   const charCount = message.length;
@@ -82,13 +101,7 @@ export function PublishTab({ preselected = [] }: Props) {
               charCount > charLimit * 0.9 ? "bg-[var(--color-error)]/10 text-[var(--color-error)]" : "bg-[var(--color-surface-2)] text-[var(--color-fg-muted)]"
             )}>{charCount}/{charLimit}</div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-[var(--color-fg-muted)]">مرفقات:</span>
-            <div className="flex items-center gap-2 text-xs text-[var(--color-fg-muted)] bg-[var(--color-surface-2)] px-3 py-2 rounded-lg border border-[var(--color-border)]">
-              <Paperclip className="size-3.5" />
-              <span>مرفقات الصور والفيديو — قريبًا</span>
-            </div>
-          </div>
+          <MediaAttachments media={media} onChange={setMedia} disabled={uploading} />
         </CardContent>
       </Card>
 
@@ -187,9 +200,9 @@ export function PublishTab({ preselected = [] }: Props) {
           className="w-full h-12 text-base font-semibold gap-2 rounded-xl shadow-lg shadow-[var(--color-primary)]/20 hover:shadow-xl hover:shadow-[var(--color-primary)]/30 transition-all"
           size="lg"
           onClick={handleStart}
-          disabled={!message.trim() || selectedIds.length === 0 || !sessionId}
+          disabled={!message.trim() || selectedIds.length === 0 || !sessionId || uploading}
         >
-          <Send className="size-5" /> بدء النشر في {selectedIds.length} جروب
+          {uploading ? <UploadingHint /> : <><Send className="size-5" /> بدء النشر في {selectedIds.length} جروب{media.length > 0 && ` (${media.length} مرفق)`}</>}
         </Button>
 
         {!sessionId && (

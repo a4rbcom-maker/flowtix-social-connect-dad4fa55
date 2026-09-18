@@ -21,6 +21,9 @@ const startSchema = z.object({
   max_errors: z.number().int().min(3).max(20).default(10),
   batch_size: z.number().int().min(1).max(50).default(5),
   batch_pause: z.number().int().min(30).max(3600).default(600),
+  // Photo/video attachments. Images and videos can't be mixed in one Facebook
+  // post, so the client sends one media kind per job.
+  media_urls: z.array(z.string().url()).max(10).default([]),
 });
 
 const jobActionSchema = z.object({
@@ -35,7 +38,7 @@ router.post("/publish/start", async (req, res) => {
     const parsed = startSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues.map(i => i.message).join(", ") });
 
-    const { session_id, name, message, group_ids, delay_min, delay_max, max_retries, skip_restricted, max_errors, batch_size, batch_pause } = parsed.data;
+    const { session_id, name, message, group_ids, delay_min, delay_max, max_retries, skip_restricted, max_errors, batch_size, batch_pause, media_urls } = parsed.data;
 
     const { session } = await supabaseService.getSessionAndCookies(session_id);
 
@@ -49,16 +52,38 @@ router.post("/publish/start", async (req, res) => {
       return res.status(409).json({ error: { code: ErrorCodes.JOB_ALREADY_ACTIVE, message: "لديك مهمة نشر نشطة بالفعل" } });
     }
 
-    const { data: inserted } = await sb.from("publish_jobs").insert({
-      workspace_id: session.workspace_id,
+    // publish_jobs.workspace_id is NOT NULL, and sessions can carry a null
+    // workspace. Post-workspaces design (migration 2026072716 dropped the
+    // `workspaces` table; 2026082902 scopes workspace_id to the user's own id)
+    // means the user id IS the workspace — never look the table up.
+    const workspaceId = (session.workspace_id as string | null) ?? session.user_id;
+    if (!workspaceId) {
+      log.error("Publish", `session ${session_id.slice(0, 8)} has neither workspace_id nor user_id`);
+      return res.status(500).json({
+        error: { code: ErrorCodes.UNKNOWN_ERROR, message: "تعذّر تحديد مساحة العمل لهذه الجلسة — أعد ربط الجلسة" },
+      });
+    }
+
+    const { data: inserted, error: insertErr } = await sb.from("publish_jobs").insert({
+      workspace_id: workspaceId,
       user_id: session.user_id,
       session_id,
       name: name || "نشر جماعي",
       status: "running",
-      config: { message, group_ids, delay_min, delay_max, max_retries, skip_restricted, max_errors, batch_size, batch_pause },
+      config: { message, group_ids, delay_min, delay_max, max_retries, skip_restricted, max_errors, batch_size, batch_pause, media_urls },
     }).select("id").single();
     const jobId = inserted?.id;
-    if (!jobId) return res.status(500).json({ error: { code: ErrorCodes.UNKNOWN_ERROR, message: "Failed to create publish job" } });
+    if (!jobId) {
+      // Surface the real cause instead of a generic failure string.
+      const detail = insertErr?.message ?? "unknown database error";
+      log.error("Publish", `job insert failed: ${detail}`);
+      const friendly = /null value in column "workspace_id"/i.test(detail)
+        ? "تعذّر ربط المهمة بمساحة عمل — أعد المحاولة أو تواصل مع الدعم"
+        : /publish_jobs_status_check/i.test(detail)
+          ? "حالة المهمة غير صالحة"
+          : "فشل إنشاء مهمة النشر — أعد المحاولة";
+      return res.status(500).json({ error: { code: ErrorCodes.UNKNOWN_ERROR, message: friendly, detail } });
+    }
     log.info("Publish", `job created: ${jobId}`);
 
     startPublishWorker(jobId, session_id);

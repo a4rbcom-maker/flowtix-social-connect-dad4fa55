@@ -3,6 +3,12 @@ import { contextManager } from "./context-manager.js";
 import { logger } from "../logger.js";
 import { postedGroupIds, computeFinalStatus, type PublishResultRow } from "./publish-logic.js";
 import type { Page } from "playwright";
+import { createWriteStream } from "node:fs";
+import { mkdir, rm, stat } from "node:fs/promises";
+import { pipeline } from "node:stream/promises";
+import { Readable } from "node:stream";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 const log = logger;
 const sb = supabaseClient;
@@ -49,6 +55,104 @@ export function stopPublishWorker(jobId: string) {
   localJobs.delete(jobId);
 }
 
+/** Facebook's own ceilings for a composer attachment. */
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
+const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]);
+const VIDEO_EXT = new Set([".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv"]);
+
+/** Media directory for one job, under the OS temp dir so it never pollutes the repo. */
+function jobMediaDir(jobId: string): string {
+  return path.join(tmpdir(), "flowtix-publish", jobId);
+}
+
+/**
+ * Download every media URL for a job to local disk.
+ *
+ * Playwright's setInputFiles needs a real filesystem path, so the bytes have to
+ * live somewhere the worker can reach. Downloads are validated (kind, size)
+ * before any group is attempted; a bad file fails the whole job rather than
+ * silently publishing text-only posts.
+ */
+async function downloadPublishMedia(
+  jobId: string,
+  urls: string[],
+): Promise<{ ok: true; files: PublishMedia[] } | { ok: false; reason: string }> {
+  const dir = jobMediaDir(jobId);
+  await mkdir(dir, { recursive: true });
+  const files: PublishMedia[] = [];
+  let totalBytes = 0;
+
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i];
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return { ok: false, reason: `رابط غير صالح: ${url.slice(0, 60)}` };
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return { ok: false, reason: "الروابط يجب أن تبدأ بـ http أو https" };
+    }
+
+    let ext = path.extname(parsed.pathname).toLowerCase();
+    // Signed storage URLs often carry no extension — fall back to the path tail.
+    if (!ext || (!IMAGE_EXT.has(ext) && !VIDEO_EXT.has(ext))) {
+      const guess = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".mov", ".webm"].find((e) =>
+        parsed.pathname.toLowerCase().includes(e),
+      );
+      ext = guess ?? ".jpg";
+    }
+    const kind: "image" | "video" = VIDEO_EXT.has(ext) ? "video" : "image";
+    const dest = path.join(dir, `m${i}${ext}`);
+
+    try {
+      const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(120000) });
+      if (!res.ok || !res.body) {
+        return { ok: false, reason: `تعذّر تحميل الملف (HTTP ${res.status})` };
+      }
+      const declared = Number(res.headers.get("content-length") ?? 0);
+      const limit = kind === "video" ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+      if (declared > limit) {
+        return {
+          ok: false,
+          reason: kind === "video" ? "حجم الفيديو أكبر من 200 ميجابايت" : "حجم الصورة أكبر من 10 ميجابايت",
+        };
+      }
+
+      await pipeline(Readable.fromWeb(res.body as never), createWriteStream(dest));
+      const size = (await stat(dest)).size;
+      if (size === 0) return { ok: false, reason: "الملف المحمَّل فارغ" };
+      if (size > limit) {
+        await rm(dest, { force: true });
+        return {
+          ok: false,
+          reason: kind === "video" ? "حجم الفيديو أكبر من 200 ميجابايت" : "حجم الصورة أكبر من 10 ميجابايت",
+        };
+      }
+      totalBytes += size;
+      files.push({ path: dest, kind });
+    } catch (err) {
+      return { ok: false, reason: `فشل تحميل المرفق: ${String(err).slice(0, 120)}` };
+    }
+  }
+
+  // Facebook rejects posts with more than 10 attachments.
+  if (files.length > 10) {
+    return { ok: false, reason: "الحد الأقصى 10 مرفقات في المنشور الواحد" };
+  }
+  if (new Set(files.map((f) => f.kind)).size > 1) {
+    return { ok: false, reason: "لا يمكن خلط صور وفيديو في نفس المنشور — اختر نوعاً واحداً" };
+  }
+  log.info("PublishWorker", `media cached for ${jobId}: ${files.length} file(s), ${(totalBytes / 1024 / 1024).toFixed(1)}MB`);
+  return { ok: true, files };
+}
+
+/** Remove a job's cached media once it reaches a terminal state. */
+async function cleanupPublishMedia(jobId: string): Promise<void> {
+  await rm(jobMediaDir(jobId), { recursive: true, force: true }).catch(() => {});
+}
+
 async function runPublishWorker(jobId: string, sessionId: string) {
   const { data: rows } = await sb.from("publish_jobs").select("*").eq("id", jobId);
   if (!rows?.length) { log.error("PublishWorker", `job ${jobId} not found`); return; }
@@ -59,6 +163,29 @@ async function runPublishWorker(jobId: string, sessionId: string) {
   const skipOnMissingComposer = cfg.skip_restricted !== false;
   const BATCH_SIZE = cfg.batch_size || 5;
   const BATCH_PAUSE = cfg.batch_pause || 600;
+
+  // Media is downloaded ONCE per job and reused for every group. A failed
+  // download aborts before any group is touched — posting text-only when the
+  // user asked for an image would be a silent downgrade.
+  let media: PublishMedia[] = [];
+  const mediaUrls: string[] = Array.isArray(cfg.media_urls) ? cfg.media_urls : [];
+  if (mediaUrls.length > 0) {
+    const dl = await downloadPublishMedia(jobId, mediaUrls);
+    if (!dl.ok) {
+      log.error("PublishWorker", `job ${jobId}: media download failed — ${dl.reason}`);
+      await sb.from("publish_jobs").update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        progress: { ...(job.progress || {}), failed: 0, skipped: 0, published: 0 },
+        results: [{ group_id: null, status: "fail", reason: `media_download_failed: ${dl.reason}`, at: new Date().toISOString() }],
+      }).eq("id", jobId);
+      runningJobs.delete(jobId);
+      localJobs.delete(jobId);
+      return;
+    }
+    media = dl.files;
+    log.info("PublishWorker", `job ${jobId}: ${media.length} media file(s) ready`);
+  }
 
   const { cookies, proxy, userAgent, storageState } = await supabaseService.getSessionAndCookies(sessionId);
   const { page, contextId } = await contextManager.createContext(sessionId, cookies, proxy, userAgent, storageState);
@@ -106,7 +233,7 @@ async function runPublishWorker(jobId: string, sessionId: string) {
         await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
         await page.waitForTimeout(1500);
 
-        const postResult = await attemptPost(page, cfg.message as string, skipOnMissingComposer);
+        const postResult = await attemptPost(page, cfg.message as string, skipOnMissingComposer, media);
         if (postResult === "posted") {
           published++; consecutiveErrors = 0;
           alreadyPosted.add(gid);
@@ -118,7 +245,7 @@ async function runPublishWorker(jobId: string, sessionId: string) {
           let retried = false;
           for (let r = 0; r < (cfg.max_retries || 1); r++) {
             await sleep(5000);
-            if ((await attemptPost(page, cfg.message as string, false)) === "posted") {
+            if ((await attemptPost(page, cfg.message as string, false, media)) === "posted") {
               published++; consecutiveErrors = 0;
               alreadyPosted.add(gid);
               results.push({ group_id: gid, status: "posted", at: new Date().toISOString(), retries: r + 1, batch: currentBatchOf(i, BATCH_SIZE) });
@@ -166,6 +293,9 @@ async function runPublishWorker(jobId: string, sessionId: string) {
     log.info("PublishWorker", `job ${jobId} -> ${finalStatus}: ${published} posted, ${failed} fail, ${skipped} skip`);
   } finally {
     await contextManager.releaseContext(contextId);
+    // Cached attachments are per-job scratch data — drop them even when the job
+    // ended in failure, so a long-lived worker never accumulates junk.
+    await cleanupPublishMedia(jobId);
   }
 }
 
@@ -182,22 +312,110 @@ export type PostAttempt =
   | "composer_not_found"
   | "submit_disabled"
   | "typing_failed"
+  | "media_failed"
   | "no_confirmation";
 
 const COMPOSER_SEL = 'div[contenteditable="true"][role="textbox"], div[contenteditable="true"][data-lexical-editor], textarea[name="message"]';
 const SUBMIT_SEL = 'div[role="button"][aria-label*="نشر"], div[role="button"][aria-label*="Post"]';
 
-export async function attemptPost(page: Page, message: string, _skipOnMissingComposer: boolean): Promise<PostAttempt> {
+/** Photo/video trigger inside the group composer dialog. */
+const MEDIA_TRIGGER_SEL =
+  'div[role="button"][aria-label*="صورة"], div[role="button"][aria-label*="فيديو"], div[role="button"][aria-label*="Photo"], div[role="button"][aria-label*="Video"], div[role="button"][aria-label*="Media"]';
+
+export interface PublishMedia {
+  /** Absolute path on disk (already downloaded/cached by the caller). */
+  path: string;
+  /** image | video — decides which composer tab we expect. */
+  kind: "image" | "video";
+}
+
+export async function attemptPost(
+  page: Page,
+  message: string,
+  _skipOnMissingComposer: boolean,
+  media: PublishMedia[] = [],
+): Promise<PostAttempt> {
   // Modern group pages render a trigger button ("اكتب شيئًا..." / "Write
   // something...") that opens the real composer dialog — open it first.
   await openComposerTrigger(page);
   // Composer is lazy-mounted after the trigger click — poll for it.
   for (let w = 0; w < 4; w++) {
     if (w > 0) await page.waitForTimeout(2000);
-    if (await hasComposer(page)) return await typeAndSubmit(page, message);
+    if (await hasComposer(page)) return await typeAndSubmit(page, message, media);
   }
   log.info("PublishWorker", `composer not found after polling`);
   return "composer_not_found";
+}
+
+/**
+ * Attach files to the open composer by handing them to Facebook's own hidden
+ * file input.
+ *
+ * Playwright's setInputFiles writes into the page's file chooser the same way a
+ * real OS dialog would, so Facebook sees a normal upload — no synthetic File
+ * objects, no bypassed validation. We never click the visible "Photo/Video"
+ * button (it pops a native OS dialog Playwright cannot drive); we target the
+ * `input[type=file]` Facebook mounts alongside it.
+ *
+ * Media is uploaded BEFORE the text is typed: Facebook re-renders the composer
+ * once the upload starts, and text typed during that re-render gets dropped.
+ */
+async function attachMedia(page: Page, media: PublishMedia[]): Promise<{ ok: boolean; attached: number }> {
+  if (media.length === 0) return { ok: true, attached: 0 };
+
+  // Facebook keeps several file inputs mounted (photo, video, cover…). Pick the
+  // one that accepts the kinds we are actually sending.
+  const wantVideo = media.some((m) => m.kind === "video");
+  const wantImage = media.some((m) => m.kind === "image");
+  const acceptHint = wantVideo && !wantImage ? "video" : wantImage && !wantVideo ? "image" : "";
+
+  const input = page.locator('input[type="file"]').filter({ hasNot: page.locator("[disabled]") });
+  const count = await input.count();
+  if (count === 0) {
+    log.warn("PublishWorker", "no file input found in composer — media not attached");
+    return { ok: false, attached: 0 };
+  }
+
+  let chosen = input.first();
+  if (acceptHint) {
+    for (let i = 0; i < count; i++) {
+      const accept = ((await input.nth(i).getAttribute("accept")) ?? "").toLowerCase();
+      if (accept.includes(acceptHint)) { chosen = input.nth(i); break; }
+    }
+  }
+
+  try {
+    await chosen.setInputFiles(media.map((m) => m.path), { timeout: 30000 });
+  } catch (err) {
+    log.warn("PublishWorker", `setInputFiles failed: ${String(err)}`);
+    return { ok: false, attached: 0 };
+  }
+
+  // Facebook shows an upload preview/throbber while the file is processed.
+  // Submitting before it finishes posts the text WITHOUT the media, so wait
+  // for the upload to settle before continuing.
+  const settled = await page
+    .waitForFunction(
+      `() => {
+        const busy = document.querySelector('div[role="progressbar"], [aria-label*="جارٍ التحميل"], [aria-label*="Uploading"]');
+        if (busy) return false;
+        // A preview thumbnail (blob: or scontent) means the upload landed.
+        return !!document.querySelector('img[src^="blob:"], img[src*="scontent"], video[src^="blob:"], video[src*="scontent"]');
+      }`,
+      undefined,
+      { timeout: 90000 },
+    )
+    .then(() => true)
+    .catch(() => false);
+
+  if (!settled) {
+    log.warn("PublishWorker", "media upload did not settle within 90s");
+    return { ok: false, attached: 0 };
+  }
+
+  await page.waitForTimeout(randInt(1200, 2600));
+  log.info("PublishWorker", `${media.length} media file(s) attached and previewed`);
+  return { ok: true, attached: media.length };
 }
 
 async function openComposerTrigger(page: Page): Promise<boolean> {
@@ -222,8 +440,16 @@ async function hasComposer(page: Page): Promise<boolean> {
   return Boolean(await page.evaluate(`(() => !!document.querySelector(${JSON.stringify(COMPOSER_SEL)}))()`).catch(() => false));
 }
 
-async function typeAndSubmit(page: Page, message: string): Promise<PostAttempt> {
+async function typeAndSubmit(page: Page, message: string, media: PublishMedia[] = []): Promise<PostAttempt> {
   try {
+    // Attach media FIRST. Facebook re-renders the composer while the upload is
+    // in flight, and any text typed during that re-render is silently dropped —
+    // so the upload must be settled before a single keystroke goes in.
+    if (media.length > 0) {
+      const upload = await attachMedia(page, media);
+      if (!upload.ok) return "media_failed";
+    }
+
     // Messenger-proven pattern: focus + real keystrokes. Never click the
     // composer (PIN/E2E overlays intercept pointer events), never set
     // innerText (Lexical ignores synthetic value changes).
