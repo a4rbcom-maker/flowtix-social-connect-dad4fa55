@@ -17,6 +17,12 @@ function authPathFor(sessionId: string): string {
   return path.resolve(config.waAuthDir, sessionId);
 }
 
+// WhatsApp device-linked JIDs carry a device suffix (e.g. "2010xxxx:0@s.whatsapp.net").
+// Sending to a suffixed JID silently fails delivery — normalize to the bare user JID.
+function stripDeviceSuffix(jid: string): string {
+  return jid ? jid.replace(/:\d+(?=@)/, "") : jid;
+}
+
 function toIncoming(m: any, sessionId: string, workspaceId: string): IncomingWaMessage | null {
   try {
     const msg = m.message || m;
@@ -135,11 +141,11 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
           return;
         }
         // Only auto-reconnect if the session is still meant to be connected.
-        // If the user manually disconnected/paused/expired/errored it, do NOT
-        // re-open the socket — otherwise inbound messages keep arriving.
+        // qr_ready included: when QR attempts expire Baileys closes the socket —
+        // without this the connect page polls a dead socket forever.
         const { data: cur } = await supabaseClient
           .from("wa_sessions").select("status").eq("id", sessionId).maybeSingle();
-        const shouldAutoReconnect = cur && (cur.status === "connected" || cur.status === "reconnecting");
+        const shouldAutoReconnect = cur && (cur.status === "connected" || cur.status === "reconnecting" || cur.status === "qr_ready");
         if (shouldAutoReconnect) {
           await transitionStatus(sessionId, "reconnecting", `disconnect ${reason}`);
           setTimeout(() => baileysProvider.start(sessionId, workspaceId, onQR, onReady, onMessage, onClose), 5000);
@@ -164,9 +170,10 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
       for (const m of messages) {
         if (m.key?.fromMe) continue;
         if (isIgnorableJid(m.key?.remoteJid ?? "")) continue;
-        const incoming = toIncoming(m, sessionId, "");
+        const incoming = toIncoming(m, sessionId, workspaceId);
         if (incoming) {
-          incoming.remoteJid = await resolveLidJid(incoming.remoteJid);
+          incoming.workspaceId = workspaceId;
+          incoming.remoteJid = stripDeviceSuffix(await resolveLidJid(incoming.remoteJid));
           if (incoming.hasMedia) {
             try {
               const mime = incoming.mediaMimeType || "application/octet-stream";
@@ -190,8 +197,8 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
       for (const m of capped) {
         if (m.key?.fromMe) continue;
         if (isIgnorableJid(m.key?.remoteJid ?? "")) continue;
-        const incoming = toIncoming(m, sessionId, "");
-        if (incoming) { incoming.remoteJid = await resolveLidJid(incoming.remoteJid); onMessage({ ...incoming, isHistory: true }); imported++; }
+        const incoming = toIncoming(m, sessionId, workspaceId);
+        if (incoming) { incoming.workspaceId = workspaceId; incoming.remoteJid = stripDeviceSuffix(await resolveLidJid(incoming.remoteJid)); onMessage({ ...incoming, isHistory: true }); imported++; }
       }
       log.info("Baileys", `history sync: ${imported}/${capped.length} messages imported`);
     });
@@ -200,19 +207,21 @@ export const baileysProvider: WhatsAppProvider & { getQR(sessionId: string): str
   isAuthenticated(sessionId) { return sockets.has(sessionId) && !!sockets.get(sessionId)?.user; },
 
   async send(sessionId, to, payload) {
+    // Normalize device-suffixed JIDs before sending — suffixed JIDs fail silently
+    const normalizedTo = stripDeviceSuffix(to);
     const sock = sockets.get(sessionId);
     if (!sock) throw new Error(`Session ${sessionId} not active`);
     let result: any;
     if (payload.type === "text" && payload.text) {
-      result = await sock.sendMessage(to, { text: payload.text });
+      result = await sock.sendMessage(normalizedTo, { text: payload.text });
     } else if (payload.type === "image" && payload.mediaUrl) {
-      result = await sock.sendMessage(to, { image: { url: payload.mediaUrl }, caption: payload.caption });
+      result = await sock.sendMessage(normalizedTo, { image: { url: payload.mediaUrl }, caption: payload.caption });
     } else if (payload.type === "video" && payload.mediaUrl) {
-      result = await sock.sendMessage(to, { video: { url: payload.mediaUrl }, caption: payload.caption });
+      result = await sock.sendMessage(normalizedTo, { video: { url: payload.mediaUrl }, caption: payload.caption });
     } else if (payload.type === "audio" && payload.mediaUrl) {
-      result = await sock.sendMessage(to, { audio: { url: payload.mediaUrl }, ptt: false });
+      result = await sock.sendMessage(normalizedTo, { audio: { url: payload.mediaUrl }, ptt: false });
     } else if (payload.type === "document" && payload.mediaUrl) {
-      result = await sock.sendMessage(to, { document: { url: payload.mediaUrl }, mimetype: payload.mimeType || "application/octet-stream", fileName: payload.fileName || "file" });
+      result = await sock.sendMessage(normalizedTo, { document: { url: payload.mediaUrl }, mimetype: payload.mimeType || "application/octet-stream", fileName: payload.fileName || "file" });
     } else {
       throw new Error("Unsupported payload type or missing content");
     }

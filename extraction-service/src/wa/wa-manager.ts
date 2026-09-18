@@ -10,6 +10,12 @@ const log = logger;
 let booted = false;
 
 async function handleMessage(m: IncomingWaMessage) {
+  // Defense-in-depth: workspaceId + JID normalization (the provider also sets these)
+  if (!m.workspaceId) {
+    const { data } = await supabaseClient.from("wa_sessions").select("workspace_id").eq("id", m.sessionId).maybeSingle();
+    m.workspaceId = data?.workspace_id ?? "";
+  }
+  m.remoteJid = m.remoteJid ? m.remoteJid.replace(/:\d+(?=@)/, "") : m.remoteJid;
   const phone = m.remoteJid.split("@")[0];
   try {
     const { error } = await supabaseClient.rpc("upsert_wa_inbound", {
