@@ -1255,7 +1255,20 @@
       "invalid": "كوكيز غير صالحة",
       "missingKeys": "الكوكيز الأساسية (c_user, xs, datr) مطلوبة",
       "needEssential": "كحد أدنى، كوكيز c_user و xs و datr مطلوبة للمصادقة",
-      "connect": "ربط"
+            "weakExportTitle": "التصدير ناقص — الجلسة ستنتهي سريعاً",
+            "weakExportDesc": "الكوكيز مقروءة لكنها ناقصة عن التصدير الكامل. فيسبوك يبطل هذه الجلسات خلال ساعات. أعد التصدير من Cookie-Editor بضغط زر Export (وليس Copy) على تاب facebook.com مفتوح في نافذة عادية.",
+            "exportOkTitle": "التصدير كامل وقوي",
+            "exportOkDesc": "كل الكوكيز المهمة موجودة. الجلسة جاهزة للربط والاستقرار.",
+            "problem": {
+              "c_user_not_numeric": "معرّف المستخدم غير صحيح",
+              "xs_too_short": "رمز الجلسة xs مبتور",
+              "xs_malformed": "رمز الجلسة xs تالف",
+              "datr_too_short": "كوكيز datr مبتور",
+              "sb_absent": "كوكيز sb مفقود (أعد التصدير)",
+              "fr_absent": "كوكيز fr مفقود (أعد التصدير)",
+              "too_few_cookies": "عدد الكوكيز قليل — التصدير غير مكتمل"
+            },
+            "connect": "ربط"
     },
     "method": {
       "title": "اختر طريقة الاتصال",

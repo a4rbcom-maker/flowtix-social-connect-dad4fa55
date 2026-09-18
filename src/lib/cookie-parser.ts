@@ -95,6 +95,76 @@ function buildResult(cookies: Record<string, string>, format: CookieFormat): Coo
   return { cookies, format, count, foundEssential, missingEssential };
 }
 
+/**
+ * Session-strength report for an import.
+ *
+ * A Facebook cookie paste can be structurally "valid" (c_user + xs + datr all
+ * present, JSON format detected) and still be a token that Facebook revokes
+ * within a couple of hours. The two failure modes we can detect locally, with
+ * no network call to Facebook at all (so we never touch the user's live token),
+ * are:
+ *
+ *  1. MISSING AUTH-SUSTAINING COOKIES — `sb` and `fr` are part of the same
+ *     signed cookie family as `xs`. Without them Facebook's edge treats the
+ *     token as an unattached session and expires it early.
+ *  2. A CRIPPLED TOKEN — Cookie-Editor's menu has both "Export" and "Copy",
+ *     plus users sometimes copy a single cookie's value from the table. Those
+ *     paths produce a `c_user` that is not a plain numeric Facebook user id,
+ *     or an `xs` shorter than a real session token. Replaying those can never
+ *     survive; they also get flagged as theft when first used from an IP other
+ *     than the exporter's.
+ *
+ * Both checks are pure string analysis — no Facebook request is made, so this
+ * is safe to run at import time on a freshly exported live session.
+ */
+export interface FbCookieStrength {
+  ok: boolean;
+  score: number; // 0..100
+  missingRecommended: string[];
+  problems: string[];
+}
+
+export function assessFbCookieStrength(cookies: Record<string, string>): FbCookieStrength {
+  const missingRecommended = [...FB_COOKIE_ALL_KEYS].filter((k) => !cookies[k]);
+  const problems: string[] = [];
+
+  const cUser = cookies["c_user"];
+  if (cUser && !/^\d{5,20}$/.test(cUser)) {
+    problems.push("c_user_not_numeric");
+  }
+
+  const xs = cookies["xs"];
+  if (xs && xs.length < 20) {
+    problems.push("xs_too_short");
+  }
+  if (xs && !xs.includes("%3A") && !xs.includes(":")) {
+    problems.push("xs_malformed");
+  }
+
+  const datr = cookies["datr"];
+  if (datr && datr.length < 10) {
+    problems.push("datr_too_short");
+  }
+
+  if (!cookies["sb"]) problems.push("sb_absent");
+  if (!cookies["fr"]) problems.push("fr_absent");
+
+  const count = Object.keys(cookies).length;
+  if (count < 8) problems.push("too_few_cookies");
+
+  let score = 100;
+  score -= problems.length * 15;
+  score -= missingRecommended.length * 5;
+  if (score < 0) score = 0;
+
+  return {
+    ok: problems.filter((p) => p !== "sb_absent" && p !== "fr_absent").length === 0,
+    score,
+    missingRecommended,
+    problems,
+  };
+}
+
 export function validateFbCookies(raw: string): boolean {
   const parsed = parseCookieStringDetailed(raw);
   return parsed.missingEssential.length === 0;

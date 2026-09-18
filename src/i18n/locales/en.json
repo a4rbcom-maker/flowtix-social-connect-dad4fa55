@@ -1250,7 +1250,20 @@
       "invalid": "Invalid cookies",
       "missingKeys": "Essential cookies (c_user, xs, datr) are required",
       "needEssential": "At minimum, c_user, xs, and datr cookies are required for authentication",
-      "connect": "Connect"
+            "weakExportTitle": "Incomplete export — this session will die fast",
+            "weakExportDesc": "The cookies parse but are missing pieces of a full export. Facebook revokes these sessions within hours. Re-export from Cookie-Editor using the Export button (not Copy) on a facebook.com tab open in a normal window.",
+            "exportOkTitle": "Full, strong export",
+            "exportOkDesc": "All important cookies are present. This session is ready to link and stay stable.",
+            "problem": {
+              "c_user_not_numeric": "Invalid user id",
+              "xs_too_short": "Session token xs truncated",
+              "xs_malformed": "Session token xs malformed",
+              "datr_too_short": "datr cookie truncated",
+              "sb_absent": "sb cookie missing (re-export)",
+              "fr_absent": "fr cookie missing (re-export)",
+              "too_few_cookies": "Too few cookies — export incomplete"
+            },
+            "connect": "Connect"
     },
     "method": {
       "title": "Choose Connection Method",

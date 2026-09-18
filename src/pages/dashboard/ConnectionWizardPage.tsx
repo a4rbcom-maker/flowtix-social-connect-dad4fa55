@@ -3,7 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Plug, Cookie, CheckCircle2, Loader2, Wifi, ShieldCheck,
-  ArrowRight, ArrowLeft, AlertTriangle, Eye, Pencil,
+  ArrowRight, ArrowLeft, AlertTriangle, Eye, Pencil, Info,
   Puzzle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import { InputIcon } from "@/components/ui/input-icon";
 import { Textarea } from "@/components/ui/form";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
-import { validateFbCookiesDetailed, parseCookieStringDetailed, type CookieFormat } from "@/lib/cookie-parser";
+import { validateFbCookiesDetailed, parseCookieStringDetailed, assessFbCookieStrength, type CookieFormat } from "@/lib/cookie-parser";
 import {
   useSessionMutations,
   useSessionStats,
@@ -39,6 +39,9 @@ export function ConnectionWizardPage() {
 
   const cookieValidation = cookieString ? validateFbCookiesDetailed(cookieString) : null;
   const cookieResult = cookieString ? parseCookieStringDetailed(cookieString) : null;
+  const cookieStrength = cookieResult && cookieResult.count > 0
+    ? assessFbCookieStrength(cookieResult.cookies)
+    : null;
 
   const FORMAT_LABELS: Record<CookieFormat, string> = {
     json: "Cookie-Editor (JSON)",
@@ -267,6 +270,49 @@ export function ConnectionWizardPage() {
                       {!cookieValidation.valid && (
                         <p className="mt-2 text-xs text-[var(--color-fg-muted)]">{t("wizard.cookies.needEssential")}</p>
                       )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Session-strength report — catches an export that looks valid
+                  but will be revoked by Facebook within hours. Pure local
+                  analysis: never contacts Facebook, never touches the user's
+                  live token. */}
+              {cookieStrength && cookieValidation?.valid && !cookieStrength.ok && (
+                <div className="rounded-xl border border-[color-mix(in_oklab,var(--color-warning)_35%,transparent)] bg-[color-mix(in_oklab,var(--color-warning)_8%,transparent)] p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="size-5 text-[var(--color-warning)] shrink-0" />
+                    <div className="text-sm">
+                      <p className="font-semibold text-[var(--color-warning)]">
+                        {t("wizard.cookies.weakExportTitle")}
+                      </p>
+                      <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
+                        {t("wizard.cookies.weakExportDesc")}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {cookieStrength.problems.map((p) => (
+                          <Badge key={p} variant="warning" className="text-xs">
+                            {t(`wizard.cookies.problem.${p}`)}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {cookieStrength && cookieValidation?.valid && cookieStrength.ok && cookieStrength.score < 85 && (
+                <div className="rounded-xl border border-[color-mix(in_oklab,var(--color-info)_30%,transparent)] bg-[color-mix(in_oklab,var(--color-info)_6%,transparent)] p-3">
+                  <div className="flex items-start gap-2">
+                    <Info className="size-5 text-[var(--color-primary)] shrink-0" />
+                    <div className="text-sm">
+                      <p className="font-semibold text-[var(--color-fg)]">
+                        {t("wizard.cookies.exportOkTitle")} · {cookieStrength.score}%
+                      </p>
+                      <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
+                        {t("wizard.cookies.exportOkDesc")}
+                      </p>
                     </div>
                   </div>
                 </div>
