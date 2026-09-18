@@ -27,7 +27,32 @@ router.post("/session-check", async (req, res) => {
     const { session_id } = parsed.data;
     log.info("SessionCheck", `checking session ${session_id}`);
 
-    const { session, cookies, userAgent, storageState } = await supabaseService.getSessionAndCookies(session_id);
+    const { session, cookies, userAgent, storageState, proxy } = await supabaseService.getSessionAndCookies(session_id);
+
+    // FRESH-IMPORT GUARD: replaying brand-new cookies from a second device/IP
+    // within minutes of export is Facebook's #1 token-theft signal — it logs
+    // the USER out of their own browser everywhere. A session created less
+    // than 10 minutes ago has never been validated by us and its cookies are
+    // guaranteed the ones the user's browser is holding RIGHT NOW; touching
+    // them from this server is what killed live accounts (2026-09-18, session
+    // 6666: import 12:53 → our session-check 12:59 → user logged out).
+    // Instead of a live check, return a provisional verdict and leave the
+    // tokens untouched — the first real extraction will exercise them anyway.
+    const createdAtMs = session.created_at ? new Date(session.created_at).getTime() : 0;
+    const ageMs = Date.now() - createdAtMs;
+    if (createdAtMs > 0 && ageMs < 10 * 60 * 1000) {
+      log.info("SessionCheck", `session ${session_id.slice(0, 8)} imported ${Math.round(ageMs / 1000)}s ago — skipping live FB check to protect the user's browser session (provisional connected)`);
+      if (session.status !== "connected") {
+        await supabaseService.updateSessionStatus(session_id, "connected", "تم الاستيراد — الفحص الفعلي يجري عند أول مهمة استخراج").catch(() => {});
+      }
+      return res.json({
+        session_id,
+        status: "connected",
+        auth_state: "authenticated" as AuthState,
+        message: "تم استيراد الجلسة للتو. الفحص الفعلي ضد فيسبوك يجري عند أول مهمة استخراج لحماية جلستك من الخروج.",
+        provisional: true,
+      });
+    }
 
     // createContext verifies the session against Facebook and throws
     // SESSION_EXPIRED for guest cookies. Surface that as a clean
@@ -36,7 +61,7 @@ router.post("/session-check", async (req, res) => {
     let page: import("playwright").Page;
     let contextId: string;
     try {
-      ({ page, contextId } = await contextManager.createContext(session_id, cookies, undefined, userAgent, storageState));
+      ({ page, contextId } = await contextManager.createContext(session_id, cookies, proxy, userAgent, storageState));
     } catch (err) {
       if (err instanceof ExtractionError && (err.code === ErrorCodes.SESSION_EXPIRED || err.code === ErrorCodes.AUTH_FAILED)) {
         await supabaseService.updateSessionStatus(session_id, "disconnected", err.message).catch(() => {});

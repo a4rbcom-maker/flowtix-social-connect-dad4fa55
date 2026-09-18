@@ -21,6 +21,7 @@ interface SessionRow {
   status: string;
   workspace_id: string;
   user_id: string;
+  created_at?: string | null;
 }
 
 interface ProfileRow {
@@ -193,7 +194,7 @@ export const supabaseService = {
   }> {
     let sessionRes = await sb
       .from("fb_sessions")
-      .select("id, name, status, workspace_id, user_id, proxy_url")
+      .select("id, name, status, workspace_id, user_id, proxy_url, created_at")
       .eq("id", sessionId)
       .is("deleted_at", null)
       .single();
@@ -203,7 +204,7 @@ export const supabaseService = {
       log.warn("Supabase", `proxy_url column missing (migration 2026082214 pending) — env/global proxy only`);
       sessionRes = await sb
         .from("fb_sessions")
-        .select("id, name, status, workspace_id, user_id")
+        .select("id, name, status, workspace_id, user_id, created_at")
         .eq("id", sessionId)
         .is("deleted_at", null)
         .single();
