@@ -85,12 +85,14 @@ router.post("/list-groups", async (req, res) => {
     const { page, contextId } = await contextManager.createContext(session_id, cookies, undefined, userAgent, storageState);
 
     try {
+      const t0 = Date.now();
       await page.goto(`https://www.facebook.com/groups/joins/?nav_source=tab&ordering=viewer_added`, {
         waitUntil: "domcontentloaded", timeout: config.fbNavTimeoutMs,
       });
-      await page.waitForTimeout(5000);
-      await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-      await page.waitForTimeout(1500);
+      // First harvest as soon as the cards exist — no fixed sleeps. The 5s+10s
+      // idle waits made every call take ≥16s even when the list was ready in 2s.
+      await page.waitForSelector('a[href*="/groups/"]', { timeout: 15000 }).catch(() => {});
+      let groups = await page.evaluate(`(${parseGroupsFromDom.toString()})()`) as RawGroup[];
 
       // Login guard — a guest/downgraded session renders the login form instead of groups
       const loginForm = await page.evaluate(`(() => !!document.querySelector('form[action*="login"]'))()`);
@@ -98,19 +100,18 @@ router.post("/list-groups", async (req, res) => {
         throw new ExtractionError(ErrorCodes.SESSION_EXPIRED, "الجلسة منتهية أو غير موثوقة — أعد ربط الجلسة من صفحة الجلسات");
       }
 
-      const groups = await page.evaluate(`(${parseGroupsFromDom.toString()})()`) as RawGroup[];
-
-      // scroll to load more cards (FB virtualizes long lists)
-      for (let i = 0; i < 6; i++) {
-        const before = groups.length;
+      // scroll to load more cards (FB virtualizes long lists) — early-exit as
+      // soon as a scroll adds nothing new
+      for (let i = 0; i < 6 && groups.length > 0; i++) {
         await page.evaluate(`window.scrollTo(0, document.body.scrollHeight)`);
-        await page.waitForTimeout(1800);
+        await page.waitForTimeout(1500);
         const more = await page.evaluate(`(${parseGroupsFromDom})()`) as RawGroup[];
-        for (const g of more) if (!groups.some(x => x.id === g.id)) groups.push(g);
-        if (groups.length === before) break;
+        let added = 0;
+        for (const g of more) if (!groups.some(x => x.id === g.id)) { groups.push(g); added++; }
+        if (added === 0) break;
       }
 
-      log.info("ListGroups", `harvested ${groups.length} groups via DOM cards`);
+      log.info("ListGroups", `harvested ${groups.length} groups via DOM cards in ${Date.now() - t0}ms`);
       if (groups.length === 0) {
         // platform may have removed the surface for this account — keep honest notice
         return res.json({

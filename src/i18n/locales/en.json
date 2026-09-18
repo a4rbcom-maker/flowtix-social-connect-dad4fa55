@@ -1767,6 +1767,7 @@
       "noGroups": "No Groups Found",
       "noGroupsDesc": "No groups managed by or linked to your account were found.",
       "fetchError": "Failed to load groups",
+      "fetchingLive": "Reading your Facebook groups live — the list will appear in moments...",
       "sortByName": "Name",
       "sortByMembers": "Members",
       "sortByPrivacy": "Privacy",

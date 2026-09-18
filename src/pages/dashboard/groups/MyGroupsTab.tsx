@@ -116,28 +116,42 @@ export function MyGroupsTab({ onGoToPublish }: Props) {
     );
   }
 
-  // LOADING SKELETON
+  // LOADING — live progress feel: pulsing indicator + animated cards
   if (phase === "loading") {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mt-2">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Card key={i} className="overflow-hidden">
-            <CardContent className="p-0">
-              <div className="p-5 space-y-4">
-                <div className="flex items-start gap-3">
-                  <Skeleton className="size-6 rounded shrink-0" />
-                  <Skeleton className="size-14 rounded-xl shrink-0" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-3 w-1/2" />
+      <div className="mt-2">
+        <div className="flex items-center gap-3 mb-5 px-1">
+          <span className="relative flex size-2.5 shrink-0">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--color-primary)] opacity-60" />
+            <span className="relative inline-flex size-2.5 rounded-full bg-[var(--color-primary)]" />
+          </span>
+          <p className="text-sm font-medium text-[var(--color-fg-muted)] animate-pulse">
+            {t("pages.groups.fetchingLive")}
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i} className="overflow-hidden animate-in fade-in slide-in-from-bottom-2" style={{ animationDelay: `${i * 90}ms`, animationFillMode: "both" }}>
+              <CardContent className="p-0">
+                <div className="p-5 space-y-4">
+                  <div className="flex items-start gap-3">
+                    <Skeleton className="size-6 rounded shrink-0" />
+                    <Skeleton className="size-14 rounded-xl shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
                   </div>
+                  <div className="flex gap-2"><Skeleton className="h-6 w-16 rounded-full" /><Skeleton className="h-6 w-16 rounded-full" /></div>
                 </div>
-                <div className="flex gap-2"><Skeleton className="h-6 w-16 rounded-full" /><Skeleton className="h-6 w-16 rounded-full" /></div>
-              </div>
-              <div className="h-1 bg-[var(--color-surface-2)]"><Skeleton className="h-1 w-1/3" /></div>
-            </CardContent>
-          </Card>
-        ))}
+                <div className="h-1 overflow-hidden bg-[var(--color-surface-2)]">
+                  <div className="h-full w-1/3 animate-[groups-shimmer_1.4s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-[var(--color-primary)]/60 to-transparent" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <style>{`@keyframes groups-shimmer { 0% { transform: translateX(-100%);} 100% { transform: translateX(300%);} }`}</style>
       </div>
     );
   }
