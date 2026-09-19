@@ -252,10 +252,29 @@ export class MessengerContactsExtractor extends BaseExtractor {
       log.info("MessengerContacts", `calling bootstrapAndPaginate`);
       await this.bootstrapAndPaginate(pageId, contacts, seen, batchListCursor);
 
+      // ─── DOM recovery path (probe 2026-09-19): the GraphQL engine dies
+      // silently when FB rotates the pinned doc_id (live: POST /api/graphql
+      // returns 200 with an EMPTY body) and personal-profile sources have no
+      // Business Suite mailbox at all. The www messages inbox still renders
+      // the real conversation list — but bootstrap leaves the browser on a
+      // business.* page where zero /messages/t/ links exist. Go back to the
+      // inbox BEFORE any DOM collection, then scan the already-rendered rows.
+      let domRecovered = false;
+      if (contacts.size === 0 && !this.shouldStop) {
+        log.info("MessengerContacts", `graphql engine empty — recovering via www messages inbox DOM`);
+        await this.page.goto("https://www.facebook.com/messages/", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
+        await this.page.waitForTimeout(5000);
+        await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+        await this.page.waitForTimeout(2000);
+        domRecovered = true;
+      }
+      if (domRecovered) log.info("MessengerContacts", `DOM recovery path engaged`);
+
       // ─── Inject DOM MutationObserver as backup ───
       await this.injectDOMObserver();
 
-      // ─── Flush initial contacts ───
+      // ─── Flush initial contacts (observer map + DIRECT scan of rendered rows) ───
+      await this.collectDOMContacts(contacts);
       total += await this.flushContacts(contacts, seen);
 
       // ─── Phase 0: Scroll the current inbox page to trigger lazy loading ───
@@ -869,15 +888,56 @@ export class MessengerContactsExtractor extends BaseExtractor {
   }
 
   private async collectDOMContacts(contacts: Map<string, CapturedContact>): Promise<void> {
-    const domContacts: CapturedContact[] = await this.page.evaluate(() => {
-      const result: CapturedContact[] = [];
-      const domMap = (window as any).__domContacts;
-      if (domMap) {
-        for (const [, val] of domMap) result.push(val);
+    // Probe 2026-09-19: the observer map alone misses every row rendered
+    // BEFORE injectDOMObserver() ran (the initial chat list is server-painted,
+    // no mutations fire for it). Scan the live page directly each call —
+    // idempotent (Map keyed by thread id), so rescans cost nothing.
+    // NOTE: evaluate body passed as a TEMPLATE STRING — tsx injects a __name
+    // wrapper into function-form evaluate() which throws ReferenceError inside
+    // the page and the .catch() swallows it into a silent [] (known pitfall).
+    const domContacts: CapturedContact[] = await (this.page.evaluate(`(() => {
+      const out = [];
+      const push = (id, name, avatar) => {
+        if (id && name && name.length >= 2) out.push({ id: 'msg_' + id, name: name.split("\\n")[0].trim(), avatarUrl: avatar || "" });
+      };
+      // (a) rows already collected by the MutationObserver
+      const domMap = window.__domContacts;
+      if (domMap) for (const [, val] of domMap) out.push(val);
+      // (b) DIRECT scan of every rendered conversation link — the chat list is
+      // plain <a href="/messages/t/<id>"> with the display name as text.
+      const seenIds = new Set(out.map(c => c.id));
+      for (const link of Array.from(document.querySelectorAll('a[href*="/messages/t/"]'))) {
+        const href = link.getAttribute("href") || "";
+        const m = href.match(/\\/messages\\/t\\/(\\d+)/);
+        if (!m) continue;
+        const id = m[1];
+        if (seenIds.has('msg_' + id)) continue;
+        // Name: nearest heading-ish span inside the link, else the link text.
+        let name = "";
+        const cand = link.querySelector('span[dir="auto"], span, strong, h3, h4');
+        if (cand) name = (cand.innerText || "").trim();
+        if (!name) name = (link.innerText || "").trim();
+        name = name.split("\\n")[0].trim();
+        // Junk filters: timestamps/previews/nav leftovers ("١ي", "12w", "أنت:")
+        if (!name || name.length < 2 || name.length > 80) continue;
+        if (/^[\\d\\u0660-\\u0669]+\\s*(ث|د|س|ي|أ|w|h|m|s)$/i.test(name)) continue;
+        if (name.startsWith("أنت:") || name.startsWith("You:")) continue;
+        let avatar = "";
+        const container = link.closest("div[role='link'], li, div") || link;
+        for (const img of Array.from(container.querySelectorAll("img"))) {
+          const src = img.src || "";
+          if (src.includes("fbcdn") || src.includes("scontent")) { avatar = src; break; }
+        }
+        if (/\\s/.test(name)) {
+          // Group conversations have long multi-name labels; keep the first
+          // name segment (up to "،" or " و") — matches observer behaviour.
+          const first = name.split(/\\s+،\\s+|\\s+و\\s+/)[0].trim();
+          if (first.length >= 2) name = first;
+        }
+        push(id, name, avatar);
       }
-      return result;
-    }).catch(() => []);
-
+      return out;
+    })()`) as Promise<CapturedContact[]>).catch(() => []);
     for (const dc of domContacts) {
       if (!contacts.has(dc.id)) contacts.set(dc.id, dc);
     }
