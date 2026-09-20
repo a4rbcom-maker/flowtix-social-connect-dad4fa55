@@ -84,8 +84,19 @@ export function ExtractContactsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
         body: JSON.stringify({ session_id: selectedSessionId }),
+        signal: AbortSignal.timeout(90_000),
       });
-      if (!res.ok) throw new Error("Failed to fetch pages");
+      if (!res.ok) {
+        // Surface the API's own (Arabic) error message — the old generic throw
+        // hid the real cause (expired session, session-in-use, …) behind a
+        // constant English string.
+        let apiMsg = "";
+        try {
+          const body = await res.json();
+          apiMsg = body?.error?.message || "";
+        } catch { /* non-JSON body */ }
+        throw new Error(apiMsg || `HTTP ${res.status}`);
+      }
       const data = await res.json();
       if (!data.pages || data.pages.length === 0) {
         setPhase("noPages");
@@ -94,10 +105,14 @@ export function ExtractContactsPage() {
       setPages(data.pages);
       setPhase("select");
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Unknown error");
+      if (err instanceof DOMException && err.name === "TimeoutError") {
+        setErrorMsg(t("pages.messengerContacts.timeoutError", { defaultValue: "انتهت مهلة جلب الصفحات — حاول مرة أخرى" }));
+      } else {
+        setErrorMsg(err instanceof Error ? err.message : t("pages.messengerContacts.fetchPagesError"));
+      }
       setPhase("error");
     }
-  }, [selectedSessionId]);
+  }, [selectedSessionId, t]);
 
   useEffect(() => {
     if (!activeJob) return;

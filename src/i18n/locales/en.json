@@ -1772,7 +1772,11 @@
       "phase_paginating": "Paginating...",
       "phase_scrolling": "Scrolling...",
       "phase_mbasic": "Basic mode...",
-      "phase_finishing": "Finishing..."
+      "phase_finishing": "Finishing...",
+      "noPages": "No managed pages found",
+      "noPagesDesc": "No pages managed by this account were found on Facebook. Make sure the account manages a page, then retry.",
+      "fetchPagesError": "Failed to load managed pages",
+      "followers": "followers"
     },
     "groups": {
       "myGroups": "My Groups",

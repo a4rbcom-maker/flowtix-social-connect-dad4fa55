@@ -37,7 +37,7 @@ function parseBodies(clean: string): unknown[] {
       const ch = clean[i];
       if (esc) { esc = false; continue; }
       if (ch === "\\") { esc = true; continue; }
-      if (ch === '"') { inStr = !inStr; continue; }
+      if (ch === "\"") { inStr = !inStr; continue; }
       if (inStr) continue;
       if (ch === "{") { if (depth === 0) start = i; depth++; }
       else if (ch === "}") {
@@ -49,6 +49,33 @@ function parseBodies(clean: string): unknown[] {
     }
   }
   return objects;
+}
+
+/**
+ * DOM fallback (probe 2026-09-20): the see-all profile-switcher sheet renders
+ * one [role="button"] row per profile/page. The GraphQL interception layer can
+ * miss the payload (relay cache renders the sheet with no fresh network call),
+ * so harvest names from the sheet and match them against entities captured from
+ * the page's embedded JSON (switcher/bookmark payloads).
+ */
+function dumpSwitcherSheetRows(): { name: string; notificationCount: number }[] {
+  const rows: { name: string; notificationCount: number }[] = [];
+  const dialogs = document.querySelectorAll('[role="dialog"]');
+  for (const d of dialogs) {
+    const heading = (d.querySelector("h2,h1,h3") as HTMLElement | null)?.innerText || "";
+    // "ملفاتك الشخصية وصفحاتك" / "Your profiles and pages"
+    if (!/(صفحاتك|profiles and pages|your profiles)/i.test(heading)) continue;
+    for (const el of Array.from(d.querySelectorAll('[role="button"]'))) {
+      const first = (el.textContent || "").trim().split("\n")[0]?.trim() || "";
+      if (!first || first.length > 80) continue;
+      if (/^(إنشاء|Create|الانتقال|See all|عرض كل)/.test(first)) continue;
+      if (/إعدادات حساب|Meta$/.test(first)) continue;
+      const m = first.match(/^(\d+)\s*(من الإشعارات|notifications)/);
+      if (m) continue; // counter line, not a row title
+      if (!rows.some(r => r.name === first)) rows.push({ name: first, notificationCount: 0 });
+    }
+  }
+  return rows;
 }
 
 router.post("/list-pages", async (req, res) => {
@@ -84,58 +111,105 @@ router.post("/list-pages", async (req, res) => {
     page.on("response", onResp);
 
     try {
-      // ─── One navigation, then open the identity switcher (probe 2026-08-31) ───
+      // ─── One navigation, then open the identity switcher ───
       await page.goto("https://www.facebook.com/", { waitUntil: "domcontentloaded", timeout: config.fbNavTimeoutMs });
-      await page.waitForTimeout(3500);
-      await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+      await page.waitForTimeout(3000);
 
-      // Click the avatar button ("Your profile" en / "الصورة الشخصية" ar) — scan
-      // label-by-label so it wins over "Facebook menu".
-      const avatarClicked: string = await page.evaluate(`(() => {
-        const labels = ["Your profile", "الصورة الشخصية", "حسابي", "Facebook menu", "قائمة الحساب"];
-        for (const want of labels) {
-          const els = Array.from(document.querySelectorAll('[role="button"], a, img[aria-label]'));
-          for (const el of els) {
-            const al = (el.getAttribute && (el.getAttribute("aria-label") || el.getAttribute("alt"))) || "";
-            if (al && al.toLowerCase() === want.toLowerCase()) { el.click(); return al; }
-          }
+      // Click the avatar button — label varies by account language
+      // (probe 2026-09-20: "ملفك الشخصي" on ar accounts, "Your profile" on en).
+      // Retry-poll instead of a single shot: on the VPS the cold page render
+      // can take longer than the flat 3s wait (prod failed here at 9s).
+      const clickWhenReady = async (labels: string[], scope: string, maxMs: number): Promise<string> => {
+        const listJson = JSON.stringify(labels);
+        const deadline = Date.now() + maxMs;
+        let clicked = "";
+        while (!clicked && Date.now() < deadline) {
+          clicked = (await page.evaluate(`(() => {
+            const want = ${listJson};
+            const cands = Array.from(document.querySelectorAll(${JSON.stringify(scope)}));
+            for (const el of cands) {
+              const t = (el.innerText || "").trim();
+              const al = (el.getAttribute && (el.getAttribute("aria-label") || el.getAttribute("alt"))) || "";
+              const hay = (t + " " + al).toLowerCase();
+              for (const w of want) {
+                if (hay === w.toLowerCase() || (w.length > 12 && hay.includes(w.toLowerCase()))) { el.click(); return t || al; }
+              }
+            }
+            return "";
+          })()`)) as string;
+          if (!clicked) await page.waitForTimeout(800);
         }
-        return "";
-      })()`);
+        return clicked;
+      };
+
+      const avatarClicked = await clickWhenReady(
+        ["ملفك الشخصي", "Your profile", "الصورة الشخصية", "حسابي", "Facebook menu", "قائمة الحساب"],
+        '[role="button"], a, img[aria-label], svg[aria-label]',
+        45000,
+      );
       log.info("ListPages", `avatar-click=${avatarClicked || "none"}`);
-      await page.waitForTimeout(3500);
-      await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+      if (!avatarClicked) {
+        const topLabels = (await page.evaluate(`(() => {
+          return Array.from(document.querySelectorAll('[role="banner"] [role="button"], [role="navigation"] [role="button"]'))
+            .map(el => el.getAttribute("aria-label") || el.getAttribute("alt") || "")
+            .filter(Boolean).slice(0, 15);
+        })()`)) as string[];
+        log.warn("ListPages", `avatar not found; banner labels: ${topLabels.join(" | ") || "none"}`);
+        return res.status(500).json({ error: { code: ErrorCodes.UNKNOWN_ERROR, message: "تعذّر فتح قائمة الحساب على فيسبوك — أعد المحاولة" } });
+      }
+      await page.waitForTimeout(2000);
 
-      // Click "See all profiles" / "التبديل بين الملفات" in the opened menu —
-      // this fires the switcher GraphQL carrying profile_switcher_eligible_profiles.
-      const profilesClicked: string = await page.evaluate(`(() => {
-        const want = ["see all profiles", "see more profiles", "التبديل بين الملفات", "عرض المزيد من الملفات", "الصفحات", "profiles"];
-        const cands = Array.from(document.querySelectorAll('[role="menuitem"], [role="dialog"] a, [role="dialog"] [role="button"], [role="button"]'));
-        for (const el of cands) {
-          const t = (el.innerText || "").trim();
-          const al = (el.getAttribute && el.getAttribute("aria-label")) || "";
-          if ((t && want.some(w => t.toLowerCase().includes(w))) || (al && want.some(w => al.toLowerCase().includes(w)))) {
-            el.click(); return t || al;
-          }
-        }
-        return "";
-      })()`);
+      // Click "عرض كل الملفات الشخصية" / "See all profiles" — opens the full
+      // switcher sheet with every profile AND managed page.
+      const profilesClicked = await clickWhenReady(
+        ["عرض كل الملفات الشخصية", "عرض كل الملفات", "التبديل بين الملفات", "see all profiles", "see more profiles", "عرض المزيد من الملفات"],
+        '[role="menuitem"], [role="menu"] [role="button"], [role="menu"] a, [role="dialog"] [role="button"], [role="dialog"] a, [role="button"]',
+        20000,
+      );
       log.info("ListPages", `profiles-click=${profilesClicked || "none"}`);
+      if (!profilesClicked) {
+        return res.status(500).json({ error: { code: ErrorCodes.UNKNOWN_ERROR, message: "تعذّر فتح قائمة الملفات والصفحات على فيسبوك — أعد المحاولة" } });
+      }
       await page.waitForTimeout(3500);
-      await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
 
-      // ─── Primary: deep-walk captured switcher GraphQL for Page entities ───
+      // ─── Primary: deep-walk captured switcher GraphQL for entities ───
       const found = new Map<string, ManagedPageCandidate>();
-      const viewerUserIds = new Set<string>();
       for (const body of captured) {
         if (!body) continue;
         for (const obj of parseBodies(body.replace(/^for\s*\(\s*;;\s*\);?/, "").trim())) {
           for (const p of extractManagedPages(obj)) if (!found.has(p.id)) found.set(p.id, p);
         }
-        for (const m of body.matchAll(/"__typename":"User","id":"(\d{5,})"/g)) viewerUserIds.add(m[1]);
-        for (const m of body.matchAll(/"id":"(\d{5,})","__typename":"User"/g)) viewerUserIds.add(m[1]);
       }
-      log.info("ListPages", `graphql-switcher: ${found.size} managed pages from ${captured.length} graphql responses (viewerIds=${viewerUserIds.size})`);
+
+      // ─── Fallback (probe 2026-09-20): the sheet itself renders from the relay
+      // cache — no fresh network call fires, so captured[] can be empty while
+      // the sheet lists every profile/page. Harvest names from the sheet rows
+      // and resolve their numeric ids from the page's embedded script JSON
+      // (switcher eligible-profile + bookmark payloads both carry id+name).
+      if (found.size === 0) {
+        const sheetRows = (await page.evaluate(`(${dumpSwitcherSheetRows})()`)) as { name: string }[];
+        if (sheetRows.length > 0) {
+          const embedded = await page.evaluate(`(() => {
+            const chunks = [];
+            const scripts = document.querySelectorAll('script');
+            for (const s of scripts) {
+              const t = s.textContent || "";
+              if (t.includes("ProfileSwitcherEligibleProfile") || t.includes("delegate_page_id") || t.includes('"__typename":"Page"')) {
+                chunks.push(t);
+              }
+            }
+            return chunks;
+          })()`) as string[];
+          for (const chunk of embedded) {
+            for (const obj of parseBodies(chunk.replace(/^for\s*\(\s*;;\s*\);?/, "").trim())) {
+              for (const p of extractManagedPages(obj)) if (!found.has(p.id)) found.set(p.id, p);
+            }
+          }
+          log.info("ListPages", `sheet-fallback: ${sheetRows.length} sheet rows, ${found.size} entities from embedded JSON`);
+        }
+      }
+
+      log.info("ListPages", `graphql-switcher: ${found.size} managed pages from ${captured.length} graphql responses`);
 
       // NOTE: the old accountscenter.facebook.com fallback is REMOVED. Navigating
       // the Account Center from a datacenter IP on a minutes-old session is a
@@ -163,7 +237,8 @@ router.post("/list-pages", async (req, res) => {
     const code = err instanceof ExtractionError ? err.code : ErrorCodes.UNKNOWN_ERROR;
     const message = err instanceof Error ? err.message : String(err);
     log.error("ListPages", `error: ${code}`, { message });
-    return res.status(500).json({ error: { code, message } });
+    const status = code === ErrorCodes.SESSION_EXPIRED ? 401 : 500;
+    return res.status(status).json({ error: { code, message } });
   }
 });
 

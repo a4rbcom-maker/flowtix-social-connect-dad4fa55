@@ -40,10 +40,25 @@ export function isRealPageName(name: unknown): name is string {
 /**
  * GraphQL switcher entity gate: numeric id + Page typename + real name +
  * working publishing authorization.
+ *
+ * Probe 2026-09-20: the see-all switcher sheet carries MANAGED PAGES as
+ * `{ __typename: "ProfileSwitcherEligibleProfile", profile: { id, name,
+ * profile_picture, delegate_page_id } }` — a page's profile row, not a direct
+ * Page node. A row with a `delegate_page_id` IS a managed page (that id is the
+ * page's real numeric id); without it, it's a personal profile and must be
+ * rejected.
  */
 export function isManagedPageEntity(entity: unknown): boolean {
   if (!entity || typeof entity !== "object") return false;
   const e = entity as Record<string, unknown>;
+  if (e.__typename === "ProfileSwitcherEligibleProfile") {
+    const profile = e.profile as Record<string, unknown> | undefined;
+    if (!profile || typeof profile !== "object") return false;
+    const delegateId = profile.delegate_page_id;
+    if (delegateId == null || !/^\d{5,}$/.test(String(delegateId))) return false;
+    if (!isRealPageName(profile.name)) return false;
+    return true;
+  }
   const id = e.id != null ? String(e.id) : "";
   if (!/^\d{5,}$/.test(id)) return false;
   if (e.__typename !== "Page") return false;
@@ -73,6 +88,21 @@ export function extractManagedPages(root: unknown): ManagedPageCandidate[] {
     }
     if (isManagedPageEntity(node)) {
       const e = node as Record<string, unknown>;
+      // ProfileSwitcherEligibleProfile rows: the page's id lives in
+      // profile.delegate_page_id, the name/picture in the nested profile.
+      if (e.__typename === "ProfileSwitcherEligibleProfile") {
+        const profile = e.profile as Record<string, unknown>;
+        const id = String(profile.delegate_page_id);
+        if (!byId.has(id)) {
+          const pic = profile.profile_picture as { uri?: string } | undefined;
+          byId.set(id, {
+            id,
+            name: String(profile.name).trim(),
+            pictureUrl: pic?.uri || "",
+          });
+        }
+        return;
+      }
       const id = String(e.id);
       if (!byId.has(id)) {
         const pic = e.profile_picture as { uri?: string } | undefined;

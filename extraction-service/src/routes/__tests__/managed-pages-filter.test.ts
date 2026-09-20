@@ -17,6 +17,46 @@ test("rejects User typename (personal profile is not a managed page)", () => {
   assert.equal(isManagedPageEntity({ __typename: "User", id: "61591749260391", name: "Lily Moemen" }), false);
 });
 
+test("accepts ProfileSwitcherEligibleProfile with delegate_page_id (probe shape 2026-09-20)", () => {
+  const entity = {
+    __typename: "ProfileSwitcherEligibleProfile",
+    profile: {
+      id: "61587860176428",
+      name: "Caesar7.ksa",
+      profile_picture: { uri: "https://scontent.xx.fbcdn.net/v/t39.30808-1/x.jpg" },
+      delegate_page_id: "926180007255952",
+      unseen_update_count: 44,
+    },
+  };
+  assert.equal(isManagedPageEntity(entity), true);
+});
+
+test("rejects ProfileSwitcherEligibleProfile without delegate_page_id (personal profile row)", () => {
+  const entity = {
+    __typename: "ProfileSwitcherEligibleProfile",
+    profile: { id: "100092451731675", name: "خالد عبدالرحمن", profile_picture: { uri: "u.jpg" } },
+  };
+  assert.equal(isManagedPageEntity(entity), false);
+});
+
+test("extractManagedPages maps switcher rows to the delegate page id", () => {
+  const payload = {
+    viewer: {
+      profile_switcher_eligible_profiles: {
+        edges: [
+          { node: { profile: { id: "100092451731675", name: "خالد عبدالرحمن" }, __typename: "ProfileSwitcherEligibleProfile" } },
+          { node: { profile: { id: "61587860176428", name: "Caesar7.ksa", profile_picture: { uri: "c.jpg" }, delegate_page_id: "926180007255952" }, __typename: "ProfileSwitcherEligibleProfile" } },
+        ],
+      },
+    },
+  };
+  const pages = extractManagedPages(payload);
+  assert.equal(pages.length, 1);
+  assert.equal(pages[0].id, "926180007255952");
+  assert.equal(pages[0].name, "Caesar7.ksa");
+  assert.equal(pages[0].pictureUrl, "c.jpg");
+});
+
 test("rejects page with failing publishing authorization (inbox access broken)", () => {
   assert.equal(
     isManagedPageEntity({ __typename: "Page", id: "123456789012345", name: "My Page", is_failing_page_publishing_authorization: true }),
