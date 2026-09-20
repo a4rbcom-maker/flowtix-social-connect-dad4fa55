@@ -24,11 +24,16 @@ const REASON_AR: Record<string, string> = {
   typing_failed: "فشل إدخال النص في محرر فيسبوك",
   media_failed: "فشل إرفاق الصورة/الفيديو",
   no_confirmation: "لم يتم التأكد من ظهور المنشور في الجروب",
-  navigation_error: "خطأ في تحميل صفحة الجروب",
+  navigation_error: "تعذّر فتح صفحة الجروب — الشبكة أو البروكسي لا يستجيب",
+  media_download_failed: "فشل تحميل مرفقات المنشور قبل البدء",
+  network_down: "توقّف النشر — انقطعت الشبكة أو البروكسي (المهمة قابلة للاستئناف)",
 };
 
 function displayReason(reason?: string): string | null {
   if (!reason) return null;
+  // "navigation_error: <detail>" already carries an Arabic detail — show it.
+  const navMatch = /^navigation_error:\s*(.+)$/s.exec(reason);
+  if (navMatch) return navMatch[1].slice(0, 140);
   const key = reason.split(":")[0].trim();
   return REASON_AR[key] ?? (reason.length > 90 ? reason.slice(0, 90) + "…" : reason);
 }
@@ -145,6 +150,12 @@ export function ProgressDashboard({ jobId, onDone, groups }: Props) {
             <div className="flex items-center gap-2 text-sm text-[var(--color-fg-muted)] bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/10 rounded-lg px-3 py-2.5">
               <Loader2 className="size-3.5 animate-spin text-[var(--color-primary)] shrink-0" />
               <span>جاري النشر على: <span className="font-semibold text-[var(--color-fg)]">{currentName}</span></span>
+            </div>
+          )}
+          {p.abort_reason === "network_down" && (
+            <div className="flex items-center gap-2 text-sm text-[var(--color-warning)] bg-[var(--color-warning)]/5 border border-[var(--color-warning)]/20 rounded-lg px-3 py-2.5">
+              <Clock className="size-3.5 shrink-0" />
+              <span>توقّف النشر تلقائيًا: انقطعت الشبكة أو البروكسي بعد محاولتين متتاليتين. صلّح الاتصال ثم اضغط «استئناف» — الجروبات المنشورة لن تُكرَّر.</span>
             </div>
           )}
           {stalled && (

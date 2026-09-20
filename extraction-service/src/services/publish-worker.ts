@@ -217,6 +217,16 @@ async function runPublishWorker(jobId: string, sessionId: string) {
     const results: PublishResultRow[] = Array.isArray(job.results) ? job.results : [];
     const alreadyPosted = postedGroupIds(results);
     let consecutiveErrors = 0;
+    // Navigation failures (proxy/tunnel dead, FB unreachable) are an infra
+    // problem, not a group problem — two in a row means every remaining group
+    // will burn 25s+delay for nothing. Track them separately.
+    let consecutiveNavErrors = 0;
+    // Last progress object written by updateProgress — the final status update
+    // must keep the LIVE counters + abort_reason, not the stale load-time row.
+    let liveProgress: Record<string, any> | null = null;
+    // Set when the loop breaks early for a broken pipe (network/proxy) — the
+    // job is paused + resumable, NOT completed.
+    let forcedPause = false;
 
     // paused=true covers every early-exit path (user pause, stop, max-errors,
     // stop-during-sleep). Only a loop that reaches the end of the list leaves
@@ -237,6 +247,9 @@ async function runPublishWorker(jobId: string, sessionId: string) {
       try {
         const delay = randInt(cfg.delay_min || 60, cfg.delay_max || 180);
         log.info("PublishWorker", `[${i + 1}/${groups.length}] group ${gid}, delay ${delay}s`);
+        // Live marker: the UI shows "جاري النشر على …" from the moment the
+        // group is ATTEMPTED, not only after it finishes.
+        await updateProgress(jobId, i, published, failed, skipped, results, gid);
         await sleep(delay * 1000);
         if (!runningJobs.has(jobId)) {
           await saveCheckpoint(jobId, i, published, failed, skipped, results, currentBatchOf(i, BATCH_SIZE));
@@ -244,7 +257,38 @@ async function runPublishWorker(jobId: string, sessionId: string) {
           break;
         }
 
-        await page.goto(`https://www.facebook.com/groups/${gid}`, { waitUntil: "domcontentloaded", timeout: 25000 });
+        // goto with ONE retry: through a tunnel the first attempt can lose the
+        // race with a just-reconnected tunnel. A clean error string beats a
+        // raw Playwright dump in the results.
+        let navError: string | null = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            await page.goto(`https://www.facebook.com/groups/${gid}`, { waitUntil: "domcontentloaded", timeout: 25000 });
+            navError = null;
+            break;
+          } catch (err) {
+            navError = String(err);
+            if (attempt === 0) await sleep(4000);
+          }
+        }
+        if (navError) {
+          consecutiveNavErrors++;
+          failed++;
+          consecutiveErrors++;
+          results.push({ group_id: gid, status: "fail", reason: `navigation_error: ${summarizeNavError(navError, gid)}`, at: new Date().toISOString(), batch: currentBatchOf(i, BATCH_SIZE) });
+          await updateProgress(jobId, i + 1, published, failed, skipped, results);
+          // Two nav failures in a row = the pipe is dead (proxy/tunnel down).
+          // Continuing would burn delay+25s per remaining group for nothing —
+          // pause the job with a clear reason so it is resumable.
+          if (consecutiveNavErrors >= 2) {
+            forcedPause = true;
+            log.warn("PublishWorker", `job ${jobId}: ${consecutiveNavErrors} consecutive navigation errors — network/proxy dead, pausing job as resumable`);
+            await saveAbort(jobId, i + 1, published, failed, skipped, results, "network_down");
+            break;
+          }
+          continue;
+        }
+        consecutiveNavErrors = 0;
         await page.waitForTimeout(3000);
         await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
         await page.waitForTimeout(1500);
@@ -306,6 +350,9 @@ async function runPublishWorker(jobId: string, sessionId: string) {
       }
 
       await updateProgress(jobId, i + 1, published, failed, skipped, results);
+      // Keep the newest progress object for the final status write (it must
+      // not regress the live counters back to the load-time snapshot).
+      liveProgress = { current_idx: i + 1, published, failed, skipped };
       if (consecutiveErrors >= (cfg.max_errors || 10)) {
         log.warn("PublishWorker", `job ${jobId}: ${consecutiveErrors} consecutive errors — stopping for safety`);
         await saveCheckpoint(jobId, i + 1, published, failed, skipped, results, currentBatchOf(i, BATCH_SIZE));
@@ -325,7 +372,7 @@ async function runPublishWorker(jobId: string, sessionId: string) {
 
       if (i % 5 === 0) await saveCheckpoint(jobId, i + 1, published, failed, skipped, results, currentBatchOf(i, BATCH_SIZE));
     }
-    if (!runningJobs.has(jobId)) paused = true; else paused = false;
+    if (!runningJobs.has(jobId)) paused = true; else if (forcedPause) paused = true; else paused = false;
 
     // Single exit: "completed" only when the loop reached the end of the list
     // (failed/skipped groups count as processed). Any interruption → "paused",
@@ -335,7 +382,7 @@ async function runPublishWorker(jobId: string, sessionId: string) {
     await sb.from("publish_jobs").update({
       status: finalStatus,
       ...(finalStatus === "completed" ? { completed_at: new Date().toISOString() } : {}),
-      progress: { ...(job.progress || {}), current_group: null },
+      progress: { ...(liveProgress ?? job.progress ?? {}), current_group: null },
       updated_at: new Date().toISOString(),
     }).eq("id", jobId).neq("status", "canceled");
     const summary = summarizeResults(results);
@@ -350,6 +397,29 @@ async function runPublishWorker(jobId: string, sessionId: string) {
 
 function currentBatchOf(idx: number, batchSize: number): number {
   return Math.floor(idx / batchSize) + 1;
+}
+
+/** Human-readable cause for a page.goto failure — the raw Playwright dump
+ *  (25 lines of call log) is useless in a per-group result row. */
+function summarizeNavError(raw: string, gid: string): string {
+  const first = raw.split("\n")[0] || "unknown";
+  if (/Timeout.*exceeded/i.test(first)) return `تعذر فتح صفحة الجروب (${gid}) خلال 25 ثانية — الشبكة/البروكسي لا يستجيب`;
+  if (/net::ERR_(PROXY|TUNNEL|SOCKS)/i.test(raw)) return "فشل الاتصال بالبروكسي — تحقق من البروكسي أو نفق الخروج";
+  if (/net::ERR_NAME_NOT_RESOLVED/i.test(raw)) return "فشل تحليل اسم النطاق facebook.com — مشكلة شبكة";
+  if (/net::ERR_CONNECTION_(REFUSED|RESET|CLOSED|TIMED_OUT)/i.test(raw)) return "تم رفض/انقطع الاتصال بفيسبوك — مشكلة شبكة";
+  if (/Target closed|Browser has been closed/i.test(raw)) return "أُغلق المتصفح أثناء التحميل";
+  return first.slice(0, 120);
+}
+
+/** Persist an aborted-by-infra state: the job is PAUSED and resumable, with
+ *  an abort_reason the UI can render. Must never leave the job "running". */
+async function saveAbort(jobId: string, idx: number, published: number, failed: number, skipped: number, results: any[], abortReason: string) {
+  const prog: any = { current_idx: idx, published, failed, skipped, abort_reason: abortReason };
+  try {
+    await sb.from("publish_jobs").update({ progress: prog, results, updated_at: new Date().toISOString() }).eq("id", jobId);
+  } catch (err) {
+    log.warn("PublishWorker", `abort checkpoint write failed: ${String(err).slice(0, 120)}`);
+  }
 }
 
 /** Which group the worker is on right now — "current_group" in progress jsonb
@@ -518,7 +588,33 @@ async function typeAndSubmit(page: Page, message: string, media: PublishMedia[] 
     await page.keyboard.press("a");
     await page.keyboard.up("Control");
     await page.keyboard.press("Delete");
-    await page.keyboard.type(message, { delay: randInt(20, 45) });
+    // typeAndSubmit is typed keystroke-by-keystroke; for ARABIC text
+    // keyboard.type() has been observed to deliver the events but leave the
+    // Lexical editor state EMPTY (submit stays disabled) on some group
+    // composers — insertText delivers the exact text through the IME path.
+    try {
+      await page.evaluate(
+        `(text) => {
+          const el = document.querySelector(${JSON.stringify(COMPOSER_SEL)});
+          if (!el) return false;
+          document.execCommand("insertText", false, text);
+          return true;
+        }`,
+        message,
+      );
+    } catch {
+      // execCommand unsupported (very old headless builds) — keystrokes below.
+    }
+    // Verify the text ACTUALLY landed in the editor state; keystroke-typing as
+    // fallback only when it did not. No fake success either way.
+    const textLanded = await editorHasText(page, message);
+    if (!textLanded) {
+      await page.keyboard.type(message, { delay: randInt(20, 45) });
+    }
+    if (!(await editorHasText(page, message))) {
+      log.warn("PublishWorker", "text did not register in composer — typing_failed");
+      return "typing_failed";
+    }
 
     // The Post button enables only when the editor state actually holds the
     // text — if it never enables, the text did not register. No fake success.
@@ -554,7 +650,7 @@ async function typeAndSubmit(page: Page, message: string, media: PublishMedia[] 
     // VERIFICATION: only count the post when it actually lands in the feed.
     const confirmed = await waitForPublishConfirmation(page, message);
     if (confirmed === false) return "no_confirmation";
-    const postUrl = await extractPermalinkFromPage(page);
+    const postUrl = await extractPermalinkFromPage(page, message);
     if (confirmed === "pending_approval") {
       log.info("PublishWorker", `post held for admin approval${postUrl ? ` — ${postUrl}` : ""}`);
       return { kind: "review", reason: "pending_admin_approval", ...(postUrl ? { postUrl } : {}) };
@@ -565,6 +661,25 @@ async function typeAndSubmit(page: Page, message: string, media: PublishMedia[] 
     log.warn("PublishWorker", `attemptPost error: ${String(err)}`);
     return "typing_failed";
   }
+}
+
+/** Does the composer's editable region actually contain the message text?
+ *  Checks textContent (Lexical renders text nodes into the DOM) — the only
+ *  trustworthy signal that the editor state holds the post. */
+async function editorHasText(page: Page, message: string): Promise<boolean> {
+  const needle = message.trim().slice(0, 30);
+  if (!needle) return false;
+  return Boolean(await page.evaluate(
+    `(needle) => {
+      const els = document.querySelectorAll(${JSON.stringify(COMPOSER_SEL)});
+      for (const el of els) {
+        const t = (el.textContent || "");
+        if (t.includes(needle)) return true;
+      }
+      return false;
+    }`,
+    needle,
+  ).catch(() => false));
 }
 
 /** Wait for visible signs the post actually landed in the group feed.
@@ -596,21 +711,43 @@ async function waitForPublishConfirmation(page: Page, message: string): Promise<
   return false;
 }
 
-/** Best-effort permalink for the post just submitted (from feed anchors or success dialog). */
-async function extractPermalinkFromPage(page: Page): Promise<string | undefined> {
+/** Best-effort permalink for the post just submitted (from feed anchors or success dialog).
+ *  Only anchors INSIDE the fresh dialog or matching OUR message context count —
+ *  the group feed contains everyone else's /posts/ links too. */
+async function extractPermalinkFromPage(page: Page, message: string): Promise<string | undefined> {
   try {
+    const needle = message.trim().slice(0, 30).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const url = await page.evaluate(
-      `(() => {
-        const anchors = document.querySelectorAll('div[role="feed"] a[href*="/posts/"], div[role="dialog"] a[href*="/posts/"], a[href*="/permalink/"]');
-        for (const a of anchors) {
-          const href = a.getAttribute("href") || "";
-          if (!href) continue;
-          return href.startsWith("http") ? href : "https://www.facebook.com" + href;
+      `((needleSrc) => {
+        let re;
+        try { re = new RegExp(needleSrc, "i"); } catch { re = null; }
+        // 1) Success dialog (still open) — its /posts/ or /permalink/ link is ours.
+        const dialog = document.querySelector('div[role="dialog"]');
+        if (dialog) {
+          for (const a of dialog.querySelectorAll('a[href*="/posts/"], a[href*="/permalink/"]')) {
+            const href = a.getAttribute("href") || "";
+            if (href) return href.startsWith("http") ? href : "https://www.facebook.com" + href;
+          }
+        }
+        // 2) Feed: the article containing our text is OUR post — take its link.
+        if (re) {
+          for (const art of document.querySelectorAll('div[role="feed"] > div, div[role="article"]')) {
+            const t = art.textContent || "";
+            if (re.test(t)) {
+              for (const a of art.querySelectorAll('a[href*="/posts/"], a[href*="/permalink/"]')) {
+                const href = a.getAttribute("href") || "";
+                if (href && /\\/posts\\/|\\/permalink\\//.test(href)) {
+                  return href.startsWith("http") ? href : "https://www.facebook.com" + href;
+                }
+              }
+            }
+          }
         }
         return null;
       })()`,
+      needle,
     );
-    return typeof url === "string" && url.includes("/posts/") || (typeof url === "string" && url.includes("/permalink/")) ? url : undefined;
+    return typeof url === "string" && (url.includes("/posts/") || url.includes("/permalink/")) ? url : undefined;
   } catch {
     return undefined;
   }
@@ -629,8 +766,9 @@ async function saveCheckpoint(jobId: string, idx: number, published: number, fai
   }
 }
 
-async function updateProgress(jobId: string, currentIdx: number, published: number, failed: number, skipped: number, results: any[]) {
+async function updateProgress(jobId: string, currentIdx: number, published: number, failed: number, skipped: number, results: any[], currentGroup?: string) {
   const prog: any = { published, failed, skipped, current_idx: currentIdx };
+  if (currentGroup !== undefined) prog.current_group = currentGroup;
   try {
     // FULL results, never sliced: postedGroupIds() on resume/crash-recovery
     // must see every already-posted group or they get posted twice. The

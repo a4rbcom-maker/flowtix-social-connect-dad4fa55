@@ -290,7 +290,7 @@ export const supabaseService = {
       : "";
     const proxy = dbProxy
       ? { url: dbProxy, label: "session-byop" }
-      : resolveEgressProxy(session.id);
+      : await resolveEgressProxy(session.id);
     if (proxy) {
       log.info("Supabase", `session ${session.id.slice(0, 8)}: proxy resolved (${proxy.label || proxy.url.split('@').pop()})`);
     }
@@ -856,31 +856,60 @@ function resolveProxyForSession(sessionId: string): ProxyConfig | null {
 const TUNNEL_SOCKS_URL = process.env.FB_EGRESS_TUNNEL_URL || "socks5://127.0.0.1:13390";
 let tunnelProbeCache = { at: 0, up: false };
 
-function isEgressTunnelUp(): boolean {
+/**
+ * Real liveness check: a TCP accept proves nothing — a half-dead reverse SSH
+ * tunnel still accepts connects on the VPS loopback and then moves no bytes,
+ * which surfaces as 25s page.goto timeouts on EVERY FB navigation. Perform a
+ * full SOCKS5 handshake (greeting → method reply) instead; only a tunnel that
+ * actually carries traffic is "up". Cached (30s TTL) between calls; each
+ * caller AWAITS the real answer when the cache is cold — returning a stale
+ * "down" would send fresh contexts DIRECT from the datacenter IP, the exact
+ * thing that gets sessions killed.
+ */
+async function awaitEgressTunnelUp(): Promise<boolean> {
   const now = Date.now();
   if (now - tunnelProbeCache.at < 30_000) return tunnelProbeCache.up;
-  const port = parseInt(TUNNEL_SOCKS_URL.split(":").pop() || "13390", 10);
-  let settled = false;
-  const result = new Promise<boolean>((resolve) => {
+  return probeTunnel();
+}
+
+function probeTunnel(): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const port = parseInt(TUNNEL_SOCKS_URL.split(":").pop() || "13390", 10);
+    let done = false;
+    const finish = (up: boolean) => {
+      if (done) return;
+      done = true;
+      tunnelProbeCache = { at: Date.now(), up };
+      try { sock.destroy(); } catch { /* already closed */ }
+      resolve(up);
+    };
     const sock = net.connect({ port, host: "127.0.0.1", timeout: 1500 });
-    sock.once("connect", () => { sock.destroy(); resolve(true); });
-    sock.once("error", () => resolve(false));
-    sock.once("timeout", () => { sock.destroy(); resolve(false); });
-  }).then((up) => { tunnelProbeCache = { at: Date.now(), up }; settled = true; return up; })
-    .catch(() => { tunnelProbeCache = { at: Date.now(), up: false }; settled = true; return false; });
-  // probe must never block the caller for long; 1.5s worst case
-  result.catch(() => {});
-  tunnelProbeCache = { at: now, up: tunnelProbeCache.up };
-  return tunnelProbeCache.up;
+    sock.once("connect", () => {
+      // SOCKS5 greeting: VER=5, 1 method, NO AUTH.
+      sock.once("data", (m) => {
+        if (m.length >= 2 && m[0] === 5 && m[1] === 0) return finish(true); // NO AUTH accepted
+        if (m.length >= 2 && m[0] === 5 && m[1] !== 0) return finish(false); // auth demanded — not our tunnel
+        // Anything else: not a talking SOCKS5 server — treat as dead.
+        return finish(false);
+      });
+      sock.once("error", () => finish(false));
+      sock.once("close", () => finish(false));
+      sock.write(Buffer.from([5, 1, 0]));
+      // The greeting must arrive quickly; a silent accept is a zombie tunnel.
+      setTimeout(() => finish(false), 2000).unref?.();
+    });
+    sock.once("error", () => finish(false));
+    sock.once("timeout", () => finish(false));
+  });
 }
 
 /** Resolve the egress proxy for a FB session: session BYOP > global env >
  *  Egypt tunnel (when alive). Returns null when everything is down — the
  *  session then runs direct from the server IP as before. */
-export function resolveEgressProxy(sessionId: string): ProxyConfig | null {
+export async function resolveEgressProxy(sessionId: string): Promise<ProxyConfig | null> {
   const byop = resolveProxyForSession(sessionId);
   if (byop) return byop;
   if (process.env.FB_EGRESS_TUNNEL === "off") return null;
-  if (isEgressTunnelUp()) return { url: TUNNEL_SOCKS_URL, label: "egypt-egress-tunnel" };
+  if (await awaitEgressTunnelUp()) return { url: TUNNEL_SOCKS_URL, label: "egypt-egress-tunnel" };
   return null;
 }
