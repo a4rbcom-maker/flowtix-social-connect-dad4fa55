@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
+import net from "node:net";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { ExtractionError, ErrorCodes } from "../errors.js";
@@ -281,13 +282,15 @@ export const supabaseService = {
       localStorageOrigins: storageState?.origins.length ?? 0,
     });
 
-    // Resolve proxy: session DB (BYOP) → env.FB_PROXY_{ID} → global PROXY_URL
+    // Resolve proxy: session BYOP → env/global → Egypt egress tunnel (auto,
+    // used for EVERY FB session when the tunnel is alive; falls back to direct
+    // when it is down so nothing ever breaks).
     const dbProxy = typeof (session as { proxy_url?: unknown }).proxy_url === "string"
       ? ((session as { proxy_url?: string }).proxy_url || "").trim()
       : "";
     const proxy = dbProxy
       ? { url: dbProxy, label: "session-byop" }
-      : resolveProxyForSession(session.id);
+      : resolveEgressProxy(session.id);
     if (proxy) {
       log.info("Supabase", `session ${session.id.slice(0, 8)}: proxy resolved (${proxy.label || proxy.url.split('@').pop()})`);
     }
@@ -841,5 +844,43 @@ function resolveProxyForSession(sessionId: string): ProxyConfig | null {
   // Global proxy URL from config
   if (config.proxyUrl) return { url: config.proxyUrl, label: "global" };
 
+  return null;
+}
+
+/** Egypt egress tunnel: an SSH reverse tunnel exposes a SOCKS5 proxy on the
+ *  VPS loopback (127.0.0.1:13390) that exits from a residential Egyptian IP.
+ *  FB traffic from the datacenter IP is what gets fresh sessions flagged and
+ *  killed; routing through this tunnel makes every FB request look like it
+ *  comes from a normal Egyptian home connection. Cached liveness probe so
+ *  the DB path never blocks on a dead tunnel. */
+const TUNNEL_SOCKS_URL = process.env.FB_EGRESS_TUNNEL_URL || "socks5://127.0.0.1:13390";
+let tunnelProbeCache = { at: 0, up: false };
+
+function isEgressTunnelUp(): boolean {
+  const now = Date.now();
+  if (now - tunnelProbeCache.at < 30_000) return tunnelProbeCache.up;
+  const port = parseInt(TUNNEL_SOCKS_URL.split(":").pop() || "13390", 10);
+  let settled = false;
+  const result = new Promise<boolean>((resolve) => {
+    const sock = net.connect({ port, host: "127.0.0.1", timeout: 1500 });
+    sock.once("connect", () => { sock.destroy(); resolve(true); });
+    sock.once("error", () => resolve(false));
+    sock.once("timeout", () => { sock.destroy(); resolve(false); });
+  }).then((up) => { tunnelProbeCache = { at: Date.now(), up }; settled = true; return up; })
+    .catch(() => { tunnelProbeCache = { at: Date.now(), up: false }; settled = true; return false; });
+  // probe must never block the caller for long; 1.5s worst case
+  result.catch(() => {});
+  tunnelProbeCache = { at: now, up: tunnelProbeCache.up };
+  return tunnelProbeCache.up;
+}
+
+/** Resolve the egress proxy for a FB session: session BYOP > global env >
+ *  Egypt tunnel (when alive). Returns null when everything is down — the
+ *  session then runs direct from the server IP as before. */
+export function resolveEgressProxy(sessionId: string): ProxyConfig | null {
+  const byop = resolveProxyForSession(sessionId);
+  if (byop) return byop;
+  if (process.env.FB_EGRESS_TUNNEL === "off") return null;
+  if (isEgressTunnelUp()) return { url: TUNNEL_SOCKS_URL, label: "egypt-egress-tunnel" };
   return null;
 }
