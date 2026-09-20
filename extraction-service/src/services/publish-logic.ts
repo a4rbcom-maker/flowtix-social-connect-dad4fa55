@@ -4,7 +4,7 @@
  * regression-tested without a browser or Supabase.
  */
 
-export type PublishRowStatus = "posted" | "fail" | "skip";
+export type PublishRowStatus = "posted" | "fail" | "skip" | "review";
 
 export interface PublishResultRow {
   group_id: string;
@@ -13,14 +13,20 @@ export interface PublishResultRow {
   reason?: string;
   retries?: number;
   batch?: number;
+  post_url?: string;
 }
 
-/** Group ids this job already SUCCESSFULLY posted into (any previous run). */
+/** Group ids this job already SUCCESSFULLY posted or submitted for approval into (any previous run). */
 export function postedGroupIds(results: unknown): Set<string> {
   const out = new Set<string>();
   if (!Array.isArray(results)) return out;
   for (const r of results) {
-    if (r && typeof r === "object" && (r as any).status === "posted" && typeof (r as any).group_id === "string") {
+    if (
+      r &&
+      typeof r === "object" &&
+      ((r as any).status === "posted" || (r as any).status === "review") &&
+      typeof (r as any).group_id === "string"
+    ) {
       out.add((r as any).group_id);
     }
   }
@@ -37,4 +43,24 @@ export function postedGroupIds(results: unknown): Set<string> {
  */
 export function computeFinalStatus(interrupted: boolean): "completed" | "paused" {
   return interrupted ? "paused" : "completed";
+}
+
+/** Final per-row outcome counts the UI summary is built from. */
+export function summarizeResults(results: unknown): { posted: number; review: number; failed: number; skipped: number } {
+  const out = { posted: 0, review: 0, failed: 0, skipped: 0 };
+  if (!Array.isArray(results)) return out;
+  for (const r of results) {
+    if (!r || typeof r !== "object") continue;
+    const s = (r as any).status;
+    if (s === "posted") out.posted++;
+    else if (s === "review") out.review++;
+    else if (s === "fail") out.failed++;
+    else if (s === "skip") out.skipped++;
+  }
+  return out;
+}
+
+/** Build a permalink for a post submitted into a group. */
+export function buildGroupPostUrl(groupId: string, postId: string): string {
+  return `https://www.facebook.com/groups/${groupId}/posts/${postId}/`;
 }

@@ -5,14 +5,14 @@ import { logger } from "./logger.js";
 import { browserPool } from "./services/browser-pool.js";
 import { contextManager } from "./services/context-manager.js";
 import { jobQueue } from "./services/job-queue.js";
-import { supabaseService } from "./services/supabase.js";
+import { supabaseService, supabaseClient } from "./services/supabase.js";
 import healthRouter, { setShuttingDown } from "./routes/health.js";
 import extractRouter from "./routes/extract.js";
 import igSessionsRouter from "./routes/ig-sessions.js";
 import sessionCheckRouter from "./routes/session-check.js";
 import listPagesRouter from "./routes/list-pages.js";
 import listGroupsRouter from "./routes/list-groups.js";
-import publishRouter from "./routes/publish.js";
+import publishRouter, { resumePublishJobs } from "./routes/publish.js";
 import messagesRouter, { resumeMessageJobs } from "./routes/messages.js";
 import igActionsRouter, { resumeIgActionJobs } from "./routes/ig-actions.js";
 import waRouter from "./wa/routes.js";
@@ -94,6 +94,7 @@ const server = app.listen(config.port, async () => {
     await resumeEnrichmentJobs();
     await resumeMessageJobs();
     await resumeIgActionJobs();
+    await resumePublishJobs();
 
     const address = server.address();
     log.info("Server", `server address: ${JSON.stringify(address)}`);
@@ -121,6 +122,13 @@ async function gracefulShutdown(signal: string): Promise<void> {
   log.info("Shutdown", "server stopped accepting new requests");
 
   await supabaseService.pauseAllRunningJobs("Server shutdown - job can be resumed");
+  // publish_jobs has no worker watchdog — left in "running" after a restart it
+  // would stay "جاري" forever and block new jobs (active-job guard). Pause them
+  // for boot reclaim; resume skips already-posted groups (idempotency).
+  await supabaseClient
+    .from("publish_jobs")
+    .update({ status: "paused", updated_at: new Date().toISOString() })
+    .eq("status", "running");
   log.info("Shutdown", "all running jobs marked as paused");
 
   jobQueue.pause();

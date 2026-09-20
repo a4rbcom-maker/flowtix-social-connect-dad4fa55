@@ -3,7 +3,7 @@ import { z } from "zod";
 import { supabaseService, supabaseClient } from "../services/supabase.js";
 import { ExtractionError, ErrorCodes } from "../errors.js";
 import { logger } from "../logger.js";
-import { startPublishWorker, stopPublishWorker, isJobRunningHere } from "../services/publish-worker.js";
+import { startPublishWorker, stopPublishWorker, isJobRunningHere, resumePublishJobs } from "../services/publish-worker.js";
 
 const log = logger;
 const router = Router();
@@ -153,3 +153,4 @@ router.post("/publish/stop", async (req, res) => {
 });
 
 export default router;
+export { resumePublishJobs };

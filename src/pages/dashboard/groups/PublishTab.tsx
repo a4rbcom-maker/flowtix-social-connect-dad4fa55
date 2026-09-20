@@ -26,7 +26,7 @@ export function PublishTab({ preselected = [] }: Props) {
   const [uploading, setUploading] = useState(false);
 
   if (phase === "running" && activeJobId) {
-    return <ProgressDashboard jobId={activeJobId} onDone={() => { setPhase("config"); setActiveJobId(null); }} />;
+    return <ProgressDashboard jobId={activeJobId} groups={preselected} onDone={() => { setPhase("config"); setActiveJobId(null); }} />;
   }
 
   const toggleGroup = (id: string) => {

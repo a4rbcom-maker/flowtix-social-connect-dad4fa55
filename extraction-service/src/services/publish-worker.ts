@@ -1,7 +1,7 @@
 import { supabaseService, supabaseClient } from "./supabase.js";
 import { contextManager } from "./context-manager.js";
 import { logger } from "../logger.js";
-import { postedGroupIds, computeFinalStatus, type PublishResultRow } from "./publish-logic.js";
+import { postedGroupIds, computeFinalStatus, summarizeResults, buildGroupPostUrl, type PublishResultRow } from "./publish-logic.js";
 import type { Page } from "playwright";
 import { createWriteStream } from "node:fs";
 import { mkdir, rm, stat } from "node:fs/promises";
@@ -48,6 +48,21 @@ export function startPublishWorker(jobId: string, sessionId: string) {
     runningJobs.delete(jobId);
     localJobs.delete(jobId);
   });
+}
+
+/**
+ * Boot recovery: publish jobs left "running" by a crash/restart have no worker
+ * left — pause them so the user can resume (idempotency skips posted groups).
+ * Never mark failed: partial progress + results stay intact.
+ */
+export async function resumePublishJobs(): Promise<void> {
+  try {
+    const { data, error } = await sb.from("publish_jobs").update({ status: "paused", updated_at: new Date().toISOString() }).eq("status", "running").select("id");
+    if (error) { log.error("PublishWorker", `resumePublishJobs failed: ${error.message}`); return; }
+    for (const row of data ?? []) log.info("PublishWorker", `orphaned publish job ${row.id} paused for resume`);
+  } catch (err) {
+    log.error("PublishWorker", `resumePublishJobs failed: ${String(err)}`);
+  }
 }
 
 export function stopPublishWorker(jobId: string) {
@@ -215,7 +230,8 @@ async function runPublishWorker(jobId: string, sessionId: string) {
       }
 
       const gid = groups[i];
-      // Idempotency: never post twice into the same group within one job.
+      // Idempotency: never post twice into the same group within one job —
+      // "review" (pending admin approval) also counts: the post was submitted.
       if (alreadyPosted.has(gid)) continue;
 
       try {
@@ -234,10 +250,25 @@ async function runPublishWorker(jobId: string, sessionId: string) {
         await page.waitForTimeout(1500);
 
         const postResult = await attemptPost(page, cfg.message as string, skipOnMissingComposer, media);
-        if (postResult === "posted") {
+        if (typeof postResult === "object" && postResult.kind === "posted") {
           published++; consecutiveErrors = 0;
           alreadyPosted.add(gid);
-          results.push({ group_id: gid, status: "posted", at: new Date().toISOString(), batch: currentBatchOf(i, BATCH_SIZE) });
+          results.push({
+            group_id: gid, status: "posted",
+            ...(postResult.postUrl ? { post_url: postResult.postUrl } : {}),
+            at: new Date().toISOString(), batch: currentBatchOf(i, BATCH_SIZE),
+          });
+        } else if (typeof postResult === "object" && postResult.kind === "review") {
+          // Submitted, but Facebook held it for group-admin approval. Not a
+          // failure and NOT retried — retrying would duplicate the post once
+          // the first submission is approved.
+          skipped++; consecutiveErrors = 0;
+          alreadyPosted.add(gid);
+          results.push({
+            group_id: gid, status: "review", reason: postResult.reason,
+            ...(postResult.postUrl ? { post_url: postResult.postUrl } : {}),
+            at: new Date().toISOString(), batch: currentBatchOf(i, BATCH_SIZE),
+          });
         } else if (postResult === "composer_not_found") {
           skipped++; consecutiveErrors = 0;
           results.push({ group_id: gid, status: "skip", reason: "composer_not_found", at: new Date().toISOString(), batch: currentBatchOf(i, BATCH_SIZE) });
@@ -245,10 +276,25 @@ async function runPublishWorker(jobId: string, sessionId: string) {
           let retried = false;
           for (let r = 0; r < (cfg.max_retries || 1); r++) {
             await sleep(5000);
-            if ((await attemptPost(page, cfg.message as string, false, media)) === "posted") {
+            const retry = await attemptPost(page, cfg.message as string, false, media);
+            if (typeof retry === "object" && retry.kind === "posted") {
               published++; consecutiveErrors = 0;
               alreadyPosted.add(gid);
-              results.push({ group_id: gid, status: "posted", at: new Date().toISOString(), retries: r + 1, batch: currentBatchOf(i, BATCH_SIZE) });
+              results.push({
+                group_id: gid, status: "posted",
+                ...(retry.postUrl ? { post_url: retry.postUrl } : {}),
+                at: new Date().toISOString(), retries: r + 1, batch: currentBatchOf(i, BATCH_SIZE),
+              });
+              retried = true; break;
+            }
+            if (typeof retry === "object" && retry.kind === "review") {
+              skipped++; consecutiveErrors = 0;
+              alreadyPosted.add(gid);
+              results.push({
+                group_id: gid, status: "review", reason: retry.reason,
+                ...(retry.postUrl ? { post_url: retry.postUrl } : {}),
+                at: new Date().toISOString(), retries: r + 1, batch: currentBatchOf(i, BATCH_SIZE),
+              });
               retried = true; break;
             }
           }
@@ -259,7 +305,7 @@ async function runPublishWorker(jobId: string, sessionId: string) {
         results.push({ group_id: gid, status: "fail", reason: String(err), at: new Date().toISOString(), batch: currentBatchOf(i, BATCH_SIZE) });
       }
 
-      await updateProgress(jobId, published, failed, skipped, results);
+      await updateProgress(jobId, i + 1, published, failed, skipped, results);
       if (consecutiveErrors >= (cfg.max_errors || 10)) {
         log.warn("PublishWorker", `job ${jobId}: ${consecutiveErrors} consecutive errors — stopping for safety`);
         await saveCheckpoint(jobId, i + 1, published, failed, skipped, results, currentBatchOf(i, BATCH_SIZE));
@@ -285,12 +331,15 @@ async function runPublishWorker(jobId: string, sessionId: string) {
     // (failed/skipped groups count as processed). Any interruption → "paused",
     // resumable; resume() skips already-posted groups (idempotency).
     const finalStatus = computeFinalStatus(paused);
+    // Clear the live "current group" marker — nothing is being posted anymore.
     await sb.from("publish_jobs").update({
       status: finalStatus,
       ...(finalStatus === "completed" ? { completed_at: new Date().toISOString() } : {}),
+      progress: { ...(job.progress || {}), current_group: null },
       updated_at: new Date().toISOString(),
     }).eq("id", jobId).neq("status", "canceled");
-    log.info("PublishWorker", `job ${jobId} -> ${finalStatus}: ${published} posted, ${failed} fail, ${skipped} skip`);
+    const summary = summarizeResults(results);
+    log.info("PublishWorker", `job ${jobId} -> ${finalStatus}: ${summary.posted} posted, ${summary.review} review, ${summary.failed} fail, ${summary.skipped} skip`);
   } finally {
     await contextManager.releaseContext(contextId);
     // Cached attachments are per-job scratch data — drop them even when the job
@@ -303,12 +352,21 @@ function currentBatchOf(idx: number, batchSize: number): number {
   return Math.floor(idx / batchSize) + 1;
 }
 
+/** Which group the worker is on right now — "current_group" in progress jsonb
+ *  keeps the UI showing a live "جاري النشر على: …" line between checkpoints. */
+function currentGroupOf(groups: string[], idx: number): string | null {
+  return groups[idx] ?? null;
+}
+
 /**
  * Try to publish `message` into the group page currently open on `page`.
  * Returns the concrete failure reason on non-success so results stay debuggable.
+ * A submitted-but-pending-approval post returns { kind: "review" } with the
+ * permalink extracted from the success dialog/feed when available.
  */
 export type PostAttempt =
-  | "posted"
+  | { kind: "posted"; postUrl?: string }
+  | { kind: "review"; reason: string; postUrl?: string }
   | "composer_not_found"
   | "submit_disabled"
   | "typing_failed"
@@ -495,43 +553,73 @@ async function typeAndSubmit(page: Page, message: string, media: PublishMedia[] 
 
     // VERIFICATION: only count the post when it actually lands in the feed.
     const confirmed = await waitForPublishConfirmation(page, message);
-    if (!confirmed) return "no_confirmation";
-    log.info("PublishWorker", `post verified in group feed`);
-    return "posted";
+    if (confirmed === false) return "no_confirmation";
+    const postUrl = await extractPermalinkFromPage(page);
+    if (confirmed === "pending_approval") {
+      log.info("PublishWorker", `post held for admin approval${postUrl ? ` — ${postUrl}` : ""}`);
+      return { kind: "review", reason: "pending_admin_approval", ...(postUrl ? { postUrl } : {}) };
+    }
+    log.info("PublishWorker", `post verified in group feed${postUrl ? ` — ${postUrl}` : ""}`);
+    return { kind: "posted", ...(postUrl ? { postUrl } : {}) };
   } catch (err) {
     log.warn("PublishWorker", `attemptPost error: ${String(err)}`);
     return "typing_failed";
   }
 }
 
-/** Wait for visible signs the post actually landed in the group feed. */
-async function waitForPublishConfirmation(page: Page, message: string): Promise<boolean> {
+/** Wait for visible signs the post actually landed in the group feed.
+ *  "pending_approval" = Facebook accepted the submission but held it for a
+ *  group-admin review — a real outcome, not a failure, and never retried. */
+async function waitForPublishConfirmation(page: Page, message: string): Promise<boolean | "pending_approval"> {
   const needle = message.trim().slice(0, 30).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
-    const seen = await page.evaluate(
+    const seen = (await page.evaluate(
       `(needle) => {
         let re;
         try { re = new RegExp(needle, "i"); } catch { return false; }
+        const bodyText = document.body ? document.body.innerText : "";
+        // Admin-approval confirmations: the post is accepted but NOT in the feed yet.
+        if (/في انتظار الموافقة|في انتظار موافقة|بانتظار الموافقة|بانتظار مراجعة|قيد المراجعة|سيتم نشره بعد مراجعة|pending (admin )?(approval|review)|awaiting (admin )?approval|will be (visible|reviewed) once/i.test(bodyText)) return "pending_approval";
         const feed = document.querySelector('div[role="feed"]');
         if (feed && re.test(feed.innerText || "")) return true;
-        const bodyText = document.body ? document.body.innerText : "";
         if (/تم نشر (المنشور|منشورك)|Your post (is now|has been) (live|published|shared)|Post shared/i.test(bodyText)) return true;
         const composerGone = !document.querySelector('div[contenteditable="true"][role="textbox"]');
         if (composerGone && re.test(bodyText)) return true;
         return false;
       }`,
       needle,
-    ).catch(() => false);
-    if (seen) return true;
+    ).catch(() => false)) as boolean | "pending_approval";
+    if (seen) return seen;
     await page.waitForTimeout(1000);
   }
   return false;
 }
 
-async function saveCheckpoint(jobId: string, idx: number, published: number, failed: number, skipped: number, results: any[], currentBatch?: number) {
+/** Best-effort permalink for the post just submitted (from feed anchors or success dialog). */
+async function extractPermalinkFromPage(page: Page): Promise<string | undefined> {
+  try {
+    const url = await page.evaluate(
+      `(() => {
+        const anchors = document.querySelectorAll('div[role="feed"] a[href*="/posts/"], div[role="dialog"] a[href*="/posts/"], a[href*="/permalink/"]');
+        for (const a of anchors) {
+          const href = a.getAttribute("href") || "";
+          if (!href) continue;
+          return href.startsWith("http") ? href : "https://www.facebook.com" + href;
+        }
+        return null;
+      })()`,
+    );
+    return typeof url === "string" && url.includes("/posts/") || (typeof url === "string" && url.includes("/permalink/")) ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function saveCheckpoint(jobId: string, idx: number, published: number, failed: number, skipped: number, results: any[], currentBatch?: number, currentGroup?: string | null) {
   const prog: any = { current_idx: idx, published, failed, skipped };
   if (currentBatch) prog.current_batch = currentBatch;
+  if (currentGroup) prog.current_group = currentGroup;
   // A transient DB/network failure must not kill the worker mid-job
   // (an unhandled throw here leaves the job stuck in "running" forever).
   try {
@@ -541,8 +629,8 @@ async function saveCheckpoint(jobId: string, idx: number, published: number, fai
   }
 }
 
-async function updateProgress(jobId: string, published: number, failed: number, skipped: number, results: any[]) {
-  const prog: any = { published, failed, skipped };
+async function updateProgress(jobId: string, currentIdx: number, published: number, failed: number, skipped: number, results: any[]) {
+  const prog: any = { published, failed, skipped, current_idx: currentIdx };
   try {
     // FULL results, never sliced: postedGroupIds() on resume/crash-recovery
     // must see every already-posted group or they get posted twice. The
