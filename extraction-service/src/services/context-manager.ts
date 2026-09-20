@@ -213,7 +213,7 @@ export function releaseSessionLock(platformKey: string): void {
 class ContextManager {
   private active: Map<string, ActiveContext> = new Map();
 
-  async createContext(sessionId: string, cookies: CookieEntry[], proxy?: ProxyConfig | null, userAgent?: string | null, storageState?: StoredStorageState | null): Promise<{ context: BrowserContext; page: import("playwright").Page; contextId: string }> {
+  async createContext(sessionId: string, cookies: CookieEntry[], proxy?: ProxyConfig | null, userAgent?: string | null, storageState?: StoredStorageState | null, opts?: { skipAuthProbe?: boolean }): Promise<{ context: BrowserContext; page: import("playwright").Page; contextId: string }> {
     const lockKey = `fb:${sessionId}`;
     if (!acquireSessionLock(lockKey)) {
       throw new ExtractionError(
@@ -343,6 +343,14 @@ class ContextManager {
       // outcomes we're in (a login form, or Facebook chrome), polled while the
       // page settles, and read only the marker we need rather than the whole
       // document.
+      //
+      // skipAuthProbe: callers that navigate to a page which ITSELF proves auth
+      // (list-groups' /groups/joins renders the login form for guests) pass
+      // this — one navigation instead of two: faster AND one fewer foreign
+      // signal on a young session.
+      if (opts?.skipAuthProbe) {
+        log.info("ContextManager", `session ${sessionId.slice(0, 8)}: skipping home-page auth probe (caller verifies on target page)`);
+      } else {
       try {
         await page.goto("https://www.facebook.com/", { waitUntil: "domcontentloaded", timeout: 20000 });
 
@@ -393,6 +401,7 @@ class ContextManager {
       } catch (err) {
         if (err instanceof ExtractionError) throw err;
         log.warn("ContextManager", `session ${sessionId.slice(0, 8)}: verification failed (continuing): ${String(err).substring(0, 100)}`);
+      }
       }
 
       const entry: ActiveContext = { context, browser, sessionId };

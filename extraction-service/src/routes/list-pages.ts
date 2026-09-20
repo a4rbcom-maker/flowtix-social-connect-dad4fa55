@@ -65,7 +65,10 @@ router.post("/list-pages", async (req, res) => {
     log.info("ListPages", `listing pages for session ${session_id}`);
 
     const { cookies, userAgent, storageState } = await supabaseService.getSessionAndCookies(session_id);
-    const { page, contextId } = await contextManager.createContext(session_id, cookies, undefined, userAgent, storageState);
+    // skipAuthProbe: the identity-switcher flow below navigates facebook.com
+    // itself — a second home-page probe doubles the foreign signals on a young
+    // session for nothing.
+    const { page, contextId } = await contextManager.createContext(session_id, cookies, undefined, userAgent, storageState, { skipAuthProbe: true });
 
     // GraphQL responses captured while the identity switcher opens.
     const captured: string[] = [];
@@ -129,49 +132,17 @@ router.post("/list-pages", async (req, res) => {
         for (const obj of parseBodies(body.replace(/^for\s*\(\s*;;\s*\);?/, "").trim())) {
           for (const p of extractManagedPages(obj)) if (!found.has(p.id)) found.set(p.id, p);
         }
-        // Remember the viewer's own User id so the AC fallback can exclude the
-        // personal profile (a personal profile is NOT a managed page).
         for (const m of body.matchAll(/"__typename":"User","id":"(\d{5,})"/g)) viewerUserIds.add(m[1]);
         for (const m of body.matchAll(/"id":"(\d{5,})","__typename":"User"/g)) viewerUserIds.add(m[1]);
       }
       log.info("ListPages", `graphql-switcher: ${found.size} managed pages from ${captured.length} graphql responses (viewerIds=${viewerUserIds.size})`);
 
-      // ─── Fallback: Accounts Center profiles (numeric ids in /profiles/<id>/ links) ───
-      if (found.size === 0) {
-        log.info("ListPages", `fallback: accountscenter profiles DOM`);
-        await page.goto("https://accountscenter.facebook.com/profiles/", { waitUntil: "domcontentloaded", timeout: config.fbNavTimeoutMs });
-        await page.waitForTimeout(5000);
-        await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
-        const rawDom: unknown = await page.evaluate(`(() => {
-          const out = [];
-          const seen = new Set();
-          for (const a of document.querySelectorAll('a[href*="/profiles/"]')) {
-            const m = (a.getAttribute("href") || "").match(/\\/profiles\\/(\\d{5,})\\/?(\\?|$)/);
-            if (!m || seen.has(m[1])) continue;
-            seen.add(m[1]);
-            let name = (a.innerText || "").trim().split("\\n")[0] || "";
-            let picture = "";
-            const img = a.querySelector("img");
-            if (img) picture = img.src || "";
-            out.push({ id: m[1], name, picture });
-          }
-          return out;
-        })()`).catch(() => null);
-        const domPages: Array<{ id: string; name: string; picture: string }> = Array.isArray(rawDom)
-          ? (rawDom as Array<{ id: string; name: string; picture: string }>)
-          : [];
-        for (const dp of domPages) {
-          // AC lists personal profiles too — exclude the viewer's own User id
-          // captured from the switcher GraphQL. Without __typename we cannot
-          // fully prove "Page", so the extractor's own mailbox resolution
-          // rejects non-manageable ids safely.
-          if (viewerUserIds.has(dp.id)) continue;
-          if (isManagedPageCandidate(dp.id, dp.name) && !found.has(dp.id)) {
-            found.set(dp.id, { id: dp.id, name: dp.name, pictureUrl: dp.picture });
-          }
-        }
-        log.info("ListPages", `accountscenter DOM: ${found.size} candidates`);
-      }
+      // NOTE: the old accountscenter.facebook.com fallback is REMOVED. Navigating
+      // the Account Center from a datacenter IP on a minutes-old session is a
+      // textbook account-theft signal — it killed session 1fcaec39 exactly 67s
+      // after the visit (2026-09-20 05:31:07 → 05:32:21 guest). It also never
+      // produced a single candidate. No managed pages in the switcher GraphQL
+      // simply means the account manages none — return empty, fast.
 
       const pages: ManagedPage[] = Array.from(found.values()).map(p => ({
         id: p.id,

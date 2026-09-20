@@ -82,7 +82,9 @@ router.post("/list-groups", async (req, res) => {
     log.info("ListGroups", `listing groups`);
 
     const { cookies, userAgent, storageState } = await supabaseService.getSessionAndCookies(session_id);
-    const { page, contextId } = await contextManager.createContext(session_id, cookies, undefined, userAgent, storageState);
+    // skipAuthProbe: /groups/joins renders the login form for guests — the
+    // page itself settles auth, so we pay ONE navigation instead of two.
+    const { page, contextId } = await contextManager.createContext(session_id, cookies, undefined, userAgent, storageState, { skipAuthProbe: true });
 
     try {
       const t0 = Date.now();
