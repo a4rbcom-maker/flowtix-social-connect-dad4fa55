@@ -1,4 +1,5 @@
 import { type Browser, type BrowserContext } from "playwright";
+import { hostname } from "os";
 import { browserPool } from "./browser-pool.js";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
@@ -17,7 +18,13 @@ interface ActiveContext {
   browser: Browser;
   sessionId: string;
   cookieSyncTimer?: NodeJS.Timeout;
+  leaseTimer?: NodeJS.Timeout;
 }
+
+/** Stable identity for THIS service instance across the DB lease table —
+ *  host + pid + boot time. Two instances on the same DB get different
+ *  holders, so the atomic lease is what decides who may open the session. */
+const INSTANCE_ID = `${hostname()}:${process.pid}:${Date.now()}`;
 
 const DEFAULT_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
@@ -194,6 +201,20 @@ class ContextManager {
     }
 
     try {
+      // Distributed lease: refuse to touch the cookies when ANY other service
+      // instance in the world holds this session. Two instances replaying the
+      // same cookies from different IPs within minutes is the exact signal
+      // Facebook answers with a forced logout (local dev + prod VPS shared
+      // this DB — the recurring "session dies in ~3 minutes" root cause).
+      const leaseAcquired = await supabaseService.acquireSessionLease(sessionId, INSTANCE_ID);
+      if (!leaseAcquired) {
+        log.error("ContextManager", `session ${sessionId.slice(0, 8)}: DENIED — another service instance holds this session's lease. Failing fast to protect the account.`);
+        throw new ExtractionError(
+          ErrorCodes.SESSION_IN_USE,
+          `الجلسة (${sessionId.slice(0, 8)}) قيد الاستخدام على خادم آخر حالياً (قفل موزّع). لا يمكن فتح نفس الجلسة من جهازين في نفس الوقت — هذا ما يقتل الجلسة عند فيسبوك. انتظر انتهاء المهمة أو أوقفها.`,
+        );
+      }
+
       const browser = await browserPool.acquire();
       const contextId = `${sessionId}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
@@ -325,6 +346,7 @@ class ContextManager {
           await supabaseService.markSessionInvalid(sessionId, "guest_on_open").catch(() => {});
           await context.close();
           browserPool.release(browser);
+          await supabaseService.releaseSessionLease(sessionId, INSTANCE_ID).catch(() => {});
           throw new ExtractionError(
             ErrorCodes.SESSION_EXPIRED,
             `الجلسة (${sessionId.slice(0, 8)}) منتهية: فيسبوك عرض صفحة تسجيل الدخول بدل الحساب. لم يتم حفظ أي كوكيز فوق جلستك، وتم وسم الجلسة «منتهية». صدّر كوكيز جديدة من Cookie-Editor (Export JSON) وأعد الربط.`
@@ -357,6 +379,17 @@ class ContextManager {
       syncTimer.unref?.();
       entry.cookieSyncTimer = syncTimer;
 
+      // Lease heartbeat: keep the distributed lease alive for the whole
+      // extraction. If renewal fails (DB hiccup longer than the TTL), the next
+      // acquire after TTL would let another instance in — so log it loudly.
+      const leaseTimer = setInterval(() => {
+        void supabaseService.renewSessionLease(sessionId, INSTANCE_ID).then((ok) => {
+          if (!ok) log.warn("ContextManager", `session ${sessionId.slice(0, 8)}: lease renewal failed — lease will expire in ${Math.round(config.sessionLeaseTtlMs / 1000)}s if not renewed`);
+        });
+      }, Math.max(30_000, Math.floor(config.sessionLeaseTtlMs / 3)));
+      leaseTimer.unref?.();
+      entry.leaseTimer = leaseTimer;
+
       this.active.set(contextId, entry);
       log.debug("ContextManager", `context created ${contextId}`, {
         cookieCount: cookies.length,
@@ -365,6 +398,12 @@ class ContextManager {
 
       return { context, page, contextId };
     } catch (err) {
+      // Any failure after the lease was acquired (but before the context was
+      // registered) must free the distributed lease — a leaked lease blocks
+      // this session on every other instance for the full TTL.
+      if (!this.active.has(`${sessionId}`) && !Array.from(this.active.values()).some((e) => e.sessionId === sessionId && e.leaseTimer)) {
+        await supabaseService.releaseSessionLease(sessionId, INSTANCE_ID).catch(() => {});
+      }
       releaseSessionLock(lockKey);
       throw err;
     }
@@ -376,6 +415,10 @@ class ContextManager {
     this.active.delete(contextId);
 
     if (entry.cookieSyncTimer) clearInterval(entry.cookieSyncTimer);
+    if (entry.leaseTimer) clearInterval(entry.leaseTimer);
+    // Free the distributed lease FIRST — the moment this instance stops using
+    // the session, another instance may open it safely.
+    await supabaseService.releaseSessionLease(entry.sessionId, INSTANCE_ID).catch(() => {});
 
     // Capture the full identity BEFORE closing — Facebook refreshes the `xs`
     // token during browsing; dropping it invalidates the stored session.

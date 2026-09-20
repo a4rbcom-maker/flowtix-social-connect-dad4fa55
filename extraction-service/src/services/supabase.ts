@@ -638,6 +638,39 @@ export const supabaseService = {
     if (error) log.error("Supabase", `updateSessionFbUserId failed: ${error.message}`);
   },
 
+  // ===== Distributed session lease =====
+  // ONE service instance in the world may open a given session's cookies at a
+  // time. The in-process lock only guarded one process; local dev + the prod
+  // VPS replaying the same cookies from different IPs within minutes is what
+  // Facebook read as token theft and answered with forced logouts.
+
+  async acquireSessionLease(sessionId: string, holder: string, ttlSeconds = config.sessionLeaseTtlMs / 1000): Promise<boolean> {
+    const { data, error } = await sb
+      .rpc("acquire_fb_session_lease", { p_session_id: sessionId, p_holder: holder, p_ttl_seconds: Math.round(ttlSeconds) })
+      .maybeSingle();
+    if (error) {
+      log.warn("Supabase", `acquire_fb_session_lease failed for ${sessionId.slice(0, 8)}: ${error.message} — refusing to open session (fail-closed)`);
+      return false;
+    }
+    return data === true || data === null ? data !== null : Boolean(data);
+  },
+
+  async renewSessionLease(sessionId: string, holder: string, ttlSeconds = config.sessionLeaseTtlMs / 1000): Promise<boolean> {
+    const { data, error } = await sb
+      .rpc("renew_fb_session_lease", { p_session_id: sessionId, p_holder: holder, p_ttl_seconds: Math.round(ttlSeconds) })
+      .maybeSingle();
+    if (error) {
+      log.warn("Supabase", `renew_fb_session_lease failed for ${sessionId.slice(0, 8)}: ${error.message}`);
+      return false;
+    }
+    return data === true;
+  },
+
+  async releaseSessionLease(sessionId: string, holder: string): Promise<void> {
+    const { error } = await sb.rpc("release_fb_session_lease", { p_session_id: sessionId, p_holder: holder });
+    if (error) log.warn("Supabase", `release_fb_session_lease failed for ${sessionId.slice(0, 8)}: ${error.message}`);
+  },
+
   async getJobStatus(jobId: string): Promise<JobStatus | null> {
     const { data, error } = await sb
       .from("extraction_jobs")

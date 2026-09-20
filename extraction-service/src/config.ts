@@ -110,6 +110,11 @@ export const config = {
   /** How often live contexts persist Facebook-rotated cookies back to the
    *  stored profile. Keeps `xs` fresh even if the process dies mid-extraction. */
   cookieSyncIntervalMs: envInt("COOKIE_SYNC_INTERVAL_MS", 60000),
+
+  /** Distributed session lease TTL (seconds→ms at use site). A service instance
+   *  that dies mid-extraction leaves its lease to expire and the session frees
+   *  itself without ever having been opened from a second machine. */
+  sessionLeaseTtlMs: envInt("SESSION_LEASE_TTL_MS", 300000),
 } as const;
 
 export type Config = typeof config;
