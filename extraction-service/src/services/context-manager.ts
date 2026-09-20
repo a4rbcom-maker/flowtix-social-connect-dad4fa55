@@ -118,23 +118,45 @@ export interface SessionFingerprint {
   longitude: number;
 }
 
-/** Stable per-session device identity: viewport matched to the session's own
- *  UA class (mobile UA ⇒ mobile screen), plus a fixed Cairo-area geo jitter. */
-export function buildSessionFingerprint(sessionId: string, ua: string): SessionFingerprint {
+/** The exporter's real screen, recovered from the `wd` cookie they handed us
+ *  with their session (format "WxH"). Facebook minted the token while the
+ *  browser reported THAT viewport; replaying it on any other size is a
+ *  device-mismatch signal. Returns null when absent/unparseable. */
+export function viewportFromWdCookie(wdCookie?: string | null): { width: number; height: number } | null {
+  if (!wdCookie) return null;
+  const m = /^(?:\d+x\d+),(\d+)x(\d+)$/.exec(wdCookie.trim()) || /^(\d+)x(\d+)$/.exec(wdCookie.trim());
+  if (!m) return null;
+  const width = parseInt(m[1] ?? m[0], 10);
+  const height = parseInt(m[2] ?? m[1], 10);
+  // sanity: real browser viewports only
+  if (width < 200 || height < 200 || width > 7680 || height > 4320) return null;
+  return { width, height };
+}
+
+/** Stable per-session device identity. The exporter's real screen (`wd`
+ *  cookie) wins over every guess — UA pools are only a fallback for exports
+ *  that arrived without one. Plus a fixed Cairo-area geo jitter. */
+export function buildSessionFingerprint(sessionId: string, ua: string, wdCookie?: string | null, dprCookie?: string | null): SessionFingerprint {
   const rnd = seededRandom(sessionSeed(sessionId));
   const mobile = isMobileUserAgent(ua);
   const pool = mobile ? MOBILE_VIEWPORTS : DESKTOP_VIEWPORTS;
-  // Prefer the screen implied by the exporter's own UA (a phone export must
-  // replay on a phone-sized screen). Fall back to the seeded pool for desktop
-  // UAs, where the UA carries no screen information.
   const fromUa = viewportFromUserAgent(ua);
-  const viewport = fromUa && mobile
-    ? fromUa
-    : pool[Math.floor(rnd() * pool.length) % pool.length];
+  const fromWd = viewportFromWdCookie(wdCookie);
+  const viewport = fromWd
+    ? fromWd
+    : fromUa && mobile
+      ? fromUa
+      : pool[Math.floor(rnd() * pool.length) % pool.length];
+  // Real device pixel ratio from the `dpr` cookie (1, 1.25, 1.5, 2, ...);
+  // guessing wrong on the same screen is another device-mismatch signal.
+  const dprFromCookie = dprCookie ? parseFloat(dprCookie) : NaN;
+  const deviceScaleFactor = Number.isFinite(dprFromCookie) && dprFromCookie >= 1 && dprFromCookie <= 4
+    ? dprFromCookie
+    : mobile ? 2 + Math.floor(rnd() * 2) : 1;
   return {
     viewport,
     isMobile: mobile,
-    deviceScaleFactor: mobile ? 2 + Math.floor(rnd() * 2) : 1,
+    deviceScaleFactor,
     latitude: 30.0444 + (rnd() - 0.5) * 0.2,
     longitude: 31.2357 + (rnd() - 0.5) * 0.2,
   };
@@ -225,7 +247,13 @@ class ContextManager {
       const hasCUser = cookies.some(c => c.name === "c_user");
       const hasXs = cookies.some(c => c.name === "xs");
       const ua = resolveUserAgent(userAgent);
-      const fp = buildSessionFingerprint(sessionId, ua);
+      // Replay on the exporter's REAL screen: the `wd` cookie stored with the
+      // session records the viewport the token was minted on. Guessing a
+      // different size is a device-mismatch signal.
+      const identityCookies = storageState?.cookies ?? cookies;
+      const wdCookie = identityCookies.find((c) => c.name === "wd")?.value ?? null;
+      const dprCookie = identityCookies.find((c) => c.name === "dpr")?.value ?? null;
+      const fp = buildSessionFingerprint(sessionId, ua, wdCookie, dprCookie);
       log.info("ContextManager", `session ${sessionId.slice(0, 8)}: cookies injected = ${cookies.length} cookies (c_user=${hasCUser}, xs=${hasXs}, essential=${essentialCookies.length})${proxy ? `, proxy=${proxy.label || proxy.url.split('@').pop() || 'yes'}` : ''}, ua=${ua.substring(0, 40)}..., fingerprint=${fp.isMobile ? "mobile" : "desktop"} ${fp.viewport.width}x${fp.viewport.height}`);
 
       const contextOpts: any = {
